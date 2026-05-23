@@ -99,6 +99,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
       ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
       NODE_ENV: isDev ? 'development' : 'production',
+      FORCE_COLOR: '1',
     },
     execPath,
     execArgv,
@@ -106,11 +107,11 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   })
 
   serverProcess.stdout?.on('data', (data: Buffer) => {
-    console.warn(`[server] ${data.toString().trim()}`)
+    process.stdout.write(data)
   })
 
   serverProcess.stderr?.on('data', (data: Buffer) => {
-    console.error(`[server] ${data.toString().trim()}`)
+    process.stderr.write(data)
   })
 
   serverProcess.on('exit', (code, signal) => {

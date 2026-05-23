@@ -4,4 +4,4 @@ Provides test-only database and isolated filesystem reset routes. This module is
 
 ## Files
 
-- `index.ts`: Elysia `/test/reset` route that aborts active runs, clears test database tables, and removes isolated test HOME skills only when `HOME` is under `CRADLE_DATA_DIR`.
+- `index.ts`: Elysia `/test/reset` route that aborts active runs, clears test database tables including provider model cache rows, removes isolated server-owned preferences, and removes isolated test HOME skills only when `HOME` is under `CRADLE_DATA_DIR`.

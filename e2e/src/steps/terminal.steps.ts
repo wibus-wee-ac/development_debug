@@ -16,6 +16,10 @@ function getShellView(world: CradleWorld) {
   return world.page.locator('[data-testid="shell-view"]')
 }
 
+function getTerminalTabs(world: CradleWorld) {
+  return world.page.locator('[data-testid="bottom-terminal-tab"]')
+}
+
 async function readShellVisibleText(world: CradleWorld): Promise<string> {
   return (await world.page.locator('[data-testid="shell-view-transcript"]').textContent()) ?? ''
 }
@@ -86,6 +90,39 @@ When('我在底部终端中执行命令{string}', async function (this: CradleWo
   await shellView.click({ position: { x: 24, y: 24 } })
   await this.page.keyboard.type(command)
   await this.page.keyboard.press('Enter')
+})
+
+When('我新建一个底部终端会话', async function (this: CradleWorld) {
+  console.warn('[step] create bottom terminal session')
+  const button = this.page.locator('[data-testid="bottom-terminal-new-session"]')
+  await expect(button).toBeVisible({ timeout: TERMINAL_TIMEOUT })
+  await button.click()
+})
+
+When('我切换到底部终端第 {int} 个会话', async function (this: CradleWorld, ordinal: number) {
+  console.warn(`[step] switch bottom terminal session: ${ordinal}`)
+  const tab = getTerminalTabs(this).nth(ordinal - 1)
+  await expect(tab).toBeVisible({ timeout: TERMINAL_TIMEOUT })
+  await tab.locator('button').first().click()
+})
+
+When('我关闭底部终端第 {int} 个会话', async function (this: CradleWorld, ordinal: number) {
+  console.warn(`[step] close bottom terminal session: ${ordinal}`)
+  const tab = getTerminalTabs(this).nth(ordinal - 1)
+  await expect(tab).toBeVisible({ timeout: TERMINAL_TIMEOUT })
+  const closeButton = tab.locator('[data-testid^="bottom-terminal-close-"]')
+  await expect(closeButton).toBeVisible({ timeout: TERMINAL_TIMEOUT })
+  await closeButton.click()
+})
+
+Then('底部终端应显示 {int} 个会话标签', async function (this: CradleWorld, count: number) {
+  console.warn(`[step] assert bottom terminal session count: ${count}`)
+  await expect(getTerminalTabs(this)).toHaveCount(count, { timeout: TERMINAL_TIMEOUT })
+})
+
+Then('底部终端第 {int} 个会话应处于活跃状态', async function (this: CradleWorld, ordinal: number) {
+  console.warn(`[step] assert bottom terminal session active: ${ordinal}`)
+  await expect(getTerminalTabs(this).nth(ordinal - 1)).toHaveAttribute('data-active', 'true', { timeout: TERMINAL_TIMEOUT })
 })
 
 Then('底部终端应显示当前工作区路径哈希', async function (this: CradleWorld) {

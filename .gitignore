@@ -15,3 +15,5 @@ chronicle/target/
 apps/desktop/release
 .cradle/
 apps/server/openapi.json
+
+.build

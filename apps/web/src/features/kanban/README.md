@@ -23,7 +23,7 @@ Kanban renders board/list/detail views over Issue-owned workspace data. Issue me
 - **kanban-selection.test.ts**: Regression tests for Linear-style issue selection ranges and toggles.
 - **kanban-selection-bar.tsx**: Floating bulk action bar for selected issues, currently supporting status and priority updates.
 - **kanban-sidebar-loader.ts**: Kanban sidebar 的共享 lazy loader 与 intent preload 入口，避免 workspace shell eager import Kanban 实现，并记录 sidebar lazy surface first-render start mark
-- **kanban-sidebar.tsx**: Workspace/status navigation for the Kanban feature, using app-level current-tab navigation for board entries; records the Kanban sidebar first-render gate after the boards query succeeds.
+- **kanban-sidebar.tsx**: Workspace/status navigation for the Kanban feature, using app-level current-tab navigation for board entries; records the Kanban sidebar first-render gate after the boards query succeeds, and exposes stable create-board dialog anchors for e2e flows.
 - **kanban-toolbar.tsx**: View and filtering controls with named icon-only toolbar actions.
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Shared visual and metadata helpers such as priority labels, label parsing, icons, and avatars.

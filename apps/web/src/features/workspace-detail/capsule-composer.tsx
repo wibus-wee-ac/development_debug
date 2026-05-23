@@ -234,6 +234,8 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           placeholder="在此工作区开始新对话..."
           disabled={owner.sending}
           rows={1}
+          data-testid="workspace-detail-capsule-textarea"
+          aria-label="Workspace task message"
           className={cn(
             'block w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none disabled:opacity-50',
             owner.expanded
@@ -259,6 +261,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                   disabled={!owner.canSend}
                   onClick={() => void owner.handleSend()}
                   aria-label="Send message"
+                  data-testid="workspace-detail-capsule-send-btn"
                 >
                   {owner.sending
                     ? <Loader2Icon className="size-3 animate-spin" aria-hidden="true" />

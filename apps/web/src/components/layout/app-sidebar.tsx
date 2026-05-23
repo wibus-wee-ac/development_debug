@@ -69,7 +69,7 @@ export function AppSidebar() {
         data-sidebar-collapsed={collapsed ? 'true' : 'false'}
       >
         {/* Traffic light spacer — drag region matching AppHeader height */}
-        <div className="h-9.5 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+        <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
         <div
           className="relative flex flex-col flex-1 overflow-hidden"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}

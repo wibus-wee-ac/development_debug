@@ -54,3 +54,27 @@
     而且 我点击打包并复制
     那么 复制代码库应显示已复制状态
     而且 剪贴板应包含当前工作区的 AGENTS.md 内容
+
+  @P1 @CRADLE-WORKSPACE-008
+  场景: 从工作区详情页直接开始一次项目任务
+    假如 我已进入 Agent Runtime 设置页面
+    当 我点击添加 Provider 按钮
+    而且 我在 Provider 类型下拉选择"OpenAI-compatible"
+    而且 我在 Provider 表单填写 Name 为"Workspace Task Mock"
+    而且 我在 Provider 表单填写 Base URL 为 Mock 地址
+    而且 我在 Provider 表单填写 Model 为"mock-model"
+    而且 我在 Provider 表单填写 API Key 为"test-key"
+    而且 我点击提交 Provider 按钮
+    那么 Provider 状态应为成功
+    而且 Provider 列表中应显示名为"Workspace Task Mock"的 profile
+    当 我关闭设置并返回首页
+    而且 我已添加了一个包含 AGENTS.md 的工作区
+    当 我打开当前工作区的详情页
+    而且 我在工作区详情页输入任务"请解释这个项目的结构"
+    而且 我从工作区详情页发送任务
+    那么 应该跳转到聊天视图
+    而且 我应该看到用户消息"请解释这个项目的结构"
+    而且 最后一条 AI 消息应包含"Hello from mock LLM!"
+    而且 聊天中不应出现错误提示
+    当 我打开当前工作区的详情页
+    那么 工作区详情页最近会话应显示"请解释这个项目的结构"

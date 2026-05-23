@@ -30,19 +30,19 @@ import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 /* ─── Constants ───────────────────────────────────────────────────────── */
 
 const PLACEHOLDER_HINTS = [
-  '描述你想让 Agent 完成的任务…',
-  '审查最近的代码变更并给出建议…',
-  '帮我排查这个 bug 的根本原因…',
-  '为这个模块编写单元测试…',
-  '重构这段代码，提升可读性…',
+  'Describe the task you want the agent to do in this project...',
+  'Explain the codebase structure and where to begin...',
+  'Find risky changes and suggest the safest next step...',
+  'Fix a failing test and explain the root cause...',
+  'Plan a refactor before editing implementation code...',
 ]
 
 const QUICK_ACTIONS = [
-  { label: 'Review code', prompt: '请审查我最近的代码变更，指出潜在的问题和改进建议' },
-  { label: 'Fix tests', prompt: '帮我修复当前失败的测试用例' },
-  { label: 'Refactor', prompt: '请重构以下代码，提升可读性和性能' },
-  { label: 'Write docs', prompt: '为以下模块编写清晰完整的文档' },
-  { label: 'Debug', prompt: '帮我排查以下问题的根本原因' },
+  { label: 'Explain this codebase', prompt: 'Explain this codebase from the perspective of a new contributor. Focus on architecture, key modules, data flow, and where I should start.' },
+  { label: 'Find risky changes', prompt: 'Inspect the recent changes in this project and identify risky areas, likely regressions, and the smallest verification plan.' },
+  { label: 'Fix a failing test', prompt: 'Find the failing test in this project, explain the root cause, and make the smallest maintainable fix.' },
+  { label: 'Write project notes', prompt: 'Read the project context and write concise project notes that capture architecture, conventions, and important workflows.' },
+  { label: 'Plan a refactor', prompt: 'Plan a focused refactor for this project. Identify the boundary, risks, migration steps, and tests before editing code.' },
 ]
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
@@ -117,12 +117,11 @@ function useNewChatPageOwner() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
   const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
-  const isReady =
-    !workspacesLoading &&
-    sessionsReady &&
-    !composerState.isLoadingAgents &&
-    !composerState.isLoadingProfiles &&
-    !composerState.isLoadingModels
+  const isReady = !workspacesLoading
+    && sessionsReady
+    && !composerState.isLoadingAgents
+    && !composerState.isLoadingProfiles
+    && !composerState.isLoadingModels
 
   const recentSessions = useMemo(() => {
     const top: typeof sessions = []
@@ -353,6 +352,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
           onKeyDown={handleKeyDown}
           disabled={sending}
           data-testid="new-chat-textarea"
+          aria-label="New chat message"
           rows={5}
           className={cn(
             'block w-full resize-none bg-transparent outline-none',
@@ -402,7 +402,11 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
               {workspaces.length === 0
                 ? <MenuItem disabled>暂无工作区</MenuItem>
                 : workspaces.map(workspace => (
-                    <MenuItem key={workspace.id} onClick={() => setSelectedWorkspaceId(workspace.id)}>
+                    <MenuItem
+                      key={workspace.id}
+                      onClick={() => setSelectedWorkspaceId(workspace.id)}
+                      data-testid={`new-chat-workspace-option-${workspace.id}`}
+                    >
                       <FolderIcon className="size-3" />
                       <span className="flex-1">{workspace.name}</span>
                     </MenuItem>
@@ -514,7 +518,7 @@ function NewChatReadinessNotice({ owner }: { owner: ReturnType<typeof useNewChat
 
 /* ─── Recent Sessions ─────────────────────────────────────────────────── */
 
-function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   if (owner.recentSessions.length === 0) {
     return null
   }

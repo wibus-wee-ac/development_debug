@@ -68,11 +68,11 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
   const currentStatus = statuses.find(s => s.id === statusId)
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" data-testid="sub-issues-list">
       {subIssues.map((sub) => {
         const status = statuses.find(s => s.id === sub.statusId)
         return (
-          <div key={sub.id} className="flex h-7 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-fill transition-colors">
+          <div key={sub.id} className="flex h-7 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-fill transition-colors" data-testid={`sub-issue-${sub.id}`}>
             {status
               ? <StatusIcon category={status.category as StatusCategory} size={14} />
               : <span className="size-3.5" />}
@@ -99,6 +99,8 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                   }
                 }}
                 placeholder="Sub-issue title"
+                data-testid="sub-issue-title-input"
+                aria-label="Sub-issue title"
                 className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none placeholder:text-muted-foreground/60"
               />
             </div>
@@ -168,6 +170,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
                   type="button"
                   onClick={handleCreate}
                   disabled={!newTitle.trim() || createIssue.isPending}
+                  data-testid="sub-issue-create-btn"
                   className={cn(
                     'flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-medium',
                     'bg-primary text-primary-foreground hover:bg-primary/90 transition-colors',
@@ -190,6 +193,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
           <button
             type="button"
             onClick={() => setCreating(true)}
+            data-testid="sub-issue-add-btn"
             className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-text-dim hover:text-foreground hover:bg-fill transition-colors w-fit"
           >
             <PlusIcon className="size-3.5" aria-hidden="true" />

@@ -43,7 +43,7 @@ interface PropertiesSidebarProps {
   onUpdate: (patch: IssuePatch) => void
 }
 
-export const PropertiesSidebar = memo(function PropertiesSidebar({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) {
+export const PropertiesSidebar = memo(({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) => {
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
   const labels = issue.labels
@@ -139,6 +139,8 @@ export const PropertiesSidebar = memo(function PropertiesSidebar({ issue, status
   )
 })
 
+PropertiesSidebar.displayName = 'PropertiesSidebar'
+
 function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between py-1.5">
@@ -175,7 +177,12 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
   return (
     <div className="flex flex-wrap items-center gap-1">
       {labels.map(l => (
-        <button key={l} type="button" onClick={() => handleRemove(l)}>
+        <button
+          key={l}
+          type="button"
+          onClick={() => handleRemove(l)}
+          data-testid={`issue-label-chip-${l}`}
+        >
           <LabelChip label={l} className="cursor-pointer hover:line-through" />
         </button>
       ))}
@@ -183,6 +190,7 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
         <PopoverTrigger
           className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-fill transition-colors"
           aria-label="Add label"
+          data-testid="issue-label-add-trigger"
         >
           <PlusIcon className="size-3" aria-hidden="true" />
         </PopoverTrigger>
@@ -198,6 +206,8 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
               }
             }}
             placeholder="Add label..."
+            data-testid="issue-label-input"
+            aria-label="Issue label"
             className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
           />
         </PopoverContent>
@@ -217,9 +227,7 @@ function AgentDelegateRow({ issue }: { issue: KanbanIssue }) {
     return candidates
   }, [])
 
-  const delegatedAgent = delegateCandidates.find(agent =>
-    agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId,
-  ) ?? null
+  const delegatedAgent = delegateCandidates.find(agent => agent.id === issue.delegateAgentId || agent.agentProfileId === issue.delegateAgentProfileId) ?? null
 
   return (
     <PropertyRow label="Agent">

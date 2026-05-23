@@ -1,11 +1,14 @@
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
-import { LayoutGeometryProvider, useLayoutGeometry } from '~/components/layout/layout-geometry-context'
+import {
+  LayoutGeometryProvider,
+  useLayoutGeometry,
+} from '~/components/layout/layout-geometry-context'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
@@ -27,7 +30,10 @@ const INSTANT = { duration: 0 } as const
 type BrowserBridgeCleanup = () => void
 
 function parseBrowserTabRequest(payload: unknown): string | undefined {
-  return typeof payload === 'object' && payload !== null && 'url' in payload && typeof payload.url === 'string'
+  return typeof payload === 'object'
+    && payload !== null
+    && 'url' in payload
+    && typeof payload.url === 'string'
     ? payload.url
     : undefined
 }
@@ -91,15 +97,12 @@ export function AppLayout({ children, hasPanel, panel }: AppLayoutProps) {
 
 function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
-  const [mainWidth, setMainWidth] = useState(800)
+  const mainElementRef = useRef<HTMLElement | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
-    if (!el) {
-      return
-    }
-    setMainWidth(el.clientWidth)
-    const ro = new ResizeObserver(([entry]) => setMainWidth(entry.contentRect.width))
-    ro.observe(el)
-    return () => ro.disconnect()
+    mainElementRef.current = el
+  }, [])
+  const readMainWidth = useCallback(() => {
+    return mainElementRef.current?.clientWidth ?? 800
   }, [])
 
   useGlobalEventListeners()
@@ -113,7 +116,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
   const resolvedHasPanel = slots.hasPanel ?? hasPanel
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const activeTab = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId))
-  const activeSessionId = activeTab?.type === 'chat' ? activeTab.params.sessionId ?? null : null
+  const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
@@ -141,10 +144,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
-      <AppHeader
-        hasAside={!!activeSessionId}
-        hasPanel={resolvedHasPanel}
-      />
+      <AppHeader hasAside={!!activeSessionId} hasPanel={resolvedHasPanel} />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
@@ -153,13 +153,16 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
           ref={registerCenterColumn}
           data-slot="app-center-column"
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-[var(--shadow-sm)] z-10 m-1 mr-2"
-          animate={jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }}
+          animate={
+            jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }
+          }
           transition={SPRING}
         >
-          <main ref={mainRef} className="flex flex-row flex-1 bg-background overflow-hidden rounded-xl">
-            <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-              {children}
-            </div>
+          <main
+            ref={mainRef}
+            className="flex flex-row flex-1 bg-background overflow-hidden rounded-xl"
+          >
+            <div className="flex flex-col flex-1 overflow-hidden min-w-0">{children}</div>
 
             {/* Browser panel split — reveal animation */}
             {isElectron && activeTab?.type === 'chat' && (
@@ -167,14 +170,14 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
                 {browserPanelOpen && (
                   <ResizeHandle
                     direction="horizontal"
-                    value={browserPanelRatio * mainWidth}
+                    value={() => browserPanelRatio * readMainWidth()}
                     onChange={(px) => {
-                      setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / mainWidth)))
+                      setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / readMainWidth())))
                     }}
                     onDragStart={() => setDragging('browser')}
                     onDragEnd={() => setDragging(null)}
-                    min={mainWidth * 0.2}
-                    max={mainWidth * 0.7}
+                    min={() => readMainWidth() * 0.2}
+                    max={() => readMainWidth() * 0.7}
                     inverted
                     className="bg-background"
                   />
@@ -257,10 +260,7 @@ function AppLayoutContent({ children, hasPanel, panel }: AppLayoutProps) {
               data-testid="app-layout-right-aside"
               data-aside-open={asideOpen ? 'true' : 'false'}
             >
-              <div
-                className="flex flex-col flex-1 overflow-hidden"
-                style={{ width: asideWidth }}
-              >
+              <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
                 <RightAside sessionId={activeSessionId} />
               </div>
             </m.aside>

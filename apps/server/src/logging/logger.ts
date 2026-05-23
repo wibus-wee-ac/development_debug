@@ -1,6 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
+import pc from 'picocolors'
 import pino from 'pino'
 
 import type { LogLevel } from '../config/server-config'
@@ -15,6 +16,68 @@ interface FlushableDestination extends pino.DestinationStream {
 }
 
 const fileDestinations: FlushableDestination[] = []
+
+/* ------------------------------------------------------------------ */
+/*  Pretty-print stream for TUI / terminal stdout                     */
+/* ------------------------------------------------------------------ */
+
+const LEVEL_STYLE: Record<string, (s: string) => string> = {
+  fatal: s => pc.bgRed(pc.white(pc.bold(s))),
+  error: s => pc.red(pc.bold(s)),
+  warn: s => pc.yellow(pc.bold(s)),
+  info: s => pc.green(s),
+  debug: s => pc.gray(s),
+  trace: s => pc.dim(pc.gray(s)),
+}
+
+function styleLevel(label: string): string {
+  const styler = LEVEL_STYLE[label]
+  return styler ? styler(label) : label
+}
+
+function formatTimestamp(iso: string): string {
+  const d = new Date(iso)
+  return pc.dim(
+    `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`,
+  )
+}
+
+function formatFields(fields: Record<string, unknown>): string {
+  const skip = new Set(['level', 'time', 'msg'])
+  const entries = Object.entries(fields).filter(([k]) => !skip.has(k))
+  if (entries.length === 0) { return '' }
+  const pairs = entries.map(([k, v]) => {
+    const val = typeof v === 'object' ? JSON.stringify(v) : String(v)
+    return `${pc.cyan(k)}=${val}`
+  })
+  return ` ${pairs.join(' ')}`
+}
+
+const prettyStream: pino.StreamEntry = {
+  level: 'trace',
+  stream: {
+    write(chunk: string) {
+      try {
+        const obj = JSON.parse(chunk) as Record<string, unknown>
+        const label = String(obj.level ?? 'info')
+        const msg = String(obj.msg ?? '')
+        const ts = obj.time ? formatTimestamp(String(obj.time)) : pc.dim('--:--:--')
+        const context = obj.module ? pc.magenta(`[${String(obj.module)}]`) : ''
+        const fields = formatFields(obj)
+
+        process.stdout.write(`${ts} ${styleLevel(label)} ${context}${pc.reset(' ')}${msg}${fields}\n`)
+      }
+      catch {
+        // Not JSON — write raw
+        process.stdout.write(chunk)
+      }
+    },
+  },
+}
+
+/* ------------------------------------------------------------------ */
+/*  Stream setup                                                       */
+/* ------------------------------------------------------------------ */
 
 function resolveLogFile(): string | null {
   const file = process.env.CRADLE_LOG_FILE?.trim()
@@ -31,7 +94,7 @@ function resolveLogFile(): string | null {
 function createStreams() {
   const level = ((process.env.CRADLE_LOG_LEVEL as string) || 'info') as pino.Level
   const streams: pino.StreamEntry[] = [
-    { level, stream: process.stdout },
+    { level, stream: prettyStream.stream },
   ]
   const logFile = resolveLogFile()
   if (logFile) {
@@ -63,6 +126,10 @@ const rootLogger = pino({
 /**
  * Logger wraps pino with a stable interface compatible with the existing codebase.
  * Supports both class-based usage (MigrationRunner) and direct function calls.
+ *
+ * Output:
+ * - stdout: NestJS-style pretty-printed with picocolors (human-readable in TUI)
+ * - file:   raw JSON (machine-parseable)
  */
 export class Logger {
   private readonly instance: pino.Logger
@@ -72,39 +139,23 @@ export class Logger {
   }
 
   debug(message: string, fields?: LoggerFields): void {
-    if (fields) {
-      this.instance.debug(fields, message)
-    }
-    else {
-      this.instance.debug(message)
-    }
+    if (fields) { this.instance.debug(fields, message) }
+    else { this.instance.debug(message) }
   }
 
   info(message: string, fields?: LoggerFields): void {
-    if (fields) {
-      this.instance.info(fields, message)
-    }
-    else {
-      this.instance.info(message)
-    }
+    if (fields) { this.instance.info(fields, message) }
+    else { this.instance.info(message) }
   }
 
   warn(message: string, fields?: LoggerFields): void {
-    if (fields) {
-      this.instance.warn(fields, message)
-    }
-    else {
-      this.instance.warn(message)
-    }
+    if (fields) { this.instance.warn(fields, message) }
+    else { this.instance.warn(message) }
   }
 
   error(message: string, fields?: LoggerFields): void {
-    if (fields) {
-      this.instance.error(fields, message)
-    }
-    else {
-      this.instance.error(message)
-    }
+    if (fields) { this.instance.error(fields, message) }
+    else { this.instance.error(message) }
   }
 
   child(bindings: LoggerFields): Logger {

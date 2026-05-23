@@ -159,6 +159,8 @@ export class CradleWorld extends World {
 
     // Ensure at least one workspace exists so the send button becomes enabled
     await this.ensureWorkspaceExists()
+
+    await this.page?.reload({ waitUntil: 'domcontentloaded' })
   }
 
   async ensureWorkspaceExists(): Promise<void> {

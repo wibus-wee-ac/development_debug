@@ -529,4 +529,98 @@ describe('profiles capability', () => {
       }
     }
   })
+
+  it('lists Anthropic models from a root base URL by probing /v1/models first', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-root-anthropic'
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = getRequestUrl(input)
+      if (url === MODELS_DEV_URL) {
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })
+      }
+
+      expect(url).toBe('https://api.zhengmi.org/v1/models')
+      expect(init?.headers).toMatchObject({
+        'anthropic-version': '2023-06-01',
+        'x-api-key': 'sk-ant-root',
+      })
+      return new Response(
+        JSON.stringify({
+          data: [{ id: 'claude-sonnet-4-20250514', display_name: 'Claude Sonnet 4' }],
+        }),
+        {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        },
+      )
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const saveSecret = await app.handle(
+        new Request('http://localhost/secrets', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'anthropic',
+            label: 'Root Anthropic Key',
+            secret: 'sk-ant-root',
+          }),
+        }),
+      )
+      expect(saveSecret.status).toBe(200)
+      const secret = (await saveSecret.json()) as { id: string }
+
+      const modelsRes = await app.handle(
+        new Request('http://localhost/providers/models', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            providerKind: 'anthropic',
+            label: 'Root Anthropic',
+            config: { baseUrl: 'https://api.zhengmi.org' },
+            secretRef: secret.id,
+          }),
+        }),
+      )
+
+      expect(modelsRes.status).toBe(200)
+      expect(await modelsRes.json()).toEqual([
+        expect.objectContaining({
+          id: 'claude-sonnet-4-20250514',
+          label: 'Claude Sonnet 4',
+          providerKind: 'anthropic',
+        }),
+      ])
+      const providerFetchCount = fetchSpy.mock.calls.filter(
+        ([callInput]) => getRequestUrl(callInput) === 'https://api.zhengmi.org/v1/models',
+      ).length
+      expect(providerFetchCount).toBe(1)
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
 })

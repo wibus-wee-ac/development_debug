@@ -1,27 +1,51 @@
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const APPROVAL_TIMEOUT = 20_000
 const MOCK_CLAUDE_AGENT_RE = /Mock Claude Agent/i
 
+async function selectClaudeAgentRuntime(world: CradleWorld): Promise<void> {
+  const runtimeSelector = world.page.locator('[data-testid="runtime-selector"]')
+  await expect(runtimeSelector).toBeVisible({ timeout: 10_000 })
+  await runtimeSelector.click()
+
+  const menuPopup = world.page.locator('[role="menu"]').last()
+  await expect(menuPopup).toBeVisible({ timeout: 10_000 })
+  await menuPopup.locator('[role="menuitem"]', { hasText: 'Claude Agent' }).click()
+}
+
+async function selectMockClaudeAgentProvider(world: CradleWorld): Promise<void> {
+  const providerSelector = world.page.locator('[data-testid="provider-model-selector"]')
+  await expect(providerSelector).toBeVisible({ timeout: 10_000 })
+  await providerSelector.click()
+
+  const menuPopup = world.page.locator('[role="menu"]').last()
+  await expect(menuPopup).toBeVisible({ timeout: 10_000 })
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_CLAUDE_AGENT_RE }).first()
+  await expect(mockItem).toBeVisible({ timeout: 10_000 })
+  await mockItem.click()
+  await world.page.keyboard.press('Escape')
+}
+
 Given('已创建一个需要审批的会话', async function (this: CradleWorld) {
-  // Configure a claude-agent provider that points to our mock server's /v1/messages
+  // Configure an Anthropic profile for the claude-agent runtime mock.
   if (this.mockLlmServer) {
     await this.mockLlmServer.stop()
   }
 
-  const { MockLlmServer } = await import('../support/mock-llm-server')
-  this.mockLlmServer = new MockLlmServer({ chunkDelay: 5, claudeAgentScenario: 'approval-tool' })
-  this.mockLlmBaseUrl = await this.mockLlmServer.start()
+  const mockLlmServer = new MockLlmServer({ chunkDelay: 5, claudeAgentScenario: 'approval-tool' })
+  this.mockLlmServer = mockLlmServer
+  this.mockLlmBaseUrl = await mockLlmServer.start()
 
   const response = await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: 'Mock Claude Agent',
-      providerKind: 'claude-agent',
+      providerKind: 'anthropic',
       enabled: true,
       config: {
         baseUrl: this.mockLlmBaseUrl,
@@ -38,12 +62,12 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   // Also provide a fake API key via secrets or env (the provider reads ANTHROPIC_API_KEY)
   // The mock server doesn't validate auth, so any key works
   // The provider resolves apiKey from profile config or env; we set it in config
-  await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
+  const credentialResponse = await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       name: 'Mock Claude Agent',
-      providerKind: 'claude-agent',
+      providerKind: 'anthropic',
       enabled: true,
       config: {
         baseUrl: this.mockLlmBaseUrl,
@@ -54,6 +78,9 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
       credentialRef: null,
     }),
   })
+  if (!credentialResponse.ok) {
+    throw new Error(`Failed to configure claude-agent credentials: ${credentialResponse.status} ${await credentialResponse.text()}`)
+  }
 
   // Ensure workspace exists
   await this.ensureWorkspaceExists()
@@ -67,15 +94,8 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   await navItem.click()
   await expect(this.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
 
-  // Select the claude-agent mock provider
-  const agentSelector = this.page.locator('[data-testid="new-chat-agent-selector"]')
-  await expect(agentSelector).toBeVisible({ timeout: 10_000 })
-  await agentSelector.click()
-  const menuPopup = this.page.locator('[role="menu"]')
-  await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_CLAUDE_AGENT_RE })
-  await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
-  await mockItem.first().click()
+  await selectClaudeAgentRuntime(this)
+  await selectMockClaudeAgentProvider(this)
 
   // Fill and send
   const textarea = this.page.locator('[data-testid="new-chat-textarea"]')

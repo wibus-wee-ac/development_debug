@@ -2,16 +2,18 @@ import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
+type ResizeValue = number | (() => number)
+
 interface ResizeHandleProps {
   direction: 'horizontal' | 'vertical'
   /** Current panel size value */
-  value: number
+  value: ResizeValue
   /** Called with the new clamped value on every pointer move */
   onChange: (v: number) => void
   onDragStart?: () => void
   onDragEnd?: () => void
-  min?: number
-  max?: number
+  min?: ResizeValue
+  max?: ResizeValue
   /**
    * Negate the drag delta.
    * Use for right-anchored panels (dragging left ↑ width) and
@@ -19,6 +21,10 @@ interface ResizeHandleProps {
    */
   inverted?: boolean
   className?: string
+}
+
+function readResizeValue(value: ResizeValue): number {
+  return typeof value === 'function' ? value() : value
 }
 
 export function ResizeHandle({
@@ -42,11 +48,11 @@ export function ResizeHandle({
 
     const axis = direction === 'horizontal' ? 'clientX' : 'clientY'
     const start = e[axis]
-    const startVal = value
+    const startVal = readResizeValue(value)
 
     const onMove = (me: PointerEvent) => {
       const delta = (me[axis] - start) * (inverted ? -1 : 1)
-      onChange(Math.max(min, Math.min(max, startVal + delta)))
+      onChange(Math.max(readResizeValue(min), Math.min(readResizeValue(max), startVal + delta)))
     }
 
     const onUp = () => {

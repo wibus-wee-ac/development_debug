@@ -31,6 +31,28 @@ export interface FilterState {
   isDelegated?: boolean | null
 }
 
+const defaultDisplayProperties: ViewConfig['displayProperties'] = {
+  id: true,
+  priority: true,
+  status: false,
+  labels: true,
+  assignee: true,
+  subIssueProgress: false,
+  agentIndicator: true,
+  milestone: false,
+  dueDate: false,
+  createdAt: false,
+}
+
+const defaultConfig: ViewConfig = {
+  layout: 'board',
+  groupBy: 'status',
+  orderBy: 'manual',
+  orderDirection: 'asc',
+  showEmptyGroups: true,
+  displayProperties: defaultDisplayProperties,
+}
+
 const ViewConfigSchema = z.object({
   layout: z.enum(['board', 'list']).default('board'),
   groupBy: z.enum(['status', 'priority', 'milestone', 'assignee', 'label']).default('status'),
@@ -48,8 +70,8 @@ const ViewConfigSchema = z.object({
     milestone: z.boolean().default(false),
     dueDate: z.boolean().default(false),
     createdAt: z.boolean().default(false),
-  }).default({}),
-}).default({})
+  }).default(defaultDisplayProperties),
+}).default(defaultConfig)
 const ViewConfigStorageSchema = z.union([
   z.string().transform(raw => JSON.parse(raw)).pipe(ViewConfigSchema),
   z.null().transform(() => ViewConfigSchema.parse(undefined)),
@@ -69,36 +91,53 @@ const FilterStateStorageSchema = z.union([
 
 const defaultFilter = FilterStateSchema.parse(undefined) as FilterState
 
+function normalizeConfig(config: ViewConfig): ViewConfig {
+  return {
+    ...defaultConfig,
+    ...config,
+    displayProperties: {
+      ...defaultConfig.displayProperties,
+      ...(config.displayProperties ?? {}),
+    },
+  }
+}
+
 export function useViewConfig(workspaceId: string) {
   const configKey = `kanban-view-config-${workspaceId}`
   const filterKey = `kanban-view-filter-${workspaceId}`
 
-  const [config, setConfigState] = useState<ViewConfig>(() => {
-    return ViewConfigStorageSchema.parse(localStorage.getItem(configKey)) as ViewConfig
+  const [viewConfig, setViewConfig] = useState<ViewConfig>(() => {
+    return normalizeConfig(ViewConfigStorageSchema.parse(localStorage.getItem(configKey)) as ViewConfig)
   })
-  const [filter, setFilterState] = useState<FilterState>(() => {
+  const [viewFilter, setViewFilter] = useState<FilterState>(() => {
     return FilterStateStorageSchema.parse(localStorage.getItem(filterKey)) as FilterState
   })
 
   useEffect(() => {
-    localStorage.setItem(configKey, JSON.stringify(config))
-  }, [config, configKey])
+    localStorage.setItem(configKey, JSON.stringify(viewConfig))
+  }, [viewConfig, configKey])
 
   useEffect(() => {
-    localStorage.setItem(filterKey, JSON.stringify(filter))
-  }, [filter, filterKey])
+    localStorage.setItem(filterKey, JSON.stringify(viewFilter))
+  }, [viewFilter, filterKey])
 
   const setConfig = useCallback((patch: Partial<ViewConfig>) => {
-    setConfigState(prev => ({ ...prev, ...patch }))
+    setViewConfig(prev => normalizeConfig({
+      ...prev,
+      ...patch,
+      displayProperties: patch.displayProperties
+        ? { ...prev.displayProperties, ...patch.displayProperties }
+        : prev.displayProperties,
+    }))
   }, [])
 
   const setFilter = useCallback((patch: Partial<FilterState>) => {
-    setFilterState(prev => ({ ...prev, ...patch }))
+    setViewFilter(prev => ({ ...prev, ...patch }))
   }, [])
 
   const resetFilter = useCallback(() => {
-    setFilterState(defaultFilter)
+    setViewFilter(defaultFilter)
   }, [])
 
-  return { config, setConfig, filter, setFilter, resetFilter }
+  return { config: viewConfig, setConfig, filter: viewFilter, setFilter, resetFilter }
 }

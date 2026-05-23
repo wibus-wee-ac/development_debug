@@ -125,3 +125,22 @@
     当 我清空看板搜索
     那么 名为"标题命中 Issue"的 Issue 卡片应显示在名为"To Do"的列中
     而且 名为"完全无关的 Issue"的 Issue 卡片应显示在名为"To Do"的列中
+
+  @P2 @CRADLE-KANBAN-013
+  场景: 在 Issue 详情中创建子 Issue
+    假如 我已添加了一个工作区
+    而且 我已创建了一个看板
+    而且 我已在第一列创建了一个 Issue"父级 Issue"
+    而且 我已打开该 Issue 的详情面板
+    当 我在当前 Issue 下添加子 Issue"拆分出的子任务"
+    那么 子 Issue 列表应显示"拆分出的子任务"
+
+  @P2 @CRADLE-KANBAN-014
+  场景: 在 Issue 详情中添加标签后卡片显示该标签
+    假如 我已添加了一个工作区
+    而且 我已创建了一个看板
+    而且 我已在第一列创建了一个 Issue"标签测试 Issue"
+    而且 我已打开该 Issue 的详情面板
+    当 我在当前 Issue 上添加标签"frontend"
+    而且 我关闭 Issue 详情面板
+    那么 名为"标签测试 Issue"的卡片应显示标签"frontend"

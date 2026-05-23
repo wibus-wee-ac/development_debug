@@ -4,4 +4,4 @@ Shared server logging infrastructure. Startup, plugin host, request, and fatal p
 
 ## Files
 
-- **logger.ts**: pino-backed logger wrapper, optional file destination setup, child logger creation, and explicit flush support for fatal exits.
+- **logger.ts**: pino-backed logger wrapper. Stdout uses NestJS-style pretty-print with picocolors (human-readable in TUI); file destination writes raw JSON. Supports child logger creation and explicit flush for fatal exits.

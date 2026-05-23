@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
@@ -88,6 +89,29 @@ async function waitForReady(url: string, label: string, timeoutMs = 30_000): Pro
   throw new Error(`${label} did not become ready at ${url} within ${timeoutMs}ms`)
 }
 
+async function reserveAvailablePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const server = createServer()
+    server.unref()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() => reject(new Error('Unable to reserve an available TCP port')))
+        return
+      }
+      const port = address.port
+      server.close((error) => {
+        if (error) {
+          reject(error)
+          return
+        }
+        resolve(port)
+      })
+    })
+  })
+}
+
 /**
  * If CRADLE_SERVER_URL is set, we assume the user is managing the server themselves.
  * Otherwise, we start an isolated server with a temp data directory.
@@ -100,8 +124,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
 
   const dataDir = mkdtempSync(join(tmpdir(), 'cradle-e2e-data-'))
   const homeDir = join(dataDir, 'home')
-  // Use a random port to avoid conflicts with dev server
-  const serverPort = 21400 + Math.floor(Math.random() * 99)
+  const serverPort = await reserveAvailablePort()
 
   let serverProcess: ChildProcess | null = null
   let webProcess: ChildProcess | null = null
@@ -144,7 +167,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
     let webUrl: string | null = null
 
     if (!process.env.CRADLE_WEB_URL) {
-      const webPort = serverPort + 100 // e.g. 21449 -> 21549
+      const webPort = await reserveAvailablePort()
       webProcess = spawn('npx', ['vite', '--port', String(webPort), '--strictPort'], {
         cwd: join(ROOT, 'apps', 'web'),
         env: {

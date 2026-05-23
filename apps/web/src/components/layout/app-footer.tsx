@@ -11,7 +11,6 @@ export function AppFooter({ className }: { className?: string }) {
   const [jarvisOpen, setJarvisOpen] = React.useState(false)
   const { registerFooter } = useLayoutGeometry()
   const activeTabRef = React.useRef<HTMLButtonElement>(null)
-  const [popoverAnchorX, setPopoverAnchorX] = React.useState<number | null>(null)
 
   const sessions = useJarvisUiStore(s => s.sessions)
   const activeSessionId = useJarvisUiStore(s => s.activeSessionId)
@@ -20,24 +19,13 @@ export function AppFooter({ className }: { className?: string }) {
 
   useShortcut('toggle-jarvis', { meta: true, key: 'j' }, () => setJarvisOpen(prev => !prev))
 
-  // Update popover anchor position when active tab changes
-  React.useEffect(() => {
-    if (activeTabRef.current) {
-      const rect = activeTabRef.current.getBoundingClientRect()
-      setPopoverAnchorX(rect.left + rect.width / 2)
-    }
-  }, [activeSessionId, sessions.length])
-
   // "Ask Jarvis" is the active tab when no session is selected
   const isNewSessionActive = !activeSessionId
 
   return (
     <footer
       ref={registerFooter}
-      className={cn(
-        'relative flex h-9 shrink-0 items-center bg-sidebar px-1',
-        className,
-      )}
+      className={cn('relative flex h-9 shrink-0 items-center bg-sidebar px-1', className)}
     >
       {/* Spacer */}
       <div className="flex-1 min-w-0" />
@@ -80,6 +68,7 @@ export function AppFooter({ className }: { className?: string }) {
         <button
           ref={isNewSessionActive ? activeTabRef : undefined}
           type="button"
+          data-testid="ask-jarvis-button"
           onClick={() => {
             setActiveSessionId(null)
             setJarvisOpen(true)
@@ -96,7 +85,12 @@ export function AppFooter({ className }: { className?: string }) {
         </button>
       </div>
 
-      <JarvisPopover open={jarvisOpen} onOpenChange={setJarvisOpen} anchorX={popoverAnchorX} />
+      <JarvisPopover
+        open={jarvisOpen}
+        onOpenChange={setJarvisOpen}
+        anchorRef={activeTabRef}
+        anchorKey={activeSessionId ?? 'new-session'}
+      />
     </footer>
   )
 }

@@ -5,6 +5,25 @@ import type { CradleWorld } from '../support/world'
 
 const SELECTOR_TIMEOUT = 15_000
 const MOCK_RE = /mock/i
+const RUNTIME_LABELS = ['Standard', 'Claude Agent', 'Codex', 'CLI TUI'] as const
+
+async function openProviderModelSelector(world: CradleWorld) {
+  const selector = world.page.locator('[data-testid="provider-model-selector"]')
+  await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  await selector.click()
+
+  const menuPopup = world.page.locator('[role="menu"]').last()
+  await expect(menuPopup).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  return menuPopup
+}
+
+async function selectMockLlmProvider(world: CradleWorld) {
+  const menuPopup = await openProviderModelSelector(world)
+  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE }).first()
+  await expect(mockItem).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  await mockItem.click()
+  await world.page.keyboard.press('Escape')
+}
 
 When('我进入新会话页面', async function (this: CradleWorld) {
   const navItem = this.page.locator('[data-testid="nav-new-chat"]')
@@ -13,36 +32,20 @@ When('我进入新会话页面', async function (this: CradleWorld) {
   await expect(this.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
 })
 
-When('我打开 Agent 选择器', async function (this: CradleWorld) {
-  const selector = this.page.locator('[data-testid="new-chat-agent-selector"]')
-  await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
-  await selector.click()
+When('我打开 Provider 与模型选择器', async function (this: CradleWorld) {
+  await openProviderModelSelector(this)
 })
 
-Then('应该看到可用的 Agent 列表', async function (this: CradleWorld) {
-  // The menu popup should be visible with at least one menuitem
-  const menuPopup = this.page.locator('[role="menu"]')
+Then('应该看到可用的 Provider 列表', async function (this: CradleWorld) {
+  const menuPopup = this.page.locator('[role="menu"]').last()
   await expect(menuPopup).toBeVisible({ timeout: SELECTOR_TIMEOUT })
 
-  const items = menuPopup.locator('[role="menuitem"]')
-  await expect(items.first()).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  const mockProvider = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE }).first()
+  await expect(mockProvider).toBeVisible({ timeout: SELECTOR_TIMEOUT })
 })
 
-When('我选择 Mock LLM Agent', async function (this: CradleWorld) {
-  // Open selector if not already open
-  const menuPopup = this.page.locator('[role="menu"]')
-  const isListVisible = await menuPopup.isVisible().catch(() => false)
-  if (!isListVisible) {
-    const selector = this.page.locator('[data-testid="new-chat-agent-selector"]')
-    await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
-    await selector.click()
-    await expect(menuPopup).toBeVisible({ timeout: SELECTOR_TIMEOUT })
-  }
-
-  // Click the mock LLM profile item (contains "Mock" or the mock profile name)
-  const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE })
-  await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
-  await mockItem.first().click()
+When('我选择 Mock LLM Provider', async function (this: CradleWorld) {
+  await selectMockLlmProvider(this)
 })
 
 When('我发送消息{string}', async function (this: CradleWorld, text: string) {
@@ -66,17 +69,8 @@ When('我发送消息{string}', async function (this: CradleWorld, text: string)
       await navItem.click()
       await expect(this.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
 
-      // Re-select agent
-      const selector = this.page.locator('[data-testid="new-chat-agent-selector"]')
-      await expect(selector).toBeVisible({ timeout: 10_000 })
-      await selector.click()
-      const menuPopup = this.page.locator('[role="menu"]')
-      await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-      const mockItem = menuPopup.locator('[role="menuitem"]', { hasText: MOCK_RE })
-      await expect(mockItem.first()).toBeVisible({ timeout: 10_000 })
-      await mockItem.first().click()
+      await selectMockLlmProvider(this)
 
-      // Re-fill text
       const ta = this.page.locator('[data-testid="new-chat-textarea"]')
       await ta.click()
       await ta.fill(text)
@@ -96,4 +90,25 @@ Then('应该收到 Agent 的回复', async function (this: CradleWorld) {
   // Verify an assistant message bubble is visible
   const assistantBubble = this.page.locator('[data-testid="message-bubble-assistant"]').last()
   await expect(assistantBubble).toBeVisible({ timeout: 10_000 })
+})
+
+Then('Provider 与模型选择器应显示模型{string}', async function (this: CradleWorld, model: string) {
+  const selector = this.page.locator('[data-testid="provider-model-selector"]')
+  await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  await expect(selector).toContainText(model, { timeout: SELECTOR_TIMEOUT })
+})
+
+When('我打开运行时选择器', async function (this: CradleWorld) {
+  const selector = this.page.locator('[data-testid="runtime-selector"]')
+  await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  await selector.click()
+})
+
+Then('应该看到可用的运行时列表', async function (this: CradleWorld) {
+  const menuPopup = this.page.locator('[role="menu"]').last()
+  await expect(menuPopup).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+
+  for (const label of RUNTIME_LABELS) {
+    await expect(menuPopup.locator('[role="menuitem"]', { hasText: label })).toBeVisible({ timeout: SELECTOR_TIMEOUT })
+  }
 })

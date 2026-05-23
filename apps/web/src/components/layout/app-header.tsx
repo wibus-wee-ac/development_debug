@@ -1,6 +1,7 @@
 import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
+import { m } from 'motion/react'
 import { useCallback, useMemo } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -74,22 +75,30 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
 
   return (
     <div
-      className="relative flex h-10 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
+      className="relative flex h-11 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
       {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
       {!isDrillIn && !isTearoffWindow && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className={cn('text-muted-foreground shrink-0', sidebarCollapsed && 'ml-6')}
-          onClick={toggleSidebar}
-          aria-label={sidebarToggleLabel}
-          title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        <m.div
+          initial={false}
+          animate={{ marginLeft: sidebarCollapsed ? 24 : 0 }}
+          transition={{ duration: 0.2 }}
+          className="overflow-hidden flex items-center"
         >
-          {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            // , sidebarCollapsed && 'ml-6'
+            className={cn('text-muted-foreground shrink-0')}
+            onClick={toggleSidebar}
+            aria-label={sidebarToggleLabel}
+            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          >
+            {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
+          </Button>
+        </m.div>
       )}
       {reserveTrafficLightSpace && (
         <div
@@ -112,7 +121,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
 
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-      <ResourcesPopover />
+        <ResourcesPopover />
         {isElectron && isActiveTabChat && (
           <Button
             variant="ghost"

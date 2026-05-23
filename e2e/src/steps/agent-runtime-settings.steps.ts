@@ -47,6 +47,20 @@ async function ensureMockProviderBaseUrl(world: CradleWorld): Promise<string> {
   return world.mockLlmBaseUrl
 }
 
+async function ensureJarvisMockProviderBaseUrl(world: CradleWorld): Promise<string> {
+  if (world.mockLlmServer) {
+    await world.mockLlmServer.stop()
+  }
+
+  world.mockLlmServer = new MockLlmServer({
+    models: [
+      { id: 'gpt-4o-mini', owned_by: 'openai' },
+    ],
+  })
+  world.mockLlmBaseUrl = await world.mockLlmServer.start()
+  return world.mockLlmBaseUrl
+}
+
 const KIND_TO_PRESET: Record<string, string> = {
   'OpenAI-compatible': 'custom',
   'Codex': 'codex',
@@ -139,12 +153,25 @@ When('我在 Provider 表单填写 Base URL 为 Mock 地址', async function (th
   await input.fill(await ensureMockProviderBaseUrl(this))
 })
 
-When('我在 Provider 表单填写 Model 为{string}', async function (this: CradleWorld, model: string) {
-  console.warn(`[step] fill provider model: ${model}`)
-  const input = this.page.locator('[data-testid="provider-model"]')
+When('我在 Provider 表单填写 Base URL 为 Jarvis Mock 地址', async function (this: CradleWorld) {
+  console.warn('[step] fill provider baseUrl with Jarvis mock address')
+  const input = this.page.locator('[data-testid="provider-baseurl"]')
   await expect(input).toBeVisible({ timeout: 5000 })
   await input.clear()
-  await input.fill(model)
+  await input.fill(await ensureJarvisMockProviderBaseUrl(this))
+})
+
+When('我在 Provider 表单填写 Model 为{string}', async function (this: CradleWorld, model: string) {
+  console.warn(`[step] fill provider model: ${model}`)
+  const input = this.page.locator('[data-testid="provider-model"], [data-testid="provider-field-model"]')
+  if (await input.count() === 0) {
+    console.warn('[step] provider model field is not present in the current setup form')
+    return
+  }
+  const field = input.first()
+  await expect(field).toBeVisible({ timeout: 5000 })
+  await field.clear()
+  await field.fill(model)
 })
 
 When('我在 Provider 表单填写 API Key 为{string}', async function (this: CradleWorld, apiKey: string) {

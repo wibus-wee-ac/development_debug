@@ -11,8 +11,11 @@ const WORKSPACE_LIST = '[data-testid="workspace-list"]'
 const SETTINGS_NAV = '[data-testid="settings-nav-appearance"]'
 const TAB_BAR = '[data-testid="tab-bar"]'
 const TAB_PILL = '[data-testid^="tab-pill-"]'
+const TAB_NEW_BUTTON = '[data-testid="tab-new-btn"]'
 const RIGHT_ASIDE = '[data-testid="app-layout-right-aside"]'
 const BOTTOM_PANEL = '[data-testid="app-layout-bottom-panel"]'
+const HEADER_ASIDE_TOGGLE = '[data-testid="app-header-aside-toggle"]'
+const HEADER_PANEL_TOGGLE = '[data-testid="app-header-panel-toggle"]'
 const TAB_COUNT_KEY = 'keyboard-shortcuts.initial-tab-count'
 const NON_EMPTY_RE = /.+/
 
@@ -127,10 +130,28 @@ async function waitForChatLayoutReady(world: CradleWorld): Promise<void> {
   const chatView = await getActiveChatView(world)
 
   await expect(chatView).toHaveAttribute('data-chat-session-id', NON_EMPTY_RE, { timeout: 20_000 })
-  await expect(world.page.locator('[data-testid="app-header-aside-toggle"]')).toBeVisible({ timeout: 15_000 })
-  await expect(world.page.locator('[data-testid="app-header-panel-toggle"]')).toBeVisible({ timeout: 15_000 })
+  await expect(world.page.locator(HEADER_ASIDE_TOGGLE)).toBeVisible({ timeout: 15_000 })
+  await expect(world.page.locator(HEADER_PANEL_TOGGLE)).toBeVisible({ timeout: 15_000 })
   await expect(world.page.locator(RIGHT_ASIDE)).toHaveCount(1, { timeout: 15_000 })
   await expect(world.page.locator(BOTTOM_PANEL)).toHaveCount(1, { timeout: 15_000 })
+}
+
+async function setLayoutRegionOpen(world: CradleWorld, region: 'aside' | 'panel', open: boolean): Promise<void> {
+  const target = region === 'aside' ? world.page.locator(RIGHT_ASIDE) : world.page.locator(BOTTOM_PANEL)
+  const toggle = region === 'aside' ? world.page.locator(HEADER_ASIDE_TOGGLE) : world.page.locator(HEADER_PANEL_TOGGLE)
+  const attrName = region === 'aside' ? 'data-aside-open' : 'data-panel-open'
+  const current = await target.getAttribute(attrName)
+
+  if ((current === 'true') !== open) {
+    await toggle.click()
+  }
+
+  await expect(target).toHaveAttribute(attrName, open ? 'true' : 'false', { timeout: 10_000 })
+}
+
+async function resetLayoutPanels(world: CradleWorld): Promise<void> {
+  await setLayoutRegionOpen(world, 'aside', false)
+  await setLayoutRegionOpen(world, 'panel', false)
 }
 
 Given('应用 shell 已加载', async function (this: CradleWorld) {
@@ -174,6 +195,7 @@ Given('我已准备好一个带工作区的聊天标签页', async function (thi
   await sendButton.click()
 
   await waitForChatLayoutReady(this)
+  await resetLayoutPanels(this)
 })
 
 When('我按下打开设置的快捷键', async function (this: CradleWorld) {
@@ -210,6 +232,24 @@ When('我按下切换到第一个标签页的快捷键', async function (this: C
 
 When('我按下切换到下一个标签页的快捷键', async function (this: CradleWorld) {
   await pressShortcut(this, 'next-tab')
+})
+
+When('我点击 Header 新建标签按钮', async function (this: CradleWorld) {
+  const button = this.page.locator(TAB_NEW_BUTTON)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+})
+
+When('我点击 Header 右侧 aside 按钮', async function (this: CradleWorld) {
+  const button = this.page.locator(HEADER_ASIDE_TOGGLE)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
+})
+
+When('我点击 Header 底部 panel 按钮', async function (this: CradleWorld) {
+  const button = this.page.locator(HEADER_PANEL_TOGGLE)
+  await expect(button).toBeVisible({ timeout: 10_000 })
+  await button.click()
 })
 
 Then('侧边栏应处于设置模式', async function (this: CradleWorld) {

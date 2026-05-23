@@ -12,5 +12,5 @@ Support 层负责测试生命周期与共享状态，不承载具体业务断言
 - **database.ts**: 只读 SQLite 查询 helper，把跨场景的持久化断言统一收口到共享 support 层
 - **mock-llm-server.ts**: 本地 OpenAI-compatible mock server，支持成功/失败模式、按请求顺序返回不同回复、reasoning / tool-call 流、请求日志，以及带 socket 兜底销毁的幂等停止
 - **server-lifecycle.ts**: managed E2E server / web dev server lifecycle, using isolated `CRADLE_DATA_DIR` and `HOME` so test reset never touches the real user profile; startup failure paths also tear down any spawned process group
-- **world.ts**: 自定义 Cucumber world，维护隔离的 `userData`、`HOME`、scenario 状态、mock provider 生命周期（含多轮回复、reasoning、tool-call 配置），以及带参数的 `mainProcess` 断言辅助方法
+- **world.ts**: 自定义 Cucumber world，维护隔离的 `userData`、`HOME`、scenario 状态、mock provider 生命周期（含多轮回复、reasoning、tool-call 配置），Mock Provider 配置后刷新页面以同步 renderer 查询缓存，并保留带参数的 `mainProcess` 断言辅助方法
 - **world-utils.ts**: scenario slug、artifact 路径与隐藏窗口 E2E 启动环境的纯工具函数

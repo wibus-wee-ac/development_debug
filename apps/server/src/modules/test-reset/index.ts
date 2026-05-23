@@ -29,6 +29,7 @@ import {
   messages,
   observabilityEvents,
   observabilityIncidents,
+  providerModelCache,
   runtimeAuditLog,
   sessions,
   usageLogs,
@@ -59,6 +60,7 @@ const TABLES_IN_DELETION_ORDER = [
   backendCapabilitySnapshots,
   backendSessionBindings,
   backendRuns,
+  providerModelCache,
   externalProviderProfileLinks,
   externalProviderRecords,
   externalProviderSources,
@@ -93,6 +95,15 @@ function resolveIsolatedHomeSkillsDir(): string | null {
   return path.join(resolvedHomeDir, '.cradle', 'skills')
 }
 
+function resolveIsolatedPreferencesDir(): string | null {
+  const dataDir = getServerConfig().dataDir
+  if (!dataDir) {
+    return null
+  }
+
+  return path.join(path.resolve(dataDir), 'preferences')
+}
+
 export const testReset = new Elysia({
   prefix: '/test/reset',
   detail: { tags: ['test-reset'] },
@@ -114,6 +125,14 @@ export const testReset = new Elysia({
     try {
       if (isolatedHomeSkillsDir && fs.existsSync(isolatedHomeSkillsDir)) {
         fs.rmSync(isolatedHomeSkillsDir, { recursive: true, force: true })
+      }
+    }
+    catch { /* best effort */ }
+
+    const preferencesDir = resolveIsolatedPreferencesDir()
+    try {
+      if (preferencesDir && fs.existsSync(preferencesDir)) {
+        fs.rmSync(preferencesDir, { recursive: true, force: true })
       }
     }
     catch { /* best effort */ }

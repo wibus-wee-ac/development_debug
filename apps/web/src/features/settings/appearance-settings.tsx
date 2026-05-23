@@ -79,6 +79,17 @@ const THEME_OPTIONS: Array<{ value: ThemeMode, label: string }> = [
   { value: 'system', label: '自动' },
 ]
 
+const ANIMATION_PRESETS = [
+  { value: 'minimal', label: '极简', description: '快速淡入，无特效' },
+  { value: 'balanced', label: '平衡', description: '柔和淡入 + 区块光晕' },
+  { value: 'dramatic', label: '戏剧', description: '慢淡入 + 光晕 + 光标拖尾 + 入场动画' },
+] as const
+
+const GRANULARITY_OPTIONS = [
+  { value: 'word', label: '逐词' },
+  { value: 'char', label: '逐字' },
+] as const
+
 export function AppearanceSettings() {
   const mode = useThemeStore(s => s.mode)
   const setMode = useThemeStore(s => s.setMode)
@@ -106,6 +117,8 @@ export function AppearanceSettings() {
                 key={value}
                 type="button"
                 onClick={() => setMode(value)}
+                data-testid={`appearance-theme-${value}`}
+                data-theme-selected={selected ? 'true' : 'false'}
                 className="group flex flex-col items-center gap-1.5"
               >
                 <div
@@ -148,17 +161,6 @@ export function AppearanceSettings() {
     </div>
   )
 }
-
-const ANIMATION_PRESETS = [
-  { value: 'minimal', label: '极简', description: '快速淡入，无特效' },
-  { value: 'balanced', label: '平衡', description: '柔和淡入 + 区块光晕' },
-  { value: 'dramatic', label: '戏剧', description: '慢淡入 + 光晕 + 光标拖尾 + 入场动画' },
-] as const
-
-const GRANULARITY_OPTIONS = [
-  { value: 'word', label: '逐词' },
-  { value: 'char', label: '逐字' },
-] as const
 
 function StreamdownSettings() {
   const { animationPreset, animateMode, showCursor, setAnimationPreset, setAnimateMode, setShowCursor } = useStreamdownStore()
@@ -225,6 +227,8 @@ function StreamdownSettings() {
         <button
           type="button"
           onClick={() => setShowCursor(!showCursor)}
+          aria-label="Toggle stream cursor"
+          aria-pressed={showCursor}
           className={cn(
             'relative h-5 w-9 rounded-full transition-colors',
             showCursor ? 'bg-foreground' : 'bg-border',

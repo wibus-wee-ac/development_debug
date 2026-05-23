@@ -210,7 +210,7 @@ function FileTreeInner({ workspaceId, preparedInput, ready, gitStatus, workspace
             className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/45"
           />
           {hasSearchValue && (
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">
+            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55" data-testid="right-aside-file-search-count">
               {search.matchingPaths.length}
             </span>
           )}

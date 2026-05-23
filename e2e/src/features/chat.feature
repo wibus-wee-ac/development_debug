@@ -171,3 +171,22 @@
     而且 最后一条 AI 消息应显示名为"read_file"的 Tool Call
     当 我展开最后一条 AI 消息中名为"read_file"的 Tool Call
     那么 最后一条 AI 消息中名为"read_file"的 Tool Call 输入应包含"demo.txt"
+
+  @P1 @CRADLE-CHAT-018
+  场景: 新建聊天快速操作会填充项目任务提示词
+    假如 我已配置 Mock LLM Provider
+    而且 我已添加了一个工作区
+    而且 我已导航到新建聊天页面
+    当 我点击新建聊天快速操作"Find risky changes"
+    那么 新建聊天输入框应包含"Inspect the recent changes in this project"
+
+  @P1 @CRADLE-CHAT-019
+  场景: 新建聊天可选择目标工作区并把会话归入该工作区
+    假如 我已配置 Mock LLM Provider
+    而且 我已添加了两个可区分的工作区
+    而且 我已导航到新建聊天页面
+    当 我在新建聊天中选择第 2 个工作区
+    而且 我在新建聊天输入框中输入"第二个工作区绑定测试"
+    而且 我点击发送按钮
+    那么 应该跳转到聊天视图
+    而且 当前聊天会话应显示在选中的工作区下

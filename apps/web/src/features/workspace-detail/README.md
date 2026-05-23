@@ -9,8 +9,8 @@ Workspace configuration files 的查看与编辑页面。
 
 ## Files
 
-- **workspace-detail-page.tsx**: Main page component，包含 inline workspace rename、Overview AGENTS.md content、non-Cradle-owned save warning、Workflow Rules + Skills tabs、shared lazy-pane loading feedback、pane first-render intent marks、scroll-position-aware right outline minimap 和 two-column layout；capsule launcher 打开 fresh chat 时复用 chat feature 的 response-start command；main column 与 sidebar 有 render-budgeted memo comparators，TOC scroll state 不应牵连这些 panes 重渲染
-- **capsule-composer.tsx**: Workspace overview composer，复用 shared persisted new-chat preference state，避免组件自己直接读写 localStorage；发送图标按钮暴露稳定英文 accessible name
+- **workspace-detail-page.tsx**: Main page component，包含 inline workspace rename、Overview AGENTS.md content、non-Cradle-owned save warning、Workflow Rules + Skills tabs、shared lazy-pane loading feedback、pane first-render intent marks、scroll-position-aware right outline minimap 和 two-column layout；capsule launcher 打开 fresh chat 时复用 chat feature 的 response-start command；recent sessions 提供稳定 E2E anchors；main column 与 sidebar 有 render-budgeted memo comparators，TOC scroll state 不应牵连这些 panes 重渲染
+- **capsule-composer.tsx**: Workspace overview composer，复用 shared persisted new-chat preference state，避免组件自己直接读写 localStorage；发送图标按钮暴露稳定英文 accessible name，并为 workspace-originated task journey 提供最小稳定 E2E anchors
 - **capsule-composer.test.tsx**: Regression tests for the capsule composer send button accessible name, disabled state, and submission payload
 - **workspace-detail-page-loader.ts**: Workspace detail tab 的共享 lazy loader 与 route preload 入口
 - **workspace-workflow-rules-loader.ts**: Workflow rules pane 的共享 lazy loader 与 intent preload 入口，用于 tab hover/focus/click 预热 pane chunk

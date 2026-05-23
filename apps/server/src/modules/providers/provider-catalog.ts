@@ -13,6 +13,8 @@ export interface ProviderMetadataProvider {
 }
 
 const TRAILING_SLASH_RE = /\/$/
+const VERSIONED_API_PATH_RE = /\/v\d+(?:\/)?$/i
+const ANTHROPIC_VERSION = '2023-06-01'
 const OpenAICompatibleModelsResponseSchema = z.object({
   data: z.array(z.object({
     id: z.string(),
@@ -30,6 +32,11 @@ const AnthropicProviderConfigJsonSchema = z.string()
   .pipe(z.object({
     baseUrl: z.string().default('https://api.anthropic.com/v1'),
   }).passthrough())
+
+interface ModelsRequestOption {
+  url: string
+  headers?: HeadersInit
+}
 
 export class ProviderCatalog {
   private readonly providers = new Map<ProviderKind, ProviderMetadataProvider>()
@@ -93,14 +100,10 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
     const baseUrl = normalizeBaseUrl(config.baseUrl)
 
     try {
-      const response = await fetch(`${baseUrl.replace(TRAILING_SLASH_RE, '')}/models`, {
-        headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
-      })
-      if (!response.ok) {
-        throw providerModelsUnavailable(this.providerKind, `Provider models request failed with status ${response.status}`)
-      }
-
-      const payload = OpenAICompatibleModelsResponseSchema.parse(await response.json())
+      const payload = OpenAICompatibleModelsResponseSchema.parse(await fetchModelsPayload(
+        this.providerKind,
+        modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined),
+      ))
 
       return payload.data.map(item => ({
         id: item.id,
@@ -148,14 +151,13 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
     const baseUrl = normalizeBaseUrl(config.baseUrl).replace(TRAILING_SLASH_RE, '')
 
     try {
-      const response = await fetch(`${baseUrl}/models`, {
-        headers: apiKey ? { 'x-api-key': apiKey } : undefined,
-      })
-      if (!response.ok) {
-        throw providerModelsUnavailable(this.providerKind, `Anthropic models request failed with status ${response.status}`)
-      }
-
-      const payload = AnthropicModelsResponseSchema.parse(await response.json())
+      const payload = AnthropicModelsResponseSchema.parse(await fetchModelsPayload(
+        this.providerKind,
+        modelRequestOptions(baseUrl, {
+          'anthropic-version': ANTHROPIC_VERSION,
+          ...(apiKey ? { 'x-api-key': apiKey } : {}),
+        }),
+      ))
 
       return payload.data.map(item => ({
         id: item.id,
@@ -193,6 +195,41 @@ function wrapProviderModelsError(providerKind: ProviderKind, error: unknown): Ap
   }
   const message = error instanceof Error ? error.message : String(error)
   return providerModelsUnavailable(providerKind, message)
+}
+
+function modelRequestOptions(baseUrl: string, headers?: HeadersInit): ModelsRequestOption[] {
+  const normalized = normalizeBaseUrl(baseUrl).replace(TRAILING_SLASH_RE, '')
+  const urls = VERSIONED_API_PATH_RE.test(normalized)
+    ? [`${normalized}/models`]
+    : [`${normalized}/v1/models`, `${normalized}/models`]
+
+  return urls.map(url => ({ url, headers }))
+}
+
+async function fetchModelsPayload(providerKind: ProviderKind, options: ModelsRequestOption[]): Promise<unknown> {
+  let lastError: unknown = null
+
+  for (const option of options) {
+    try {
+      const response = await fetch(option.url, { headers: option.headers })
+      if (response.ok) {
+        return response.json()
+      }
+      lastError = providerModelsUnavailable(
+        providerKind,
+        `Provider models request failed at ${option.url} with status ${response.status}`,
+      )
+    }
+    catch (error) {
+      lastError = error
+    }
+  }
+
+  if (lastError instanceof Error) {
+    throw lastError
+  }
+
+  throw providerModelsUnavailable(providerKind, 'Provider models request failed')
 }
 
 // ── singleton accessor ──

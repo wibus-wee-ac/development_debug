@@ -72,7 +72,7 @@ const SortableTabPill = memo(({
   const pill = (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{ ...style, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       {...attributes}
       {...listeners}
       onClick={() => onActivate(tab.id)}
@@ -90,7 +90,7 @@ const SortableTabPill = memo(({
       data-tab-active={isActive ? 'true' : 'false'}
       data-tab-pinned={tab.pinned ? 'true' : 'false'}
       className={cn(
-        'group relative flex items-center justify-start gap-1.5 h-7 text-[11px] font-medium mx-0.5',
+        'group relative flex items-center justify-start gap-1.5 h-7.5 text-[11px] font-medium mx-0.5',
         tab.pinned ? 'px-3' : 'pl-3 pr-7',
         'flex-1 rounded-md transition-[opacity,background-color,color,box-shadow] duration-100 min-w-8 max-w-44 cursor-default overflow-hidden bg-background ',
         isActive
@@ -261,7 +261,7 @@ export const TabBar = memo(({
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
       <div
         className={cn('flex items-center overflow-hidden px-0.5', className)}
-        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         data-testid="tab-bar"
       >
         <SortableContext items={tabs.map(tab => tab.id)} strategy={horizontalListSortingStrategy}>

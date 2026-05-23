@@ -13,7 +13,7 @@ Uses HTTP only for PTY resource lifecycle (`start-or-attach`, `delete`) and a sh
 - **pty-protocol.ts**: Shared PTY WebSocket message types and JSON parser for `snapshot` / `output` / `exit` / `pong` / `error`.
 - **pty-protocol.test.ts**: Unit coverage for PTY WebSocket server event parsing, invalid payload rejection, and nullable exit fields.
 - **pty-channel.ts**: Shared PTY WebSocket channel adapter with reconnect, ping, and queued input / resize sends.
-- **bottom-terminal-panel.tsx**: Bottom-panel terminal owner UI with right-side session tabs, new-session creation, runtime-only active session state, and path/title labels from terminal metadata. It mounts only the active xterm view; inactive sessions are preserved by server PTY state, not by keeping extra xterm instances in the DOM.
+- **bottom-terminal-panel.tsx**: Bottom-panel terminal owner UI with right-side session tabs, new-session creation, runtime-only active session state, close-session anchors, and path/title labels from terminal metadata. It mounts only the active xterm view; inactive sessions are preserved by server PTY state, not by keeping extra xterm instances in the DOM.
 - **tui-view.tsx**: TuiView component — mounts and manages an xterm.js terminal instance for a cli-tui session, including workspace file drop insertion through the shared drag payload protocol and a first-render gate after xterm mount, dimension fit, and `start-or-attach` succeed.
 - **tui-view-loader.ts**: CLI-TUI chat session view 的共享 lazy loader 与 runtime metadata preload 入口，并记录 `tui-view-first-render` 的 lazy request 起点。
 - **shell-api.ts**: Shell control-plane helpers for explicit start and stop; live keystrokes and resize travel on the PTY socket.

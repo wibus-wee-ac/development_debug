@@ -75,6 +75,14 @@ async function getCurrentChatSessionId(world: CradleWorld): Promise<string> {
   return sessionId
 }
 
+function rememberSelectedNewChatWorkspace(world: CradleWorld, name: string): void {
+  world.remember('chat.selected-new-chat-workspace', name)
+}
+
+function recallSelectedNewChatWorkspace(world: CradleWorld): string {
+  return world.recall<string>('chat.selected-new-chat-workspace')
+}
+
 async function getLastAssistantBubble(world: CradleWorld) {
   const locator = world.page.locator('[data-testid="message-bubble-assistant"]').last()
   await expect(locator).toBeVisible({ timeout: CHAT_STATUS_TIMEOUT })
@@ -86,7 +94,9 @@ async function navigateToNewChat(world: CradleWorld): Promise<void> {
   const navItem = world.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  await expect(world.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
+  const newChatPage = world.page.locator('[data-testid="new-chat-page"]')
+  await expect(newChatPage).toBeVisible({ timeout: 10_000 })
+  await expect(newChatPage).toHaveAttribute('data-new-chat-ready', 'true', { timeout: 20_000 })
 }
 
 async function configureDefaultMockProvider(world: CradleWorld): Promise<void> {
@@ -159,7 +169,7 @@ async function createRememberedSession(world: CradleWorld, alias: string, firstU
   await textarea.fill(firstUserText)
 
   const button = world.page.locator('[data-testid="new-chat-send-btn"]')
-  await expect(button).toBeEnabled({ timeout: 10_000 })
+  await expect(button).toBeEnabled({ timeout: 20_000 })
   await button.click()
 
   await waitForChatStatus(world, 'idle')
@@ -281,6 +291,30 @@ When('我在新建聊天输入框中输入{string}', async function (this: Cradl
   await textarea.fill(text)
 })
 
+When('我点击新建聊天快速操作{string}', async function (this: CradleWorld, label: string) {
+  const action = this.page.getByRole('button', { name: label, exact: true })
+  await expect(action).toBeVisible({ timeout: 10_000 })
+  await action.click()
+})
+
+When('我在新建聊天中选择第 {int} 个工作区', async function (this: CradleWorld, ordinal: number) {
+  const selector = this.page.locator('[data-testid="new-chat-workspace-selector"]')
+  await expect(selector).toBeVisible({ timeout: 10_000 })
+  await selector.click()
+
+  const option = this.page.locator('[data-testid^="new-chat-workspace-option-"]').nth(ordinal - 1)
+  await expect(option).toBeVisible({ timeout: 10_000 })
+
+  const workspaceName = (await option.textContent())?.trim()
+  if (!workspaceName) {
+    throw new Error(`Workspace option ${ordinal} did not expose a visible name`)
+  }
+
+  await option.click()
+  await expect(selector).toContainText(workspaceName, { timeout: 10_000 })
+  rememberSelectedNewChatWorkspace(this, workspaceName)
+})
+
 When('我点击发送按钮', async function (this: CradleWorld) {
   const button = this.page.locator('[data-testid="new-chat-send-btn"]')
   await expect(button).toBeEnabled({ timeout: 10_000 })
@@ -294,6 +328,19 @@ Then('应该跳转到聊天视图', async function (this: CradleWorld) {
 Then('我应该看到用户消息{string}', async function (this: CradleWorld, text: string) {
   const userBubble = this.page.locator('[data-testid="message-bubble-user"]').filter({ hasText: text })
   await expect(userBubble).toBeVisible({ timeout: CHAT_STATUS_TIMEOUT })
+})
+
+Then('新建聊天输入框应包含{string}', async function (this: CradleWorld, text: string) {
+  await expect(this.page.locator('[data-testid="new-chat-textarea"]')).toHaveValue(new RegExp(text), { timeout: 10_000 })
+})
+
+Then('当前聊天会话应显示在选中的工作区下', async function (this: CradleWorld) {
+  const workspaceName = recallSelectedNewChatWorkspace(this)
+  const sessionId = await getCurrentChatSessionId(this)
+  const workspaceGroup = this.page.locator('[data-testid^="workspace-group-"]').filter({ hasText: workspaceName }).first()
+
+  await expect(workspaceGroup).toBeVisible({ timeout: 10_000 })
+  await expect(workspaceGroup.locator(`[data-testid="session-item-${sessionId}"]`)).toBeVisible({ timeout: 10_000 })
 })
 
 Then('我应该看到 AI 回复消息', async function (this: CradleWorld) {

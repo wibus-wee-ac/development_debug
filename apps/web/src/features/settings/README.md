@@ -8,7 +8,7 @@
 
 ## Files
 
-- **appearance-settings.tsx**: 外观设置页，负责主题切换；Settings Appearance 首屏在 theme options 与 stream animation controls ready 后记录 performance gate。
+- **appearance-settings.tsx**: 外观设置页，负责主题切换；Settings Appearance 首屏在 theme options 与 stream animation controls ready 后记录 performance gate；主题选项暴露稳定 E2E selection anchors。
 - **chronicle-settings.tsx**: 由 `features/chronicle` 拥有的 Settings > 记录页面；Settings Chronicle 首屏在 Chronicle config、status、resources、message sources、evidence、activity、knowledge、timeline、memories 和 Agent Runtime model selection 首轮数据 ready 后记录 performance gate。
 - **desktop-update-settings.tsx**: Desktop 更新设置页，通过 Electron preload / IPC 管理 Velopack 更新状态、检查、下载与应用；Settings Desktop 首屏在 update status 初始化完成后记录 performance gate。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型；Settings Jarvis 首屏在 preferences、profiles 与当前 profile models 查询成功后记录 performance gate

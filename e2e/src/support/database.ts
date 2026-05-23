@@ -7,6 +7,17 @@
 import type { CradleWorld } from './world'
 
 type SqliteParam = string | number | null
+interface ElectronDatabaseContext {
+  app: {
+    getAppPath(): string
+    getPath(name: string): string
+  }
+}
+
+interface DatabaseQueryInput {
+  sql: string
+  params: SqliteParam[]
+}
 
 /**
  * @deprecated YOU MUST NOT USE THIS FUNCTION TO MUTATE THE DATABASE. In e2e test, we shouldn't use database to ensure test data setup, instead we should use UI to drive the app to the state we want to test.
@@ -17,7 +28,7 @@ export async function queryDatabaseRow<T>(
   params: SqliteParam[] = [],
 ): Promise<T | null> {
   return world.mainProcess<T | null>(
-    async (electron, { sql, params }) => {
+    async (electron: ElectronDatabaseContext, { sql, params }: DatabaseQueryInput) => {
       const getBuiltinModule = process.getBuiltinModule?.bind(process)
 
       if (!getBuiltinModule) {
@@ -56,7 +67,7 @@ export async function queryDatabaseRows<T>(
   params: SqliteParam[] = [],
 ): Promise<T[]> {
   return world.mainProcess<T[]>(
-    async (electron, { sql, params }) => {
+    async (electron: ElectronDatabaseContext, { sql, params }: DatabaseQueryInput) => {
       const getBuiltinModule = process.getBuiltinModule?.bind(process)
 
       if (!getBuiltinModule) {

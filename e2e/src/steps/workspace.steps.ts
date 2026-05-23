@@ -1,5 +1,5 @@
-import { writeFileSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { basename, dirname, join } from 'node:path'
 
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
@@ -210,6 +210,27 @@ Given('我已添加了一个包含 AGENTS.md 的工作区', async function (this
   setCurrentWorkspace(this, fixture)
 })
 
+Given('当前工作区中存在文件{string}，内容为{string}', async function (this: CradleWorld, relativePath: string, content: string) {
+  const fixture = recallCurrentWorkspace(this)
+  const filePath = join(fixture.dir, relativePath)
+
+  mkdirSync(dirname(filePath), { recursive: true })
+  writeFileSync(filePath, content, 'utf8')
+})
+
+When('我在新建聊天中选择当前工作区', async function (this: CradleWorld) {
+  const fixture = recallCurrentWorkspace(this)
+  const selector = this.page.locator('[data-testid="new-chat-workspace-selector"]')
+
+  await expect(selector).toBeVisible({ timeout: 10_000 })
+  await selector.click()
+
+  const option = this.page.locator('[data-testid^="new-chat-workspace-option-"]').filter({ hasText: fixture.name }).first()
+  await expect(option).toBeVisible({ timeout: 10_000 })
+  await option.click()
+  await expect(selector).toContainText(fixture.name, { timeout: 10_000 })
+})
+
 Given('我已添加了两个可区分的工作区', async function (this: CradleWorld) {
   const fixtures = [
     createWorkspaceFixture(this, 'cradle-e2e-alpha-', 'Alpha Workspace'),
@@ -247,8 +268,27 @@ When('我将工作区重命名为 {string}', async function (this: CradleWorld, 
   updateRememberedWorkspaceName(this, fixture.dir, nextName)
 })
 
+When('我在工作区详情页输入任务{string}', async function (this: CradleWorld, text: string) {
+  const textarea = activeWorkspaceDetailPage(this).locator('[data-testid="workspace-detail-capsule-textarea"]')
+  await expect(textarea).toBeVisible({ timeout: 10_000 })
+  await textarea.fill(text)
+})
+
+When('我从工作区详情页发送任务', async function (this: CradleWorld) {
+  const button = activeWorkspaceDetailPage(this).locator('[data-testid="workspace-detail-capsule-send-btn"]')
+  await expect(button).toBeEnabled({ timeout: 10_000 })
+  await button.click()
+})
+
 Then('工作区详情页标题应该是 {string}', async function (this: CradleWorld, expectedName: string) {
   await expect(activeWorkspaceDetailPage(this).locator('[data-testid="workspace-detail-title-trigger"]')).toContainText(expectedName, { timeout: 10_000 })
+})
+
+Then('当前工作区详情页应该打开', async function (this: CradleWorld) {
+  const fixture = recallCurrentWorkspace(this)
+
+  await expect(activeWorkspaceDetailPage(this)).toBeVisible({ timeout: 10_000 })
+  await expect(activeWorkspaceDetailPage(this).locator('[data-testid="workspace-detail-path"]')).toHaveText(fixture.dir, { timeout: 10_000 })
 })
 
 Then('工作区列表中应该包含工作区 {string}', async function (this: CradleWorld, workspaceName: string) {
@@ -295,4 +335,9 @@ Then('剪贴板应包含当前工作区的 AGENTS.md 内容', async function (th
   expect(clipboardText).toContain('AGENTS.md')
   expect(clipboardText).toContain(fixture.agentsHeading)
   expect(clipboardText).toContain(fixture.agentsBody)
+})
+
+Then('工作区详情页最近会话应显示{string}', async function (this: CradleWorld, title: string) {
+  const recentSession = activeWorkspaceDetailPage(this).locator('[data-testid^="workspace-detail-recent-session-"]').filter({ hasText: title })
+  await expect(recentSession).toBeVisible({ timeout: 10_000 })
 })

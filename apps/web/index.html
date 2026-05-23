@@ -10,8 +10,21 @@
     />
     <script type="module">
       if (import.meta.env.DEV) {
-        import("react-scan");
-        import("react-grab");
+        const params = new URLSearchParams(window.location.search);
+        const isElectron = window.cradle?.env?.isElectron === true;
+        const reactDiagnosticsEnabled =
+          !isElectron ||
+          params.has("react-diagnostics") ||
+          localStorage.getItem("cradle:debug:react-diagnostics") === "true";
+
+        if (reactDiagnosticsEnabled) {
+          import("react-grab");
+
+          const reactScanScript = document.createElement("script");
+          reactScanScript.crossOrigin = "anonymous";
+          reactScanScript.src = "https://unpkg.com/react-scan/dist/auto.global.js";
+          document.head.appendChild(reactScanScript);
+        }
       }
     </script>
     <script>

@@ -17,7 +17,7 @@ import { createPortal } from 'react-dom'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getIssuesSearch, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { getIssuesSearch, getKanbanBoards, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import {
   Command,
   CommandEmpty,
@@ -72,6 +72,11 @@ interface GlobalSearchIssue {
   workspaceId?: string
 }
 
+interface GlobalSearchBoard {
+  id: string
+  workspaceId: string
+}
+
 interface GlobalSearchFile {
   type: 'file' | 'directory'
   name: string
@@ -95,6 +100,15 @@ const GlobalSearchFileListSchema = z
       type: z.enum(['file', 'directory']),
       name: z.string(),
       path: z.string()
+    })
+  )
+  .default([])
+
+const GlobalSearchBoardListSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      workspaceId: z.string()
     })
   )
   .default([])
@@ -388,9 +402,23 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
   }, [close, openSettings, setChronicleFocusTarget, setSettingsSection])
 
   const handleSelectIssue = useCallback(
-    (workspaceId: string | undefined) => {
+    (issue: GlobalSearchIssue) => {
       close()
-      openTab('kanban-board', { workspaceId })
+      void (async () => {
+        let boards: GlobalSearchBoard[] = []
+        try {
+          if (issue.workspaceId) {
+            const { data } = await getKanbanBoards({ query: { workspaceId: issue.workspaceId } })
+            boards = GlobalSearchBoardListSchema.parse(data) satisfies GlobalSearchBoard[]
+          }
+        }
+        catch (error) {
+          console.error('[GlobalSearchDialog] failed to resolve issue board:', error)
+        }
+
+        const boardId = boards[0]?.id
+        openTab('kanban-board', boardId ? { boardId, issue: issue.id } : {})
+      })()
     },
     [close, openTab]
   )
@@ -573,6 +601,7 @@ const CommandActionRow = memo(function CommandActionRow({ command }: { command: 
       value={command.id}
       onSelect={command.handler}
       className="flex items-center gap-2.5 px-2.5 py-1.5"
+      data-testid={`global-search-command-${command.id}`}
     >
       <command.icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="flex-1 text-sm">{command.label}</span>
@@ -636,17 +665,18 @@ const IssueSearchCommandRow = memo(function IssueSearchCommandRow({
   onSelect
 }: {
   issue: GlobalSearchIssue
-  onSelect: (workspaceId: string | undefined) => void
+  onSelect: (issue: GlobalSearchIssue) => void
 }) {
   const selectIssue = useCallback(() => {
-    onSelect(issue.workspaceId)
-  }, [issue.workspaceId, onSelect])
+    onSelect(issue)
+  }, [issue, onSelect])
 
   return (
     <CommandItem
       value={`issue-${issue.id}`}
       onSelect={selectIssue}
       className="flex items-center gap-2.5 px-2.5 py-1.5"
+      data-testid={`global-search-issue-result-${issue.id}`}
     >
       <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>

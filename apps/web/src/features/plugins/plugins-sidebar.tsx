@@ -1,6 +1,5 @@
 import { Link } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'
-import { useEffect } from 'react'
 
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -48,6 +47,7 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
           key={panel.id}
           to="plugin-panel"
           params={{ panelId: panel.id }}
+          data-testid={`plugin-panel-link-${panel.localId}`}
           className={cn(
             'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm',
             'hover:bg-fill cursor-pointer',

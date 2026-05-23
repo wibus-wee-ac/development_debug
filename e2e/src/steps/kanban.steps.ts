@@ -546,6 +546,39 @@ When('我删除当前打开的 Issue', async function (this: CradleWorld) {
   await expect(this.page.locator(ISSUE_DETAIL_PANEL)).toHaveCount(0, { timeout: 10_000 })
 })
 
+When('我在当前 Issue 下添加子 Issue{string}', async function (this: CradleWorld, title: string) {
+  const panel = this.page.locator(ISSUE_DETAIL_PANEL)
+  await expect(panel).toBeVisible({ timeout: 10_000 })
+
+  const addButton = panel.locator('[data-testid="sub-issue-add-btn"]')
+  await expect(addButton).toBeVisible({ timeout: 10_000 })
+  await addButton.click()
+
+  const input = panel.locator('[data-testid="sub-issue-title-input"]')
+  await expect(input).toBeVisible({ timeout: 10_000 })
+  await input.fill(title)
+
+  const createButton = panel.locator('[data-testid="sub-issue-create-btn"]')
+  await expect(createButton).toBeEnabled({ timeout: 10_000 })
+  await createButton.click()
+})
+
+When('我在当前 Issue 上添加标签{string}', async function (this: CradleWorld, label: string) {
+  const panel = this.page.locator(ISSUE_DETAIL_PANEL)
+  await expect(panel).toBeVisible({ timeout: 10_000 })
+
+  const trigger = panel.locator('[data-testid="issue-label-add-trigger"]')
+  await expect(trigger).toBeVisible({ timeout: 10_000 })
+  await trigger.click()
+
+  const input = this.page.locator('[data-testid="issue-label-input"]')
+  await expect(input).toBeVisible({ timeout: 10_000 })
+  await input.fill(label)
+  await input.press('Enter')
+
+  await expect(panel.locator(`[data-testid="issue-label-chip-${label}"]`)).toBeVisible({ timeout: 10_000 })
+})
+
 When('我打开状态列设置', async function (this: CradleWorld) {
   await openStatusManager(this)
 })
@@ -617,6 +650,17 @@ Then('看板列顺序应为:', async function (this: CradleWorld, table: DataTab
     }
     return visible // fail: return actual for debugging
   }).toEqual(expected)
+})
+
+Then('子 Issue 列表应显示{string}', async function (this: CradleWorld, title: string) {
+  const panel = this.page.locator(ISSUE_DETAIL_PANEL)
+  const list = panel.locator('[data-testid="sub-issues-list"]')
+  await expect(list.locator('[data-testid^="sub-issue-"]').filter({ hasText: title })).toBeVisible({ timeout: 10_000 })
+})
+
+Then('名为{string}的卡片应显示标签{string}', async function (this: CradleWorld, title: string, label: string) {
+  const card = await getIssueCardByTitle(this, title)
+  await expect(card).toContainText(label, { timeout: 10_000 })
 })
 
 When('我在看板中搜索{string}', async function (this: CradleWorld, query: string) {

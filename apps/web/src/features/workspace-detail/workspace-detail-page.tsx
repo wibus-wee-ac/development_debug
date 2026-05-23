@@ -203,6 +203,7 @@ function InlineEditTitleEditor({
       ref={inputRef}
       data-testid="workspace-detail-title-input"
       defaultValue={initialValue}
+      aria-label="Workspace name"
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -721,8 +722,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           </div>
 
           {activeTab === 'workflow-rules' && (
-            <Suspense fallback={<WorkspacePaneLoading label="Loading workflow…" testId="workspace-workflow-loading" />}
-            >
+            <Suspense fallback={<WorkspacePaneLoading label="Loading workflow…" testId="workspace-workflow-loading" />}>
               <LazyWorkspaceWorkflowRules
                 workspaceId={workspaceId}
                 selectedAgentId={selectedWorkflowAgentId}
@@ -732,8 +732,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           )}
 
           {activeTab === 'skills' && (
-            <Suspense fallback={<WorkspacePaneLoading label="Loading skills…" testId="workspace-skills-loading" />}
-            >
+            <Suspense fallback={<WorkspacePaneLoading label="Loading skills…" testId="workspace-skills-loading" />}>
               <LazySkillManager
                 workspaceId={workspaceId}
                 editableScope="workspace"
@@ -843,6 +842,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
                   to="chat"
                   params={{ sessionId: session.id }}
                   className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-colors hover:bg-accent/50"
+                  data-testid={`workspace-detail-recent-session-${session.id}`}
                 >
                   <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
                   <span className="flex-1 truncate text-foreground">{session.title || 'Untitled'}</span>

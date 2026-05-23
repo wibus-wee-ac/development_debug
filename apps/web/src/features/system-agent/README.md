@@ -11,7 +11,7 @@ and the single React Query boundary used to read/write Jarvis preferences.
 - **context-schema.ts**: Shared types describing the client-side workspace/context snapshot fed into Jarvis
 - **format-context.ts**: Formats the collected snapshot into the `<cradle_context>` block injected into Jarvis prompts
 - **format-context.test.ts**: Unit coverage for active view, params, chat summary, layout, unread, profile, and no-active-tab formatting
-- **jarvis-popover.tsx**: Jarvis chat popover UI — creates / resumes the Jarvis session, renders the local chat surface, positions itself from the explicit layout geometry contract instead of DOM selectors, applies bounds as immediate style values while only animating opacity/transform, and records the Jarvis popover first-render performance completion mark once preferences and any active chat session snapshot are ready.
+- **jarvis-popover.tsx**: Jarvis chat popover UI — creates / resumes the Jarvis session, renders the local chat surface only while open, positions itself from the explicit layout geometry contract instead of DOM selectors, applies resize and window bounds through refs plus `requestAnimationFrame` style writes, persists drag size only at pointer-up, labels the message input for accessibility, and avoids resize-driven React renders.
 - **jarvis-popover-loader.ts**: Jarvis popover 的共享 lazy loader 与 intent preload 入口，供 footer hover、focus、click 和 shortcut 复用
 - **jarvis-ui-store.ts**: Feature-owned Jarvis UI state for expand/collapse behavior; replaces layout-store ownership for Jarvis expansion
 - **use-context-snapshot.ts**: Reads current renderer state (tabs, layout, recent state) and builds the Jarvis context snapshot

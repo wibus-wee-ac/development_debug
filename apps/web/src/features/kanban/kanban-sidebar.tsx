@@ -32,17 +32,19 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
   const selectedWorkspace = workspaces.find(w => w.id === workspaceId)
 
   useEffect(() => {
-    if (open) {
-      setName('')
-      if (workspaces.length === 1) {
-        setWorkspaceId(workspaces[0].id)
-      }
- else if (!workspaceId && workspaces.length > 0) {
-        setWorkspaceId(workspaces[0].id)
-      }
-      requestAnimationFrame(() => inputRef.current?.focus())
+    if (!open) {
+      return
     }
-  }, [open])
+
+    setName('')
+    if (workspaces.length === 1) {
+      setWorkspaceId(workspaces[0].id)
+    }
+    else if (!workspaceId && workspaces.length > 0) {
+      setWorkspaceId(workspaces[0].id)
+    }
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [open, workspaceId, workspaces])
 
   const handleSubmit = useCallback(() => {
     const trimmed = name.trim()
@@ -100,7 +102,9 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
                 <span>新建看板</span>
               </div>
               <button
+                type="button"
                 onClick={() => onOpenChange(false)}
+                aria-label="Close create board dialog"
                 className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 <XIcon className="size-3" />
@@ -113,6 +117,8 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
                 ref={inputRef}
                 value={name}
                 onChange={e => setName(e.target.value)}
+                data-testid="kanban-new-board-input"
+                aria-label="Board name"
                 placeholder="看板名称"
                 className="w-full bg-transparent text-[15px] font-medium text-foreground outline-none placeholder:text-muted-foreground/40 leading-snug"
                 autoComplete="off"
@@ -147,6 +153,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
             <div className="flex items-center gap-2 px-4 pb-3.5">
               <div className="flex-1" />
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={!name.trim() || !workspaceId || createBoard.isPending}
                 className={cn(
@@ -226,6 +233,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
             onChange={e => setRenameValue(e.target.value)}
             onBlur={handleRenameSubmit}
             onKeyDown={handleRenameKeyDown}
+            aria-label="Board name"
             className="flex-1 bg-transparent text-xs text-foreground outline-none border-b border-primary/40"
           />
         </div>
@@ -289,7 +297,9 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
       <div className="flex items-center px-2.5 py-1.5">
         <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">看板</span>
         <button
+          type="button"
           onClick={() => setIsCreating(true)}
+          aria-label="Create board"
           className="size-5 flex items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
           data-testid="kanban-add-board-btn"
         >

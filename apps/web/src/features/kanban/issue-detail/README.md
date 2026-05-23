@@ -17,9 +17,9 @@ Issue detail owns focused subviews for editing issue metadata, reading activity,
 - **issue-header.tsx**: Issue header content, named navigation/action controls, and high-level destructive issue actions; header rendering keeps a memo boundary.
 - **issue-header.test.tsx**: Regression tests for header action accessible names, decorative icons, and back/delete callback wiring.
 - **issue-title.tsx**: Editable issue title surface.
-- **properties-sidebar.tsx**: Issue metadata property editor with named label add controls; properties rendering keeps a memo boundary.
+- **properties-sidebar.tsx**: Issue metadata property editor with named label add controls and stable E2E anchors for adding visible labels; properties rendering keeps a memo boundary.
 - **properties-sidebar.test.tsx**: Regression tests for the label add trigger accessible name, decorative icon state, and label update payload.
 - **relation-manager.tsx**: Issue relation management controls with named add/remove relation actions.
 - **relation-manager.test.tsx**: Regression tests for relation add/remove accessible names, decorative icons, and delete mutation payloads.
-- **sub-issues-list.tsx**: Sub-issue list and creation controls with decorative icon/shortcut semantics.
+- **sub-issues-list.tsx**: Sub-issue list and creation controls with decorative icon/shortcut semantics plus stable E2E anchors for creating and verifying child issues.
 - **sub-issues-list.test.tsx**: Regression tests for Add sub-issue action icon semantics and child issue create payload wiring.

@@ -616,6 +616,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             shortcut="⌘K"
             collapsed={collapsed}
             onClick={openSearch}
+            dataTestId="nav-search"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}

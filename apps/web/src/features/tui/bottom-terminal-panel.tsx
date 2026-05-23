@@ -9,9 +9,10 @@ import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { useLayoutStore } from '~/store/layout'
 
-import { ShellView } from './shell-view'
 import { stopShell } from './shell-api'
-import { getTerminalPathLabel, type TerminalMetadata } from './terminal-metadata'
+import { ShellView } from './shell-view'
+import type { TerminalMetadata } from './terminal-metadata'
+import { getTerminalPathLabel } from './terminal-metadata'
 import { useTerminalPanelStore } from './terminal-panel-store'
 
 interface BottomTerminalPanelProps {
@@ -33,7 +34,7 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
     registerOwner(ownerId, cwd)
   }, [cwd, ownerId, registerOwner])
 
-  const sessions = owner?.sessions ?? []
+  const sessions = useMemo(() => owner?.sessions ?? [], [owner?.sessions])
   const activeSessionId = owner?.activeSessionId ?? sessions[0]?.id ?? null
 
   const handleAddSession = useCallback(() => {
@@ -62,7 +63,7 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
   if (!activeSession) {
     return (
       <div className="flex h-full items-center justify-center bg-background text-xs text-muted-foreground">
-        Preparing terminal...
+        Preparing terminal
       </div>
     )
   }
@@ -128,6 +129,7 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
                   <button
                     type="button"
                     aria-label={`Close ${session.title}`}
+                    data-testid={`bottom-terminal-close-${session.id}`}
                     className="mr-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 focus:opacity-100"
                     onClick={() => handleRemoveSession(session.id)}
                   >
