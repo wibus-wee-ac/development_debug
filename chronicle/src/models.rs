@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::cradle_client::cradle_base_url;
 use crate::error::{ChronicleError, ChronicleResult};
+use crate::integrations::cradle_server::cradle_base_url;
 
 /// Known model identifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

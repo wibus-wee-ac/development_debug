@@ -6,7 +6,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use cradle_chronicle::audio::record_microphone_diagnostics;
+use cradle_chronicle::capabilities::{LocalSummaryCapability, NoopIntegrationSink};
 use cradle_chronicle::config::{ChronicleConfig, usage};
+use cradle_chronicle::core::ChronicleCore;
 use cradle_chronicle::daemon;
 use cradle_chronicle::memory_pipeline::recursive::RecursiveSummarizer;
 use cradle_chronicle::memory_pipeline::summarizer::LocalSummaryWriter;
@@ -14,6 +16,7 @@ use cradle_chronicle::ocr::ObservedTextExtractor;
 use cradle_chronicle::recorder::artifacts::ArtifactStore;
 use cradle_chronicle::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
 use cradle_chronicle::screen::synthetic::SyntheticCaptureSource;
+use cradle_chronicle::store::{ChronicleMemoryManifest, ChronicleStore, ChronicleStoreEvent};
 use cradle_chronicle::time::Timestamp;
 use cradle_chronicle::{ChronicleError, RecorderManager};
 
@@ -531,6 +534,11 @@ fn run_audio_diagnostics(config: ChronicleConfig) -> Result<String, ChronicleErr
 
 fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
     let segment_started_at = Timestamp::now()?;
+    let core = ChronicleCore::new(
+        ChronicleStore::new(&config.storage_root),
+        LocalSummaryCapability,
+        NoopIntegrationSink,
+    );
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
     let source = SyntheticCaptureSource::cradle_smoke_from(
@@ -553,6 +561,30 @@ fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
     let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
     let summary = summarizer
         .write_ten_minute_summary("Cradle Chronicle smoke", report.persisted_frames.clone())?;
+    let source_paths = report
+        .persisted_frames
+        .iter()
+        .flat_map(|frame| [frame.snapshot_path.clone(), frame.frame_path.clone()])
+        .collect::<Vec<_>>();
+    core.append_event(ChronicleStoreEvent {
+        id: format!("smoke-capture-{}", segment_started_at.compact()),
+        kind: "smoke-capture".to_string(),
+        created_at: segment_started_at.filesystem(),
+        payload: serde_json::json!({
+            "observed": report.observed_frames,
+            "persisted": report.persisted_frames.len(),
+            "duplicates": report.duplicate_frames,
+            "privacyFiltered": report.privacy_filtered_frames
+        }),
+    })?;
+    core.record_memory(ChronicleMemoryManifest {
+        id: format!("memory:{}", summary.output_path.display()),
+        window: "10min".to_string(),
+        created_at: segment_started_at.filesystem(),
+        memory_path: summary.output_path.clone(),
+        source_paths,
+        summary_kind: "local".to_string(),
+    })?;
 
     Ok(format!(
         "cradle chronicle smoke completed: observed={} persisted={} duplicates={} privacy_filtered={} memory={}",

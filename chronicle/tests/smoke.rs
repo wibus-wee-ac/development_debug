@@ -13,6 +13,7 @@ fn binary_smoke_writes_artifacts_and_memory() {
     let _ = fs::remove_dir_all(&root);
 
     let output = Command::new(binary)
+        .env("CRADLE_URL", "http://127.0.0.1:1")
         .args([
             "--smoke",
             "--storage-root",
@@ -54,6 +55,18 @@ fn binary_smoke_writes_artifacts_and_memory() {
         .expect("memories should read")
         .count();
     assert_eq!(memory_count, 1);
+
+    let events = fs::read_to_string(root.join("events.ndjson")).expect("events should exist");
+    assert!(events.contains("\"kind\":\"smoke-capture\""));
+
+    let manifest = fs::read_to_string(root.join("memory-manifest.json"))
+        .expect("memory manifest should exist");
+    let memories: serde_json::Value =
+        serde_json::from_str(&manifest).expect("memory manifest should parse");
+    assert_eq!(
+        memories.as_array().expect("manifest should be array").len(),
+        1
+    );
 
     let _ = fs::remove_dir_all(&root);
 }

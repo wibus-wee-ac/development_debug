@@ -19,8 +19,9 @@ The visible outcome is a Rust binary that can run a smoke pipeline and a daemon 
 - [x] (2026-05-23 16:18 CST) Milestone 1 foundation complete: added `chronicle/src/capabilities.rs`, `chronicle/src/core/mod.rs`, exported them from `chronicle/src/lib.rs`, and added tests for local summary, child-process summary, and core composition.
 - [x] (2026-05-23 16:18 CST) Milestone 2 foundation complete: added `chronicle/src/store/mod.rs`, writing `events.ndjson` and `memory-manifest.json`, and wired `--smoke` to record a local capture event and memory manifest through `ChronicleCore`.
 - [x] (2026-05-23 19:05 CST) Milestone 3 complete: `SummaryCapability` now has a deterministic local implementation and a child-process implementation driven by `CRADLE_CHRONICLE_LLM_COMMAND`; tests prove both paths without Server.
-- [x] (2026-05-23 19:09 CST) Milestone 4 complete for the intended core path: `chronicle/src/daemon.rs` constructs `ChronicleCore`, writes snapshots, memories, audio events, transcript events, Slack messages, and speaker profile facts to the local store, and no longer imports or constructs `CradleClient`. Pipeline defaults to local triage, local crystallization, and hash embedding; remote triage, crystallization, and embedding require explicit environment flags.
+- [x] (2026-05-23 19:09 CST) Milestone 4 complete for the intended core path: `chronicle/src/daemon.rs` constructs `ChronicleCore`, writes snapshots, memories, audio events, transcript events, Slack messages, and speaker profile facts to the local store, and no longer imports or constructs `CradleClient`. Pipeline defaults to local triage, local crystallization, and hash embedding.
 - [x] (2026-05-23 19:19 CST) Milestone 5 complete: `cargo test --manifest-path chronicle/Cargo.toml` passed with 205 unit tests and 1 binary smoke test, the smoke command succeeded with `CRADLE_URL=http://127.0.0.1:1`, and daemon run-once exited successfully with the same unreachable Server URL.
+- [x] (2026-05-23 20:45 CST) Removed the legacy Chronicle Server compatibility layer from Rust: deleted `chronicle/src/cradle_client.rs` and `chronicle/src/transcript_inbox.rs`, removed remote triage, remote embedding, remote crystallization, and remote ASR code paths, and kept Server URL usage only for model installation helpers.
 
 ## Surprises & Discoveries
 
@@ -39,11 +40,11 @@ The visible outcome is a Rust binary that can run a smoke pipeline and a daemon 
 - Observation: The first local core/store implementation increased coverage without breaking existing behavior.
   Evidence: After adding `capabilities`, `core`, and `store`, `cargo test --manifest-path chronicle/Cargo.toml` passed with 203 unit tests and 1 binary smoke test.
 
-- Observation: Pipeline still had a hidden Server dependency even after remote triage and remote embedding were disabled by default.
-  Evidence: `PipelineConfig::default()` set `use_remote_triage` and `use_remote_embedding` to `false`, but `Crystallizer::crystallize` still attempted `POST /chronicle/crystallize` before falling back locally. This was fixed by adding `use_remote_crystallization` to `PipelineConfig` and `use_remote_llm` to `CrystallizerConfig`, both defaulting to `false`.
+- Observation: Pipeline still had hidden Server dependencies after the first standalone rewrite.
+  Evidence: `PipelineConfig`, `Crystallizer`, `TriageAgent`, `RemoteEmbeddingProvider`, and `RemoteAsr` still preserved HTTP routes for remote Chronicle behavior. These were removed rather than kept as compatibility paths, because Chronicle memory semantics now belong to Rust.
 
-- Observation: Static coupling is now constrained to integration boundaries for the checked core paths.
-  Evidence: `rg -n "CradleClient|cradle_client" chronicle/src/daemon.rs chronicle/src/pipeline.rs chronicle/src/memory_pipeline chronicle/src/audio` produced no output, and `rg -n "127\\.0\\.0\\.1:21423" chronicle/src` produced only `chronicle/src/integrations/cradle_server.rs:6`.
+- Observation: Static Server URL coupling is now constrained to model installation lookup.
+  Evidence: `rg -n "CradleClient|cradle_client|RemoteAsr|RemoteEmbeddingProvider|TriageAgent" chronicle/src chronicle/tests` produces no output. `DEFAULT_CRADLE_URL` and `cradle_base_url()` remain in `chronicle/src/integrations/cradle_server.rs`, and `chronicle/src/models.rs` uses that helper when requesting Server-managed model installation.
 
 ## Decision Log
 
@@ -67,15 +68,19 @@ The visible outcome is a Rust binary that can run a smoke pipeline and a daemon 
   Rationale: `DEFAULT_CRADLE_URL` is the Server URL and should not be duplicated or split into legacy/latest variants. Any optional Server adapter reads the same helper, while core paths do not hardcode `http://127.0.0.1:21423`.
   Date/Author: 2026-05-23 / Codex
 
-- Decision: Make remote crystallization explicitly opt-in.
-  Rationale: A fallback after a failed HTTP request is still Server coupling in the default path. Chronicle core should produce memories locally unless the operator explicitly enables a remote capability. The environment flags are `CRADLE_CHRONICLE_REMOTE_TRIAGE`, `CRADLE_CHRONICLE_REMOTE_CRYSTALLIZATION`, and `CRADLE_CHRONICLE_REMOTE_EMBEDDING`.
+- Decision: Remove Chronicle remote compatibility paths instead of keeping them as opt-in modes.
+  Rationale: The desired architecture is not “Rust core with optional Server Chronicle semantics”; it is “Rust owns Chronicle memory semantics”. Keeping remote triage, embedding, crystallization, ASR, ingest, or transcript compatibility paths would preserve the wrong ownership boundary.
+  Date/Author: 2026-05-23 / Codex
+
+- Decision: Keep Server responsible for model installation, download, and verification.
+  Rationale: Model lifecycle is a system integration concern and can remain with Server. Rust Chronicle only needs a local model root, local path resolution, and a narrow helper that can ask Server to install missing model resources.
   Date/Author: 2026-05-23 / Codex
 
 ## Outcomes & Retrospective
 
 The plan is implemented for the reviewed scope. Rust Chronicle now has provider-neutral capability traits, a local store, a core composition object, local smoke state, daemon-local event recording, daemon-local memory manifest recording, child-process summary capability coverage, and default local pipeline crystallization. The observable result is that smoke produces artifacts and memory state with an unreachable Server URL, and daemon run-once exits successfully without constructing `CradleClient`.
 
-Some Server integration code remains in explicit adapter or compatibility areas such as `chronicle/src/cradle_client.rs`, `chronicle/src/transcript_inbox.rs`, and remote provider structs. That is intentional for compatibility, but the default Rust Chronicle core path no longer depends on those routes. A future cleanup can move legacy Server contract tests into an integration adapter namespace, but that is not required to prove the standalone core invariant in this plan.
+The legacy Chronicle Server compatibility code was removed, not moved behind opt-in flags. `chronicle/src/cradle_client.rs` and `chronicle/src/transcript_inbox.rs` were deleted. Remote triage, remote embedding, remote crystallization, and remote ASR paths were removed. The remaining Server URL helper exists for model installation only: `chronicle/src/models.rs` can request Server-managed model installation, while Rust owns local model lookup and loading.
 
 ## Context and Orientation
 
@@ -93,8 +98,7 @@ The current Rust crate has useful pieces already:
 - `chronicle/src/audio/` owns audio capture, WAV writing, VAD, ASR, speaker embedding, and related diagnostics.
 - `chronicle/src/memory_pipeline/` owns memory naming, prompt construction, local summary writing, and recursive summary orchestration.
 - `chronicle/src/codex_exec.rs` owns a child-process execution boundary that can become a non-Server LLM capability.
-- `chronicle/src/cradle_client.rs` owns HTTP payloads and calls into Cradle Server. This file is an integration boundary, not Chronicle core.
-- `chronicle/src/pipeline.rs`, `chronicle/src/triage.rs`, `chronicle/src/crystallizer.rs`, and `chronicle/src/embedding.rs` contain activity/memory processing concepts. Their default path is local after this plan; remote triage, remote crystallization, and remote embedding are explicit opt-in capabilities.
+- `chronicle/src/pipeline.rs`, `chronicle/src/triage.rs`, `chronicle/src/crystallizer.rs`, and `chronicle/src/embedding.rs` contain activity/memory processing concepts. Their path is local after this plan; remote Chronicle behavior was removed.
 
 The important architectural problem at baseline was that `chronicle/src/daemon.rs` mixed three concerns: it captured local evidence, created local memories, and reported or requested behavior from Cradle Server. This plan separated those concerns without touching Server code.
 
@@ -154,9 +158,9 @@ Expected result: the command exits successfully or with only expected inbox-empt
 
 Run static coupling checks after Milestone 4:
 
-    rg "CradleClient|cradle_client" chronicle/src/daemon.rs chronicle/src/pipeline.rs chronicle/src/memory_pipeline chronicle/src/audio
+    rg "CradleClient|cradle_client|transcript_inbox|RemoteAsr|RemoteEmbeddingProvider|TriageAgent" chronicle/src chronicle/tests
 
-Expected result: no matches in these core paths. Matches are acceptable only in explicitly named integration adapter files such as `chronicle/src/integrations/cradle_server.rs`, `chronicle/src/cradle_client.rs`, or legacy tests that target the adapter.
+Expected result: no matches.
 
 At the end, run:
 
@@ -178,7 +182,7 @@ The minimum accepted behavior is:
 3. The smoke storage root contains local frame artifacts, OCR/capture/snapshot JSON, a memory markdown file, and the new local store/index files.
 4. Running the daemon or smoke with `CRADLE_URL=http://127.0.0.1:1` does not prevent local smoke memory output or daemon run-once completion.
 5. `chronicle/src/daemon.rs` no longer imports or constructs `CradleClient`.
-6. Server-related HTTP code, if retained, lives behind an adapter and is not required by the local smoke or local daemon run-once path.
+6. Server-related Chronicle HTTP compatibility code is removed from Rust Chronicle. Server URL usage remains only for model installation helpers.
 
 A stronger accepted behavior, if completed in this plan, is:
 
@@ -205,7 +209,7 @@ Useful baseline commands from current repo state:
 Final validation evidence from 2026-05-23:
 
     cargo test --manifest-path chronicle/Cargo.toml
-    result: 205 unit tests passed, 1 binary smoke test passed, 0 failed.
+    result: 181 unit tests passed, 1 binary smoke test passed, 0 failed.
 
     CRADLE_URL=http://127.0.0.1:1 cargo run --manifest-path chronicle/Cargo.toml -- --smoke --storage-root /tmp/cradle-chronicle-final-smoke --capture-limit 2
     stdout included: cradle chronicle smoke completed: observed=2 persisted=2 duplicates=0 privacy_filtered=0
@@ -214,7 +218,7 @@ Final validation evidence from 2026-05-23:
     CRADLE_URL=http://127.0.0.1:1 cargo run --manifest-path chronicle/Cargo.toml -- --daemon --provider inbox --run-once --storage-root /tmp/cradle-chronicle-core-run-once
     stdout included: cradle chronicle daemon processed once: observed=0 persisted=0 duplicates=0 privacy_filtered=0
 
-    rg -n "CradleClient|cradle_client" chronicle/src/daemon.rs chronicle/src/pipeline.rs chronicle/src/memory_pipeline chronicle/src/audio
+    rg -n "CradleClient|cradle_client|transcript_inbox|RemoteAsr|RemoteEmbeddingProvider|TriageAgent" chronicle/src chronicle/tests
     result: no output
 
     rg -n "127\\.0\\.0\\.1:21423" chronicle/src
@@ -232,8 +236,7 @@ Baseline coupling evidence removed from the core path:
 Remaining integration code is intentionally isolated:
 
     chronicle/src/integrations/cradle_server.rs owns DEFAULT_CRADLE_URL and cradle_base_url()
-    chronicle/src/cradle_client.rs owns legacy Cradle Server HTTP route contracts
-    chronicle/src/audio/asr.rs contains RemoteAsr for explicit Server-backed ASR use
+    chronicle/src/models.rs can request Server-managed model installation
 
 The Codex Chronicle reference in `docs/draft-solutions/done/codex-chronicle-spec.md` is useful only as architectural evidence: Rust owns capture, artifacts, memory windows, and LLM child-process orchestration. This plan does not copy Codex-specific `MEMORY.md` behavior unless a later decision explicitly adds it.
 

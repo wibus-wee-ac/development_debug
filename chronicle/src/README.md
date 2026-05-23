@@ -8,20 +8,22 @@ Cradle Chronicle 的 Rust 源码目录。
 - `main.rs`: smoke、daemon、audio diagnostics、local ONNX embedding worker、WAV transcription 与 speaker embedding diagnostic 的 CLI entry point。
 - `config.rs`: 从 CLI flags 与 environment variables 解析 runtime configuration。
 - `error.rs`: shared error type 与 result alias。
+- `capabilities.rs`: provider-neutral summary capability 与 integration sink traits。默认 local/child-process capability 不依赖 Cradle Server；Server 能力必须作为 adapter 接入，而不是 core dependency。
 - `json.rs`: 不依赖外部 crate 的 JSON string escaping helpers。
 - `time.rs`: 不依赖外部 crate 的 UTC timestamp formatting helpers。
 - `ocr.rs`: OCR text extraction trait 与 observed-text implementation。
 - `codex_exec.rs`: 面向未来 LLM-backed summary writer 的 child-process runner。
-- `cradle_client.rs`: Cradle Server HTTP boundary，用于读取动态配置、请求 LLM summary，并 best-effort 上报 snapshot / accessibility / memory / audio transcript records。
-- `transcript_inbox.rs`: 外部 transcript producer 的 inbox processor，读取 audio transcript JSON manifest，上报成功后移动到 processed directory。
-- `daemon.rs`: daemon orchestration，负责 capture loop、idle handling、local artifact fallback，以及在本地证据落盘后向 Server 上报。
+- `daemon.rs`: daemon orchestration，负责 capture loop、idle handling、local artifact fallback、本地 Chronicle store event 写入和 memory manifest 记录。daemon core 不直接构造 Cradle Server client。
 
 ## Directories
 
 - `audio/`: microphone/system/mixed capture、bounded PCM buffer、RMS activity gate、本地 ONNX ASR pipeline 与 WAV artifact writer。
+- `core/`: Chronicle core composition root，组合 local store、summary capability 和 optional integration sink。
 - `screen/`: capture source traits、synthetic capture 与 privacy filtering。
 - `recorder/`: frame deduplication、artifact persistence 与 recorder orchestration。
 - `memory_pipeline/`: memory naming、prompt construction、recursive summarization 与 summary writing。
+- `store/`: local Chronicle state store，写入 append-only `events.ndjson` 和 `memory-manifest.json`。
+- `integrations/`: optional external integration helpers，例如 Cradle Server URL 常量与环境变量解析。
 
 ## Audio Diagnostics
 
@@ -52,7 +54,7 @@ Cradle Chronicle 的 Rust 源码目录。
 - `--audio-segment-interval-ms <ms>`: daemon 两次 audio segment capture 的最小间隔。
 - `--audio-rms-threshold <value>`: RMS activity gate 阈值，默认 `0.02`。
 
-这个 daemon mode 是明确 opt-in 的 audio artifact capture。写出 WAV/metadata 后，daemon 会 best-effort 调用 `POST /chronicle/audio-raw-segments`，让 Server/DB/Web 能看到原始片段证据；Server 不可用时只记录错误并保留本地 artifact。active segment 会立即进入本地 ONNX Silero VAD + SenseVoice ASR + speaker embedding pipeline，成功后通过 `/chronicle/audio-transcripts` 上报带 `speakerLabel` 的真实 transcript evidence，通过 `/chronicle/speaker-profiles` 上报 192 维 speaker profile embedding，并通过 raw audio processing-result contract 回写 VAD/ASR/speaker 状态。
+这个 daemon mode 是明确 opt-in 的 audio artifact capture。写出 WAV/metadata 后，daemon 会先把 raw audio segment、processing result、transcript 和 speaker profile facts 写入本地 `events.ndjson`。active segment 会立即进入本地 ONNX Silero VAD + SenseVoice ASR + speaker embedding pipeline；Server 或 UI 若需要消费这些事实，应通过后续 adapter/projection 读取本地 Chronicle state，而不是让 daemon core 直接拥有 Server route contract。
 
 ## Privacy Capture Rules
 
@@ -72,7 +74,7 @@ Cradle Chronicle 的 Rust 源码目录。
 { "texts": ["text to embed"] }
 ```
 
-它会加载 Chronicle model resource root 下的 `embedding/model.onnx` 和 `embedding/tokenizer.json`，用 all-MiniLM-L6-v2 ONNX runtime 输出 normalized text embeddings。Cradle Server 的 `/chronicle/embeddings`、memory semantic index 和 dream merge 会复用这个入口；模型缺失时 Server 的 memory search/dream run 会回退到 `chronicle-lexical/v1`。
+它会加载 Chronicle model resource root 下的 `embedding/model.onnx` 和 `embedding/tokenizer.json`，用 all-MiniLM-L6-v2 ONNX runtime 输出 normalized text embeddings。这个入口是 Rust Chronicle 的本地 worker；调用方可以通过进程边界复用它，但 Chronicle core 不依赖 Server embedding route。模型缺失时，Rust 只报告本地路径和 `CRADLE_MODELS_DIR` 提示。
 
 ## Local PII Model Diagnostic
 
@@ -107,26 +109,17 @@ cradle-chronicle --inspect-onnx ~/.cradle/chronicle/models/speaker/model.onnx
 
 `--inspect-onnx` 会加载指定 ONNX 文件并输出 input/output contract，用于区分“模型文件缺失/损坏”和“音频处理逻辑失败”。这些 local-only 诊断入口默认最多运行 30 秒；如果 ONNX Runtime 或模型加载卡住，会返回 timeout。可以通过 `CRADLE_CHRONICLE_LOCAL_DIAGNOSTIC_TIMEOUT_MS` 调整上限。
 
-## Server Reporting
+## External Integration Boundary
 
-Daemon 仍然先写本地 artifact，再尝试调用 Cradle Server：
+Rust Chronicle 的 core path 不再把 Cradle Server 当成必需组件。`daemon.rs` 先写本地 artifact，再把 snapshot、accessibility event、memory manifest、audio segment、transcript、speaker profile 和 processing result 写入本地 `events.ndjson` / `memory-manifest.json`。这些文件是 Server 不存在时也能检查和恢复的 Chronicle state。
 
-- `POST /chronicle/snapshots`: payload 来自 `ChronicleSnapshotReport`，包含 display/frame metadata、OCR text 与 artifact paths。
-- `POST /chronicle/accessibility-events`: payload 来自 `ChronicleAccessibilityEventReport`，用于记录 AXObserver 捕捉到的 notification history。事件记录独立于 snapshot artifact，可选关联后续 snapshot/accessibility evidence。
-- `POST /chronicle/snapshots`: 同一个 payload 会携带 accessibility evidence。当前 macOS provider 会检查 Accessibility permission，默认启动 AXObserver runtime foundation 订阅 frontmost app 的 UI notifications；daemon 会在 frontmost app 变化时重建 observer，并把部分 notification 触发的 AX tree evidence 以 `macos-ax-observer` provider 写入 `accessibility-*.json` / `accessibility.json` 后上报。定时截图仍会轮询 frontmost app 的 `AXUIElement` tree，provider 为 `macos-ax-tree-poll`；权限未授予时 status 为 `permission-denied`，AX tree 读取失败时降级为 window inventory。
-- `POST /chronicle/memories`: payload 来自 `ChronicleMemoryReport`，包含 window type、summary kind、markdown content、memory path 与 source artifact paths。
-- `POST /chronicle/audio-raw-segments`: payload 来自 `ChronicleAudioRawSegmentReport`，用于上报已经写出的 raw microphone/system/mixed WAV/metadata artifact evidence。
-- `POST /chronicle/audio-raw-segments/:sourceId/processing-result`: payload 来自 `ChronicleAudioRawSegmentProcessingResultReport`，用于回写某个 raw audio segment 的 VAD/ASR/speaker processing status、派生 transcript source 与 speaker profile refs。
-- `POST /chronicle/audio-transcripts`: payload 来自 `ChronicleAudioTranscriptReport`，用于上报已经生成的 transcript evidence 与 segments。
-- `POST /chronicle/speaker-profiles`: payload 来自 `ChronicleSpeakerProfileReport`，用于上报本地 speaker embedding runtime 学到的 speaker profile、aliases 与可选 embedding vector。
-
-这些调用是 best-effort。Server 不可用、路由尚未实现或请求失败时，daemon 只输出错误日志，不删除本地 frame、capture、OCR、accessibility、snapshot、memory markdown、raw audio segment、transcript artifact、speaker profile evidence 或 AX event history。当前 Rust crate 已有 opt-in microphone/system/mixed segment artifact capture、macOS ScreenCaptureKit system-audio stream、raw segment report contract、本地 ONNX VAD/ASR transcript report、speaker embedding/profile runtime、speaker profile report contract、AX tree polling accessibility evidence、AXObserver notification-triggered capture foundation 与 standalone AX event history report。
+Cradle Server 不再拥有 Chronicle ingest、triage、embedding、crystallization 或 ASR 语义。Server 当前保留的合理职责是模型安装、下载和校验；Rust 通过本地 model root 和 `CRADLE_MODELS_DIR` 查找并加载模型。任何 Server URL 都应通过 `integrations/cradle_server.rs` 的 `DEFAULT_CRADLE_URL` / `cradle_base_url()` 读取，不能在 core path 分散硬编码。
 
 ## Transcript Inbox
 
-Daemon 每轮都会以 bounded batch 扫描 `CHRONICLE_INBOX_ROOT/audio-transcripts/*.json`。这些 JSON 文件使用 `ChronicleAudioTranscriptReport` 的 camelCase contract，并接受与 Server ingest 相同的 optional/default 字段；成功上报到 `POST /chronicle/audio-transcripts` 后，文件会被移动到 `CHRONICLE_INBOX_ROOT/audio-transcripts/processed/`。
+Daemon 每轮都会以 bounded batch 扫描 `CHRONICLE_INBOX_ROOT/audio-transcripts/*.json`。这些 JSON 文件会作为本地 transcript evidence 记录到 `events.ndjson`；成功记录后，文件会被移动到 `CHRONICLE_INBOX_ROOT/audio-transcripts/processed/`。
 
-如果 manifest 无法解析、字段不符合本地 contract，或者 Server 上报失败，原文件会留在 `audio-transcripts/`，下次 daemon loop 继续重试。这个 inbox 可用于 fixture importer 或外部 transcript producer；daemon 内置 ASR path 已直接通过 `/chronicle/audio-transcripts` 上报，不依赖 inbox。
+如果 manifest 无法读取，原文件会留在 `audio-transcripts/`，下次 daemon loop 继续重试。这个 inbox 可用于 fixture importer 或外部 transcript producer；daemon 内置 ASR path 会直接写本地 transcript event，不依赖 Server ingest。
 
 ## Runtime Cleanup
 

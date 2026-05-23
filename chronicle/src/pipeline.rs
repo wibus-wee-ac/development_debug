@@ -1,15 +1,14 @@
 //! Pipeline Engine — orchestrates the full processing flow:
 //! Segmentation → Triage → Crystallization → Dedup → Storage.
 
-use crate::cradle_client::{DEFAULT_CRADLE_URL, cradle_base_url};
 use crate::crystallizer::{Crystallizer, CrystallizerConfig, MemoryChunk};
 use crate::dedup::{DedupConfig, DedupEngine, DedupVerdict};
-use crate::embedding::{EmbeddingProvider, HashEmbeddingProvider, RemoteEmbeddingProvider};
+use crate::embedding::{EmbeddingProvider, HashEmbeddingProvider};
 use crate::error::ChronicleResult;
 use crate::pii::{PiiConfig, PiiRedactor};
 use crate::recorder::artifacts::PersistedFrame;
 use crate::segmenter::{ActivitySegment, Segmenter, SegmenterConfig};
-use crate::triage::{TriageAgent, TriageResult, triage_locally};
+use crate::triage::{TriageResult, triage_locally};
 
 // ─── Pipeline Stage ──────────────────────────────────────────────────────────
 
@@ -44,9 +43,6 @@ pub struct PipelineConfig {
     pub segmenter: SegmenterConfig,
     pub dedup: DedupConfig,
     pub crystallizer: CrystallizerConfig,
-    pub use_remote_triage: bool,
-    pub use_remote_embedding: bool,
-    pub cradle_url: String,
 }
 
 impl Default for PipelineConfig {
@@ -55,9 +51,6 @@ impl Default for PipelineConfig {
             segmenter: SegmenterConfig::default(),
             dedup: DedupConfig::default(),
             crystallizer: CrystallizerConfig::default(),
-            use_remote_triage: false,
-            use_remote_embedding: false,
-            cradle_url: DEFAULT_CRADLE_URL.to_string(),
         }
     }
 }
@@ -70,7 +63,6 @@ pub struct Pipeline {
     segmenter: Segmenter,
     dedup: DedupEngine,
     crystallizer: Crystallizer,
-    triage_agent: TriageAgent,
     pii_redactor: PiiRedactor,
     embedding: Box<dyn EmbeddingProvider>,
     produced_chunks: Vec<MemoryChunk>,
@@ -81,15 +73,8 @@ impl Pipeline {
     pub fn new(config: PipelineConfig) -> Self {
         let segmenter = Segmenter::new(config.segmenter.clone());
         let dedup = DedupEngine::new(config.dedup.clone());
-        let crystallizer =
-            Crystallizer::new(config.cradle_url.clone(), config.crystallizer.clone());
-        let triage_agent = TriageAgent::new(config.cradle_url.clone());
-
-        let embedding: Box<dyn EmbeddingProvider> = if config.use_remote_embedding {
-            Box::new(RemoteEmbeddingProvider::new(config.cradle_url.clone()))
-        } else {
-            Box::new(HashEmbeddingProvider::default())
-        };
+        let crystallizer = Crystallizer::new(config.crystallizer.clone());
+        let embedding: Box<dyn EmbeddingProvider> = Box::new(HashEmbeddingProvider::default());
 
         let pii_redactor = PiiRedactor::new(PiiConfig::default());
 
@@ -98,7 +83,6 @@ impl Pipeline {
             segmenter,
             dedup,
             crystallizer,
-            triage_agent,
             pii_redactor,
             embedding,
             produced_chunks: Vec::new(),
@@ -107,12 +91,7 @@ impl Pipeline {
     }
 
     pub fn from_env() -> Self {
-        let cradle_url = cradle_base_url();
-        let config = PipelineConfig {
-            cradle_url,
-            ..Default::default()
-        };
-        Self::new(config)
+        Self::new(PipelineConfig::default())
     }
 
     /// Main entry point: process a batch of frames through the full pipeline.
@@ -252,11 +231,7 @@ impl Pipeline {
     }
 
     fn triage_segment(&self, segment: &ActivitySegment) -> ChronicleResult<TriageResult> {
-        if self.config.use_remote_triage {
-            self.triage_agent.triage(segment)
-        } else {
-            Ok(triage_locally(segment))
-        }
+        Ok(triage_locally(segment))
     }
 
     /// Redact PII from a segment's text fields in place.
@@ -275,8 +250,6 @@ impl Pipeline {
         }
     }
 }
-
-// ─── Convenience ─────────────────────────────────────────────────────────────
 
 /// Run the full pipeline on a batch of frames with default configuration.
 pub fn run_pipeline(frames: &[PersistedFrame]) -> ChronicleResult<PipelineRunReport> {
@@ -404,6 +377,27 @@ mod tests {
             report.chunks_produced + report.chunks_deduplicated,
             report.segments_kept
         );
+    }
+
+    #[test]
+    fn default_pipeline_uses_local_crystallization() {
+        let config = PipelineConfig {
+            segmenter: SegmenterConfig {
+                text_change_threshold: 1.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut pipeline = Pipeline::new(config);
+        let frames = vec![
+            mock_frame(0, "writing code in editor", "com.microsoft.VSCode", 1000),
+            mock_frame(1, "writing more code", "com.microsoft.VSCode", 1005),
+        ];
+
+        let report = pipeline.process_frames(&frames).unwrap();
+
+        assert_eq!(report.segments_kept, 1);
+        assert_eq!(report.chunks_produced, 1);
     }
 
     #[test]

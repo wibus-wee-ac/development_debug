@@ -2,12 +2,11 @@
 //!
 //! Provides a trait-based abstraction for embedding backends:
 //! - `HashEmbeddingProvider`: deterministic hash-based fallback for testing/offline
-//! - `RemoteEmbeddingProvider`: delegates to Cradle Server via HTTP
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-use crate::error::{ChronicleError, ChronicleResult};
+use crate::error::ChronicleResult;
 
 /// A fixed-size embedding vector.
 #[derive(Debug, Clone, PartialEq)]
@@ -150,79 +149,6 @@ impl EmbeddingProvider for HashEmbeddingProvider {
     fn dimensions(&self) -> usize {
         self.dimensions
     }
-}
-
-/// HTTP-based embedding provider that delegates to Cradle Server.
-///
-/// Calls `POST {base_url}/chronicle/embeddings` with a JSON body.
-pub struct RemoteEmbeddingProvider {
-    base_url: String,
-    dimensions: usize,
-}
-
-impl RemoteEmbeddingProvider {
-    const DEFAULT_DIMENSIONS: usize = 768;
-
-    pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            base_url: base_url.into(),
-            dimensions: Self::DEFAULT_DIMENSIONS,
-        }
-    }
-
-    pub fn with_dimensions(mut self, dimensions: usize) -> Self {
-        self.dimensions = dimensions;
-        self
-    }
-}
-
-impl EmbeddingProvider for RemoteEmbeddingProvider {
-    fn embed(&self, text: &str) -> ChronicleResult<Embedding> {
-        let mut results = self.embed_batch(&[text])?;
-        results
-            .pop()
-            .ok_or_else(|| ChronicleError::Process("empty embedding response".into()))
-    }
-
-    fn embed_batch(&self, texts: &[&str]) -> ChronicleResult<Vec<Embedding>> {
-        let url = format!("{}/chronicle/embeddings", self.base_url);
-        let body = serde_json::json!({ "texts": texts });
-        let json_body = serde_json::to_string(&body)
-            .map_err(|e| ChronicleError::Process(format!("failed to serialize request: {e}")))?;
-
-        let mut response = ureq::post(&url)
-            .header("Content-Type", "application/json")
-            .send(json_body.as_bytes())
-            .map_err(|e| ChronicleError::Process(format!("embedding request failed: {e}")))?;
-
-        let response_body = response.body_mut().read_to_string().map_err(|e| {
-            ChronicleError::Process(format!("failed to read embedding response: {e}"))
-        })?;
-
-        let resp: EmbeddingResponse = serde_json::from_str(&response_body).map_err(|e| {
-            ChronicleError::Process(format!("failed to parse embedding response: {e}"))
-        })?;
-
-        let embeddings = resp
-            .embeddings
-            .into_iter()
-            .map(|values| {
-                let dimensions = values.len();
-                Embedding { dimensions, values }
-            })
-            .collect();
-
-        Ok(embeddings)
-    }
-
-    fn dimensions(&self) -> usize {
-        self.dimensions
-    }
-}
-
-#[derive(serde::Deserialize)]
-struct EmbeddingResponse {
-    embeddings: Vec<Vec<f32>>,
 }
 
 /// ONNX-based embedding provider using local all-MiniLM-L6-v2 model.

@@ -1,31 +1,12 @@
-//! Triage agent that classifies activity segments via LLM or local heuristics.
-
-use std::time::Duration;
+//! Local triage heuristics for activity segments.
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ChronicleError, ChronicleResult};
 use crate::segmenter::{ActivitySegment, SegmentType};
-
-const TRIAGE_TIMEOUT: Duration = Duration::from_secs(30);
-const OCR_SAMPLE_LIMIT: usize = 2000;
-const ACCESSIBILITY_SAMPLE_LIMIT: usize = 1000;
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TriageRequest {
-    pub segment_id: u64,
-    pub front_app: Option<String>,
-    pub title: Option<String>,
-    pub duration_seconds: u64,
-    pub frame_count: usize,
-    pub ocr_sample: String,
-    pub accessibility_sample: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TriageResult {
     pub segment_id: u64,
@@ -49,65 +30,6 @@ pub enum TriageCategory {
     #[default]
     Unknown,
 }
-
-// ─── Agent ───────────────────────────────────────────────────────────────────
-
-pub struct TriageAgent {
-    base_url: String,
-}
-
-impl TriageAgent {
-    pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            base_url: base_url.into(),
-        }
-    }
-
-    pub fn from_env() -> Self {
-        let base_url = crate::cradle_client::cradle_base_url();
-        Self { base_url }
-    }
-
-    /// Classify a single segment via Cradle Server LLM.
-    /// Falls back to a permissive default if the server is unreachable.
-    pub fn triage(&self, segment: &ActivitySegment) -> ChronicleResult<TriageResult> {
-        let request = build_request(segment);
-        let url = format!("{}/chronicle/triage", self.base_url);
-
-        let json_body = serde_json::to_string(&request).map_err(|e| {
-            ChronicleError::Process(format!("failed to serialize triage request: {e}"))
-        })?;
-
-        let response = ureq::post(&url)
-            .header("Content-Type", "application/json")
-            .config()
-            .timeout_global(Some(TRIAGE_TIMEOUT))
-            .build()
-            .send(json_body.as_bytes());
-
-        match response {
-            Ok(mut resp) => {
-                let body = resp.body_mut().read_to_string().map_err(|e| {
-                    ChronicleError::Process(format!("failed to read triage response: {e}"))
-                })?;
-                serde_json::from_str(&body).map_err(|e| {
-                    ChronicleError::Process(format!("failed to parse triage response: {e}"))
-                })
-            }
-            Err(_) => Ok(graceful_default(segment.id)),
-        }
-    }
-
-    /// Batch triage multiple segments.
-    pub fn triage_batch(
-        &self,
-        segments: &[&ActivitySegment],
-    ) -> ChronicleResult<Vec<TriageResult>> {
-        segments.iter().map(|s| self.triage(s)).collect()
-    }
-}
-
-// ─── Local heuristic triage ──────────────────────────────────────────────────
 
 /// Simple rule-based triage without LLM. Useful as a fast pre-filter.
 pub fn triage_locally(segment: &ActivitySegment) -> TriageResult {
@@ -178,51 +100,6 @@ pub fn triage_locally(segment: &ActivitySegment) -> TriageResult {
         confidence: 0.5,
         category: TriageCategory::Unknown,
         reason: "unclassified activity".to_string(),
-    }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-fn build_request(segment: &ActivitySegment) -> TriageRequest {
-    let ocr_combined: String = segment.ocr_texts.join(" ");
-    let ocr_sample = truncate_str(&ocr_combined, OCR_SAMPLE_LIMIT);
-
-    let acc_combined: String = segment.accessibility_texts.join(" ");
-    let accessibility_sample = truncate_str(&acc_combined, ACCESSIBILITY_SAMPLE_LIMIT);
-
-    let duration_seconds =
-        segment.end_time.seconds_since_epoch() - segment.start_time.seconds_since_epoch();
-
-    TriageRequest {
-        segment_id: segment.id,
-        front_app: segment.front_app.clone(),
-        title: segment.title.clone(),
-        duration_seconds,
-        frame_count: segment.frame_count,
-        ocr_sample,
-        accessibility_sample,
-    }
-}
-
-fn truncate_str(s: &str, max_bytes: usize) -> String {
-    if s.len() <= max_bytes {
-        return s.to_string();
-    }
-    // Find a valid char boundary at or before max_bytes
-    let mut end = max_bytes;
-    while end > 0 && !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    s[..end].to_string()
-}
-
-fn graceful_default(segment_id: u64) -> TriageResult {
-    TriageResult {
-        segment_id,
-        worth_keeping: true,
-        confidence: 0.0,
-        category: TriageCategory::Unknown,
-        reason: "server unreachable, defaulting to keep".to_string(),
     }
 }
 
@@ -385,37 +262,5 @@ mod tests {
         let result = triage_locally(&seg);
         assert!(result.worth_keeping);
         assert_eq!(result.category, TriageCategory::Browsing);
-    }
-
-    #[test]
-    fn triage_request_truncates_long_text() {
-        let long_ocr = "a".repeat(5000);
-        let long_acc = "b".repeat(3000);
-        let seg = ActivitySegment {
-            id: 9,
-            start_frame_index: 0,
-            end_frame_index: 5,
-            start_time: Timestamp::from_seconds(0),
-            end_time: Timestamp::from_seconds(100),
-            segment_type: SegmentType::Work,
-            front_app: Some("app".to_string()),
-            title: None,
-            frame_count: 5,
-            ocr_texts: vec![long_ocr],
-            accessibility_texts: vec![long_acc],
-        };
-
-        let req = build_request(&seg);
-        assert!(req.ocr_sample.len() <= OCR_SAMPLE_LIMIT);
-        assert!(req.accessibility_sample.len() <= ACCESSIBILITY_SAMPLE_LIMIT);
-    }
-
-    #[test]
-    fn truncate_str_handles_multibyte() {
-        let s = "héllo wörld"; // contains multi-byte chars
-        let truncated = truncate_str(s, 5);
-        assert!(truncated.len() <= 5);
-        // Must be valid UTF-8
-        assert!(std::str::from_utf8(truncated.as_bytes()).is_ok());
     }
 }

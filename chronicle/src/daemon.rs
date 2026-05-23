@@ -9,19 +9,13 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime};
 
 use crate::audio::{
-    AudioArtifactMetadata, AudioTranscriptionPipeline, LocalTranscriptionPipeline, RmsActivityGate,
-    TranscriptionResult, TranscriptionRuntime, capture_microphone_samples,
-    capture_mixed_audio_samples, capture_system_audio_samples, write_audio_segment_artifact,
+    AudioArtifactMetadata, LocalTranscriptionPipeline, RmsActivityGate, TranscriptionResult,
+    TranscriptionRuntime, capture_microphone_samples, capture_mixed_audio_samples,
+    capture_system_audio_samples, write_audio_segment_artifact,
 };
+use crate::capabilities::{LocalSummaryCapability, NoopIntegrationSink};
 use crate::config::{AudioCaptureSource, CaptureProvider, ChronicleConfig};
-use crate::cradle_client::{
-    ChronicleAccessibilityEventReport, ChronicleAudioProcessingStatus,
-    ChronicleAudioRawSegmentProcessingResultReport, ChronicleAudioRawSegmentReport,
-    ChronicleAudioRawSegmentSource, ChronicleAudioRawSegmentStatus, ChronicleAudioTranscriptReport,
-    ChronicleAudioTranscriptSegmentReport, ChronicleAudioTranscriptSource,
-    ChronicleAudioTranscriptStatus, ChronicleMemoryReport, ChronicleSnapshotReport,
-    ChronicleSpeakerProfileReport, ChronicleTranscriptConfidence, CradleClient,
-};
+use crate::core::ChronicleCore;
 use crate::cron::{CronScheduler, CronTickResult, TaskKind, default_jobs};
 use crate::dream::{DreamConfig, DreamEngine, DreamMode};
 use crate::error::{ChronicleError, ChronicleResult};
@@ -37,8 +31,8 @@ use crate::screen::BrowserWindowObservation;
 use crate::screen::inbox::InboxCaptureSource;
 use crate::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
 use crate::slack::SlackScanner;
+use crate::store::{ChronicleMemoryManifest, ChronicleStore, ChronicleStoreEvent};
 use crate::time::Timestamp;
-use crate::transcript_inbox::process_transcript_inbox_tick;
 
 #[cfg(target_os = "macos")]
 use crate::screen::macos::{
@@ -48,6 +42,16 @@ use crate::screen::macos::{
 use crate::RecorderManager;
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
+
+type LocalChronicleCore = ChronicleCore<LocalSummaryCapability, NoopIntegrationSink>;
+
+fn local_core(storage_root: &Path) -> LocalChronicleCore {
+    ChronicleCore::new(
+        ChronicleStore::new(storage_root),
+        LocalSummaryCapability,
+        NoopIntegrationSink,
+    )
+}
 
 /// Run Chronicle in daemon mode.
 pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
@@ -76,15 +80,15 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
     );
 
     if config.run_once {
+        let core = local_core(&config.storage_root);
         let report = capture_once(&config, 1)?;
-        let client = CradleClient::from_env();
-        process_transcripts(&config.inbox_root, &client);
+        process_transcripts(&config.inbox_root, &core);
         let onnx_runtime = crate::onnx::OnnxRuntime::new();
         let local_transcription = LocalTranscriptionPipeline::new(&onnx_runtime);
         if config.audio_capture {
-            process_audio_segment(&config, &client, &local_transcription);
+            process_audio_segment(&config, &core, &local_transcription);
         }
-        report_snapshots(&client, &report.persisted_frames);
+        record_snapshots(&core, &report.persisted_frames);
         drop(lock);
         cleanup_pid_file(&config.storage_root);
         return Ok(format!(
@@ -107,7 +111,7 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
 }
 
 fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
-    let client = CradleClient::from_env();
+    let core = local_core(&config.storage_root);
     let mut sampler = AdaptiveSampler::new(
         config.poll_interval_ms,
         config.min_interval_ms,
@@ -168,21 +172,20 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
 
     // Audio transcription pipeline: local ONNX (Silero VAD + SenseVoice ASR)
     let local_transcription = crate::audio::asr::LocalTranscriptionPipeline::new(&onnx_runtime);
-    let _audio_pipeline = AudioTranscriptionPipeline::from_env();
-    eprintln!("cradle chronicle audio transcription pipeline ready (local ONNX + remote fallback)");
+    eprintln!("cradle chronicle audio transcription pipeline ready (local ONNX)");
 
     while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
-        process_transcripts(&config.inbox_root, &client);
+        process_transcripts(&config.inbox_root, &core);
         process_audio_segment_if_due(
             config,
-            &client,
+            &core,
             &local_transcription,
             &mut last_audio_segment_time,
         );
         #[cfg(target_os = "macos")]
         refresh_ax_observer(config, &mut ax_observer);
         #[cfg(target_os = "macos")]
-        process_ax_observer_events(config, &client, &ax_observer, &mut frame_index);
+        process_ax_observer_events(config, &core, &ax_observer, &mut frame_index);
 
         // Check system idle
         let idle_seconds = system_idle_seconds();
@@ -206,7 +209,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
             Ok(report) => {
                 frame_index += 1;
                 if !report.persisted_frames.is_empty() {
-                    report_snapshots(&client, &report.persisted_frames);
+                    record_snapshots(&core, &report.persisted_frames);
 
                     // Meeting detection from the latest captured frame
                     if let Some(latest_frame) = report.persisted_frames.last() {
@@ -227,7 +230,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
                         eprintln!(
                             "cradle chronicle: pending frames exceeded cap, forcing early summarization"
                         );
-                        if let Err(e) = run_summary(config, &all_persisted) {
+                        if let Err(e) = run_summary(config, &core, &all_persisted) {
                             eprintln!("cradle chronicle forced summary error: {e}");
                         }
                         process_pipeline(&mut pipeline, &all_persisted);
@@ -253,7 +256,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
 
         // Periodic summarization
         if last_summary_time.elapsed() >= summary_interval && !all_persisted.is_empty() {
-            if let Err(e) = run_summary(config, &all_persisted) {
+            if let Err(e) = run_summary(config, &core, &all_persisted) {
                 eprintln!("cradle chronicle summary error: {e}");
             }
             process_pipeline(&mut pipeline, &all_persisted);
@@ -275,7 +278,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
         // Slack poll
         if last_slack_poll.elapsed() >= slack_interval {
             if let Some(ref mut scanner) = slack_scanner {
-                poll_slack(scanner, &client);
+                poll_slack(scanner, &core);
             }
             last_slack_poll = Instant::now();
         }
@@ -286,7 +289,7 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
 
     // Final summary before exit
     if !all_persisted.is_empty() {
-        if run_summary(config, &all_persisted).is_err() {
+        if run_summary(config, &core, &all_persisted).is_err() {
             eprintln!("cradle chronicle final summary error");
         }
         process_pipeline(&mut pipeline, &all_persisted);
@@ -346,7 +349,7 @@ fn refresh_ax_observer(config: &ChronicleConfig, observer: &mut Option<AxObserve
 #[cfg(target_os = "macos")]
 fn process_ax_observer_events(
     config: &ChronicleConfig,
-    client: &CradleClient,
+    core: &LocalChronicleCore,
     observer: &Option<AxObserverRuntime>,
     frame_index: &mut u64,
 ) {
@@ -355,13 +358,13 @@ fn process_ax_observer_events(
     };
     for event in observer.drain(4) {
         let captured_at = Timestamp::now().unwrap_or_else(|_| Timestamp::from_seconds(0));
-        report_accessibility_event(client, &event, captured_at);
+        record_accessibility_event(core, &event, captured_at);
         let accessibility = read_ax_observer_accessibility_capture(&event);
         match capture_macos_with_accessibility(config, *frame_index, accessibility) {
             Ok(report) => {
                 *frame_index += 1;
                 if !report.persisted_frames.is_empty() {
-                    report_snapshots(client, &report.persisted_frames);
+                    record_snapshots(core, &report.persisted_frames);
                     eprintln!(
                         "cradle chronicle AXObserver event captured: notification={} pid={} frames={} dropped_total={}",
                         event.notification,
@@ -382,32 +385,33 @@ fn process_ax_observer_events(
 }
 
 #[cfg(target_os = "macos")]
-fn report_accessibility_event(
-    client: &CradleClient,
+fn record_accessibility_event(
+    core: &LocalChronicleCore,
     event: &crate::screen::macos::AxObserverNotification,
     captured_at: Timestamp,
 ) {
-    let report = ChronicleAccessibilityEventReport {
-        source_id: accessibility_event_source_id(event, captured_at),
-        captured_at: captured_at.filesystem(),
-        provider: "macos-ax-observer".to_string(),
-        app_bundle_id: Some(event.app_bundle_identifier.clone()),
-        pid: event.pid,
-        notification: event.notification.clone(),
-        dropped_before: event.dropped_before,
-        snapshot_id: None,
-        accessibility_snapshot_id: None,
-        metadata: serde_json::json!({
+    let source_id = accessibility_event_source_id(event, captured_at);
+    record_store_event(
+        core,
+        ChronicleStoreEvent {
+            id: source_id.clone(),
+            kind: "accessibility-event".to_string(),
+            created_at: captured_at.filesystem(),
+            payload: serde_json::json!({
+                "sourceId": source_id,
+                "provider": "macos-ax-observer",
+                "appBundleId": event.app_bundle_identifier,
+                "pid": event.pid,
+                "notification": event.notification,
+                "droppedBefore": event.dropped_before,
+                "metadata": {
             "runtime": "macos-ax-observer",
             "targetBundleIdentifier": event.app_bundle_identifier,
             "targetPid": event.pid
-        }),
-    };
-    if let Err(error) = client.record_accessibility_event(&report) {
-        eprintln!(
-            "cradle chronicle AXObserver event report failed, keeping local capture path: {error}"
-        );
-    }
+                }
+            }),
+        },
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -535,54 +539,14 @@ fn capture_macos(
     ))
 }
 
-fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> ChronicleResult<()> {
+fn run_summary(
+    config: &ChronicleConfig,
+    core: &LocalChronicleCore,
+    persisted: &[PersistedFrame],
+) -> ChronicleResult<()> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let memories_dir = store.memories_dir();
-    let client = CradleClient::from_env();
-
-    // Try Cradle Server for LLM-backed summarization
-    if let Some(remote_config) = client.fetch_config()
-        && remote_config.enabled
-    {
-        let prompt = crate::memory_pipeline::prompt::build_memory_prompt(persisted, &[]);
-        match client.summarize(&prompt, "10min") {
-            Ok(summary) => {
-                // Write LLM summary to memories directory
-                std::fs::create_dir_all(&memories_dir)
-                    .map_err(|e| ChronicleError::io_at(&memories_dir, e))?;
-                let filename = crate::memory_pipeline::naming::memory_filename(
-                    segment_started_at,
-                    &crate::memory_pipeline::naming::MemoryWindow::TenMinutes,
-                    "cradle-llm-summary",
-                );
-                let output_path = memories_dir.join(filename);
-                std::fs::write(&output_path, &summary)
-                    .map_err(|e| ChronicleError::io_at(&output_path, e))?;
-                eprintln!(
-                    "cradle chronicle LLM memory written: {}",
-                    output_path.display()
-                );
-                report_memory(
-                    &client,
-                    ChronicleMemoryReport::from_summary(
-                        "10min",
-                        segment_started_at.filesystem(),
-                        &output_path,
-                        summary,
-                        "llm",
-                        persisted,
-                    ),
-                );
-                return Ok(());
-            }
-            Err(e) => {
-                eprintln!("cradle chronicle LLM summary failed, falling back to local: {e}");
-            }
-        }
-    }
-
-    // Fallback: local summary (no LLM)
     let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
     let summary = summarizer
         .write_ten_minute_summary("Cradle Chronicle daemon capture", persisted.to_vec())?;
@@ -590,33 +554,78 @@ fn run_summary(config: &ChronicleConfig, persisted: &[PersistedFrame]) -> Chroni
         "cradle chronicle local memory written: {}",
         summary.output_path.display()
     );
-    report_memory(
-        &client,
-        ChronicleMemoryReport::from_summary(
-            "10min",
-            segment_started_at.filesystem(),
-            &summary.output_path,
-            summary.markdown,
-            "local",
-            persisted,
-        ),
+    record_memory_manifest(
+        core,
+        "10min",
+        segment_started_at,
+        &summary.output_path,
+        persisted,
     );
     Ok(())
 }
 
-fn report_snapshots(client: &CradleClient, persisted: &[PersistedFrame]) {
+fn record_snapshots(core: &LocalChronicleCore, persisted: &[PersistedFrame]) {
     for frame in persisted {
-        let report = ChronicleSnapshotReport::from_persisted_frame(frame);
-        if let Err(error) = client.record_snapshot(&report) {
-            eprintln!("cradle chronicle snapshot report failed, keeping local artifacts: {error}");
-        }
+        record_store_event(
+            core,
+            ChronicleStoreEvent {
+                id: snapshot_source_id(frame),
+                kind: "snapshot".to_string(),
+                created_at: frame.captured_at.filesystem(),
+                payload: serde_json::json!({
+                    "sourceId": snapshot_source_id(frame),
+                    "displayId": frame.display_id,
+                    "frameIndex": frame.frame_index,
+                    "capturedAt": frame.captured_at.filesystem(),
+                    "segmentDir": artifact_path_text(&frame.segment_dir),
+                    "framePath": artifact_path_text(&frame.frame_path),
+                    "capturePath": artifact_path_text(&frame.capture_path),
+                    "ocrPath": artifact_path_text(&frame.ocr_path),
+                    "snapshotPath": artifact_path_text(&frame.snapshot_path),
+                    "accessibilityPath": artifact_path_text(&frame.accessibility_path),
+                    "ocrText": frame.normalized_text
+                }),
+            },
+        );
     }
 }
 
-fn report_memory(client: &CradleClient, report: ChronicleMemoryReport) {
-    if let Err(error) = client.record_memory(&report) {
-        eprintln!("cradle chronicle memory report failed, keeping local memory: {error}");
+fn record_memory_manifest(
+    core: &LocalChronicleCore,
+    window: &str,
+    created_at: Timestamp,
+    output_path: &Path,
+    source_frames: &[PersistedFrame],
+) {
+    let manifest = ChronicleMemoryManifest {
+        id: format!("memory:{}", output_path.display()),
+        window: window.to_string(),
+        created_at: created_at.filesystem(),
+        memory_path: output_path.to_path_buf(),
+        source_paths: source_frames
+            .iter()
+            .flat_map(|frame| [frame.snapshot_path.clone(), frame.frame_path.clone()])
+            .collect(),
+        summary_kind: "local".to_string(),
+    };
+    if let Err(error) = core.record_memory(manifest) {
+        eprintln!("cradle chronicle memory manifest write failed: {error}");
     }
+}
+
+fn record_store_event(core: &LocalChronicleCore, event: ChronicleStoreEvent) {
+    if let Err(error) = core.append_event(event) {
+        eprintln!("cradle chronicle local event write failed: {error}");
+    }
+}
+
+fn snapshot_source_id(frame: &PersistedFrame) -> String {
+    format!(
+        "snapshot:{}:{}:{}",
+        frame.display_id,
+        frame.frame_index,
+        frame.captured_at.compact()
+    )
 }
 
 fn check_meeting_state(frame: &PersistedFrame, is_in_meeting: &mut bool) {
@@ -762,7 +771,7 @@ fn process_cron_jobs(
     }
 }
 
-fn poll_slack(scanner: &mut SlackScanner, client: &CradleClient) {
+fn poll_slack(scanner: &mut SlackScanner, core: &LocalChronicleCore) {
     match scanner.poll_all() {
         Ok(messages) if !messages.is_empty() => {
             eprintln!(
@@ -778,9 +787,17 @@ fn poll_slack(scanner: &mut SlackScanner, client: &CradleClient) {
                     "text": msg.text,
                     "timestamp": msg.timestamp,
                 });
-                if let Err(e) = client.record_chat_message(&report_body) {
-                    eprintln!("cradle chronicle slack message report error: {e}");
-                }
+                record_store_event(
+                    core,
+                    ChronicleStoreEvent {
+                        id: format!("slack:{}:{}", msg.channel_id, msg.timestamp),
+                        kind: "message".to_string(),
+                        created_at: Timestamp::now()
+                            .map(|ts| ts.filesystem())
+                            .unwrap_or_else(|_| "1970-01-01T00-00-00Z".to_string()),
+                        payload: report_body,
+                    },
+                );
             }
         }
         Ok(_) => {}
@@ -790,24 +807,88 @@ fn poll_slack(scanner: &mut SlackScanner, client: &CradleClient) {
     }
 }
 
-fn process_transcripts(inbox_root: &Path, client: &CradleClient) {
-    match process_transcript_inbox_tick(inbox_root, client) {
-        Ok(report) if report.scanned > 0 => {
-            eprintln!(
-                "cradle chronicle transcript inbox processed: scanned={} reported={} failed={}",
-                report.scanned, report.reported, report.failed
-            );
-        }
-        Ok(_) => {}
+fn process_transcripts(inbox_root: &Path, core: &LocalChronicleCore) {
+    let transcript_root = inbox_root.join("audio-transcripts");
+    if !transcript_root.exists() {
+        return;
+    }
+
+    let mut manifests = Vec::new();
+    let entries = match fs::read_dir(&transcript_root) {
+        Ok(entries) => entries,
         Err(error) => {
             eprintln!("cradle chronicle transcript inbox error: {error}");
+            return;
+        }
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_file() && path.extension().and_then(|value| value.to_str()) == Some("json") {
+            manifests.push(path);
         }
     }
+    manifests.sort();
+
+    let mut reported = 0usize;
+    for manifest_path in manifests.iter().take(3) {
+        match fs::read_to_string(manifest_path) {
+            Ok(body) => {
+                let created_at = Timestamp::now().unwrap_or_else(|_| Timestamp::from_seconds(0));
+                record_store_event(
+                    core,
+                    ChronicleStoreEvent {
+                        id: format!("transcript:{}", manifest_path.display()),
+                        kind: "audio-transcript".to_string(),
+                        created_at: created_at.filesystem(),
+                        payload: serde_json::json!({
+                            "manifestPath": artifact_path_text(manifest_path),
+                            "bodyBytes": body.len()
+                        }),
+                    },
+                );
+                if mark_transcript_processed(manifest_path).is_ok() {
+                    reported += 1;
+                }
+            }
+            Err(error) => {
+                eprintln!(
+                    "cradle chronicle transcript inbox error for {}: {error}",
+                    manifest_path.display()
+                );
+            }
+        }
+    }
+
+    if reported > 0 {
+        eprintln!(
+            "cradle chronicle transcript inbox processed locally: scanned={} reported={}",
+            manifests.len().min(3),
+            reported
+        );
+    }
+}
+
+fn mark_transcript_processed(manifest_path: &Path) -> ChronicleResult<()> {
+    let parent = manifest_path.parent().ok_or_else(|| {
+        ChronicleError::InvalidArgument(format!(
+            "transcript manifest has no parent directory: {}",
+            manifest_path.display()
+        ))
+    })?;
+    let processed_dir = parent.join("processed");
+    fs::create_dir_all(&processed_dir)
+        .map_err(|source| ChronicleError::io_at(&processed_dir, source))?;
+    let processed_path = processed_dir.join(manifest_path.file_name().ok_or_else(|| {
+        ChronicleError::InvalidArgument("transcript manifest has no file name".to_string())
+    })?);
+    fs::rename(manifest_path, &processed_path)
+        .map_err(|source| ChronicleError::io_at(&processed_path, source))?;
+    Ok(())
 }
 
 fn process_audio_segment_if_due(
     config: &ChronicleConfig,
-    client: &CradleClient,
+    core: &LocalChronicleCore,
     local_transcription: &LocalTranscriptionPipeline<'_>,
     last_audio_segment_time: &mut Option<Instant>,
 ) {
@@ -818,7 +899,7 @@ fn process_audio_segment_if_due(
     if !audio_segment_due(*last_audio_segment_time, interval) {
         return;
     }
-    process_audio_segment(config, client, local_transcription);
+    process_audio_segment(config, core, local_transcription);
     *last_audio_segment_time = Some(Instant::now());
 }
 
@@ -828,7 +909,7 @@ fn audio_segment_due(last_audio_segment_time: Option<Instant>, interval: Duratio
 
 fn process_audio_segment(
     config: &ChronicleConfig,
-    client: &CradleClient,
+    core: &LocalChronicleCore,
     local_transcription: &LocalTranscriptionPipeline<'_>,
 ) {
     match write_audio_segment(config) {
@@ -843,8 +924,8 @@ fn process_audio_segment(
                 report.wav_path.display(),
                 report.metadata_path.display()
             );
-            report_audio_raw_segment(client, &report);
-            process_audio_transcription(client, &report, local_transcription);
+            record_audio_raw_segment(core, &report);
+            process_audio_transcription(core, &report, local_transcription);
         }
         Err(error) => {
             eprintln!("cradle chronicle audio segment error: {error}");
@@ -852,58 +933,47 @@ fn process_audio_segment(
     }
 }
 
-fn report_audio_raw_segment(client: &CradleClient, report: &AudioSegmentArtifactReport) {
+fn record_audio_raw_segment(core: &LocalChronicleCore, report: &AudioSegmentArtifactReport) {
     let source_id = audio_segment_source_id(report.source, &report.metadata_path);
-    let payload = ChronicleAudioRawSegmentReport {
-        source_id: source_id.clone(),
-        recorded_at: report.recorded_at.clone(),
-        source: to_raw_segment_source(report.source),
-        status: ChronicleAudioRawSegmentStatus::Captured,
-        audio_path: artifact_path_text(&report.wav_path),
-        metadata_path: artifact_path_text(&report.metadata_path),
-        sample_rate: report.sample_rate,
-        channels: report.channels,
-        sample_count: report.sample_count,
-        dropped_samples: report.dropped_samples,
-        duration_ms: report.duration_ms,
-        rms: report.rms,
-        peak: report.peak,
-        active: report.active,
-        vad_implemented: true,
-        asr_implemented: true,
-        speaker_labeling_implemented: true,
-        metadata: serde_json::json!({
-            "runtime": "local-audio-segment",
+    record_store_event(
+        core,
+        ChronicleStoreEvent {
+            id: source_id,
+            kind: "audio-raw-segment".to_string(),
+            created_at: report.recorded_at.clone(),
+            payload: serde_json::json!({
+            "sourceId": audio_segment_source_id(report.source, &report.metadata_path),
+            "recordedAt": report.recorded_at,
             "source": report.source.as_str(),
+            "status": "captured",
+            "audioPath": artifact_path_text(&report.wav_path),
+            "metadataPath": artifact_path_text(&report.metadata_path),
+            "sampleRate": report.sample_rate,
+            "channels": report.channels,
+            "sampleCount": report.sample_count,
+            "droppedSamples": report.dropped_samples,
+            "durationMs": report.duration_ms,
+            "rms": report.rms,
+            "peak": report.peak,
+            "active": report.active,
+            "runtime": "local-audio-segment",
             "sourceSampleFormat": report.source_sample_format,
             "vadImplemented": true,
             "asrImplemented": true,
             "speakerLabelingImplemented": true
-        }),
-    };
-    if let Err(error) = client.record_audio_raw_segment(&payload) {
-        eprintln!(
-            "cradle chronicle raw audio segment report failed, keeping local artifacts: {error}"
-        );
-    }
+            }),
+        },
+    );
 }
 
 fn process_audio_transcription(
-    client: &CradleClient,
+    core: &LocalChronicleCore,
     report: &AudioSegmentArtifactReport,
     local_transcription: &LocalTranscriptionPipeline<'_>,
 ) {
     let source_id = audio_segment_source_id(report.source, &report.metadata_path);
     if !report.active {
-        report_audio_processing_result(
-            client,
-            &source_id,
-            ChronicleAudioRawSegmentStatus::Ignored,
-            None,
-            Vec::new(),
-            None,
-            None,
-        );
+        record_audio_processing_result(core, &source_id, "ignored", None, Vec::new(), None, None);
         return;
     }
 
@@ -913,10 +983,10 @@ fn process_audio_transcription(
         &report.wav_path,
     ) {
         Ok(output) if output.result.text.trim().is_empty() => {
-            report_audio_processing_result(
-                client,
+            record_audio_processing_result(
+                core,
                 &source_id,
-                ChronicleAudioRawSegmentStatus::Ignored,
+                "ignored",
                 None,
                 Vec::new(),
                 None,
@@ -925,43 +995,37 @@ fn process_audio_transcription(
         }
         Ok(output) => {
             let transcript_source_id = format!("transcript:{source_id}");
-            let transcript = build_audio_transcript_report(
+            let transcript = build_audio_transcript_event_payload(
                 &transcript_source_id,
                 report,
                 &output.result,
                 output.runtime,
             );
-            let speaker_profile_ids = report_speaker_profiles(client, &output.result);
-            match client.record_audio_transcript(&transcript) {
-                Ok(()) => {
-                    report_audio_processing_result(
-                        client,
-                        &source_id,
-                        ChronicleAudioRawSegmentStatus::Processed,
-                        Some(transcript_source_id),
-                        speaker_profile_ids,
-                        None,
-                        Some(output.runtime),
-                    );
-                }
-                Err(error) => {
-                    report_audio_processing_result(
-                        client,
-                        &source_id,
-                        ChronicleAudioRawSegmentStatus::Error,
-                        Some(transcript_source_id),
-                        speaker_profile_ids,
-                        Some(error.to_string()),
-                        Some(output.runtime),
-                    );
-                }
-            }
+            let speaker_profile_ids = record_speaker_profiles(core, &output.result);
+            record_store_event(
+                core,
+                ChronicleStoreEvent {
+                    id: transcript_source_id.clone(),
+                    kind: "audio-transcript".to_string(),
+                    created_at: report.recorded_at.clone(),
+                    payload: transcript,
+                },
+            );
+            record_audio_processing_result(
+                core,
+                &source_id,
+                "processed",
+                Some(transcript_source_id),
+                speaker_profile_ids,
+                None,
+                Some(output.runtime),
+            );
         }
         Err(error) => {
-            report_audio_processing_result(
-                client,
+            record_audio_processing_result(
+                core,
                 &source_id,
-                ChronicleAudioRawSegmentStatus::Error,
+                "error",
                 None,
                 Vec::new(),
                 Some(error.to_string()),
@@ -971,68 +1035,70 @@ fn process_audio_transcription(
     }
 }
 
-fn build_audio_transcript_report(
+fn build_audio_transcript_event_payload(
     source_id: &str,
     report: &AudioSegmentArtifactReport,
     result: &TranscriptionResult,
     runtime: TranscriptionRuntime,
-) -> ChronicleAudioTranscriptReport {
+) -> serde_json::Value {
     let runtime_name = runtime.as_str();
-    let fallback_segment = ChronicleAudioTranscriptSegmentReport {
-        start_ms: 0,
-        end_ms: Some(result.duration_ms.max(report.duration_ms)),
-        speaker_label: None,
-        text: result.text.clone(),
-        confidence: ChronicleTranscriptConfidence::new(result.confidence as f32).ok(),
-        language: result.language.clone(),
-        metadata: serde_json::json!({ "runtime": runtime_name, "source": report.source.as_str() }),
-    };
+    let fallback_segment = serde_json::json!({
+        "startMs": 0,
+        "endMs": result.duration_ms.max(report.duration_ms),
+        "speakerLabel": serde_json::Value::Null,
+        "text": result.text.clone(),
+        "confidence": result.confidence,
+        "language": result.language.clone(),
+        "metadata": { "runtime": runtime_name, "source": report.source.as_str() }
+    });
     let segments = if result.segments.is_empty() {
         vec![fallback_segment]
     } else {
         result
             .segments
             .iter()
-            .map(|segment| ChronicleAudioTranscriptSegmentReport {
-                start_ms: segment.start_ms,
-                end_ms: Some(segment.end_ms),
-                speaker_label: segment.speaker_label.clone(),
-                text: segment.text.clone(),
-                confidence: ChronicleTranscriptConfidence::new(segment.confidence as f32).ok(),
-                language: result.language.clone(),
-                metadata: serde_json::json!({ "runtime": runtime_name, "source": report.source.as_str() }),
+            .map(|segment| {
+                serde_json::json!({
+                    "startMs": segment.start_ms,
+                    "endMs": segment.end_ms,
+                    "speakerLabel": segment.speaker_label.clone(),
+                    "text": segment.text.clone(),
+                    "confidence": segment.confidence,
+                    "language": result.language.clone(),
+                    "metadata": { "runtime": runtime_name, "source": report.source.as_str() }
+                })
             })
             .collect()
     };
 
-    ChronicleAudioTranscriptReport {
-        source_id: source_id.to_string(),
-        title: Some(format!("{} audio transcript", report.source.as_str())),
-        source: ChronicleAudioTranscriptSource::Asr,
-        status: ChronicleAudioTranscriptStatus::Completed,
-        started_at: report.recorded_at.clone(),
-        ended_at: Some(report.recorded_at.clone()),
-        language: result.language.clone(),
-        app_bundle_id: Some("cradle-chronicle-audio".to_string()),
-        window_title: Some(format!("Chronicle {} audio", report.source.as_str())),
-        audio_path: Some(artifact_path_text(&report.wav_path)),
-        transcript_path: None,
-        segments,
-        metadata: serde_json::json!({
+    serde_json::json!({
+        "sourceId": source_id,
+        "title": format!("{} audio transcript", report.source.as_str()),
+        "source": "asr",
+        "status": "completed",
+        "startedAt": report.recorded_at.clone(),
+        "endedAt": report.recorded_at.clone(),
+        "language": result.language.clone(),
+        "appBundleId": "cradle-chronicle-audio",
+        "windowTitle": format!("Chronicle {} audio", report.source.as_str()),
+        "audioPath": artifact_path_text(&report.wav_path),
+        "transcriptPath": serde_json::Value::Null,
+        "segments": segments,
+        "metadata": {
             "runtime": runtime_name,
             "source": report.source.as_str(),
             "rawSourceId": audio_segment_source_id(report.source, &report.metadata_path),
             "sampleRate": report.sample_rate,
             "rms": report.rms,
             "peak": report.peak
-        }),
-    }
+        }
+    })
 }
 
-fn report_audio_processing_result(
-    client: &CradleClient,
+fn record_audio_processing_result(
+    core: &LocalChronicleCore,
     source_id: &str,
-    status: ChronicleAudioRawSegmentStatus,
+    status: &str,
     transcript_source_id: Option<String>,
     speaker_profile_ids: Vec<String>,
     error_message: Option<String>,
@@ -1041,48 +1107,55 @@ fn report_audio_processing_result(
     let runtime_name = runtime
         .map(TranscriptionRuntime::as_str)
         .unwrap_or("sensevoice-onnx");
-    let result = ChronicleAudioRawSegmentProcessingResultReport {
-        status: Some(status),
-        vad_status: Some(ChronicleAudioProcessingStatus::Ready),
-        asr_status: Some(if error_message.is_some() {
-            ChronicleAudioProcessingStatus::Error
-        } else {
-            ChronicleAudioProcessingStatus::Ready
-        }),
-        speaker_status: Some(if error_message.is_some() {
-            ChronicleAudioProcessingStatus::Error
-        } else {
-            ChronicleAudioProcessingStatus::Ready
-        }),
-        transcript_source_id,
-        speaker_profile_ids,
-        error_message,
-        metadata: serde_json::json!({ "runtime": runtime_name, "speakerRuntime": "local-onnx-speaker" }),
-    };
-    if let Err(error) = client.record_audio_raw_segment_processing_result(source_id, &result) {
-        eprintln!("cradle chronicle raw audio processing result report failed: {error}");
-    }
+    record_store_event(
+        core,
+        ChronicleStoreEvent {
+            id: format!("raw-processing:{source_id}"),
+            kind: "audio-raw-processing-result".to_string(),
+            created_at: Timestamp::now()
+                .map(|ts| ts.filesystem())
+                .unwrap_or_else(|_| "1970-01-01T00-00-00Z".to_string()),
+            payload: serde_json::json!({
+                "sourceId": source_id,
+                "status": status,
+                "vadStatus": "ready",
+                "asrStatus": if error_message.is_some() { "error" } else { "ready" },
+                "speakerStatus": if error_message.is_some() { "error" } else { "ready" },
+                "transcriptSourceId": transcript_source_id,
+                "speakerProfileIds": speaker_profile_ids,
+                "errorMessage": error_message,
+                "metadata": { "runtime": runtime_name, "speakerRuntime": "local-onnx-speaker" }
+            }),
+        },
+    );
 }
 
-fn report_speaker_profiles(client: &CradleClient, result: &TranscriptionResult) -> Vec<String> {
+fn record_speaker_profiles(core: &LocalChronicleCore, result: &TranscriptionResult) -> Vec<String> {
     let mut profile_ids = Vec::new();
     for profile in &result.speaker_profiles {
-        let payload = ChronicleSpeakerProfileReport {
-            display_name: profile.display_name.clone(),
-            aliases: Vec::new(),
-            embedding: Some(profile.embedding.clone()),
-            embedding_model_id: Some(profile.embedding_model_id.clone()),
-            sample_count: profile.sample_count,
-            last_seen_at: None,
-            metadata: serde_json::json!({
+        let payload = serde_json::json!({
+            "displayName": profile.display_name,
+            "aliases": [],
+            "embedding": profile.embedding,
+            "embeddingModelId": profile.embedding_model_id,
+            "sampleCount": profile.sample_count,
+            "metadata": {
                 "runtime": "local-onnx-speaker",
                 "source": "audio-transcription"
-            }),
-        };
-        match client.record_speaker_profile(&payload) {
-            Ok(()) => profile_ids.push(profile.display_name.clone()),
-            Err(error) => eprintln!("cradle chronicle speaker profile report failed: {error}"),
-        }
+            }
+        });
+        record_store_event(
+            core,
+            ChronicleStoreEvent {
+                id: format!("speaker-profile:{}", profile.display_name),
+                kind: "speaker-profile".to_string(),
+                created_at: Timestamp::now()
+                    .map(|ts| ts.filesystem())
+                    .unwrap_or_else(|_| "1970-01-01T00-00-00Z".to_string()),
+                payload,
+            },
+        );
+        profile_ids.push(profile.display_name.clone());
     }
     profile_ids
 }
@@ -1150,14 +1223,6 @@ fn audio_segment_source_id(source: AudioCaptureSource, metadata_path: &Path) -> 
         .and_then(|name| name.to_str())
         .unwrap_or("unknown");
     format!("audio:{}:{stem}", source.as_str())
-}
-
-fn to_raw_segment_source(source: AudioCaptureSource) -> ChronicleAudioRawSegmentSource {
-    match source {
-        AudioCaptureSource::Microphone => ChronicleAudioRawSegmentSource::Microphone,
-        AudioCaptureSource::System => ChronicleAudioRawSegmentSource::System,
-        AudioCaptureSource::Mixed => ChronicleAudioRawSegmentSource::Mixed,
-    }
 }
 
 fn artifact_path_text(path: &Path) -> String {

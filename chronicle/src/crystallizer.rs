@@ -1,34 +1,16 @@
 //! Memory Crystallizer — transforms triaged activity segments into structured
-//! memory chunks via LLM calls to Cradle Server.
-
-use std::time::Duration;
+//! local memory chunks.
 
 use serde::{Deserialize, Serialize};
 
 use crate::dedup::{DedupEngine, DedupVerdict};
 use crate::embedding::{Embedding, EmbeddingProvider};
-use crate::error::{ChronicleError, ChronicleResult};
+use crate::error::ChronicleResult;
 use crate::segmenter::ActivitySegment;
 use crate::time::Timestamp;
 use crate::triage::{TriageCategory, TriageResult};
 
-const CRYSTALLIZE_TIMEOUT: Duration = Duration::from_secs(60);
-
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CrystallizeRequest {
-    pub segment_id: u64,
-    pub category: String,
-    pub front_app: Option<String>,
-    pub title: Option<String>,
-    pub start_time: String,
-    pub end_time: String,
-    pub duration_seconds: u64,
-    pub ocr_content: String,
-    pub accessibility_content: String,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,55 +76,25 @@ impl Default for CrystallizerConfig {
 // ─── Crystallizer ────────────────────────────────────────────────────────────
 
 pub struct Crystallizer {
-    base_url: String,
     config: CrystallizerConfig,
 }
 
 impl Crystallizer {
-    pub fn new(base_url: impl Into<String>, config: CrystallizerConfig) -> Self {
-        Self {
-            base_url: base_url.into(),
-            config,
-        }
+    pub fn new(config: CrystallizerConfig) -> Self {
+        Self { config }
     }
 
-    pub fn from_env() -> Self {
-        let base_url = crate::cradle_client::cradle_base_url();
-        Self::new(base_url, CrystallizerConfig::default())
-    }
-
-    /// Crystallize a segment into structured knowledge via Cradle Server LLM.
-    /// Falls back to local summary if the server is unreachable.
+    /// Crystallize a segment into structured knowledge.
     pub fn crystallize(
         &self,
         segment: &ActivitySegment,
         triage: &TriageResult,
     ) -> ChronicleResult<CrystallizeResponse> {
-        let request = self.build_request(segment, triage);
-        let url = format!("{}/chronicle/crystallize", self.base_url);
-
-        let json_body = serde_json::to_string(&request).map_err(|e| {
-            ChronicleError::Process(format!("failed to serialize crystallize request: {e}"))
-        })?;
-
-        let response = ureq::post(&url)
-            .header("Content-Type", "application/json")
-            .config()
-            .timeout_global(Some(CRYSTALLIZE_TIMEOUT))
-            .build()
-            .send(json_body.as_bytes());
-
-        match response {
-            Ok(mut resp) => {
-                let body = resp.body_mut().read_to_string().map_err(|e| {
-                    ChronicleError::Process(format!("failed to read crystallize response: {e}"))
-                })?;
-                serde_json::from_str(&body).map_err(|e| {
-                    ChronicleError::Process(format!("failed to parse crystallize response: {e}"))
-                })
-            }
-            Err(_) => Ok(build_local_summary(segment, triage)),
-        }
+        Ok(build_local_summary_with_config(
+            segment,
+            triage,
+            &self.config,
+        ))
     }
 
     /// Full pipeline: crystallize → embed → dedup → produce MemoryChunk.
@@ -187,41 +139,22 @@ impl Crystallizer {
             dedup_verdict: verdict,
         }))
     }
-
-    fn build_request(
-        &self,
-        segment: &ActivitySegment,
-        triage: &TriageResult,
-    ) -> CrystallizeRequest {
-        let ocr_content = truncate_join(&segment.ocr_texts, self.config.max_ocr_chars);
-        let accessibility_content = truncate_join(
-            &segment.accessibility_texts,
-            self.config.max_accessibility_chars,
-        );
-
-        let duration_seconds =
-            segment.end_time.seconds_since_epoch() - segment.start_time.seconds_since_epoch();
-
-        CrystallizeRequest {
-            segment_id: segment.id,
-            category: format!("{:?}", triage.category),
-            front_app: segment.front_app.clone(),
-            title: segment.title.clone(),
-            start_time: segment.start_time.compact(),
-            end_time: segment.end_time.compact(),
-            duration_seconds,
-            ocr_content,
-            accessibility_content,
-        }
-    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Fallback summary when Cradle Server is offline.
+/// Build a local summary for a triaged segment.
 pub fn build_local_summary(
     segment: &ActivitySegment,
     triage: &TriageResult,
+) -> CrystallizeResponse {
+    build_local_summary_with_config(segment, triage, &CrystallizerConfig::default())
+}
+
+fn build_local_summary_with_config(
+    segment: &ActivitySegment,
+    triage: &TriageResult,
+    config: &CrystallizerConfig,
 ) -> CrystallizeResponse {
     let mut parts = Vec::new();
 
@@ -232,12 +165,15 @@ pub fn build_local_summary(
         parts.push(title.clone());
     }
 
-    let ocr_summary = truncate_join(&segment.ocr_texts, 500);
+    let ocr_summary = truncate_join(&segment.ocr_texts, config.max_ocr_chars.min(500));
     if !ocr_summary.is_empty() {
         parts.push(ocr_summary);
     }
 
-    let acc_summary = truncate_join(&segment.accessibility_texts, 300);
+    let acc_summary = truncate_join(
+        &segment.accessibility_texts,
+        config.max_accessibility_chars.min(300),
+    );
     if !acc_summary.is_empty() {
         parts.push(acc_summary);
     }
@@ -266,8 +202,9 @@ pub fn generate_chunk_id(segment: &ActivitySegment) -> String {
 fn truncate_join(texts: &[String], max_chars: usize) -> String {
     let mut result = String::new();
     for text in texts {
-        if result.len() + text.len() + 1 > max_chars {
-            let remaining = max_chars.saturating_sub(result.len() + 1);
+        let separator_len = usize::from(!result.is_empty());
+        if result.len() + text.len() + separator_len > max_chars {
+            let remaining = max_chars.saturating_sub(result.len() + separator_len);
             if remaining > 0 {
                 if !result.is_empty() {
                     result.push('\n');
@@ -357,9 +294,8 @@ mod tests {
     }
 
     #[test]
-    fn test_crystallize_request_truncates_content() {
+    fn test_crystallize_uses_configured_content_limits() {
         let mut segment = make_segment();
-        // Fill with long text exceeding default limits
         segment.ocr_texts = vec!["x".repeat(5000)];
         segment.accessibility_texts = vec!["y".repeat(3000)];
 
@@ -368,11 +304,28 @@ mod tests {
             max_ocr_chars: 100,
             max_accessibility_chars: 50,
         };
-        let crystallizer = Crystallizer::new("http://localhost:0", config);
-        let request = crystallizer.build_request(&segment, &triage);
+        let crystallizer = Crystallizer::new(config);
+        let result = crystallizer
+            .crystallize(&segment, &triage)
+            .expect("local crystallization should succeed");
 
-        assert!(request.ocr_content.len() <= 100);
-        assert!(request.accessibility_content.len() <= 50);
+        assert!(result.summary.contains(&"x".repeat(100)));
+        assert!(result.summary.contains(&"y".repeat(50)));
+        assert!(!result.summary.contains(&"x".repeat(101)));
+        assert!(!result.summary.contains(&"y".repeat(51)));
+    }
+
+    #[test]
+    fn test_crystallize_defaults_to_local_summary() {
+        let segment = make_segment();
+        let triage = make_triage();
+        let crystallizer = Crystallizer::new(CrystallizerConfig::default());
+        let result = crystallizer
+            .crystallize(&segment, &triage)
+            .expect("local crystallization should not require server");
+
+        assert!(result.summary.contains("VS Code"));
+        assert_eq!(result.tags, vec!["coding"]);
     }
 
     #[test]

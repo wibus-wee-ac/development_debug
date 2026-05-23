@@ -8,9 +8,8 @@ pub mod wav;
 
 pub use activity::{AudioActivityReport, BoundedPcmBuffer, RmsActivityGate};
 pub use asr::{
-    AsrConfig, AudioTranscriptionPipeline, LocalTranscriptionPipeline, RemoteAsr,
-    TranscriptionPipelineOutput, TranscriptionResult, TranscriptionRuntime, TranscriptionSegment,
-    WhisperCliAsr,
+    LocalTranscriptionPipeline, TranscriptionPipelineOutput, TranscriptionResult,
+    TranscriptionRuntime, TranscriptionSegment, WhisperCliAsr,
 };
 pub use capture::{
     AudioDiagnosticsReport, MicrophoneCaptureReport, capture_microphone_samples,
