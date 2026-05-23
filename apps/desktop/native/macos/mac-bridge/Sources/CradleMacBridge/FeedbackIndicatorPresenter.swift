@@ -61,6 +61,7 @@ struct FeedbackIndicatorContent {
 final class FeedbackIndicatorPresenter: @unchecked Sendable {
     private var panel: NSPanel?
     private var dismissWorkItem: DispatchWorkItem?
+    private var presentationId = 0
 
     func show(_ content: FeedbackIndicatorContent) {
         Task { @MainActor [weak self] in
@@ -76,26 +77,30 @@ final class FeedbackIndicatorPresenter: @unchecked Sendable {
         }
 
         dismissWorkItem?.cancel()
+        presentationId += 1
+        let currentPresentationId = presentationId
 
         let view = FeedbackIndicatorContainerView(content: content)
         view.translatesAutoresizingMaskIntoConstraints = false
         let fittingSize = view.intrinsicContentSize
         let panelSize = NSSize(
-            width: min(max(fittingSize.width, 220), 390),
-            height: content.detail == nil ? 48 : 64
+            width: min(max(fittingSize.width, 200), 340),
+            height: content.detail == nil ? 44 : 56
         )
         let panel = self.panel ?? createPanel()
         self.panel = panel
         panel.contentView = view
         panel.setFrame(readFrame(size: panelSize, targetWindowBounds: content.targetWindowBounds), display: true)
-        panel.alphaValue = 0
+        view.layoutSubtreeIfNeeded()
+        view.prepareForEntrance()
+        panel.alphaValue = 1
         panel.orderFrontRegardless()
 
         animateIn(panel: panel)
 
         let workItem = DispatchWorkItem { [weak self, weak panel] in
             guard let panel else { return }
-            self?.animateOut(panel: panel)
+            self?.animateOut(panel: panel, presentationId: currentPresentationId)
         }
         dismissWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + content.duration, execute: workItem)
@@ -156,40 +161,24 @@ final class FeedbackIndicatorPresenter: @unchecked Sendable {
 
     @MainActor
     private func animateIn(panel: NSPanel) {
-        panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.anchorPoint = CGPoint(x: 0.5, y: 0.5)
-        panel.contentView?.layer?.transform = CATransform3DMakeScale(0.92, 0.92, 1)
-        panel.contentView?.layer?.opacity = 0
-
-        let spring = CASpringAnimation(keyPath: "transform.scale")
-        spring.fromValue = 0.92
-        spring.toValue = 1
-        spring.mass = 0.7
-        spring.stiffness = 360
-        spring.damping = 26
-        spring.initialVelocity = 0
-        spring.duration = spring.settlingDuration
-
-        let opacity = CABasicAnimation(keyPath: "opacity")
-        opacity.fromValue = 0
-        opacity.toValue = 1
-        opacity.duration = 0.16
-        opacity.timingFunction = CAMediaTimingFunction(name: .easeOut)
-
-        panel.alphaValue = 1
-        panel.contentView?.layer?.transform = CATransform3DIdentity
-        panel.contentView?.layer?.opacity = 1
-        panel.contentView?.layer?.add(spring, forKey: "feedback-scale-in")
-        panel.contentView?.layer?.add(opacity, forKey: "feedback-opacity-in")
+        guard let contentView = panel.contentView as? FeedbackIndicatorContainerView else {
+            return
+        }
+        contentView.playEntrance()
     }
 
     @MainActor
-    private func animateOut(panel: NSPanel) {
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            panel.animator().alphaValue = 0
-        } completionHandler: { [weak self, weak panel] in
+    private func animateOut(panel: NSPanel, presentationId targetPresentationId: Int) {
+        guard presentationId == targetPresentationId else { return }
+        guard let contentView = panel.contentView as? FeedbackIndicatorContainerView else {
+            panel.orderOut(nil)
+            if self.panel === panel {
+                self.panel = nil
+            }
+            return
+        }
+        contentView.playExit { [weak self, weak panel] in
+            guard self?.presentationId == targetPresentationId else { return }
             panel?.orderOut(nil)
             if self?.panel === panel {
                 self?.panel = nil
@@ -210,12 +199,20 @@ final class FeedbackIndicatorPanel: NSPanel {
 
 final class FeedbackIndicatorContainerView: NSView {
     private let indicatorView: FeedbackIndicatorView
+    private let entranceStartScale: CGFloat = 0.96
 
     init(content: FeedbackIndicatorContent) {
         indicatorView = FeedbackIndicatorView(content: content)
         super.init(frame: .zero)
         wantsLayer = true
         layer?.masksToBounds = false
+
+        layer?.shadowColor = NSColor.black.withAlphaComponent(0.18).cgColor
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
+        layer?.shadowRadius = 12
+        layer?.shadowOpacity = 1
+        layer?.shouldRasterize = true
+        layer?.rasterizationScale = NSScreen.main?.backingScaleFactor ?? 2
 
         indicatorView.translatesAutoresizingMaskIntoConstraints = false
         addSubview(indicatorView)
@@ -238,22 +235,153 @@ final class FeedbackIndicatorContainerView: NSView {
 
     override func layout() {
         super.layout()
+        layer?.rasterizationScale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        layer?.shadowPath = CGPath(
+            roundedRect: bounds,
+            cornerWidth: 12,
+            cornerHeight: 12,
+            transform: nil
+        )
+    }
+
+    func prepareForEntrance() {
+        guard let layer else { return }
+        configureCenteredAnchor(for: layer)
+        layer.removeAllAnimations()
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DMakeScale(entranceStartScale, entranceStartScale, 1)
+        layer.opacity = 0
+        CATransaction.commit()
+        indicatorView.prepareForEntrance()
+    }
+
+    func playEntrance() {
+        guard let layer else { return }
+        configureCenteredAnchor(for: layer)
+        layer.removeAllAnimations()
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = entranceStartScale
+        scale.toValue = 1
+        scale.duration = 0.18
+        scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1)
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = 0
+        opacity.toValue = 1
+        opacity.duration = 0.12
+        opacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1)
+
+        let group = CAAnimationGroup()
+        group.animations = [scale, opacity]
+        group.duration = 0.18
+        group.isRemovedOnCompletion = true
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        CATransaction.commit()
+
+        layer.add(group, forKey: "cradle-bridge-surface-enter")
+        indicatorView.playEntrance()
+    }
+
+    func playExit(completion: @escaping () -> Void) {
+        guard let layer else {
+            completion()
+            return
+        }
+        configureCenteredAnchor(for: layer)
+        layer.removeAnimation(forKey: "cradle-bridge-surface-enter")
+
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = readPresentationScale(from: layer)
+        scale.toValue = 0.98
+        scale.duration = 0.12
+        scale.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = layer.presentation()?.opacity ?? layer.opacity
+        opacity.toValue = 0
+        opacity.duration = 0.10
+        opacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+
+        let group = CAAnimationGroup()
+        group.animations = [scale, opacity]
+        group.duration = 0.12
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+
+        indicatorView.playExit()
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock(completion)
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DMakeScale(0.98, 0.98, 1)
+        layer.opacity = 0
+        CATransaction.setDisableActions(false)
+        layer.add(group, forKey: "cradle-bridge-surface-exit")
+        CATransaction.commit()
+    }
+
+    private func configureCenteredAnchor(for layer: CALayer) {
+        let frame = layer.frame
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.frame = frame
+    }
+
+    private func readPresentationScale(from layer: CALayer) -> CGFloat {
+        guard let value = layer.presentation()?.value(forKeyPath: "transform.scale") else {
+            return 1
+        }
+        if let number = value as? NSNumber {
+            return CGFloat(truncating: number)
+        }
+        if let scale = value as? CGFloat {
+            return scale
+        }
+        return 1
     }
 }
 
 final class FeedbackIndicatorView: NSView {
     private let content: FeedbackIndicatorContent
+    private let iconView: FeedbackIconView
+    private let textStack = NSStackView()
+    private var revealButton: NSButton?
+    private let cornerRadius: CGFloat = 12
 
     init(content: FeedbackIndicatorContent) {
         self.content = content
+        iconView = FeedbackIconView(tone: content.tone, icon: content.icon)
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = content.detail == nil ? 24 : 32
+        layer?.cornerRadius = cornerRadius
         layer?.cornerCurve = .continuous
         layer?.masksToBounds = true
-        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.78).cgColor
-        layer?.borderWidth = 1
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.35).cgColor
+
+        let blur = NSVisualEffectView()
+        blur.material = .hudWindow
+        blur.blendingMode = .behindWindow
+        blur.state = .followsWindowActiveState
+        blur.wantsLayer = true
+        blur.layer?.cornerRadius = cornerRadius
+        blur.layer?.cornerCurve = .continuous
+        blur.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(blur, positioned: .below, relativeTo: nil)
+        NSLayoutConstraint.activate([
+            blur.leadingAnchor.constraint(equalTo: leadingAnchor),
+            blur.trailingAnchor.constraint(equalTo: trailingAnchor),
+            blur.topAnchor.constraint(equalTo: topAnchor),
+            blur.bottomAnchor.constraint(equalTo: bottomAnchor),
+        ])
+
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.18).cgColor
+
         setupContent()
     }
 
@@ -263,18 +391,67 @@ final class FeedbackIndicatorView: NSView {
     }
 
     override var intrinsicContentSize: NSSize {
-        NSSize(width: content.revealFilePath == nil ? 320 : 356, height: content.detail == nil ? 48 : 64)
+        let baseWidth: CGFloat = content.revealFilePath == nil ? 240 : 272
+        let height: CGFloat = content.detail == nil ? 44 : 56
+        return NSSize(width: baseWidth, height: height)
+    }
+
+    func prepareForEntrance() {
+        animatedViews.forEach { view in
+            view.wantsLayer = true
+            guard let layer = view.layer else {
+                return
+            }
+            configureCenteredAnchor(for: layer)
+            layer.removeAllAnimations()
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.opacity = 0
+            layer.transform = CATransform3DIdentity
+            CATransaction.commit()
+        }
+    }
+
+    func playEntrance() {
+        animatedViews.forEach { view in
+            playFadeIn(on: view.layer)
+        }
+    }
+
+    func playExit() {
+        animatedViews.forEach { view in
+            guard let layer = view.layer else {
+                return
+            }
+            layer.removeAllAnimations()
+
+            let opacity = CABasicAnimation(keyPath: "opacity")
+            opacity.fromValue = layer.presentation()?.opacity ?? layer.opacity
+            opacity.toValue = 0
+            opacity.duration = 0.08
+            opacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.4, 0, 1, 1)
+            opacity.fillMode = .forwards
+            opacity.isRemovedOnCompletion = false
+
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer.transform = CATransform3DIdentity
+            layer.opacity = 0
+            CATransaction.setDisableActions(false)
+            layer.add(opacity, forKey: "cradle-bridge-piece-exit")
+            CATransaction.commit()
+        }
     }
 
     private func setupContent() {
-        let iconView = FeedbackIconView(tone: content.tone, icon: content.icon)
         iconView.translatesAutoresizingMaskIntoConstraints = false
 
-        let textStack = NSStackView()
         textStack.orientation = .vertical
         textStack.alignment = .leading
-        textStack.spacing = 1
+        textStack.spacing = 2
         textStack.translatesAutoresizingMaskIntoConstraints = false
+        textStack.wantsLayer = true
 
         let label = NSTextField(labelWithString: content.label)
         label.font = NSFont.systemFont(ofSize: 13, weight: .semibold)
@@ -290,12 +467,7 @@ final class FeedbackIndicatorView: NSView {
             textStack.addArrangedSubview(detailLabel)
         }
 
-        var arrangedSubviews: [NSView] = [iconView, textStack]
-        if content.revealFilePath != nil {
-            arrangedSubviews.append(createRevealButton())
-        }
-
-        let stack = NSStackView(views: arrangedSubviews)
+        let stack = NSStackView(views: [iconView, textStack])
         stack.orientation = .horizontal
         stack.alignment = .centerY
         stack.spacing = 10
@@ -303,13 +475,24 @@ final class FeedbackIndicatorView: NSView {
         addSubview(stack)
 
         NSLayoutConstraint.activate([
-            iconView.widthAnchor.constraint(equalToConstant: 28),
-            iconView.heightAnchor.constraint(equalToConstant: 28),
-            textStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 170),
-            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
-            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            iconView.widthAnchor.constraint(equalToConstant: 26),
+            iconView.heightAnchor.constraint(equalToConstant: 26),
+            stack.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 10),
             stack.centerYAnchor.constraint(equalTo: centerYAnchor),
         ])
+
+        if content.revealFilePath != nil {
+            let button = createRevealButton()
+            revealButton = button
+            addSubview(button)
+            NSLayoutConstraint.activate([
+                button.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+                button.centerYAnchor.constraint(equalTo: centerYAnchor),
+                textStack.trailingAnchor.constraint(lessThanOrEqualTo: button.leadingAnchor, constant: -8),
+            ])
+        } else {
+            stack.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8).isActive = true
+        }
     }
 
     private func createRevealButton() -> NSButton {
@@ -322,13 +505,13 @@ final class FeedbackIndicatorView: NSView {
         button.imagePosition = .imageOnly
         button.toolTip = "Reveal in Finder"
         button.wantsLayer = true
-        button.layer?.cornerRadius = 14
+        button.layer?.cornerRadius = 13
         button.layer?.cornerCurve = .continuous
         button.layer?.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.14).cgColor
         button.contentTintColor = .labelColor
         NSLayoutConstraint.activate([
-            button.widthAnchor.constraint(equalToConstant: 28),
-            button.heightAnchor.constraint(equalToConstant: 28),
+            button.widthAnchor.constraint(equalToConstant: 26),
+            button.heightAnchor.constraint(equalToConstant: 26),
         ])
         return button
     }
@@ -341,6 +524,43 @@ final class FeedbackIndicatorView: NSView {
             URL(fileURLWithPath: revealFilePath),
         ])
     }
+
+    private var animatedViews: [NSView] {
+        var views: [NSView] = [iconView, textStack]
+        if let revealButton {
+            views.append(revealButton)
+        }
+        return views
+    }
+
+    private func playFadeIn(on layer: CALayer?) {
+        guard let layer else {
+            return
+        }
+        configureCenteredAnchor(for: layer)
+        layer.removeAllAnimations()
+
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = 0
+        opacity.toValue = 1
+        opacity.duration = 0.12
+        opacity.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0, 0, 1)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        CATransaction.commit()
+
+        layer.add(opacity, forKey: "cradle-bridge-piece-enter")
+    }
+
+    private func configureCenteredAnchor(for layer: CALayer) {
+        let frame = layer.frame
+        layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+        layer.frame = frame
+    }
+
 }
 
 final class FeedbackIconView: NSView {
@@ -352,7 +572,7 @@ final class FeedbackIconView: NSView {
         self.icon = icon
         super.init(frame: .zero)
         wantsLayer = true
-        layer?.cornerRadius = 8
+        layer?.cornerRadius = 7
         layer?.cornerCurve = .continuous
         layer?.backgroundColor = backgroundColor.cgColor
     }
