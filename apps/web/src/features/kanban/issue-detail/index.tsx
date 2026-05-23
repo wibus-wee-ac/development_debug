@@ -1,6 +1,7 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { Skeleton } from '~/components/ui/skeleton'
+import type { KanbanIssue } from '~/lib/types'
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
 import { AgentSessionPanel } from './agent-session-panel'
@@ -13,10 +14,12 @@ import { SubIssuesList } from './sub-issues-list'
 interface IssueDetailProps {
   issueId: string
   workspaceId: string
+  issues: KanbanIssue[]
+  onOpenIssue: (id: string) => void
   onBack: () => void
 }
 
-export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) {
+export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onBack }: IssueDetailProps) {
   const { data: issue, isLoading, isError, error } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -42,6 +45,51 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
       onSuccess: () => onBack(),
     })
   }, [issueId, deleteIssue, onBack])
+
+  const statusById = useMemo(
+    () => new Map(statuses.map(status => [status.id, status])),
+    [statuses],
+  )
+
+  const subIssues = useMemo(
+    () => issue ? issues.filter(candidate => candidate.parentIssueId === issue.id) : [],
+    [issues, issue],
+  )
+
+  const completedSubIssueCount = useMemo(
+    () => subIssues.filter(subIssue => statusById.get(subIssue.statusId ?? '')?.category === 'completed').length,
+    [statusById, subIssues],
+  )
+
+  const siblingIssues = useMemo(() => {
+    if (!issue?.parentIssueId) {
+      return []
+    }
+    return issues
+      .filter(candidate => candidate.parentIssueId === issue.parentIssueId)
+      .toSorted((left, right) => {
+        const orderDelta = (left.order ?? 0) - (right.order ?? 0)
+        if (orderDelta !== 0) {
+          return orderDelta
+        }
+        return (left.createdAt ?? 0) - (right.createdAt ?? 0)
+      })
+  }, [issues, issue?.parentIssueId])
+
+  const siblingIndex = useMemo(
+    () => issue ? siblingIssues.findIndex(candidate => candidate.id === issue.id) : -1,
+    [issue, siblingIssues],
+  )
+
+  const parentIssue = useMemo(
+    () => issue?.parentIssueId ? issues.find(candidate => candidate.id === issue.parentIssueId) : undefined,
+    [issues, issue?.parentIssueId],
+  )
+
+  const previousSiblingIssue = siblingIndex > 0 ? siblingIssues[siblingIndex - 1] : undefined
+  const nextSiblingIssue = siblingIndex >= 0 && siblingIndex < siblingIssues.length - 1
+    ? siblingIssues[siblingIndex + 1]
+    : undefined
 
   if (isError) {
     return (
@@ -89,6 +137,14 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
       <IssueHeader
         issue={issue}
         status={statuses.find(s => s.id === issue.statusId)}
+        parentIssue={parentIssue}
+        completedSubIssueCount={completedSubIssueCount}
+        totalSubIssueCount={subIssues.length}
+        siblingNumber={siblingIndex >= 0 ? siblingIndex + 1 : undefined}
+        siblingCount={siblingIssues.length}
+        previousSiblingIssue={previousSiblingIssue}
+        nextSiblingIssue={nextSiblingIssue}
+        onOpenIssue={onOpenIssue}
         onBack={onBack}
         onDelete={handleDelete}
       />
@@ -101,7 +157,7 @@ export function IssueDetail({ issueId, workspaceId, onBack }: IssueDetailProps) 
             <IssueDescription issue={issue} onUpdate={handleUpdate} />
 
             <div className="mt-8">
-              <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} />
+              <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} onOpenIssue={onOpenIssue} />
             </div>
 
             {(issue.delegateAgentId || issue.delegateAgentProfileId) && (

@@ -1,4 +1,4 @@
-import { PlusIcon } from 'lucide-react'
+import { CornerDownRightIcon, PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
@@ -22,9 +22,10 @@ interface SubIssuesListProps {
   issueId: string
   workspaceId: string
   statuses: KanbanStatus[]
+  onOpenIssue: (id: string) => void
 }
 
-export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListProps) {
+export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: SubIssuesListProps) {
   const { data: subIssues = [] } = useIssues({ workspaceId, parentIssueId: issueId })
   const createIssue = useCreateIssue()
   const [creating, setCreating] = useState(false)
@@ -72,12 +73,20 @@ export function SubIssuesList({ issueId, workspaceId, statuses }: SubIssuesListP
       {subIssues.map((sub) => {
         const status = statuses.find(s => s.id === sub.statusId)
         return (
-          <div key={sub.id} className="flex h-7 items-center gap-2 rounded-md px-1.5 text-[13px] hover:bg-fill transition-colors" data-testid={`sub-issue-${sub.id}`}>
+          <button
+            key={sub.id}
+            type="button"
+            onClick={() => onOpenIssue(sub.id)}
+            className="flex h-7 w-full items-center gap-2 rounded-md px-1.5 text-left text-[13px] hover:bg-fill transition-colors"
+            data-testid={`sub-issue-${sub.id}`}
+            aria-label={`Open sub-issue ${sub.title}`}
+          >
+            <CornerDownRightIcon className="ml-1 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
             {status
               ? <StatusIcon category={status.category as StatusCategory} size={14} />
-              : <span className="size-3.5" />}
+              : <span className="size-3.5 shrink-0" />}
             <span className="flex-1 truncate text-foreground">{sub.title}</span>
-          </div>
+          </button>
         )
       })}
 

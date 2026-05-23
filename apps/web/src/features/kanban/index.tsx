@@ -405,6 +405,8 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, on
         <IssueDetail
           issueId={selectedIssueId}
           workspaceId={workspaceId}
+          issues={allIssues}
+          onOpenIssue={handleIssueClick}
           onBack={() => onSelectIssue?.(null)}
         />
       ) : (
