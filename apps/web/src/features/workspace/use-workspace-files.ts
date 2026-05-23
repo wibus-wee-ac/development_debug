@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 
 type WorkspaceFile = { type: 'file' | 'directory', name: string, path: string }
 const WorkspaceFileListSchema = z.array(z.object({
@@ -18,7 +19,7 @@ export function useWorkspaceFiles(workspaceId: string | null) {
       return WorkspaceFileListSchema.parse(data) satisfies WorkspaceFile[]
     },
     enabled: !!workspaceId,
-    staleTime: 30_000,
+    ...queryRefreshPolicies.active,
   })
 
   return { files }

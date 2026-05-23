@@ -3,32 +3,35 @@ import { z } from 'zod'
 
 import {
   deleteIssueAgentSessionsByAgentSessionId,
-  deleteKanbanBoardsById,
-  deleteIssuesCommentsById,
+  deleteIssueAgentSessionsByAgentSessionIdQueueByQueueItemId,
   deleteIssuesById,
   deleteIssuesByIdContextRefsByIndex,
   deleteIssuesByIdDelegation,
+  deleteIssuesCommentsById,
   deleteIssuesMilestonesById,
   deleteIssuesRelationsById,
   deleteIssuesStatusesById,
+  deleteKanbanBoardsById,
   deleteSessionsByIdLinkedIssue,
   getIssueAgentSessionsByAgentSessionIdActivities,
-  getKanbanBoards,
+  getIssueAgentSessionsByAgentSessionIdQueue,
   getIssues,
   getIssuesById,
   getIssuesByIdAgentSessions,
   getIssuesByIdComments,
   getIssuesByIdRelations,
-  getIssuesSearch,
   getIssuesMilestones,
+  getIssuesSearch,
   getIssuesStatuses,
+  getKanbanBoards,
   getSessionsByIdLinkedIssue,
-  patchKanbanBoardsById,
   patchIssuesById,
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
+  patchKanbanBoardsById,
+  postIssueAgentSessionsByAgentSessionIdPrompt,
+  postIssueAgentSessionsByAgentSessionIdQueueReorder,
   postIssueAgentSessionsByAgentSessionIdRerun,
-  postKanbanBoards,
   postIssues,
   postIssuesByIdComments,
   postIssuesByIdContextRefs,
@@ -37,9 +40,12 @@ import {
   postIssuesRelations,
   postIssuesStatuses,
   postIssuesStatusesReorder,
+  postKanbanBoards,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
-import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
+import type { AgentActivity, AgentSession, AgentSessionQueueItem, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+
 import { sessionsQueryKey } from '../workspace/use-session'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
@@ -55,6 +61,7 @@ export const kanbanKeys = {
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
   agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
   agentActivities: (sessionId: string) => ['kanban', 'agentActivities', sessionId] as const,
+  agentQueue: (sessionId: string) => ['kanban', 'agentQueue', sessionId] as const,
 }
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -229,6 +236,19 @@ const AgentActivitySchema = z.object({
 })
 const AgentActivityListSchema = z.array(AgentActivitySchema).default([])
 
+const AgentQueueItemSchema = z.object({
+  id: z.string(),
+  agentSessionId: z.string(),
+  text: z.string(),
+  status: z.enum(['queued', 'running', 'completed', 'cancelled', 'failed']),
+  source: z.enum(['queue', 'steer']),
+  position: z.number(),
+  runId: z.string().nullable(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+})
+const AgentQueueItemListSchema = z.array(AgentQueueItemSchema).default([])
+
 const LinkedIssueRefSchema = z.object({
   issueId: z.string().nullable(),
 }).nullable()
@@ -242,6 +262,7 @@ export function useBoards(workspaceId?: string) {
       const { data } = await getKanbanBoards({ query: { workspaceId } })
       return KanbanBoardListSchema.parse(data) satisfies KanbanBoard[]
     },
+    ...queryRefreshPolicies.active,
   })
 }
 
@@ -300,6 +321,7 @@ export function useStatuses(workspaceId: string) {
       return KanbanStatusListSchema.parse(data) satisfies KanbanStatus[]
     },
     enabled: !!workspaceId,
+    ...queryRefreshPolicies.active,
   })
 }
 
@@ -358,6 +380,7 @@ export function useMilestones(workspaceId: string) {
       return KanbanMilestoneListSchema.parse(data) satisfies KanbanMilestone[]
     },
     enabled: !!workspaceId,
+    ...queryRefreshPolicies.active,
   })
 }
 
@@ -415,6 +438,7 @@ export function useIssues(params: IssueFilterParams) {
       return KanbanIssueListSchema.parse(data) satisfies KanbanIssue[]
     },
     enabled: !!params.workspaceId,
+    ...queryRefreshPolicies.active,
   })
 }
 
@@ -431,7 +455,7 @@ function useSearchIssues(query: string, limit = 20, enabled = true) {
       return KanbanIssueListSchema.parse(data) satisfies KanbanIssue[]
     },
     enabled: enabled && trimmed.length > 0,
-    staleTime: 5_000,
+    ...queryRefreshPolicy('interactive', { refetchInterval: false }),
   })
 }
 
@@ -443,6 +467,7 @@ export function useIssue(id: string) {
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     enabled: !!id,
+    ...queryRefreshPolicies.interactive,
   })
 }
 
@@ -526,6 +551,7 @@ export function useComments(issueId: string) {
       return KanbanIssueCommentListSchema.parse(data) satisfies KanbanIssueCommentView[]
     },
     enabled: !!issueId,
+    ...queryRefreshPolicies.interactive,
   })
 }
 
@@ -543,7 +569,6 @@ export function useAddComment() {
   })
 }
 
-// eslint-disable-next-line unused-imports/no-unused-vars
 export function useDeleteComment() {
   const qc = useQueryClient()
   return useMutation({
@@ -562,6 +587,7 @@ export function useRelations(issueId: string) {
       return KanbanIssueRelationListSchema.parse(data) satisfies KanbanIssueRelation[]
     },
     enabled: !!issueId,
+    ...queryRefreshPolicies.interactive,
   })
 }
 
@@ -676,6 +702,9 @@ export function useAgentSessions(issueId: string) {
       const hasActive = sessions.some(s => s.status === 'active' || s.status === 'created')
       return hasActive ? 500 : false
     },
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
   })
 }
 
@@ -691,6 +720,80 @@ export function useAgentActivities(agentSessionId: string | null, opts?: { refet
     },
     enabled: !!agentSessionId,
     refetchInterval: opts?.refetchInterval,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  })
+}
+
+export function useAgentQueue(agentSessionId: string | null, opts?: { refetchInterval?: number | false }) {
+  return useQuery({
+    queryKey: kanbanKeys.agentQueue(agentSessionId ?? ''),
+    queryFn: async () => {
+      if (!agentSessionId) {
+        return []
+      }
+      const { data } = await getIssueAgentSessionsByAgentSessionIdQueue({ path: { agentSessionId } })
+      return AgentQueueItemListSchema.parse(data) satisfies AgentSessionQueueItem[]
+    },
+    enabled: !!agentSessionId,
+    refetchInterval: opts?.refetchInterval,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  })
+}
+
+export function useSubmitAgentPrompt() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { agentSessionId: string, issueId: string, text: string, mode: 'queue' | 'steer' }) => {
+      const { data } = await postIssueAgentSessionsByAgentSessionIdPrompt({
+        path: { agentSessionId: vars.agentSessionId },
+        body: { text: vars.text, mode: vars.mode },
+      })
+      return data
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
+  })
+}
+
+export function useCancelAgentQueueItem() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { agentSessionId: string, issueId: string, queueItemId: string }) => {
+      const { data } = await deleteIssueAgentSessionsByAgentSessionIdQueueByQueueItemId({
+        path: { agentSessionId: vars.agentSessionId, queueItemId: vars.queueItemId },
+      })
+      return AgentQueueItemSchema.parse(data) satisfies AgentSessionQueueItem
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
+  })
+}
+
+export function useReorderAgentQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { agentSessionId: string, issueId: string, orderedIds: string[] }) => {
+      const { data } = await postIssueAgentSessionsByAgentSessionIdQueueReorder({
+        path: { agentSessionId: vars.agentSessionId },
+        body: { orderedIds: vars.orderedIds },
+      })
+      return AgentQueueItemListSchema.parse(data) satisfies AgentSessionQueueItem[]
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+    },
   })
 }
 
@@ -739,6 +842,7 @@ export function useLinkedIssue(chatSessionId: string | null) {
       return LinkedIssueRefSchema.parse(data) satisfies LinkedIssueRef | null
     },
     enabled: !!chatSessionId,
+    ...queryRefreshPolicies.interactive,
   })
 }
 

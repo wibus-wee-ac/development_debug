@@ -7,6 +7,7 @@ import { z } from 'zod'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import { useGitFileStatuses } from '~/features/git/use-git'
+import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 import type { GitFileStatus } from '~/lib/types'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 
@@ -55,7 +56,7 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
       return WorkspaceFileListSchema.parse(data)
     },
     enabled: !!workspaceId,
-    staleTime: 30_000,
+    ...queryRefreshPolicies.active,
   })
 
   const gitStatusQuery = useGitFileStatuses(workspaceId)

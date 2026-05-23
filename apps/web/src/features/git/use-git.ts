@@ -10,6 +10,7 @@ import {
   getWorkspacesByIdGitStatusQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { client } from '~/lib/client.config'
+import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 import type { GitBranches, GitFileStatus, GitGraphCommit, GitStatus } from '~/lib/types'
 
 interface GitRemote {
@@ -65,8 +66,8 @@ export { getWorkspacesByIdGitGraphQueryKey as gitGraphQueryKey }
 export function useGitStatus(workspaceId: string | null | undefined) {
   return useQuery({
     ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId! } }),
+    ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
-    staleTime: 10_000,
     retry: false,
     select: data => GitStatusSchema.parse(data) satisfies GitStatus,
   })
@@ -75,9 +76,8 @@ export function useGitStatus(workspaceId: string | null | undefined) {
 export function useGitFileStatuses(workspaceId: string | null | undefined) {
   return useQuery({
     ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId! } }),
+    ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
-    staleTime: 10_000,
-    refetchInterval: 15_000,
     retry: false,
     select: data => GitStatusSchema.parse(data).files satisfies GitFileStatus[],
   })
@@ -86,8 +86,8 @@ export function useGitFileStatuses(workspaceId: string | null | undefined) {
 export function useGitBranches(workspaceId: string | null | undefined) {
   return useQuery({
     ...getWorkspacesByIdGitBranchesOptions({ path: { id: workspaceId! } }),
+    ...queryRefreshPolicies.background,
     enabled: !!workspaceId,
-    staleTime: 30_000,
     retry: false,
     select: data => GitBranchesSchema.parse(data) satisfies GitBranches,
   })
@@ -105,7 +105,7 @@ export function useGitRemotes(workspaceId: string | null | undefined) {
       return data
     },
     enabled: !!workspaceId,
-    staleTime: 60_000,
+    ...queryRefreshPolicies.background,
     retry: false,
   })
 }
@@ -113,8 +113,8 @@ export function useGitRemotes(workspaceId: string | null | undefined) {
 export function useGitGraph(workspaceId: string | null | undefined, limit: number = 100) {
   return useQuery({
     ...getWorkspacesByIdGitGraphOptions({ path: { id: workspaceId! }, query: { limit: String(limit) } }),
+    ...queryRefreshPolicies.background,
     enabled: !!workspaceId,
-    staleTime: 30_000,
     retry: false,
     placeholderData: keepPreviousData,
     select: data => GitGraphCommitListSchema.parse(data) satisfies GitGraphCommit[],

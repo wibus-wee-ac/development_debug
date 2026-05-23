@@ -28,5 +28,5 @@ Kanban renders board/list/detail views over Issue-owned workspace data. Issue me
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Shared visual and metadata helpers such as priority labels, label parsing, icons, and avatars.
 - **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.
-- **use-kanban.ts**: TanStack Query hooks for Kanban boards plus Issue-owned status, milestone, relation, comment, and delegation operations.
+- **use-kanban.ts**: TanStack Query hooks for Kanban boards plus Issue-owned status, milestone, relation, comment, and delegation operations; high-impact workspace reads use the shared query refresh policy so external CLI, agent, and multi-window changes become visible without a full page reload.
 - **use-view-config.ts**: Local view configuration state for board/list display options.

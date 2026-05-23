@@ -9,7 +9,7 @@ The first real UI-driven E2E coverage enters this feature from `new-chat` → ch
 
 ## Files
 
-- **use-git.ts**: TanStack Query hooks — `useGitStatus`, `useGitFileStatuses`, `useGitBranches`, `useGitGraph` with exported query-key builders for external invalidation
+- **use-git.ts**: TanStack Query hooks — `useGitStatus`, `useGitFileStatuses`, `useGitBranches`, `useGitGraph` with exported query-key builders for external invalidation; status reads use active refresh while branches/remotes/graph use background refresh.
 - **changes-grouping.ts**: Pure grouping rules for assigning changed files to Sources, Docs / Specs, and Tests sections.
 - **graph-layout.ts**: Pure `computeGraphLayout` function — assigns lane numbers, per-row visible lane counts, and SVG line metadata to each commit using a classic open-slots algorithm
 - **graph-layout.test.ts**: Unit coverage for `computeGraphLayout` linear history, merge lane convergence, compact mainline row width, and empty graph behavior

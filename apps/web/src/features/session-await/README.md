@@ -7,7 +7,7 @@ Renderer-owned UI for chat session awaits in the right aside. The feature lets a
 - **await-panel-loader.ts**: Shared lazy loader and intent preload entry for the right aside Feed tab.
 - **awaits-overview-loader.ts**: Shared lazy loader and route preload entry for the Awaits overview tab.
 - **awaits-overview.tsx**: Full-tab overview of pending awaits from the Desktop read-only projection.
-- **await-panel.tsx**: Await panel, GitHub composer, source cards, check/status tree rendering, and PR review status rendering; records the global right-aside Feed first-render mark once per module lifetime after the session awaits query succeeds.
+- **await-panel.tsx**: Await panel, GitHub composer, source cards, check/status tree rendering, and PR review status rendering; session await reads use the shared interactive query refresh policy and live GitHub status keeps an explicit slower interval; records the global right-aside Feed first-render mark once per module lifetime after the session awaits query succeeds.
 - **await-github.ts**: GitHub repository detection and target parsing helpers for human-created awaits.
 - **await-github.test.ts**: Regression coverage for GitHub repo detection, target parsing, and PR-number inference.
 

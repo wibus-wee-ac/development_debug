@@ -5,13 +5,13 @@ import {
   GitCommitHorizontalIcon,
   GitPullRequestIcon,
   LoaderCircleIcon,
-  MinusIcon,
   MessageSquareCheckIcon,
   MessageSquareWarningIcon,
+  MinusIcon,
   MoreHorizontalIcon,
   PlusIcon,
-  XIcon,
   WandSparklesIcon,
+  XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { FormEvent } from 'react'
@@ -32,6 +32,7 @@ import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
 
 import {
   derivePullRequestNumberFromStatus,
@@ -155,16 +156,16 @@ type LiveAwaitStatus = LiveCIStatus | LiveReviewStatus
 function useSessionAwaits(sessionId: string | null) {
   return useQuery({
     ...getSessionAwaitsOptions({ query: { sessionId: sessionId! } }),
+    ...queryRefreshPolicies.interactive,
     enabled: !!sessionId,
-    refetchInterval: 15_000,
   })
 }
 
 function useLiveCIStatus(awaitId: string | null) {
   return useQuery({
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
+    ...queryRefreshPolicy('interactive', { refetchInterval: 20_000 }),
     enabled: !!awaitId,
-    refetchInterval: 20_000,
   })
 }
 
@@ -589,7 +590,11 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="capitalize">{awaitRow.source}</span>
           <span>·</span>
-          <span>{(awaitRow.reason as string) ?? 'Waiting...'}</span>
+          <span
+            className="min-w-0 flex-1 truncate"
+          >
+{(awaitRow.reason as string) ?? 'Waiting...'}
+          </span>
         </div>
       </div>
     )
