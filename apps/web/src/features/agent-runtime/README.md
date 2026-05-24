@@ -14,3 +14,4 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 - **use-agent-profiles.ts**: `useAgentProfiles` hook — owns unified Agent Runtime profile query state, exposes query success for settings readiness, and update/delete mutations, invalidating model queries when profile config changes
 - **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities (TanStack Query mutations) and query success for settings readiness
 - **use-agent-models.ts**: `useAgentModels` and `useAgentModelMap` hooks — read cached visible models for one profile or a profile-keyed composer model map, share one query key per profile across chat, composer, and settings surfaces, avoid automatic provider inventory refreshes, and expose per-profile query success for Settings Jarvis readiness
+- **runtime-compatibility.ts**: renderer-side runtime-kind to provider-kind compatibility rules used by composer filtering.

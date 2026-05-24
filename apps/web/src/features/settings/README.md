@@ -9,6 +9,7 @@
 ## Files
 
 - **appearance-settings.tsx**: 外观设置页，负责主题切换；Settings Appearance 首屏在 theme options 与 stream animation controls ready 后记录 performance gate；主题选项暴露稳定 E2E selection anchors。
+- **chat-settings.tsx**: 对话设置页，负责默认 continuation behavior 的切换。
 - **chronicle-settings.tsx**: 由 `features/chronicle` 拥有的 Settings > 记录页面；Settings Chronicle 首屏在 Chronicle config、status、resources、message sources、evidence、activity、knowledge、timeline、memories 和当前 profile 的 Agent Runtime model cache 首轮数据 ready 后记录 performance gate。
 - **desktop-update-settings.tsx**: Desktop 更新设置页，通过 Electron preload / IPC 管理 Velopack 更新状态、检查、下载与应用；Settings Desktop 首屏在 update status 初始化完成后记录 performance gate。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型；Settings Jarvis 首屏在 preferences、profiles 与当前 profile cached models 查询成功后记录 performance gate
@@ -20,3 +21,4 @@
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试
 - **support-settings.tsx**: Support 设置页，提供本地 diagnostics JSON 导出、feedback template copy、feedback issue 入口、Cradle-owned data directory reveal 和卸载数据保留说明；Settings Support 首屏在 feedback template 与控制表面 ready 后记录 performance gate。
+- **use-chat-preferences.ts**: Chat preferences query / mutation hook，读取与写入默认 continuation behavior。

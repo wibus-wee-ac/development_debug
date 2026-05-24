@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
+  getExternalProviderSourcesOptions,
   getExternalProviderSourcesRecordsOptions,
   postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
@@ -39,6 +40,7 @@ import type { AgentProfile } from '~/lib/types'
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { ProviderIcon } from './provider-icons'
+import { collectProviderListGroups } from './provider-list-groups'
 import type { DraftProvider } from './provider-settings-utils'
 import { presetForProfile, PROVIDER_KIND_LABELS } from './provider-settings-utils'
 import {
@@ -82,9 +84,8 @@ function ProviderRow({
       className={cn(
         'group/sidebar-row flex w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left outline-none',
         'transition-[background-color,opacity,scale] duration-150',
-        'focus-within:ring-2 focus-within:ring-ring/50',
         active
-          ? 'bg-accent text-accent-foreground'
+          ? 'bg-foreground/[0.045] text-foreground'
           : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
         !profile.enabled && !active && 'opacity-60',
       )}
@@ -162,6 +163,14 @@ export function AgentRuntimeSettings() {
   const [filter, setFilter] = useState('')
   const [batchBusy, setBatchBusy] = useState(false)
   const {
+    data: externalSources = [],
+    isSuccess: externalSourcesReady,
+    refetch: refetchExternalSources,
+  } = useQuery({
+    ...getExternalProviderSourcesOptions(),
+    retry: false,
+  })
+  const {
     data: externalRecords = [],
     isSuccess: externalRecordsReady,
     refetch: refetchExternalRecords,
@@ -169,12 +178,12 @@ export function AgentRuntimeSettings() {
     ...getExternalProviderSourcesRecordsOptions(),
     retry: false,
   })
-  const settingsProvidersReady = profilesReady && externalRecordsReady
+  const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
 
   const refreshExternalSources = useMutation({
     ...postExternalProviderSourcesRefreshMutation(),
     onSuccess: async (data) => {
-      await Promise.all([refetch(), refetchExternalRecords()])
+      await Promise.all([refetch(), refetchExternalSources(), refetchExternalRecords()])
 
       const results = Array.isArray(data) ? data : [data]
       const errors = results.filter(r => r.status === 'error')
@@ -206,17 +215,31 @@ export function AgentRuntimeSettings() {
     [externalRecords],
   )
 
-  const visibleProfiles = useMemo(() => {
+  const providerGroups = useMemo(
+    () => collectProviderListGroups(profiles, externalRecords, externalSources),
+    [profiles, externalRecords, externalSources],
+  )
+  const visibleProfileGroups = useMemo(() => {
     if (!filter.trim()) {
-      return profiles
+      return providerGroups
     }
     const q = filter.trim().toLowerCase()
-    return profiles.filter(
-      p =>
-        p.name.toLowerCase().includes(q)
-        || (PROVIDER_KIND_LABELS[p.providerKind] ?? '').toLowerCase().includes(q),
-    )
-  }, [profiles, filter])
+    return providerGroups
+      .map(group => ({
+        ...group,
+        profiles: group.profiles.filter(
+          p =>
+            group.label.toLowerCase().includes(q)
+            || p.name.toLowerCase().includes(q)
+            || (PROVIDER_KIND_LABELS[p.providerKind] ?? '').toLowerCase().includes(q),
+        ),
+      }))
+      .filter(group => group.profiles.length > 0)
+  }, [providerGroups, filter])
+  const visibleProfiles = useMemo(
+    () => visibleProfileGroups.flatMap(group => group.profiles),
+    [visibleProfileGroups],
+  )
 
   const selectedProfileId = selectedIdFromSet(selectedIds)
   const selectedProfile = selectedProfileId
@@ -534,9 +557,8 @@ selected
                   className={cn(
                     'group/sidebar-row relative flex w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left outline-none',
                     'transition-[background-color] duration-150',
-                    'focus-within:ring-2 focus-within:ring-ring/50',
                     isDraftSelected
-                      ? 'bg-accent text-accent-foreground'
+                      ? 'bg-foreground/[0.045] text-foreground'
                       : 'opacity-90 hover:bg-foreground/[0.035]',
                   )}
                 >
@@ -585,16 +607,24 @@ visible
                 </div>
               )}
 
-              {visibleProfiles.map(profile => (
-                <ProviderRow
-                  key={profile.id}
-                  profile={profile}
-                  active={selectedProfileId === profile.id && !isDraftSelected}
-                  selected={selectedIds.has(profile.id)}
-                  onClick={shiftKey => openProfile(profile.id, shiftKey)}
-                  onToggleSelected={(checked, shiftKey) =>
-                    selectProfile(profile.id, checked, shiftKey)}
-                />
+              {visibleProfileGroups.map(group => (
+                <div key={group.id} className="flex min-w-0 flex-col gap-0.5">
+                  <div className="flex min-w-0 items-center justify-between gap-2 px-2 pb-0.5 pt-2 text-[10.5px] font-medium text-muted-foreground/60 first:pt-0">
+                    <span className="min-w-0 truncate">{group.label}</span>
+                    <span className="shrink-0 tabular-nums">{group.profiles.length}</span>
+                  </div>
+                  {group.profiles.map(profile => (
+                    <ProviderRow
+                      key={profile.id}
+                      profile={profile}
+                      active={selectedProfileId === profile.id && !isDraftSelected}
+                      selected={selectedIds.has(profile.id)}
+                      onClick={shiftKey => openProfile(profile.id, shiftKey)}
+                      onToggleSelected={(checked, shiftKey) =>
+                        selectProfile(profile.id, checked, shiftKey)}
+                    />
+                  ))}
+                </div>
               ))}
 
               {visibleProfiles.length === 0 && !draft && (

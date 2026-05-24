@@ -1,4 +1,4 @@
-import { ActivityIcon, ArrowLeftIcon, BotIcon, DownloadIcon, LifeBuoyIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { ActivityIcon, ArrowLeftIcon, BotIcon, DownloadIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -13,6 +13,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'appearance', label: '外观', icon: PaletteIcon },
   { id: 'providers', label: '模型服务', icon: PlugIcon },
   { id: 'agents', label: '助手', icon: BotIcon },
+  { id: 'chat', label: '对话', icon: MessageSquareIcon },
   { id: 'jarvis', label: 'Jarvis', icon: MousePointer2Icon },
   { id: 'chronicle', label: '记录', icon: ActivityIcon },
   { id: 'skills', label: '技能', icon: SparklesIcon },
