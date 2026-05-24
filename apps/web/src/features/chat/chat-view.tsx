@@ -28,6 +28,7 @@ import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { Composer } from './composer'
+import { modelSupportsAttachments } from './composer-attachment-state'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
 import type { ChatContinuationMode, ChatQueueItem } from './use-chat-session'
@@ -350,8 +351,7 @@ export function ChatView({
     return contextWindow != null && contextWindow > 0 ? contextWindow : null
   }, [currentSessionModel])
   const supportsAttachments = useMemo(() => {
-    const modalities = currentSessionModel?.capabilities.inputModalities ?? []
-    return modalities.some((modality) => modality !== 'text')
+    return modelSupportsAttachments(currentSessionModel)
   }, [currentSessionModel])
 
   /**

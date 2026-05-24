@@ -1,5 +1,6 @@
 import { Link } from '@cradle/tabs-next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import type { FileUIPart } from 'ai'
 import {
   ExternalLinkIcon,
   FileTextIcon,
@@ -532,6 +533,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const handleCapsuleSend = useCallback(async (
     text: string,
+    files: FileUIPart[],
     opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
   ) => {
     if (!workspace) {
@@ -561,7 +563,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     }
     await startChatResponse({
       sessionId: session.id,
-      body: { text, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
+      body: { text, files, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
     })
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     openTab('chat', { sessionId: session.id })

@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
+import type { FileUIPart } from 'ai'
 import {
   ArrowUpIcon,
   ClockIcon,
   FolderIcon,
   LoaderCircleIcon,
   MessageSquareIcon,
-  PaperclipIcon,
   SettingsIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
@@ -19,6 +19,12 @@ import { Kbd } from '~/components/ui/kbd'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { startChatResponse } from '~/features/chat/chat-response-command'
+import { modelSupportsAttachments, useComposerAttachments } from '~/features/chat/composer-attachment-state'
+import {
+  ComposerAttachmentButton,
+  ComposerAttachmentInput,
+  ComposerAttachmentList,
+} from '~/features/chat/composer-attachments'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
@@ -117,6 +123,8 @@ function useNewChatPageOwner() {
   const now = useNow()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
+  const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
+  const attachmentController = useComposerAttachments({ supportsAttachments })
   const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
@@ -145,7 +153,7 @@ function useNewChatPageOwner() {
 
   const canSend = selection.runtimeKind === 'cli-tui'
     ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
-    : !!effectiveProfile && !!effectiveWorkspaceId && input.trim().length > 0 && !sending
+    : !!effectiveProfile && !!effectiveWorkspaceId && (input.trim().length > 0 || attachmentController.hasAttachments) && !sending
 
   const readinessNotice = useMemo(() => {
     if (!isReady) {
@@ -209,6 +217,7 @@ function useNewChatPageOwner() {
       return
     }
 
+    const files: FileUIPart[] = attachmentController.attachments
     setSending(true)
     try {
       if (selection.runtimeKind === 'cli-tui') {
@@ -250,10 +259,12 @@ function useNewChatPageOwner() {
         sessionId: session.id,
         body: {
           text: input.trim(),
+          files,
           modelId: effectiveModel?.id ?? undefined,
           thinkingEffort: selection.thinkingEffort ?? undefined,
         },
       })
+      attachmentController.clearAttachments()
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
       void openTab('chat', { sessionId: session.id })
     }
@@ -263,7 +274,7 @@ function useNewChatPageOwner() {
     finally {
       setSending(false)
     }
-  }, [canSend, effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
+  }, [attachmentController, canSend, effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -294,6 +305,7 @@ function useNewChatPageOwner() {
 
   return {
     canSend,
+    attachmentController,
     composerState,
     effectiveWorkspaceId,
     handleInput,
@@ -321,6 +333,7 @@ function useNewChatPageOwner() {
 
 function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const {
+    attachmentController,
     canSend,
     composerState,
     handleInput,
@@ -346,11 +359,18 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
       )}
     >
       <div className="relative bg-background">
+        <ComposerAttachmentInput
+          fileInputRef={attachmentController.fileInputRef}
+          onFilesSelected={attachmentController.handleFilesSelected}
+          supportsAttachments={attachmentController.supportsAttachments}
+          testId="new-chat-file-input"
+        />
         <textarea
           ref={textareaRef}
           value={input}
           onChange={handleInput}
           onKeyDown={handleKeyDown}
+          onPaste={attachmentController.handlePaste}
           disabled={sending}
           data-testid="new-chat-textarea"
           aria-label="New chat message"
@@ -382,12 +402,23 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
         )}
       </div>
 
+      <ComposerAttachmentList
+        attachments={attachmentController.attachments}
+        onRemove={attachmentController.removeAttachment}
+        className="border-border/60 px-3 py-2"
+      />
+
       <div className="flex items-center gap-1 border-t border-border/60 px-2.5 py-2">
         <ComposerToolbar context="new-chat" state={composerState} />
 
-        <Button variant="ghost" size="icon-xs" className="text-muted-foreground/30" aria-label="Attach file">
-          <PaperclipIcon className="size-3" aria-hidden="true" />
-        </Button>
+        <ComposerAttachmentButton
+          disabled={sending}
+          className="text-muted-foreground/30"
+          iconClassName="size-3"
+          onPickFiles={attachmentController.pickFiles}
+          supportsAttachments={attachmentController.supportsAttachments}
+          testId="new-chat-attach-btn"
+        />
 
         <div className="flex-1" />
 

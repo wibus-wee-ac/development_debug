@@ -1,3 +1,4 @@
+import type { FileUIPart } from 'ai'
 import {
   Loader2Icon,
   SendHorizonalIcon,
@@ -7,6 +8,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import type { MentionItem } from '~/features/chat'
+import { modelSupportsAttachments, useComposerAttachments } from '~/features/chat/composer-attachment-state'
+import {
+  ComposerAttachmentButton,
+  ComposerAttachmentInput,
+  ComposerAttachmentList,
+} from '~/features/chat/composer-attachments'
 import { MentionPanel } from '~/features/chat/mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
@@ -14,7 +21,7 @@ import { cn } from '~/lib/cn'
 
 interface CapsuleComposerProps {
   workspaceId: string
-  onSend: (text: string, opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
+  onSend: (text: string, files: FileUIPart[], opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
 }
 
 function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) {
@@ -26,6 +33,8 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
   const [sending, setSending] = useState(false)
   const [mentionActive, setMentionActive] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
+  const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
+  const attachmentController = useComposerAttachments({ supportsAttachments })
   const mentionStartRef = useRef<number>(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -126,12 +135,12 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
         return
       }
     }
-    else if (!text || !effectiveProfile) {
+    else if ((!text && !attachmentController.hasAttachments) || !effectiveProfile) {
       return
     }
     setSending(true)
     try {
-      await onSend(text, {
+      await onSend(text, attachmentController.attachments, {
         runtimeKind: selection.runtimeKind,
         ...(selection.runtimeKind === 'cli-tui'
           ? { agentId: effectiveAgent?.id }
@@ -141,6 +150,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
               thinkingEffort: selection.thinkingEffort ?? undefined,
             }),
       })
+      attachmentController.clearAttachments()
       setInput('')
       setExpanded(false)
       setMentionActive(false)
@@ -148,7 +158,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     finally {
       setSending(false)
     }
-  }, [onSend, effectiveAgent, effectiveProfile, effectiveModel, selection.runtimeKind, selection.thinkingEffort, input])
+  }, [attachmentController, onSend, effectiveAgent, effectiveProfile, effectiveModel, selection.runtimeKind, selection.thinkingEffort, input])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) {
@@ -174,13 +184,14 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 
   const canSend = selection.runtimeKind === 'cli-tui'
     ? !!effectiveAgent && !sending
-    : !!input.trim() && !!effectiveProfile && !sending
+    : (!!input.trim() || attachmentController.hasAttachments) && !!effectiveProfile && !sending
 
   const closeMention = useCallback(() => {
     setMentionActive(false)
   }, [])
 
   return {
+    attachmentController,
     availableFiles,
     canSend,
     closeMention,
@@ -231,6 +242,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           onChange={owner.handleInput}
           onFocus={owner.expand}
           onKeyDown={owner.handleKeyDown}
+          onPaste={owner.attachmentController.handlePaste}
           placeholder="在此工作区开始新对话..."
           disabled={owner.sending}
           rows={1}
@@ -243,6 +255,18 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
               : 'px-5 py-3 min-h-11 max-h-11',
           )}
         />
+        <ComposerAttachmentInput
+          fileInputRef={owner.attachmentController.fileInputRef}
+          onFilesSelected={owner.attachmentController.handleFilesSelected}
+          supportsAttachments={owner.attachmentController.supportsAttachments}
+          testId="workspace-detail-capsule-file-input"
+        />
+
+        <ComposerAttachmentList
+          attachments={owner.attachmentController.attachments}
+          onRemove={owner.attachmentController.removeAttachment}
+          className="px-3 py-2"
+        />
 
         <div
           className={cn(
@@ -252,7 +276,15 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
         >
           <div className="overflow-hidden">
             <div className="flex items-center justify-between gap-2 border-t border-border/20 px-3 py-2">
-              <div className="flex items-center gap-1" />
+              <div className="flex items-center gap-1">
+                <ComposerAttachmentButton
+                  disabled={owner.sending}
+                  iconClassName="size-3"
+                  onPickFiles={owner.attachmentController.pickFiles}
+                  supportsAttachments={owner.attachmentController.supportsAttachments}
+                  testId="workspace-detail-capsule-attach-btn"
+                />
+              </div>
               <div className="flex items-center gap-1">
                 <ComposerToolbar context="capsule" state={owner.composerState} />
                 <Button
