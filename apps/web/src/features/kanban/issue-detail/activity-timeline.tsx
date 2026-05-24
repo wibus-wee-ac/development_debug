@@ -1,3 +1,4 @@
+import { StaticRender } from '@cradle/streamdown'
 import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 
@@ -163,7 +164,18 @@ const CommentItem = memo(function CommentItem({
             </button>
           )}
         </div>
-        <p className="mt-1 text-[13px] text-foreground/90 whitespace-pre-wrap">{comment.content}</p>
+        <StaticRender
+          content={comment.content}
+          className={cn(
+            'mt-1 min-w-0 text-[13px] leading-relaxed text-foreground/90 !tracking-normal',
+            '[&_a]:break-words [&_blockquote]:my-2 [&_blockquote]:rounded-md [&_blockquote]:px-3 [&_blockquote]:py-2',
+            '[&_h1]:!tracking-normal [&_h2]:!tracking-normal [&_thead_th]:!tracking-normal',
+            '[&_h1]:border-0 [&_h1]:pb-0 [&_h1]:text-[15px]',
+            '[&_h2]:border-0 [&_h2]:pb-0 [&_h2]:text-[14px]',
+            '[&_h3]:text-[13px] [&_h4]:text-[13px] [&_h5]:text-[13px] [&_h6]:text-[13px]',
+            '[&_pre]:max-w-full [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto',
+          )}
+        />
       </div>
     </div>
   )

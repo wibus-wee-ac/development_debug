@@ -1,64 +1,82 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { SendIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 
+import type { ChatContinuationMode } from '~/features/chat/chat-response-command'
+import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { getServerUrl } from '~/lib/electron'
-
-import { kanbanKeys } from '../use-kanban'
 
 interface AgentPromptInputProps {
   agentSessionId: string
+  chatSessionId: string | null
   sessionStatus: string
-  issueId: string
+  onQueued: () => void
 }
 
-async function sendPrompt(agentSessionId: string, text: string) {
+function invertContinuationMode(mode: ChatContinuationMode): ChatContinuationMode {
+  return mode === 'queue' ? 'steer' : 'queue'
+}
+
+async function enqueueAgentContinuation(input: {
+  agentSessionId: string
+  mode: ChatContinuationMode
+  text: string
+}) {
   const baseUrl = getServerUrl()
-  const res = await fetch(`${baseUrl}/issue-agent-sessions/${agentSessionId}/prompt`, {
+  const res = await fetch(`${baseUrl}/issue-agent-sessions/${input.agentSessionId}/continuation`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ mode: input.mode, text: input.text }),
   })
   if (!res.ok) {
-    throw new Error(`Failed to send prompt: ${res.status}`)
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to enqueue continuation: ${res.status} ${body}`)
   }
   return res.json()
 }
 
-export function AgentPromptInput({ agentSessionId, sessionStatus, issueId: _issueId }: AgentPromptInputProps) {
+export function AgentPromptInput({ agentSessionId, chatSessionId, sessionStatus, onQueued }: AgentPromptInputProps) {
   const [text, setText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
-  const qc = useQueryClient()
+  const { data: chatPreferences } = useChatPreferencesQuery()
   const isAgentBusy = sessionStatus === 'active' || sessionStatus === 'created'
 
-  const handleSubmit = useCallback(async () => {
+  const handleSubmit = useCallback(async (options?: { invertContinuationMode?: boolean }) => {
     const trimmed = text.trim()
-    if (!trimmed || isAgentBusy || isSending) {
+    if (!trimmed || !chatSessionId || isSending) {
       return
     }
+    const defaultMode = chatPreferences?.continuationBehavior ?? 'queue'
+    const mode = options?.invertContinuationMode ? invertContinuationMode(defaultMode) : defaultMode
     setError(null)
     setIsSending(true)
     setText('')
     try {
-      await sendPrompt(agentSessionId, trimmed)
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(agentSessionId) })
+      await enqueueAgentContinuation({ agentSessionId, mode, text: trimmed })
+      onQueued()
     }
     catch (err) {
       setText(trimmed)
-      setError(err instanceof Error ? err.message : 'Failed to send prompt')
+      setError(err instanceof Error ? err.message : 'Failed to enqueue continuation')
     }
     finally {
       setIsSending(false)
     }
-  }, [text, isAgentBusy, isSending, agentSessionId, qc])
+  }, [agentSessionId, chatPreferences?.continuationBehavior, chatSessionId, isSending, onQueued, text])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || !e.shiftKey)) {
       e.preventDefault()
-      handleSubmit()
+      void handleSubmit({ invertContinuationMode: e.shiftKey && e.metaKey })
     }
   }, [handleSubmit])
+
+  const defaultMode = chatPreferences?.continuationBehavior ?? 'queue'
+  const placeholder = !chatSessionId
+    ? 'Chat session is starting...'
+    : isAgentBusy
+      ? defaultMode === 'steer' ? 'Send steer...' : 'Queue follow-up...'
+      : 'Queue follow-up...'
 
   return (
     <div className="border-t border-border px-3 py-2">
@@ -70,8 +88,9 @@ export function AgentPromptInput({ agentSessionId, sessionStatus, issueId: _issu
       <div className="flex items-end gap-2">
         <textarea
           className="min-h-8 flex-1 resize-none bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none"
-          placeholder={isAgentBusy ? 'Agent is working...' : 'Send a message...'}
-          disabled={isAgentBusy || isSending}
+          placeholder={placeholder}
+          aria-label={defaultMode === 'steer' ? 'Send steer' : 'Queue follow-up'}
+          disabled={!chatSessionId || isSending}
           value={text}
           onChange={(event) => {
             setText(event.target.value)
@@ -83,9 +102,9 @@ export function AgentPromptInput({ agentSessionId, sessionStatus, issueId: _issu
         <button
           type="button"
           className="flex size-7 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:text-foreground disabled:opacity-30"
-          disabled={isAgentBusy || isSending || !text.trim()}
-          onClick={handleSubmit}
-          aria-label="Send prompt"
+          disabled={!chatSessionId || isSending || !text.trim()}
+          onClick={() => void handleSubmit()}
+          aria-label={defaultMode === 'steer' ? 'Send steer' : 'Queue prompt'}
         >
           <SendIcon className="size-3.5" aria-hidden="true" />
         </button>

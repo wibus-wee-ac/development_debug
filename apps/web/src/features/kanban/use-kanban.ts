@@ -3,7 +3,6 @@ import { z } from 'zod'
 
 import {
   deleteIssueAgentSessionsByAgentSessionId,
-  deleteIssueAgentSessionsByAgentSessionIdQueueByQueueItemId,
   deleteIssuesById,
   deleteIssuesByIdContextRefsByIndex,
   deleteIssuesByIdDelegation,
@@ -14,7 +13,6 @@ import {
   deleteKanbanBoardsById,
   deleteSessionsByIdLinkedIssue,
   getIssueAgentSessionsByAgentSessionIdActivities,
-  getIssueAgentSessionsByAgentSessionIdQueue,
   getIssues,
   getIssuesById,
   getIssuesByIdAgentSessions,
@@ -29,8 +27,6 @@ import {
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
   patchKanbanBoardsById,
-  postIssueAgentSessionsByAgentSessionIdPrompt,
-  postIssueAgentSessionsByAgentSessionIdQueueReorder,
   postIssueAgentSessionsByAgentSessionIdRerun,
   postIssues,
   postIssuesByIdComments,
@@ -44,7 +40,7 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentActivity, AgentSession, AgentSessionQueueItem, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { sessionsQueryKey } from '../workspace/use-session'
 
@@ -61,7 +57,6 @@ export const kanbanKeys = {
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
   agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
   agentActivities: (sessionId: string) => ['kanban', 'agentActivities', sessionId] as const,
-  agentQueue: (sessionId: string) => ['kanban', 'agentQueue', sessionId] as const,
 }
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -120,7 +115,6 @@ type UpdateIssueInput = {
 }
 
 type PatchIssueLabelsInput = { patches: { issueId: string, labels: string[] }[] }
-
 type BulkUpdateIssuesInput = { ids: string[], patch: UpdateIssueInput['patch'] }
 type MoveIssueInput = { id: string, statusId: string | null }
 type AddCommentInput = { issueId: string, content: string }
@@ -237,19 +231,6 @@ const AgentActivitySchema = z.object({
   createdAt: z.number(),
 })
 const AgentActivityListSchema = z.array(AgentActivitySchema).default([])
-
-const AgentQueueItemSchema = z.object({
-  id: z.string(),
-  agentSessionId: z.string(),
-  text: z.string(),
-  status: z.enum(['queued', 'running', 'completed', 'cancelled', 'failed']),
-  source: z.enum(['queue', 'steer']),
-  position: z.number(),
-  runId: z.string().nullable(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-})
-const AgentQueueItemListSchema = z.array(AgentQueueItemSchema).default([])
 
 const LinkedIssueRefSchema = z.object({
   issueId: z.string().nullable(),
@@ -742,77 +723,6 @@ export function useAgentActivities(agentSessionId: string | null, opts?: { refet
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: 'always',
     refetchOnReconnect: 'always',
-  })
-}
-
-export function useAgentQueue(agentSessionId: string | null, opts?: { refetchInterval?: number | false }) {
-  return useQuery({
-    queryKey: kanbanKeys.agentQueue(agentSessionId ?? ''),
-    queryFn: async () => {
-      if (!agentSessionId) {
-        return []
-      }
-      const { data } = await getIssueAgentSessionsByAgentSessionIdQueue({ path: { agentSessionId } })
-      return AgentQueueItemListSchema.parse(data) satisfies AgentSessionQueueItem[]
-    },
-    enabled: !!agentSessionId,
-    refetchInterval: opts?.refetchInterval,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: 'always',
-    refetchOnReconnect: 'always',
-  })
-}
-
-export function useSubmitAgentPrompt() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (vars: { agentSessionId: string, issueId: string, text: string, mode: 'queue' | 'steer' }) => {
-      const { data } = await postIssueAgentSessionsByAgentSessionIdPrompt({
-        path: { agentSessionId: vars.agentSessionId },
-        body: { text: vars.text, mode: vars.mode },
-      })
-      return data
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
-    },
-  })
-}
-
-export function useCancelAgentQueueItem() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (vars: { agentSessionId: string, issueId: string, queueItemId: string }) => {
-      const { data } = await deleteIssueAgentSessionsByAgentSessionIdQueueByQueueItemId({
-        path: { agentSessionId: vars.agentSessionId, queueItemId: vars.queueItemId },
-      })
-      return AgentQueueItemSchema.parse(data) satisfies AgentSessionQueueItem
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
-    },
-  })
-}
-
-export function useReorderAgentQueue() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (vars: { agentSessionId: string, issueId: string, orderedIds: string[] }) => {
-      const { data } = await postIssueAgentSessionsByAgentSessionIdQueueReorder({
-        path: { agentSessionId: vars.agentSessionId },
-        body: { orderedIds: vars.orderedIds },
-      })
-      return AgentQueueItemListSchema.parse(data) satisfies AgentSessionQueueItem[]
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentActivities(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentQueue(vars.agentSessionId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
-    },
   })
 }
 

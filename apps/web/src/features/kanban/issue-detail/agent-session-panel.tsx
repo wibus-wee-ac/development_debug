@@ -1,11 +1,24 @@
 import { Link } from '@cradle/tabs-next'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ExternalLinkIcon, SquareIcon } from 'lucide-react'
 import { memo, useCallback, useMemo } from 'react'
 
+import { ChatQueueList } from '~/features/chat/chat-queue-list'
+import {
+  cancelChatSessionQueueItem,
+  listChatSessionQueue,
+  reorderChatSessionQueue,
+} from '~/features/chat/chat-response-command'
 import { cn } from '~/lib/utils'
 import type { AgentActivity, AgentSession } from '~/lib/types'
 
-import { useAgentActivities, useAgentSessions, useStartAgentSession, useStopAgentSession } from '../use-kanban'
+import {
+  kanbanKeys,
+  useAgentActivities,
+  useAgentSessions,
+  useStartAgentSession,
+  useStopAgentSession,
+} from '../use-kanban'
 import { AgentActivityItem } from './agent-activity-item'
 import { AgentPromptInput } from './agent-prompt-input'
 
@@ -20,6 +33,10 @@ const statusConfig: Record<string, { label: string, dotClass: string }> = {
   completed: { label: 'Done', dotClass: 'bg-green-400' },
   stopped: { label: 'Stopped', dotClass: 'bg-muted-foreground/50' },
   failed: { label: 'Failed', dotClass: 'bg-red-400' },
+}
+
+function chatQueueQueryKey(chatSessionId: string | null) {
+  return ['chat', 'session-queue', chatSessionId ?? 'none'] as const
 }
 
 export const AgentSessionPanel = memo(function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelProps) {
@@ -65,12 +82,34 @@ const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
   issueId: string
   workspaceId: string
 }) {
+  const queryClient = useQueryClient()
   const stopSession = useStopAgentSession()
   const startSession = useStartAgentSession()
   const status = activeSession.status ?? 'created'
   const config = statusConfig[status] ?? statusConfig.created
+  const chatSessionId = activeSession.chatSessionId
+  const isExecuting = status === 'active' || status === 'created'
 
-  const canStop = status === 'active' || status === 'created'
+  const queueQueryKey = useMemo(() => chatQueueQueryKey(chatSessionId), [chatSessionId])
+  const { data: queueData } = useQuery({
+    queryKey: queueQueryKey,
+    queryFn: () => listChatSessionQueue(chatSessionId!),
+    enabled: !!chatSessionId,
+    refetchInterval: isExecuting ? 500 : false,
+    refetchIntervalInBackground: false,
+  })
+  const queueItems = queueData?.items ?? []
+  const pendingQueueItems = queueItems.filter(item => item.status === 'pending')
+  const hasSteerSignal = queueItems.some(item => (
+    item.mode === 'steer'
+    && (
+      item.status === 'pending'
+      || item.status === 'running'
+      || (isExecuting && item.status === 'completed' && !!item.startedRunId)
+    )
+  ))
+
+  const canStop = isExecuting
   const canRerun = status === 'completed' || status === 'stopped' || status === 'failed'
 
   const handleStop = useCallback(() => {
@@ -85,6 +124,31 @@ const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
     })
   }, [activeSession.id, issueId, startSession, workspaceId])
 
+  const invalidateQueue = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+  }, [queryClient, queueQueryKey])
+
+  const handleContinuationQueued = useCallback(() => {
+    invalidateQueue()
+    void queryClient.invalidateQueries({ queryKey: kanbanKeys.agentActivities(activeSession.id) })
+  }, [activeSession.id, invalidateQueue, queryClient])
+
+  const handleCancelQueueItem = useCallback(async (queueItemId: string) => {
+    if (!chatSessionId) {
+      return
+    }
+    await cancelChatSessionQueueItem({ sessionId: chatSessionId, queueItemId })
+    invalidateQueue()
+  }, [chatSessionId, invalidateQueue])
+
+  const handleReorderQueueItems = useCallback(async (queueItemIds: string[]) => {
+    if (!chatSessionId) {
+      return
+    }
+    await reorderChatSessionQueue({ sessionId: chatSessionId, queueItemIds })
+    invalidateQueue()
+  }, [chatSessionId, invalidateQueue])
+
   return (
     <div className="rounded-lg border border-border bg-card shadow-xs" data-testid="issue-agent-session">
       {/* Status bar */}
@@ -93,8 +157,22 @@ const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
           <span className="font-medium text-muted-foreground">Agent Session</span>
           <span className="flex items-center gap-1.5" data-testid="issue-agent-session-phase">
             <span className={cn('size-1.5 rounded-full', config.dotClass)} />
-            <span className="text-text-tertiary">{config.label}</span>
+            <span className="text-text-tertiary">{isExecuting ? 'Executing' : config.label}</span>
           </span>
+          {hasSteerSignal && (
+            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              Steered
+            </span>
+          )}
+          {pendingQueueItems.length > 0 && (
+            <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">
+              Queued
+              {' '}
+              <span className="tabular-nums">{pendingQueueItems.length}</span>
+              {' '}
+              items
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1">
           {canStop && (
@@ -140,11 +218,23 @@ const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
         </div>
       )}
 
+      {chatSessionId && pendingQueueItems.length > 0 && (
+        <div className="border-t border-border px-3 py-2">
+          <ChatQueueList
+            items={queueItems}
+            onCancel={queueItemId => void handleCancelQueueItem(queueItemId)}
+            onReorder={queueItemIds => void handleReorderQueueItems(queueItemIds)}
+            title="Continuation queue"
+          />
+        </div>
+      )}
+
       {/* Prompt input */}
       <AgentPromptInput
         agentSessionId={activeSession.id}
+        chatSessionId={chatSessionId}
         sessionStatus={status}
-        issueId={issueId}
+        onQueued={handleContinuationQueued}
       />
     </div>
   )
