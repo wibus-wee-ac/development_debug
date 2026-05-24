@@ -51,8 +51,8 @@ describe('provider-list-groups', () => {
 
     expect(groups.map(group => ({ id: group.id, profiles: group.profiles.map(item => item.id) })))
       .toEqual([
-        { id: 'external-plugin:cc-switch', profiles: ['p-2', 'p-1'] },
         { id: 'manual', profiles: ['manual'] },
+        { id: 'external-plugin:cc-switch', profiles: ['p-2', 'p-1'] },
       ])
   })
 })

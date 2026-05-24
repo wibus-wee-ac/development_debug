@@ -37,6 +37,13 @@ function compareProviderProfiles(a: AgentProfile, b: AgentProfile): number {
 }
 
 function compareProviderGroups(a: ProviderListGroup, b: ProviderListGroup): number {
+  if (a.kind === 'manual' || b.kind === 'manual') {
+    if (a.kind === b.kind) {
+      return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' })
+    }
+    return a.kind === 'manual' ? -1 : 1
+  }
+
   const aHasEnabled = a.profiles.some(profile => profile.enabled)
   const bHasEnabled = b.profiles.some(profile => profile.enabled)
   if (aHasEnabled !== bHasEnabled) {
@@ -45,9 +52,9 @@ function compareProviderGroups(a: ProviderListGroup, b: ProviderListGroup): numb
 
   if (a.kind !== b.kind) {
     const order: Record<ProviderListGroup['kind'], number> = {
-      'external-plugin': 0,
-      'external-source': 1,
-      'manual': 2,
+      'manual': 0,
+      'external-plugin': 1,
+      'external-source': 2,
     }
     return order[a.kind] - order[b.kind]
   }

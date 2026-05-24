@@ -457,7 +457,7 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / ${provider.name}`,
+    name: `${provider.name}`,
     providerKind: 'anthropic',
     config: compactJsonObject({
       baseUrl,
@@ -493,7 +493,7 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / ${provider.name}`,
+    name: `${provider.name}`,
     providerKind: 'openai-compatible',
     config: compactJsonObject({
       baseUrl,
@@ -523,7 +523,7 @@ function mapGeminiProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
-    name: `CC Switch / ${provider.name}`,
+    name: `${provider.name}`,
     providerKind: 'openai-compatible',
     config: compactJsonObject({
       baseUrl,

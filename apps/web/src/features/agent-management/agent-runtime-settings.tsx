@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
+  ChevronDownIcon,
   ChevronRightIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -20,6 +21,7 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import {
   Empty,
   EmptyContent,
@@ -60,6 +62,10 @@ function parseProfileConfigForUpdate(configJson: string): Record<string, unknown
     return {}
   }
   return parsed as Record<string, unknown>
+}
+
+function defaultGroupOpen(groupKind: 'external-plugin' | 'external-source' | 'manual'): boolean {
+  return groupKind === 'manual'
 }
 
 function ProviderRow({
@@ -162,6 +168,7 @@ export function AgentRuntimeSettings() {
   const [draft, setDraft] = useState<DraftProvider | null>(null)
   const [filter, setFilter] = useState('')
   const [batchBusy, setBatchBusy] = useState(false)
+  const [groupOpenOverrides, setGroupOpenOverrides] = useState<Map<string, boolean>>(() => new Map())
   const {
     data: externalSources = [],
     isSuccess: externalSourcesReady,
@@ -256,6 +263,15 @@ export function AgentRuntimeSettings() {
   )
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleProfiles, selectedIds)
+  const hasFilter = filter.trim().length > 0
+
+  const toggleGroupCollapsed = useCallback((groupId: string, open: boolean) => {
+    setGroupOpenOverrides((prev) => {
+      const next = new Map(prev)
+      next.set(groupId, open)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     if (isDraftSelected) {
@@ -607,25 +623,58 @@ visible
                 </div>
               )}
 
-              {visibleProfileGroups.map(group => (
-                <div key={group.id} className="flex min-w-0 flex-col gap-0.5">
-                  <div className="flex min-w-0 items-center justify-between gap-2 px-2 pb-0.5 pt-2 text-[10.5px] font-medium text-muted-foreground/60 first:pt-0">
-                    <span className="min-w-0 truncate">{group.label}</span>
-                    <span className="shrink-0 tabular-nums">{group.profiles.length}</span>
-                  </div>
-                  {group.profiles.map(profile => (
-                    <ProviderRow
-                      key={profile.id}
-                      profile={profile}
-                      active={selectedProfileId === profile.id && !isDraftSelected}
-                      selected={selectedIds.has(profile.id)}
-                      onClick={shiftKey => openProfile(profile.id, shiftKey)}
-                      onToggleSelected={(checked, shiftKey) =>
-                        selectProfile(profile.id, checked, shiftKey)}
-                    />
-                  ))}
-                </div>
-              ))}
+              {visibleProfileGroups.map((group) => {
+                const selectedInGroup = !!selectedProfileId
+                  && group.profiles.some(profile => profile.id === selectedProfileId)
+                const isOpen = hasFilter
+                  || selectedInGroup
+                  || groupOpenOverrides.get(group.id)
+                  || (!groupOpenOverrides.has(group.id) && defaultGroupOpen(group.kind))
+                return (
+                  <Collapsible
+                    key={group.id}
+                    open={isOpen}
+                    onOpenChange={open => toggleGroupCollapsed(group.id, open)}
+                    className="flex min-w-0 flex-col gap-0.5"
+                  >
+                    <CollapsibleTrigger asChild>
+                      <button
+                        type="button"
+                        className={cn(
+                          'flex min-w-0 items-center justify-between gap-2 rounded-md px-2 pb-0.5 pt-2 h-6 text-[10.5px] font-medium text-muted-foreground/60 outline-none',
+                          'transition-colors hover:bg-foreground/[0.03] hover:text-foreground/80',
+                          'pt-0',
+                        )}
+                      >
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <ChevronDownIcon
+                            className={cn(
+                              'size-3 shrink-0 text-muted-foreground/45 transition-transform duration-200',
+                              !isOpen && '-rotate-90',
+                            )}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 truncate">{group.label}</span>
+                        </span>
+                        <span className="shrink-0 tabular-nums">{group.profiles.length}</span>
+                      </button>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="flex min-w-0 flex-col gap-0.5">
+                      {group.profiles.map(profile => (
+                        <ProviderRow
+                          key={profile.id}
+                          profile={profile}
+                          active={selectedProfileId === profile.id && !isDraftSelected}
+                          selected={selectedIds.has(profile.id)}
+                          onClick={shiftKey => openProfile(profile.id, shiftKey)}
+                          onToggleSelected={(checked, shiftKey) =>
+                            selectProfile(profile.id, checked, shiftKey)}
+                        />
+                      ))}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )
+              })}
 
               {visibleProfiles.length === 0 && !draft && (
                 <div className="px-2 py-6 text-center">
