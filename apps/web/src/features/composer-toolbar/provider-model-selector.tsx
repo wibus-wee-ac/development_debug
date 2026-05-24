@@ -1,11 +1,11 @@
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/lib/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
 import { ProviderModelPicker } from './provider-model-picker'
-import type { ModelsByProfileId, ThinkingEffort } from './types'
+import type { ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
 
 interface ProviderModelSelectorProps {
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   selectedProfileId: string | null
   selectedModelId: string | null
   models: ModelDescriptor[]
@@ -48,7 +48,7 @@ export function ProviderModelSelector({
       thinkingValue={thinkingEffort}
       thinkingOptions={THINKING_EFFORTS}
       isLoadingSelectedModels={isLoadingModels}
-      emptyProfilesLabel="No providers available"
+      emptyProfilesLabel="No provider targets available"
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, THINKING_EFFORTS)}
       onRequestProfileModels={requestProfileModels}
       onSelectProfile={(id) => {

@@ -9,9 +9,6 @@ import type { Agent } from '~/lib/types'
 import { buildAgentProviderBatchPatches } from './agent-batch-configuration'
 
 function createAgent(overrides: Partial<Agent>): Agent {
-  const providerTargetKind = overrides.providerTargetKind === undefined
-    ? 'manual-profile'
-    : overrides.providerTargetKind
   return {
     id: overrides.id ?? 'agent-a',
     name: overrides.name ?? 'Agent A',
@@ -19,11 +16,7 @@ function createAgent(overrides: Partial<Agent>): Agent {
     avatarUrl: overrides.avatarUrl ?? null,
     avatarStyle: overrides.avatarStyle ?? 'bottts-neutral',
     avatarSeed: overrides.avatarSeed ?? 'seed',
-    agentProfileId: overrides.agentProfileId ?? 'profile-old',
-    providerTargetKind,
-    providerTargetId: providerTargetKind
-      ? (overrides.providerTargetId ?? overrides.agentProfileId ?? 'profile-old')
-      : null,
+    providerTargetId: overrides.providerTargetId ?? 'profile-old',
     modelId: overrides.modelId ?? 'model-old',
     thinkingEffort: overrides.thinkingEffort ?? 'auto',
     runtimeKind: overrides.runtimeKind ?? 'standard',
@@ -48,7 +41,7 @@ describe('buildAgentProviderBatchPatches', () => {
         }),
       ],
       {
-        providerTarget: { kind: 'manual-profile', id: 'profile-new' },
+        providerTarget: { kind: 'manual', id: 'profile-new' },
         modelId: 'model-new',
         thinkingEffort: 'high',
       },
@@ -65,8 +58,6 @@ describe('buildAgentProviderBatchPatches', () => {
             avatarStyle: 'bottts-neutral',
             avatarSeed: 'avatar-a',
             avatarUrl: null,
-            agentProfileId: 'profile-new',
-            providerTargetKind: 'manual-profile',
             providerTargetId: 'profile-new',
             modelId: 'model-new',
             thinkingEffort: 'high',
@@ -86,14 +77,12 @@ describe('buildAgentProviderBatchPatches', () => {
         createAgent({
           id: 'terminal-agent',
           runtimeKind: 'cli-tui',
-          agentProfileId: null,
-          providerTargetKind: null,
           providerTargetId: null,
           modelId: null,
         }),
       ],
       {
-        providerTarget: { kind: 'manual-profile', id: 'profile-new' },
+        providerTarget: { kind: 'manual', id: 'profile-new' },
         modelId: null,
         thinkingEffort: 'auto',
       },
@@ -106,17 +95,15 @@ describe('buildAgentProviderBatchPatches', () => {
 
   it('writes external provider targets without fabricating a profile id', () => {
     const result = buildAgentProviderBatchPatches(
-      [createAgent({ id: 'agent-external', agentProfileId: null, providerTargetKind: 'external-record', providerTargetId: 'external-target-old' })],
+      [createAgent({ id: 'agent-external', providerTargetId: 'external-target-old' })],
       {
-        providerTarget: { kind: 'external-record', id: 'external-target-new' },
+        providerTarget: { kind: 'external', id: 'external-target-new' },
         modelId: 'model-new',
         thinkingEffort: 'medium',
       },
     )
 
     expect(result.patches[0]?.patch).toEqual(expect.objectContaining({
-      agentProfileId: null,
-      providerTargetKind: 'external-record',
       providerTargetId: 'external-target-new',
       modelId: 'model-new',
       thinkingEffort: 'medium',

@@ -1,5 +1,5 @@
 // Output: Provider list grouping and ordering helpers for Agent Runtime Settings.
-// Input: Manual provider profiles, external provider records, and external provider sources.
+// Input: Manual providers, external provider records, and external provider sources.
 // Position: Keeps provider sidebar ownership grouping independent from React rendering.
 
 import type { AgentProfile } from '~/lib/types'
@@ -18,7 +18,7 @@ export interface ProviderListGroup {
 }
 
 const MANUAL_GROUP_ID = 'manual'
-const MANUAL_GROUP_LABEL = 'Manual profiles'
+const MANUAL_GROUP_LABEL = 'Manual providers'
 const UNKNOWN_EXTERNAL_SOURCE_LABEL = 'External source'
 
 function compareProviderProfiles(a: AgentProfile, b: AgentProfile): number {
@@ -83,7 +83,7 @@ function compareExternalRecords(a: ExternalProviderRecordView, b: ExternalProvid
 
 function entriesEnabled(group: ProviderListGroup): boolean {
   return group.entries.some((entry) => {
-    if (entry.kind === 'manual-profile') {
+    if (entry.kind === 'manual') {
       return entry.profile.enabled
     }
     return entry.record.status === 'active' && entry.record.runtimeTargetEnabled

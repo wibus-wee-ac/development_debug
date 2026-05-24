@@ -2,7 +2,7 @@
 // Input: External provider record/source metadata plus provider-target-backed health and model fetch.
 // Position: Keeps source-owned fields read-only while exposing Cradle-owned runtime target preferences.
 
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -14,6 +14,13 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
+import {
+  getExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetOptions,
+  getProvidersTargetsByProviderTargetIdModelsCacheOptions,
+  patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation,
+  postProvidersHealthCheckMutation,
+  postProvidersModelsMutation
+} from '~/api-gen/@tanstack/react-query.gen'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Separator } from '~/components/ui/separator'
@@ -22,7 +29,6 @@ import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
 import { SettingsRow } from '../settings/settings-row'
@@ -46,54 +52,10 @@ import {
 
 type HealthState = 'unknown' | 'checking' | 'connected' | 'failed'
 
-const ExternalProviderRuntimeTargetSchema = z.object({
-  id: z.string(),
-  sourceKey: z.string(),
-  externalRecordId: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
-  displayName: z.string(),
-  enabled: z.boolean(),
-  credentialRef: z.string().nullable(),
-  iconSlug: z.string().nullable(),
-  lastResolvedFingerprint: z.string(),
-  createdAt: z.number(),
-  updatedAt: z.number()
-})
-
 const ExternalRecordMetadataSchema = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiFormat: z.string().optional()
-})
-
-const ModelCapabilitiesSchema = z
-  .object({
-    contextWindow: z.number().optional()
-  })
-  .passthrough()
-
-const ModelDescriptorSchema = z.object({
-  id: z.string(),
-  label: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
-  capabilities: ModelCapabilitiesSchema.default({})
-})
-
-const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
-
-const ProviderModelsCacheSchema = z.object({
-  models: ModelDescriptorListSchema,
-  cached: z.boolean(),
-  stale: z.boolean(),
-  providerLabel: z.string()
-})
-
-const ProviderHealthCheckSchema = z.object({
-  ok: z.boolean(),
-  label: z.string(),
-  version: z.string().nullable(),
-  details: z.record(z.string(), z.unknown()),
-  errorText: z.string().nullable()
 })
 
 function sourceStatusTone(status: ExternalProviderSourceView['lastSyncStatus']) {
@@ -122,45 +84,28 @@ function sourceStatusIcon(status: ExternalProviderSourceView['lastSyncStatus']) 
   return <CircleDashedIcon className="size-3.5 shrink-0 text-muted-foreground" />
 }
 
-async function loadRuntimeTarget(
-  record: ExternalProviderRecordView
-): Promise<ExternalProviderRuntimeTargetView> {
-  const response = await fetch(
-    `${getServerUrl()}/external-provider-sources/${encodeURIComponent(record.sourceKey)}/records/${encodeURIComponent(record.externalId)}/runtime-target`
-  )
-  if (!response.ok) {
-    throw new Error('Failed to load external runtime target')
-  }
-  return ExternalProviderRuntimeTargetSchema.parse(await response.json())
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
 }
 
-async function updateRuntimeTargetEnabled(
-  record: ExternalProviderRecordView,
+function toRuntimeTargetView(target: {
+  id: string
+  sourceKey: string
+  externalRecordId: string
+  providerKind: 'openai-compatible' | 'anthropic'
+  displayName: string
   enabled: boolean
-): Promise<ExternalProviderRuntimeTargetView> {
-  const response = await fetch(
-    `${getServerUrl()}/external-provider-sources/${encodeURIComponent(record.sourceKey)}/records/${encodeURIComponent(record.externalId)}/runtime-target`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    }
-  )
-  if (!response.ok) {
-    throw new Error('Failed to update external runtime target')
+  credentialRef: unknown | null
+  iconSlug: unknown | null
+  lastResolvedFingerprint: string
+  createdAt: number
+  updatedAt: number
+}): ExternalProviderRuntimeTargetView {
+  return {
+    ...target,
+    credentialRef: nullableString(target.credentialRef),
+    iconSlug: nullableString(target.iconSlug)
   }
-  return ExternalProviderRuntimeTargetSchema.parse(await response.json())
-}
-
-async function loadCachedModels(recordId: string): Promise<ModelDescriptor[]> {
-  const response = await fetch(
-    `${getServerUrl()}/providers/targets/external-record/${encodeURIComponent(recordId)}/models-cache`
-  )
-  if (!response.ok) {
-    throw new Error('Failed to load provider target models cache')
-  }
-  const payload = ProviderModelsCacheSchema.parse(await response.json())
-  return payload.models
 }
 
 function createProviderTargetRequestBody(record: ExternalProviderRecordView) {
@@ -169,35 +114,9 @@ function createProviderTargetRequestBody(record: ExternalProviderRecordView) {
     label: record.name,
     config: {},
     secretRef: null,
-    providerTargetKind: 'external-record',
-    providerTargetId: record.id
+    providerTargetKind: 'external',
+    providerTargetId: record.providerTargetId
   }
-}
-
-async function checkProviderTargetHealth(record: ExternalProviderRecordView): Promise<boolean> {
-  const response = await fetch(`${getServerUrl()}/providers/health-check`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(createProviderTargetRequestBody(record))
-  })
-  if (!response.ok) {
-    throw new Error('Failed to check provider target health')
-  }
-  return ProviderHealthCheckSchema.parse(await response.json()).ok
-}
-
-async function fetchProviderTargetModels(
-  record: ExternalProviderRecordView
-): Promise<ModelDescriptor[]> {
-  const response = await fetch(`${getServerUrl()}/providers/models`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(createProviderTargetRequestBody(record))
-  })
-  if (!response.ok) {
-    throw new Error('Failed to fetch provider target models')
-  }
-  return ModelDescriptorListSchema.parse(await response.json()) satisfies ModelDescriptor[]
 }
 
 export function ExternalProviderRecordDetailPanel({
@@ -212,9 +131,17 @@ export function ExternalProviderRecordDetailPanel({
   const preset = presetForProviderKind(record.providerKind)
   const metadata = ExternalRecordMetadataSchema.parse(record.metadata)
   const queryClient = useQueryClient()
+  const updateRuntimeTarget = useMutation(
+    patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation()
+  )
+  const checkHealth = useMutation(postProvidersHealthCheckMutation())
+  const fetchModels = useMutation(postProvidersModelsMutation())
   const providerTarget = useMemo(
-    () => ({ kind: 'external-record' as const, id: record.id }),
-    [record.id]
+    () =>
+      record.providerTargetId
+        ? ({ kind: 'external' as const, id: record.providerTargetId })
+        : null,
+    [record.providerTargetId]
   )
   const [runtimeTarget, setRuntimeTarget] = useState<ExternalProviderRuntimeTargetView | null>(null)
   const [health, setHealth] = useState<HealthState>('unknown')
@@ -233,35 +160,53 @@ export function ExternalProviderRecordDetailPanel({
     setCustomModels([])
     setHealth('unknown')
     void Promise.all([
-      loadRuntimeTarget(record).then((next) => {
-        if (active) {
-          setRuntimeTarget(next)
-        }
-      }),
-      loadCachedModels(record.id)
+      queryClient
+        .fetchQuery(
+          getExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetOptions({
+            path: {
+              sourceKey: record.sourceKey,
+              externalRecordId: record.externalId
+            }
+          })
+        )
         .then((next) => {
           if (active) {
-            setModels(next)
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setModels([])
+            setRuntimeTarget(toRuntimeTargetView(next))
           }
         }),
-      loadProviderTargetModelSettings(providerTarget)
-        .then((next) => {
-          if (active) {
-            setEnabledModels(enabledModelsFromConfig(next.configJson))
-            setCustomModels(CustomModelsJsonSchema.parse(next.customModelsJson))
-          }
-        })
-        .catch(() => {
-          if (active) {
-            setEnabledModels([])
-            setCustomModels([])
-          }
-        })
+      providerTarget
+        ? Promise.all([
+            queryClient
+              .fetchQuery(
+                getProvidersTargetsByProviderTargetIdModelsCacheOptions({
+                  path: { providerTargetId: providerTarget.id }
+                })
+              )
+              .then((next) => {
+                if (active) {
+                  setModels(next.models as ModelDescriptor[])
+                }
+              })
+              .catch(() => {
+                if (active) {
+                  setModels([])
+                }
+              }),
+            loadProviderTargetModelSettings(providerTarget)
+              .then((next) => {
+                if (active) {
+                  setEnabledModels(enabledModelsFromConfig(next.configJson))
+                  setCustomModels(CustomModelsJsonSchema.parse(next.customModelsJson))
+                }
+              })
+              .catch(() => {
+                if (active) {
+                  setEnabledModels([])
+                  setCustomModels([])
+                }
+              })
+          ])
+        : Promise.resolve()
     ]).finally(() => {
       if (active) {
         setLoadingTarget(false)
@@ -271,12 +216,18 @@ export function ExternalProviderRecordDetailPanel({
     return () => {
       active = false
     }
-  }, [providerTarget, record])
+  }, [providerTarget, queryClient, record.externalId, record.sourceKey])
 
   const refreshHealth = useCallback(async () => {
+    if (!providerTarget) {
+      return
+    }
     setHealth('checking')
     try {
-      setHealth((await checkProviderTargetHealth(record)) ? 'connected' : 'failed')
+      const result = await checkHealth.mutateAsync({
+        body: createProviderTargetRequestBody(record)
+      })
+      setHealth(result.ok ? 'connected' : 'failed')
     } catch (error) {
       setHealth('failed')
       toastManager.add({
@@ -285,12 +236,18 @@ export function ExternalProviderRecordDetailPanel({
         description: error instanceof Error ? error.message : 'Unknown error'
       })
     }
-  }, [record])
+  }, [checkHealth, providerTarget, record])
 
   const refreshModels = useCallback(async () => {
+    if (!providerTarget) {
+      return
+    }
     setLoadingModels(true)
     try {
-      setModels(await fetchProviderTargetModels(record))
+      const next = await fetchModels.mutateAsync({
+        body: createProviderTargetRequestBody(record)
+      })
+      setModels(next as ModelDescriptor[])
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
     } catch (error) {
       toastManager.add({
@@ -301,11 +258,14 @@ export function ExternalProviderRecordDetailPanel({
     } finally {
       setLoadingModels(false)
     }
-  }, [queryClient, record])
+  }, [fetchModels, providerTarget, queryClient, record])
 
   const handleEnabledModelsChange = useCallback(
     async (next: string[]) => {
       const previous = enabledModels
+      if (!providerTarget) {
+        return
+      }
       setEnabledModels(next)
       try {
         const settings = await updateProviderTargetModelVisibility(providerTarget, next)
@@ -336,6 +296,9 @@ export function ExternalProviderRecordDetailPanel({
   const handleCustomModelsChange = useCallback(
     async (next: EditableCustomModel[]) => {
       const previous = customModels
+      if (!providerTarget) {
+        return
+      }
       setCustomModels(next)
       try {
         setCustomModels(await updateProviderTargetCustomModels(providerTarget, next))
@@ -358,8 +321,14 @@ export function ExternalProviderRecordDetailPanel({
     async (enabled: boolean) => {
       setUpdatingEnabled(true)
       try {
-        const next = await updateRuntimeTargetEnabled(record, enabled)
-        setRuntimeTarget(next)
+        const next = await updateRuntimeTarget.mutateAsync({
+          path: {
+            sourceKey: record.sourceKey,
+            externalRecordId: record.externalId
+          },
+          body: { enabled }
+        })
+        setRuntimeTarget(toRuntimeTargetView(next))
         setHealth('unknown')
         onUpdated?.()
       } catch (error) {
@@ -372,7 +341,7 @@ export function ExternalProviderRecordDetailPanel({
         setUpdatingEnabled(false)
       }
     },
-    [onUpdated, record]
+    [onUpdated, record.externalId, record.sourceKey, updateRuntimeTarget]
   )
 
   const healthLabel = useMemo(() => {
@@ -561,18 +530,20 @@ export function ExternalProviderRecordDetailPanel({
 
         <Separator className="bg-foreground/6" />
 
-        <section className="flex flex-col gap-4">
-          <ModelsPanel
-            loading={loadingModels || loadingTarget}
-            providerTarget={providerTarget}
-            models={models}
-            enabledModels={enabledModels}
-            onChange={(next) => void handleEnabledModelsChange(next)}
-            onModelRegistryMapped={handleModelRegistryMapped}
-            onRefresh={() => void refreshModels()}
-            cachedAt={null}
-          />
-        </section>
+        {providerTarget && (
+          <section className="flex flex-col gap-4">
+            <ModelsPanel
+              loading={loadingModels || loadingTarget}
+              providerTarget={providerTarget}
+              models={models}
+              enabledModels={enabledModels}
+              onChange={(next) => void handleEnabledModelsChange(next)}
+              onModelRegistryMapped={handleModelRegistryMapped}
+              onRefresh={() => void refreshModels()}
+              cachedAt={null}
+            />
+          </section>
+        )}
 
         <Separator className="bg-foreground/6" />
 

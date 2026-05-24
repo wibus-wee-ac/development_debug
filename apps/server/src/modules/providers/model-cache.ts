@@ -65,7 +65,7 @@ export function getCachedModelsForTarget(target: ProviderTarget): CachedModelsRe
     .where(eq(providerTargetModelCache.providerTargetId, providerTargetCacheId(target)))
     .get()
   if (!row) {
-    return null
+    return getCachedModels(providerTargetCacheId(target))
   }
   const models = CachedModelsJsonSchema.parse(row.modelsJson)
   return { models, fetchedAt: row.fetchedAt, cached: true }

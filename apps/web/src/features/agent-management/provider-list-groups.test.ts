@@ -32,6 +32,7 @@ function externalRecord(
     app: 'codex',
     providerKind: 'openai-compatible',
     runtimeTargetEnabled: input.runtimeTargetEnabled ?? true,
+    providerTargetId: input.id,
     metadata: {},
     warnings: [],
   }
@@ -91,12 +92,13 @@ describe('provider-list-groups', () => {
 
     expect(groups.map(group => ({ id: group.id, entries: group.entries.map(item => item.id) })))
       .toEqual([
-        { id: 'manual', entries: ['manual-profile:manual'] },
+        { id: 'manual', entries: ['manual:manual'] },
         {
           id: 'external-plugin:cc-switch',
-          entries: ['external-record:record-2', 'external-record:record-1'],
+          entries: ['external:record-2', 'external:record-1'],
         },
       ])
+    expect(groups[0]?.label).toBe('Manual providers')
   })
 
   it('sorts enabled active external records before disabled active records', () => {
@@ -132,9 +134,9 @@ describe('provider-list-groups', () => {
     )
 
     expect(groups[0]?.entries.map(item => item.id)).toEqual([
-      'external-record:record-active',
-      'external-record:record-disabled',
-      'external-record:record-stale',
+      'external:record-active',
+      'external:record-disabled',
+      'external:record-stale',
     ])
   })
 })

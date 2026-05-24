@@ -34,6 +34,22 @@ const TEAROFF_TAB_POLICY: TabRenderPolicy = {
   strategy: 'single',
 }
 
+function getActiveLayoutSlotId(tab: { type: string, params: Record<string, string | undefined> } | undefined): string | null {
+  if (!tab) {
+    return null
+  }
+  if (tab.type === 'chat') {
+    return tab.params.sessionId ?? null
+  }
+  if (tab.type === 'workspace-detail') {
+    return tab.params.workspaceId ? `workspace-detail:${tab.params.workspaceId}` : null
+  }
+  if (tab.type === 'new-chat') {
+    return 'new-chat'
+  }
+  return null
+}
+
 function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
   return (
     <LazyMotion features={domAnimation}>
@@ -97,7 +113,7 @@ function MainAppRuntime() {
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const tabs = useCradleTabStore(s => s.tabs)
   const activeTab = tabs.find(t => t.id === activeTabId)
-  const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+  const activeSlotId = getActiveLayoutSlotId(activeTab)
   const settingsTabExists = settingsTabId !== null && tabs.some(tab => tab.id === settingsTabId)
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
 
@@ -211,7 +227,7 @@ function TearoffAppRuntime() {
 
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const activeTab = useCradleTabStore(s => s.tabs.find(tab => tab.id === activeTabId))
-  const activeSlotId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+  const activeSlotId = getActiveLayoutSlotId(activeTab)
 
   useThemeClass()
 

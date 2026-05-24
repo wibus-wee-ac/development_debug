@@ -4,8 +4,6 @@ const nullableRef = t.Optional(t.Union([t.String({ minLength: 1 }), t.Null()]))
 const nullableTargetKind = t.Optional(t.Union([
   t.Literal('manual'),
   t.Literal('external'),
-  t.Literal('manual-profile'),
-  t.Literal('external-record'),
   t.Null(),
 ]))
 

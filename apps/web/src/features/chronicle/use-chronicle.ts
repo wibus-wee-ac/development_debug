@@ -486,8 +486,11 @@ const ChronicleModelResourceEntrySchema = z.object({
     manifest: z.object({
       required: z.boolean().optional().default(false),
       runtime: z.string().nullable().optional().default(null),
-    }).passthrough().optional().default({}),
-  }).passthrough().optional().default({}),
+    }).passthrough().optional().default({ required: false, runtime: null }),
+  }).passthrough().optional().default({
+    provider: null,
+    manifest: { required: false, runtime: null },
+  }),
   updatedAt: z.number().finite().nullable().optional().default(null),
 }).passthrough().transform((entry): ChronicleModelResource => {
   const manifest = entry.metadata.manifest

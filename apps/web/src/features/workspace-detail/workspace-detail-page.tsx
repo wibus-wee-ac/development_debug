@@ -532,7 +532,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const handleCapsuleSend = useCallback(async (
     text: string,
-    opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+    opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
   ) => {
     if (!workspace) {
       return
@@ -553,7 +553,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return
     }
     const { data: sessionData } = await postSessions({
-      body: { workspaceId, agentProfileId: opts.agentProfileId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.agentProfileId || 'New Chat' },
+      body: { workspaceId, providerTargetId: opts.providerTargetId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.providerTargetId || 'New Chat' },
     })
     const session = sessionData as { id: string } | null
     if (!session?.id) {
@@ -665,7 +665,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
   return (
     <div className="relative min-w-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
-        <m.div className="mx-auto max-w-2xl px-2 py-6">
+        <m.div className="mx-auto max-w-3xl px-8 py-6">
           <div className="mb-6">
             <InlineEditTitle value={workspace.name} onSave={handleRename} />
             <p data-testid="workspace-detail-path" className="mt-1 truncate font-mono text-[12px] text-muted-foreground">
@@ -872,10 +872,10 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   }
 
   return (
-    <div className="flex h-full overflow-hidden bg-background" data-testid="workspace-detail-page">
+    <div className="@container/workspace-detail flex h-full overflow-hidden bg-background" data-testid="workspace-detail-page">
       <WorkspaceDetailMainColumn owner={owner} />
 
-      <div className="w-58 shrink-0">
+      <div className="hidden w-58 shrink-0 @6xl/workspace-detail:block">
         {owner.headings.length > 0 && (
           <FloatingToc
             headings={owner.headings}
@@ -886,7 +886,9 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
         )}
       </div>
 
-      <WorkspaceDetailSidebar owner={owner} />
+      <div className="hidden shrink-0 @7xl/workspace-detail:block">
+        <WorkspaceDetailSidebar owner={owner} />
+      </div>
     </div>
   )
 }

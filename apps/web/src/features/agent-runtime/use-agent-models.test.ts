@@ -22,9 +22,9 @@ describe('agentModelsQueryKey', () => {
 
 describe('providerTargetModelsQueryKey', () => {
   it('uses one stable cache slot per provider target', () => {
-    expect(providerTargetModelsQueryKey({ kind: 'external-record', id: 'target-1' })).toEqual([
+    expect(providerTargetModelsQueryKey({ kind: 'external', id: 'target-1' })).toEqual([
       ...AGENT_MODELS_QUERY_KEY,
-      'external-record:target-1'
+      'provider-target:target-1'
     ])
   })
 

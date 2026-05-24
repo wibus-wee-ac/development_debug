@@ -2,8 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
-import { getProfilesById, getProvidersByProfileIdModelsCache } from '~/api-gen/sdk.gen'
-import { getServerUrl } from '~/lib/electron'
+import {
+  getProfilesById,
+  getProviderTargetsByProviderTargetIdModelSettings,
+  getProvidersByProfileIdModelsCache,
+  getProvidersTargetsByProviderTargetIdModelsCache
+} from '~/api-gen/sdk.gen'
 import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import { ModelVisibilitySchema, filterVisibleModels } from './model-visibility'
@@ -27,12 +31,8 @@ export function agentModelsQueryKey(profileId: string | null) {
 export function providerTargetModelsQueryKey(target: ProviderTarget | null) {
   return [
     ...AGENT_MODELS_QUERY_KEY,
-    target ? `${target.kind}:${target.id}` : 'no-provider-target'
+    target ? `provider-target:${target.id}` : 'no-provider-target'
   ] as const
-}
-
-function providerTargetPath(target: ProviderTarget): string {
-  return `${encodeURIComponent(target.kind)}/${encodeURIComponent(target.id)}`
 }
 
 const EMPTY_INITIAL_PROFILE_IDS: ReadonlyArray<string | null> = []
@@ -112,18 +112,21 @@ async function fetchCachedVisibleModelsForProfile(
 async function fetchCachedVisibleModelsForProviderTarget(
   target: ProviderTarget
 ): Promise<ModelDescriptor[]> {
-  const [settingsResponse, cacheResponse] = await Promise.all([
-    fetch(`${getServerUrl()}/provider-targets/${providerTargetPath(target)}/model-settings`),
-    fetch(`${getServerUrl()}/providers/targets/${providerTargetPath(target)}/models-cache`)
+  const [settingsResult, cacheResult] = await Promise.all([
+    getProviderTargetsByProviderTargetIdModelSettings({
+      path: { providerTargetId: target.id },
+      throwOnError: true
+    }),
+    getProvidersTargetsByProviderTargetIdModelsCache({
+      path: { providerTargetId: target.id },
+      throwOnError: true
+    })
   ])
-  if (!settingsResponse.ok || !cacheResponse.ok) {
-    return []
-  }
 
-  const settings = ProviderTargetModelSettingsSchema.parse(await settingsResponse.json())
+  const settings = ProviderTargetModelSettingsSchema.parse(settingsResult.data)
   const config = ProfileConfigJsonSchema.parse(settings.configJson)
   const visibility = ModelVisibilitySchema.parse(config.enabledModels)
-  const cache = ProviderTargetModelsCacheSchema.parse(await cacheResponse.json())
+  const cache = ProviderTargetModelsCacheSchema.parse(cacheResult.data)
   if (!cache.cached || cache.models.length === 0) {
     return []
   }
@@ -235,5 +238,77 @@ export function useAgentModelMap(
     loadingProfileIds,
     successfulProfileIds,
     requestProfileModels
+  }
+}
+
+export function useProviderTargetModelMap(
+  providerTargets: Array<ProviderTarget & { enabled: boolean }>,
+  initialProviderTargetIds: ReadonlyArray<string | null> = EMPTY_INITIAL_PROFILE_IDS
+) {
+  const [requestedProviderTargetIds, setRequestedProviderTargetIds] = useState<Set<string>>(
+    () => new Set(initialProviderTargetIds.flatMap((targetId) => (targetId ? [targetId] : [])))
+  )
+
+  useEffect(() => {
+    setRequestedProviderTargetIds((current) => {
+      let changed = false
+      const next = new Set(current)
+      for (const targetId of initialProviderTargetIds) {
+        if (targetId && !next.has(targetId)) {
+          next.add(targetId)
+          changed = true
+        }
+      }
+      return changed ? next : current
+    })
+  }, [initialProviderTargetIds])
+
+  const requestedTargets = useMemo(
+    () => providerTargets.filter((target) => requestedProviderTargetIds.has(target.id)),
+    [providerTargets, requestedProviderTargetIds]
+  )
+
+  const queries = useQueries({
+    queries: requestedTargets.map((target) => ({
+      queryKey: providerTargetModelsQueryKey(target),
+      queryFn: () => fetchCachedVisibleModelsForProviderTarget(target),
+      enabled: target.enabled,
+      ...MODEL_INVENTORY_QUERY_OPTIONS
+    }))
+  })
+
+  const requestProviderTargetModels = useCallback((targetId: string) => {
+    setRequestedProviderTargetIds((current) => {
+      if (current.has(targetId)) {
+        return current
+      }
+      const next = new Set(current)
+      next.add(targetId)
+      return next
+    })
+  }, [])
+
+  const modelsByProviderTargetId: Record<string, ModelDescriptor[]> = {}
+  const loadingProviderTargetIds = new Set<string>()
+  const successfulProviderTargetIds = new Set<string>()
+
+  requestedTargets.forEach((target, index) => {
+    const query = queries[index]
+    modelsByProviderTargetId[target.id] = ModelDescriptorListSchema.parse(
+      query?.data
+    ) satisfies ModelDescriptor[]
+    if (query?.isLoading || query?.isFetching) {
+      loadingProviderTargetIds.add(target.id)
+    }
+    if (query?.isSuccess) {
+      successfulProviderTargetIds.add(target.id)
+    }
+  })
+
+  return {
+    modelsByProviderTargetId,
+    loadingProviderTargetIds,
+    successfulProviderTargetIds,
+    requestProviderTargetModels
   }
 }

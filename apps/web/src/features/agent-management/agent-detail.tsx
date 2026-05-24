@@ -48,7 +48,7 @@ const RUNTIME_OPTIONS: { value: RuntimeKind, label: string, description: string,
   {
     value: 'standard',
     label: 'Standard',
-    description: 'Direct model calls via the configured provider profile',
+    description: 'Direct model calls via the configured provider target',
     icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/60 text-[9px] font-bold leading-none">AI</span>,
   },
   {
@@ -99,7 +99,7 @@ interface AgentDetailFormValues {
   description: string
   avatarStyle: string
   avatarSeed: string
-  agentProfileId: string | null
+  providerTargetId: string | null
   modelId: string | null
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
@@ -211,7 +211,7 @@ function stringifyEnvText(text: string): Record<string, string> | undefined {
 }
 
 export function getAgentCreateDisabledReason(input: {
-  draft: Pick<AgentDetailDraft, 'name' | 'runtimeKind' | 'agentProfileId' | 'cliTuiExecutable'>
+  draft: Pick<AgentDetailDraft, 'name' | 'runtimeKind' | 'providerTargetId' | 'cliTuiExecutable'>
   isDirty: boolean
   createSaving: boolean
 }): string | null {
@@ -221,8 +221,8 @@ export function getAgentCreateDisabledReason(input: {
   if (input.draft.runtimeKind === 'cli-tui' && !input.draft.cliTuiExecutable.trim()) {
     return 'CLI TUI agents need an executable command.'
   }
-  if (input.draft.runtimeKind !== 'cli-tui' && !input.draft.agentProfileId) {
-    return 'Select a provider profile before creating.'
+  if (input.draft.runtimeKind !== 'cli-tui' && !input.draft.providerTargetId) {
+    return 'Select a provider target before creating.'
   }
   if (input.createSaving) {
     return 'Creating agent...'
@@ -342,7 +342,7 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
     description: agent?.description ?? '',
     avatarStyle: agent?.avatarStyle ?? AVATAR_STYLES[0].id,
     avatarSeed: agent?.avatarSeed ?? generateSeed(),
-    agentProfileId: agent?.agentProfileId ?? enabledProfiles[0]?.id ?? null,
+    providerTargetId: agent?.providerTargetId ?? enabledProfiles[0]?.id ?? null,
     modelId: agent?.modelId ?? null,
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
     runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
@@ -403,8 +403,8 @@ function AgentProviderModelPicker({
       thinkingValue={thinkingEffort}
       thinkingOptions={AGENT_THINKING_OPTIONS}
       isLoadingSelectedModels={isLoadingModels}
-      emptyProfilesLabel="No provider profiles configured"
-      emptySelectionLabel="Select a profile"
+      emptyProfilesLabel="No provider targets configured"
+      emptySelectionLabel="Select a provider"
       menuSide="bottom"
       menuAlign="end"
       triggerTestId="agent-provider-model-selector"
@@ -413,7 +413,7 @@ function AgentProviderModelPicker({
       onSelectProfile={(nextProfileId) => {
         requestProfileModels(nextProfileId)
         const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
-        form.setValue('agentProfileId', nextProfileId, { shouldDirty: true })
+        form.setValue('providerTargetId', nextProfileId, { shouldDirty: true })
         form.setValue('modelId', nextModel?.id ?? null, { shouldDirty: true })
         form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
       }}
@@ -421,7 +421,7 @@ function AgentProviderModelPicker({
         const nextModel = nextModelId
           ? (modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null
           : null
-        form.setValue('agentProfileId', nextProfileId, { shouldDirty: true })
+        form.setValue('providerTargetId', nextProfileId, { shouldDirty: true })
         form.setValue('modelId', nextModelId, { shouldDirty: true })
         form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
       }}
@@ -483,7 +483,7 @@ function ClaudeAgentAliasModelPicker({
         </MenuTrigger>
         <MenuPopup side="bottom" align="end">
           {pickerProfiles.length === 0 && (
-            <MenuItem disabled>Select a provider profile first</MenuItem>
+            <MenuItem disabled>Select a provider first</MenuItem>
           )}
           {pickerProfiles.length > 0 && (
             <CurrentProviderModelList
@@ -618,7 +618,7 @@ interface AgentDetailDraft {
   description: string
   avatarStyle: string
   avatarSeed: string
-  agentProfileId: string | null
+  providerTargetId: string | null
   modelId: string | null
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
@@ -853,10 +853,10 @@ function AgentIdentitySection({
                     // const presetArgs = CLI_TUI_PRESETS.find(preset => preset.id === value)?.args ?? ''
                     const preset = CLI_TUI_PRESETS.find(preset => preset.id === value)
                      const presetExecutable = preset?.executable ?? ''
-                     const presetArgs = preset?.args ?? []
+                     const presetArgs = preset?.args ?? ''
                     if (value !== 'custom') {
                       form.setValue('cliTuiExecutable', presetExecutable, { shouldDirty: true })
-                      form.setValue('cliTuiArguments', presetArgs.join(' '), { shouldDirty: true })
+                      form.setValue('cliTuiArguments', presetArgs, { shouldDirty: true })
                     }
                   }}
                 >
@@ -928,10 +928,10 @@ function AgentIdentitySection({
         : (
             <>
               <SettingsDivider />
-              <SettingsRow label="Model" description="Choose provider profile, model, and thinking effort">
+              <SettingsRow label="Model" description="Choose provider, model, and thinking effort">
                 <AgentProviderModelPicker
                   profiles={enabledProfiles}
-                  profileId={draft.agentProfileId}
+                  profileId={draft.providerTargetId}
                   modelId={draft.modelId}
                   thinkingEffort={draft.thinkingEffort}
                 />
@@ -940,7 +940,7 @@ function AgentIdentitySection({
               {draft.runtimeKind === 'claude-agent' && (
                 <ClaudeAgentSdkSettings
                   profiles={enabledProfiles}
-                  profileId={draft.agentProfileId}
+                  profileId={draft.providerTargetId}
                   mainModelId={draft.modelId}
                 />
               )}
@@ -1048,7 +1048,7 @@ function useAgentDetailOwner({
     description: watchedValues.description ?? '',
     avatarStyle: watchedValues.avatarStyle ?? AVATAR_STYLES[0].id,
     avatarSeed: watchedValues.avatarSeed ?? '',
-    agentProfileId: watchedValues.agentProfileId ?? null,
+    providerTargetId: watchedValues.providerTargetId ?? null,
     modelId: watchedValues.modelId ?? null,
     thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
     runtimeKind: watchedValues.runtimeKind ?? 'standard',
@@ -1095,10 +1095,10 @@ function useAgentDetailOwner({
     if (form.getValues('runtimeKind') === 'cli-tui') {
       return
     }
-    if (form.getValues('agentProfileId') !== null) {
+    if (form.getValues('providerTargetId') !== null) {
       return
     }
-    form.setValue('agentProfileId', enabledProfiles[0].id, { shouldDirty: false })
+    form.setValue('providerTargetId', enabledProfiles[0].id, { shouldDirty: false })
   }, [agent, enabledProfiles, form])
 
   const isDirty = form.formState.isDirty
@@ -1111,7 +1111,7 @@ function useAgentDetailOwner({
 
     const currentValues = form.getValues()
     const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
-    if (!currentValues.name.trim() || (requiresProfile && !currentValues.agentProfileId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
+    if (!currentValues.name.trim() || (requiresProfile && !currentValues.providerTargetId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -1144,7 +1144,7 @@ function useAgentDetailOwner({
           description: normalizedValues.description || null,
           avatarStyle: currentValues.avatarStyle,
           avatarSeed: currentValues.avatarSeed,
-          agentProfileId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.agentProfileId,
+          providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
           modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
           thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
           runtimeKind: currentValues.runtimeKind,
@@ -1189,7 +1189,7 @@ function useAgentDetailOwner({
   const handleCreate = useCallback(async () => {
     const currentValues = form.getValues()
     const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
-    if (!currentValues.name.trim() || (requiresProfile && !currentValues.agentProfileId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
+    if (!currentValues.name.trim() || (requiresProfile && !currentValues.providerTargetId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -1207,7 +1207,7 @@ function useAgentDetailOwner({
         description: normalizedValues.description || null,
         avatarStyle: currentValues.avatarStyle,
         avatarSeed: currentValues.avatarSeed,
-        agentProfileId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.agentProfileId,
+        providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
         modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
         thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
         runtimeKind: currentValues.runtimeKind,

@@ -66,7 +66,7 @@ export type ChatSessionMessageRow = ChatMessageSnapshotRow
 export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
 
 export interface SendMessageOptions {
-  agentProfileId?: string
+  providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined
   continuationMode?: ChatContinuationMode
@@ -347,7 +347,7 @@ export function useChatSession(chatSessionId: string | null) {
           mode: opts?.continuationMode ?? 'queue',
           text: trimmedText,
           files,
-          agentProfileId: opts?.agentProfileId ?? undefined,
+          providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
         },
@@ -382,7 +382,7 @@ export function useChatSession(chatSessionId: string | null) {
         body: {
           text: trimmedText,
           files,
-          agentProfileId: opts?.agentProfileId ?? undefined,
+          providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
         },

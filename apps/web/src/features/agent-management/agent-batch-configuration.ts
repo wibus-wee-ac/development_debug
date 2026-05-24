@@ -43,10 +43,6 @@ export function buildAgentProviderBatchPatches(
         avatarStyle: agent.avatarStyle,
         avatarSeed: agent.avatarSeed,
         avatarUrl: agent.avatarUrl,
-        agentProfileId: selection.providerTarget.kind === 'manual-profile'
-          ? selection.providerTarget.id
-          : null,
-        providerTargetKind: selection.providerTarget.kind,
         providerTargetId: selection.providerTarget.id,
         modelId: selection.modelId,
         thinkingEffort: selection.thinkingEffort,

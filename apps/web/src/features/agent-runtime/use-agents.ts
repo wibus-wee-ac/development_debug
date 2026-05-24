@@ -12,8 +12,6 @@ const AgentSchema = z.object({
   avatarUrl: z.string().nullable(),
   avatarStyle: z.string(),
   avatarSeed: z.string(),
-  agentProfileId: z.string().nullable(),
-  providerTargetKind: z.enum(['manual-profile', 'external-record']).nullable(),
   providerTargetId: z.string().nullable(),
   modelId: z.string().nullable(),
   thinkingEffort: z.enum(['low', 'medium', 'high', 'auto']),

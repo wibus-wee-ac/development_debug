@@ -29,4 +29,4 @@ Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agen
 - **settings-selection-shortcuts.ts**: Agent Management settings 列表的局部快捷键 helper，封装可见项全选、清空选择、批量删除与输入框 / overlay 跳过语义
 - **settings-selection-shortcuts.test.ts**: Settings selection shortcuts 的回归测试，覆盖 editable target 跳过、overlay 跳过、全选、清空与删除快捷键门禁
 - **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，显示 models.dev exact / fuzzy / manual / unmatched 状态，并支持按 Available Model 行保存 registry 映射或手工 registry 条目；空列表表示没有本地缓存，用户可显式点击 Fetch Models 刷新 provider inventory
-- **profile-detail-panel.tsx**: Manual provider profile 详情面板，继续以 RHF 作为表单 owner，并把模型缓存读取 / 手动 inventory refresh / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；模型 registry 映射与 custom models 通过 provider-target API 保存，以便和 external runtime target 使用同一语义
+- **profile-detail-panel.tsx**: Manual provider 详情面板，继续以 RHF 作为表单 owner，并把模型缓存读取 / 手动 inventory refresh / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；模型 registry 映射与 custom models 通过 provider-target API 保存，以便和 external runtime target 使用同一语义

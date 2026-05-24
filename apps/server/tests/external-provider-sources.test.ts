@@ -27,7 +27,7 @@ const RuntimeTargetResponseSchema = z.object({
 })
 
 const ProviderTargetModelSettingsResponseSchema = z.object({
-  providerTargetKind: z.enum(['manual-profile', 'external-record']),
+  providerTargetKind: z.enum(['manual', 'external']),
   providerTargetId: z.string(),
   configJson: z.string(),
   customModelsJson: z.string(),
@@ -485,7 +485,7 @@ describe('external provider sources capability', () => {
             label: 'ignored',
             config: {},
             secretRef: null,
-            providerTargetKind: 'external-record',
+            providerTargetKind: 'external',
             providerTargetId: target.id
           })
         })
@@ -508,7 +508,7 @@ describe('external provider sources capability', () => {
             label: 'ignored',
             config: {},
             secretRef: null,
-            providerTargetKind: 'external-record',
+            providerTargetKind: 'external',
             providerTargetId: target.id
           })
         })
@@ -521,7 +521,7 @@ describe('external provider sources capability', () => {
 
       const visibilityRes = await app.handle(
         new Request(
-          `http://localhost/provider-targets/external-record/${target.id}/model-visibility`,
+          `http://localhost/provider-targets/${target.id}/model-visibility`,
           {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
@@ -543,7 +543,7 @@ describe('external provider sources capability', () => {
 
       const customModelsRes = await app.handle(
         new Request(
-          `http://localhost/provider-targets/external-record/${target.id}/custom-models`,
+          `http://localhost/provider-targets/${target.id}/custom-models`,
           {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
@@ -566,7 +566,7 @@ describe('external provider sources capability', () => {
 
       const mappingRes = await app.handle(
         new Request(
-          `http://localhost/provider-targets/external-record/${target.id}/model-registry-mappings`,
+          `http://localhost/provider-targets/${target.id}/model-registry-mappings`,
           {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
@@ -597,7 +597,7 @@ describe('external provider sources capability', () => {
             label: 'ignored',
             config: {},
             secretRef: null,
-            providerTargetKind: 'external-record',
+            providerTargetKind: 'external',
             providerTargetId: target.id
           })
         })
@@ -623,7 +623,7 @@ describe('external provider sources capability', () => {
       )
       expect(refreshAfterPreferences.status).toBe(200)
       const settingsAfterRefreshRes = await app.handle(
-        new Request(`http://localhost/provider-targets/external-record/${target.id}/model-settings`)
+        new Request(`http://localhost/provider-targets/${target.id}/model-settings`)
       )
       expect(settingsAfterRefreshRes.status).toBe(200)
       const settingsAfterRefresh = ProviderTargetModelSettingsResponseSchema.parse(

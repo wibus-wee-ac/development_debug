@@ -10,7 +10,8 @@ export function useLayoutSlotsCtx() {
 }
 
 /**
- * Register layout slots (aside, panel, hasAside, hasPanel, title, workspace, gitBranch)
+ * Register layout slots (asideSessionId, asideWorkspaceId, panel, hasAside, hasPanel,
+ * hasBrowserPanel, title, workspace, gitBranch)
  * for a tab content component. Automatically clears on unmount.
  *
  * IMPORTANT: The `slots` argument MUST be a stable reference (e.g. produced by useMemo)

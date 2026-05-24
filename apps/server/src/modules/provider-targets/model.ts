@@ -75,11 +75,7 @@ export const ProviderTargetsModel = {
   }),
 
   targetParams: t.Object({
-    providerTargetKind: t.Union([
-      providerTargetKind,
-      t.Literal('manual-profile'),
-      t.Literal('external-record')
-    ]),
+    providerTargetKind,
     providerTargetId: t.String({ minLength: 1 })
   }),
 

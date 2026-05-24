@@ -14,7 +14,7 @@ import { cn } from '~/lib/cn'
 
 interface CapsuleComposerProps {
   workspaceId: string
-  onSend: (text: string, opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
+  onSend: (text: string, opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) => void | Promise<void>
 }
 
 function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) {
@@ -136,7 +136,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
         ...(selection.runtimeKind === 'cli-tui'
           ? { agentId: effectiveAgent?.id }
           : {
-              agentProfileId: effectiveProfile?.id,
+              providerTargetId: effectiveProfile?.id,
               modelId: effectiveModel?.id,
               thinkingEffort: selection.thinkingEffort ?? undefined,
             }),

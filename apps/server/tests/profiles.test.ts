@@ -9,12 +9,14 @@ import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { ProfileConfigWithModelRegistryJsonSchema } from '../src/modules/providers/model-registry-mappings'
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
 const ProfileResponseSchema = z.object({
   configJson: z.string(),
   customModels: z.string(),
+})
+const ProviderTargetModelSettingsResponseSchema = z.object({
+  modelRegistryMappingsJson: z.string(),
 })
 
 function makeTempDir(prefix: string): string {
@@ -460,9 +462,15 @@ describe('profiles capability', () => {
       const profileAfterMappingRes = await app.handle(new Request('http://localhost/profiles/profile-map'))
       expect(profileAfterMappingRes.status).toBe(200)
       const profileAfterMapping = ProfileResponseSchema.parse(await profileAfterMappingRes.json())
-      const config = ProfileConfigWithModelRegistryJsonSchema.parse(profileAfterMapping.configJson)
       expect(profileAfterMapping.customModels).toBe('[]')
-      expect(config.modelRegistryMappings).toEqual([
+      const settingsAfterMappingRes = await app.handle(
+        new Request('http://localhost/provider-targets/profile-map/model-settings')
+      )
+      expect(settingsAfterMappingRes.status).toBe(200)
+      const settingsAfterMapping = ProviderTargetModelSettingsResponseSchema.parse(
+        await settingsAfterMappingRes.json()
+      )
+      expect(JSON.parse(settingsAfterMapping.modelRegistryMappingsJson)).toEqual([
         expect.objectContaining({ modelId: 'vendor-gpt4o', registryModelId: 'gpt-4o' }),
       ])
 

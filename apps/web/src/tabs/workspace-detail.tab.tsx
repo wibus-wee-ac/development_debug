@@ -36,9 +36,12 @@ function WorkspaceDetailLayoutSlots({
   )
 
   useRegisterLayoutSlots(`workspace-detail:${workspaceId}`, useMemo(() => ({
+    asideWorkspaceId: hasWorkspace ? workspaceId : null,
+    hasAside: hasWorkspace,
+    hasBrowserPanel: hasWorkspace,
     hasPanel: hasWorkspace,
     panel,
-  }), [hasWorkspace, panel]))
+  }), [hasWorkspace, panel, workspaceId]))
 
   return null
 }

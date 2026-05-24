@@ -60,10 +60,11 @@ function tabWidth(tab: Tab, isActive: boolean, hasBadge: boolean): number {
 }
 
 interface RightAsideProps {
-  sessionId: string
+  sessionId?: string | null
+  workspaceId?: string | null
 }
 
-export function RightAside({ sessionId }: RightAsideProps) {
+export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId = null }: RightAsideProps) {
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [packOpen, setPackOpen] = useState(false)
@@ -71,11 +72,12 @@ export function RightAside({ sessionId }: RightAsideProps) {
 
   // Derive workspaceId from session
   const { data: sessionMeta } = useQuery({
-    ...getSessionsByIdOptions({ path: { id: sessionId } }),
+    ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     select: s => ({ workspaceId: s?.workspaceId as string | null }),
+    enabled: !!sessionId,
     staleTime: 60_000,
   })
-  const workspaceId = sessionMeta?.workspaceId ?? null
+  const workspaceId = explicitWorkspaceId ?? sessionMeta?.workspaceId ?? null
 
   // Derive workspace details from workspaceId
   const { data: workspace } = useQuery({

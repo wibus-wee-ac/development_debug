@@ -41,10 +41,10 @@ export type ProviderKind = 'openai-compatible' | 'anthropic'
 
 export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
 
-export type ProviderTargetKind = 'manual-profile' | 'external-record'
+export type ProviderTargetKind = 'manual' | 'external'
 
 export interface ProviderTarget {
-  kind: ProviderTargetKind
+  kind?: ProviderTargetKind
   id: string
 }
 
@@ -113,8 +113,6 @@ export interface CreateAgentInput {
   description?: string | null
   avatarStyle: string
   avatarSeed: string
-  agentProfileId?: string | null
-  providerTargetKind?: ProviderTargetKind | null
   providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
@@ -128,8 +126,6 @@ export interface UpdateAgentInput {
   avatarStyle?: string
   avatarSeed?: string
   avatarUrl?: string | null
-  agentProfileId?: string | null
-  providerTargetKind?: ProviderTargetKind | null
   providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'

@@ -66,13 +66,7 @@ const BATCH_AGENT_THINKING_OPTIONS: Array<ThinkingOption<AgentBatchThinkingEffor
   }))
 
 function providerTargetFromAgent(agent: Agent): ProviderTarget | null {
-  if (agent.providerTargetKind && agent.providerTargetId) {
-    return { kind: agent.providerTargetKind, id: agent.providerTargetId }
-  }
-  if (agent.agentProfileId) {
-    return { kind: 'manual-profile', id: agent.agentProfileId }
-  }
-  return null
+  return agent.providerTargetId ? { kind: 'manual', id: agent.providerTargetId } : null
 }
 
 function providerTargetKey(target: ProviderTarget | null): string | null {
@@ -89,10 +83,10 @@ function providerTargetFromKey(key: string | null): ProviderTarget | null {
   }
   const kind = key.slice(0, separatorIndex)
   const id = key.slice(separatorIndex + 1)
-  if ((kind !== 'manual-profile' && kind !== 'external-record') || !id) {
+  if ((kind !== 'manual' && kind !== 'external') || !id) {
     return null
   }
-  return { kind, id }
+  return { kind, id } as ProviderTarget
 }
 
 function commonString(values: Array<string | null>): string | null {
@@ -111,14 +105,14 @@ function defaultBatchProviderTarget(agents: Agent[], profiles: AgentProfile[]): 
   const commonTarget = providerTargetFromKey(commonString(
     providerAgents.map(agent => providerTargetKey(providerTargetFromAgent(agent))),
   ))
-  if (commonTarget?.kind === 'manual-profile' && enabledProfileIds.has(commonTarget.id)) {
+  if (commonTarget?.kind === 'manual' && enabledProfileIds.has(commonTarget.id)) {
     return commonTarget
   }
-  if (commonTarget?.kind === 'external-record') {
+  if (commonTarget?.kind === 'external') {
     return commonTarget
   }
   const fallbackProfileId = profiles.find(profile => profile.enabled)?.id ?? null
-  return fallbackProfileId ? { kind: 'manual-profile', id: fallbackProfileId } : null
+  return fallbackProfileId ? { kind: 'manual', id: fallbackProfileId } : null
 }
 
 function defaultBatchModelId(agents: Agent[], providerTarget: ProviderTarget | null): string | null {
@@ -160,7 +154,7 @@ function AgentSidebarRow({
   const checkboxShiftKeyRef = useRef(false)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
   const providerTarget = providerTargetFromAgent(agent)
-  const profile = providerTarget?.kind === 'manual-profile'
+  const profile = providerTarget?.kind === 'manual'
     ? profiles.find(p => p.id === providerTarget.id)
     : null
   const cliTuiLaunch
@@ -273,14 +267,14 @@ function AgentBatchProviderPanel({
   )
   const selection = selectionOverride ?? defaultSelection
   const initialProfileIds = useMemo(
-    () => [selection?.providerTarget.kind === 'manual-profile' ? selection.providerTarget.id : null],
+    () => [selection?.providerTarget.kind === 'manual' ? selection.providerTarget.id : null],
     [selection?.providerTarget],
   )
   const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(
     enabledProfiles,
     initialProfileIds,
   )
-  const selectedProfileId = selection?.providerTarget.kind === 'manual-profile'
+  const selectedProfileId = selection?.providerTarget.kind === 'manual'
     ? selection.providerTarget.id
     : null
   const selectedModels = selectedProfileId
@@ -301,7 +295,7 @@ function AgentBatchProviderPanel({
     requestProfileModels(nextProfileId)
     const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
     setSelectionOverride({
-      providerTarget: { kind: 'manual-profile', id: nextProfileId },
+      providerTarget: { kind: 'manual', id: nextProfileId },
       modelId: nextModel?.id ?? null,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
@@ -312,7 +306,7 @@ function AgentBatchProviderPanel({
       ? ((modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null)
       : null
     setSelectionOverride({
-      providerTarget: { kind: 'manual-profile', id: nextProfileId },
+      providerTarget: { kind: 'manual', id: nextProfileId },
       modelId: nextModelId,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
@@ -357,7 +351,7 @@ skipped.
             thinkingValue={selection?.thinkingEffort ?? 'auto'}
             thinkingOptions={BATCH_AGENT_THINKING_OPTIONS}
             isLoadingSelectedModels={isLoadingSelectedModels}
-            emptyProfilesLabel="No enabled provider profiles configured"
+            emptyProfilesLabel="No enabled providers configured"
             emptySelectionLabel="Select provider"
             menuSide="bottom"
             menuAlign="center"
@@ -555,8 +549,6 @@ export function AgentList() {
                 avatarStyle: agent.avatarStyle,
                 avatarSeed: agent.avatarSeed,
                 avatarUrl: agent.avatarUrl,
-                agentProfileId: agent.agentProfileId,
-                providerTargetKind: agent.providerTargetKind,
                 providerTargetId: agent.providerTargetId,
                 modelId: agent.modelId,
                 thinkingEffort: agent.thinkingEffort,

@@ -2,7 +2,10 @@ import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from '
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
-import { postProvidersModelSearch } from '~/api-gen/sdk.gen'
+import {
+  patchProviderTargetsByProviderTargetIdModelRegistryMappings,
+  postProvidersModelSearch
+} from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -18,11 +21,9 @@ import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
 import { ModelVisibilitySchema, modelIsVisible } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { ModelCapabilities, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import { ALL_DISABLED_SENTINEL } from './provider-settings-utils'
-import { providerTargetPath } from './provider-target-model-settings'
 
 function formatTimeAgo(ts: number): string {
   const seconds = Math.round((Date.now() - ts) / 1000)
@@ -424,17 +425,11 @@ export function ModelsPanel({
         ? { modelId: model.id, registryModelId: result.id, model: manualModel }
         : { modelId: model.id, registryModelId: result.id }
       try {
-        const response = await fetch(
-          `${getServerUrl()}/provider-targets/${providerTargetPath(providerTarget)}/model-registry-mappings`,
-          {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-          }
-        )
-        if (!response.ok) {
-          return
-        }
+        await patchProviderTargetsByProviderTargetIdModelRegistryMappings({
+          path: { providerTargetId: providerTarget.id },
+          body,
+          throwOnError: true
+        })
         onModelRegistryMapped(applyRegistryResult(model, result, 'manual'))
         closeMappingDialog()
       } finally {

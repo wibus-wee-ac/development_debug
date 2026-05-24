@@ -5,8 +5,9 @@ import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui
 
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import { cn } from '~/lib/cn'
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
-import { presetForProfile } from '../agent-management/provider-settings-utils'
+import type { ModelDescriptor } from '~/lib/types'
+import { presetForProviderKind } from '../agent-management/provider-settings-utils'
+import type { ProviderModelOption } from './types'
 
 export interface ThinkingOption<TThinking extends string | null> {
   value: TThinking
@@ -17,7 +18,7 @@ export interface ThinkingOption<TThinking extends string | null> {
 export type ModelsByProfileId = Record<string, ModelDescriptor[]>
 
 interface ProviderModelMenuProps<TThinking extends string | null> {
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   selectedProfileId: string | null
   selectedModelId: string | null
   modelsByProfileId: ModelsByProfileId
@@ -34,7 +35,7 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
 }
 
 interface ProviderGroupProps<TThinking extends string | null> {
-  profile: AgentProfile
+  profile: ProviderModelOption
   isActive: boolean
   models: ModelDescriptor[]
   selectedModelId: string | null
@@ -172,7 +173,7 @@ function ProviderGroup<TThinking extends string | null>({
   onSelectModel,
   onSelectThinking,
 }: ProviderGroupProps<TThinking>) {
-  const preset = presetForProfile(profile)
+  const preset = presetForProviderKind(profile.providerKind)
 
   return (
     <MenuSub onOpenChange={open => open && onRequestProfileModels?.(profile.id)}>
@@ -311,7 +312,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
   thinkingValue,
   thinkingOptions,
   getThinkingOptionsForModel,
-  emptyProfilesLabel = 'No providers available',
+  emptyProfilesLabel = 'No provider targets available',
   isProfileSelectionDisabled = false,
   onRequestProfileModels,
   onSelectProfile,

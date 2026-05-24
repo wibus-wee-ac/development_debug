@@ -14,7 +14,7 @@ export const CliTuiLaunchConfigSchema = z.object({
   preset: z.string().optional(),
   executable: z.string().min(1),
   args: z.array(z.string()).default([]),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
 })
 
 export const ClaudeAgentModelAliasesSchema = z.object({

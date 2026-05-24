@@ -16,9 +16,9 @@ The registry exports the store instance consumed by the rest of the app.
 - **reconcile-persisted-tabs.ts**: 启动时清理 dangling chat/workspace tabs 的纯函数，防止 localStorage 里的旧 session/workspace 引用继续污染 UI
 - **reconcile-persisted-tabs.test.ts**: 验证无效 chat/workspace tabs 会被剔除并修复 active tab
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)
-- **chat.tab.tsx**: Chat session tab（params: `sessionId`），使用通用 fallback label，在会话标题加载后替换为真实标题，并为非 CLI-TUI workspace-backed chat 注册默认激活/持久化的 bottom terminal panel；CLI-TUI chat route 显式不注册 bottom shell，避免双 PTY 争用
+- **chat.tab.tsx**: Chat session tab（params: `sessionId`），使用通用 fallback label，在会话标题加载后替换为真实标题，并为非 CLI-TUI workspace-backed chat 注册默认激活/持久化的 bottom terminal panel、browser panel capability、right aside capability；CLI-TUI chat route 显式不注册 bottom shell，避免双 PTY 争用
 - **chat.tab.test.tsx**: 覆盖 chat tab 标题 fallback 清理与 session title 同步的回归测试
-- **new-chat.tab.tsx**: New chat creation tab (no params)
+- **new-chat.tab.tsx**: New chat creation tab (no params); page-owned workspace selection drives browser panel and right aside capability while the tab route remains parameterless.
 - **approvals.tab.tsx**: Pending approval inbox tab opened by Desktop tray actions.
 - **awaits.tab.tsx**: Pending external-await overview tab opened by Desktop tray actions.
 - **automation.tab.tsx**: Automation dashboard tab opened by Desktop tray actions.
@@ -26,6 +26,6 @@ The registry exports the store instance consumed by the rest of the app.
 - **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`, optional `milestoneId` for focused milestone filters)
 - **kanban-board-tab-content-loader.ts**: Kanban board tab wrapper 的共享 lazy loader 与 route preload 入口。
 - **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel plus optional milestone focus
-- **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name and registers the workspace-scoped bottom terminal panel
+- **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name and registers workspace-scoped bottom terminal plus browser panel and right aside capability
 - **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates
 - **usage.tab.tsx**: Usage/cost dashboard tab (no params)

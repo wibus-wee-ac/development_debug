@@ -5,9 +5,12 @@ import { createContext, useCallback, useMemo, useState } from 'react'
 
 export interface LayoutSlots {
   aside?: ReactNode
+  asideSessionId?: string | null
+  asideWorkspaceId?: string | null
   panel?: ReactNode
   hasAside?: boolean
   hasPanel?: boolean
+  hasBrowserPanel?: boolean
 }
 
 interface RegistrationState {

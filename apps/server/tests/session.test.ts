@@ -4,11 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
-  agentProfiles,
   agents,
   backendRuns,
   backendSessionBindings,
   messages,
+  providerTargets,
   workspaces
 } from '@cradle/db'
 import { eq } from 'drizzle-orm'
@@ -55,7 +55,7 @@ describe('session capability', () => {
       const d = db()
 
       const workspaceId = randomUUID()
-      const agentProfileId = randomUUID()
+      const providerTargetId = randomUUID()
       d.insert(workspaces)
         .values({
           id: workspaceId,
@@ -63,10 +63,11 @@ describe('session capability', () => {
           path: workspaceRoot
         })
         .run()
-      d.insert(agentProfiles)
+      d.insert(providerTargets)
         .values({
-          id: agentProfileId,
-          name: 'Test Agent',
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Test Provider Target',
           providerKind: 'openai-compatible'
         })
         .run()
@@ -80,7 +81,7 @@ describe('session capability', () => {
             id: sessionId,
             workspaceId,
             title: 'Chat',
-            agentProfileId
+            providerTargetId
           })
         })
       )
@@ -91,7 +92,7 @@ describe('session capability', () => {
           id: sessionId,
           workspaceId,
           title: 'Chat',
-          agentProfileId,
+          providerTargetId,
           agentId: null,
           modelId: null
         })
@@ -207,7 +208,7 @@ describe('session capability', () => {
         .values({
           id: bindingId,
           chatSessionId: sessionId,
-          agentProfileId,
+          providerTargetId,
           runtimeKind: 'standard',
           requestedModelId: 'gpt-test'
         })
@@ -230,7 +231,7 @@ describe('session capability', () => {
           name: 'CLI Agent',
           avatarStyle: 'bottts-neutral',
           avatarSeed: 'cli-seed',
-          agentProfileId: null,
+          providerTargetId: null,
           runtimeKind: 'cli-tui',
           configJson: JSON.stringify({
             cliTui: {
@@ -257,7 +258,7 @@ describe('session capability', () => {
       expect(await cliSessionRes.json()).toEqual(
         expect.objectContaining({
           agentId: cliAgentId,
-          agentProfileId: null,
+          providerTargetId: null,
           runtimeKind: 'cli-tui'
         })
       )
@@ -355,7 +356,7 @@ describe('session capability', () => {
           name: 'CLI Agent',
           avatarStyle: 'bottts-neutral',
           avatarSeed: 'cleanup-seed',
-          agentProfileId: null,
+          providerTargetId: null,
           runtimeKind: 'cli-tui',
           configJson: JSON.stringify({
             cliTui: {

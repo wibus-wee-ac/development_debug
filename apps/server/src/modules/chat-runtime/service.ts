@@ -260,13 +260,13 @@ const requestedQueueDrainSessionIds = new Set<string>()
 
 function getSessionRunContext(
   sessionId: string,
-  input: { providerTargetId?: string; agentProfileId?: string } = {}
+  input: { providerTargetId?: string } = {}
 ): SessionRunContext | null {
   const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
   if (!session) {
     return null
   }
-  const providerTargetId = input.providerTargetId ?? input.agentProfileId ?? session.providerTargetId
+  const providerTargetId = input.providerTargetId ?? session.providerTargetId
   const providerTarget = providerTargetId ? { id: providerTargetId } : null
   if (!providerTarget) {
     return null
@@ -963,7 +963,6 @@ export async function createRun(input: {
   sessionId: string
   text?: string
   files?: FileUIPart[]
-  agentProfileId?: string
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
@@ -992,7 +991,7 @@ export async function createRun(input: {
       })
     }
 
-    const requestedProviderTargetId = input.providerTargetId ?? input.agentProfileId
+    const requestedProviderTargetId = input.providerTargetId
     const context = getSessionRunContext(input.sessionId, { providerTargetId: requestedProviderTargetId })
     if (!context) {
       throw new AppError({

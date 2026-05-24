@@ -36,6 +36,7 @@ export interface ExternalProviderSourceView {
 
 export interface ExternalProviderRecordView {
   id: string
+  providerTargetId: string | null
   sourceKey: string
   externalId: string
   app: string
@@ -63,13 +64,13 @@ export interface ExternalProviderRuntimeTargetView {
 
 export interface ManualProviderListEntry {
   id: string
-  kind: 'manual-profile'
+  kind: 'manual'
   profile: AgentProfile
 }
 
 export interface ExternalProviderListEntry {
   id: string
-  kind: 'external-record'
+  kind: 'external'
   record: ExternalProviderRecordView
 }
 
@@ -86,16 +87,16 @@ export function providerListEntryId(kind: ProviderListEntry['kind'], id: string)
 
 export function createManualProviderListEntry(profile: AgentProfile): ManualProviderListEntry {
   return {
-    id: providerListEntryId('manual-profile', profile.id),
-    kind: 'manual-profile',
+    id: providerListEntryId('manual', profile.id),
+    kind: 'manual',
     profile,
   }
 }
 
 export function createExternalProviderListEntry(record: ExternalProviderRecordView): ExternalProviderListEntry {
   return {
-    id: providerListEntryId('external-record', record.id),
-    kind: 'external-record',
+    id: providerListEntryId('external', record.providerTargetId ?? record.id),
+    kind: 'external',
     record,
   }
 }

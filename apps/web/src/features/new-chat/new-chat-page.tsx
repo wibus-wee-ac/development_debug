@@ -12,6 +12,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { postSessions } from '~/api-gen/sdk.gen'
+import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Kbd } from '~/components/ui/kbd'
@@ -172,7 +173,7 @@ function useNewChatPageOwner() {
       return {
         key: 'providers',
         icon: SettingsIcon,
-        message: 'No model provider is available. Configure a provider profile before sending the first message.',
+        message: 'No provider target is available. Configure a provider target before sending the first message.',
         actionLabel: 'Open providers',
         disabled: false,
       }
@@ -237,7 +238,7 @@ function useNewChatPageOwner() {
         body: {
           workspaceId: effectiveWorkspaceId,
           title: input.trim().slice(0, 80) || effectiveProfile.name,
-          agentProfileId: effectiveProfile.id,
+          providerTargetId: effectiveProfile.id,
           runtimeKind: selection.runtimeKind,
         },
       })
@@ -571,6 +572,13 @@ function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChat
 
 export function NewChatPage() {
   const owner = useNewChatPageOwner()
+  const hasWorkspace = !!owner.selectedWorkspace?.path
+
+  useRegisterLayoutSlots('new-chat', useMemo(() => ({
+    asideWorkspaceId: hasWorkspace ? owner.selectedWorkspace?.id : null,
+    hasAside: hasWorkspace,
+    hasBrowserPanel: hasWorkspace,
+  }), [hasWorkspace, owner.selectedWorkspace?.id]))
 
   return (
     <div

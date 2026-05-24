@@ -113,14 +113,14 @@ const ProviderRow = memo(
   }) => {
     const checkboxShiftKeyRef = useRef(false)
     const providerKind =
-      entry.kind === 'manual-profile' ? entry.profile.providerKind : entry.record.providerKind
+      entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
     const preset =
-      entry.kind === 'manual-profile'
+      entry.kind === 'manual'
         ? presetForProfile(entry.profile)
         : presetForProviderKind(providerKind)
-    const title = entry.kind === 'manual-profile' ? entry.profile.name : entry.record.name
+    const title = entry.kind === 'manual' ? entry.profile.name : entry.record.name
     const subtitle =
-      entry.kind === 'manual-profile'
+      entry.kind === 'manual'
         ? (() => {
             const cfg = ProfileConfigJsonSchema.parse(entry.profile.configJson)
             return cfg.model
@@ -129,7 +129,7 @@ const ProviderRow = memo(
           })()
         : `${PROVIDER_KIND_LABELS[entry.record.providerKind]} · ${entry.record.app}`
     const statusLabel =
-      entry.kind === 'manual-profile'
+      entry.kind === 'manual'
         ? entry.profile.enabled
           ? null
           : 'Off'
@@ -139,7 +139,7 @@ const ProviderRow = memo(
             ? null
             : entry.record.status
     const testId =
-      entry.kind === 'manual-profile'
+      entry.kind === 'manual'
         ? `agent-profile-row-${entry.profile.id}`
         : `external-provider-record-row-${entry.record.id}`
 
@@ -152,8 +152,8 @@ const ProviderRow = memo(
           active
             ? 'bg-foreground/[0.045] text-foreground'
             : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
-          entry.kind === 'manual-profile' && !entry.profile.enabled && !active && 'opacity-60',
-          entry.kind === 'external-record' &&
+          entry.kind === 'manual' && !entry.profile.enabled && !active && 'opacity-60',
+          entry.kind === 'external' &&
             (!entry.record.runtimeTargetEnabled || entry.record.status !== 'active') &&
             !active &&
             'opacity-70'
@@ -175,7 +175,7 @@ const ProviderRow = memo(
           onClick={(event) => onOpenEntry(entry.id, event.shiftKey)}
         >
           <ProviderIcon
-            iconSlug={entry.kind === 'manual-profile' ? entry.profile.iconSlug : null}
+            iconSlug={entry.kind === 'manual' ? entry.profile.iconSlug : null}
             presetId={preset.id}
             className="size-4 shrink-0 text-muted-foreground"
           />
@@ -306,19 +306,19 @@ export function AgentRuntimeSettings() {
         ...group,
         entries: group.entries.filter((entry) => {
           const source =
-            entry.kind === 'external-record'
+            entry.kind === 'external'
               ? externalSourcesById.get(entry.record.sourceKey)
               : null
-          const label = entry.kind === 'manual-profile' ? entry.profile.name : entry.record.name
+          const label = entry.kind === 'manual' ? entry.profile.name : entry.record.name
           const kindLabel =
             PROVIDER_KIND_LABELS[
-              entry.kind === 'manual-profile'
+              entry.kind === 'manual'
                 ? entry.profile.providerKind
                 : entry.record.providerKind
             ] ?? ''
           const sourceLabel = source?.label ?? ''
-          const app = entry.kind === 'external-record' ? entry.record.app : ''
-          const externalId = entry.kind === 'external-record' ? entry.record.externalId : ''
+          const app = entry.kind === 'external' ? entry.record.app : ''
+          const externalId = entry.kind === 'external' ? entry.record.externalId : ''
           return (
             group.label.toLowerCase().includes(q) ||
             label.toLowerCase().includes(q) ||
@@ -350,12 +350,12 @@ export function AgentRuntimeSettings() {
   )
   const selectedProfiles = useMemo(
     () =>
-      selectedEntries.flatMap((entry) => (entry.kind === 'manual-profile' ? [entry.profile] : [])),
+      selectedEntries.flatMap((entry) => (entry.kind === 'manual' ? [entry.profile] : [])),
     [selectedEntries]
   )
   const selectedExternalRecords = useMemo(
     () =>
-      selectedEntries.flatMap((entry) => (entry.kind === 'external-record' ? [entry.record] : [])),
+      selectedEntries.flatMap((entry) => (entry.kind === 'external' ? [entry.record] : [])),
     [selectedEntries]
   )
   const toggleableSelectedProfiles = selectedProfiles
@@ -406,7 +406,7 @@ export function AgentRuntimeSettings() {
       void refetch().finally(() => {
         refetchExternalRecords()
         setDraft(null)
-        const nextId = newProfileId ? providerListEntryId('manual-profile', newProfileId) : null
+        const nextId = newProfileId ? providerListEntryId('manual', newProfileId) : null
         setSelectedIds(nextId ? new Set([nextId]) : new Set())
         selectionAnchorIdRef.current = nextId
       })
@@ -419,10 +419,10 @@ export function AgentRuntimeSettings() {
       await removeProfile.mutateAsync(id)
       setSelectedIds((prev) => {
         const next = new Set(prev)
-        next.delete(providerListEntryId('manual-profile', id))
+        next.delete(providerListEntryId('manual', id))
         return next
       })
-      if (selectionAnchorIdRef.current === providerListEntryId('manual-profile', id)) {
+      if (selectionAnchorIdRef.current === providerListEntryId('manual', id)) {
         selectionAnchorIdRef.current = null
       }
     },
@@ -578,7 +578,7 @@ export function AgentRuntimeSettings() {
             Provider targets
           </h3>
           <p className="max-w-full break-words text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
-            Manual profiles are editable provider targets. External source records stay source-owned
+            Manual providers are editable provider targets. External source records stay source-owned
             and are shown in separate read-only groups.
           </p>
         </div>
@@ -596,7 +596,7 @@ export function AgentRuntimeSettings() {
           </Button>
           <Button data-testid="add-provider-btn" size="sm" onClick={startDraft} disabled={!!draft}>
             <PlusIcon />
-            Add manual profile
+            Add manual provider
           </Button>
         </div>
       </header>
@@ -790,7 +790,7 @@ export function AgentRuntimeSettings() {
 
           {(profiles.length > 0 || externalRecords.length > 0) && (
             <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
-              {profiles.length} manual profiles · {externalRecords.length} external records
+              {profiles.length} manual providers · {externalRecords.length} external records
             </div>
           )}
         </aside>
@@ -816,7 +816,7 @@ export function AgentRuntimeSettings() {
                   </EmptyMedia>
                   <EmptyTitle>{selectedEntries.length} items selected</EmptyTitle>
                   <EmptyDescription>
-                    Batch actions apply only to manual profiles. External records stay read-only.
+                    Batch actions apply only to manual providers. External records stay read-only.
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
@@ -827,7 +827,7 @@ export function AgentRuntimeSettings() {
                 </EmptyContent>
               </Empty>
             </div>
-          ) : selectedEntry?.kind === 'manual-profile' ? (
+          ) : selectedEntry?.kind === 'manual' ? (
             <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
               <ProfileDetailPanel
                 profile={selectedEntry.profile}
@@ -839,7 +839,7 @@ export function AgentRuntimeSettings() {
                 }}
               />
             </div>
-          ) : selectedEntry?.kind === 'external-record' ? (
+          ) : selectedEntry?.kind === 'external' ? (
             <div key={selectedEntry.record.id} className="min-w-0 flex-1">
               <ExternalProviderRecordDetailPanel
                 record={selectedEntry.record}

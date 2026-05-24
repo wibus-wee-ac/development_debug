@@ -4,8 +4,12 @@
 
 import { z } from 'zod'
 
+import {
+  getProviderTargetsByProviderTargetIdModelSettings,
+  patchProviderTargetsByProviderTargetIdCustomModels,
+  patchProviderTargetsByProviderTargetIdModelVisibility
+} from '~/api-gen/sdk.gen'
 import { ProfileConfigSchema } from '~/features/agent-runtime/profile-config-schema'
-import { getServerUrl } from '~/lib/electron'
 import type { ModelCapabilities, ProviderTarget } from '~/lib/types'
 
 export interface EditableCustomModel {
@@ -15,7 +19,7 @@ export interface EditableCustomModel {
 }
 
 export interface ProviderTargetModelSettings {
-  providerTargetKind: ProviderTarget['kind']
+  providerTargetKind?: ProviderTarget['kind']
   providerTargetId: string
   configJson: string
   customModelsJson: string
@@ -50,7 +54,7 @@ export const CustomModelsJsonSchema = z
   .pipe(z.array(EditableCustomModelSchema))
 
 export const ProviderTargetModelSettingsSchema = z.object({
-  providerTargetKind: z.enum(['manual-profile', 'external-record']),
+  providerTargetKind: z.enum(['manual', 'external']).optional(),
   providerTargetId: z.string(),
   configJson: z.string(),
   customModelsJson: z.string(),
@@ -58,7 +62,7 @@ export const ProviderTargetModelSettingsSchema = z.object({
 })
 
 export function providerTargetPath(target: ProviderTarget): string {
-  return `${encodeURIComponent(target.kind)}/${encodeURIComponent(target.id)}`
+  return encodeURIComponent(target.id)
 }
 
 export function enabledModelsFromConfig(configJson: string): string[] {
@@ -68,31 +72,23 @@ export function enabledModelsFromConfig(configJson: string): string[] {
 export async function loadProviderTargetModelSettings(
   target: ProviderTarget
 ): Promise<ProviderTargetModelSettings> {
-  const response = await fetch(
-    `${getServerUrl()}/provider-targets/${providerTargetPath(target)}/model-settings`
-  )
-  if (!response.ok) {
-    throw new Error('Failed to load provider target model settings')
-  }
-  return ProviderTargetModelSettingsSchema.parse(await response.json())
+  const { data } = await getProviderTargetsByProviderTargetIdModelSettings({
+    path: { providerTargetId: target.id },
+    throwOnError: true
+  })
+  return ProviderTargetModelSettingsSchema.parse(data)
 }
 
 export async function updateProviderTargetModelVisibility(
   target: ProviderTarget,
   enabledModels: string[]
 ): Promise<ProviderTargetModelSettings> {
-  const response = await fetch(
-    `${getServerUrl()}/provider-targets/${providerTargetPath(target)}/model-visibility`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabledModels })
-    }
-  )
-  if (!response.ok) {
-    throw new Error('Failed to update provider target model visibility')
-  }
-  return ProviderTargetModelSettingsSchema.parse(await response.json())
+  const { data } = await patchProviderTargetsByProviderTargetIdModelVisibility({
+    path: { providerTargetId: target.id },
+    body: { enabledModels },
+    throwOnError: true
+  })
+  return ProviderTargetModelSettingsSchema.parse(data)
 }
 
 export async function updateProviderTargetCustomModels(
@@ -100,22 +96,16 @@ export async function updateProviderTargetCustomModels(
   models: EditableCustomModel[]
 ): Promise<EditableCustomModel[]> {
   const sanitized = z.array(EditableCustomModelSchema).parse(models)
-  const response = await fetch(
-    `${getServerUrl()}/provider-targets/${providerTargetPath(target)}/custom-models`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        models: sanitized.map((model) => ({
-          id: model.id,
-          label: model.label !== model.id ? model.label : undefined,
-          capabilities: model.capabilities
-        }))
-      })
-    }
-  )
-  if (!response.ok) {
-    throw new Error('Failed to update provider target custom models')
-  }
-  return z.array(EditableCustomModelSchema).parse(await response.json())
+  const { data } = await patchProviderTargetsByProviderTargetIdCustomModels({
+    path: { providerTargetId: target.id },
+    body: {
+      models: sanitized.map((model) => ({
+        id: model.id,
+        label: model.label !== model.id ? model.label : undefined,
+        capabilities: model.capabilities
+      }))
+    },
+    throwOnError: true
+  })
+  return z.array(EditableCustomModelSchema).parse(data)
 }

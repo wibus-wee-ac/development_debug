@@ -155,7 +155,7 @@ export function JarvisPopover({
         const res = await postSessions({
           body: {
             title: 'Jarvis',
-            agentProfileId: prefs!.profileId!,
+            providerTargetId: prefs!.profileId!,
             runtimeKind: 'jar-core',
           },
         })

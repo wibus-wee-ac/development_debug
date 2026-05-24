@@ -8,7 +8,7 @@ export interface WorkspaceSession {
   id: string
   workspaceId: string | null
   title: string | null
-  agentProfileId: string | null
+  providerTargetId: string | null
   agentId: string | null
   modelId: string | null
   linkedIssueId: string | null
@@ -26,7 +26,7 @@ export const WorkspaceSessionListSchema = z.array(z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
   title: z.string().nullable(),
-  agentProfileId: z.string().nullable(),
+  providerTargetId: z.string().nullable(),
   agentId: z.string().nullable(),
   modelId: z.string().nullable(),
   linkedIssueId: z.string().nullable(),

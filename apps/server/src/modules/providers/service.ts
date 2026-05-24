@@ -41,7 +41,7 @@ export const ProviderRequestSchema = z
     config: z.record(z.string(), z.unknown()),
     secretRef: NullableProviderRefSchema,
     profileId: NullableProviderRefSchema,
-    providerTargetKind: z.enum(['manual', 'external', 'manual-profile', 'external-record']).nullable().optional(),
+    providerTargetKind: z.enum(['manual', 'external']).nullable().optional(),
     providerTargetId: NullableProviderRefSchema
   })
   .transform((parsed) => ({
@@ -76,7 +76,7 @@ const CustomModelsJsonSchema = z
 
 const RuntimeAuditProfileInputSchema = z.object({
   profileId: z.string().nullable().default(null),
-  providerTargetKind: z.enum(['manual', 'external', 'manual-profile', 'external-record']).nullable().default(null),
+  providerTargetKind: z.enum(['manual', 'external']).nullable().default(null),
   providerTargetId: z.string().nullable().default(null)
 })
 
@@ -205,7 +205,7 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
 
 function recordHealthCheck(input: {
   profileId?: string | null
-  providerTargetKind?: 'manual' | 'external' | 'manual-profile' | 'external-record' | null
+  providerTargetKind?: 'manual' | 'external' | null
   providerTargetId?: string | null
   providerKind: ProviderKind
   subject: string
@@ -231,7 +231,7 @@ function recordHealthCheck(input: {
 
 function recordModelList(input: {
   profileId?: string | null
-  providerTargetKind?: 'manual' | 'external' | 'manual-profile' | 'external-record' | null
+  providerTargetKind?: 'manual' | 'external' | null
   providerTargetId?: string | null
   providerKind: ProviderKind
   subject: string
@@ -252,7 +252,7 @@ function recordModelList(input: {
 
 function recordCapabilitySnapshot(input: {
   profileId?: string | null
-  providerTargetKind?: 'manual' | 'external' | 'manual-profile' | 'external-record' | null
+  providerTargetKind?: 'manual' | 'external' | null
   providerTargetId?: string | null
   providerKind: ProviderKind
   capabilitiesJson: string

@@ -83,6 +83,8 @@ function installBrowserUseBridge(openBrowserPanel: () => void): BrowserBridgeCle
 
 interface AppLayoutProps {
   children?: ReactNode
+  /** Show browser panel toggle in header */
+  hasBrowserPanel?: boolean
   /** Show bottom panel toggle in header */
   hasPanel?: boolean
   /** Bottom panel content */
@@ -91,17 +93,17 @@ interface AppLayoutProps {
   showFooter?: boolean
 }
 
-export function AppLayout({ children, hasPanel, panel, showFooter = true }: AppLayoutProps) {
+export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, showFooter = true }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
-      <AppLayoutContent hasPanel={hasPanel} panel={panel} showFooter={showFooter}>
+      <AppLayoutContent hasBrowserPanel={hasBrowserPanel} hasPanel={hasPanel} panel={panel} showFooter={showFooter}>
         {children}
       </AppLayoutContent>
     </LayoutGeometryProvider>
   )
 }
 
-function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppLayoutProps) {
+function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFooter = true }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
@@ -116,13 +118,17 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
 
   // Per-tab layout slots registered by tab content components
   const { slots } = useLayoutSlotsCtx()
-
-  // Slot props override explicit props so per-tab content wins
-  const resolvedPanel = slots.panel ?? panel
-  const resolvedHasPanel = slots.hasPanel ?? hasPanel
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   const activeTab = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId))
   const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
+
+  // Slot props override explicit props so per-tab content wins
+  const resolvedPanel = slots.panel ?? panel
+  const resolvedAsideSessionId = slots.asideSessionId ?? activeSessionId
+  const resolvedAsideWorkspaceId = slots.asideWorkspaceId ?? null
+  const resolvedHasAside = slots.hasAside ?? !!activeSessionId
+  const resolvedHasBrowserPanel = slots.hasBrowserPanel ?? hasBrowserPanel
+  const resolvedHasPanel = slots.hasPanel ?? hasPanel
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
@@ -137,6 +143,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
   const isSettings = settingsTabId !== null && settingsTabId === activeTabId
+  const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
 
   useEffect(() => {
     if (!isElectron) {
@@ -148,7 +155,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
-      <AppHeader hasAside={!!activeSessionId} hasPanel={resolvedHasPanel} />
+      <AppHeader hasAside={resolvedHasAside} hasBrowserPanel={resolvedHasBrowserPanel} hasPanel={resolvedHasPanel} />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">
@@ -169,7 +176,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">{children}</div>
 
             {/* Browser panel split */}
-            {browserPanelOpen && (
+            {resolvedBrowserPanelOpen && (
               <ResizeHandle
                 direction="horizontal"
                 value={() => browserPanelRatio * readMainWidth()}
@@ -187,13 +194,13 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
             <div
               className={cn(
                 'flex shrink-0 flex-col overflow-hidden',
-                browserPanelOpen && 'border-l border-border/50',
+                resolvedBrowserPanelOpen && 'border-l border-border/50',
               )}
-              style={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
+              style={{ flexBasis: resolvedBrowserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
               data-testid="app-layout-browser-panel"
-              data-panel-open={browserPanelOpen ? 'true' : 'false'}
+              data-panel-open={resolvedBrowserPanelOpen ? 'true' : 'false'}
             >
-              {browserPanelOpen && <BrowserPanel />}
+              {resolvedBrowserPanelOpen && <BrowserPanel />}
             </div>
           </main>
 
@@ -233,7 +240,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
         </m.div>
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
-        {!isSettings && activeSessionId && (
+        {!isSettings && resolvedHasAside && (resolvedAsideSessionId || resolvedAsideWorkspaceId) && (
           <>
             {asideOpen && (
               <ResizeHandle
@@ -262,7 +269,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
               data-aside-open={asideOpen ? 'true' : 'false'}
             >
               <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-                <RightAside sessionId={activeSessionId} />
+                <RightAside sessionId={resolvedAsideSessionId} workspaceId={resolvedAsideWorkspaceId} />
               </div>
             </m.aside>
           </>

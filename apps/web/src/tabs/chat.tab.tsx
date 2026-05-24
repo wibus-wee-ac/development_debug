@@ -7,7 +7,7 @@ import { lazy, Suspense, useEffect, useMemo, useRef } from 'react'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getProfilesById, getWorkspacesById } from '~/api-gen/sdk.gen'
+import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { loadChatView } from '~/features/chat/chat-view-loader'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
@@ -27,21 +27,9 @@ const ChatSessionMetadataSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
   workspaceId: z.string().nullable(),
-  agentProfileId: z.string().nullable(),
+  providerTargetId: z.string().nullable(),
   runtimeKind: RuntimeKindSchema,
 }).passthrough()
-const AgentProfileSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
-  enabled: z.boolean(),
-  configJson: z.string(),
-  credentialRef: z.string().nullable(),
-  customModels: z.string(),
-  iconSlug: z.string().nullable(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-})
 
 export function isGeneratedChatLabel(label: string, sessionId: string): boolean {
   return label === `Chat: ${sessionId.slice(0, 6)}`
@@ -75,37 +63,41 @@ function ChatTabLayoutSlots({
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
+    asideSessionId: hasWorkspace ? sessionId : null,
+    asideWorkspaceId: hasWorkspace ? workspaceId : null,
+    hasAside: hasWorkspace,
+    hasBrowserPanel: hasWorkspace,
     hasPanel: hasWorkspace,
     panel,
-  }), [hasWorkspace, panel]))
+  }), [hasWorkspace, panel, sessionId, workspaceId]))
 
   return null
 }
 
 export function ChatRuntimeView({
   sessionId,
-  sessionAgentProfileId,
+  sessionProviderTargetId,
   runtimeKind,
 }: {
   sessionId: string
-  sessionAgentProfileId: string | null
+  sessionProviderTargetId: string | null
   runtimeKind: RuntimeKind | undefined
 }) {
   const composerState = useComposerState({
     context: 'chat',
-    boundProfileId: sessionAgentProfileId ?? undefined,
+    boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundRuntimeKind: runtimeKind,
   })
 
   // Ref to communicate per-message overrides to ChatView's internal sendMessage
   const sendOverridesRef = useRef({
-    agentProfileId: undefined as string | undefined,
+    providerTargetId: undefined as string | undefined,
     modelId: undefined as string | undefined,
     thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
   })
   // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
   sendOverridesRef.current = {
-    agentProfileId: composerState.selection.profileId ?? undefined,
+    providerTargetId: composerState.selection.profileId ?? undefined,
     modelId: composerState.selection.modelId ?? undefined,
     thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
   }
@@ -142,18 +134,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
     enabled: !!sessionId,
     select: data => data ? ChatSessionMetadataSchema.parse(data) : undefined,
   })
-  const sessionAgentProfileId = session?.agentProfileId ?? null
-
-  // Fetch agent profile to determine rendering mode (cli-tui vs chat)
-  const { data: _agentProfile } = useQuery({
-    queryKey: ['agent-profile', sessionAgentProfileId],
-    queryFn: async () => {
-      const { data } = await getProfilesById({ path: { id: sessionAgentProfileId! } })
-      return AgentProfileSchema.parse(data)
-    },
-    enabled: !!sessionAgentProfileId,
-    staleTime: 60_000,
-  })
+  const sessionProviderTargetId = session?.providerTargetId ?? null
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
@@ -229,7 +210,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
       <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} enabled />
       <ChatRuntimeView
         sessionId={sessionId}
-        sessionAgentProfileId={sessionAgentProfileId}
+        sessionProviderTargetId={sessionProviderTargetId}
         runtimeKind={session?.runtimeKind}
       />
     </>

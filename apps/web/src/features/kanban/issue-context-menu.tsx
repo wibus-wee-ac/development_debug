@@ -94,11 +94,11 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const deleteIssue = useDeleteIssue()
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
-  const delegateAgents = agents.filter(agent => !!agent.agentProfileId)
+  const delegateAgents = agents.filter(agent => !!agent.providerTargetId)
   const assignedAgent = delegateAgents.find(agent => (
     (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
     || agent.id === issue.delegateAgentId
-    || agent.agentProfileId === issue.delegateAgentProfileId
+    || agent.providerTargetId === issue.delegateAgentProfileId
   )) ?? null
   const assignedHuman = issue.assigneeKind === 'user'
     ? issue.assigneeId === CURRENT_USER_ASSIGNEE.id
@@ -133,12 +133,12 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
     const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
     if (kind === 'agent') {
       const agent = delegateAgents.find(candidate => candidate.id === id)
-      if (!agent?.agentProfileId) {
+      if (!agent?.providerTargetId) {
         return
       }
       delegateIssue.mutate({
         issueId: issue.id,
-        agentProfileId: agent.agentProfileId,
+        providerTargetId: agent.providerTargetId,
         agentId: agent.id,
       })
       return

@@ -21,7 +21,9 @@ import {
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
+import { getProvidersTargetsByProviderTargetIdModelsCacheOptions } from '~/api-gen/@tanstack/react-query.gen'
 import {
+  patchProfilesByIdIcon,
   postProvidersHealthCheck,
   postProvidersModels,
   postSecrets,
@@ -57,7 +59,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
@@ -202,7 +203,9 @@ function buildProviderRequestBody(profile: AgentProfile) {
     label: profile.name,
     config: ProfileConfigJsonSchema.parse(profile.configJson),
     secretRef: profile.credentialRef ?? null,
-    profileId: profile.id
+    profileId: profile.id,
+    providerTargetKind: 'manual' as const,
+    providerTargetId: profile.id
   }
 }
 
@@ -255,7 +258,7 @@ export function ProfileDetailPanel({
   const preset = presetForProfile(profile)
   const queryClient = useQueryClient()
   const providerTarget = useMemo<ProviderTarget>(
-    () => ({ kind: 'manual-profile', id: profile.id }),
+    () => ({ kind: 'manual', id: profile.id }),
     [profile.id]
   )
 
@@ -349,9 +352,11 @@ export function ProfileDetailPanel({
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
 
-    const cacheUrl = `${getServerUrl()}/providers/${encodeURIComponent(profile.id)}/models-cache`
-    fetch(cacheUrl)
-      .then((res) => (res.ok ? res.json() : null))
+    queryClient.fetchQuery(
+      getProvidersTargetsByProviderTargetIdModelsCacheOptions({
+        path: { providerTargetId: profile.id }
+      })
+    )
       .then((rawCache) => {
         const cache = ProviderModelsCacheSchema.parse(rawCache)
         if (requestId !== modelsRequestRef.current) {
@@ -371,7 +376,7 @@ export function ProfileDetailPanel({
         }
         dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id])
+  }, [supportsModels, profile.id, queryClient])
 
   const handleRefreshModels = useCallback(() => {
     const requestId = ++modelsRequestRef.current
@@ -528,10 +533,9 @@ export function ProfileDetailPanel({
   // ── Icon change handler ──
   const handleIconChange = useCallback(
     (slug: string | null) => {
-      fetch(`${getServerUrl()}/profiles/${encodeURIComponent(profile.id)}/icon`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iconSlug: slug })
+      patchProfilesByIdIcon({
+        path: { id: profile.id },
+        body: { iconSlug: slug }
       })
         .then(() => {
           onSaved()

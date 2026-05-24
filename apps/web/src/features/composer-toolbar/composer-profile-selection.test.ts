@@ -1,53 +1,49 @@
-// Output: Regression coverage for composer provider profile visibility.
-// Input: Provider profiles and composer context inputs.
-// Position: Guards Composer Toolbar ownership of selectable provider profile lists.
+// Output: Regression coverage for composer provider target visibility.
+// Input: Provider target options and composer context inputs.
+// Position: Guards Composer Toolbar ownership of selectable provider target lists.
 
 import { describe, expect, it } from 'vitest'
 
-import type { AgentProfile } from '~/lib/types'
-
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'
+import type { ProviderModelOption } from './types'
 
-function profile(overrides: Partial<AgentProfile> & Pick<AgentProfile, 'id'>): AgentProfile {
+function provider(overrides: Partial<ProviderModelOption> & Pick<ProviderModelOption, 'id'>): ProviderModelOption {
   return {
     id: overrides.id,
     name: overrides.name ?? overrides.id,
+    kind: overrides.kind ?? 'manual',
     providerKind: overrides.providerKind ?? 'openai-compatible',
     enabled: overrides.enabled ?? true,
-    configJson: overrides.configJson ?? '{}',
-    credentialRef: overrides.credentialRef ?? null,
-    customModels: overrides.customModels ?? '[]',
     iconSlug: overrides.iconSlug ?? null,
-    createdAt: overrides.createdAt ?? 1,
-    updatedAt: overrides.updatedAt ?? 1,
   }
 }
 
 describe('listSelectableComposerProfiles', () => {
-  it('hides disabled profiles', () => {
+  it('hides disabled provider targets', () => {
     const profiles = [
-      profile({ id: 'enabled-provider' }),
-      profile({ id: 'disabled-provider', enabled: false }),
+      provider({ id: 'enabled-provider' }),
+      provider({ id: 'disabled-provider', enabled: false }),
     ]
 
     expect(listSelectableComposerProfiles({ profiles, runtimeKind: 'standard' }).map(item => item.id))
       .toEqual(['enabled-provider'])
   })
 
-  it('keeps openai-compatible providers for Codex', () => {
+  it('keeps openai-compatible provider targets for Codex', () => {
     const profiles = [
-      profile({ id: 'openai-provider', providerKind: 'openai-compatible' }),
-      profile({ id: 'anthropic-provider', providerKind: 'anthropic' }),
+      provider({ id: 'manual-openai-provider', kind: 'manual', providerKind: 'openai-compatible' }),
+      provider({ id: 'external-openai-provider', kind: 'external', providerKind: 'openai-compatible' }),
+      provider({ id: 'anthropic-provider', kind: 'external', providerKind: 'anthropic' }),
     ]
 
     expect(listSelectableComposerProfiles({ profiles, runtimeKind: 'codex' }).map(item => item.id))
-      .toEqual(['openai-provider'])
+      .toEqual(['manual-openai-provider', 'external-openai-provider'])
   })
 
   it('keeps anthropic providers for Claude Agent', () => {
     const profiles = [
-      profile({ id: 'openai-provider', providerKind: 'openai-compatible' }),
-      profile({ id: 'anthropic-provider', providerKind: 'anthropic' }),
+      provider({ id: 'openai-provider', providerKind: 'openai-compatible' }),
+      provider({ id: 'anthropic-provider', providerKind: 'anthropic' }),
     ]
 
     expect(listSelectableComposerProfiles({ profiles, runtimeKind: 'claude-agent' }).map(item => item.id))
@@ -58,8 +54,8 @@ describe('listSelectableComposerProfiles', () => {
 describe('pickComposerProfileId', () => {
   it('keeps a selectable persisted profile', () => {
     const profiles = [
-      profile({ id: 'first-provider' }),
-      profile({ id: 'persisted-provider' }),
+      provider({ id: 'first-provider' }),
+      provider({ id: 'persisted-provider', kind: 'external' }),
     ]
 
     expect(pickComposerProfileId({ profiles, lastProfileId: 'persisted-provider' })).toBe('persisted-provider')
@@ -67,8 +63,8 @@ describe('pickComposerProfileId', () => {
 
   it('falls back to the first selectable profile', () => {
     const profiles = [
-      profile({ id: 'first-provider' }),
-      profile({ id: 'second-provider' }),
+      provider({ id: 'first-provider' }),
+      provider({ id: 'second-provider' }),
     ]
 
     expect(pickComposerProfileId({ profiles, lastProfileId: 'missing-provider' })).toBe('first-provider')

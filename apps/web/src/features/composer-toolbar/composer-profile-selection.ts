@@ -1,24 +1,26 @@
-// Output: Composer-owned provider profile selection helpers.
-// Input: Provider profiles plus runtime kind compatibility.
-// Position: Composer Toolbar owns which provider profiles are selectable in composer surfaces.
+// Output: Composer-owned provider target selection helpers.
+// Input: Provider target options plus runtime kind compatibility.
+// Position: Composer Toolbar owns which provider targets are selectable in composer surfaces.
 
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
-import type { AgentProfile, RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/lib/types'
+
+import type { ProviderModelOption } from './types'
 
 interface SelectableProfilesInput {
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   runtimeKind: RuntimeKind
 }
 
 interface PickProfileInput {
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   lastProfileId: string | null
 }
 
 export function listSelectableComposerProfiles({
   profiles,
   runtimeKind,
-}: SelectableProfilesInput): AgentProfile[] {
+}: SelectableProfilesInput): ProviderModelOption[] {
   return profiles.filter(profile =>
     profile.enabled && runtimeSupportsProviderKind(runtimeKind, profile.providerKind))
 }

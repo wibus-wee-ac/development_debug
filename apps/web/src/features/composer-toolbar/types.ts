@@ -1,4 +1,4 @@
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } from '~/lib/types'
 
 export type ComposerContext = 'new-chat' | 'capsule' | 'chat'
 
@@ -10,6 +10,15 @@ export interface ComposerSelection {
   modelId: string | null
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
+}
+
+export interface ProviderModelOption {
+  id: string
+  kind?: ProviderTargetKind
+  name: string
+  providerKind: ProviderKind
+  enabled: boolean
+  iconSlug: string | null
 }
 
 export type ModelsByProfileId = Record<string, ModelDescriptor[]>

@@ -42,7 +42,7 @@ interface ChatViewProps {
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
   sendOverridesRef?: React.MutableRefObject<{
-    agentProfileId?: string
+    providerTargetId?: string
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null
   }>
@@ -64,11 +64,8 @@ const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
 const SessionBindingSchema = z
   .object({
-    agentProfileId: z.string().nullable(),
-    providerTargetKind: z.enum(['manual-profile', 'external-record']).nullable().optional(),
-    providerTargetId: z.string().nullable().optional(),
+    providerTargetId: z.string().nullable(),
     modelId: z.string().nullable(),
-    modelProfileId: z.string().nullable().optional()
   })
   .passthrough()
 
@@ -336,20 +333,8 @@ export function ChatView({
     select: (data) => (data ? SessionBindingSchema.parse(data) : null)
   })
   const boundProviderTarget = useMemo(() => {
-    if (sessionBinding?.providerTargetKind && sessionBinding.providerTargetId) {
-      return {
-        kind: sessionBinding.providerTargetKind,
-        id: sessionBinding.providerTargetId
-      }
-    }
-    const profileId = sessionBinding?.modelProfileId ?? sessionBinding?.agentProfileId ?? null
-    return profileId ? { kind: 'manual-profile' as const, id: profileId } : null
-  }, [
-    sessionBinding?.agentProfileId,
-    sessionBinding?.modelProfileId,
-    sessionBinding?.providerTargetId,
-    sessionBinding?.providerTargetKind
-  ])
+    return sessionBinding?.providerTargetId ? { id: sessionBinding.providerTargetId } : null
+  }, [sessionBinding?.providerTargetId])
   const { models: sessionModels } = useProviderTargetModels(boundProviderTarget)
   const currentSessionModel = useMemo(() => {
     if (composerModel) {

@@ -24,7 +24,7 @@ export interface ProviderRequest {
   configJson: string
   secretRef: string | null
   profileId: string | null
-  providerTargetKind: ProviderTargetKind | 'manual-profile' | 'external-record' | null
+  providerTargetKind: ProviderTargetKind | null
   providerTargetId: string | null
 }
 

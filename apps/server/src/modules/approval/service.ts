@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import * as Preferences from '../preferences/service'
 import * as SessionService from '../session/service'
 
 // ── types ──
@@ -86,7 +87,22 @@ export function createPending(rawInput: CreateApprovalInput): PendingApproval {
   return approval
 }
 
-export function requestApproval(input: CreateApprovalInput): Promise<ApprovalResponse> {
+export async function requestApproval(input: CreateApprovalInput): Promise<ApprovalResponse> {
+  const approvalMode = await getApprovalMode()
+  if (approvalMode === 'allowAll') {
+    const parsedInput = PendingApprovalInputSchema.parse(input)
+    const response: ApprovalResponse = {
+      decision: 'approved',
+      selectedOptionId: resolveApprovedOptionId(parsedInput.options),
+    }
+    recordAudit({
+      chatSessionId: parsedInput.chatSessionId,
+      prompt: parsedInput.prompt,
+      response,
+    })
+    return response
+  }
+
   const approval = createPending(input)
   return pending.get(approval.id)!.responsePromise
 }
@@ -115,15 +131,30 @@ export function respond(approvalId: string, response: ApprovalResponse): void {
   entry.resolve(response)
   emitResolved(approvalId, response)
 
-  // Record audit entry
+  recordAudit({
+    chatSessionId: entry.approval.chatSessionId,
+    prompt: entry.approval.prompt,
+    response,
+  })
+}
+
+async function getApprovalMode(): Promise<'ask' | 'allowAll'> {
+  return (await Preferences.getChatPreferences()).approvalMode
+}
+
+function recordAudit(input: {
+  chatSessionId: string | null
+  prompt: string
+  response: ApprovalResponse
+}): void {
   try {
-    const toolName = extractToolName(entry.approval.prompt)
+    const toolName = extractToolName(input.prompt)
     db().insert(approvalAudit).values({
       id: randomUUID(),
-      sessionId: entry.approval.chatSessionId,
+      sessionId: input.chatSessionId,
       toolName,
-      decision: response.decision,
-      selectedOptionId: response.selectedOptionId,
+      decision: input.response.decision,
+      selectedOptionId: input.response.selectedOptionId,
     }).run()
   }
   catch (e) {
@@ -178,10 +209,47 @@ function extractToolName(prompt: string): string {
 }
 
 const DENY_REJECT_RE = /deny|reject/i
+const ALLOW_RE = /allow|approve/i
+const ALWAYS_RE = /always/i
 
 function resolveRejectedOptionId(options: ApprovalOption[]): string {
   const denyOption = options.find(option => DENY_REJECT_RE.test(option.optionId) || DENY_REJECT_RE.test(option.label))
   return denyOption?.optionId ?? options[0]?.optionId ?? 'rejected'
+}
+
+function resolveApprovedOptionId(options: ApprovalOption[]): string {
+  const allowOnceOption = options.find(option =>
+    isAllowOption(option) && !isAlwaysOption(option),
+  )
+  if (allowOnceOption) {
+    return allowOnceOption.optionId
+  }
+
+  const allowOption = options.find(isAllowOption)
+  if (allowOption) {
+    return allowOption.optionId
+  }
+
+  const nonRejectOption = options.find(option => !isRejectOption(option))
+  return nonRejectOption?.optionId ?? options[0]?.optionId ?? 'approved'
+}
+
+function isAllowOption(option: ApprovalOption): boolean {
+  return [option.optionId, option.label, option.description]
+    .filter((value): value is string => typeof value === 'string')
+    .some(value => ALLOW_RE.test(value))
+}
+
+function isAlwaysOption(option: ApprovalOption): boolean {
+  return [option.optionId, option.label, option.description]
+    .filter((value): value is string => typeof value === 'string')
+    .some(value => ALWAYS_RE.test(value))
+}
+
+function isRejectOption(option: ApprovalOption): boolean {
+  return [option.optionId, option.label, option.description]
+    .filter((value): value is string => typeof value === 'string')
+    .some(value => DENY_REJECT_RE.test(value))
 }
 
 function emitRequested(approval: PendingApproval): void {

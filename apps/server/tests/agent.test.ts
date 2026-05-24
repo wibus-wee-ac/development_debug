@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles } from '@cradle/db'
+import { providerTargets } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -28,18 +28,20 @@ describe('agent identity capability', () => {
       app = await createServerApp()
       const d = db()
 
-      const profileOneId = randomUUID()
-      const profileTwoId = randomUUID()
-      d.insert(agentProfiles).values([
+      const providerTargetOneId = randomUUID()
+      const providerTargetTwoId = randomUUID()
+      d.insert(providerTargets).values([
         {
-          id: profileOneId,
-          name: 'Profile One',
+          id: providerTargetOneId,
+          kind: 'manual',
+          displayName: 'Provider Target One',
           providerKind: 'openai-compatible',
         },
         {
-          id: profileTwoId,
-          name: 'Profile Two',
-          providerKind: 'codex',
+          id: providerTargetTwoId,
+          kind: 'manual',
+          displayName: 'Provider Target Two',
+          providerKind: 'openai-compatible',
         },
       ]).run()
 
@@ -51,7 +53,7 @@ describe('agent identity capability', () => {
           description: 'First agent',
           avatarStyle: 'bottts-neutral',
           avatarSeed: 'seed-one',
-          agentProfileId: profileOneId,
+          providerTargetId: providerTargetOneId,
           modelId: 'gpt-test',
           thinkingEffort: 'high',
           configJson: '{"systemPrompt":"hello"}',
@@ -62,7 +64,7 @@ describe('agent identity capability', () => {
       expect(agentOne).toEqual(expect.objectContaining({
         name: 'Agent One',
         description: 'First agent',
-        agentProfileId: profileOneId,
+        providerTargetId: providerTargetOneId,
         modelId: 'gpt-test',
         thinkingEffort: 'high',
         enabled: true,
@@ -76,7 +78,7 @@ describe('agent identity capability', () => {
           name: 'Agent Two',
           avatarStyle: 'identicon',
           avatarSeed: 'seed-two',
-          agentProfileId: profileTwoId,
+          providerTargetId: providerTargetTwoId,
         }),
       }))
       expect(createTwo.status).toBe(200)
@@ -106,7 +108,7 @@ describe('agent identity capability', () => {
       expect(cliAgent).toEqual(expect.objectContaining({
         name: 'Terminal Agent',
         runtimeKind: 'cli-tui',
-        agentProfileId: null,
+        providerTargetId: null,
         modelId: null,
       }))
 
@@ -163,10 +165,10 @@ describe('agent identity capability', () => {
         expect.objectContaining({ id: agentTwo.id, enabled: false }),
       ])
 
-      const profileFiltered = await app.handle(new Request(`http://localhost/agents?agentProfileId=${encodeURIComponent(profileTwoId)}`))
-      expect(profileFiltered.status).toBe(200)
-      expect(await profileFiltered.json()).toEqual([
-        expect.objectContaining({ id: agentTwo.id, agentProfileId: profileTwoId }),
+      const targetFiltered = await app.handle(new Request(`http://localhost/agents?providerTargetId=${encodeURIComponent(providerTargetTwoId)}`))
+      expect(targetFiltered.status).toBe(200)
+      expect(await targetFiltered.json()).toEqual([
+        expect.objectContaining({ id: agentTwo.id, providerTargetId: providerTargetTwoId }),
       ])
 
       const invalidCreate = await app.handle(new Request('http://localhost/agents', {
@@ -176,7 +178,7 @@ describe('agent identity capability', () => {
           name: '',
           avatarStyle: '',
           avatarSeed: '',
-          agentProfileId: '',
+          providerTargetId: '',
         }),
       }))
       expect(invalidCreate.status).toBe(400)
@@ -190,12 +192,12 @@ describe('agent identity capability', () => {
           name: 'Broken Agent',
           avatarStyle: 'thumbs',
           avatarSeed: 'broken-seed',
-          agentProfileId: randomUUID(),
+          providerTargetId: randomUUID(),
         }),
       }))
       expect(invalidProvider.status).toBe(400)
       const invalidProviderBody = await invalidProvider.json()
-      expect(invalidProviderBody.code).toBe('agent_profile_not_found')
+      expect(invalidProviderBody.code).toBe('invalid_agent_input')
 
       const invalidCli = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',

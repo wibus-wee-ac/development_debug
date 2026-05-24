@@ -5,15 +5,15 @@ import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/lib/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import { ProviderModelMenu } from './provider-model-menu'
-import type { ModelsByProfileId } from './types'
-import { presetForProfile } from '../agent-management/provider-settings-utils'
+import type { ModelsByProfileId, ProviderModelOption } from './types'
+import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 
 interface ProviderModelPickerProps<TThinking extends string | null> {
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   selectedProfileId: string | null
   selectedModelId: string | null
   selectedModel: ModelDescriptor | null
@@ -85,7 +85,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} />}>
         {selectedProfile
-          ? <ProviderIcon iconSlug={selectedProfile.iconSlug} presetId={presetForProfile(selectedProfile).id} className="size-3.5 shrink-0" />
+          ? <ProviderIcon iconSlug={selectedProfile.iconSlug} presetId={presetForProviderKind(selectedProfile.providerKind).id} className="size-3.5 shrink-0" />
           : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
         <span className="max-w-40 truncate">
           {modelLabel}

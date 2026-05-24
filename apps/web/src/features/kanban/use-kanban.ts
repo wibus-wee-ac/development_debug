@@ -212,7 +212,7 @@ const KanbanIssueRelationListSchema = z.array(KanbanIssueRelationSchema).default
 const AgentSessionSchema = z.object({
   id: z.string(),
   issueId: z.string(),
-  agentProfileId: z.string(),
+  providerTargetId: z.string(),
   agentId: z.string().nullable(),
   chatSessionId: z.string().nullable(),
   status: z.enum(['created', 'active', 'completed', 'stopped', 'failed']),
@@ -621,10 +621,10 @@ export function useDeleteRelation() {
 export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentId: string, agentProfileId?: string | null }) => {
+    mutationFn: async (vars: { issueId: string, agentId: string, providerTargetId?: string | null }) => {
       const { data } = await postIssuesByIdDelegation({
         path: { id: vars.issueId },
-        body: { agentProfileId: vars.agentProfileId, agentId: vars.agentId },
+        body: { providerTargetId: vars.providerTargetId, agentId: vars.agentId },
       })
       return data === null ? null : AgentSessionSchema.parse(data) satisfies AgentSession
     },

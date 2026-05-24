@@ -19,14 +19,15 @@ export const providers = new Elysia({
   .post('/models', async ({ body }) => {
     const request = Providers.ProviderRequestSchema.parse(body)
     const models = await Providers.listModels(request)
-    if (request.providerTargetKind && request.providerTargetId) {
+    if (request.providerTargetId) {
       setCachedModelsForTarget({
-        kind: request.providerTargetKind,
+        ...(request.providerTargetKind ? { kind: request.providerTargetKind } : {}),
         id: request.providerTargetId,
       }, models)
     }
-    else if (body.profileId) {
-      setCachedModels(body.profileId, models)
+    else if (request.profileId) {
+      setCachedModelsForTarget({ kind: 'manual', id: request.profileId }, models)
+      setCachedModels(request.profileId, models)
     }
     return models
   }, {
@@ -39,11 +40,8 @@ export const providers = new Elysia({
     body: ProvidersModel.providerBody,
     response: { 200: t.Array(ProvidersModel.modelDescriptor) },
   })
-  .get('/targets/:providerTargetKind/:providerTargetId/models-cache', async ({ params }) => {
-    const target = {
-      kind: params.providerTargetKind,
-      id: params.providerTargetId,
-    } as const
+  .get('/targets/:providerTargetId/models-cache', async ({ params }) => {
+    const target = { id: params.providerTargetId }
     const cached = getCachedModelsForTarget(target)
     if (!cached) {
       return { models: [], cached: false, stale: false, providerLabel: '' }
@@ -60,7 +58,6 @@ export const providers = new Elysia({
       summary: 'Get cached models for a provider target',
     },
     params: t.Object({
-      providerTargetKind: t.Union([t.Literal('manual-profile'), t.Literal('external-record')]),
       providerTargetId: t.String({ minLength: 1 }),
     }),
     response: {

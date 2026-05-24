@@ -18,15 +18,18 @@ After this refactor, a provider target is the single Cradle-owned runtime endpoi
 - [x] (2026-05-24 14:24Z) Inspected the current server modules for provider targets, profiles, external provider sources, sessions, actor context, and agent identity.
 - [x] (2026-05-24 14:24Z) Inspected the current frontend provider settings and runtime hooks in `apps/web/src/features/agent-management` and `apps/web/src/features/agent-runtime`.
 - [x] (2026-05-24 14:24Z) Created this ExecPlan to document the breaking refactor target before implementation.
-- [ ] Replace the current `ProviderTargetKind` discriminated pointer with a real `provider_targets` table and schema exports.
-- [ ] Migrate server provider target services so manual and external targets share one read/write path for model settings, custom models, registry mappings, enablement, icon, and provider config.
-- [ ] Update external provider source refresh so it projects records into `provider_targets` while preserving Cradle-owned target preferences.
-- [ ] Update agent identity so `agents` no longer stores or accepts `agentProfileId`, and provider-backed agents reference `providerTargetId` only.
-- [ ] Update session creation and chat runtime so direct provider sessions do not create hidden agents, including the `jar-core` path.
-- [ ] Update actor provenance to represent user, explicit agent, system actor, and direct provider session explicitly.
-- [ ] Update frontend settings from "profiles plus external records" to "provider targets plus external source metadata".
-- [ ] Update tests and generated API types affected by the renamed runtime concepts.
-- [ ] Run focused server and web validation commands and record the results in this plan.
+- [x] (2026-05-24 16:15Z) Replaced the current `ProviderTargetKind` discriminated pointer with a real `provider_targets` table and schema exports.
+- [x] (2026-05-24 16:15Z) Migrated server provider target services so manual and external targets share one read/write path for model settings, custom models, registry mappings, enablement, icon, and provider config.
+- [x] (2026-05-24 16:15Z) Updated external provider source refresh so it projects records into `provider_targets` while preserving Cradle-owned target preferences.
+- [x] (2026-05-24 16:15Z) Updated agent identity so `agents` stores and accepts `providerTargetId` instead of `agentProfileId`.
+- [x] (2026-05-24 16:15Z) Updated session creation and chat runtime so direct provider sessions use `providerTargetId` and do not create hidden default agent identities.
+- [x] (2026-05-24 16:15Z) Updated actor provenance to include direct provider target sessions without attributing them to fake agents.
+- [x] (2026-05-24 16:15Z) Updated frontend provider settings and agent/chat/session flows to use provider target IDs for runtime binding.
+- [x] (2026-05-24 16:15Z) Removed conflicting two-segment compatibility routes for provider-target model preferences and provider-target model cache; only the single `providerTargetId` routes remain.
+- [x] (2026-05-24 16:15Z) Regenerated the web OpenAPI client with `pnpm --filter @cradle/web generate` after route changes.
+- [x] (2026-05-24 16:15Z) Updated frontend tests and generated API types affected by the renamed runtime concepts.
+- [x] (2026-05-24 16:15Z) Ran `pnpm typecheck:server` and `pnpm typecheck:apps-web`; both passed.
+- [x] (2026-05-24 16:22Z) Ran focused server and web vitest commands listed in Validation after updating old fixtures to `providerTargetId`; all focused commands passed.
 
 ## Surprises & Discoveries
 
@@ -38,6 +41,12 @@ After this refactor, a provider target is the single Cradle-owned runtime endpoi
   Evidence: `apps/server/src/modules/session/service.ts` contains `resolveProfileBackedAgent`, `defaultAgentId`, and returns that agent for profile-backed `jar-core` sessions.
 - Observation: the frontend names the provider settings query `useAgentProfiles`, which reinforces the wrong ownership boundary.
   Evidence: `apps/web/src/features/agent-management/agent-runtime-settings.tsx` imports `useAgentProfiles` and renders manual profiles beside external records.
+- Observation: Elysia cannot register `/:providerTargetId/model-settings` and `/:providerTargetKind/:providerTargetId/model-settings` under the same prefix because both routes start with a dynamic segment at the same location.
+  Evidence: server bootstrap failed with `Cannot create route "/provider-targets/:providerTargetKind/:providerTargetId/model-settings" with parameter "providerTargetKind" because a route already exists with a different parameter name ("providerTargetId") in the same location`.
+- Observation: The same dynamic-route conflict existed for provider target model cache routes.
+  Evidence: `pnpm --filter @cradle/web generate` failed while exporting OpenAPI with `Cannot create route "/providers/targets/:providerTargetKind/:providerTargetId/models-cache" with parameter "providerTargetKind" because a route already exists with a different parameter name ("providerTargetId") in the same location`.
+- Observation: After the route cleanup and generated client update, runtime scans show no `manual-profile`, `external-record`, or chat-runtime `agentProfileId` provider binding usage in the provider target, provider, session, chat runtime, agent management, agent runtime, chat, new-chat, system-agent, workspace, or kanban paths. Remaining `agentProfileId` references are in workflow rules, usage summaries, and automation surfaces that are not provider runtime binding paths.
+  Evidence: `rg -n "manual-profile|external-record|agentProfileId" apps/server/src/modules/providers apps/server/src/modules/provider-targets apps/server/src/modules/chat-runtime apps/server/src/modules/session apps/web/src/features/agent-management apps/web/src/features/agent-runtime apps/web/src/features/chat apps/web/src/features/new-chat apps/web/src/features/system-agent apps/web/src/features/workspace apps/web/src/features/workspace-detail apps/web/src/features/kanban apps/web/src/lib/types.ts` only reported workflow-rules references.
 
 ## Decision Log
 
@@ -53,10 +62,16 @@ After this refactor, a provider target is the single Cradle-owned runtime endpoi
 - Decision: Preserve namespace ownership by storing external source facts in `external_provider_records` and Cradle runtime preferences in `provider_targets`.
   Rationale: Cradle can read external source namespaces but must not write lifecycle or preference data back into them. The target projection is Cradle-owned.
   Date/Author: 2026-05-24 / Codex
+- Decision: Remove two-segment provider target compatibility routes instead of keeping aliases such as `/:providerTargetKind/:providerTargetId/model-settings`.
+  Rationale: Provider target IDs are single-table primary keys after this refactor, and the old two-segment routes both conflict with Elysia's dynamic route tree and preserve the old wrong abstraction. The product is not released, so the clean API is preferable.
+  Date/Author: 2026-05-24 / Codex
+- Decision: Keep workflow-rules `agentProfileId` references out of this provider runtime binding slice.
+  Rationale: Those references describe workspace rule file names and route parameters for workflow rules, not provider execution target ownership. Renaming them should be handled separately if workflow rules are moved from profile-scoped to agent-scoped terminology.
+  Date/Author: 2026-05-24 / Codex
 
 ## Outcomes & Retrospective
 
-No implementation outcome has been recorded yet. At completion, this section must summarize which tables, routes, frontend views, tests, and generated API files were changed, and it must call out any intentionally retained compatibility aliases.
+Current implementation outcome as of 2026-05-24 16:22Z: Provider runtime configuration now has a first-class `provider_targets` table, direct provider sessions and agent bindings use `providerTargetId`, and external provider records expose the same model visibility, custom model, and registry mapping controls as manual targets through provider target APIs. The server no longer registers old two-segment provider target compatibility routes, and the web API client has been regenerated after route changes. `pnpm typecheck:server`, `pnpm typecheck:apps-web`, and the focused server/web vitest commands listed below pass. The remaining risk is broader regression coverage outside the focused provider/session/agent/model paths.
 
 ## Context and Orientation
 
@@ -132,10 +147,9 @@ Run all commands from `/Users/wibus/dev/Cradle` unless stated otherwise.
 
 9. Regenerate API and CLI artifacts if route schemas changed:
 
-       pnpm gen:api
-       pnpm gen:cli
+       pnpm --filter @cradle/web generate
 
-   If these commands do not exist or fail because of unrelated generator issues, record the exact error in `Surprises & Discoveries` and update generated files manually only if the repository already uses that fallback.
+   This command exports OpenAPI from the server and regenerates `apps/web/src/api-gen`. It passed after removing the conflicting two-segment provider target compatibility routes. The CLI generator has not been run in this slice.
 
 10. Run focused validation:
 
@@ -148,6 +162,34 @@ Run all commands from `/Users/wibus/dev/Cradle` unless stated otherwise.
        pnpm typecheck:apps-web
 
    If `pnpm typecheck:apps-web` reports pre-existing unrelated errors, record the exact files and verify changed files separately.
+
+   Current validation evidence from 2026-05-24 16:15Z:
+
+       pnpm typecheck:server
+       # passed
+
+       pnpm --filter @cradle/web generate
+       # passed; output written to ./apps/web/src/api-gen
+
+       pnpm typecheck:apps-web
+       # passed
+
+   Additional validation evidence from 2026-05-24 16:22Z:
+
+       pnpm --filter @cradle/server exec vitest run tests/agent.test.ts tests/session.test.ts tests/external-provider-sources.test.ts
+       # passed; 3 files passed, 6 tests passed
+
+       pnpm --filter @cradle/server exec vitest run tests/system-agent-provider.test.ts
+       # passed; 1 file passed, 1 test passed
+
+       pnpm --filter @cradle/web exec vitest run --environment jsdom src/features/agent-runtime/use-agent-models.test.ts
+       # passed; 1 file passed, 4 tests passed
+
+       pnpm typecheck:server
+       # passed after focused test fixture updates
+
+       pnpm typecheck:apps-web
+       # passed after focused test fixture updates
 
 ## Validation and Acceptance
 
@@ -183,6 +225,23 @@ Initial inspection showed these important references:
     apps/server/src/modules/provider-targets/service.ts resolves manual-profile through agentProfiles and external-record through externalProviderRuntimeTargets.
     apps/server/src/modules/session/service.ts still contains resolveProfileBackedAgent and defaultAgentId, which create hidden default agents.
     apps/web/src/features/agent-management/agent-runtime-settings.tsx still imports useAgentProfiles and displays "Manual profiles" beside external records.
+
+Route conflict and validation evidence from the implementation slice:
+
+    Removed /provider-targets/:providerTargetKind/:providerTargetId/model-settings.
+    Removed /provider-targets/:providerTargetKind/:providerTargetId/model-visibility.
+    Removed /provider-targets/:providerTargetKind/:providerTargetId/custom-models.
+    Removed /provider-targets/:providerTargetKind/:providerTargetId/model-registry-mappings.
+    Removed /providers/targets/:providerTargetKind/:providerTargetId/models-cache.
+    Kept /provider-targets/:providerTargetId/model-settings.
+    Kept /provider-targets/:providerTargetId/model-visibility.
+    Kept /provider-targets/:providerTargetId/custom-models.
+    Kept /provider-targets/:providerTargetId/model-registry-mappings.
+    Kept /providers/targets/:providerTargetId/models-cache.
+    pnpm --filter @cradle/web generate passed after the route cleanup.
+    pnpm typecheck:server passed.
+    pnpm typecheck:apps-web passed.
+    Focused vitest commands for agent identity, session, external provider sources, system agent provider, and web model query keys passed after test fixtures were migrated from `agentProfileId` and old two-segment target routes to `providerTargetId` and single-ID target routes.
 
 The worktree is already dirty. Important current paths with prior edits include:
 
@@ -232,3 +291,7 @@ Agent identity inputs in `apps/server/src/modules/agent-identity/model.ts` shoul
 Session inputs in `apps/server/src/modules/session/model.ts` should include `providerTargetId?: string | null`, `agentId?: string | null`, `runtimeKind?: RuntimeKind`, and `configJson?: string`. They should not include `agentProfileId`, `modelProfileId`, or `providerTargetKind`.
 
 Revision note, 2026-05-24: Initial plan created after reading the current schema, server services, and frontend settings state. The plan intentionally chooses a breaking provider target core model because the product is not released and the previous compatibility-oriented direction preserved the wrong abstraction.
+
+Revision note, 2026-05-24 16:15Z: Updated progress, discoveries, decisions, concrete validation evidence, and artifacts after removing old provider target compatibility routes, regenerating the web API client, and passing server and web typechecks.
+
+Revision note, 2026-05-24 16:22Z: Updated validation evidence and outcomes after migrating focused tests to the provider target model and passing all focused vitest commands plus final server and web typechecks.

@@ -6,7 +6,7 @@ const SERVER_BASE = getServerUrl()
 export interface ChatResponseRequestBody {
   text: string
   files?: FileUIPart[]
-  agentProfileId?: string
+  providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
 }
@@ -21,7 +21,7 @@ export interface ChatQueueItem {
   status: ChatQueueItemStatus
   text: string
   files: FileUIPart[]
-  agentProfileId: string | null
+  providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
   position: number
@@ -46,7 +46,7 @@ export function buildChatResponseRequestBody(
   return {
     text: body.text,
     files: body.files,
-    agentProfileId: body.agentProfileId ?? undefined,
+    providerTargetId: body.providerTargetId ?? undefined,
     modelId: body.modelId ?? undefined,
     thinkingEffort: body.thinkingEffort ?? undefined,
   }

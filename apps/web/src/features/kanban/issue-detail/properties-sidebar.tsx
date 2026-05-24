@@ -182,14 +182,14 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
   const agentCandidates = useMemo(
-    () => agents.filter(agent => !!agent.agentProfileId),
+    () => agents.filter(agent => !!agent.providerTargetId),
     [agents],
   )
   const humanCandidates = useMemo(() => [CURRENT_USER_ASSIGNEE], [])
   const assignedAgent = agentCandidates.find(agent => (
     (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
     || agent.id === issue.delegateAgentId
-    || agent.agentProfileId === issue.delegateAgentProfileId
+    || agent.providerTargetId === issue.delegateAgentProfileId
   )) ?? null
   const assignedHuman = issue.assigneeKind === 'user'
     ? humanCandidates.find(candidate => candidate.id === issue.assigneeId) ?? {
@@ -217,10 +217,10 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
     const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
     if (kind === 'agent') {
       const agent = agentCandidates.find(candidate => candidate.id === id)
-      if (!agent?.agentProfileId) {
+      if (!agent?.providerTargetId) {
         return
       }
-      delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, agentProfileId: agent.agentProfileId })
+      delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, providerTargetId: agent.providerTargetId })
       return
     }
 

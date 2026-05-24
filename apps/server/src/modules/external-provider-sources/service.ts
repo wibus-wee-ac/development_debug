@@ -37,6 +37,7 @@ export interface ExternalProviderSourceView {
 
 export interface ExternalProviderRecordView {
   id: string
+  providerTargetId: string | null
   sourceKey: string
   externalId: string
   app: string
@@ -245,17 +246,18 @@ function toRegisteredSourceView(input: {
 
 function toRecordView(
   row: typeof externalProviderRecords.$inferSelect,
-  runtimeTargetEnabled: boolean
+  target: typeof providerTargets.$inferSelect | null
 ): ExternalProviderRecordView {
   return {
     id: row.id,
+    providerTargetId: target?.id ?? null,
     sourceKey: row.sourceKey,
     externalId: row.externalId,
     app: row.app,
     name: row.name,
     providerKind: row.providerKind,
     status: row.status,
-    runtimeTargetEnabled,
+    runtimeTargetEnabled: target?.enabled ?? false,
     fingerprint: row.fingerprint,
     metadata: JsonRecordTextSchema.parse(row.metadataJson),
     warnings: WarningListTextSchema.parse(row.warningsJson),
@@ -458,12 +460,21 @@ export function listExternalProviderSources(): ExternalProviderSourceView[] {
 
 export function listExternalProviderRecords(): ExternalProviderRecordView[] {
   const runtimeTargets = db().select().from(providerTargets).where(eq(providerTargets.kind, 'external')).all()
-  const targetByRecordId = new Map(runtimeTargets.map((target) => [target.id, target]))
+  const targetBySourceRecord = new Map(
+    runtimeTargets
+      .filter((target) => target.sourceKey && target.externalRecordId)
+      .map((target) => [`${target.sourceKey}\0${target.externalRecordId}`, target])
+  )
   return db()
     .select()
     .from(externalProviderRecords)
     .all()
-    .map((record) => toRecordView(record, targetByRecordId.get(record.id)?.enabled ?? false))
+    .map((record) =>
+      toRecordView(
+        record,
+        targetBySourceRecord.get(`${record.sourceKey}\0${record.externalId}`) ?? null
+      )
+    )
 }
 
 export function getExternalRuntimeTarget(

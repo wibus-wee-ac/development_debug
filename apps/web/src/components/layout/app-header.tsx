@@ -8,22 +8,22 @@ import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import { isElectron, isTearoffWindow, platform } from '~/lib/electron'
+import { isTearoffWindow, platform } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab } from '~/tabs/tearoff-tabs'
 
 interface AppHeaderProps {
   hasAside?: boolean
+  hasBrowserPanel?: boolean
   hasPanel?: boolean
 }
 
-export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps) {
+export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const isActiveTabChat = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId)?.type === 'chat')
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
   const isDrillIn = isSettingsActive
@@ -129,7 +129,7 @@ export function AppHeader({ hasAside = false, hasPanel = false }: AppHeaderProps
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <ResourcesPopover />
-        {isElectron && isActiveTabChat && (
+        {!isSettingsActive && hasBrowserPanel && (
           <Button
             variant="ghost"
             size="icon-xs"

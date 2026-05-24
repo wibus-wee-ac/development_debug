@@ -74,6 +74,7 @@ export const ExternalProviderSourcesModel = {
   }),
   record: t.Object({
     id: t.String(),
+    providerTargetId: t.Nullable(t.String()),
     sourceKey: t.String(),
     externalId: t.String(),
     app: t.String(),

@@ -1,19 +1,19 @@
 import { useMemo, useState } from 'react'
 
-import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import type { Agent, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'
 import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
-import type { ComposerContext, ComposerSelection, ModelsByProfileId, ThinkingEffort } from './types'
+import type { ComposerContext, ComposerSelection, ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
 
 interface ComposerStateConfig {
   context: ComposerContext
-  /** For 'chat' context — the session's bound profile */
-  boundProfileId?: string
+  /** For 'chat' context — the session's bound provider target */
+  boundProviderTargetId?: string
   /** For 'chat' context — the session's runtime kind */
   boundRuntimeKind?: RuntimeKind
 }
@@ -26,7 +26,7 @@ export interface ComposerStateResult {
   setThinkingEffort: (effort: ThinkingEffort) => void
   setRuntimeKind: (kind: RuntimeKind) => void
   agents: Agent[]
-  profiles: AgentProfile[]
+  profiles: ProviderModelOption[]
   models: ModelDescriptor[]
   modelsByProfileId: ModelsByProfileId
   loadingProfileIds: Set<string>
@@ -35,14 +35,14 @@ export interface ComposerStateResult {
   isLoadingModels: boolean
   isLoadingProfiles: boolean
   effectiveAgent: Agent | null
-  effectiveProfile: AgentProfile | null
+  effectiveProfile: ProviderModelOption | null
   effectiveModel: ModelDescriptor | null
 }
 
 const EMPTY_MODELS: ModelDescriptor[] = []
 
 export function useComposerState(config: ComposerStateConfig): ComposerStateResult {
-  const { context, boundProfileId, boundRuntimeKind } = config
+  const { context, boundProviderTargetId, boundRuntimeKind } = config
 
   // Persisted state
   const lastRuntimeKind = useNewChatStore(s => s.lastRuntimeKind)
@@ -58,7 +58,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   // Data
   const { agents, isLoading: isLoadingAgents } = useAgents()
-  const { profiles, isLoading: isLoadingProfiles } = useAgentProfiles()
+  const { providerOptions, isLoading: isLoadingProviders } = useProviderTargets()
 
   // Local non-persisted state
   const [manualAgentId, setManualAgentId] = useState<string | null>(null)
@@ -74,8 +74,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     return manualRuntimeKind ?? lastRuntimeKind ?? 'standard'
   }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind])
   const selectableProfiles = useMemo(
-    () => listSelectableComposerProfiles({ profiles, runtimeKind }),
-    [profiles, runtimeKind],
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind }),
+    [providerOptions, runtimeKind],
   )
 
   const thinkingEffort = manualThinkingEffort === undefined ? lastThinkingEffort : manualThinkingEffort
@@ -107,13 +107,20 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
       return manualProfileId
     }
     if (context === 'chat') {
-      return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: boundProfileId ?? null })
+      return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: boundProviderTargetId ?? null })
     }
     return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId })
-  }, [runtimeKind, manualProfileId, context, boundProfileId, lastProfileId, selectableProfiles])
+  }, [runtimeKind, manualProfileId, context, boundProviderTargetId, lastProfileId, selectableProfiles])
 
   const initialModelProfileIds = useMemo(() => [profileId], [profileId])
-  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(selectableProfiles, initialModelProfileIds)
+  const {
+    modelsByProviderTargetId,
+    loadingProviderTargetIds,
+    requestProviderTargetModels
+  } = useProviderTargetModelMap(selectableProfiles, initialModelProfileIds)
+  const modelsByProfileId = modelsByProviderTargetId
+  const loadingProfileIds = loadingProviderTargetIds
+  const requestProfileModels = requestProviderTargetModels
   const models = profileId ? modelsByProfileId[profileId] ?? EMPTY_MODELS : EMPTY_MODELS
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
@@ -221,7 +228,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     requestProfileModels,
     isLoadingAgents,
     isLoadingModels,
-    isLoadingProfiles,
+    isLoadingProfiles: isLoadingProviders,
     effectiveAgent,
     effectiveProfile,
     effectiveModel,

@@ -30,7 +30,7 @@ import * as Session from '../session/service'
 
 const ProviderTargetRefSchema = z.object({
   id: z.string().trim().min(1),
-  kind: z.enum(['manual', 'external', 'manual-profile', 'external-record']).optional()
+  kind: z.enum(['manual', 'external']).optional()
 })
 
 export type ProviderTarget = z.infer<typeof ProviderTargetRefSchema>
