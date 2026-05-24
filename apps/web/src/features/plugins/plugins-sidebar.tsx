@@ -8,7 +8,8 @@ import { useCradleTabStore } from '~/tabs/registry'
 type PluginPanelTab = {
   type: 'plugin-panel'
   params?: {
-    panelId?: string
+    routeSegment?: string
+    localId?: string
   }
 }
 
@@ -24,8 +25,8 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
     return null
   }
 
-  const activePluginPanelId = activeTab?.type === 'plugin-panel'
-    ? (activeTab as PluginPanelTab).params?.panelId
+  const activePluginPanelKey = activeTab?.type === 'plugin-panel'
+    ? `${(activeTab as PluginPanelTab).params?.routeSegment ?? ''}/${(activeTab as PluginPanelTab).params?.localId ?? ''}`
     : undefined
 
   return (
@@ -46,13 +47,13 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
         <Link
           key={panel.id}
           to="plugin-panel"
-          params={{ panelId: panel.id }}
+          params={{ routeSegment: panel.routeSegment, localId: panel.localId }}
           data-testid={`plugin-panel-link-${panel.localId}`}
           className={cn(
             'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm',
             'hover:bg-fill cursor-pointer',
-            activePluginPanelId === panel.id && 'bg-fill text-foreground',
-            activePluginPanelId !== panel.id && 'text-muted-foreground',
+            activePluginPanelKey === `${panel.routeSegment}/${panel.localId}` && 'bg-fill text-foreground',
+            activePluginPanelKey !== `${panel.routeSegment}/${panel.localId}` && 'text-muted-foreground',
           )}
         >
           <PuzzleIcon className="size-3.5 shrink-0" />

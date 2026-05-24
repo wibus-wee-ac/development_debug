@@ -1,26 +1,54 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { defineTab } from '@cradle/tabs-next'
+import { defineTab, type TabParams } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'
 import { createElement } from 'react'
 
 import { usePluginStore } from '~/lib/plugin-store'
 
-function PluginPanelContent({ params }: { params: { panelId: string } }) {
-  const panels = usePluginStore((s) => s.panels)
-  const panel = panels.find((p) => p.id === params.panelId)
-  const legacyMatches = panel ? [] : panels.filter((p) => p.localId === params.panelId)
-  const resolvedPanel = panel ?? (legacyMatches.length === 1 ? legacyMatches[0] : undefined)
+interface PluginPanelTabParams extends TabParams {
+  routeSegment?: string
+  localId?: string
+}
 
-  if (!resolvedPanel) {
+export function serializePluginPanelParams(params: PluginPanelTabParams): string {
+  return params.routeSegment && params.localId
+    ? `${encodeURIComponent(params.routeSegment)}/${encodeURIComponent(params.localId)}`
+    : ''
+}
+
+export function deserializePluginPanelParams(path: string): PluginPanelTabParams | null {
+  const [routeSegment, localId, ...extra] = path.split('/')
+  if (!routeSegment || !localId || extra.length > 0) {
+    return null
+  }
+
+  try {
+    return {
+      routeSegment: decodeURIComponent(routeSegment),
+      localId: decodeURIComponent(localId),
+    }
+  }
+  catch {
+    return null
+  }
+}
+
+function PluginPanelContent({ params }: { params: PluginPanelTabParams }) {
+  const panels = usePluginStore((s) => s.panels)
+  const panel = params.routeSegment && params.localId
+    ? panels.find((item) => item.routeSegment === params.routeSegment && item.localId === params.localId)
+    : undefined
+
+  if (!panel) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        Panel not found: {params.panelId}
+        Panel not found: {params.routeSegment && params.localId ? `${params.routeSegment}/${params.localId}` : 'missing panel route'}
       </div>
     )
   }
 
-  return createElement(resolvedPanel.component, { isActive: true })
+  return createElement(panel.component, { isActive: true })
 }
 
 export const pluginPanelTab = defineTab({
@@ -28,4 +56,6 @@ export const pluginPanelTab = defineTab({
   label: 'Plugin',
   icon: PuzzleIcon,
   component: PluginPanelContent,
+  serialize: serializePluginPanelParams,
+  deserialize: deserializePluginPanelParams,
 })

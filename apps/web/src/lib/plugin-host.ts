@@ -124,6 +124,7 @@ function validateWebRuntimeCapability(
 function createWebPluginContext(pluginName: string, descriptor?: PluginDescriptor): WebPluginContext {
   const store = usePluginStore.getState()
   const subscriptions: Disposable[] = []
+  const routeSegment = descriptor?.routeSegment ?? derivePluginRouteSegment(descriptor?.identity ?? pluginName)
   const track = (disposable: Disposable): Disposable => {
     subscriptions.push(disposable)
     return disposable
@@ -145,7 +146,7 @@ function createWebPluginContext(pluginName: string, descriptor?: PluginDescripto
           localId: panel.id,
           candidateDeclaredLocalIds: [`panel.${panel.id}`],
         })
-        const dispose = store.registerPanel(pluginName, panel)
+        const dispose = store.registerPanel(pluginName, routeSegment, panel)
         return track({ dispose })
       },
     },

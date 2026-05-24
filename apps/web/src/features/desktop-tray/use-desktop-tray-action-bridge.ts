@@ -71,7 +71,10 @@ function openFirstPluginPanel(): boolean {
   if (!firstPanel) {
     return false
   }
-  useCradleTabStore.getState().openTab('plugin-panel', { panelId: firstPanel.id })
+  useCradleTabStore.getState().openTab('plugin-panel', {
+    routeSegment: firstPanel.routeSegment,
+    localId: firstPanel.localId,
+  })
   return true
 }
 

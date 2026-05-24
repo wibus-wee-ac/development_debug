@@ -6,6 +6,7 @@ export type WebPanelRegistration = PanelRegistration & {
   id: string
   localId: string
   owner: string
+  routeSegment: string
   registeredAt: string
 }
 
@@ -23,7 +24,7 @@ interface PluginStoreState {
 }
 
 interface PluginStoreActions {
-  registerPanel(owner: string, panel: PanelRegistration): () => void
+  registerPanel(owner: string, routeSegment: string, panel: PanelRegistration): () => void
   registerCommand(owner: string, cmd: CommandRegistration): () => void
   setWebLayerState(owner: string, status: PluginLayerStatus, error?: string): void
   clearWebLayerState(owner: string): void
@@ -61,7 +62,7 @@ export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set
       return { webLayerStates }
     })
   },
-  registerPanel(owner, panel) {
+  registerPanel(owner, routeSegment, panel) {
     const localId = toLocalContributionId(owner, panel.id)
     const id = toScopedContributionId(owner, localId)
     const registeredPanel: WebPanelRegistration = {
@@ -69,6 +70,7 @@ export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set
       id,
       localId,
       owner,
+      routeSegment,
       registeredAt: new Date().toISOString(),
     }
 
