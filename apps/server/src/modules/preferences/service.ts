@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
@@ -17,6 +18,19 @@ export async function getChatPreferences(): Promise<Static<typeof PreferencesMod
   const filePath = getPath('chat')
   try {
     return ChatPreferencesJsonSchema.parse(await readFile(filePath, 'utf8'))
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return ChatPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
+  }
+}
+
+export function getChatPreferencesSync(): Static<typeof PreferencesModel['chatPreferences']> {
+  const filePath = getPath('chat')
+  try {
+    return ChatPreferencesJsonSchema.parse(readFileSync(filePath, 'utf8'))
   }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {

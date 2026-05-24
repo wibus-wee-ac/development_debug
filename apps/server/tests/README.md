@@ -13,7 +13,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **database.test.ts**: database lifecycle migrations.
 - **health.test.ts**: health endpoint response.
 - **server-events.test.ts**: server status SSE connection, event delivery, headers, and disconnect cleanup.
-- **approval.test.ts**: in-memory pending approval registry create/list/respond flows and structured errors.
+- **approval.test.ts**: in-memory pending approval registry create/list/respond flows、structured errors、session-scoped allow policy，以及 Cradle 层 `allowAll` approval mode 的一次性 allow 语义。
 - **workspace.test.ts**: workspace capability CRUD + file IO，包含 non-Cradle-owned workspace write confirmation 与 owner-boundary response metadata。
 - **session.test.ts**: session capability CRUD + messages + markdown export.
 - **session-await.test.ts**: session await/resume lifecycle, pending states, and resume semantics.
@@ -25,7 +25,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **issue-agent.test.ts**: issue delegation, activity timeline, rerun, undelegation, and Chat Runtime continuation bridge coverage for queued and steered follow-up activity records.
 - **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows against real local repositories.
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.
-- **preferences.test.ts**: server-owned chat preference defaults, JSON persistence, and invalid payload handling.
+- **preferences.test.ts**: server-owned chat preference defaults、approval mode、JSON persistence 和 invalid payload handling。
 - **fetch-retry.test.ts**: retry/backoff helpers for outbound HTTP integrations.
 - **pty.test.ts**: session-owned cli-tui terminal runtime, terminal resource snapshots, HTTP control routes, and cleanup.
 - **pty-websocket.test.ts**: PTY WebSocket live channel, reconnect, delete-session teardown, and cli-tui session ownership semantics.

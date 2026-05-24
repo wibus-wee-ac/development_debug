@@ -88,7 +88,7 @@ export function createPending(rawInput: CreateApprovalInput): PendingApproval {
 }
 
 export async function requestApproval(input: CreateApprovalInput): Promise<ApprovalResponse> {
-  const approvalMode = await getApprovalMode()
+  const approvalMode = getApprovalMode()
   if (approvalMode === 'allowAll') {
     const parsedInput = PendingApprovalInputSchema.parse(input)
     const response: ApprovalResponse = {
@@ -138,8 +138,8 @@ export function respond(approvalId: string, response: ApprovalResponse): void {
   })
 }
 
-async function getApprovalMode(): Promise<'ask' | 'allowAll'> {
-  return (await Preferences.getChatPreferences()).approvalMode
+function getApprovalMode(): 'ask' | 'allowAll' {
+  return Preferences.getChatPreferencesSync().approvalMode
 }
 
 function recordAudit(input: {

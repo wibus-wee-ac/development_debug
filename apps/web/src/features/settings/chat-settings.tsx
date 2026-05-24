@@ -1,8 +1,9 @@
 // Chat settings for default continuation behavior.
+import { Switch } from '~/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
-import type { ContinuationBehavior } from './use-chat-preferences'
+import type { ApprovalMode, ContinuationBehavior } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
 
 export function ChatSettings() {
@@ -19,6 +20,11 @@ export function ChatSettings() {
     void savePrefs({ continuationBehavior: value as ContinuationBehavior })
   }
 
+  const handleApprovalModeChange = (checked: boolean) => {
+    const approvalMode: ApprovalMode = checked ? 'allowAll' : 'ask'
+    void savePrefs({ approvalMode })
+  }
+
   return (
     <div className="flex flex-col gap-0" data-testid="chat-settings">
       <SettingsSectionHeader
@@ -29,7 +35,7 @@ export function ChatSettings() {
 
       <SettingsRow
         label="跟进行为"
-        description="在 Codex 运行时将后续操作加入队列，或引导当前运行。按下“⇧⌘⏎”可对单条消息执行相反操作"
+        description="在 Cradle 运行时将后续操作加入队列，或引导当前运行。按下“⇧⌘⏎”可对单条消息执行相反操作"
       >
         <ToggleGroup
           type="single"
@@ -48,6 +54,22 @@ export function ChatSettings() {
             引导
           </ToggleGroupItem>
         </ToggleGroup>
+      </SettingsRow>
+
+      <SettingsDivider />
+
+      <SettingsRow
+        label="自动允许工具请求"
+        description="跳过 Cradle 的工具审批弹窗，并对每次请求直接返回允许；不会写入 Always Allow 规则，也不会切换底层运行时权限模式。"
+      >
+        <Switch
+          size="sm"
+          checked={prefs.approvalMode === 'allowAll'}
+          onCheckedChange={handleApprovalModeChange}
+          disabled={isSaving}
+          aria-label="自动允许工具请求"
+          data-testid="chat-approval-mode"
+        />
       </SettingsRow>
     </div>
   )

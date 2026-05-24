@@ -26,6 +26,7 @@ describe('preferences capability', () => {
         modelId: null,
         configSelections: {},
         continuationBehavior: 'queue',
+        approvalMode: 'ask',
       })
 
       const filePath = join(dataDir, 'preferences', 'chat.json')
@@ -41,6 +42,7 @@ describe('preferences capability', () => {
             webSearch: true,
           },
           continuationBehavior: 'steer',
+          approvalMode: 'allowAll',
         }),
       }))
       expect(saveRes.status).toBe(200)
@@ -53,6 +55,7 @@ describe('preferences capability', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        approvalMode: 'allowAll',
       })
 
       const finalRes = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -64,6 +67,7 @@ describe('preferences capability', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        approvalMode: 'allowAll',
       })
     }
     finally {
@@ -93,6 +97,7 @@ describe('preferences capability', () => {
           modelId: 123,
           configSelections: {},
           continuationBehavior: 'queue',
+          approvalMode: 'ask',
         }),
       }))
       expect(invalidModel.status).toBe(400)
@@ -107,6 +112,7 @@ describe('preferences capability', () => {
             bad: { nested: true },
           },
           continuationBehavior: 'queue',
+          approvalMode: 'ask',
         }),
       }))
       expect(invalidSelections.status).toBe(400)
@@ -119,10 +125,24 @@ describe('preferences capability', () => {
           modelId: null,
           configSelections: {},
           continuationBehavior: 'interrupt',
+          approvalMode: 'ask',
         }),
       }))
       expect(invalidContinuationBehavior.status).toBe(400)
       expect((await invalidContinuationBehavior.json()).code).toBe('validation_error')
+
+      const invalidApprovalMode = await app.handle(new Request('http://localhost/preferences/chat', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: null,
+          configSelections: {},
+          continuationBehavior: 'queue',
+          approvalMode: 'alwaysAllow',
+        }),
+      }))
+      expect(invalidApprovalMode.status).toBe(400)
+      expect((await invalidApprovalMode.json()).code).toBe('validation_error')
     }
     finally {
       shutdownInfra()

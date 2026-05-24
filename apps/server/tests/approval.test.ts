@@ -10,6 +10,7 @@ import {
   clearSessionPolicies,
   generatePolicyKeys,
   isPreviouslyAllowed,
+  listPending,
   markAllowed,
   rejectPendingBySession,
   requestApproval,
@@ -213,20 +214,173 @@ describe('approval policy keys', () => {
   })
 
   it('rejectPendingBySession resolves pending approvals with a valid rejection option', async () => {
-    const pendingApproval = requestApproval({
-      chatSessionId: 'sess-delete',
-      agentId: 'agent-delete',
-      prompt: 'Allow tool execution?',
-      options: [
-        { optionId: 'allow_once', label: 'Allow once' },
-        { optionId: 'reject_once', label: 'Reject once' },
-      ],
-    })
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
 
-    expect(rejectPendingBySession('sess-delete')).toBe(1)
-    await expect(pendingApproval).resolves.toEqual({
-      decision: 'rejected',
-      selectedOptionId: 'reject_once',
-    })
+    try {
+      const pendingApproval = requestApproval({
+        chatSessionId: 'sess-delete',
+        agentId: 'agent-delete',
+        prompt: 'Allow tool execution?',
+        options: [
+          { optionId: 'allow_once', label: 'Allow once' },
+          { optionId: 'reject_once', label: 'Reject once' },
+        ],
+      })
+
+      expect(rejectPendingBySession('sess-delete')).toBe(1)
+      await expect(pendingApproval).resolves.toEqual({
+        decision: 'rejected',
+        selectedOptionId: 'reject_once',
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('allowAll approval mode returns a one-shot allow response without marking session policy', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      const app = await createServerApp()
+      const saveRes = await app.handle(new Request('http://localhost/preferences/chat', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: null,
+          configSelections: {},
+          continuationBehavior: 'queue',
+          approvalMode: 'allowAll',
+        }),
+      }))
+      expect(saveRes.status).toBe(200)
+
+      const policyKeys = generatePolicyKeys({
+        runtimeKind: 'claude-agent',
+        chatSessionId: 'sess-yolo',
+        toolName: 'bash',
+      })
+
+      const response = await requestApproval({
+        chatSessionId: 'sess-yolo',
+        agentId: 'claude-agent',
+        prompt: 'Allow tool "bash"?',
+        options: [
+          { optionId: 'allow', label: 'Allow', description: 'allow_once' },
+          { optionId: 'allow_always', label: 'Always Allow', description: 'allow_always' },
+          { optionId: 'deny', label: 'Deny', description: 'reject_once' },
+        ],
+      })
+
+      expect(response).toEqual({
+        decision: 'approved',
+        selectedOptionId: 'allow',
+      })
+      expect(isPreviouslyAllowed('sess-yolo', policyKeys)).toBe(false)
+      expect(listPending({ chatSessionId: 'sess-yolo' })).toEqual([])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('allowAll approval mode avoids always-allow options when possible', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      const app = await createServerApp()
+      const saveRes = await app.handle(new Request('http://localhost/preferences/chat', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: null,
+          configSelections: {},
+          continuationBehavior: 'queue',
+          approvalMode: 'allowAll',
+        }),
+      }))
+      expect(saveRes.status).toBe(200)
+
+      await expect(requestApproval({
+        chatSessionId: 'sess-yolo-custom',
+        agentId: 'acp-agent',
+        prompt: 'Allow tool execution?',
+        options: [
+          { optionId: 'allow_always', label: 'Always Allow', description: 'allow_always' },
+          { optionId: 'allow_once_custom', label: 'Approve this request', description: 'allow_once' },
+          { optionId: 'deny', label: 'Deny', description: 'reject_once' },
+        ],
+      })).resolves.toEqual({
+        decision: 'approved',
+        selectedOptionId: 'allow_once_custom',
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('ask approval mode still creates a pending approval request', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      const pendingApproval = requestApproval({
+        chatSessionId: 'sess-ask',
+        agentId: 'agent-ask',
+        prompt: 'Allow tool execution?',
+        options: [
+          { optionId: 'allow_once', label: 'Allow once' },
+          { optionId: 'reject_once', label: 'Reject once' },
+        ],
+      })
+
+      expect(listPending({ chatSessionId: 'sess-ask' })).toEqual([
+        expect.objectContaining({ chatSessionId: 'sess-ask' }),
+      ])
+      expect(rejectPendingBySession('sess-ask')).toBe(1)
+      await expect(pendingApproval).resolves.toEqual({
+        decision: 'rejected',
+        selectedOptionId: 'reject_once',
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
   })
 })
