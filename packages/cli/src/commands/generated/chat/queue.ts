@@ -5,27 +5,20 @@ import type { Command } from 'commander'
 const spec = {
   "arguments": [
     {
-      "name": "id",
+      "name": "sessionId",
       "required": true,
-      "target": "path.id",
+      "target": "path.sessionId",
       "type": "string"
     }
   ],
   "command": [
-    "profile",
-    "custom-models"
+    "chat",
+    "queue"
   ],
-  "description": "Update custom models for a profile",
-  "flags": [
-    {
-      "name": "models",
-      "required": true,
-      "target": "body.models",
-      "type": "json"
-    }
-  ],
-  "method": "patch",
-  "path": "/profiles/{id}/custom-models"
+  "description": "List pending and historical chat continuation queue items",
+  "flags": [],
+  "method": "get",
+  "path": "/chat/sessions/{sessionId}/queue"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -136,7 +136,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `approval` | 2 | Inspect and respond to pending approvals. | `cradle man approval` |
 | `automation` | 13 | Manage scheduled automations, runs, and artifacts. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
-| `chat` | 2 | Control chat runtime commands. | `cradle man chat` |
+| `chat` | 6 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 49 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
 | `issue` | 28 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
@@ -154,3 +154,4 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
+

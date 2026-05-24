@@ -3,16 +3,15 @@ import { join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
+import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { captureFrontmostWindowWithMacBridge, createNativeServices } from './native-services'
-import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
+import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
   installPluginFromRequest,
   parsePluginInstallUrl,
   PluginInstallLinkError,
-  type PluginInstallSummary,
-  type PluginInstallResult,
 } from './plugin-install-links'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
@@ -35,6 +34,8 @@ const MAIN_WINDOW_MIN_WIDTH = 800
 const MAIN_WINDOW_MIN_HEIGHT = 600
 const MAIN_WINDOW_STATE_FILE = 'main-window-state.json'
 const DEEP_LINK_PROTOCOL = 'cradle'
+const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
+const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_KEY_PATTERN = /^\d$/
 
 let installQueue = Promise.resolve()
 let canProcessPluginInstallLinks = false
@@ -113,6 +114,26 @@ function setMainWindow(win: BrowserWindow): void {
   win.webContents.on('did-attach-webview', (_event, webviewContents) => {
     const tabId = `tab-${Date.now()}`
     notifyWebviewCreated(webviewContents, tabId)
+    webviewContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown') {
+        return
+      }
+
+      const key = input.key.toLowerCase()
+      const isTabShortcut = key === 'w' || BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_KEY_PATTERN.test(key)
+      if (!input.meta || input.alt || input.control || input.shift || !isTabShortcut) {
+        return
+      }
+
+      event.preventDefault()
+      win.webContents.send(BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL, {
+        key: input.key,
+        metaKey: input.meta,
+        altKey: input.alt,
+        ctrlKey: input.control,
+        shiftKey: input.shift,
+      })
+    })
   })
 
   win.webContents.once('did-finish-load', () => {
@@ -248,9 +269,12 @@ async function installPluginFromDeepLink(rawUrl: string): Promise<void> {
       confirmInstall: askPluginInstallConsent,
       userDataPath: app.getPath('userData'),
     })
-    if (!result) return
+    if (!result) {
+      return
+    }
     await showPluginInstallSuccess(result)
-  } catch (err) {
+  }
+  catch (err) {
     console.error('[plugin-marketplace] install link failed:', err)
     await showPluginInstallFailure(err)
   }

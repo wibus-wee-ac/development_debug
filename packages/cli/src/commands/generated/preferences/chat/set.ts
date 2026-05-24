@@ -22,6 +22,16 @@ const spec = {
       "required": true,
       "target": "body.configSelections",
       "type": "json"
+    },
+    {
+      "name": "continuationBehavior",
+      "required": false,
+      "target": "body.continuationBehavior",
+      "type": "string",
+      "values": [
+        "queue",
+        "steer"
+      ]
     }
   ],
   "method": "put",

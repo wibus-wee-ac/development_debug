@@ -3,3 +3,14 @@ packages:
   - apps/*
   - plugins/*
   - documentations
+allowBuilds:
+  '@swc/core': true
+  better-sqlite3: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  msw: true
+  node-pty: true
+  sharp: true
+patchedDependencies:
+  "@elysiajs/node@1.4.5": "patches/@elysiajs__node@1.4.5.patch"

@@ -35,6 +35,10 @@ import { register as registerBoardList } from './board/list'
 import { register as registerBoardUpdate } from './board/update'
 import { register as registerChatCancel } from './chat/cancel'
 import { register as registerChatMessages } from './chat/messages'
+import { register as registerChatQueue } from './chat/queue'
+import { register as registerChatQueueAdd } from './chat/queue/add'
+import { register as registerChatQueueCancel } from './chat/queue/cancel'
+import { register as registerChatQueueReorder } from './chat/queue/reorder'
 import { register as registerChronicleAccessibilityEventsList } from './chronicle/accessibility-events/list'
 import { register as registerChronicleAccessibilitySnapshotsList } from './chronicle/accessibility-snapshots/list'
 import { register as registerChronicleActivityPipelineTick } from './chronicle/activity-pipeline/tick'
@@ -225,6 +229,10 @@ export function registerGeneratedCommands(program: Command): void {
   registerBoardUpdate(program)
   registerChatCancel(program)
   registerChatMessages(program)
+  registerChatQueue(program)
+  registerChatQueueAdd(program)
+  registerChatQueueCancel(program)
+  registerChatQueueReorder(program)
   registerChronicleAccessibilityEventsList(program)
   registerChronicleAccessibilitySnapshotsList(program)
   registerChronicleActivityPipelineTick(program)

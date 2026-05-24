@@ -5,33 +5,33 @@ import type { Command } from 'commander'
 const spec = {
   "arguments": [
     {
-      "name": "category",
+      "name": "sessionId",
       "required": true,
-      "target": "path.category",
+      "target": "path.sessionId",
       "type": "string"
     }
   ],
   "command": [
-    "chronicle",
-    "model-resources",
-    "install"
+    "chat",
+    "queue",
+    "add"
   ],
-  "description": "Install a Chronicle local model resource",
+  "description": "Enqueue a chat continuation for the session",
   "flags": [
     {
-      "name": "source",
-      "required": false,
-      "target": "body.source",
+      "name": "mode",
+      "required": true,
+      "target": "body.mode",
       "type": "string",
       "values": [
-        "manifest",
-        "local-files"
+        "queue",
+        "steer"
       ]
     },
     {
-      "name": "sourceRoot",
+      "name": "text",
       "required": false,
-      "target": "body.sourceRoot",
+      "target": "body.text",
       "type": "string"
     },
     {
@@ -39,10 +39,27 @@ const spec = {
       "required": false,
       "target": "body.files",
       "type": "json"
+    },
+    {
+      "name": "modelId",
+      "required": false,
+      "target": "body.modelId",
+      "type": "string"
+    },
+    {
+      "name": "thinkingEffort",
+      "required": false,
+      "target": "body.thinkingEffort",
+      "type": "string",
+      "values": [
+        "low",
+        "medium",
+        "high"
+      ]
     }
   ],
   "method": "post",
-  "path": "/chronicle/model-resources/{category}/install"
+  "path": "/chat/sessions/{sessionId}/queue"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

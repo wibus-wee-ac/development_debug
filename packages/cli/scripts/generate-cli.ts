@@ -102,6 +102,9 @@ function inferValueType(schema: OpenApiSchema | undefined): CliValueType {
     return 'string'
   }
   if (unwrapped.type === 'array') {
+    if (unwrapSchema(unwrapped.items)?.type === 'object') {
+      return 'json'
+    }
     return 'string[]'
   }
   if (unwrapped.type === 'boolean') {
@@ -113,7 +116,11 @@ function inferValueType(schema: OpenApiSchema | undefined): CliValueType {
   if (unwrapped.type === 'object') {
     return 'json'
   }
-  if (unwrapped.anyOf?.some(item => item.type === 'array')) {
+  const arrayVariant = unwrapped.anyOf?.map(unwrapSchema).find(item => item?.type === 'array')
+  if (arrayVariant) {
+    if (unwrapSchema(arrayVariant.items)?.type === 'object') {
+      return 'json'
+    }
     return 'string[]'
   }
   return 'string'

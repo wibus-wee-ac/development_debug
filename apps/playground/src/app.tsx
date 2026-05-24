@@ -7,6 +7,7 @@ import { Sidebar } from './components/sidebar'
 import { StatusBar } from './components/status-bar'
 import { SAMPLES } from './data/samples'
 import { DocsPage } from './pages/docs'
+import { ToolCallStreamPage } from './pages/tool-call-stream'
 
 export function App() {
   const [activeComponent, setActiveComponent] = useState('streamdown')
@@ -169,7 +170,13 @@ export function App() {
             </div>
           )}
 
-          {activeComponent !== 'streamdown' && activeComponent !== 'docs' && (
+          {activeComponent === 'tool-call-stream' && (
+            <div className="flex-1 overflow-hidden">
+              <ToolCallStreamPage />
+            </div>
+          )}
+
+          {activeComponent !== 'streamdown' && activeComponent !== 'docs' && activeComponent !== 'tool-call-stream' && (
             <div className="flex flex-1 items-center justify-center">
               <p className="text-sm text-muted-foreground">
                 Component not yet available

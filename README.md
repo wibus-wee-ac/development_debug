@@ -1,35 +1,27 @@
 <p align="center">
-  <p align="center">
-    <img src="./.github/Cradle.png" alt="Preview" width="182" />
-  </p>
+  <img src="./.github/Cradle.png" alt="Preview" width="182" />
   <h1 align="center"><b>Cradle</b></h1>
   <p align="center">
-    AI agent management platform. It provides a unified interface for organizing information, managing AI agents, and facilitating human-AI collaboration.
+    AI agent management platform — unified interface for organizing information, managing agents, and human-AI collaboration.
     <br />
     <br />
-    <b>Download for </b>
-    <a href="">Source Code</a>
+    <a href="https://github.com/wibus-wee/Cradle/releases">Download Latest Release</a>
     <br />
   </p>
 </p>
 
 <pre align="center">
-🧪 Working in Progress
+🧪 Work In Progress
 </pre>
 
-## Architecture Snapshot
+## Features
 
-Cradle's current chat/runtime stack is centered on:
-
-- durable chat history stored as `messages.messageJson` snapshots
-- derived plain-text cache in `messages.content`
-- live chat updates streamed as sequenced SSE delta events (`message_delta`, `subagent_message_delta`, `run_*`)
-
-Current architecture references:
-
-- `docs/SPEC-v2.md`
-- `docs/for-users/`
-- `docs/exec-plans/20260516-03-message-snapshot-chat-runtime.md`
+- **Agent Management**: Organize and manage AI agents with profiles and configurations
+- **Chat Runtime**: Real-time chat interface with SSE streaming and delta updates
+- **Issue Tracking**: Built-in issue management system with Kanban board
+- **Session Management**: Persistent sessions with await/polling capabilities
+- **Plugin System**: Extensible architecture with official and community plugins
+- **Desktop App**: Native Electron application for macOS, Windows, and Linux
 
 ## Packages
 
@@ -46,11 +38,10 @@ Current architecture references:
 | [`@cradle/cc-switch`](./plugins/cc-switch) | 将 CC Switch provider 数据以只读 external provider source 的方式映射到 Cradle。 | ![Beta](https://img.shields.io/badge/status-Beta-yellow) |
 | [`@cradle/system-info`](./plugins/system-info) | 通过插件 API 和 Web command 暴露系统信息能力。 | ![Beta](https://img.shields.io/badge/status-Beta-yellow) |
 
-## Author
+## License
 
 Cradle © Wibus, Released under AGPLv3. Created on Apr 25, 2026
 
 > [Personal Website](http://wibus.ren/) · [Blog](https://blog.wibus.ren/) · GitHub [@wibus-wee](https://github.com/wibus-wee/) · Telegram [@wibus✪](https://t.me/wibus_wee)
-
 
 [^ipc-decorator]: Thanks to [Innei/electron-ipc-decorator](https://github.com/Innei/electron-ipc-decorator) for the IPC decorator inspiration and some utility code patterns.

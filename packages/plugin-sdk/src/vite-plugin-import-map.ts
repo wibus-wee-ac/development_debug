@@ -121,6 +121,7 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
               tag: 'script',
               attrs: {
                 async: true,
+                type: 'module',
                 src: '/node_modules/es-module-shims/dist/es-module-shims.js',
               },
               injectTo: 'head-prepend',

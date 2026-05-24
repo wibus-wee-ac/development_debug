@@ -9,6 +9,7 @@ export interface ComponentEntry {
 
 const COMPONENTS: ComponentEntry[] = [
   { id: 'streamdown', label: 'Streamdown', description: 'Streaming markdown renderer', available: true },
+  { id: 'tool-call-stream', label: 'Tool Call Stream', description: 'Chat delta reducer reproduction', available: true },
   { id: 'docs', label: 'Docs', description: 'Component documentation', available: true },
   { id: 'button', label: 'Button', description: 'Interactive button variants', available: false },
   { id: 'dialog', label: 'Dialog', description: 'Modal dialog component', available: false },
@@ -78,29 +79,35 @@ export function Sidebar({ activeComponent, onComponentChange, collapsed, onColla
           Components
         </p>
         {filtered.map(c => (
-          <button
-            key={c.id}
-            onClick={() => c.available && onComponentChange(c.id)}
-            disabled={!c.available}
-            className={`group flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-colors ${
-              activeComponent === c.id
-                ? 'bg-foreground/10'
-                : c.available
-                  ? 'hover:bg-foreground/8'
-                  : 'opacity-50 cursor-not-allowed'
-            }`}
-          >
-            <span className={`text-[13px] font-medium ${
-              activeComponent === c.id ? 'text-foreground' : 'text-foreground/90'
-            }`}
-            >
-              {c.label}
-            </span>
-            <span className="text-[11px] text-muted-foreground">{c.description}</span>
-            {!c.available && (
-              <span className="mt-0.5 text-[10px] text-muted-foreground">Coming soon</span>
-            )}
-          </button>
+          c.available
+            ? (
+                <button
+                  key={c.id}
+                  onClick={() => onComponentChange(c.id)}
+                  className={activeComponent === c.id
+                    ? 'group flex w-full flex-col rounded-lg bg-foreground/10 px-2.5 py-2 text-left transition-colors'
+                    : 'group flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-foreground/8'}
+                >
+                  <span className={activeComponent === c.id
+                    ? 'text-[13px] font-medium text-foreground'
+                    : 'text-[13px] font-medium text-foreground/90'}
+                  >
+                    {c.label}
+                  </span>
+                  <span className="text-[11px] text-muted-foreground">{c.description}</span>
+                </button>
+              )
+            : (
+                <button
+                  key={c.id}
+                  disabled
+                  className="group flex w-full cursor-not-allowed flex-col rounded-lg px-2.5 py-2 text-left opacity-50 transition-colors"
+                >
+                  <span className="text-[13px] font-medium text-foreground/90">{c.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{c.description}</span>
+                  <span className="mt-0.5 text-[10px] text-muted-foreground">Coming soon</span>
+                </button>
+              )
         ))}
       </div>
 

@@ -137,9 +137,14 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
 }
 
 function resolveDevNodeExecPath(): string {
-  return process.env.npm_node_execpath
-    ?? process.env.NODE
-    ?? 'node'
+  // npm_node_execpath may point to pnpm or another package manager, not Node.js.
+  // Check the resolved path to ensure we get a real node binary.
+  const candidate = process.env.npm_node_execpath ?? process.env.NODE ?? 'node'
+  const basename = candidate.split('/').pop()?.split('\\').pop()
+  if (basename === 'node' || basename?.includes('node')) {
+    return candidate
+  }
+  return 'node'
 }
 
 function resolveDesktopCredentialSecret(dataDir: string): string {
