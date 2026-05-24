@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { z } from 'zod'
 
 import { installDebug, notifyDebugStateChanged, recordTabAction } from './debug'
+import { installPersistedStoreSync } from './persisted-store-sync'
 import { resolveLocation, resolveRouteTitle } from './route-definition'
 import type {
   NavigateTabOptions,
@@ -16,6 +17,8 @@ import type {
   TabParams,
   TabRegistry,
 } from './types'
+
+const TABS_SYNC_CHANNEL_NAME = 'cradle:tabs-next:persist-sync'
 
 export interface TabStoreState {
   tabs: TabInstance[]
@@ -37,6 +40,18 @@ export interface TabStoreState {
   goForward: (id: string) => void
   getActiveTab: () => TabInstance | undefined
   getActiveContext: () => TabContextState | undefined
+}
+
+interface TabStoreOptions {
+  persistKey?: string
+  crossWindowSync?: boolean
+}
+
+interface PersistedTabStoreSlice {
+  version: 1
+  tabs: TabInstance[]
+  contexts: TabContextState[]
+  activeTabId: string | null
 }
 
 function makeId(): string {
@@ -256,6 +271,15 @@ function sanitizePersisted(value: unknown, registry: TabRegistry): Pick<TabStore
   return { tabs: normalizedTabs, contexts: normalizedContexts, activeTabId }
 }
 
+function selectPersistedTabStoreSlice(state: TabStoreState): PersistedTabStoreSlice {
+  return {
+    version: 1,
+    tabs: state.tabs,
+    contexts: state.contexts,
+    activeTabId: state.activeTabId,
+  }
+}
+
 const persistStorage = createJSONStorage(() => {
   try {
     if (typeof globalThis.localStorage !== 'undefined') {
@@ -273,7 +297,7 @@ const persistStorage = createJSONStorage(() => {
   }
 })
 
-export function createTabStore(registry: TabRegistry, options?: { persistKey?: string }) {
+export function createTabStore(registry: TabRegistry, options?: TabStoreOptions) {
   const persistKey = options?.persistKey ?? 'cradle:tabs-next:v1'
 
   const store = create<TabStoreState>()(
@@ -525,12 +549,7 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
         name: persistKey,
         storage: persistStorage,
         version: 1,
-        partialize: state => ({
-          version: 1,
-          tabs: state.tabs,
-          contexts: state.contexts,
-          activeTabId: state.activeTabId,
-        }),
+        partialize: selectPersistedTabStoreSlice,
         merge: (persisted, current) => ({
           ...current,
           ...sanitizePersisted(persisted, registry),
@@ -541,6 +560,16 @@ export function createTabStore(registry: TabRegistry, options?: { persistKey?: s
 
   installDebug(() => store.getState())
   store.subscribe(() => notifyDebugStateChanged())
+
+  if (options?.crossWindowSync !== false && typeof window !== 'undefined') {
+    installPersistedStoreSync({
+      store,
+      persistKey,
+      channelName: TABS_SYNC_CHANNEL_NAME,
+      selectPersistedState: selectPersistedTabStoreSlice,
+      applyPersistedState: persistedState => store.setState(sanitizePersisted(persistedState, registry)),
+    })
+  }
 
   return store
 }

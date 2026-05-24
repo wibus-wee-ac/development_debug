@@ -9,6 +9,7 @@
 - `TabLocation` describes the route currently shown in a tab.
 - `TabContextState` stores tab-local history, current history index, keep-alive policy, timestamps, and view snapshots.
 - `createTabStore(registry)` owns runtime tab contexts and exposes a compatibility surface for the current Cradle app.
+- Persisted store sync keeps same-key tab stores in different renderer windows aligned through `BroadcastChannel` plus `storage` event fallback.
 - `createUrlSync({ store, registry })` projects the active tab context into browser history and restores tab-local history on `popstate`.
 - `<TabRenderer>` renders active contexts through a render policy:
   - `single`: only the active tab is mounted.
@@ -28,6 +29,7 @@ The package owns tab lifecycle and render retention only:
 - restore hygiene
 - keep-alive policy
 - view-state snapshot slots
+- cross-window synchronization for the persisted tab slice
 
 The package does not own business data, route semantics, or domain state. Those remain with route owners, React Query, and app-level adapters.
 
@@ -37,6 +39,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/types.ts**: Runtime contracts for locations, contexts, route definitions, render policy, and persistence.
 - **src/route-definition.ts**: `defineTab()` migration helper plus route-title/location utilities.
 - **src/store.ts**: Zustand runtime store for tab contexts, history, restore validation, and compatibility actions.
+- **src/persisted-store-sync.ts**: Key-scoped cross-window synchronization helper for persisted Zustand slices.
 - **src/url-sync.ts**: Hash-mode browser history projection and `popstate` restore coordination.
 - **src/context.ts**: React context and `useTabsContext()`.
 - **src/provider.tsx**: Provider component for store and registry injection.
@@ -54,6 +57,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/__tests__/url-sync.test.ts**: Browser history and `popstate` URL sync tests.
 - **src/__tests__/persisted-contexts.test.ts**: Persisted context repair tests.
 - **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility, drag cleanup, and tear-off trigger tests.
+- **src/__tests__/cross-window-sync.test.ts**: Cross-window store synchronization and remote storage repair tests.
 
 ## Migration Notes
 
