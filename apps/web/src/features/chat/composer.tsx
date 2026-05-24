@@ -1,6 +1,8 @@
-import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
+import type { FileUIPart } from 'ai'
+import { convertFileListToFileUIParts } from 'ai'
+import { FileIcon, PaperclipIcon, SendHorizonalIcon, SquareIcon, XIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
@@ -20,10 +22,11 @@ function autoResize(el: HTMLTextAreaElement) {
 }
 
 interface ComposerProps {
-  onSend: (text: string) => void
+  onSend: (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => void
   onStop?: () => void
   isStreaming?: boolean
   disabled?: boolean
+  supportsAttachments?: boolean
   placeholder?: string
   availableFiles?: MentionItem[]
   slashCommands?: ChatSlashCommand[]
@@ -40,6 +43,43 @@ interface ComposerProps {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatSlashCommand[] = []
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = event => resolve(event.target?.result as string)
+    reader.onerror = error => reject(error)
+    reader.readAsDataURL(file)
+  })
+}
+
+async function convertFileArrayToFileUIParts(files: File[]): Promise<FileUIPart[]> {
+  return Promise.all(files.map(async file => ({
+    type: 'file' as const,
+    mediaType: file.type || 'application/octet-stream',
+    filename: file.name,
+    url: await readFileAsDataUrl(file),
+  })))
+}
+
+function getClipboardFiles(data: DataTransfer): File[] {
+  const files = Array.from(data.files)
+  if (files.length > 0) {
+    return files
+  }
+
+  const itemFiles: File[] = []
+  for (const item of Array.from(data.items)) {
+    if (item.kind !== 'file') {
+      continue
+    }
+    const file = item.getAsFile()
+    if (file) {
+      itemFiles.push(file)
+    }
+  }
+  return itemFiles
+}
 
 interface ComposerState {
   inputValue: string
@@ -199,52 +239,71 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
 function ComposerActions({
   contextBar,
   disabled,
-  hasText,
+  hasDraft,
   isStreaming,
   onSend,
   onStop,
+  onPickFiles,
+  supportsAttachments,
   sessionTokens,
   sessionContextWindow,
 }: {
   contextBar?: React.ReactNode
   disabled?: boolean
-  hasText: boolean
+  hasDraft: boolean
   isStreaming?: boolean
   onSend: () => void
   onStop?: () => void
+  onPickFiles: () => void
+  supportsAttachments?: boolean
   sessionTokens?: number
   sessionContextWindow?: number | null
 }) {
   return (
     <div className="flex items-center gap-1">
       {contextBar}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-xs"
+            disabled={disabled || !supportsAttachments}
+            onClick={onPickFiles}
+            aria-label="Attach files"
+            data-testid="chat-attach-btn"
+          >
+            <PaperclipIcon className="size-3.5" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-[11px]">
+          {supportsAttachments ? 'Attach files' : 'Current model does not accept file input'}
+        </TooltipContent>
+      </Tooltip>
       {sessionTokens != null && sessionTokens > 0 && (
         <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
       )}
-      {isStreaming
-        ? (
-            <Button
-              variant="outline"
-              size="icon-xs"
-              onClick={onStop}
-              aria-label="Stop generation"
-              data-testid="chat-stop-btn"
-            >
-              <SquareIcon className="size-3" aria-hidden="true" />
-            </Button>
-          )
-        : (
-            <Button
-              variant="default"
-              size="icon-xs"
-              disabled={disabled || !hasText}
-              onClick={onSend}
-              aria-label="Send message"
-              data-testid="chat-send-btn"
-            >
-              <SendHorizonalIcon aria-hidden="true" />
-            </Button>
-          )}
+      {isStreaming && (
+        <Button
+          variant="outline"
+          size="icon-xs"
+          onClick={onStop}
+          aria-label="Stop generation"
+          data-testid="chat-stop-btn"
+        >
+          <SquareIcon className="size-3" aria-hidden="true" />
+        </Button>
+      )}
+      <Button
+        variant="default"
+        size="icon-xs"
+        disabled={disabled || !hasDraft}
+        onClick={() => onSend()}
+        aria-label={isStreaming ? 'Send continuation' : 'Send message'}
+        data-testid="chat-send-btn"
+      >
+        <SendHorizonalIcon aria-hidden="true" />
+      </Button>
     </div>
   )
 }
@@ -254,6 +313,7 @@ export function Composer({
   onStop,
   isStreaming,
   disabled,
+  supportsAttachments,
   placeholder = '输入消息...',
   availableFiles = EMPTY_FILES,
   slashCommands = EMPTY_SLASH_COMMANDS,
@@ -266,7 +326,9 @@ export function Composer({
   sessionContextWindow,
 }: ComposerProps) {
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
+  const [attachments, setAttachments] = useState<FileUIPart[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Track @ trigger position for path completion
   const mentionStartRef = useRef<number>(-1)
@@ -391,20 +453,80 @@ export function Composer({
     })
   }, [state.inputValue])
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()
-    if (!text) {
+    if (!text && attachments.length === 0) {
       return
     }
-    onSend(text)
+    if (options) {
+      onSend(text, attachments, options)
+    }
+    else {
+      onSend(text, attachments)
+    }
+    setAttachments([])
     dispatch({ type: 'input/cleared' })
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
         el.style.height = 'auto'
       }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     })
-  }, [onSend, state.inputValue])
+  }, [attachments, onSend, state.inputValue])
+
+  const handlePickFiles = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  const appendFileParts = useCallback((fileParts: FileUIPart[]) => {
+    setAttachments(current => [...current, ...fileParts])
+  }, [])
+
+  const appendSelectedFiles = useCallback(async (files: FileList) => {
+    if (files.length === 0 || !supportsAttachments) {
+      return
+    }
+    const fileParts = await convertFileListToFileUIParts(files)
+    appendFileParts(fileParts)
+  }, [appendFileParts, supportsAttachments])
+
+  const appendPastedFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0 || !supportsAttachments) {
+      return
+    }
+    const fileParts = await convertFileArrayToFileUIParts(files)
+    appendFileParts(fileParts)
+  }, [appendFileParts, supportsAttachments])
+
+  const handleFilesSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = event.target.files
+    if (!selectedFiles || selectedFiles.length === 0) {
+      return
+    }
+    await appendSelectedFiles(selectedFiles)
+    event.target.value = ''
+  }, [appendSelectedFiles])
+
+  const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!supportsAttachments) {
+      return
+    }
+
+    const files = getClipboardFiles(event.clipboardData)
+    if (files.length === 0) {
+      return
+    }
+
+    event.preventDefault()
+    void appendPastedFiles(files)
+  }, [appendPastedFiles, supportsAttachments])
+
+  const removeAttachment = useCallback((index: number) => {
+    setAttachments(current => current.filter((_, itemIndex) => itemIndex !== index))
+  }, [])
 
   const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
     // Don't interfere with IME composition (e.g. Chinese input)
@@ -417,6 +539,12 @@ export function Composer({
       if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         return
       }
+    }
+
+    if (e.key === 'Enter' && e.shiftKey && e.metaKey) {
+      e.preventDefault()
+      handleSend({ invertContinuationMode: true })
+      return
     }
 
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -484,6 +612,17 @@ export function Composer({
 
       {/* Input card — modern clean style, no border-t separator */}
       <div className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150">
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={supportsAttachments ? undefined : ''}
+          className="hidden"
+          tabIndex={-1}
+          aria-label="Attach files"
+          onChange={handleFilesSelected}
+          data-testid="chat-file-input"
+        />
         {/* Textarea */}
         <div className="relative">
           {slashArgumentHint && (
@@ -501,6 +640,7 @@ export function Composer({
             value={state.inputValue}
             onChange={handleInput}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             onDrop={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -512,11 +652,51 @@ export function Composer({
             onDragOver={e => e.preventDefault()}
             placeholder={placeholder}
             disabled={disabled}
+            aria-label="Message"
             data-testid="chat-composer-textarea"
             rows={2}
             className="relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
           />
         </div>
+
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 border-t border-border/40 px-3 py-2">
+            {attachments.map((attachment, index) => {
+              const label = attachment.filename ?? attachment.mediaType
+              const isImage = attachment.mediaType.startsWith('image/')
+              return (
+                <div
+                  key={`${attachment.url}-${index}`}
+                  className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                  data-testid="chat-attachment-chip"
+                >
+                  {isImage
+                    ? (
+                        <img
+                          src={attachment.url}
+                          alt={label}
+                          className="size-10 shrink-0 rounded-[4px] object-cover shadow-[inset_0_0_0_1px_rgba(0,0,0,0.10)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
+                          data-testid="chat-attachment-image-preview"
+                        />
+                      )
+                    : <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />}
+                  <span className="min-w-0 truncate">{label}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-xs"
+                    className="-mr-1 size-5"
+                    onClick={() => removeAttachment(index)}
+                    aria-label={`Remove ${label}`}
+                    data-testid="chat-remove-attachment-btn"
+                  >
+                    <XIcon className="size-3" aria-hidden="true" />
+                  </Button>
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Action bar — subtle, blends with the card */}
         <div className="flex items-center justify-between gap-2 px-3 py-2">
@@ -530,10 +710,12 @@ export function Composer({
             sessionContextWindow={sessionContextWindow}
             contextBar={contextBar}
             disabled={disabled}
-            hasText={Boolean(state.inputValue.trim())}
+            hasDraft={Boolean(state.inputValue.trim()) || attachments.length > 0}
             isStreaming={isStreaming}
+            onPickFiles={handlePickFiles}
             onSend={handleSend}
             onStop={onStop}
+            supportsAttachments={supportsAttachments}
           />
         </div>
       </div>

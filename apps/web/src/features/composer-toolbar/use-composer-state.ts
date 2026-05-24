@@ -6,6 +6,7 @@ import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { Agent, AgentProfile, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
+import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'
 import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
 import type { ComposerContext, ComposerSelection, ModelsByProfileId, ThinkingEffort } from './types'
 
@@ -61,6 +62,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   // Local non-persisted state
   const [manualAgentId, setManualAgentId] = useState<string | null>(null)
+  const [manualProfileId, setManualProfileId] = useState<string | null>(null)
   const [manualModelId, setManualModelId] = useState<string | null>(null)
   const [manualThinkingEffort, setManualThinkingEffort] = useState<ThinkingEffort | undefined>(undefined)
   const [manualRuntimeKind, setManualRuntimeKind] = useState<RuntimeKind | null>(null)
@@ -71,6 +73,10 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     }
     return manualRuntimeKind ?? lastRuntimeKind ?? 'standard'
   }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind])
+  const selectableProfiles = useMemo(
+    () => listSelectableComposerProfiles({ profiles, runtimeKind }),
+    [profiles, runtimeKind],
+  )
 
   const thinkingEffort = manualThinkingEffort === undefined ? lastThinkingEffort : manualThinkingEffort
 
@@ -97,15 +103,17 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (runtimeKind === 'cli-tui') {
       return null
     }
-    if (context === 'chat') {
-      return boundProfileId ?? null
+    if (manualProfileId && selectableProfiles.some(p => p.id === manualProfileId)) {
+      return manualProfileId
     }
-    const persisted = lastProfileId && profiles.some(p => p.id === lastProfileId) ? lastProfileId : null
-    return persisted ?? profiles[0]?.id ?? null
-  }, [runtimeKind, context, boundProfileId, lastProfileId, profiles])
+    if (context === 'chat') {
+      return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: boundProfileId ?? null })
+    }
+    return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId })
+  }, [runtimeKind, manualProfileId, context, boundProfileId, lastProfileId, selectableProfiles])
 
   const initialModelProfileIds = useMemo(() => [profileId], [profileId])
-  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(profiles, initialModelProfileIds)
+  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(selectableProfiles, initialModelProfileIds)
   const models = profileId ? modelsByProfileId[profileId] ?? EMPTY_MODELS : EMPTY_MODELS
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
@@ -131,8 +139,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   // Resolved objects
   const effectiveProfile = useMemo(
-    () => profiles.find(p => p.id === profileId) ?? null,
-    [profiles, profileId],
+    () => selectableProfiles.find(p => p.id === profileId) ?? null,
+    [selectableProfiles, profileId],
   )
   const effectiveModel = useMemo(
     () => models.find(m => m.id === modelId) ?? null,
@@ -157,10 +165,13 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   }
 
   const setProfileId = (id: string) => {
-    if (context === 'chat') {
+    if (!selectableProfiles.some(profile => profile.id === id)) {
       return
-    } // bound, immutable
-    setLastProfileId(id)
+    }
+    setManualProfileId(id)
+    if (context !== 'chat') {
+      setLastProfileId(id)
+    }
     setManualModelId(null) // reset manual model when profile changes
   }
 
@@ -169,8 +180,11 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (!targetProfileId) {
       return
     }
-    if (context === 'chat' && targetProfileId !== profileId) {
+    if (!selectableProfiles.some(profile => profile.id === targetProfileId)) {
       return
+    }
+    if (targetProfileId !== profileId) {
+      setManualProfileId(targetProfileId)
     }
     if (context !== 'chat' && targetProfileId !== profileId) {
       setLastProfileId(targetProfileId)
@@ -200,7 +214,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     setThinkingEffort,
     setRuntimeKind,
     agents: cliTuiAgents,
-    profiles,
+    profiles: selectableProfiles,
     models,
     modelsByProfileId,
     loadingProfileIds,

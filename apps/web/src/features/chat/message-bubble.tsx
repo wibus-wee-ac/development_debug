@@ -1,6 +1,6 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
-import { CheckIcon, CopyIcon, UserIcon } from 'lucide-react'
+import { CheckIcon, CopyIcon, FileIcon, ImageIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -12,10 +12,41 @@ import { useStreamdownStore } from '~/store/streamdown'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
-import type { ChatRenderItem } from './chat-render-plan'
+import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
+
+function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
+  const label = part.filename ?? part.mediaType
+  const isImage = part.mediaType.startsWith('image/')
+
+  return (
+    <div
+      className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60"
+      data-testid="chat-file-attachment"
+    >
+      {isImage && (
+        <img
+          src={part.url}
+          alt={label}
+          className="max-h-48 w-full object-cover"
+          loading="lazy"
+          data-testid="chat-file-attachment-image"
+        />
+      )}
+      <div className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-xs">
+        {isImage
+          ? <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          : <FileIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+        <div className="min-w-0">
+          <div className="truncate font-medium text-foreground">{label}</div>
+          <div className="truncate text-[11px] text-muted-foreground">{part.mediaType}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 /* ─── Subagent part render ──────────────────────────────────────── */
 
@@ -46,6 +77,7 @@ function renderSubagentItem(
           toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
           toolCallId={toolPart.toolCallId}
           state={toolPart.state}
+          argumentsText={toolPart.argumentsText}
           input={toolPart.input}
           output={toolPart.output}
           errorText={toolPart.errorText}
@@ -54,6 +86,8 @@ function renderSubagentItem(
     }
     case 'tool-group':
       return <GroupedToolCallBlock key={item.key} items={item.items} uiKind={item.uiKind} />
+    case 'file-attachment':
+      return <FileAttachmentBlock key={item.key} part={item.part} />
     default:
       return null
   }
@@ -194,6 +228,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             toolName={item.part.toolName ?? item.part.type.replace('tool-', '')}
             toolCallId={item.part.toolCallId}
             state={item.part.state}
+            argumentsText={item.part.argumentsText}
             input={item.part.input}
             output={item.part.output}
             errorText={item.part.errorText}
@@ -206,12 +241,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
         )
 
       case 'file-attachment':
-        return (
-          <div key={item.key} className="my-1 flex items-center gap-1.5 text-xs text-muted-foreground/60">
-            <UserIcon className="size-3" aria-hidden="true" />
-            <span>File attachment</span>
-          </div>
-        )
+        return <FileAttachmentBlock key={item.key} part={item.part} />
 
       default:
         return null

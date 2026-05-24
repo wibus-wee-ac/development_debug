@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 // Per-message wrapper that subscribes to generating state from the store.
 // This ensures only truly-generating messages get streaming=true — not passive/stale state.
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -14,7 +14,9 @@ import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { cn } from '~/lib/cn'
+import type { ModelDescriptor } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
@@ -24,9 +26,11 @@ import type { ChatSlashCommand } from './chat-capabilities'
 import { getChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
+import { ChatQueueList } from './chat-queue-list'
 import { Composer } from './composer'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
+import type { ChatContinuationMode, ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import { useSessionAwaitSummary } from './use-session-await'
 
@@ -37,7 +41,9 @@ interface ChatViewProps {
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
-  sendOverridesRef?: React.MutableRefObject<{ modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null }>
+  sendOverridesRef?: React.MutableRefObject<{ agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null }>
+  /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
+  composerModel?: ModelDescriptor | null
   /** Custom context bar rendered before the send button */
   composerContextBar?: React.ReactNode
   /** Placeholder text for composer */
@@ -55,7 +61,12 @@ const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, vi
 const SessionBindingSchema = z.object({
   agentProfileId: z.string().nullable(),
   modelId: z.string().nullable(),
+  modelProfileId: z.string().nullable().optional(),
 }).passthrough()
+
+function invertContinuationMode(mode: ChatContinuationMode): ChatContinuationMode {
+  return mode === 'queue' ? 'steer' : 'queue'
+}
 
 function ChatMessageListPane({
   messages,
@@ -199,6 +210,9 @@ function ChatAwaitBanner({ awaitSummary }: { awaitSummary: Awaited<ReturnType<ty
 
 function ChatComposerSection({
   awaitSummary,
+  queueItems,
+  onCancelQueueItem,
+  onReorderQueueItems,
   onSend,
   onStop,
   isStreaming,
@@ -211,9 +225,13 @@ function ChatComposerSection({
   droppedPath,
   sessionTokens,
   sessionContextWindow,
+  supportsAttachments,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
-  onSend: (text: string) => void
+  queueItems: ChatQueueItem[]
+  onCancelQueueItem: (queueItemId: string) => void
+  onReorderQueueItems: (queueItemIds: string[]) => void
+  onSend: (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => void
   onStop: () => void
   isStreaming: boolean
   disabled: boolean
@@ -225,16 +243,24 @@ function ChatComposerSection({
   droppedPath: { text: string, ts: number } | null
   sessionTokens: number
   sessionContextWindow: number | null
+  supportsAttachments: boolean
 }) {
   return (
     <div className="shrink-0 bg-background/80 px-4 py-3 backdrop-blur-sm">
       <div className="mx-auto max-w-208">
         <ChatAwaitBanner awaitSummary={awaitSummary} />
+        <ChatQueueList
+          items={queueItems}
+          onCancel={onCancelQueueItem}
+          onReorder={onReorderQueueItems}
+          className="mb-2"
+        />
         <Composer
           onSend={onSend}
           onStop={onStop}
           isStreaming={isStreaming}
           disabled={disabled}
+          supportsAttachments={supportsAttachments}
           placeholder={placeholder}
           availableFiles={availableFiles}
           slashCommands={slashCommands}
@@ -256,10 +282,22 @@ export function ChatView({
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
+  composerModel,
   placeholder,
 }: ChatViewProps) {
-  const { messages, status, error, sendMessage, stop, isReady } = useChatSession(sessionId)
+  const {
+    messages,
+    status,
+    error,
+    sendMessage,
+    stop,
+    isReady,
+    queueItems,
+    cancelQueueItem,
+    reorderQueueItems,
+  } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const { data: chatPreferences } = useChatPreferencesQuery()
   const { data: runtimeCapabilities } = useQuery({
     queryKey: ['chat', 'runtime-capabilities', sessionId ?? 'no-session'] as const,
     queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
@@ -277,16 +315,25 @@ export function ChatView({
     staleTime: 60_000,
     select: data => data ? SessionBindingSchema.parse(data) : null,
   })
-  const { models: sessionModels } = useAgentModels(sessionBinding?.agentProfileId ?? null)
-  const sessionContextWindow = useMemo(() => {
+  const boundModelProfileId = sessionBinding?.modelProfileId ?? sessionBinding?.agentProfileId ?? null
+  const { models: sessionModels } = useAgentModels(boundModelProfileId)
+  const currentSessionModel = useMemo(() => {
+    if (composerModel) {
+      return composerModel
+    }
     if (!sessionBinding?.modelId) {
       return null
     }
-
-    const model = sessionModels.find(candidate => candidate.id === sessionBinding.modelId)
-    const contextWindow = model?.capabilities.contextWindow
+    return sessionModels.find(candidate => candidate.id === sessionBinding.modelId) ?? null
+  }, [composerModel, sessionBinding?.modelId, sessionModels])
+  const sessionContextWindow = useMemo(() => {
+    const contextWindow = currentSessionModel?.capabilities.contextWindow
     return contextWindow != null && contextWindow > 0 ? contextWindow : null
-  }, [sessionBinding, sessionModels])
+  }, [currentSessionModel])
+  const supportsAttachments = useMemo(() => {
+    const modalities = currentSessionModel?.capabilities.inputModalities ?? []
+    return modalities.some(modality => modality !== 'text')
+  }, [currentSessionModel])
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -467,14 +514,18 @@ export function ChatView({
   }, [sessionId, status, messages.length])
 
   const handleSend = useCallback(
-    (text: string) => {
-      if (!isReady || !text.trim()) {
+    (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => {
+      if (!isReady || (!text.trim() && files.length === 0)) {
         return
       }
       const overrides = sendOverridesRef?.current
-      sendMessage(text, overrides)
+      const defaultContinuationMode = chatPreferences?.continuationBehavior ?? 'queue'
+      const continuationMode = options?.invertContinuationMode
+        ? invertContinuationMode(defaultContinuationMode)
+        : defaultContinuationMode
+      sendMessage(text, { ...overrides, continuationMode }, files)
     },
-    [isReady, sendMessage, sendOverridesRef],
+    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef],
   )
 
   const handleMinimapScrollToIndex = useCallback(
@@ -538,6 +589,9 @@ export function ChatView({
 
       <ChatComposerSection
         awaitSummary={awaitSummary}
+        queueItems={queueItems}
+        onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+        onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
         onSend={handleSend}
         onStop={stop}
         isStreaming={isStreaming}
@@ -550,6 +604,7 @@ export function ChatView({
         droppedPath={droppedPath}
         sessionTokens={sessionTokens}
         sessionContextWindow={sessionContextWindow}
+        supportsAttachments={supportsAttachments}
       />
     </div>
   )

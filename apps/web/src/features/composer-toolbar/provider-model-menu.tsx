@@ -2,10 +2,11 @@ import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 
 import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
-import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
+
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import { cn } from '~/lib/cn'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import { presetForProfile } from '../agent-management/provider-settings-utils'
 
 export interface ThinkingOption<TThinking extends string | null> {
   value: TThinking

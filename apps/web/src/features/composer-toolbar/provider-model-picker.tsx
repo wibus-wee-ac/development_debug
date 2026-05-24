@@ -3,13 +3,14 @@ import { useMemo } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { presetForProfile } from '~/features/agent-management/agent-runtime-settings'
+
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import type { AgentProfile, ModelDescriptor } from '~/lib/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import { ProviderModelMenu } from './provider-model-menu'
 import type { ModelsByProfileId } from './types'
+import { presetForProfile } from '../agent-management/provider-settings-utils'
 
 interface ProviderModelPickerProps<TThinking extends string | null> {
   profiles: AgentProfile[]

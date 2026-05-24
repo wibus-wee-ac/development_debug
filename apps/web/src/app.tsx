@@ -17,8 +17,8 @@ import { SettingsContent } from '~/features/settings/settings-content'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
-import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { connectServerEvents } from '~/lib/server-events'
+import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
@@ -40,9 +40,7 @@ function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
       <ToastProvider>
         <TooltipProvider>
           <ShortcutProvider>
-            <DirectoryPickerProvider>
-              {children}
-            </DirectoryPickerProvider>
+            <DirectoryPickerProvider>{children}</DirectoryPickerProvider>
           </ShortcutProvider>
         </TooltipProvider>
       </ToastProvider>
@@ -129,7 +127,7 @@ function MainAppRuntime() {
     if (homeTabs.length === 0) {
       openTab('home', {}, { pinned: true })
     }
-    else if (homeTabs.length > 1) {
+ else if (homeTabs.length > 1) {
       // Clean up duplicate pinned home tabs (persist migration)
       for (const dup of homeTabs.slice(1)) {
         useCradleTabStore.setState(s => ({
@@ -141,7 +139,11 @@ function MainAppRuntime() {
 
     for (const tab of tabs) {
       const sessionId = tab.params.sessionId
-      if (tab.type === 'chat' && typeof sessionId === 'string' && isGeneratedChatLabel(tab.label, sessionId)) {
+      if (
+        tab.type === 'chat'
+        && typeof sessionId === 'string'
+        && isGeneratedChatLabel(tab.label, sessionId)
+      ) {
         updateTabLabel(tab.id, CHAT_TAB_FALLBACK_LABEL)
       }
     }
@@ -163,7 +165,10 @@ function MainAppRuntime() {
             <AppLayout>
               <div className="relative h-full w-full overflow-hidden">
                 <div
-                  className={cn('h-full w-full overflow-hidden', isSettingsVisible && 'invisible pointer-events-none')}
+                  className={cn(
+                    'h-full w-full overflow-hidden',
+                    isSettingsVisible && 'invisible pointer-events-none',
+                  )}
                   aria-hidden={isSettingsVisible ? 'true' : undefined}
                 >
                   <TabRenderer
@@ -174,10 +179,15 @@ function MainAppRuntime() {
                 </div>
                 {isSettingsVisible && (
                   <div
-                    className="absolute inset-0 bg-background"
+                    className="absolute inset-0 min-w-0 overflow-hidden bg-background"
                     data-testid="settings-tab-overlay"
                     onKeyDownCapture={(event) => {
-                      if (event.key === 'Escape' && event.metaKey && !event.ctrlKey && !event.altKey) {
+                      if (
+                        event.key === 'Escape'
+                        && event.metaKey
+                        && !event.ctrlKey
+                        && !event.altKey
+                      ) {
                         event.preventDefault()
                         closeSettings()
                       }

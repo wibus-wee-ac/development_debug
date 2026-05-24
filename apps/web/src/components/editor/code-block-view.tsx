@@ -213,7 +213,11 @@ export function CodeBlockView({ node, updateAttributes }: {
         </Combobox>
       </div>
 
-      <pre className="bg-muted! rounded-lg! border! border-border! p-4! pr-24! text-[13px]! leading-relaxed! font-mono!">
+      <pre className="bg-muted! rounded-lg! border! border-border! p-4! pr-24! text-[13px]! leading-relaxed! font-mono!" style={{
+          // @ts-expect-error -- Custom CSS properties for syntax highlighting colors
+          '--tw-prose-pre-code': 'var(--text-text)',
+        }}
+      >
         <NodeViewContent as="div" className="whitespace-pre" />
       </pre>
     </NodeViewWrapper>

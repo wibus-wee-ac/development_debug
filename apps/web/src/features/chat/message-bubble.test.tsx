@@ -64,4 +64,30 @@ describe('message bubble', () => {
     expect(screen.getByTestId('chat-tool-call-tool-1')).toBeTruthy()
     expect(screen.getByText('Done.')).toBeTruthy()
   })
+
+  it('renders file parts with filename, media type, and image preview', () => {
+    const messageWithFile: UIMessage = {
+      id: 'user-attachment',
+      role: 'user',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'diagram.png',
+          url: 'data:image/png;base64,test',
+        },
+      ],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={messageWithFile} isStreaming={false} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByTestId('chat-file-attachment')).toBeTruthy()
+    expect(screen.getByTestId('chat-file-attachment-image').getAttribute('src')).toBe('data:image/png;base64,test')
+    expect(screen.getByText('diagram.png')).toBeTruthy()
+    expect(screen.getByText('image/png')).toBeTruthy()
+  })
 })

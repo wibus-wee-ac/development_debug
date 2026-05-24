@@ -4,6 +4,7 @@ import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
 import { describeToolCall } from './tool-ui-classifier'
 
 export type MessagePart = UIMessage['parts'][number]
+export type FileMessagePart = Extract<MessagePart, { type: 'file' }>
 
 export interface ToolCallItem {
   part: RenderableToolPart
@@ -16,7 +17,7 @@ export type ChatRenderItem
     | { kind: 'reasoning', text: string, state?: 'streaming' | 'done', key: string }
     | { kind: 'tool-call', part: RenderableToolPart, subagentMessages: UIMessage[], key: string }
     | { kind: 'tool-group', items: ToolCallItem[], uiKind: ToolUiKind, key: string }
-    | { kind: 'file-attachment', key: string }
+    | { kind: 'file-attachment', part: FileMessagePart, key: string }
 
 export interface ExecutionPhaseSplit {
   executionItems: ChatRenderItem[]
@@ -48,7 +49,7 @@ export function groupMessageParts(
       })
     }
     else if (part.type === 'file') {
-      items.push({ kind: 'file-attachment', key })
+      items.push({ kind: 'file-attachment', part, key })
     }
     else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
       const toolPart = part as RenderableToolPart

@@ -7,6 +7,8 @@ Shared composer controls for selecting runtime, provider profile, provider-owned
 ## Files
 
 - **cli-tui-agent-selector.tsx**: CLI TUI agent selector for terminal-backed runtime launches.
+- **composer-profile-selection.ts**: Composer-owned provider visibility helpers; composer surfaces see enabled profiles compatible with the selected runtime kind.
+- **composer-profile-selection.test.ts**: Regression coverage for hidden disabled providers and runtime/provider compatibility scoping.
 - **composer-toolbar.tsx**: Root toolbar component that chooses runtime-specific selectors from `useComposerState`.
 - **constants.ts**: Static runtime and thinking effort label options.
 - **index.ts**: Barrel exports for the toolbar feature.

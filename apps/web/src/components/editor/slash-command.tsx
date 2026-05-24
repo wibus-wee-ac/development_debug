@@ -1,5 +1,6 @@
 import type { Editor, Range } from '@tiptap/core'
 import { Extension } from '@tiptap/core'
+import { PluginKey } from '@tiptap/pm/state'
 import { ReactRenderer } from '@tiptap/react'
 import type { SuggestionKeyDownProps, SuggestionOptions } from '@tiptap/suggestion'
 import Suggestion from '@tiptap/suggestion'
@@ -106,6 +107,8 @@ interface SlashListRef {
 
 type SuggestionRender = NonNullable<SuggestionOptions<SlashCommandItem, SlashCommandItem>['render']>
 
+const slashCommandSuggestionPluginKey = new PluginKey('slashCommandSuggestion')
+
 const suggestionRender: SuggestionRender = () => {
   let component: ReactRenderer<SlashListRef> | null = null
   let popup: HTMLDivElement | null = null
@@ -193,6 +196,7 @@ export const SlashCommand = Extension.create({
       Suggestion({
         editor: this.editor,
         ...this.options.suggestion,
+        pluginKey: slashCommandSuggestionPluginKey,
       }),
     ]
   },
