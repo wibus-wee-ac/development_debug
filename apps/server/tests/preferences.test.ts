@@ -25,6 +25,7 @@ describe('preferences capability', () => {
       expect(await initialRes.json()).toEqual({
         modelId: null,
         configSelections: {},
+        continuationBehavior: 'queue',
       })
 
       const filePath = join(dataDir, 'preferences', 'chat.json')
@@ -39,6 +40,7 @@ describe('preferences capability', () => {
             reasoningEffort: 'high',
             webSearch: true,
           },
+          continuationBehavior: 'steer',
         }),
       }))
       expect(saveRes.status).toBe(200)
@@ -50,6 +52,7 @@ describe('preferences capability', () => {
           reasoningEffort: 'high',
           webSearch: true,
         },
+        continuationBehavior: 'steer',
       })
 
       const finalRes = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -60,6 +63,7 @@ describe('preferences capability', () => {
           reasoningEffort: 'high',
           webSearch: true,
         },
+        continuationBehavior: 'steer',
       })
     }
     finally {
@@ -88,6 +92,7 @@ describe('preferences capability', () => {
         body: JSON.stringify({
           modelId: 123,
           configSelections: {},
+          continuationBehavior: 'queue',
         }),
       }))
       expect(invalidModel.status).toBe(400)
@@ -101,10 +106,23 @@ describe('preferences capability', () => {
           configSelections: {
             bad: { nested: true },
           },
+          continuationBehavior: 'queue',
         }),
       }))
       expect(invalidSelections.status).toBe(400)
       expect((await invalidSelections.json()).code).toBe('validation_error')
+
+      const invalidContinuationBehavior = await app.handle(new Request('http://localhost/preferences/chat', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          modelId: null,
+          configSelections: {},
+          continuationBehavior: 'interrupt',
+        }),
+      }))
+      expect(invalidContinuationBehavior.status).toBe(400)
+      expect((await invalidContinuationBehavior.json()).code).toBe('validation_error')
     }
     finally {
       shutdownInfra()

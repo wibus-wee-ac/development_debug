@@ -161,6 +161,18 @@ describe('kanban capability', () => {
         expect.objectContaining({ id: issueWithStatusName.id, statusId: inProgressStatusId }),
       ]))
 
+      const searchByIssueId = await app.handle(new Request('http://localhost/issues/search?q=KAN-001'))
+      expect(searchByIssueId.status).toBe(200)
+      expect(await searchByIssueId.json()).toEqual([
+        expect.objectContaining({ id: issue.id, number: 1 }),
+      ])
+
+      const searchByIssueNumber = await app.handle(new Request('http://localhost/issues/search?q=2'))
+      expect(searchByIssueNumber.status).toBe(200)
+      expect(await searchByIssueNumber.json()).toEqual([
+        expect.objectContaining({ id: issueWithoutStatus.id, number: 2 }),
+      ])
+
       const addComment = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

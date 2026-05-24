@@ -1022,7 +1022,10 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       textItemId: 'text-1',
       assistantStarted: false,
       hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
       activeToolBlockIds: new Map(),
+      currentParentToolUseId: null,
     }
 
     // 1. content_block_start for tool_use — should record the tool block ID
@@ -1084,7 +1087,10 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       textItemId: 'text-1',
       assistantStarted: false,
       hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
       activeToolBlockIds: new Map([[0, 'toolu_empty']]),
+      currentParentToolUseId: null,
     }
 
     const result = mapClaudeAgentMessageToChunks({
@@ -1108,7 +1114,10 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
       textItemId: 'text-1',
       assistantStarted: false,
       hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
       activeToolBlockIds: new Map(),
+      currentParentToolUseId: null,
     }
 
     const result = mapClaudeAgentMessageToChunks({

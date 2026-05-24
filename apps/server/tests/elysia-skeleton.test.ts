@@ -123,6 +123,7 @@ describe('elysia migration skeleton', () => {
       expect(await initialResponse.json()).toEqual({
         modelId: null,
         configSelections: {},
+        continuationBehavior: 'queue',
       })
       expect(existsSync(filePath)).toBe(false)
 
@@ -135,6 +136,7 @@ describe('elysia migration skeleton', () => {
             reasoningEffort: 'high',
             webSearch: true,
           },
+          continuationBehavior: 'steer',
         }),
       }))
 
@@ -146,6 +148,7 @@ describe('elysia migration skeleton', () => {
           reasoningEffort: 'high',
           webSearch: true,
         },
+        continuationBehavior: 'steer',
       })
 
       const finalResponse = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -156,6 +159,7 @@ describe('elysia migration skeleton', () => {
           reasoningEffort: 'high',
           webSearch: true,
         },
+        continuationBehavior: 'steer',
       })
     }
     finally {
@@ -185,6 +189,7 @@ describe('elysia migration skeleton', () => {
           configSelections: {
             bad: { nested: true },
           },
+          continuationBehavior: 'interrupt',
         }),
       }))
 
@@ -197,6 +202,7 @@ describe('elysia migration skeleton', () => {
           issues: expect.arrayContaining([
             expect.objectContaining({ path: 'modelId' }),
             expect.objectContaining({ path: 'configSelections.bad' }),
+            expect.objectContaining({ path: 'continuationBehavior' }),
           ]),
         },
       })

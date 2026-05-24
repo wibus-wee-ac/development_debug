@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendSessionBindings, messages, workspaces } from '@cradle/db'
+import { backendRuns, backendSessionBindings, chatSessionQueueItems, messages, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -23,6 +23,17 @@ interface ChatMessageRow {
 interface ChatStreamEvent {
   type: string
   data: Record<string, unknown>
+}
+
+interface ChatQueueItemView {
+  id: string
+  sessionId: string
+  mode: 'queue' | 'steer'
+  status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
+  text: string
+  agentProfileId: string | null
+  position: number
+  startedRunId: string | null
 }
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
@@ -50,13 +61,13 @@ function makeTempDir(prefix: string): string {
 async function createProfileAndSession(
   app: ElysiaApp,
   workspaceId: string,
-  ids: { profileId: string, sessionId: string },
+  ids: { profileId: string, sessionId: string, providerKind?: 'openai-compatible' | 'anthropic', runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' },
 ) {
   const credentialRes = await app.handle(new Request('http://localhost/secrets', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      kind: 'openai-compatible',
+      kind: ids.providerKind ?? 'openai-compatible',
       label: 'Chat Runtime Key',
       secret: 'sk-chat-runtime-test',
     }),
@@ -68,9 +79,11 @@ async function createProfileAndSession(
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: 'Chat Runtime Profile',
-      providerKind: 'openai-compatible',
+      providerKind: ids.providerKind ?? 'openai-compatible',
       enabled: true,
-      config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
+      config: (ids.providerKind ?? 'openai-compatible') === 'anthropic'
+        ? { baseUrl: 'https://api.anthropic.com/v1', model: 'claude-sonnet-4-20250514' }
+        : { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
       credentialRef: credential.id,
     }),
   }))
@@ -84,6 +97,7 @@ async function createProfileAndSession(
       workspaceId,
       title: 'Chat Runtime Session',
       agentProfileId: ids.profileId,
+      runtimeKind: ids.runtimeKind,
     }),
   }))
   expect(sessionRes.status).toBe(200)
@@ -111,6 +125,28 @@ async function getChatMessages(app: ElysiaApp, sessionId: string): Promise<ChatM
   const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/messages`))
   expect(response.status).toBe(200)
   return await response.json() as ChatMessageRow[]
+}
+
+async function waitForCondition(assertion: () => void | Promise<void>, label: string): Promise<void> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    try {
+      await assertion()
+      return
+    }
+    catch (error) {
+      lastError = error
+      await new Promise(resolve => setTimeout(resolve, 20))
+    }
+  }
+  throw new Error(`Timed out waiting for ${label}: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
+}
+
+async function listChatQueue(app: ElysiaApp, sessionId: string): Promise<ChatQueueItemView[]> {
+  const response = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(sessionId)}/queue`))
+  expect(response.status).toBe(200)
+  const body = await response.json() as { items: ChatQueueItemView[] }
+  return body.items
 }
 
 function buildSseResponse(chunks: string[], delaysMs?: number[]): Response {
@@ -153,6 +189,84 @@ async function collectSseEvents(response: Response): Promise<ChatStreamEvent[]> 
 }
 
 describe('chat runtime capability', () => {
+  it('rejects runtime-incompatible provider combinations during session creation', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-incompatible',
+        name: 'Workspace Chat Incompatible',
+        path: workspaceRoot,
+      }).run()
+
+      const credentialRes = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'openai-compatible',
+          label: 'OpenAI Key',
+          secret: 'sk-openai-test',
+        }),
+      }))
+      const credential = await credentialRes.json() as { id: string }
+
+      const profileRes = await app.handle(new Request('http://localhost/profiles/profile-openai', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'OpenAI Profile',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
+          credentialRef: credential.id,
+        }),
+      }))
+      expect(profileRes.status).toBe(200)
+
+      const sessionRes = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'session-incompatible',
+          workspaceId: 'workspace-chat-incompatible',
+          title: 'Claude Session',
+          agentProfileId: 'profile-openai',
+          runtimeKind: 'claude-agent',
+        }),
+      }))
+
+      expect(sessionRes.status).toBe(400)
+      expect(await sessionRes.json()).toEqual(expect.objectContaining({
+        code: 'invalid_session_input',
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
   it('runs an openai-compatible turn, writes message snapshots and usage, and makes assistant text searchable', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -238,6 +352,130 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('allows switching chat sessions to another compatible provider profile', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const payload = ChatCompletionRequestBodyJsonSchema.parse(String(init?.body))
+        expect(payload.messages.at(-1)).toEqual({ role: 'user', content: 'Switch provider please' })
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{"content":"Switched provider"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4.1-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":6,"completion_tokens":2,"total_tokens":8}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-switch',
+        name: 'Workspace Chat Switch',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-switch', {
+        profileId: 'profile-chat-primary',
+        sessionId: 'session-chat-switch',
+        providerKind: 'openai-compatible',
+        runtimeKind: 'standard',
+      })
+
+      const secondaryCredentialRes = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'openai-compatible',
+          label: 'Secondary Key',
+          secret: 'sk-secondary-test',
+        }),
+      }))
+      const secondaryCredential = await secondaryCredentialRes.json() as { id: string }
+
+      const secondaryProfileRes = await app.handle(new Request('http://localhost/profiles/profile-chat-secondary', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Secondary OpenAI Profile',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://example.com/v1', model: 'gpt-4.1-mini' },
+          credentialRef: secondaryCredential.id,
+        }),
+      }))
+      expect(secondaryProfileRes.status).toBe(200)
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-switch/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Switch provider please',
+          agentProfileId: 'profile-chat-secondary',
+          modelId: 'gpt-4.1-mini',
+        }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const rows = await waitForMessageStatus(app, 'session-chat-switch', 'complete')
+      expect(rows.find(row => row.role === 'assistant')?.content).toBe('Switched provider')
+
+      const binding = db().select().from(backendSessionBindings).where(eq(backendSessionBindings.chatSessionId, 'session-chat-switch')).get()
+      expect(binding?.agentProfileId).toBe('profile-chat-secondary')
+      expect(binding?.requestedModelId).toBe('gpt-4.1-mini')
+
+      const sessionRes = await app.handle(new Request('http://localhost/sessions/session-chat-switch'))
+      expect(sessionRes.status).toBe(200)
+      expect(await sessionRes.json()).toEqual(expect.objectContaining({
+        agentProfileId: 'profile-chat-primary',
+        modelId: 'gpt-4.1-mini',
+        modelProfileId: 'profile-chat-secondary',
+      }))
+
+      const queueRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-switch/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'queue',
+          text: 'Queued on secondary profile',
+          agentProfileId: 'profile-chat-secondary',
+          modelId: 'gpt-4.1-mini',
+        }),
+      }))
+      expect(queueRes.status).toBe(200)
+      const queued = await queueRes.json() as ChatQueueItemView
+      expect(queued.agentProfileId).toBe('profile-chat-secondary')
+      expect(fetchSpy).toHaveBeenCalled()
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      fetchSpy.mockRestore()
     }
   })
 
@@ -461,7 +699,7 @@ describe('chat runtime capability', () => {
         body: JSON.stringify({}),
       }))
       expect(missingText.status).toBe(400)
-      expect((await missingText.json()).code).toBe('validation_error')
+      expect((await missingText.json()).code).toBe('chat_message_empty')
 
       const missingSession = await app.handle(new Request('http://localhost/chat/sessions/missing/response', {
         method: 'POST',
@@ -576,6 +814,22 @@ describe('chat runtime capability', () => {
         startedAt: 1700000000,
         finishedAt: null,
       }).run()
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-chat-orphan',
+        sessionId: 'session-chat-orphan',
+        mode: 'queue',
+        status: 'running',
+        text: 'orphan queued follow-up',
+        filesJson: '[]',
+        modelId: 'gpt-4o-mini',
+        thinkingEffort: null,
+        position: 1,
+        sourceRunId: null,
+        startedRunId: 'run-chat-orphan',
+        errorText: null,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
 
       const cancelRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-orphan/cancel', {
         method: 'POST',
@@ -593,6 +847,13 @@ describe('chat runtime capability', () => {
         errorText: null,
       }))
       expect(run?.finishedAt).toEqual(expect.any(Number))
+
+      const queueItem = db().select().from(chatSessionQueueItems).where(eq(chatSessionQueueItems.id, 'queue-chat-orphan')).get()
+      expect(queueItem).toEqual(expect.objectContaining({
+        status: 'cancelled',
+        errorText: null,
+        startedRunId: 'run-chat-orphan',
+      }))
     }
     finally {
       shutdownInfra()
@@ -612,6 +873,151 @@ describe('chat runtime capability', () => {
       }
     }
   })
+
+  it('queues chat session continuations, supports reorder and cancel, and drains after the active run', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const encoder = new TextEncoder()
+    const streamControllers: ReadableStreamDefaultController<Uint8Array>[] = []
+    const completionBodies: string[] = []
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const payload = ChatCompletionRequestBodyJsonSchema.parse(String(init?.body))
+        completionBodies.push(payload.messages.at(-1)?.content ?? '')
+        const callIndex = completionBodies.length - 1
+        return new Response(new ReadableStream({
+          start(controller) {
+            streamControllers[callIndex] = controller
+            controller.enqueue(encoder.encode(`data: {"id":"queue-${callIndex}-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"run ${callIndex + 1}"},"finish_reason":null}]}\n\n`))
+          },
+        }), {
+          status: 200,
+          headers: { 'content-type': 'text/event-stream' },
+        })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-queue',
+        name: 'Workspace Chat Queue',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-queue', {
+        profileId: 'profile-chat-queue',
+        sessionId: 'session-chat-queue',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start long task', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task']), 'initial chat run to start')
+
+      const queueARes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'queue', text: 'Queued follow-up A', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(queueARes.status).toBe(200)
+      const queueA = await queueARes.json() as ChatQueueItemView
+      expect(queueA).toEqual(expect.objectContaining({ mode: 'queue', status: 'pending', text: 'Queued follow-up A' }))
+
+      const queueBRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'queue', text: 'Queued follow-up B', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(queueBRes.status).toBe(200)
+      const queueB = await queueBRes.json() as ChatQueueItemView
+
+      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'steer', text: 'Steer next run', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(steerRes.status).toBe(200)
+      const steer = await steerRes.json() as ChatQueueItemView
+
+      let visibleQueue = await listChatQueue(app, 'session-chat-queue')
+      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueA.id, queueB.id, steer.id])
+
+      const reorderRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue/reorder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ queueItemIds: [queueB.id, steer.id, queueA.id] }),
+      }))
+      expect(reorderRes.status).toBe(200)
+      visibleQueue = await listChatQueue(app, 'session-chat-queue')
+      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueB.id, steer.id, queueA.id])
+
+      const cancelRes = await app.handle(new Request(`http://localhost/chat/sessions/session-chat-queue/queue/${encodeURIComponent(queueA.id)}`, {
+        method: 'DELETE',
+      }))
+      expect(cancelRes.status).toBe(200)
+      expect(await cancelRes.json()).toEqual(expect.objectContaining({ id: queueA.id, status: 'cancelled' }))
+
+      streamControllers[0].enqueue(encoder.encode('data: {"id":"queue-0-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}\n\n'))
+      streamControllers[0].enqueue(encoder.encode('data: [DONE]\n\n'))
+      streamControllers[0].close()
+
+      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task', 'Steer next run']), 'steer item to drain before queue items')
+      streamControllers[1].enqueue(encoder.encode('data: {"id":"queue-1-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}\n\n'))
+      streamControllers[1].enqueue(encoder.encode('data: [DONE]\n\n'))
+      streamControllers[1].close()
+
+      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task', 'Steer next run', 'Queued follow-up B']), 'queued item to drain after steer')
+      streamControllers[2].enqueue(encoder.encode('data: {"id":"queue-2-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}\n\n'))
+      streamControllers[2].enqueue(encoder.encode('data: [DONE]\n\n'))
+      streamControllers[2].close()
+
+      await waitForCondition(async () => {
+        const items = await listChatQueue(app!, 'session-chat-queue')
+        expect(items.find(item => item.id === steer.id)).toEqual(expect.objectContaining({ status: 'completed' }))
+        expect(items.find(item => item.id === queueB.id)).toEqual(expect.objectContaining({ status: 'completed' }))
+        expect(items.find(item => item.id === queueA.id)).toEqual(expect.objectContaining({ status: 'cancelled' }))
+      }, 'queue items to reach terminal states')
+
+      const rows = await getChatMessages(app, 'session-chat-queue')
+      expect(rows.filter(row => row.role === 'user').map(row => row.content)).toEqual([
+        'Start long task',
+        'Steer next run',
+        'Queued follow-up B',
+      ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
   it('fails fast when a stored message snapshot is invalid instead of rebuilding from content', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

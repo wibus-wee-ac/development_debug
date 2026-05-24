@@ -32,6 +32,7 @@ interface AgentActivityView {
   type: string
   content: string
   signal: string | null
+  signalMetadata: string | null
 }
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
@@ -122,6 +123,34 @@ async function waitForSessionStatus(app: ElysiaApp, issueId: string, expectedSta
     await new Promise(resolve => setTimeout(resolve, 20))
   }
   throw new Error(`Timed out waiting for agent session status ${expectedStatus}`)
+}
+
+async function waitForActivitySignal(app: ElysiaApp, agentSessionId: string, expectedSignal: string): Promise<AgentActivityView[]> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const response = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(agentSessionId)}/activities`))
+    if (response.status === 200) {
+      const activities = await response.json() as AgentActivityView[]
+      if (activities.some(activity => activity.signal === expectedSignal)) {
+        return activities
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(`Timed out waiting for agent activity signal ${expectedSignal}`)
+}
+
+async function waitForActivityBody(app: ElysiaApp, agentSessionId: string, expectedBody: string): Promise<AgentActivityView[]> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const response = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(agentSessionId)}/activities`))
+    if (response.status === 200) {
+      const activities = await response.json() as AgentActivityView[]
+      if (activities.some(activity => JSON.parse(activity.content).body === expectedBody)) {
+        return activities
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
+  throw new Error(`Timed out waiting for agent activity body ${expectedBody}`)
 }
 
 describe('issue-agent capability', () => {
@@ -282,6 +311,158 @@ describe('issue-agent capability', () => {
       const activitiesAfterDelete = await activitiesAfterDeleteRes.json() as AgentActivityView[]
       expect(activitiesAfterDelete.map(activity => JSON.parse(activity.content).body)).toContain('Delegation removed')
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(2)
+    }
+    finally {
+      fetchSpy.mockRestore()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('queues an issue agent continuation through Chat Runtime and records activity', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'issue-agent-secret'
+
+    let completionIndex = 0
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (!url.endsWith('/chat/completions')) {
+        return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      completionIndex += 1
+      const responseText = completionIndex === 1 ? 'Initial delegated run done' : 'Queued continuation done'
+      const encoder = new TextEncoder()
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${responseText}"},"finish_reason":null}]}\n\n`))
+          controller.enqueue(encoder.encode(`data: {"id":"chunk-${completionIndex}-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}}\n\n`))
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          controller.close()
+        },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-issue-agent-continuation',
+        name: 'Workspace Issue Agent Continuation',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfile(app)
+      const agent = await createAgent(app)
+      const issue = await createIssue(app, 'workspace-issue-agent-continuation')
+
+      const delegateRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/delegation`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id }),
+      }))
+      expect(delegateRes.status).toBe(200)
+      const delegatedSession = await delegateRes.json() as AgentSessionView
+      const sessionsAfterDelegate = await waitForSessionStatus(app, issue.id, 'completed')
+      const chatSessionId = sessionsAfterDelegate[0].chatSessionId
+      expect(chatSessionId).toBeTruthy()
+
+      const continuationRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/continuation`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'queue', text: 'Continue with follow-up work' }),
+      }))
+      expect(continuationRes.status).toBe(200)
+      const continuation = await continuationRes.json() as {
+        chatSessionId: string
+        queueItemId: string
+        mode: string
+      }
+      expect(continuation).toEqual(expect.objectContaining({
+        chatSessionId,
+        mode: 'queue',
+      }))
+
+      const activities = await waitForActivitySignal(app, delegatedSession.id, 'continuation.completed')
+      expect(activities).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: 'prompt',
+          signal: 'continuation.queued',
+        }),
+        expect.objectContaining({
+          type: 'response',
+          signal: 'continuation.completed',
+        }),
+      ]))
+      expect(activities.map(activity => JSON.parse(activity.content).body)).toContain('Continue with follow-up work')
+
+      const queueRes = await app.handle(new Request(`http://localhost/chat/sessions/${encodeURIComponent(String(chatSessionId))}/queue`))
+      expect(queueRes.status).toBe(200)
+      const queueData = await queueRes.json() as { items: Array<{ id: string, status: string, startedRunId: string | null }> }
+      expect(queueData.items).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: continuation.queueItemId,
+          status: 'completed',
+          startedRunId: expect.any(String),
+        }),
+      ]))
+
+      const messagesRes = await app.handle(new Request(`http://localhost/sessions/${encodeURIComponent(String(chatSessionId))}/messages`))
+      expect(messagesRes.status).toBe(200)
+      const messages = await messagesRes.json() as Array<{ role: string, content: string, status: string }>
+      expect(messages).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'user', content: 'Continue with follow-up work', status: 'complete' }),
+        expect.objectContaining({ role: 'assistant', content: 'Queued continuation done', status: 'complete' }),
+      ]))
+      expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(2)
+
+      const steerRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/continuation`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'steer', text: 'Steer the next follow-up' }),
+      }))
+      expect(steerRes.status).toBe(200)
+      const steerContinuation = await steerRes.json() as {
+        chatSessionId: string
+        queueItemId: string
+        mode: string
+      }
+      expect(steerContinuation).toEqual(expect.objectContaining({
+        chatSessionId,
+        mode: 'steer',
+      }))
+
+      const activitiesAfterSteer = await waitForActivityBody(app, delegatedSession.id, 'Steer the next follow-up')
+      const steerActivity = activitiesAfterSteer.find(activity => activity.signal === 'continuation.steer')
+      expect(steerActivity).toEqual(expect.objectContaining({
+        type: 'prompt',
+        signal: 'continuation.steer',
+      }))
+      expect(JSON.parse(String(steerActivity?.signalMetadata))).toEqual(expect.objectContaining({
+        chatSessionId,
+        queueItemId: steerContinuation.queueItemId,
+        mode: 'steer',
+      }))
     }
     finally {
       fetchSpy.mockRestore()
