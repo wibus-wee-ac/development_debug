@@ -16,6 +16,7 @@ import { BrowserPanel } from '~/features/browser'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
+import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -167,7 +168,7 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
           >
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">{children}</div>
 
-            {/* Browser panel split — reveal animation */}
+            {/* Browser panel split */}
             {browserPanelOpen && (
               <ResizeHandle
                 direction="horizontal"
@@ -183,15 +184,17 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
                 className="bg-background"
               />
             )}
-            <m.div
-              initial={false}
-              animate={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
-              transition={dragging === 'browser' ? INSTANT : SPRING}
-              className="overflow-hidden shrink-0 border-l border-border/50 flex flex-col"
+            <div
+              className={cn(
+                'flex shrink-0 flex-col overflow-hidden',
+                browserPanelOpen && 'border-l border-border/50',
+              )}
+              style={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
               data-testid="app-layout-browser-panel"
+              data-panel-open={browserPanelOpen ? 'true' : 'false'}
             >
               {browserPanelOpen && <BrowserPanel />}
-            </m.div>
+            </div>
           </main>
 
           {/* Bottom panel resize handle */}
