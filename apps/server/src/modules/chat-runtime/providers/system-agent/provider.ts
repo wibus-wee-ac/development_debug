@@ -22,6 +22,7 @@ import type {
   StreamTurnInput,
   TokenUsage,
 } from '../../runtime-provider-types'
+import { projectTextOnlyInput } from '../../ui-message-input'
 import { ProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 
 interface SystemAgentProviderDeps {
@@ -145,6 +146,7 @@ export class SystemAgentProvider implements ChatRuntime {
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
     const config = SystemAgentConfigJsonSchema.parse(input.profile.configJson)
+    const userPrompt = projectTextOnlyInput(input.message, 'Jarvis provider')
 
     const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
     const model = jarvisPrefs.model
@@ -290,8 +292,8 @@ export class SystemAgentProvider implements ChatRuntime {
         platform: 'cli',
         scope: { kind: 'local_thread', threadId: sessionId },
       },
-      message: { text: input.message },
-      prompt: input.message,
+      message: { text: userPrompt },
+      prompt: userPrompt,
       audit: { trigger: 'user_input' },
       execution: {
         onEvent: (event) => {

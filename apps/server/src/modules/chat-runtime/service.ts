@@ -5,13 +5,14 @@ import {
   agents,
   backendRuns,
   backendSessionBindings,
+  chatSessionQueueItems,
   messages,
   sessions,
   stepUsage as stepUsageTable,
   usageLogs,
   workspaces,
 } from '@cradle/db'
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { FileUIPart, UIMessage, UIMessageChunk } from 'ai'
 import { and, eq, isNull, or } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -25,6 +26,7 @@ import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import { buildAgentMemoryContext } from '../chronicle/agent-context'
 import * as Profiles from '../profiles/service'
+import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
 import type { RuntimeKind } from '../providers/types'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry } from './chat-runtime-provider-registry'
@@ -59,6 +61,14 @@ const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 const JsonObjectTextSchema = z.string()
   .transform(raw => JSON.parse(raw))
   .pipe(z.record(z.string(), z.unknown()))
+const FileUIPartJsonSchema = z.object({
+  type: z.literal('file'),
+  mediaType: z.string().min(1),
+  filename: z.string().optional(),
+  url: z.string().min(1),
+  providerMetadata: z.unknown().optional(),
+}).passthrough()
+const FileUIPartArrayJsonSchema = z.array(FileUIPartJsonSchema)
 const SerializableErrorSchema = z.object({
   code: z.union([z.number(), z.string()]).optional(),
   data: z.unknown().optional(),
@@ -119,6 +129,7 @@ interface ActiveRun {
   eventBuffer: ChatStreamEvent[]
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
+  queueItemId?: string
 }
 
 export interface ActiveRunSummary {
@@ -158,27 +169,66 @@ interface TurnOutputDiagnostics {
   fileChangeEventCount: number
 }
 
+export type ChatSessionQueueMode = 'queue' | 'steer'
+export type ChatSessionQueueStatus = 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
+
+export interface ChatSessionQueueItemDto {
+  id: string
+  sessionId: string
+  mode: ChatSessionQueueMode
+  status: ChatSessionQueueStatus
+  text: string
+  files: FileUIPart[]
+  agentProfileId: string | null
+  modelId: string | null
+  thinkingEffort: 'low' | 'medium' | 'high' | null
+  position: number
+  sourceRunId: string | null
+  startedRunId: string | null
+  errorText: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export interface EnqueueSessionQueueItemInput {
+  sessionId: string
+  mode: ChatSessionQueueMode
+  text?: string
+  files?: FileUIPart[]
+  agentProfileId?: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high'
+}
+
 // ── in-memory run state ──
+
+interface PendingRunState {
+  cancelled: boolean
+  queueItemId?: string
+}
 
 const activeRuns = new Map<string, ActiveRun>()
 const activeRunIdsBySession = new Map<string, string>()
-const pendingRunSessionIds = new Set<string>()
+const pendingRunSessions = new Map<string, PendingRunState>()
 const runSubscribers = new Map<string, Set<RunSubscriber>>()
+const drainingQueueSessionIds = new Set<string>()
+const requestedQueueDrainSessionIds = new Set<string>()
 
 // ── store helpers (merged from chat-runtime.store.ts) ──
 
-function getSessionRunContext(sessionId: string): SessionRunContext | null {
+function getSessionRunContext(sessionId: string, input: { agentProfileId?: string } = {}): SessionRunContext | null {
   const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
   if (!session) {
     return null
   }
-  if (!session.agentProfileId) {
+  const profileId = input.agentProfileId ?? session.agentProfileId
+  if (!profileId) {
     return null
   }
   const workspace = session.workspaceId
     ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
     : null
-  const profile = Profiles.getProfile(session.agentProfileId)
+  const profile = Profiles.getProfile(profileId)
   if (!profile) {
     return null
   }
@@ -248,12 +298,13 @@ function attachBinding(input: {
   }).returning().get()
 }
 
-function createDraftTurn(input: { sessionId: string, userText: string }): { userMessageId: string, assistantMessageId: string } {
+function createDraftTurn(input: { sessionId: string, userText: string, files: FileUIPart[] }): { userMessageId: string, assistantMessageId: string, userMessage: UIMessage } {
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
   const now = currentUnixSeconds()
-  const userMessage = createUserMessage(userMessageId, input.userText)
+  const userMessage = createUserMessage(userMessageId, input.userText, input.files)
   const assistantMessage = createAssistantMessage(assistantMessageId)
+  const userContent = extractMessageText(userMessage)
 
   db().transaction((tx) => {
     tx.insert(messages).values({
@@ -265,7 +316,7 @@ function createDraftTurn(input: { sessionId: string, userText: string }): { user
       depth: 0,
       role: 'user',
       status: 'complete',
-      content: input.userText,
+      content: userContent,
       messageJson: JSON.stringify(userMessage),
       createdAt: now,
       updatedAt: now,
@@ -287,7 +338,28 @@ function createDraftTurn(input: { sessionId: string, userText: string }): { user
     tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
   })
 
-  return { userMessageId, assistantMessageId }
+  return { userMessageId, assistantMessageId, userMessage }
+}
+
+function insertCompletedUserMessage(input: { sessionId: string, message: UIMessage }): void {
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    tx.insert(messages).values({
+      id: input.message.id,
+      sessionId: input.sessionId,
+      parentMessageId: null,
+      parentToolCallId: null,
+      taskId: null,
+      depth: 0,
+      role: 'user',
+      status: 'complete',
+      content: extractMessageText(input.message),
+      messageJson: JSON.stringify(input.message),
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
+  })
 }
 
 function startRun(input: { sessionId: string, messageId: string, origin: 'user' | 'issue-agent' | 'system' }): BackendRun {
@@ -365,11 +437,140 @@ function insertUsage(input: { sessionId: string, messageId: string, agentProfile
   }).run()
 }
 
+function parseQueueFiles(filesJson: string): FileUIPart[] {
+  try {
+    return FileUIPartArrayJsonSchema.parse(JSON.parse(filesJson)) as FileUIPart[]
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'chat_queue_item_invalid',
+      status: 500,
+      message: 'Stored chat queue item is invalid',
+      details: {
+        reason: error instanceof Error ? error.message : 'Invalid file attachment payload',
+      },
+    })
+  }
+}
+
+function serializeQueueFiles(files: FileUIPart[]): string {
+  return JSON.stringify(FileUIPartArrayJsonSchema.parse(files))
+}
+
+function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSessionQueueItemDto {
+  return {
+    id: row.id,
+    sessionId: row.sessionId,
+    mode: row.mode as ChatSessionQueueMode,
+    status: row.status as ChatSessionQueueStatus,
+    text: row.text,
+    files: parseQueueFiles(row.filesJson),
+    agentProfileId: row.agentProfileId,
+    modelId: row.modelId,
+    thinkingEffort: row.thinkingEffort as ChatSessionQueueItemDto['thinkingEffort'],
+    position: row.position,
+    sourceRunId: row.sourceRunId,
+    startedRunId: row.startedRunId,
+    errorText: row.errorText,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function compareQueueRows(left: typeof chatSessionQueueItems.$inferSelect, right: typeof chatSessionQueueItems.$inferSelect): number {
+  const statusRank: Record<string, number> = {
+    running: 0,
+    pending: 1,
+    completed: 2,
+    cancelled: 2,
+    failed: 2,
+  }
+  const leftRank = statusRank[left.status] ?? 3
+  const rightRank = statusRank[right.status] ?? 3
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank
+  }
+  if (left.status === 'running' || left.status === 'pending') {
+    return left.position - right.position || left.createdAt - right.createdAt
+  }
+  return right.createdAt - left.createdAt || right.updatedAt - left.updatedAt
+}
+
+function assertRunnableSession(sessionId: string): SessionRunContext {
+  const context = getSessionRunContext(sessionId)
+  if (!context) {
+    throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId } })
+  }
+  return context
+}
+
+function assertRuntimeCompatibleProfile(context: SessionRunContext, requestedProfileId?: string): SessionRunContext {
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  if (runtimeSupportsProviderKind(runtimeKind, context.profile.providerKind)) {
+    return context
+  }
+
+  throw new AppError({
+    code: 'chat_profile_runtime_incompatible',
+    status: 400,
+    message: 'Agent profile is not compatible with the chat runtime',
+    details: {
+      runtimeKind,
+      providerKind: context.profile.providerKind,
+      profileId: requestedProfileId ?? context.profile.id,
+    },
+  })
+}
+
+function listPendingQueueRows(sessionId: string): Array<typeof chatSessionQueueItems.$inferSelect> {
+  return db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(and(eq(chatSessionQueueItems.sessionId, sessionId), eq(chatSessionQueueItems.status, 'pending')))
+    .orderBy(chatSessionQueueItems.position, chatSessionQueueItems.createdAt)
+    .all()
+}
+
+function recoverOrphanedRunningQueueItems(sessionId: string): void {
+  db().update(chatSessionQueueItems)
+    .set({
+      status: 'pending',
+      errorText: null,
+      updatedAt: currentUnixSeconds(),
+    })
+    .where(and(
+      eq(chatSessionQueueItems.sessionId, sessionId),
+      eq(chatSessionQueueItems.status, 'running'),
+      isNull(chatSessionQueueItems.startedRunId),
+    ))
+    .run()
+}
+
+function normalizePendingQueuePositions(sessionId: string): void {
+  const pendingRows = listPendingQueueRows(sessionId)
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    pendingRows.forEach((row, index) => {
+      const position = index + 1
+      if (row.position !== position) {
+        tx.update(chatSessionQueueItems)
+          .set({ position, updatedAt: now })
+          .where(eq(chatSessionQueueItems.id, row.id))
+          .run()
+      }
+    })
+  })
+}
+
+function getSourceRunId(sessionId: string): string | null {
+  return activeRunIdsBySession.get(sessionId) ?? null
+}
+
 // ── turn context resolver (merged from chat-turn-context.ts) ──
 
 interface ChatTurnContext {
   systemPrompt?: string
-  history?: Array<{ role: 'user' | 'assistant', content: string }>
+  history?: UIMessage[]
 }
 
 function resolveSessionSystemPrompt(session: import('@cradle/db').Session | null | undefined): string | undefined {
@@ -412,10 +613,10 @@ function resolveTurnContext(input: { sessionId: string, draftMessageId: string, 
     .all()
     .filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
-  const history = historyRows.map(row => ({
-    role: row.role as 'user' | 'assistant',
-    content: row.content,
-  })).filter(item => item.content.length > 0)
+  const history = historyRows.map((row) => {
+    const role = row.role as 'user' | 'assistant'
+    return parseStoredMessageSnapshot(row, role)
+  }).filter(message => message.parts.length > 0)
 
   return {
     systemPrompt,
@@ -555,17 +756,33 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
   })
 }
 
-export async function createRun(input: { sessionId: string, text: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' }) {
-  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessionIds.has(input.sessionId)) {
+export async function createRun(input: {
+  sessionId: string
+  text?: string
+  files?: FileUIPart[]
+  agentProfileId?: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high'
+  queueItemId?: string
+}) {
+  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
     throw new AppError({ code: 'chat_run_in_progress', status: 409, message: 'Chat session already has an active run', details: { sessionId: input.sessionId } })
   }
-  pendingRunSessionIds.add(input.sessionId)
+  const pendingState: PendingRunState = { cancelled: false, queueItemId: input.queueItemId }
+  pendingRunSessions.set(input.sessionId, pendingState)
 
   try {
-    const context = getSessionRunContext(input.sessionId)
+    const userText = input.text ?? ''
+    const files = input.files ?? []
+    if (!userText.trim() && files.length === 0) {
+      throw new AppError({ code: 'chat_message_empty', status: 400, message: 'Chat message requires text or at least one file attachment', details: { sessionId: input.sessionId } })
+    }
+
+    const context = getSessionRunContext(input.sessionId, { agentProfileId: input.agentProfileId })
     if (!context) {
       throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: input.sessionId } })
     }
+    assertRuntimeCompatibleProfile(context, input.agentProfileId)
     if (!context.profile.enabled) {
       throw new AppError({ code: 'chat_profile_not_available', status: 409, message: 'Agent profile is disabled', details: { profileId: context.profile.id } })
     }
@@ -578,15 +795,18 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     }
 
     const binding = getBinding(input.sessionId)
-    const runtimeSession = binding
+    const reusableBinding = binding?.agentProfileId === context.profile.id && binding.runtimeKind === runtimeKind
+      ? binding
+      : undefined
+    const runtimeSession = reusableBinding
       ? await runtime.resumeChatSession({
           runtimeSession: {
             id: input.sessionId,
             chatSessionId: input.sessionId,
             agentProfileId: context.profile.id,
             runtimeKind,
-            providerSessionId: binding.backendSessionId,
-            providerStateSnapshot: binding.backendStateSnapshot,
+            providerSessionId: reusableBinding.backendSessionId,
+            providerStateSnapshot: reusableBinding.backendStateSnapshot,
           },
           profile: context.profile,
           workspacePath: context.workspacePath,
@@ -599,6 +819,33 @@ export async function createRun(input: { sessionId: string, text: string, modelI
           modelId: input.modelId,
         })
 
+    if (pendingState.cancelled) {
+      if (input.queueItemId) {
+        db().update(chatSessionQueueItems)
+          .set({
+            status: 'cancelled',
+            errorText: null,
+            updatedAt: currentUnixSeconds(),
+          })
+          .where(and(
+            eq(chatSessionQueueItems.id, input.queueItemId),
+            eq(chatSessionQueueItems.sessionId, input.sessionId),
+          ))
+          .run()
+      }
+      try {
+        await runtime.cancelTurn({ runtimeSession, profile: context.profile })
+      }
+      catch (error) {
+        chatLogger.warn('runtime turn cancellation failed before chat run was created', {
+          error,
+          sessionId: input.sessionId,
+          queueItemId: input.queueItemId,
+        })
+      }
+      throw new AppError({ code: 'chat_run_cancelled', status: 409, message: 'Chat run was cancelled before it started', details: { sessionId: input.sessionId, queueItemId: input.queueItemId } })
+    }
+
     attachBinding({
       sessionId: input.sessionId,
       agentProfileId: context.profile.id,
@@ -607,7 +854,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
       requestedModelId: input.modelId ?? ProviderStateSnapshotJsonSchema.parse(runtimeSession.providerStateSnapshot).models.currentModelId,
     })
 
-    const draft = createDraftTurn({ sessionId: input.sessionId, userText: input.text })
+    const draft = createDraftTurn({ sessionId: input.sessionId, userText, files })
     const run = startRun({ sessionId: input.sessionId, messageId: draft.assistantMessageId, origin: 'user' })
     const activeRun: ActiveRun = {
       runId: run.id,
@@ -621,10 +868,25 @@ export async function createRun(input: { sessionId: string, text: string, modelI
       subagentProjections: new Map(),
       nextSeq: 0,
       eventBuffer: [],
+      queueItemId: input.queueItemId,
     }
     activeRuns.set(run.id, activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
-    pendingRunSessionIds.delete(input.sessionId)
+    if (input.queueItemId) {
+      db().update(chatSessionQueueItems)
+        .set({
+          status: 'running',
+          startedRunId: run.id,
+          errorText: null,
+          updatedAt: currentUnixSeconds(),
+        })
+        .where(and(
+          eq(chatSessionQueueItems.id, input.queueItemId),
+          eq(chatSessionQueueItems.sessionId, input.sessionId),
+        ))
+        .run()
+    }
+    pendingRunSessions.delete(input.sessionId)
 
     const turnContext = resolveTurnContext({
       sessionId: input.sessionId,
@@ -633,7 +895,7 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     })
 
     void executeRun(activeRun, {
-      text: input.text,
+      message: draft.userMessage,
       profile: context.profile,
       modelId: input.modelId,
       thinkingEffort: input.thinkingEffort,
@@ -650,7 +912,12 @@ export async function createRun(input: { sessionId: string, text: string, modelI
     }
   }
   catch (error) {
-    pendingRunSessionIds.delete(input.sessionId)
+    const pending = pendingRunSessions.get(input.sessionId)
+    pendingRunSessions.delete(input.sessionId)
+    const cancelledClaimedQueueItem = Boolean(input.queueItemId && pending?.cancelled && error instanceof AppError && error.code === 'chat_run_cancelled')
+    if (!cancelledClaimedQueueItem) {
+      scheduleSessionQueueDrain(input.sessionId)
+    }
     throw error
   }
 }
@@ -661,7 +928,9 @@ export async function createRun(input: { sessionId: string, text: string, modelI
  */
 export async function streamResponse(input: {
   sessionId: string
-  text: string
+  text?: string
+  files?: FileUIPart[]
+  agentProfileId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
 }): Promise<ReadableStream<Uint8Array>> {
@@ -696,6 +965,25 @@ export async function abortRun(runId: string): Promise<void> {
 export async function cancelSession(sessionId: string): Promise<void> {
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
+    const pendingState = pendingRunSessions.get(sessionId)
+    if (pendingState) {
+      pendingState.cancelled = true
+      if (pendingState.queueItemId) {
+        db().update(chatSessionQueueItems)
+          .set({
+            status: 'cancelled',
+            errorText: null,
+            updatedAt: currentUnixSeconds(),
+          })
+          .where(and(
+            eq(chatSessionQueueItems.id, pendingState.queueItemId),
+            eq(chatSessionQueueItems.sessionId, sessionId),
+          ))
+          .run()
+        normalizePendingQueuePositions(sessionId)
+      }
+      return
+    }
     abortPersistedStreamingSession(sessionId)
     return
   }
@@ -816,15 +1104,271 @@ export function getMessages(sessionId: string): Message[] {
   return db().select().from(messages).where(eq(messages.sessionId, sessionId)).orderBy(messages.createdAt).all()
 }
 
+export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDto[] {
+  assertRunnableSession(sessionId)
+  return db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(eq(chatSessionQueueItems.sessionId, sessionId))
+    .all()
+    .sort(compareQueueRows)
+    .map(toQueueItemDto)
+}
+
+export async function enqueueSessionQueueItem(input: EnqueueSessionQueueItemInput): Promise<ChatSessionQueueItemDto> {
+  const context = getSessionRunContext(input.sessionId, { agentProfileId: input.agentProfileId })
+  if (!context) {
+    throw new AppError({ code: 'chat_session_not_found', status: 404, message: 'Chat session not found', details: { sessionId: input.sessionId } })
+  }
+  assertRuntimeCompatibleProfile(context, input.agentProfileId)
+
+  const text = input.text?.trim() ?? ''
+  const files = input.files ?? []
+  if (!text && files.length === 0) {
+    throw new AppError({ code: 'chat_queue_item_empty', status: 400, message: 'Chat queue item requires text or at least one file attachment', details: { sessionId: input.sessionId } })
+  }
+
+  const pendingRows = listPendingQueueRows(input.sessionId)
+  const position = pendingRows.reduce((maxPosition, row) => Math.max(maxPosition, row.position), 0) + 1
+  const now = currentUnixSeconds()
+  const row = db().insert(chatSessionQueueItems).values({
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    mode: input.mode,
+    status: 'pending',
+    text,
+    filesJson: serializeQueueFiles(files),
+    agentProfileId: input.agentProfileId?.trim() || null,
+    modelId: input.modelId?.trim() || null,
+    thinkingEffort: input.thinkingEffort ?? null,
+    position,
+    sourceRunId: getSourceRunId(input.sessionId),
+    startedRunId: null,
+    errorText: null,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+
+  if (input.mode === 'steer') {
+    const steered = await tryApplyLiveSteer({
+      queueItemId: row.id,
+      sessionId: input.sessionId,
+      text,
+      files,
+    })
+    if (steered) {
+      return steered
+    }
+  }
+
+  scheduleSessionQueueDrain(input.sessionId)
+  return toQueueItemDto(row)
+}
+
+async function tryApplyLiveSteer(input: {
+  queueItemId: string
+  sessionId: string
+  text: string
+  files: FileUIPart[]
+}): Promise<ChatSessionQueueItemDto | null> {
+  const runId = activeRunIdsBySession.get(input.sessionId)
+  if (!runId) {
+    return null
+  }
+
+  const activeRun = activeRuns.get(runId)
+  if (!activeRun?.runtime.steerTurn || activeRun.terminalStatus) {
+    return null
+  }
+
+  const context = getSessionRunContext(input.sessionId)
+  if (!context) {
+    return null
+  }
+
+  const claimed = db().update(chatSessionQueueItems)
+    .set({
+      status: 'running',
+      startedRunId: runId,
+      errorText: null,
+      updatedAt: currentUnixSeconds(),
+    })
+    .where(and(
+      eq(chatSessionQueueItems.id, input.queueItemId),
+      eq(chatSessionQueueItems.sessionId, input.sessionId),
+      eq(chatSessionQueueItems.status, 'pending'),
+    ))
+    .returning()
+    .get()
+  if (!claimed) {
+    const current = db()
+      .select()
+      .from(chatSessionQueueItems)
+      .where(and(eq(chatSessionQueueItems.id, input.queueItemId), eq(chatSessionQueueItems.sessionId, input.sessionId)))
+      .get()
+    return current ? toQueueItemDto(current) : null
+  }
+
+  const steerMessage = createUserMessage(randomUUID(), input.text, input.files)
+  try {
+    await activeRun.runtime.steerTurn({
+      runtimeSession: activeRun.runtimeSession,
+      profile: context.profile,
+      message: steerMessage,
+    })
+  }
+  catch (error) {
+    chatLogger.warn('runtime live steer failed; leaving item queued for later drain', {
+      error,
+      sessionId: input.sessionId,
+      runId,
+      queueItemId: input.queueItemId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+    })
+    db().update(chatSessionQueueItems)
+      .set({
+        status: 'pending',
+        startedRunId: null,
+        errorText: null,
+        updatedAt: currentUnixSeconds(),
+      })
+      .where(and(
+        eq(chatSessionQueueItems.id, input.queueItemId),
+        eq(chatSessionQueueItems.sessionId, input.sessionId),
+        eq(chatSessionQueueItems.status, 'running'),
+        eq(chatSessionQueueItems.startedRunId, runId),
+      ))
+      .run()
+    return null
+  }
+
+  let historyErrorText: string | null = null
+  try {
+    insertCompletedUserMessage({ sessionId: input.sessionId, message: steerMessage })
+  }
+  catch (error) {
+    historyErrorText = serializeChatError(error).text
+    chatLogger.warn('runtime live steer was applied but history persistence failed', {
+      error,
+      sessionId: input.sessionId,
+      runId,
+      queueItemId: input.queueItemId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+    })
+  }
+
+  const updated = db().update(chatSessionQueueItems)
+    .set({
+      status: 'completed',
+      startedRunId: runId,
+      errorText: historyErrorText,
+      updatedAt: currentUnixSeconds(),
+    })
+    .where(and(
+      eq(chatSessionQueueItems.id, input.queueItemId),
+      eq(chatSessionQueueItems.sessionId, input.sessionId),
+      eq(chatSessionQueueItems.status, 'running'),
+      eq(chatSessionQueueItems.startedRunId, runId),
+    ))
+    .returning()
+    .get()
+  if (!updated) {
+    const current = db()
+      .select()
+      .from(chatSessionQueueItems)
+      .where(and(eq(chatSessionQueueItems.id, input.queueItemId), eq(chatSessionQueueItems.sessionId, input.sessionId)))
+      .get()
+    return current ? toQueueItemDto(current) : toQueueItemDto(claimed)
+  }
+  normalizePendingQueuePositions(input.sessionId)
+  return toQueueItemDto(updated)
+}
+
+export function cancelSessionQueueItem(sessionId: string, queueItemId: string): ChatSessionQueueItemDto {
+  assertRunnableSession(sessionId)
+  const row = db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(and(eq(chatSessionQueueItems.id, queueItemId), eq(chatSessionQueueItems.sessionId, sessionId)))
+    .get()
+  if (!row) {
+    throw new AppError({ code: 'chat_queue_item_not_found', status: 404, message: 'Chat queue item not found', details: { sessionId, queueItemId } })
+  }
+  if (row.status !== 'pending') {
+    throw new AppError({ code: 'chat_queue_item_not_pending', status: 409, message: 'Only pending chat queue items can be cancelled', details: { sessionId, queueItemId, status: row.status } })
+  }
+
+  const now = currentUnixSeconds()
+  const updated = db().update(chatSessionQueueItems)
+    .set({ status: 'cancelled', updatedAt: now })
+    .where(and(
+      eq(chatSessionQueueItems.id, queueItemId),
+      eq(chatSessionQueueItems.sessionId, sessionId),
+      eq(chatSessionQueueItems.status, 'pending'),
+    ))
+    .returning()
+    .get()
+  if (!updated) {
+    const current = db()
+      .select()
+      .from(chatSessionQueueItems)
+      .where(and(eq(chatSessionQueueItems.id, queueItemId), eq(chatSessionQueueItems.sessionId, sessionId)))
+      .get()
+    throw new AppError({
+      code: 'chat_queue_item_not_pending',
+      status: 409,
+      message: 'Only pending chat queue items can be cancelled',
+      details: { sessionId, queueItemId, status: current?.status ?? 'missing' },
+    })
+  }
+  normalizePendingQueuePositions(sessionId)
+  return toQueueItemDto(updated)
+}
+
+export function reorderSessionQueueItems(sessionId: string, queueItemIds: string[]): ChatSessionQueueItemDto[] {
+  assertRunnableSession(sessionId)
+  const pendingRows = listPendingQueueRows(sessionId)
+  const pendingIds = pendingRows.map(row => row.id)
+  const requestedIds = new Set(queueItemIds)
+  const pendingIdSet = new Set(pendingIds)
+  const hasSameItems = queueItemIds.length === pendingIds.length
+    && queueItemIds.every(id => pendingIdSet.has(id))
+    && pendingIds.every(id => requestedIds.has(id))
+  if (!hasSameItems) {
+    throw new AppError({
+      code: 'chat_queue_reorder_invalid',
+      status: 400,
+      message: 'Queue reorder must include every pending chat queue item exactly once',
+      details: { sessionId, pendingIds, queueItemIds },
+    })
+  }
+
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    queueItemIds.forEach((queueItemId, index) => {
+      tx.update(chatSessionQueueItems)
+        .set({ position: index + 1, updatedAt: now })
+        .where(and(
+          eq(chatSessionQueueItems.id, queueItemId),
+          eq(chatSessionQueueItems.sessionId, sessionId),
+          eq(chatSessionQueueItems.status, 'pending'),
+        ))
+        .run()
+    })
+  })
+
+  return listPendingQueueRows(sessionId).map(toQueueItemDto)
+}
+
 // ── run execution (private) ──
 
 async function executeRun(activeRun: ActiveRun, input: {
-  text: string
+  message: UIMessage
   profile: AgentProfile
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
   systemPrompt?: string
-  history?: Array<{ role: 'user' | 'assistant', content: string }>
+  history?: UIMessage[]
   workspaceId?: string | null
   workspacePath?: string
 }): Promise<void> {
@@ -850,7 +1394,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       for await (const message of activeRun.runtime.streamTurnSnapshots!({
         runtimeSession: activeRun.runtimeSession,
         profile: input.profile,
-        message: input.text,
+        message: input.message,
         responseMessageId: activeRun.messageId,
         modelId: input.modelId,
         workspaceId: input.workspaceId,
@@ -879,7 +1423,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       for await (const chunk of activeRun.runtime.streamTurn({
         runtimeSession: activeRun.runtimeSession,
         profile: input.profile,
-        message: input.text,
+        message: input.message,
         responseMessageId: activeRun.messageId,
         modelId: input.modelId,
         workspaceId: input.workspaceId,
@@ -1022,6 +1566,7 @@ async function executeRun(activeRun: ActiveRun, input: {
       // session may have been deleted during the run
     }
     releaseActiveRun(activeRun)
+    scheduleSessionQueueDrain(activeRun.sessionId)
   }
 }
 
@@ -1192,6 +1737,18 @@ function abortPersistedRun(run: BackendRun): void {
       .where(messagePredicate)
       .run()
 
+    tx.update(chatSessionQueueItems)
+      .set({
+        status: 'cancelled',
+        errorText: null,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(chatSessionQueueItems.startedRunId, run.id),
+        eq(chatSessionQueueItems.status, 'running'),
+      ))
+      .run()
+
     tx.update(sessions)
       .set({ updatedAt: now })
       .where(eq(sessions.id, run.chatSessionId))
@@ -1240,6 +1797,131 @@ function releaseActiveRun(activeRun: ActiveRun): void {
   activeRuns.delete(activeRun.runId)
   if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
     activeRunIdsBySession.delete(activeRun.sessionId)
+  }
+}
+
+function scheduleSessionQueueDrain(sessionId: string): void {
+  if (drainingQueueSessionIds.has(sessionId)) {
+    requestedQueueDrainSessionIds.add(sessionId)
+    return
+  }
+
+  requestedQueueDrainSessionIds.add(sessionId)
+  queueMicrotask(() => {
+    void drainSessionQueue(sessionId)
+  })
+}
+
+async function drainSessionQueue(sessionId: string): Promise<void> {
+  if (drainingQueueSessionIds.has(sessionId)) {
+    requestedQueueDrainSessionIds.add(sessionId)
+    return
+  }
+  if (activeRunIdsBySession.has(sessionId) || pendingRunSessions.has(sessionId)) {
+    return
+  }
+
+  drainingQueueSessionIds.add(sessionId)
+  requestedQueueDrainSessionIds.delete(sessionId)
+  try {
+    recoverOrphanedRunningQueueItems(sessionId)
+    while (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
+      const next = listPendingQueueRows(sessionId).sort((left, right) => {
+        if (left.mode !== right.mode) {
+          return left.mode === 'steer' ? -1 : 1
+        }
+        return left.position - right.position || left.createdAt - right.createdAt
+      })[0]
+      if (!next) {
+        return
+      }
+
+      const now = currentUnixSeconds()
+      const claimed = db().update(chatSessionQueueItems)
+        .set({ status: 'running', updatedAt: now })
+        .where(and(
+          eq(chatSessionQueueItems.id, next.id),
+          eq(chatSessionQueueItems.sessionId, sessionId),
+          eq(chatSessionQueueItems.status, 'pending'),
+        ))
+        .returning()
+        .get()
+      if (!claimed) {
+        continue
+      }
+
+      try {
+        const run = await createRun({
+          sessionId,
+          text: claimed.text,
+          files: parseQueueFiles(claimed.filesJson),
+          agentProfileId: claimed.agentProfileId ?? undefined,
+          modelId: claimed.modelId ?? undefined,
+          thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | undefined,
+          queueItemId: claimed.id,
+        })
+        db().update(chatSessionQueueItems)
+          .set({
+            startedRunId: run.runId,
+            updatedAt: currentUnixSeconds(),
+          })
+          .where(and(
+            eq(chatSessionQueueItems.id, claimed.id),
+            eq(chatSessionQueueItems.sessionId, sessionId),
+            eq(chatSessionQueueItems.status, 'running'),
+          ))
+          .run()
+        normalizePendingQueuePositions(sessionId)
+        return
+      }
+      catch (error) {
+        if (error instanceof AppError && error.code === 'chat_run_cancelled') {
+          normalizePendingQueuePositions(sessionId)
+          return
+        }
+
+        if (error instanceof AppError && error.code === 'chat_run_in_progress') {
+          db().update(chatSessionQueueItems)
+            .set({
+              status: 'pending',
+              startedRunId: null,
+              errorText: null,
+              updatedAt: currentUnixSeconds(),
+            })
+            .where(and(
+              eq(chatSessionQueueItems.id, claimed.id),
+              eq(chatSessionQueueItems.sessionId, sessionId),
+              eq(chatSessionQueueItems.status, 'running'),
+            ))
+            .run()
+          return
+        }
+
+        const serializedError = serializeChatError(error)
+        db().update(chatSessionQueueItems)
+          .set({
+            status: 'failed',
+            errorText: serializedError.text,
+            updatedAt: currentUnixSeconds(),
+          })
+          .where(and(
+            eq(chatSessionQueueItems.id, claimed.id),
+            eq(chatSessionQueueItems.sessionId, sessionId),
+            eq(chatSessionQueueItems.status, 'running'),
+          ))
+          .run()
+        normalizePendingQueuePositions(sessionId)
+      }
+    }
+  }
+  finally {
+    drainingQueueSessionIds.delete(sessionId)
+    if (
+      requestedQueueDrainSessionIds.delete(sessionId)
+      || (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId) && listPendingQueueRows(sessionId).length > 0)
+    ) {
+      scheduleSessionQueueDrain(sessionId)
+    }
   }
 }
 
@@ -1323,6 +2005,21 @@ function finalizeRun(activeRun: ActiveRun, status: ChatMessageStatus, errorText:
       errorText,
       finishedAt: currentUnixSeconds(),
     }).where(eq(backendRuns.id, activeRun.runId)).run()
+  if (activeRun.queueItemId) {
+    db().update(chatSessionQueueItems)
+      .set({
+        status: status === 'complete' ? 'completed' : status === 'aborted' ? 'cancelled' : 'failed',
+        errorText,
+        startedRunId: activeRun.runId,
+        updatedAt: currentUnixSeconds(),
+      })
+      .where(and(
+        eq(chatSessionQueueItems.id, activeRun.queueItemId),
+        eq(chatSessionQueueItems.sessionId, activeRun.sessionId),
+        eq(chatSessionQueueItems.status, 'running'),
+      ))
+      .run()
+  }
 }
 
 function finalizeSubagentSnapshots(activeRun: ActiveRun, status: ChatMessageStatus, errorText: string | null): void {
@@ -1392,7 +2089,7 @@ function accumulateDeltaDiagnostics(diagnostics: TurnOutputDiagnostics, deltas: 
           diagnostics.assistantTextCharCount += delta.text.length
         }
         break
-      case 'tool_input_append':
+      case 'tool_arguments_append':
       case 'tool_input_set':
       case 'tool_output_streaming':
       case 'tool_output_set':

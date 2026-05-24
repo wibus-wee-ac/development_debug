@@ -11,6 +11,10 @@ export interface ClaudeAgentChunkMapperState {
   assistantStarted: boolean
   /** True when tool calls have been emitted since last text segment — next text gets a fresh ID */
   hadToolCallSinceLastText: boolean
+  /** Tracks emitted text per text segment so full assistant snapshots do not replay streamed text. */
+  emittedTextByTextItemId: Map<string, string>
+  /** Tracks emitted tool lifecycle fragments so full assistant snapshots do not replay streamed tool blocks. */
+  emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean }>
   /** Maps content block index → tool_use block ID for streaming tool input deltas */
   activeToolBlockIds: Map<number, string>
   /** Current parent_tool_use_id for subagent nesting */
@@ -130,28 +134,39 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
   const chunks: UIMessageChunk[] = []
   let assistantStarted = state.assistantStarted
 
-  // If tool calls happened since last text, rotate to a new text segment ID
-  if (state.hadToolCallSinceLastText) {
-    state.textItemId = randomUUID()
-    state.hadToolCallSinceLastText = false
-    assistantStarted = false
+  const flushTextSegment = (text: string) => {
+    if (text.length === 0) {
+      return
+    }
+    const result = emitAssistantTextSegment(text, state, assistantStarted)
+    chunks.push(...result.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+    assistantStarted = result.assistantStarted
   }
 
-  let hadToolCall = false
+  let pendingText = ''
   for (const block of msg.message.content) {
-    const mapped = mapContentBlock(block, state.textItemId, assistantStarted)
-    chunks.push(...mapped.chunks.map(c => withParentMeta(c, parentToolUseId)))
+    if (block.type === 'text') {
+      pendingText += block.text
+      continue
+    }
+
+    flushTextSegment(pendingText)
+    pendingText = ''
+
+    if (block.type === 'tool_use') {
+      const mapped = mapContentBlock(block, state.textItemId, assistantStarted, state)
+      chunks.push(...mapped.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+      state.hadToolCallSinceLastText = true
+      continue
+    }
+
+    const mapped = mapContentBlock(block, state.textItemId, assistantStarted, state)
+    chunks.push(...mapped.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
     if (mapped.assistantStarted) {
       assistantStarted = true
     }
-    if (block.type === 'tool_use') {
-      hadToolCall = true
-    }
   }
-
-  if (hadToolCall) {
-    state.hadToolCallSinceLastText = true
-  }
+  flushTextSegment(pendingText)
 
   return { chunks, assistantStarted, sessionId: msg.session_id, usage: null }
 }
@@ -189,6 +204,7 @@ function mapContentBlock(
   block: BetaContentBlock,
   textItemId: string,
   assistantStarted: boolean,
+  state?: ClaudeAgentChunkMapperState,
 ): { chunks: UIMessageChunk[], assistantStarted: boolean } {
   switch (block.type) {
     case 'text': {
@@ -213,13 +229,16 @@ function mapContentBlock(
       return { chunks, assistantStarted }
     }
     case 'tool_use':
-      return {
-        chunks: [
-          { type: 'tool-input-start', toolCallId: block.id, toolName: block.name },
-          ...(block.input ? [{ type: 'tool-input-available' as const, toolCallId: block.id, toolName: block.name, input: block.input }] : []),
-        ],
-        assistantStarted,
+      if (!state) {
+        return {
+          chunks: [
+            { type: 'tool-input-start', toolCallId: block.id, toolName: block.name },
+            ...(block.input ? [{ type: 'tool-input-available' as const, toolCallId: block.id, toolName: block.name, input: block.input }] : []),
+          ],
+          assistantStarted,
+        }
       }
+      return emitToolUseChunks(block.id, block.name, block.input, state, assistantStarted)
     default:
       return { chunks: [], assistantStarted }
   }
@@ -243,6 +262,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           chunks.push(withParentMeta({ type: 'text-start', id: state.textItemId }, parentToolUseId))
           assistantStarted = true
         }
+        appendEmittedText(state, state.textItemId, deltaEvent.delta.text)
         chunks.push(withParentMeta({ type: 'text-delta', id: state.textItemId, delta: deltaEvent.delta.text }, parentToolUseId))
       }
       else if (deltaEvent.delta.type === 'thinking_delta') {
@@ -267,7 +287,14 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
       else if (startEvent.content_block.type === 'tool_use') {
         state.hadToolCallSinceLastText = true
         state.activeToolBlockIds.set(startEvent.index, startEvent.content_block.id)
-        chunks.push(withParentMeta({ type: 'tool-input-start', toolCallId: startEvent.content_block.id, toolName: startEvent.content_block.name }, parentToolUseId))
+        const emitted = emitToolUseChunks(
+          startEvent.content_block.id,
+          startEvent.content_block.name,
+          undefined,
+          state,
+          assistantStarted,
+        )
+        chunks.push(...emitted.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
       }
       break
     }
@@ -286,4 +313,76 @@ function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): C
     : null
 
   return { chunks: [], assistantStarted: state.assistantStarted, sessionId: msg.session_id, usage }
+}
+
+function emitAssistantTextSegment(
+  text: string,
+  state: ClaudeAgentChunkMapperState,
+  assistantStarted: boolean,
+): { chunks: UIMessageChunk[], assistantStarted: boolean } {
+  if (state.hadToolCallSinceLastText) {
+    state.textItemId = randomUUID()
+    state.hadToolCallSinceLastText = false
+    assistantStarted = false
+  }
+
+  const previousText = state.emittedTextByTextItemId.get(state.textItemId) ?? ''
+  const nextText = diffAssistantText(previousText, text)
+  if (nextText.length === 0) {
+    return { chunks: [], assistantStarted }
+  }
+
+  const chunks: UIMessageChunk[] = []
+  if (!assistantStarted) {
+    chunks.push({ type: 'text-start', id: state.textItemId })
+    assistantStarted = true
+  }
+  appendEmittedText(state, state.textItemId, nextText)
+  chunks.push({ type: 'text-delta', id: state.textItemId, delta: nextText })
+  return { chunks, assistantStarted }
+}
+
+function diffAssistantText(previousText: string, nextText: string): string {
+  if (nextText.startsWith(previousText)) {
+    return nextText.slice(previousText.length)
+  }
+  if (previousText.startsWith(nextText)) {
+    return ''
+  }
+
+  let prefixLength = 0
+  const limit = Math.min(previousText.length, nextText.length)
+  while (prefixLength < limit && previousText[prefixLength] === nextText[prefixLength]) {
+    prefixLength += 1
+  }
+  return nextText.slice(prefixLength)
+}
+
+function appendEmittedText(state: ClaudeAgentChunkMapperState, textItemId: string, text: string): void {
+  const current = state.emittedTextByTextItemId.get(textItemId) ?? ''
+  state.emittedTextByTextItemId.set(textItemId, `${current}${text}`)
+}
+
+function emitToolUseChunks(
+  toolCallId: string,
+  toolName: string,
+  input: unknown,
+  state: ClaudeAgentChunkMapperState,
+  assistantStarted: boolean,
+): { chunks: UIMessageChunk[], assistantStarted: boolean } {
+  const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
+  const chunks: UIMessageChunk[] = []
+
+  if (!current.started) {
+    chunks.push({ type: 'tool-input-start', toolCallId, toolName })
+    current.started = true
+  }
+
+  if (input !== undefined && !current.inputAvailable) {
+    chunks.push({ type: 'tool-input-available', toolCallId, toolName, input })
+    current.inputAvailable = true
+  }
+
+  state.emittedToolStateByToolCallId.set(toolCallId, current)
+  return { chunks, assistantStarted }
 }

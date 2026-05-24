@@ -14,6 +14,7 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { projectTextOnlyInput } from '../../ui-message-input'
 import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
 import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
@@ -105,6 +106,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = MockClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
     const { baseUrl } = config
+    const userPrompt = projectTextOnlyInput(input.message, 'Mock Claude Agent provider')
 
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
@@ -125,7 +127,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       const response = await fetch(queryUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: input.message }),
+        body: JSON.stringify({ prompt: userPrompt }),
         signal: abortController.signal,
       })
 

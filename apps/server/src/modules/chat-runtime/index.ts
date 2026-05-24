@@ -11,7 +11,9 @@ export const chatRuntime = new Elysia({
   .post('/sessions/:sessionId/response', async ({ params, body }) => {
     const stream = await ChatRuntime.streamResponse({
       sessionId: params.sessionId,
-      text: body.text,
+      text: body.text ?? '',
+      files: body.files,
+      agentProfileId: body.agentProfileId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
     })
@@ -41,6 +43,68 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.responseBody,
+  })
+  // GET /chat/sessions/:sessionId/queue → durable continuation queue
+  .get('/sessions/:sessionId/queue', ({ params }) => {
+    return { items: ChatRuntime.listSessionQueueItems(params.sessionId) }
+  }, {
+    detail: {
+      'summary': 'List pending and historical chat continuation queue items',
+      'x-cradle-cli': {
+        command: ['chat', 'queue'],
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.queueListResponse },
+  })
+  // POST /chat/sessions/:sessionId/queue → enqueue busy-session follow-up
+  .post('/sessions/:sessionId/queue', async ({ params, body }) => {
+    return await ChatRuntime.enqueueSessionQueueItem({
+      sessionId: params.sessionId,
+      mode: body.mode,
+      text: body.text,
+      files: body.files,
+      agentProfileId: body.agentProfileId?.trim() || undefined,
+      modelId: body.modelId?.trim() || undefined,
+      thinkingEffort: body.thinkingEffort,
+    })
+  }, {
+    detail: {
+      'summary': 'Enqueue a chat continuation for the session',
+      'x-cradle-cli': {
+        command: ['chat', 'queue', 'add'],
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.queueEnqueueBody,
+    response: { 200: ChatRuntimeModel.queueItem },
+  })
+  // POST /chat/sessions/:sessionId/queue/reorder → reorder pending queue items
+  .post('/sessions/:sessionId/queue/reorder', ({ params, body }) => {
+    return { items: ChatRuntime.reorderSessionQueueItems(params.sessionId, body.queueItemIds) }
+  }, {
+    detail: {
+      'summary': 'Reorder pending chat continuation queue items',
+      'x-cradle-cli': {
+        command: ['chat', 'queue', 'reorder'],
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.queueReorderBody,
+    response: { 200: ChatRuntimeModel.queueListResponse },
+  })
+  // DELETE /chat/sessions/:sessionId/queue/:queueItemId → cancel pending queue item
+  .delete('/sessions/:sessionId/queue/:queueItemId', ({ params }) => {
+    return ChatRuntime.cancelSessionQueueItem(params.sessionId, params.queueItemId)
+  }, {
+    detail: {
+      'summary': 'Cancel a pending chat continuation queue item',
+      'x-cradle-cli': {
+        command: ['chat', 'queue', 'cancel'],
+      },
+    },
+    params: ChatRuntimeModel.queueItemParams,
+    response: { 200: ChatRuntimeModel.queueItem },
   })
   // GET /chat/sessions/:sessionId/capabilities → runtime-native command/skill discovery
   .get('/sessions/:sessionId/capabilities', ({ params }) => {

@@ -1,5 +1,5 @@
 import type { AgentProfile } from '@cradle/db'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeSession } from '../../runtime-provider-types'
@@ -37,8 +37,48 @@ function createAsyncQuery(
       return { done: true as const, value: undefined }
     },
     close: vi.fn(),
+    interrupt: vi.fn(),
     supportedCommands: vi.fn().mockResolvedValue(commands),
   }
+}
+
+function createPendingQuery() {
+  let resolveNext: (() => void) | null = null
+  let closed = false
+  return {
+    [Symbol.asyncIterator]() {
+      return this
+    },
+    async next() {
+      if (closed) {
+        return { done: true as const, value: undefined }
+      }
+      await new Promise<void>((resolve) => {
+        resolveNext = resolve
+      })
+      return { done: true as const, value: undefined }
+    },
+    async return() {
+      closed = true
+      resolveNext?.()
+      return { done: true as const, value: undefined }
+    },
+    close: vi.fn(() => {
+      closed = true
+      resolveNext?.()
+    }),
+    interrupt: vi.fn().mockResolvedValue(undefined),
+    supportedCommands: vi.fn().mockResolvedValue([]),
+  }
+}
+
+async function readPromptText(callIndex: number): Promise<string> {
+  const call = sdkMocks.query.mock.calls[callIndex]?.[0] as { prompt?: AsyncIterable<{ message: { content: unknown } }> } | undefined
+  const prompt = call?.prompt
+  expect(prompt).toBeDefined()
+  const result = await prompt![Symbol.asyncIterator]().next()
+  expect(result.done).toBe(false)
+  return String(result.value.message.content)
 }
 
 function createProfile(config: Record<string, unknown> = {}): AgentProfile {
@@ -71,6 +111,14 @@ function createRuntimeSession(): RuntimeSession {
       workspacePath: '/tmp/cradle-workspace',
       models: { currentModelId: null },
     }),
+  }
+}
+
+function createUserMessage(text: string): UIMessage {
+  return {
+    id: `user-${text}`,
+    role: 'user',
+    parts: [{ type: 'text', text }],
   }
 }
 
@@ -109,7 +157,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     for await (const chunk of provider.streamTurn({
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
-      message: 'Open the browser',
+      message: createUserMessage('Open the browser'),
       workspaceId: 'workspace-1',
     })) {
       chunks.push(chunk)
@@ -119,7 +167,9 @@ describe('ClaudeAgentProvider MCP integration', () => {
       expect.objectContaining({ type: 'text-delta', delta: 'ready' }),
     ]))
     expect(sdkMocks.query).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: 'Open the browser',
+      prompt: expect.objectContaining({
+        [Symbol.asyncIterator]: expect.any(Function),
+      }),
       options: expect.objectContaining({
         mcpServers: expect.objectContaining({
           'browser-use': {
@@ -130,6 +180,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
         }),
       }),
     }))
+    await expect(readPromptText(0)).resolves.toBe('Open the browser')
   })
 
   it('discovers SDK slash commands and forwards slash prompt text unchanged', async () => {
@@ -185,7 +236,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     for await (const chunk of provider.streamTurn({
       runtimeSession,
       profile,
-      message: '/review src/app.ts',
+      message: createUserMessage('/review src/app.ts'),
       workspaceId: 'workspace-1',
     })) {
       chunks.push(chunk)
@@ -195,8 +246,45 @@ describe('ClaudeAgentProvider MCP integration', () => {
       expect.objectContaining({ type: 'text-delta', delta: 'reviewed' }),
     ]))
     expect(sdkMocks.query).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      prompt: '/review src/app.ts',
+      prompt: expect.objectContaining({
+        [Symbol.asyncIterator]: expect.any(Function),
+      }),
     }))
+    await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
+  })
+
+  it('interrupts an active streaming-input query and appends steer text', async () => {
+    const activeQuery = createPendingQuery()
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Initial task'),
+      workspaceId: 'workspace-1',
+    })
+    const pendingNext = stream.next()
+
+    await vi.waitFor(() => {
+      expect(sdkMocks.query).toHaveBeenCalledOnce()
+    })
+
+    await expect(readPromptText(0)).resolves.toBe('Initial task')
+    await provider.steerTurn({
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Use React Query instead'),
+    })
+
+    expect(activeQuery.interrupt).toHaveBeenCalledOnce()
+    await expect(readPromptText(0)).resolves.toBe('Use React Query instead')
+
+    activeQuery.close()
+    await pendingNext
   })
 
   it('passes configured Claude Agent SDK model aliases through the query environment', async () => {
@@ -226,7 +314,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     for await (const _chunk of provider.streamTurn({
       runtimeSession: createRuntimeSession(),
       profile,
-      message: 'Use aliases',
+      message: createUserMessage('Use aliases'),
       workspaceId: 'workspace-1',
     })) {
       // Drain stream to force query construction.
@@ -269,7 +357,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     for await (const _chunk of provider.streamTurn({
       runtimeSession: createRuntimeSession(),
       profile,
-      message: 'Use defaults',
+      message: createUserMessage('Use defaults'),
       workspaceId: 'workspace-1',
     })) {
       // Drain stream to force query construction.
@@ -281,5 +369,87 @@ describe('ClaudeAgentProvider MCP integration', () => {
     expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_HAIKU_MODEL')
     expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_SONNET_MODEL')
     expect(call?.options?.env).not.toHaveProperty('ANTHROPIC_DEFAULT_OPUS_MODEL')
+  })
+
+  it('emits separate text segments around tool calls inside one assistant message', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-segmented',
+        message: {
+          content: [
+            { type: 'text', text: 'First text.' },
+            { type: 'tool_use', id: 'tool-1', name: 'bash', input: { command: 'pwd' } },
+            { type: 'text', text: 'Second text.' },
+            { type: 'tool_use', id: 'tool-2', name: 'read_file', input: { path: 'README.md' } },
+            { type: 'text', text: 'Final text.' },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-segmented',
+        usage: { input_tokens: 4, output_tokens: 4 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Run segmented tools'),
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'text-start', id: expect.any(String) },
+      { type: 'text-delta', id: expect.any(String), delta: 'First text.' },
+      { type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'bash' },
+      { type: 'tool-input-available', toolCallId: 'tool-1', toolName: 'bash', input: { command: 'pwd' } },
+      { type: 'text-start', id: expect.any(String) },
+      { type: 'text-delta', id: expect.any(String), delta: 'Second text.' },
+      { type: 'tool-input-start', toolCallId: 'tool-2', toolName: 'read_file' },
+      { type: 'tool-input-available', toolCallId: 'tool-2', toolName: 'read_file', input: { path: 'README.md' } },
+      { type: 'text-start', id: expect.any(String) },
+      { type: 'text-delta', id: expect.any(String), delta: 'Final text.' },
+      { type: 'text-end', id: expect.any(String) },
+    ])
+  })
+
+  it('rejects file attachments because Claude Agent SDK prompts are text-only', async () => {
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    await expect(async () => {
+      for await (const _chunk of provider.streamTurn({
+        runtimeSession: createRuntimeSession(),
+        profile: createProfile(),
+        message: {
+          id: 'user-with-file',
+          role: 'user',
+          parts: [
+            { type: 'text', text: 'Read this image' },
+            {
+              type: 'file',
+              mediaType: 'image/png',
+              filename: 'diagram.png',
+              url: 'data:image/png;base64,test',
+            },
+          ],
+        },
+        workspaceId: 'workspace-1',
+      })) {
+        // Drain stream to force prompt projection.
+      }
+    }).rejects.toThrow('Claude Agent provider only supports text input; unsupported parts: file (diagram.png)')
+
+    expect(sdkMocks.query).not.toHaveBeenCalled()
   })
 })

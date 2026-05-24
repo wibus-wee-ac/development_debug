@@ -2,7 +2,7 @@
 // Yields UIMessageChunk directly — no intermediate timeline abstraction
 
 import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
-import { readUIMessageStream, stepCountIs, streamText } from 'ai'
+import { convertToModelMessages, readUIMessageStream, stepCountIs, streamText } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import type { BudgetConfig } from '../../usage/budget'
@@ -298,28 +298,24 @@ export async function* executeAiSdkTurnSnapshots(input: AiSdkEngineInput & { ini
   await emitUsage(result, onUsage)
 }
 
-/**
- * Build ModelMessage array from our internal history format.
- */
-export function buildModelMessages(
-  history: Array<{ role: 'user' | 'assistant', content: string }> | undefined,
-  message: string,
+export async function buildModelMessages(
+  history: UIMessage[] | undefined,
+  message: UIMessage,
   maxMessages = 50,
-): ModelMessage[] {
-  const result: ModelMessage[] = []
+): Promise<ModelMessage[]> {
+  const result: UIMessage[] = []
 
   if (history && history.length > 0) {
     const effective = history.length > maxMessages
       ? history.slice(-maxMessages)
       : history
 
-    // Ensure first message is from user (not assistant)
     const startIdx = effective[0]?.role === 'assistant' ? 1 : 0
     for (let i = startIdx; i < effective.length; i++) {
-      result.push({ role: effective[i]!.role, content: effective[i]!.content })
+      result.push(effective[i]!)
     }
   }
 
-  result.push({ role: 'user', content: message })
-  return result
+  result.push(message)
+  return convertToModelMessages(result)
 }

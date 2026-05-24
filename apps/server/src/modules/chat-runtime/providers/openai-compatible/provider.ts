@@ -114,7 +114,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
         apiMode: config.apiMode,
       })
 
-      const messages = buildModelMessages(
+      const messages = await buildModelMessages(
         input.history,
         message,
         config.maxMessages,
@@ -179,7 +179,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
         apiMode: config.apiMode,
       })
 
-      const messages = buildModelMessages(
+      const messages = await buildModelMessages(
         input.history,
         message,
         config.maxMessages,

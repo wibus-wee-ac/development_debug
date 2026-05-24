@@ -9,6 +9,7 @@ import type {
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { projectTextOnlyInput } from '../../ui-message-input'
 import { buildAcpConnectionRecord } from './config'
 import type { AcpConnectionManager } from './connection-manager'
 
@@ -114,8 +115,9 @@ export class AcpChatProvider implements ChatRuntime {
 
     await this.ensureConnected(input.profile.id, input.profile.configJson)
     this._lastUsage = null
+    const userPrompt = projectTextOnlyInput(input.message, 'ACP provider')
 
-    for await (const event of this.deps.runtime.prompt(input.profile.id, acpSessionId, input.message)) {
+    for await (const event of this.deps.runtime.prompt(input.profile.id, acpSessionId, userPrompt)) {
       yield event
     }
 

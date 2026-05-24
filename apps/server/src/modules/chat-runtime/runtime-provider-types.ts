@@ -42,7 +42,7 @@ export interface ResumeChatSessionInput {
 export interface StreamTurnInput {
   runtimeSession: RuntimeSession
   profile: AgentProfile
-  message: string
+  message: UIMessage
   responseMessageId?: string
   modelId?: string
   workspaceId?: string | null
@@ -51,12 +51,18 @@ export interface StreamTurnInput {
     thinkingEffort?: 'low' | 'medium' | 'high'
   }
   systemPrompt?: string
-  history?: Array<{ role: 'user' | 'assistant', content: string }>
+  history?: UIMessage[]
 }
 
 export interface CancelTurnInput {
   runtimeSession: RuntimeSession
   profile: AgentProfile
+}
+
+export interface SteerTurnInput {
+  runtimeSession: RuntimeSession
+  profile: AgentProfile
+  message: UIMessage
 }
 
 export interface GetCapabilitiesInput {
@@ -87,5 +93,6 @@ export interface ChatRuntime {
    * No custom intermediate abstraction — pure AI SDK protocol.
    */
   streamTurn: (input: StreamTurnInput) => AsyncGenerator<UIMessageChunk, void, void>
+  steerTurn?: (input: SteerTurnInput) => Promise<void>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
 }

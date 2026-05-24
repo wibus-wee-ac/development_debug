@@ -21,8 +21,10 @@ import type {
   RuntimeSlashCommand,
   RuntimeSession,
   StartChatSessionInput,
+  SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { projectTextOnlyInput } from '../../ui-message-input'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 import type { ClaudeAgentChunkMapperState } from './mapper'
 import { mapClaudeAgentMessageToChunks } from './mapper'
@@ -33,7 +35,11 @@ interface ClaudeAgentProviderDeps {
 }
 
 const RUNTIME_KIND: RuntimeKind = 'claude-agent'
-type ActiveClaudeQuery = { query: Query, abortController: AbortController }
+type ActiveClaudeQuery = {
+  query: Query
+  abortController: AbortController
+  inputStream: ClaudeAgentInputStream
+}
 const LangfuseGenerationSpanSchema = z.object({
   otelSpan: z.object({
     setAttribute: z.function({
@@ -118,6 +124,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
     const abortController = new AbortController()
+    const userPrompt = projectTextOnlyInput(input.message, 'Claude Agent provider')
     const textItemId = randomUUID()
     const config = ClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
     const effectiveModel = input.modelId ?? config.model
@@ -128,13 +135,22 @@ export class ClaudeAgentProvider implements ChatRuntime {
       attachPermissionHandler: true,
     })
 
-    const activeQuery = query({ prompt: input.message, options: queryOptions })
+    const inputStream = new ClaudeAgentInputStream(userPrompt)
+    const activeQuery = query({ prompt: inputStream, options: queryOptions })
     const sessionId = input.runtimeSession.chatSessionId
-    const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController }
+    const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
     this.activeQueries.set(sessionId, activeEntry)
     this._lastUsage = null
 
-    const mapperState: ClaudeAgentChunkMapperState = { textItemId, assistantStarted: false, hadToolCallSinceLastText: false, activeToolBlockIds: new Map(), currentParentToolUseId: null }
+    const mapperState: ClaudeAgentChunkMapperState = {
+      textItemId,
+      assistantStarted: false,
+      hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
+      activeToolBlockIds: new Map(),
+      currentParentToolUseId: null,
+    }
 
     // Langfuse tracing via @langfuse/tracing SDK
     let generation: LangfuseGeneration | null = null
@@ -142,8 +158,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
       generation = startObservation('claude-agent-generation', {
         model: effectiveModel,
         input: input.systemPrompt
-          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.message }]
-          : [{ role: 'user', content: input.message }],
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: userPrompt }]
+          : [{ role: 'user', content: userPrompt }],
       }, { asType: 'generation' }) as LangfuseGeneration
       // Set trace-level attributes for session grouping
       const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
@@ -175,6 +191,10 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
         if (result.usage) {
           this._lastUsage = result.usage
+        }
+
+        if (message.type === 'result') {
+          inputStream.close()
         }
       }
 
@@ -208,8 +228,21 @@ export class ClaudeAgentProvider implements ChatRuntime {
       throw error
     }
     finally {
+      inputStream.close()
       this.releaseQuery(sessionId, activeEntry)
     }
+  }
+
+  async steerTurn(input: SteerTurnInput): Promise<void> {
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeQueries.get(sessionId)
+    if (!entry) {
+      throw new Error('Claude Agent query is not active')
+    }
+
+    const text = projectTextOnlyInput(input.message, 'Claude Agent steer')
+    await entry.query.interrupt()
+    entry.inputStream.push(text)
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
@@ -222,7 +255,60 @@ export class ClaudeAgentProvider implements ChatRuntime {
     Approval.rejectPendingBySession(sessionId)
     entry.abortController.abort()
     entry.query.close()
+    entry.inputStream.close()
     this.releaseQuery(sessionId, entry)
+  }
+}
+
+class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
+  private readonly messages: SDKUserMessage[] = []
+  private readonly waiters: Array<() => void> = []
+  private closed = false
+
+  constructor(initialText: string) {
+    this.push(initialText)
+  }
+
+  push(text: string): void {
+    this.messages.push({
+      type: 'user',
+      message: { role: 'user', content: text },
+      parent_tool_use_id: null,
+      priority: 'now',
+    })
+    this.wakeNextWaiter()
+  }
+
+  close(): void {
+    this.closed = true
+    this.wakeAllWaiters()
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    while (true) {
+      const next = this.messages.shift()
+      if (next) {
+        yield next
+        continue
+      }
+      if (this.closed) {
+        return
+      }
+      await new Promise<void>((resolve) => {
+        this.waiters.push(resolve)
+      })
+    }
+  }
+
+  private wakeNextWaiter(): void {
+    const waiter = this.waiters.shift()
+    waiter?.()
+  }
+
+  private wakeAllWaiters(): void {
+    while (this.waiters.length > 0) {
+      this.wakeNextWaiter()
+    }
   }
 }
 
@@ -251,6 +337,7 @@ function buildClaudeQueryOptions(input: {
       : config.allowDangerouslySkipPermissions,
     maxTurns: config.maxTurns,
     additionalDirectories: config.additionalDirectories,
+    includePartialMessages: true,
     forwardSubagentText: true,
     agentProgressSummaries: true,
     systemPrompt: input.input.systemPrompt

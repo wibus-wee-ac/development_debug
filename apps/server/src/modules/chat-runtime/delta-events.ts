@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 
 type MessagePart = UIMessage['parts'][number]
+type FileMessagePart = Extract<MessagePart, { type: 'file' }>
 
 type TextPartKind = 'text' | 'reasoning'
 type ToolStreamName = 'stdout' | 'stderr'
@@ -13,7 +14,7 @@ export type ChatPartDelta
   = | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
     | { seq: number, type: 'text_append', partIndex: number, partType: TextPartKind, text: string }
     | { seq: number, type: 'text_done', partIndex: number, partType: TextPartKind }
-    | { seq: number, type: 'tool_input_append', partIndex: number, inputKey: string, text: string }
+    | { seq: number, type: 'tool_arguments_append', partIndex: number, text: string }
     | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
     | { seq: number, type: 'tool_output_streaming', partIndex: number, stream: ToolStreamName, text: string }
     | { seq: number, type: 'tool_output_set', partIndex: number, output?: unknown, state: 'output-available' | 'output-error' | 'output-denied', errorText?: string }
@@ -63,6 +64,7 @@ interface MutableToolPart {
   toolName: string
   toolCallId: string
   state: string
+  argumentsText?: string
   input?: unknown
   output?: unknown
   errorText?: string
@@ -91,6 +93,7 @@ const DynamicToolMessagePartSchema = z.object({
   toolName: z.string().min(1),
   toolCallId: z.string().min(1),
   state: z.string(),
+  argumentsText: z.string().optional(),
   input: z.unknown().optional(),
   output: z.unknown().optional(),
   errorText: z.string().optional(),
@@ -98,10 +101,19 @@ const DynamicToolMessagePartSchema = z.object({
   resultProviderMetadata: ProviderMetadataSchema.optional(),
 }).passthrough()
 
+const FileMessagePartSchema = z.object({
+  type: z.literal('file'),
+  mediaType: z.string().min(1),
+  filename: z.string().optional(),
+  url: z.string().min(1),
+  providerMetadata: ProviderMetadataSchema.optional(),
+}).passthrough()
+
 const MessagePartSchema = z.discriminatedUnion('type', [
   TextMessagePartSchema,
   ReasoningMessagePartSchema,
   DynamicToolMessagePartSchema,
+  FileMessagePartSchema,
 ])
 type ParsedMessagePart = z.infer<typeof MessagePartSchema>
 const UiMessagePartSchema = MessagePartSchema.transform(part => part as MessagePart)
@@ -472,7 +484,7 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-start': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const { partIndex, created } = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'input-streaming'
       if (parsedChunk.toolName === 'command_execution') {
@@ -481,19 +493,20 @@ export function applyChunkToProjection(
       }
       else {
         projection.partialToolInputs.set(parsedChunk.toolCallId, '')
-        part.input = { input: '' }
+        part.argumentsText = ''
+        delete part.input
       }
       const metadata = parsedChunk.providerMetadata
       if (metadata !== undefined) {
         part.callProviderMetadata = metadata
       }
-      if (partIndex === projection.message.parts.length - 1) {
+      if (created) {
         push({ type: 'part_add', partIndex, part: clonePart(UiMessagePartSchema.parse(part)) })
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-delta': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       const text = parsedChunk.inputTextDelta
       if (part.toolName === 'command_execution') {
@@ -505,15 +518,15 @@ export function applyChunkToProjection(
       }
       else {
         const nextInput = appendPartialText(projection.partialToolInputs, parsedChunk.toolCallId, text)
-        part.input = { input: nextInput }
+        part.argumentsText = nextInput
         if (text.length > 0) {
-          push({ type: 'tool_input_append', partIndex, inputKey: 'input', text })
+          push({ type: 'tool_arguments_append', partIndex, text })
         }
       }
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-available': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'input-available'
       part.input = parsedChunk.input
@@ -522,7 +535,7 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-input-error': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, parsedChunk.toolName)
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-error'
       part.input = parsedChunk.input
@@ -531,7 +544,7 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-available': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-available'
       part.output = parsedChunk.output
@@ -540,7 +553,7 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-error': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-error'
       part.errorText = parsedChunk.errorText
@@ -549,7 +562,7 @@ export function applyChunkToProjection(
       return result(deltas, nextSeq, false, 'streaming', null)
     }
     case 'tool-output-denied': {
-      const partIndex = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
+      const { partIndex } = locateToolPart(projection, parsedChunk.toolCallId, 'tool')
       const part = MutableToolPartSchema.parse(projection.message.parts[partIndex])
       part.state = 'output-denied'
       projection.partialToolOutputs.delete(parsedChunk.toolCallId)
@@ -650,18 +663,31 @@ export function applySnapshotToProjection(
 
     if (nextPart.type === 'dynamic-tool') {
       const previousPart = DynamicToolMessagePartSchema.parse(prevPart)
-      if (!areEqual(previousPart.input, nextPart.input) && nextPart.input !== undefined) {
-        push({ type: 'tool_input_set', partIndex, input: cloneValue(nextPart.input) })
+      const currentPart = DynamicToolMessagePartSchema.parse(nextPart)
+      if (
+        typeof currentPart.argumentsText === 'string'
+        && currentPart.argumentsText.length > (previousPart.argumentsText?.length ?? 0)
+        && currentPart.argumentsText.startsWith(previousPart.argumentsText ?? '')
+      ) {
+        push({
+          type: 'tool_arguments_append',
+          partIndex,
+          text: currentPart.argumentsText.slice(previousPart.argumentsText?.length ?? 0),
+        })
       }
 
-      if (!areEqual(previousPart.output, nextPart.output) || previousPart.state !== nextPart.state || previousPart.errorText !== nextPart.errorText) {
-        if (nextPart.state === 'output-available' || nextPart.state === 'output-error' || nextPart.state === 'output-denied') {
+      if (!areEqual(previousPart.input, currentPart.input) && currentPart.input !== undefined) {
+        push({ type: 'tool_input_set', partIndex, input: cloneValue(currentPart.input) })
+      }
+
+      if (!areEqual(previousPart.output, currentPart.output) || previousPart.state !== currentPart.state || previousPart.errorText !== currentPart.errorText) {
+        if (currentPart.state === 'output-available' || currentPart.state === 'output-error' || currentPart.state === 'output-denied') {
           push({
             type: 'tool_output_set',
             partIndex,
-            state: nextPart.state,
-            output: nextPart.output === undefined ? undefined : cloneValue(nextPart.output),
-            errorText: nextPart.errorText,
+            state: currentPart.state,
+            output: currentPart.output === undefined ? undefined : cloneValue(currentPart.output),
+            errorText: currentPart.errorText,
           })
         }
       }
@@ -700,11 +726,14 @@ export function createAssistantMessage(messageId: string, parts: UIMessage['part
   }
 }
 
-export function createUserMessage(messageId: string, text: string): UIMessage {
+export function createUserMessage(messageId: string, text: string, files: FileMessagePart[] = []): UIMessage {
+  const parts: UIMessage['parts'] = text ? [{ type: 'text', text }] : []
+  parts.push(...files)
+
   return {
     id: messageId,
     role: 'user',
-    parts: [{ type: 'text', text }],
+    parts,
   }
 }
 
@@ -780,10 +809,14 @@ function locateReasoningPart(
   return partIndex
 }
 
-function locateToolPart(projection: MessageProjection, toolCallId: string, toolName: string): number {
+function locateToolPart(
+  projection: MessageProjection,
+  toolCallId: string,
+  toolName: string,
+): { partIndex: number, created: boolean } {
   const existing = projection.toolPartIndices.get(toolCallId)
   if (existing !== undefined) {
-    return existing
+    return { partIndex: existing, created: false }
   }
   const part: MutableToolPart = {
     type: 'dynamic-tool',
@@ -795,7 +828,7 @@ function locateToolPart(projection: MessageProjection, toolCallId: string, toolN
   const partIndex = projection.message.parts.length
   projection.message.parts.push(UiMessagePartSchema.parse(part))
   projection.toolPartIndices.set(toolCallId, partIndex)
-  return partIndex
+  return { partIndex, created: true }
 }
 
 function appendPartialText(buffer: Map<string, string>, toolCallId: string, text: string): string {
