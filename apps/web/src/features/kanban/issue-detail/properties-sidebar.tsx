@@ -1,4 +1,4 @@
-import { BotIcon, PlusIcon, UserRoundXIcon } from 'lucide-react'
+import { BotIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon, TagsIcon, Trash2Icon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -19,10 +19,17 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { priorityOptions } from '../shared/issue-metadata'
 import { LabelChip } from '../shared/label-chip'
+import {
+  buildDeleteLabelPatches,
+  buildRenameLabelPatches,
+  collectWorkspaceLabelOptions,
+  filterWorkspaceLabelOptions,
+  getLabelTone,
+} from '../shared/label-metadata'
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import type { IssuePriority } from '../use-kanban'
-import { useDelegateIssue, useUndelegateIssue } from '../use-kanban'
+import { useDelegateIssue, usePatchIssueLabels, useUndelegateIssue } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
 import { RelationManager } from './relation-manager'
 
@@ -52,16 +59,24 @@ const CURRENT_USER_ASSIGNEE: HumanAssignee = {
 
 interface PropertiesSidebarProps {
   issue: KanbanIssue
+  issues: KanbanIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
-  workspaceId: string
   onUpdate: (patch: IssuePatch) => void
 }
 
-export const PropertiesSidebar = memo(({ issue, statuses, milestones, workspaceId: _workspaceId, onUpdate }: PropertiesSidebarProps) => {
+export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, onUpdate }: PropertiesSidebarProps) => {
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
   const labels = issue.labels
+  const labelWorkspaceIssues = useMemo(() => {
+    const hasCurrentIssue = issues.some(candidate => candidate.id === issue.id)
+    if (!hasCurrentIssue) {
+      return [...issues, issue]
+    }
+
+    return issues.map(candidate => candidate.id === issue.id ? issue : candidate)
+  }, [issue, issues])
 
   return (
     <div className="flex flex-col gap-1">
@@ -116,7 +131,7 @@ export const PropertiesSidebar = memo(({ issue, statuses, milestones, workspaceI
 
         {/* Labels */}
         <PropertyRow label="Labels">
-          <LabelsEditor labels={labels} onUpdate={newLabels => onUpdate({ labels: newLabels })} />
+          <LabelsEditor labels={labels} workspaceIssues={labelWorkspaceIssues} onUpdate={newLabels => onUpdate({ labels: newLabels })} />
         </PropertyRow>
 
         {/* Milestone */}
@@ -276,10 +291,43 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
   )
 }
 
-function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (labels: string[]) => void }) {
+const LABEL_SUGGESTION_LIMIT = 6
+
+function normalizeLabelForCompare(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+function LabelsEditor({
+  labels,
+  workspaceIssues,
+  onUpdate,
+}: {
+  labels: string[]
+  workspaceIssues: KanbanIssue[]
+  onUpdate: (labels: string[]) => void
+}) {
   const [inputValue, setInputValue] = useState('')
   const [open, setOpen] = useState(false)
+  const [editingLabel, setEditingLabel] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const patchIssueLabels = usePatchIssueLabels()
+  const workspaceLabelOptions = useMemo(
+    () => collectWorkspaceLabelOptions(workspaceIssues),
+    [workspaceIssues],
+  )
+  const labelSuggestions = useMemo(
+    () => filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT),
+    [inputValue, labels, workspaceLabelOptions],
+  )
+  const selectedLabelKeys = useMemo(
+    () => new Set(labels.map(normalizeLabelForCompare)),
+    [labels],
+  )
+  const trimmedInput = inputValue.trim()
+  const canCreateLabel = trimmedInput.length > 0 && !selectedLabelKeys.has(normalizeLabelForCompare(trimmedInput))
+  const isGlobalLabelMutating = patchIssueLabels.isPending
 
   useEffect(() => {
     if (!open) {
@@ -288,17 +336,70 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [open])
 
-  const handleAdd = useCallback(() => {
-    const trimmed = inputValue.trim()
-    if (trimmed && !labels.includes(trimmed)) {
-      onUpdate([...labels, trimmed])
-      setInputValue('')
+  useEffect(() => {
+    if (!editingLabel) {
+      return
     }
-  }, [inputValue, labels, onUpdate])
+    requestAnimationFrame(() => renameInputRef.current?.focus())
+  }, [editingLabel])
+
+  const handleAddLabel = useCallback((label: string) => {
+    const trimmed = label.trim()
+    const labelKey = normalizeLabelForCompare(trimmed)
+
+    if (!trimmed || selectedLabelKeys.has(labelKey)) {
+      return
+    }
+
+    onUpdate([...labels, trimmed])
+    setInputValue('')
+    setOpen(false)
+  }, [labels, onUpdate, selectedLabelKeys])
+
+  const handleSubmitInput = useCallback(() => {
+    const exactSuggestion = labelSuggestions.find(option => normalizeLabelForCompare(option.label) === normalizeLabelForCompare(inputValue))
+    handleAddLabel(exactSuggestion?.label ?? inputValue)
+  }, [handleAddLabel, inputValue, labelSuggestions])
 
   const handleRemove = useCallback((label: string) => {
-    onUpdate(labels.filter(l => l !== label))
+    const labelKey = normalizeLabelForCompare(label)
+    onUpdate(labels.filter(l => normalizeLabelForCompare(l) !== labelKey))
   }, [labels, onUpdate])
+
+  const startRenamingLabel = useCallback((label: string) => {
+    setEditingLabel(label)
+    setRenameValue(label)
+  }, [])
+
+  const stopRenamingLabel = useCallback(() => {
+    setEditingLabel(null)
+    setRenameValue('')
+  }, [])
+
+  const commitRenameLabel = useCallback(() => {
+    if (!editingLabel) {
+      return
+    }
+
+    const patches = buildRenameLabelPatches(workspaceIssues, editingLabel, renameValue)
+
+    if (patches.length === 0) {
+      stopRenamingLabel()
+      return
+    }
+
+    patchIssueLabels.mutate({ patches }, { onSuccess: stopRenamingLabel })
+  }, [editingLabel, patchIssueLabels, renameValue, stopRenamingLabel, workspaceIssues])
+
+  const deleteWorkspaceLabel = useCallback((label: string) => {
+    const patches = buildDeleteLabelPatches(workspaceIssues, label)
+
+    if (patches.length === 0) {
+      return
+    }
+
+    patchIssueLabels.mutate({ patches })
+  }, [patchIssueLabels, workspaceIssues])
 
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -307,6 +408,7 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
           key={l}
           type="button"
           onClick={() => handleRemove(l)}
+          aria-label={`Remove label ${l}`}
           data-testid={`issue-label-chip-${l}`}
         >
           <LabelChip label={l} className="cursor-pointer hover:line-through" />
@@ -320,22 +422,159 @@ function LabelsEditor({ labels, onUpdate }: { labels: string[], onUpdate: (label
         >
           <PlusIcon className="size-3" aria-hidden="true" />
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-44 p-2">
-          <input
-            ref={inputRef}
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                handleAdd()
-              }
-            }}
-            placeholder="Add label..."
-            data-testid="issue-label-input"
-            aria-label="Issue label"
-            className="w-full border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
-          />
+        <PopoverContent align="end" className="w-72 p-0">
+          <div className="border-b border-border p-2">
+            <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
+              <SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+              <input
+                ref={inputRef}
+                value={inputValue}
+                onChange={e => setInputValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSubmitInput()
+                  }
+                  if (e.key === 'Escape') {
+                    setOpen(false)
+                  }
+                }}
+                placeholder="Search or create label"
+                data-testid="issue-label-input"
+                aria-label="Issue label"
+                className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
+              />
+            </div>
+
+            <div className="mt-2 flex flex-col gap-0.5">
+              {labelSuggestions.map(option => (
+                <button
+                  key={option.label}
+                  type="button"
+                  onClick={() => handleAddLabel(option.label)}
+                  className="flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-foreground hover:bg-fill transition-colors"
+                  aria-label={`Add label ${option.label}`}
+                  data-testid={`issue-label-suggestion-${option.label}`}
+                >
+                  <LabelChip label={option.label} tone={option.tone} />
+                  <span className="ml-auto tabular-nums text-[11px] text-muted-foreground">{option.count}</span>
+                </button>
+              ))}
+
+              {canCreateLabel && (
+                <button
+                  type="button"
+                  onClick={() => handleAddLabel(trimmedInput)}
+                  className="flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-foreground hover:bg-fill transition-colors"
+                  aria-label={`Create label ${trimmedInput}`}
+                  data-testid="issue-label-create-option"
+                >
+                  <PlusIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  <span className="min-w-0 flex-1 truncate">Create "{trimmedInput}"</span>
+                </button>
+              )}
+
+              {!canCreateLabel && labelSuggestions.length === 0 && (
+                <div className="px-1.5 py-2 text-[12px] text-muted-foreground">
+                  No matching labels
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="p-2">
+            <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <TagsIcon className="size-3" aria-hidden="true" />
+              Workspace labels
+            </div>
+
+            <div className="max-h-52 overflow-y-auto pr-1">
+              {workspaceLabelOptions.length === 0
+                ? (
+                    <div className="px-1 py-2 text-[12px] text-muted-foreground">
+                      No labels yet
+                    </div>
+                  )
+                : workspaceLabelOptions.map(option => (
+                    <div key={option.label} className="flex h-8 items-center gap-1.5 rounded-md px-1 hover:bg-fill">
+                      {editingLabel === option.label
+                        ? (
+                            <>
+                              <span className={cn('size-2 shrink-0 rounded-full', {
+                                'bg-blue-500': getLabelTone(renameValue) === 'blue',
+                                'bg-emerald-500': getLabelTone(renameValue) === 'green',
+                                'bg-amber-500': getLabelTone(renameValue) === 'amber',
+                                'bg-rose-500': getLabelTone(renameValue) === 'rose',
+                                'bg-violet-500': getLabelTone(renameValue) === 'violet',
+                                'bg-cyan-500': getLabelTone(renameValue) === 'cyan',
+                                'bg-slate-500': getLabelTone(renameValue) === 'slate',
+                              })}
+                              />
+                              <input
+                                ref={renameInputRef}
+                                value={renameValue}
+                                onChange={event => setRenameValue(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    commitRenameLabel()
+                                  }
+                                  if (event.key === 'Escape') {
+                                    stopRenamingLabel()
+                                  }
+                                }}
+                                disabled={isGlobalLabelMutating}
+                                aria-label={`Rename label ${option.label}`}
+                                className="h-6 min-w-0 flex-1 rounded border border-input bg-background px-1.5 text-[12px] text-foreground outline-none focus-visible:border-ring"
+                              />
+                              <button
+                                type="button"
+                                onClick={commitRenameLabel}
+                                disabled={isGlobalLabelMutating}
+                                className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                                aria-label={`Save label ${option.label}`}
+                              >
+                                <CheckIcon className="size-3.5" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={stopRenamingLabel}
+                                disabled={isGlobalLabelMutating}
+                                className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                                aria-label={`Cancel label ${option.label}`}
+                              >
+                                <XIcon className="size-3.5" aria-hidden="true" />
+                              </button>
+                            </>
+                          )
+                        : (
+                            <>
+                              <LabelChip label={option.label} tone={option.tone} className="max-w-32 truncate" />
+                              <span className="ml-auto tabular-nums text-[11px] text-muted-foreground">{option.count}</span>
+                              <button
+                                type="button"
+                                onClick={() => startRenamingLabel(option.label)}
+                                disabled={isGlobalLabelMutating}
+                                className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                                aria-label={`Rename label ${option.label}`}
+                              >
+                                <PencilIcon className="size-3" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteWorkspaceLabel(option.label)}
+                                disabled={isGlobalLabelMutating}
+                                className="flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-destructive disabled:pointer-events-none disabled:opacity-50 transition-colors"
+                                aria-label={`Delete label ${option.label}`}
+                              >
+                                <Trash2Icon className="size-3" aria-hidden="true" />
+                              </button>
+                            </>
+                          )}
+                    </div>
+                  ))}
+            </div>
+          </div>
         </PopoverContent>
       </Popover>
     </div>

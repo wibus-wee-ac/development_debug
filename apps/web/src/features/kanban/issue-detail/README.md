@@ -12,12 +12,16 @@ Issue detail owns focused subviews for editing issue metadata, reading activity,
 - **agent-prompt-input.test.tsx**: Regression tests for the prompt send button accessible name, disabled states, and request/query invalidation wiring.
 - **agent-session-panel.tsx**: Agent session status, activity feed, stop/rerun/open-chat controls with decorative action icons, and prompt input composition; active-session rendering is split into a memoized inner panel with stable stop/rerun handlers.
 - **agent-session-panel.test.tsx**: Regression tests for session action accessible names, decorative action icons, and stop mutation wiring.
-- **index.tsx**: Issue detail composition entrypoint.
+- **index.tsx**: Issue detail 组合入口，解析父/子 issue 上下文、子 issue 进度、同级导航和 milestone 横幅进度。
 - **issue-description.tsx**: Editable issue description surface with Smart Mention candidate aggregation for Issue, Session, Workspace, Agent, Milestone, and File references plus owner-scoped navigation behavior.
 - **issue-header.tsx**: Issue header content, named navigation/action controls, and high-level destructive issue actions; header rendering keeps a memo boundary.
 - **issue-header.test.tsx**: Regression tests for header action accessible names, decorative icons, and back/delete callback wiring.
 - **issue-title.tsx**: Editable issue title surface.
-- **properties-sidebar.tsx**: Issue metadata property editor with unified human/AI Agent assignee selection, explicit unassigned state, named label add controls, and stable E2E anchors; properties rendering keeps a memo boundary.
+- **milestone-banner.tsx**: 可点击的 issue milestone 横幅，展示 status、due date 和 progress，并用于打开聚焦的 milestone filter。
+- **milestone-banner.test.tsx**: 覆盖 milestone banner 元数据渲染和点击行为的回归测试。
+- **milestone-progress.ts**: Issue detail summary 使用的纯 milestone progress 与 due-date formatting helper。
+- **milestone-progress.test.ts**: 覆盖 milestone progress 总数、completed 数量和空 milestone 状态的回归测试。
+- **properties-sidebar.tsx**: Issue metadata 属性编辑器，包含统一的人类/AI Agent assignee 选择、显式 unassigned 状态、label autocomplete、创建、跨 workspace issues 的 inline rename/delete，以及稳定 E2E anchors；properties rendering 保持 memo boundary。
 - **properties-sidebar.test.tsx**: Regression tests for the label add trigger accessible name, decorative icon state, and label update payload.
 - **relation-manager.tsx**: Issue relation management controls split into Blocks, Blocked by, Duplicates, Duplicated by, and Related to sections, each with target issue autocomplete and direction-aware add/remove actions.
 - **relation-manager.test.tsx**: Regression tests for semantic relation sections, direction-aware labels, autocomplete selection, and typed issue ID resolution.

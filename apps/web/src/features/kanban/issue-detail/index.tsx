@@ -8,6 +8,8 @@ import { AgentSessionPanel } from './agent-session-panel'
 import { IssueDescription } from './issue-description'
 import { IssueHeader } from './issue-header'
 import { IssueTitle } from './issue-title'
+import { MilestoneBanner } from './milestone-banner'
+import { calculateMilestoneProgress } from './milestone-progress'
 import { PropertiesSidebar } from './properties-sidebar'
 import { SubIssuesList } from './sub-issues-list'
 
@@ -16,10 +18,11 @@ interface IssueDetailProps {
   workspaceId: string
   issues: KanbanIssue[]
   onOpenIssue: (id: string) => void
+  onOpenMilestone?: (id: string) => void
   onBack: () => void
 }
 
-export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onBack }: IssueDetailProps) {
+export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenMilestone, onBack }: IssueDetailProps) {
   const { data: issue, isLoading, isError, error } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
@@ -84,6 +87,16 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onBack 
   const parentIssue = useMemo(
     () => issue?.parentIssueId ? issues.find(candidate => candidate.id === issue.parentIssueId) : undefined,
     [issues, issue?.parentIssueId],
+  )
+
+  const currentMilestone = useMemo(
+    () => issue?.milestoneId ? milestones.find(milestone => milestone.id === issue.milestoneId) : undefined,
+    [issue?.milestoneId, milestones],
+  )
+
+  const milestoneProgress = useMemo(
+    () => calculateMilestoneProgress(issues, statuses, currentMilestone?.id ?? null),
+    [currentMilestone?.id, issues, statuses],
   )
 
   const previousSiblingIssue = siblingIndex > 0 ? siblingIssues[siblingIndex - 1] : undefined
@@ -154,6 +167,15 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onBack 
         <div className="flex-1 overflow-y-auto px-10 py-6">
           <div>
             <IssueTitle issue={issue} onUpdate={handleUpdate} />
+
+            {currentMilestone && (
+              <MilestoneBanner
+                milestone={currentMilestone}
+                progress={milestoneProgress}
+                onOpenMilestone={onOpenMilestone}
+              />
+            )}
+
             <IssueDescription issue={issue} onUpdate={handleUpdate} />
 
             <div className="mt-8">
@@ -176,9 +198,9 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onBack 
         <div className="w-70 shrink-0 overflow-y-auto px-3 py-6">
           <PropertiesSidebar
             issue={issue}
+            issues={issues}
             statuses={statuses}
             milestones={milestones}
-            workspaceId={workspaceId}
             onUpdate={handleUpdate}
           />
         </div>

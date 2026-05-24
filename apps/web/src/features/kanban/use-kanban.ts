@@ -119,6 +119,8 @@ type UpdateIssueInput = {
   }>
 }
 
+type PatchIssueLabelsInput = { patches: { issueId: string, labels: string[] }[] }
+
 type BulkUpdateIssuesInput = { ids: string[], patch: UpdateIssueInput['patch'] }
 type MoveIssueInput = { id: string, statusId: string | null }
 type AddCommentInput = { issueId: string, content: string }
@@ -514,6 +516,25 @@ export function useBulkUpdateIssues() {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       for (const id of vars.ids) {
         qc.invalidateQueries({ queryKey: kanbanKeys.issue(id) })
+      }
+    },
+  })
+}
+
+export function usePatchIssueLabels() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: PatchIssueLabelsInput) => {
+      const rows = await Promise.all(vars.patches.map(async (patch) => {
+        const { data } = await patchIssuesById({ path: { id: patch.issueId }, body: { labels: patch.labels } })
+        return KanbanIssueSchema.parse(data) satisfies KanbanIssue
+      }))
+      return rows
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      for (const patch of vars.patches) {
+        qc.invalidateQueries({ queryKey: kanbanKeys.issue(patch.issueId) })
       }
     },
   })
