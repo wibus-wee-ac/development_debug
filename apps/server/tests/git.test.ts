@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -24,7 +24,7 @@ interface GitFileStatus {
 }
 
 interface GitBranches {
-  local: Array<{ name: string, isCurrent: boolean, tracking?: string }>
+  local: Array<{ name: string; isCurrent: boolean; tracking?: string }>
   remote: Array<{ name: string }>
 }
 
@@ -44,8 +44,7 @@ function runGit(dir: string, args: string[]): string {
 function initGitRepository(dir: string): void {
   try {
     runGit(dir, ['init', '--initial-branch=main'])
-  }
-  catch {
+  } catch {
     runGit(dir, ['init'])
     runGit(dir, ['symbolic-ref', 'HEAD', 'refs/heads/main'])
   }
@@ -82,56 +81,91 @@ describe('git capability', () => {
     try {
       createGitWorkspaceFixture(workspaceRoot)
       app = await createServerApp()
-      db().insert(workspaces).values({
-        id: 'workspace-git',
-        name: 'Workspace Git',
-        path: workspaceRoot,
-      }).run()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-git',
+          name: 'Workspace Git',
+          path: workspaceRoot
+        })
+        .run()
 
-      const statusRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
+      const statusRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/status')
+      )
       expect(statusRes.status).toBe(200)
-      expect(await statusRes.json()).toEqual(expect.objectContaining<Partial<GitStatus>>({
-        branch: 'main',
-        isDetached: false,
-        files: [],
-      }))
+      expect(await statusRes.json()).toEqual(
+        expect.objectContaining<Partial<GitStatus>>({
+          branch: 'main',
+          isDetached: false,
+          files: []
+        })
+      )
 
       writeFileSync(join(workspaceRoot, 'src.test.ts'), 'test file\n', 'utf8')
       writeFileSync(join(workspaceRoot, 'notes.txt'), 'changed notes\n', 'utf8')
+      unlinkSync(join(workspaceRoot, 'main.txt'))
 
-      const statusWithChangesRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
+      const statusWithChangesRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/status')
+      )
       expect(statusWithChangesRes.status).toBe(200)
-      const statusWithChanges = await statusWithChangesRes.json() as GitStatus
-      expect(statusWithChanges.files).toEqual(expect.arrayContaining([
-        { path: 'notes.txt', status: 'modified' },
-        { path: 'src.test.ts', status: 'untracked' },
-      ]))
+      const statusWithChanges = (await statusWithChangesRes.json()) as GitStatus
+      expect(statusWithChanges.files).toEqual(
+        expect.arrayContaining([
+          { path: 'main.txt', status: 'deleted' },
+          { path: 'notes.txt', status: 'modified' },
+          { path: 'src.test.ts', status: 'untracked' }
+        ])
+      )
 
-      const branchesRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/branches'))
+      const diffRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/diff')
+      )
+      expect(diffRes.status).toBe(200)
+      const diff = await diffRes.text()
+      expect(diff).toContain('diff --git a/main.txt b/main.txt')
+      expect(diff).toContain('deleted file mode')
+      expect(diff).toContain('diff --git a/notes.txt b/notes.txt')
+      expect(diff).toContain('diff --git a/src.test.ts b/src.test.ts')
+      expect(diff).toContain('new file mode')
+
+      const untrackedDiffRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/diff?paths=src.test.ts')
+      )
+      expect(untrackedDiffRes.status).toBe(200)
+      const untrackedDiff = await untrackedDiffRes.text()
+      expect(untrackedDiff).toContain('diff --git a/src.test.ts b/src.test.ts')
+      expect(untrackedDiff).not.toContain('diff --git a/notes.txt b/notes.txt')
+
+      const branchesRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/branches')
+      )
       expect(branchesRes.status).toBe(200)
-      const branches = await branchesRes.json() as GitBranches
-      expect(branches.local).toEqual(expect.arrayContaining([
-        expect.objectContaining({ name: 'main', isCurrent: true }),
-        expect.objectContaining({ name: 'seed-branch', isCurrent: false }),
-      ]))
+      const branches = (await branchesRes.json()) as GitBranches
+      expect(branches.local).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: 'main', isCurrent: true }),
+          expect.objectContaining({ name: 'seed-branch', isCurrent: false })
+        ])
+      )
 
-      const graphRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/graph?limit=100'))
+      const graphRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/graph?limit=100')
+      )
       expect(graphRes.status).toBe(200)
-      const graph = await graphRes.json() as GitGraphCommit[]
-      expect(graph.map(commit => commit.subject)).toEqual(expect.arrayContaining([
-        'main: third commit',
-        'seed: branch commit',
-      ]))
+      const graph = (await graphRes.json()) as GitGraphCommit[]
+      expect(graph.map((commit) => commit.subject)).toEqual(
+        expect.arrayContaining(['main: third commit', 'seed: branch commit'])
+      )
       expect(graph[0]?.shortSha.length).toBe(7)
-    }
-    finally {
+    } finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      }
-      else {
+      } else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }
@@ -148,46 +182,55 @@ describe('git capability', () => {
     try {
       createGitWorkspaceFixture(workspaceRoot)
       app = await createServerApp()
-      db().insert(workspaces).values({
-        id: 'workspace-git',
-        name: 'Workspace Git',
-        path: workspaceRoot,
-      }).run()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-git',
+          name: 'Workspace Git',
+          path: workspaceRoot
+        })
+        .run()
 
-      const createBranchRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/branches', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: 'feature/http-git' }),
-      }))
+      const createBranchRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/branches', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: 'feature/http-git' })
+        })
+      )
       expect(createBranchRes.status).toBe(200)
       expect(await createBranchRes.json()).toEqual({ ok: true })
 
-      const statusAfterCreateRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
-      const statusAfterCreate = await statusAfterCreateRes.json() as GitStatus
+      const statusAfterCreateRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/status')
+      )
+      const statusAfterCreate = (await statusAfterCreateRes.json()) as GitStatus
       expect(statusAfterCreate.branch).toBe('feature/http-git')
       expect(runGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('feature/http-git')
 
-      const checkoutRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/checkout', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ branch: 'seed-branch' }),
-      }))
+      const checkoutRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/checkout', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ branch: 'seed-branch' })
+        })
+      )
       expect(checkoutRes.status).toBe(200)
       expect(await checkoutRes.json()).toEqual({ ok: true })
 
-      const statusAfterCheckoutRes = await app.handle(new Request('http://localhost/workspaces/workspace-git/git/status'))
-      const statusAfterCheckout = await statusAfterCheckoutRes.json() as GitStatus
+      const statusAfterCheckoutRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-git/git/status')
+      )
+      const statusAfterCheckout = (await statusAfterCheckoutRes.json()) as GitStatus
       expect(statusAfterCheckout.branch).toBe('seed-branch')
       expect(runGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('seed-branch')
-    }
-    finally {
+    } finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      }
-      else {
+      } else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }
@@ -202,28 +245,33 @@ describe('git capability', () => {
 
     try {
       app = await createServerApp()
-      db().insert(workspaces).values({
-        id: 'workspace-plain',
-        name: 'Workspace Plain',
-        path: plainWorkspaceRoot,
-      }).run()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-plain',
+          name: 'Workspace Plain',
+          path: plainWorkspaceRoot
+        })
+        .run()
 
-      const missingWorkspace = await app.handle(new Request('http://localhost/workspaces/missing/git/status'))
+      const missingWorkspace = await app.handle(
+        new Request('http://localhost/workspaces/missing/git/status')
+      )
       expect(missingWorkspace.status).toBe(404)
       expect((await missingWorkspace.json()).code).toBe('workspace_not_found')
 
-      const nonGitWorkspace = await app.handle(new Request('http://localhost/workspaces/workspace-plain/git/status'))
+      const nonGitWorkspace = await app.handle(
+        new Request('http://localhost/workspaces/workspace-plain/git/status')
+      )
       expect(nonGitWorkspace.status).toBe(409)
       expect((await nonGitWorkspace.json()).code).toBe('git_repository_unavailable')
-    }
-    finally {
+    } finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(plainWorkspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      }
-      else {
+      } else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }

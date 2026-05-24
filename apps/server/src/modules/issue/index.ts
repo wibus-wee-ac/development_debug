@@ -182,10 +182,11 @@ export const issue = new Elysia({
   })
   .post('/:id/comments', ({ params, body, request }) => {
     const actor = resolveActorContext(request)
+    const authorKind = actor.kind === 'provider-target' ? 'system' : actor.kind
     return Issue.addComment({
       issueId: params.id,
       content: body.content,
-      authorKind: actor.kind,
+      authorKind,
       authorId: actor.id,
     })
   }, {

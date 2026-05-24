@@ -1,17 +1,12 @@
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
 
+import type { ChatToolEntity, ToolAnchorPart } from './chat-tool-entities'
+import { readToolAnchorPart } from './chat-tool-entities'
+import type { ToolState } from './tool-ui-classifier'
+
 type AiMessagePart = UIMessage['parts'][number]
-type MessagePart = AiMessagePart | {
-  type: 'dynamic-tool'
-  toolName: string
-  toolCallId: string
-  state: string
-  argumentsText?: string
-  input?: unknown
-  output?: unknown
-  errorText?: string
-}
+type MessagePart = AiMessagePart | ToolAnchorPart
 type TextPartKind = 'text' | 'reasoning'
 
 const MutableTextPartSchema = z.custom<{ type: TextPartKind, text: string }>((part) => {
@@ -32,14 +27,12 @@ const MutablePartStateSchema = z.custom<{ state?: string } | undefined>((part) =
   return true
 })
 
-const MutableToolPartSchema = z.custom<{ toolCallId: string, state?: string, argumentsText?: string, input?: unknown, output?: unknown, errorText?: string }>((part) => {
+const MutableToolAnchorPartSchema = z.custom<ToolAnchorPart>((part) => {
   z.object({
+    type: z.literal('dynamic-tool'),
     toolCallId: z.string(),
-    state: z.string().optional(),
-    argumentsText: z.string().optional(),
-    input: z.unknown().optional(),
-    output: z.unknown().optional(),
-    errorText: z.string().optional(),
+    toolName: z.string(),
+    state: z.string(),
   }).passthrough().parse(part)
   return true
 })
@@ -85,6 +78,12 @@ export interface ChatMessageSnapshotRow {
   depth: number
 }
 
+export interface ChatToolEntityPatch {
+  partIndex: number
+  toolCallId: string
+  updater: (entity: ChatToolEntity) => ChatToolEntity
+}
+
 export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[]): UIMessage {
   const next = {
     ...message,
@@ -103,29 +102,14 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
         updatePartState(next.parts, delta.partIndex, 'done')
         break
       case 'tool_arguments_append':
-        updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.argumentsText = `${part.argumentsText ?? ''}${delta.text}`
-        })
         break
       case 'tool_input_set':
-        updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.input = delta.input
-          part.state = 'input-available'
-        })
+        updateToolAnchorState(next.parts, delta.partIndex, 'input-available')
         break
       case 'tool_output_streaming':
-        updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.output = `${z.string().parse(part.output)}${delta.text}`
-        })
         break
       case 'tool_output_set':
-        updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.state = delta.state
-          if ('output' in delta) {
-            part.output = delta.output
-          }
-          part.errorText = delta.errorText
-        })
+        updateToolAnchorState(next.parts, delta.partIndex, delta.state)
         break
       case 'metadata_update':
         Object.assign(MessageMetadataCarrierSchema.parse(next), { metadata: delta.metadata })
@@ -134,6 +118,120 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
   }
 
   return next as UIMessage
+}
+
+export function collectChatToolEntityPatches(
+  message: UIMessage,
+  deltas: ChatPartDelta[],
+): ChatToolEntityPatch[] {
+  const orderedDeltas = [...deltas].sort((left, right) => left.seq - right.seq)
+  const patches: ChatToolEntityPatch[] = []
+
+  for (const delta of orderedDeltas) {
+    switch (delta.type) {
+      case 'part_add': {
+        const toolAnchor = readToolAnchorPart(message.parts, delta.partIndex)
+        const part = 'toolCallId' in delta.part ? delta.part : null
+        if (!part || !toolAnchor) {
+          break
+        }
+        const toolName = toolAnchor.toolName
+        const state = toolAnchor.state
+        patches.push({
+          partIndex: delta.partIndex,
+          toolCallId: toolAnchor.toolCallId,
+          updater: entity => ({
+            ...entity,
+            messageId: message.id,
+            toolCallId: toolAnchor.toolCallId,
+            toolName,
+            state,
+          }),
+        })
+        break
+      }
+      case 'tool_arguments_append': {
+        const toolAnchor = readToolAnchorPart(message.parts, delta.partIndex)
+        if (!toolAnchor) {
+          break
+        }
+        patches.push({
+          partIndex: delta.partIndex,
+          toolCallId: toolAnchor.toolCallId,
+          updater: entity => ({
+            ...entity,
+            messageId: message.id,
+            toolCallId: toolAnchor.toolCallId,
+            toolName: entity.toolName || toolAnchor.toolName,
+            state: entity.state ?? toolAnchor.state,
+            argumentsText: `${entity.argumentsText ?? ''}${delta.text}`,
+          }),
+        })
+        break
+      }
+      case 'tool_input_set': {
+        const toolAnchor = readToolAnchorPart(message.parts, delta.partIndex)
+        if (!toolAnchor) {
+          break
+        }
+        patches.push({
+          partIndex: delta.partIndex,
+          toolCallId: toolAnchor.toolCallId,
+          updater: entity => ({
+            ...entity,
+            messageId: message.id,
+            toolCallId: toolAnchor.toolCallId,
+            toolName: entity.toolName || toolAnchor.toolName,
+            state: 'input-available',
+            input: delta.input,
+          }),
+        })
+        break
+      }
+      case 'tool_output_streaming': {
+        const toolAnchor = readToolAnchorPart(message.parts, delta.partIndex)
+        if (!toolAnchor) {
+          break
+        }
+        patches.push({
+          partIndex: delta.partIndex,
+          toolCallId: toolAnchor.toolCallId,
+          updater: entity => ({
+            ...entity,
+            messageId: message.id,
+            toolCallId: toolAnchor.toolCallId,
+            toolName: entity.toolName || toolAnchor.toolName,
+            output: `${z.string().parse(entity.output ?? '')}${delta.text}`,
+          }),
+        })
+        break
+      }
+      case 'tool_output_set': {
+        const toolAnchor = readToolAnchorPart(message.parts, delta.partIndex)
+        if (!toolAnchor) {
+          break
+        }
+        patches.push({
+          partIndex: delta.partIndex,
+          toolCallId: toolAnchor.toolCallId,
+          updater: entity => ({
+            ...entity,
+            messageId: message.id,
+            toolCallId: toolAnchor.toolCallId,
+            toolName: entity.toolName || toolAnchor.toolName,
+            state: delta.state,
+            output: 'output' in delta ? delta.output : entity.output,
+            errorText: delta.errorText,
+          }),
+        })
+        break
+      }
+      default:
+        break
+    }
+  }
+
+  return patches
 }
 
 function updateTextPart(
@@ -155,9 +253,9 @@ function updatePartState(parts: MessagePart[], index: number, state: 'done'): vo
   }
 }
 
-function updateToolPart(parts: MessagePart[], index: number, update: (part: { state?: string, argumentsText?: string, input?: unknown, output?: unknown, errorText?: string }) => void): void {
-  const part = MutableToolPartSchema.parse(parts[index])
-  update(part)
+function updateToolAnchorState(parts: MessagePart[], index: number, state: ToolState): void {
+  const part = MutableToolAnchorPartSchema.parse(parts[index])
+  part.state = state
 }
 
 function clonePart(part: MessagePart): MessagePart {

@@ -4,6 +4,8 @@ import { z } from 'zod'
 import {
   getWorkspacesByIdGitBranchesOptions,
   getWorkspacesByIdGitBranchesQueryKey,
+  getWorkspacesByIdGitDiffOptions,
+  getWorkspacesByIdGitDiffQueryKey,
   getWorkspacesByIdGitGraphOptions,
   getWorkspacesByIdGitGraphQueryKey,
   getWorkspacesByIdGitStatusOptions,
@@ -60,6 +62,7 @@ const GitGraphCommitListSchema = z.array(z.object({
 export { getWorkspacesByIdGitStatusQueryKey as gitStatusQueryKey }
 export { getWorkspacesByIdGitBranchesQueryKey as gitBranchesQueryKey }
 export { getWorkspacesByIdGitGraphQueryKey as gitGraphQueryKey }
+export { getWorkspacesByIdGitDiffQueryKey as gitDiffQueryKey }
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
@@ -118,5 +121,19 @@ export function useGitGraph(workspaceId: string | null | undefined, limit: numbe
     retry: false,
     placeholderData: keepPreviousData,
     select: data => GitGraphCommitListSchema.parse(data) satisfies GitGraphCommit[],
+  })
+}
+
+export function useGitDiff(workspaceId: string | null | undefined, paths?: string[]) {
+  const pathsStr = paths?.length ? paths.join(',') : undefined
+  return useQuery({
+    ...getWorkspacesByIdGitDiffOptions({
+      path: { id: workspaceId! },
+      ...(pathsStr ? { query: { paths: pathsStr } } : {}),
+    }),
+    ...queryRefreshPolicies.active,
+    enabled: !!workspaceId,
+    retry: false,
+    select: data => (typeof data === 'string' ? data : ''),
   })
 }

@@ -1,6 +1,5 @@
 import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
-import { agentProfiles } from './identity'
 import { textPk, timestamps } from './shared'
 
 export const externalProviderSources = sqliteTable('external_provider_sources', {
@@ -47,24 +46,32 @@ export const externalProviderRecords = sqliteTable('external_provider_records', 
   byStatus: index('external_provider_records_status_idx').on(table.status),
 }))
 
-export const externalProviderProfileLinks = sqliteTable('external_provider_profile_links', {
-  id: textPk(),
-  sourceKey: text('source_key').notNull(),
-  externalRecordId: text('external_record_id').notNull(),
-  profileId: text('profile_id').notNull().references(() => agentProfiles.id, { onDelete: 'restrict' }),
-  credentialRef: text('credential_ref'),
-  sourceOwnedFieldsJson: text('source_owned_fields_json').notNull().default('[]'),
-  lastProjectedFingerprint: text('last_projected_fingerprint').notNull(),
-  ...timestamps(),
-}, table => ({
-  byProfile: uniqueIndex('external_provider_profile_links_profile_unique').on(table.profileId),
-  bySourceRecord: uniqueIndex('external_provider_profile_links_source_record_unique').on(table.sourceKey, table.externalRecordId),
-  bySource: index('external_provider_profile_links_source_idx').on(table.sourceKey),
-}))
-
 export type ExternalProviderSource = typeof externalProviderSources.$inferSelect
 export type NewExternalProviderSource = typeof externalProviderSources.$inferInsert
 export type ExternalProviderRecord = typeof externalProviderRecords.$inferSelect
 export type NewExternalProviderRecord = typeof externalProviderRecords.$inferInsert
-export type ExternalProviderProfileLink = typeof externalProviderProfileLinks.$inferSelect
-export type NewExternalProviderProfileLink = typeof externalProviderProfileLinks.$inferInsert
+
+export const externalProviderRuntimeTargets = sqliteTable('external_provider_runtime_targets', {
+  id: textPk(),
+  sourceKey: text('source_key').notNull(),
+  externalRecordId: text('external_record_id').notNull(),
+  providerKind: text('provider_kind', {
+    enum: ['openai-compatible', 'anthropic'],
+  }).notNull(),
+  displayName: text('display_name').notNull(),
+  enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
+  configJson: text('config_json').notNull().default('{}'),
+  credentialRef: text('credential_ref'),
+  customModelsJson: text('custom_models_json').notNull().default('[]'),
+  modelRegistryMappingsJson: text('model_registry_mappings_json').notNull().default('[]'),
+  iconSlug: text('icon_slug'),
+  lastResolvedFingerprint: text('last_resolved_fingerprint').notNull(),
+  ...timestamps(),
+}, table => ({
+  bySourceRecord: uniqueIndex('external_provider_runtime_targets_source_record_unique')
+    .on(table.sourceKey, table.externalRecordId),
+  byEnabled: index('external_provider_runtime_targets_enabled_idx').on(table.enabled),
+}))
+
+export type ExternalProviderRuntimeTarget = typeof externalProviderRuntimeTargets.$inferSelect
+export type NewExternalProviderRuntimeTarget = typeof externalProviderRuntimeTargets.$inferInsert

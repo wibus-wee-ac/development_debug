@@ -24,7 +24,7 @@ export const AgentIdentityModel = {
     avatarUrl: t.Nullable(t.String()),
     avatarStyle: t.String(),
     avatarSeed: t.String(),
-    agentProfileId: t.Nullable(t.String()),
+    providerTargetId: t.Nullable(t.String()),
     modelId: t.Nullable(t.String()),
     thinkingEffort: thinkingEffortEnum,
     runtimeKind: runtimeKindEnum,
@@ -40,7 +40,7 @@ export const AgentIdentityModel = {
 
   listQuery: t.Object({
     enabled: t.Optional(t.String()),
-    agentProfileId: t.Optional(t.String()),
+    providerTargetId: t.Optional(t.String()),
   }),
 
   createBody: t.Object({
@@ -48,7 +48,7 @@ export const AgentIdentityModel = {
     description: t.Optional(t.Nullable(t.String())),
     avatarStyle: t.String({ minLength: 1 }),
     avatarSeed: t.String({ minLength: 1 }),
-    agentProfileId: t.Optional(t.Nullable(t.String())),
+    providerTargetId: t.Optional(t.Nullable(t.String())),
     modelId: t.Optional(t.Nullable(t.String())),
     thinkingEffort: t.Optional(thinkingEffortEnum),
     runtimeKind: t.Optional(runtimeKindEnum),
@@ -60,7 +60,7 @@ export const AgentIdentityModel = {
     description: t.Optional(t.Nullable(t.String())),
     avatarStyle: t.Optional(t.String({ minLength: 1 })),
     avatarSeed: t.Optional(t.String({ minLength: 1 })),
-    agentProfileId: t.Optional(t.Nullable(t.String())),
+    providerTargetId: t.Optional(t.Nullable(t.String())),
     modelId: t.Optional(t.Nullable(t.String())),
     thinkingEffort: t.Optional(thinkingEffortEnum),
     runtimeKind: t.Optional(runtimeKindEnum),

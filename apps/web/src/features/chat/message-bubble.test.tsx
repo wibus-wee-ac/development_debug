@@ -9,6 +9,7 @@ import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { useChatStore } from '~/store/chat'
 
 import { MessageBubble } from './message-bubble'
 
@@ -18,6 +19,18 @@ vi.mock('@cradle/streamdown', () => ({
 
 afterEach(() => {
   cleanup()
+  useChatStore.setState(state => ({
+    ...state,
+    messagesMap: new Map(),
+    toolCallIdsByMessageId: new Map(),
+    toolEntitiesMap: new Map(),
+    subagentMessagesMap: new Map(),
+    generatingMessageIds: new Set(),
+    activeAbortControllers: new Map(),
+    runDisplayMetaMap: new Map(),
+    errorMap: new Map(),
+    sessionMetaMap: new Map(),
+  }))
 })
 
 const messageWithToolCall: UIMessage = {
@@ -37,7 +50,26 @@ const messageWithToolCall: UIMessage = {
 }
 
 describe('message bubble', () => {
+  function seedToolEntity() {
+    useChatStore.setState(state => ({
+      ...state,
+      toolCallIdsByMessageId: new Map([[messageWithToolCall.id, ['tool-1']]]),
+      toolEntitiesMap: new Map([[
+        'tool-1',
+        {
+          toolCallId: 'tool-1',
+          messageId: messageWithToolCall.id,
+          toolName: 'unknown_tool',
+          state: 'output-available',
+          input: { action: 'inspect' },
+          output: { ok: true },
+        },
+      ]]),
+    }))
+  }
+
   it('keeps execution details folded by default', () => {
+    seedToolEntity()
     render(
       <TooltipProvider>
         <MessageBubble message={messageWithToolCall} isStreaming={false} />
@@ -50,6 +82,7 @@ describe('message bubble', () => {
   })
 
   it('renders execution details immediately when default-open is requested', () => {
+    seedToolEntity()
     render(
       <TooltipProvider>
         <MessageBubble

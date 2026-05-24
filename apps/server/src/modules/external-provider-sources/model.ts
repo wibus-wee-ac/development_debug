@@ -80,21 +80,11 @@ export const ExternalProviderSourcesModel = {
     name: t.String(),
     providerKind: t.Union([t.Literal('anthropic'), t.Literal('openai-compatible')]),
     status: recordStatusSchema,
+    runtimeTargetEnabled: t.Boolean(),
     fingerprint: t.String(),
     metadata: t.Record(t.String(), t.Any()),
     warnings: t.Array(warningSchema),
     lastSeenAt: t.Number(),
-    createdAt: t.Number(),
-    updatedAt: t.Number(),
-  }),
-  profileLink: t.Object({
-    id: t.String(),
-    sourceKey: t.String(),
-    externalRecordId: t.String(),
-    profileId: t.String(),
-    credentialRef: t.Nullable(t.String()),
-    sourceOwnedFields: t.Array(t.String()),
-    lastProjectedFingerprint: t.String(),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -109,8 +99,12 @@ export const ExternalProviderSourcesModel = {
   refreshParams: t.Object({
     sourceKey: t.String({ minLength: 1 }),
   }),
-  profileParams: t.Object({
-    id: t.String({ minLength: 1 }),
+  recordParams: t.Object({
+    sourceKey: t.String({ minLength: 1 }),
+    externalRecordId: t.String({ minLength: 1 }),
+  }),
+  runtimeTargetPatch: t.Object({
+    enabled: t.Boolean(),
   }),
   providerRecord: providerRecordSchema,
   sourceCapabilities: sourceCapabilitiesSchema,

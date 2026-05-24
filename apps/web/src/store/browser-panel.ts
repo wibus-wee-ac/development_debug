@@ -22,7 +22,17 @@ export interface BrowserWorkspaceFileTab {
   favicon: null
 }
 
-export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab
+export interface BrowserWorkspaceDiffTab {
+  kind: 'workspace-diff'
+  id: string
+  workspaceId: string
+  paths?: string[]
+  title: string
+  loading: false
+  favicon: null
+}
+
+export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab | BrowserWorkspaceDiffTab
 
 let tabCounter = 0
 const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
@@ -40,8 +50,12 @@ interface BrowserPanelState {
   tabs: BrowserPanelTab[]
   activeTabId: string | null
   requestedTab: { id: number, url?: string } | null
+  scrollToFilePath: { path: string, tabId: string, nonce: number } | null
   createTab: (url?: string) => string
   openWorkspaceFileTab: (input: { workspaceId: string, path: string, view: BrowserWorkspaceFileTab['view'] }) => string
+  openWorkspaceDiffTab: (input: { workspaceId: string, paths?: string[], title?: string }) => string
+  requestScrollToFilePath: (input: { path: string, tabId: string }) => void
+  clearScrollToFilePath: () => void
   requestTab: (url?: string) => void
   fulfillRequestedTab: (id: number) => void
   closeTab: (id: string) => void
@@ -71,6 +85,7 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
   tabs: [],
   activeTabId: null,
   requestedTab: null,
+  scrollToFilePath: null,
 
   createTab: (url) => {
     const tab = createBrowserTab(url)
@@ -88,15 +103,24 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
       && tab.path === path)
 
     if (existingTab) {
-      set(s => ({
-        tabs: s.tabs.map((tab) => {
-          if (tab.id !== existingTab.id || tab.kind !== 'workspace-file') {
-            return tab
-          }
-          return { ...tab, view }
-        }),
-        activeTabId: existingTab.id,
-      }))
+      set((s) => {
+        if (
+          s.activeTabId === existingTab.id
+          && existingTab.kind === 'workspace-file'
+          && existingTab.view === view
+        ) {
+          return s
+        }
+        return {
+          tabs: s.tabs.map((tab) => {
+            if (tab.id !== existingTab.id || tab.kind !== 'workspace-file' || tab.view === view) {
+              return tab
+            }
+            return { ...tab, view }
+          }),
+          activeTabId: existingTab.id,
+        }
+      })
       return existingTab.id
     }
 
@@ -115,6 +139,42 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
       activeTabId: tab.id,
     }))
     return tab.id
+  },
+
+  openWorkspaceDiffTab: ({ workspaceId, paths, title }) => {
+    const pathsKey = paths ? [...paths].sort().join(',') : ''
+    const existingTab = _get().tabs.find(tab =>
+      tab.kind === 'workspace-diff'
+      && tab.workspaceId === workspaceId
+      && (tab.paths ? [...tab.paths].sort().join(',') : '') === pathsKey)
+
+    if (existingTab) {
+      set(s => (s.activeTabId === existingTab.id ? s : { activeTabId: existingTab.id }))
+      return existingTab.id
+    }
+
+    const tab: BrowserWorkspaceDiffTab = {
+      kind: 'workspace-diff',
+      id: `bt-${tabCounter++}`,
+      workspaceId,
+      paths,
+      title: title ?? (paths && paths.length === 1 ? getWorkspaceFileTabTitle(paths[0]) : 'Changes'),
+      loading: false,
+      favicon: null,
+    }
+    set(s => ({
+      tabs: [...s.tabs, tab],
+      activeTabId: tab.id,
+    }))
+    return tab.id
+  },
+
+  requestScrollToFilePath: ({ path, tabId }) => {
+    set({ scrollToFilePath: { path, tabId, nonce: Date.now() } })
+  },
+
+  clearScrollToFilePath: () => {
+    set({ scrollToFilePath: null })
   },
 
   requestTab: (url) => {
@@ -146,7 +206,7 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
   },
 
   setActiveTab: (id) => {
-    set({ activeTabId: id })
+    set(s => (s.activeTabId === id ? s : { activeTabId: id }))
   },
 
   updateTab: (id, updates) => {

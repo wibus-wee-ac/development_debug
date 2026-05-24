@@ -73,7 +73,6 @@ export function ResizeHandle({
       onPointerDown={handlePointerDown}
       className={cn(
         'group relative shrink-0 select-none touch-none z-10',
-        isH ? 'w-1.25 cursor-col-resize' : 'h-1.25 cursor-row-resize',
         className,
       )}
     >
@@ -81,6 +80,7 @@ export function ResizeHandle({
       <div
         className={cn(
           'absolute rounded-full transition-[background-color,opacity,transform] duration-300',
+          isH ? 'w-1.25 cursor-col-resize' : 'h-1.25 cursor-row-resize',
           isH ? 'inset-y-[10%] inset-x-0.5' : 'inset-x-[10%] inset-y-0.5',
           active ? 'bg-border/40' : 'bg-transparent group-hover:bg-border/20',
         )}

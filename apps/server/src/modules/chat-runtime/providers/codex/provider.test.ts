@@ -2,11 +2,10 @@
 // Input: Fake app-server client requests, notifications, and Chat Runtime turn inputs.
 // Position: Provider-owned tests for Codex streaming and live steer behavior.
 
-import type { AgentProfile } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 
-import type { RuntimeSession } from '../../runtime-provider-types'
+import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../runtime-provider-types'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexProvider } from './provider'
 
@@ -66,7 +65,7 @@ class FakeCodexAppServerClient {
   }
 }
 
-function createProfile(config: Record<string, unknown> = {}): AgentProfile {
+function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
   return {
     id: 'profile-codex',
     name: 'Codex',
@@ -83,8 +82,8 @@ function createProfile(config: Record<string, unknown> = {}): AgentProfile {
     credentialRef: null,
     customModels: '[]',
     iconSlug: null,
-    createdAt: 0,
-    updatedAt: 0,
+    providerTargetKind: 'manual',
+    providerTargetId: 'profile-codex',
   }
 }
 
@@ -92,7 +91,7 @@ function createRuntimeSession(providerSessionId: string | null = null): RuntimeS
   return {
     id: 'runtime-session-1',
     chatSessionId: 'chat-session-1',
-    agentProfileId: 'profile-codex',
+    providerTargetId: 'profile-codex',
     runtimeKind: 'codex',
     providerSessionId,
     providerStateSnapshot: JSON.stringify({
@@ -119,12 +118,13 @@ function createProvider(client: FakeCodexAppServerClient): CodexProvider {
   })
 }
 
-describe('CodexProvider app-server integration', () => {
+describe('codexProvider app-server integration', () => {
   it('streams app-server notifications and applies live steer to the active turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
+      runId: 'run-codex-test',
       runtimeSession,
       profile: createProfile(),
       message: createUserMessage('Implement the feature'),
@@ -192,6 +192,7 @@ describe('CodexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const stream = provider.streamTurn({
+      runId: 'run-codex-test',
       runtimeSession: createRuntimeSession('existing-thread'),
       profile: createProfile(),
       message: createUserMessage('Continue'),
@@ -226,6 +227,7 @@ describe('CodexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const stream = provider.streamTurn({
+      runId: 'run-codex-test',
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Segment messages'),
@@ -285,6 +287,7 @@ describe('CodexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const stream = provider.streamTurn({
+      runId: 'run-codex-test',
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Avoid replay'),
@@ -342,6 +345,7 @@ describe('CodexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const stream = provider.streamTurn({
+      runId: 'run-codex-test',
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Interleave tools'),

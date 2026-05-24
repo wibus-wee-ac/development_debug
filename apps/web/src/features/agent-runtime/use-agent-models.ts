@@ -3,7 +3,8 @@ import { useQueries, useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { getProfilesById, getProvidersByProfileIdModelsCache } from '~/api-gen/sdk.gen'
-import type { AgentProfile, ModelDescriptor } from '~/lib/types'
+import { getServerUrl } from '~/lib/electron'
+import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import { ModelVisibilitySchema, filterVisibleModels } from './model-visibility'
 import { ProfileConfigJsonSchema } from './profile-config-schema'
@@ -16,11 +17,22 @@ const MODEL_INVENTORY_QUERY_OPTIONS = {
   refetchOnMount: false,
   refetchOnWindowFocus: false,
   refetchOnReconnect: false,
-  retry: false,
+  retry: false
 } as const
 
 export function agentModelsQueryKey(profileId: string | null) {
   return [...AGENT_MODELS_QUERY_KEY, profileId ?? 'no-profile'] as const
+}
+
+export function providerTargetModelsQueryKey(target: ProviderTarget | null) {
+  return [
+    ...AGENT_MODELS_QUERY_KEY,
+    target ? `${target.kind}:${target.id}` : 'no-provider-target'
+  ] as const
+}
+
+function providerTargetPath(target: ProviderTarget): string {
+  return `${encodeURIComponent(target.kind)}/${encodeURIComponent(target.id)}`
 }
 
 const EMPTY_INITIAL_PROFILE_IDS: ReadonlyArray<string | null> = []
@@ -35,45 +47,83 @@ const AgentProfileSchema = z.object({
   customModels: z.string(),
   iconSlug: z.string().nullable(),
   createdAt: z.number(),
-  updatedAt: z.number(),
+  updatedAt: z.number()
 })
 const ModelDescriptorSchema = z.object({
   id: z.string(),
   label: z.string(),
   providerKind: z.enum(['openai-compatible', 'anthropic']),
-  capabilities: z.object({
-    contextWindow: z.number().optional(),
-    maxOutput: z.number().optional(),
-    inputModalities: z.array(z.string()).optional(),
-    outputModalities: z.array(z.string()).optional(),
-    reasoning: z.boolean().optional(),
-    toolCall: z.boolean().optional(),
-    temperature: z.boolean().optional(),
-    structuredOutput: z.boolean().optional(),
-    cost: z.object({
-      input: z.number().optional(),
-      output: z.number().optional(),
-      cacheRead: z.number().optional(),
-      cacheWrite: z.number().optional(),
-    }).optional(),
-    family: z.string().optional(),
-    knowledgeCutoff: z.string().optional(),
-    releaseDate: z.string().optional(),
-    registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
-    registryModelId: z.string().optional(),
-    registryModelLabel: z.string().optional(),
-  }).default({}),
+  capabilities: z
+    .object({
+      contextWindow: z.number().optional(),
+      maxOutput: z.number().optional(),
+      inputModalities: z.array(z.string()).optional(),
+      outputModalities: z.array(z.string()).optional(),
+      reasoning: z.boolean().optional(),
+      toolCall: z.boolean().optional(),
+      temperature: z.boolean().optional(),
+      structuredOutput: z.boolean().optional(),
+      cost: z
+        .object({
+          input: z.number().optional(),
+          output: z.number().optional(),
+          cacheRead: z.number().optional(),
+          cacheWrite: z.number().optional()
+        })
+        .optional(),
+      family: z.string().optional(),
+      knowledgeCutoff: z.string().optional(),
+      releaseDate: z.string().optional(),
+      registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+      registryModelId: z.string().optional(),
+      registryModelLabel: z.string().optional()
+    })
+    .default({})
 })
 const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
+const ProviderTargetModelSettingsSchema = z.object({
+  configJson: z.string()
+})
+const ProviderTargetModelsCacheSchema = z.object({
+  models: ModelDescriptorListSchema,
+  cached: z.boolean(),
+  stale: z.boolean(),
+  providerLabel: z.string()
+})
 
-async function fetchCachedVisibleModelsForProfile(profile: AgentProfile): Promise<ModelDescriptor[]> {
+async function fetchCachedVisibleModelsForProfile(
+  profile: AgentProfile
+): Promise<ModelDescriptor[]> {
   const config = ProfileConfigJsonSchema.parse(profile.configJson)
   const visibility = ModelVisibilitySchema.parse(config.enabledModels)
 
   const { data: cache } = await getProvidersByProfileIdModelsCache({
     path: { profileId: profile.id },
-    throwOnError: true,
+    throwOnError: true
   })
+  if (!cache.cached || cache.models.length === 0) {
+    return []
+  }
+
+  const models = ModelDescriptorListSchema.parse(cache.models) satisfies ModelDescriptor[]
+  return filterVisibleModels(models, visibility)
+}
+
+async function fetchCachedVisibleModelsForProviderTarget(
+  target: ProviderTarget
+): Promise<ModelDescriptor[]> {
+  const [settingsResponse, cacheResponse] = await Promise.all([
+    fetch(`${getServerUrl()}/provider-targets/${providerTargetPath(target)}/model-settings`),
+    fetch(`${getServerUrl()}/providers/targets/${providerTargetPath(target)}/models-cache`)
+  ])
+  if (!settingsResponse.ok || !cacheResponse.ok) {
+    return []
+  }
+
+  const settings = ProviderTargetModelSettingsSchema.parse(await settingsResponse.json())
+  const config = ProfileConfigJsonSchema.parse(settings.configJson)
+  const visibility = ModelVisibilitySchema.parse(config.enabledModels)
+  const cache = ProviderTargetModelsCacheSchema.parse(await cacheResponse.json())
   if (!cache.cached || cache.models.length === 0) {
     return []
   }
@@ -94,7 +144,23 @@ export function useAgentModels(profileId: string | null) {
       const profile = AgentProfileSchema.parse(profileData) satisfies AgentProfile
       return fetchCachedVisibleModelsForProfile(profile)
     },
-    ...MODEL_INVENTORY_QUERY_OPTIONS,
+    ...MODEL_INVENTORY_QUERY_OPTIONS
+  })
+
+  return { models, isLoading }
+}
+
+export function useProviderTargetModels(target: ProviderTarget | null) {
+  const { data: models = [], isLoading } = useQuery({
+    queryKey: providerTargetModelsQueryKey(target),
+    enabled: target !== null,
+    queryFn: async (): Promise<ModelDescriptor[]> => {
+      if (!target) {
+        return []
+      }
+      return fetchCachedVisibleModelsForProviderTarget(target)
+    },
+    ...MODEL_INVENTORY_QUERY_OPTIONS
   })
 
   return { models, isLoading }
@@ -102,10 +168,10 @@ export function useAgentModels(profileId: string | null) {
 
 export function useAgentModelMap(
   profiles: AgentProfile[],
-  initialProfileIds: ReadonlyArray<string | null> = EMPTY_INITIAL_PROFILE_IDS,
+  initialProfileIds: ReadonlyArray<string | null> = EMPTY_INITIAL_PROFILE_IDS
 ) {
   const [requestedProfileIds, setRequestedProfileIds] = useState<Set<string>>(
-    () => new Set(initialProfileIds.flatMap(profileId => profileId ? [profileId] : [])),
+    () => new Set(initialProfileIds.flatMap((profileId) => (profileId ? [profileId] : [])))
   )
 
   useEffect(() => {
@@ -123,17 +189,17 @@ export function useAgentModelMap(
   }, [initialProfileIds])
 
   const requestedProfiles = useMemo(
-    () => profiles.filter(profile => requestedProfileIds.has(profile.id)),
-    [profiles, requestedProfileIds],
+    () => profiles.filter((profile) => requestedProfileIds.has(profile.id)),
+    [profiles, requestedProfileIds]
   )
 
   const queries = useQueries({
-    queries: requestedProfiles.map(profile => ({
+    queries: requestedProfiles.map((profile) => ({
       queryKey: agentModelsQueryKey(profile.id),
       queryFn: () => fetchCachedVisibleModelsForProfile(profile),
       enabled: profile.enabled,
-      ...MODEL_INVENTORY_QUERY_OPTIONS,
-    })),
+      ...MODEL_INVENTORY_QUERY_OPTIONS
+    }))
   })
 
   const requestProfileModels = useCallback((profileId: string) => {
@@ -153,7 +219,9 @@ export function useAgentModelMap(
 
   requestedProfiles.forEach((profile, index) => {
     const query = queries[index]
-    modelsByProfileId[profile.id] = ModelDescriptorListSchema.parse(query?.data) satisfies ModelDescriptor[]
+    modelsByProfileId[profile.id] = ModelDescriptorListSchema.parse(
+      query?.data
+    ) satisfies ModelDescriptor[]
     if (query?.isLoading || query?.isFetching) {
       loadingProfileIds.add(profile.id)
     }
@@ -166,6 +234,6 @@ export function useAgentModelMap(
     modelsByProfileId,
     loadingProfileIds,
     successfulProfileIds,
-    requestProfileModels,
+    requestProfileModels
   }
 }

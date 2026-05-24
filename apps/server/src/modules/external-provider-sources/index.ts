@@ -34,16 +34,78 @@ export const externalProviderSources = new Elysia({
     },
     response: { 200: t.Array(ExternalProviderSourcesModel.record) },
   })
-  .get('/profiles/:id/external-source', ({ params }) => {
-    const link = ExternalProviderSources.getExternalProfileLink(params.id)
-    if (!link) {
-      throw new AppError({ code: 'external_profile_link_not_found', status: 404, message: 'Profile is not managed by an external source', details: { profileId: params.id } })
+  .get('/external-provider-sources/:sourceKey/records/:externalRecordId/runtime-target', ({ params }) => {
+    const target = ExternalProviderSources.getExternalRuntimeTarget(params.sourceKey, params.externalRecordId)
+    if (!target) {
+      throw new AppError({
+        code: 'external_provider_target_not_found',
+        status: 404,
+        message: 'External provider target not found',
+        details: {
+          sourceKey: params.sourceKey,
+          externalRecordId: params.externalRecordId,
+        },
+      })
     }
-    return link
+    return target
   }, {
     detail: {
-      summary: 'Get external source metadata for a profile',
+      summary: 'Get runtime target metadata for an external provider record',
     },
-    params: ExternalProviderSourcesModel.profileParams,
-    response: { 200: ExternalProviderSourcesModel.profileLink },
+    params: ExternalProviderSourcesModel.recordParams,
+    response: {
+      200: t.Object({
+        id: t.String(),
+        sourceKey: t.String(),
+        externalRecordId: t.String(),
+        providerKind: t.Union([t.Literal('anthropic'), t.Literal('openai-compatible')]),
+        displayName: t.String(),
+        enabled: t.Boolean(),
+        credentialRef: t.Nullable(t.String()),
+        iconSlug: t.Nullable(t.String()),
+        lastResolvedFingerprint: t.String(),
+        createdAt: t.Number(),
+        updatedAt: t.Number(),
+      }),
+    },
+  })
+  .patch('/external-provider-sources/:sourceKey/records/:externalRecordId/runtime-target', ({ params, body }) => {
+    const target = ExternalProviderSources.updateExternalRuntimeTargetEnabled(
+      params.sourceKey,
+      params.externalRecordId,
+      body.enabled,
+    )
+    if (!target) {
+      throw new AppError({
+        code: 'external_provider_target_not_found',
+        status: 404,
+        message: 'External provider target not found',
+        details: {
+          sourceKey: params.sourceKey,
+          externalRecordId: params.externalRecordId,
+        },
+      })
+    }
+    return target
+  }, {
+    detail: {
+      summary: 'Update runtime target metadata for an external provider record',
+    },
+    params: ExternalProviderSourcesModel.recordParams,
+    body: ExternalProviderSourcesModel.runtimeTargetPatch,
+    response: {
+      200: t.Object({
+        id: t.String(),
+        sourceKey: t.String(),
+        externalRecordId: t.String(),
+        providerKind: t.Union([t.Literal('anthropic'), t.Literal('openai-compatible')]),
+        displayName: t.String(),
+        enabled: t.Boolean(),
+        credentialRef: t.Nullable(t.String()),
+        iconSlug: t.Nullable(t.String()),
+        lastResolvedFingerprint: t.String(),
+        createdAt: t.Number(),
+        updatedAt: t.Number(),
+      }),
+    },
   })

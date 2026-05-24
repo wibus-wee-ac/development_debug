@@ -32,18 +32,18 @@ interface CustomModelsEditorState {
   searchPending: boolean
 }
 
-type CustomModelsEditorAction
-  = | { type: 'new-id/set', value: string }
-    | { type: 'lookup/start' }
-    | { type: 'lookup/end' }
-    | { type: 'enrich/start', modelId: string }
-    | { type: 'enrich/cancel' }
-    | { type: 'enrich/apply' }
-    | { type: 'search-query/set', value: string }
-    | { type: 'search/start' }
-    | { type: 'search/success', results: SearchResult[] }
-    | { type: 'search/clear' }
-    | { type: 'highlight/set', index: number }
+type CustomModelsEditorAction =
+  | { type: 'new-id/set'; value: string }
+  | { type: 'lookup/start' }
+  | { type: 'lookup/end' }
+  | { type: 'enrich/start'; modelId: string }
+  | { type: 'enrich/cancel' }
+  | { type: 'enrich/apply' }
+  | { type: 'search-query/set'; value: string }
+  | { type: 'search/start' }
+  | { type: 'search/success'; results: SearchResult[] }
+  | { type: 'search/clear' }
+  | { type: 'highlight/set'; index: number }
 
 const initialCustomModelsEditorState: CustomModelsEditorState = {
   newId: '',
@@ -52,20 +52,22 @@ const initialCustomModelsEditorState: CustomModelsEditorState = {
   searchResults: [],
   highlightIdx: 0,
   lookupPending: false,
-  searchPending: false,
+  searchPending: false
 }
 
 const ModelCapabilitiesSchema = z.object({}).passthrough()
 
-const CustomModelEntrySchema = z.object({
-  id: z.string().trim().min(1),
-  label: z.string().trim().optional(),
-  capabilities: ModelCapabilitiesSchema.default({}),
-}).transform(model => ({
-  id: model.id,
-  label: model.label || model.id,
-  capabilities: model.capabilities,
-}))
+const CustomModelEntrySchema = z
+  .object({
+    id: z.string().trim().min(1),
+    label: z.string().trim().optional(),
+    capabilities: ModelCapabilitiesSchema.default({})
+  })
+  .transform((model) => ({
+    id: model.id,
+    label: model.label || model.id,
+    capabilities: model.capabilities
+  }))
 
 const SearchResultsSchema = z.array(CustomModelEntrySchema)
 
@@ -75,7 +77,10 @@ function occurrenceKey(id: string, counts: Map<string, number>): string {
   return `${id}:${count}`
 }
 
-function customModelsEditorReducer(state: CustomModelsEditorState, action: CustomModelsEditorAction): CustomModelsEditorState {
+function customModelsEditorReducer(
+  state: CustomModelsEditorState,
+  action: CustomModelsEditorAction
+): CustomModelsEditorState {
   switch (action.type) {
     case 'new-id/set':
       return { ...state, newId: action.value }
@@ -90,7 +95,7 @@ function customModelsEditorReducer(state: CustomModelsEditorState, action: Custo
         searchQuery: action.modelId,
         searchResults: [],
         highlightIdx: 0,
-        searchPending: false,
+        searchPending: false
       }
     case 'enrich/cancel':
     case 'enrich/apply':
@@ -100,7 +105,7 @@ function customModelsEditorReducer(state: CustomModelsEditorState, action: Custo
         searchQuery: '',
         searchResults: [],
         highlightIdx: 0,
-        searchPending: false,
+        searchPending: false
       }
     case 'search-query/set':
       return { ...state, searchQuery: action.value }
@@ -123,7 +128,7 @@ function customModelsEditorReducer(state: CustomModelsEditorState, action: Custo
 async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
   const { data } = await postProvidersModelLookup({
     body: { modelId },
-    throwOnError: true,
+    throwOnError: true
   })
   return CustomModelEntrySchema.parse(data)
 }
@@ -131,16 +136,15 @@ async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
   const { data } = await postProvidersModelSearch({
     body: { query },
-    throwOnError: true,
+    throwOnError: true
   })
   return SearchResultsSchema.parse(data)
 }
 
 export function CustomModelsEditor({
   models,
-  onChange,
+  onChange
 }: {
-  profileId: string
   models: CustomModelEntry[]
   onChange: (next: CustomModelEntry[]) => void
 }) {
@@ -165,8 +169,8 @@ export function CustomModelsEditor({
     debounceRef.current = setTimeout(() => {
       dispatch({ type: 'search/start' })
       void searchProviderModels(query).then(
-        results => dispatch({ type: 'search/success', results }),
-        () => dispatch({ type: 'search/success', results: [] }),
+        (results) => dispatch({ type: 'search/success', results }),
+        () => dispatch({ type: 'search/success', results: [] })
       )
     }, 250)
 
@@ -187,36 +191,45 @@ export function CustomModelsEditor({
 
   const addModel = useCallback(async () => {
     const id = state.newId.trim()
-    if (!id || models.some(m => m.id === id)) {
+    if (!id || models.some((m) => m.id === id)) {
       return
     }
 
     dispatch({ type: 'lookup/start' })
     try {
-      const entry = await lookupModel(id) ?? { id, label: id, capabilities: {} }
+      const entry = (await lookupModel(id)) ?? { id, label: id, capabilities: {} }
       onChange([...models, entry])
-    }
-    catch {
+    } catch {
       onChange([...models, { id, label: id, capabilities: {} }])
     }
     dispatch({ type: 'lookup/end' })
     inputRef.current?.focus()
   }, [state.newId, models, onChange])
 
-  const removeModel = useCallback((id: string) => {
-    onChange(models.filter(m => m.id !== id))
-  }, [models, onChange])
+  const removeModel = useCallback(
+    (id: string) => {
+      onChange(models.filter((m) => m.id !== id))
+    },
+    [models, onChange]
+  )
 
-  const applyEnrichResult = useCallback((targetModelId: string, result: SearchResult) => {
-    onChange(models.map(m => m.id === targetModelId
-      ? {
-          ...m,
-          label: result.label.trim() || targetModelId,
-          capabilities: result.capabilities,
-        }
-      : m))
-    dispatch({ type: 'enrich/apply' })
-  }, [models, onChange])
+  const applyEnrichResult = useCallback(
+    (targetModelId: string, result: SearchResult) => {
+      onChange(
+        models.map((m) =>
+          m.id === targetModelId
+            ? {
+                ...m,
+                label: result.label.trim() || targetModelId,
+                capabilities: result.capabilities
+              }
+            : m
+        )
+      )
+      dispatch({ type: 'enrich/apply' })
+    },
+    [models, onChange]
+  )
 
   const startEnrich = useCallback((modelId: string) => {
     dispatch({ type: 'enrich/start', modelId })
@@ -226,30 +239,33 @@ export function CustomModelsEditor({
     dispatch({ type: 'enrich/cancel' })
   }, [])
 
-  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      cancelEnrich()
-      return
-    }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault()
-      const next = Math.min(state.highlightIdx + 1, state.searchResults.length - 1)
-      searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
-      dispatch({ type: 'highlight/set', index: next })
-      return
-    }
-    if (e.key === 'ArrowUp') {
-      e.preventDefault()
-      const next = Math.max(state.highlightIdx - 1, 0)
-      searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
-      dispatch({ type: 'highlight/set', index: next })
-      return
-    }
-    if (e.key === 'Enter' && state.enrichingId && state.searchResults.length > 0) {
-      e.preventDefault()
-      applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
-    }
-  }, [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults])
+  const handleSearchKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        cancelEnrich()
+        return
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        const next = Math.min(state.highlightIdx + 1, state.searchResults.length - 1)
+        searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+        dispatch({ type: 'highlight/set', index: next })
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        const next = Math.max(state.highlightIdx - 1, 0)
+        searchListRef.current?.children[next]?.scrollIntoView({ block: 'nearest' })
+        dispatch({ type: 'highlight/set', index: next })
+        return
+      }
+      if (e.key === 'Enter' && state.enrichingId && state.searchResults.length > 0) {
+        e.preventDefault()
+        applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
+      }
+    },
+    [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults]
+  )
 
   const modelKeyCounts = new Map<string, number>()
   const searchResultKeyCounts = new Map<string, number>()
@@ -268,8 +284,8 @@ export function CustomModelsEditor({
         <Input
           ref={inputRef}
           value={state.newId}
-          onChange={e => dispatch({ type: 'new-id/set', value: e.target.value })}
-          onKeyDown={e => e.key === 'Enter' && void addModel()}
+          onChange={(e) => dispatch({ type: 'new-id/set', value: e.target.value })}
+          onKeyDown={(e) => e.key === 'Enter' && void addModel()}
           placeholder="e.g. claude-sonnet-4-20250514"
           className="h-8 flex-1 font-mono text-[12px]"
         />
@@ -289,7 +305,7 @@ export function CustomModelsEditor({
       {models.length > 0 && (
         <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
           <ul className="divide-y divide-foreground/4">
-            {models.map(m => (
+            {models.map((m) => (
               <li key={occurrenceKey(m.id, modelKeyCounts)} className="relative">
                 <div className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
@@ -303,18 +319,26 @@ export function CustomModelsEditor({
                     )}
                   </div>
                   {m.capabilities.contextWindow != null && m.capabilities.contextWindow > 0 && (
-                    <Badge variant="secondary" className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground">
-                      {Math.round(m.capabilities.contextWindow / 1000)}
-                      k
+                    <Badge
+                      variant="secondary"
+                      className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground"
+                    >
+                      {Math.round(m.capabilities.contextWindow / 1000)}k
                     </Badge>
                   )}
                   {m.capabilities.reasoning && (
-                    <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground">
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] font-normal text-muted-foreground"
+                    >
                       reasoning
                     </Badge>
                   )}
                   {m.capabilities.inputModalities && m.capabilities.inputModalities.length > 1 && (
-                    <Badge variant="secondary" className="text-[10px] font-normal text-muted-foreground">
+                    <Badge
+                      variant="secondary"
+                      className="text-[10px] font-normal text-muted-foreground"
+                    >
                       multimodal
                     </Badge>
                   )}
@@ -346,7 +370,9 @@ export function CustomModelsEditor({
                       <Input
                         ref={searchInputRef}
                         value={state.searchQuery}
-                        onChange={e => dispatch({ type: 'search-query/set', value: e.target.value })}
+                        onChange={(e) =>
+                          dispatch({ type: 'search-query/set', value: e.target.value })
+                        }
                         onKeyDown={handleSearchKeyDown}
                         placeholder="Search models.dev..."
                         className="h-7 font-mono text-[11px]"
@@ -356,7 +382,10 @@ export function CustomModelsEditor({
                       )}
                     </div>
                     {state.searchResults.length > 0 && (
-                      <ul ref={searchListRef} className="mt-1.5 max-h-40 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
+                      <ul
+                        ref={searchListRef}
+                        className="mt-1.5 max-h-40 overflow-y-auto rounded-lg ring-1 ring-foreground/6"
+                      >
                         {state.searchResults.map((r, idx) => (
                           <li key={occurrenceKey(r.id, searchResultKeyCounts)}>
                             <button
@@ -365,7 +394,7 @@ export function CustomModelsEditor({
                               onMouseEnter={() => dispatch({ type: 'highlight/set', index: idx })}
                               className={cn(
                                 'flex w-full items-center gap-2 px-2.5 py-1.5 text-left',
-                                idx === state.highlightIdx && 'bg-accent',
+                                idx === state.highlightIdx && 'bg-accent'
                               )}
                             >
                               <div className="min-w-0 flex-1">
@@ -376,20 +405,24 @@ export function CustomModelsEditor({
                                   {r.id}
                                 </div>
                               </div>
-                              {r.capabilities.contextWindow != null && r.capabilities.contextWindow > 0 && (
-                                <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                                  {Math.round(r.capabilities.contextWindow / 1000)}
-                                  k
-                                </span>
-                              )}
+                              {r.capabilities.contextWindow != null &&
+                                r.capabilities.contextWindow > 0 && (
+                                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                                    {Math.round(r.capabilities.contextWindow / 1000)}k
+                                  </span>
+                                )}
                             </button>
                           </li>
                         ))}
                       </ul>
                     )}
-                    {state.searchQuery.trim() && !state.searchPending && state.searchResults.length === 0 && (
-                      <p className="mt-1.5 text-[10.5px] text-muted-foreground">No matches found</p>
-                    )}
+                    {state.searchQuery.trim() &&
+                      !state.searchPending &&
+                      state.searchResults.length === 0 && (
+                        <p className="mt-1.5 text-[10.5px] text-muted-foreground">
+                          No matches found
+                        </p>
+                      )}
                   </div>
                 )}
               </li>

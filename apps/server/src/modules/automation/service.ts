@@ -32,7 +32,7 @@ export interface AutomationRecipe {
   inputs: AutomationInput[]
   artifactRequests: AutomationArtifactRequest[]
   agentId?: string
-  agentProfileId: string
+  providerTargetId?: string
   runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat'
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
@@ -110,7 +110,7 @@ function toDefinitionView(row: AutomationDefinition): AutomationDefinitionView {
       prompt: '',
       inputs: [],
       artifactRequests: [],
-      agentProfileId: '',
+      providerTargetId: '',
     }),
     createdByKind: row.createdByKind,
     createdById: row.createdById,
@@ -135,7 +135,7 @@ function toRunView(row: AutomationRun): AutomationRunView {
       prompt: '',
       inputs: [],
       artifactRequests: [],
-      agentProfileId: '',
+      providerTargetId: '',
     }),
     chatSessionId: row.chatSessionId,
     backendRunId: row.backendRunId,
@@ -450,7 +450,7 @@ export async function executeRun(runId: string): Promise<AutomationRunView> {
     prompt: '',
     inputs: [],
     artifactRequests: [],
-    agentProfileId: '',
+    providerTargetId: '',
   })
   const now = currentUnixSeconds()
   const claimed = db().update(automationRuns).set({
@@ -475,7 +475,7 @@ export async function executeRun(runId: string): Promise<AutomationRunView> {
     const session = Session.create({
       workspaceId: run.workspaceId,
       title: `Automation: ${getDefinitionRow(run.automationDefinitionId).title}`,
-      agentProfileId: recipe.agentProfileId,
+      providerTargetId: recipe.providerTargetId,
       agentId: recipe.agentId,
       runtimeKind: recipe.runtimeKind,
     })

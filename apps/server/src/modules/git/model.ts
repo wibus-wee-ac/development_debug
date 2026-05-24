@@ -18,6 +18,10 @@ export const GitModel = {
     from: t.Optional(t.String({ minLength: 1 })),
   }),
 
+  diffQuery: t.Object({
+    paths: t.Optional(t.String()),
+  }),
+
   statusView: t.Object({
     branch: t.String(),
     tracking: t.Nullable(t.String()),

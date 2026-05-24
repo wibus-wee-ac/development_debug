@@ -1,0 +1,1 @@
+DROP TABLE `external_provider_profile_links`;

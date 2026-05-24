@@ -73,8 +73,8 @@ function restoreEnv(previous: Record<string, string | undefined>): void {
   }
 }
 
-describe('CC Switch external provider plugin', () => {
-  it('is discovered as a plugin source and projects fake CC Switch providers through the host', async () => {
+describe('cc switch external provider plugin', () => {
+  it('is discovered as a plugin source and stores CC Switch providers as external runtime targets', async () => {
     const dataDir = tempDir('cradle-cc-switch-plugin-host-')
     const ccSwitchDir = join(dataDir, 'cc-switch')
     const dbPath = join(ccSwitchDir, 'cc-switch.db')
@@ -119,18 +119,27 @@ describe('CC Switch external provider plugin', () => {
 
       const profilesRes = await app.handle(new Request('http://localhost/profiles'))
       expect(profilesRes.status).toBe(200)
-      const profiles = await profilesRes.json() as Array<{ id: string, name: string, credentialRef: string | null }>
-      expect(JSON.stringify(profiles)).not.toContain('cc-switch-secret')
-      const profile = profiles.find(item => item.name === 'CC Switch / Claude / Claude Fixture')
-      expect(profile).toEqual(expect.objectContaining({
-        credentialRef: expect.stringMatching(/^external_credential_/),
-      }))
+      const profiles = await profilesRes.json() as Array<unknown>
+      expect(profiles).toEqual([])
 
-      const linkRes = await app.handle(new Request(`http://localhost/profiles/${profile!.id}/external-source`))
-      expect(linkRes.status).toBe(200)
-      expect(await linkRes.json()).toEqual(expect.objectContaining({
+      const recordsRes = await app.handle(new Request('http://localhost/external-provider-sources/records'))
+      expect(recordsRes.status).toBe(200)
+      const records = await recordsRes.json() as Array<{ externalId: string, name: string }>
+      expect(JSON.stringify(records)).not.toContain('cc-switch-secret')
+      expect(records).toEqual([
+        expect.objectContaining({
+          externalId: 'cc-switch:claude:claude-fixture',
+          name: 'Claude Fixture',
+        }),
+      ])
+
+      const targetRes = await app.handle(new Request(`http://localhost/external-provider-sources/${ccSwitchSource!.id}/records/cc-switch:claude:claude-fixture/runtime-target`))
+      expect(targetRes.status).toBe(200)
+      expect(await targetRes.json()).toEqual(expect.objectContaining({
         sourceKey: ccSwitchSource!.id,
         externalRecordId: 'cc-switch:claude:claude-fixture',
+        displayName: 'Claude Fixture',
+        credentialRef: expect.stringMatching(/^external_credential_/),
       }))
     }
     finally {

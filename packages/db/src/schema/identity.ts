@@ -1,5 +1,6 @@
 import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+import { providerTargets } from './provider-target'
 import { textPk, timestamps } from './shared'
 
 export const agentProfiles = sqliteTable('agent_profiles', {
@@ -31,8 +32,8 @@ export const agents = sqliteTable('agents', {
   avatarUrl: text('avatar_url'),
   avatarStyle: text('avatar_style').notNull().default('bottts-neutral'),
   avatarSeed: text('avatar_seed').notNull(),
-  agentProfileId: text('agent_profile_id')
-    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  providerTargetId: text('provider_target_id')
+    .references(() => providerTargets.id, { onDelete: 'restrict' }),
   modelId: text('model_id'),
   thinkingEffort: text('thinking_effort', {
     enum: ['low', 'medium', 'high', 'auto'],

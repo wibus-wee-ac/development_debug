@@ -4,8 +4,8 @@ import type { Agent, AgentActivity, AgentSession } from '@cradle/db'
 import {
   agentActivities,
   agents,
-  agentProfiles,
   agentSessions,
+  providerTargets,
 } from '@cradle/db'
 import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -33,7 +33,7 @@ interface IssueAgentSessionView extends AgentSession {
 interface IssueAgentDelegationState {
   issueId: string
   delegated: boolean
-  agentProfileId: string | null
+  providerTargetId: string | null
   agentId: string | null
   agentSessionId: string | null
   chatSessionId: string | null
@@ -54,11 +54,11 @@ const AgentActivityInputSchema = z.object({
 
 // ── DB queries (merged from store) ──
 
-function getAgentProfile(agentProfileId: string) {
+function getProviderTarget(providerTargetId: string) {
   return db()
-    .select({ id: agentProfiles.id, name: agentProfiles.name, enabled: agentProfiles.enabled })
-    .from(agentProfiles)
-    .where(eq(agentProfiles.id, agentProfileId))
+    .select({ id: providerTargets.id, name: providerTargets.displayName, enabled: providerTargets.enabled })
+    .from(providerTargets)
+    .where(eq(providerTargets.id, providerTargetId))
     .get()
 }
 
@@ -74,12 +74,12 @@ function listAgentActivities(agentSessionId: string): AgentActivity[] {
   return db().select().from(agentActivities).where(eq(agentActivities.agentSessionId, agentSessionId)).orderBy(agentActivities.createdAt).all()
 }
 
-function createDelegationSession(input: { issueId: string, agentProfileId: string, agentId: string }): AgentSession {
+function createDelegationSession(input: { issueId: string, providerTargetId: string, agentId: string }): AgentSession {
   const now = currentUnixSeconds()
   return db().insert(agentSessions).values({
     id: randomUUID(),
     issueId: input.issueId,
-    agentProfileId: input.agentProfileId,
+    providerTargetId: input.providerTargetId,
     agentId: input.agentId,
     chatSessionId: null,
     status: 'created',
@@ -136,20 +136,20 @@ function requireIssue(issueId: string) {
   }
 }
 
-function requireAgentProfile(agentProfileId: string) {
-  const profile = getAgentProfile(agentProfileId)
-  if (!profile) {
+function requireProviderTarget(providerTargetId: string) {
+  const target = getProviderTarget(providerTargetId)
+  if (!target) {
     throw new AppError({
-      code: 'issue_agent_profile_not_found',
+      code: 'issue_agent_provider_target_not_found',
       status: 404,
-      message: 'Agent profile not found',
-      details: { agentProfileId },
+      message: 'Provider target not found',
+      details: { providerTargetId },
     })
   }
-  return profile
+  return target
 }
 
-function requireDelegationAgent(agentId: string): Agent & { agentProfileId: string } {
+function requireDelegationAgent(agentId: string): Agent & { providerTargetId: string } {
   const agent = db().select().from(agents).where(eq(agents.id, agentId)).get()
   if (!agent) {
     throw new AppError({
@@ -167,7 +167,7 @@ function requireDelegationAgent(agentId: string): Agent & { agentProfileId: stri
       details: { agentId },
     })
   }
-  if (!agent.agentProfileId) {
+  if (!agent.providerTargetId) {
     throw new AppError({
       code: 'issue_agent_agent_not_supported',
       status: 409,
@@ -178,7 +178,7 @@ function requireDelegationAgent(agentId: string): Agent & { agentProfileId: stri
 
   return {
     ...agent,
-    agentProfileId: agent.agentProfileId,
+    providerTargetId: agent.providerTargetId,
   }
 }
 
@@ -415,11 +415,11 @@ async function runSession(agentSessionId: string): Promise<void> {
     }
 
     const issue = requireIssue(session.issueId)
-    const workflowRules = await WorkflowRules.get(issue.workspaceId, session.agentProfileId)
+    const workflowRules = await WorkflowRules.get(issue.workspaceId, session.providerTargetId)
     const chatSession = Session.create({
       workspaceId: issue.workspaceId,
       title: `Issue: ${issue.title}`,
-      agentProfileId: session.agentProfileId,
+      providerTargetId: session.providerTargetId,
       agentId: session.agentId,
       linkedIssueId: issue.id,
       configJson: JSON.stringify({ permissionMode: 'bypassPermissions' }),
@@ -464,18 +464,18 @@ export function getDelegation(issueId: string): IssueAgentDelegationState {
   requireIssue(issueId)
   const latestSession = listAgentSessions(issueId)[0]
   if (!latestSession) {
-    return { issueId, delegated: false, agentProfileId: null, agentId: null, agentSessionId: null, chatSessionId: null }
+    return { issueId, delegated: false, providerTargetId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
 
   const latestActivity = listAgentActivities(latestSession.id).at(-1)
   if (latestActivity?.signal === 'delegation.removed') {
-    return { issueId, delegated: false, agentProfileId: null, agentId: null, agentSessionId: null, chatSessionId: null }
+    return { issueId, delegated: false, providerTargetId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
 
   return {
     issueId,
     delegated: true,
-    agentProfileId: latestSession.agentProfileId,
+    providerTargetId: latestSession.providerTargetId,
     agentId: latestSession.agentId,
     agentSessionId: latestSession.id,
     chatSessionId: latestSession.chatSessionId,
@@ -559,36 +559,36 @@ export async function enqueueContinuation(input: {
   }
 }
 
-export async function delegateIssue(input: { issueId: string, agentId: string, agentProfileId?: string | null }): Promise<IssueAgentSessionView> {
+export async function delegateIssue(input: { issueId: string, agentId: string, providerTargetId?: string | null }): Promise<IssueAgentSessionView> {
   requireIssue(input.issueId)
   const agent = requireDelegationAgent(input.agentId)
-  if (input.agentProfileId && input.agentProfileId !== agent.agentProfileId) {
+  if (input.providerTargetId && input.providerTargetId !== agent.providerTargetId) {
     throw new AppError({
       code: 'issue_agent_identity_mismatch',
       status: 400,
-      message: 'Agent profile does not match the selected agent',
-      details: { agentId: input.agentId, agentProfileId: input.agentProfileId, expectedAgentProfileId: agent.agentProfileId },
+      message: 'Provider target does not match the selected agent',
+      details: { agentId: input.agentId, providerTargetId: input.providerTargetId, expectedProviderTargetId: agent.providerTargetId },
     })
   }
 
-  const profile = requireAgentProfile(agent.agentProfileId)
-  if (!profile.enabled) {
+  const target = requireProviderTarget(agent.providerTargetId)
+  if (!target.enabled) {
     throw new AppError({
-      code: 'issue_agent_profile_not_available',
+      code: 'issue_agent_provider_target_not_available',
       status: 409,
-      message: 'Agent profile is disabled',
-      details: { agentProfileId: agent.agentProfileId },
+      message: 'Provider target is disabled',
+      details: { providerTargetId: agent.providerTargetId },
     })
   }
 
-  Issue.updateIssueDelegation(input.issueId, { agentId: agent.id, agentProfileId: agent.agentProfileId })
+  Issue.updateIssueDelegation(input.issueId, { agentId: agent.id, providerTargetId: agent.providerTargetId })
 
   // Add system comment to activity timeline
   Issue.addComment({ issueId: input.issueId, content: `Delegated to ${agent.name}`, authorKind: 'system.delegated' })
 
   const session = createDelegationSession({
     issueId: input.issueId,
-    agentProfileId: agent.agentProfileId,
+    providerTargetId: agent.providerTargetId,
     agentId: agent.id,
   })
 
@@ -597,7 +597,7 @@ export async function delegateIssue(input: { issueId: string, agentId: string, a
     type: 'response',
     body: `Delegated to ${agent.name}`,
     signal: 'delegation.created',
-    signalMetadata: { agentProfileId: agent.agentProfileId, agentId: agent.id },
+    signalMetadata: { providerTargetId: agent.providerTargetId, agentId: agent.id },
   })
 
   void runSession(session.id)

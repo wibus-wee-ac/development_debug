@@ -1,9 +1,8 @@
-import type { AgentProfile } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { RuntimeSession } from '../../runtime-provider-types'
 import { addHostMcpServer, removeHostMcpServer } from '../../../../plugins/mcp-registry'
+import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../runtime-provider-types'
 import { ClaudeAgentProvider } from './provider'
 
 const sdkMocks = vi.hoisted(() => ({
@@ -81,7 +80,7 @@ async function readPromptText(callIndex: number): Promise<string> {
   return String(result.value.message.content)
 }
 
-function createProfile(config: Record<string, unknown> = {}): AgentProfile {
+function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
   return {
     id: 'profile-claude',
     name: 'Claude Agent',
@@ -95,8 +94,8 @@ function createProfile(config: Record<string, unknown> = {}): AgentProfile {
     credentialRef: 'credential-claude',
     customModels: '[]',
     iconSlug: null,
-    createdAt: 0,
-    updatedAt: 0,
+    providerTargetKind: 'manual',
+    providerTargetId: 'profile-claude',
   }
 }
 
@@ -104,7 +103,7 @@ function createRuntimeSession(): RuntimeSession {
   return {
     id: 'runtime-session-1',
     chatSessionId: 'chat-session-1',
-    agentProfileId: 'profile-claude',
+    providerTargetId: 'profile-claude',
     runtimeKind: 'claude-agent',
     providerSessionId: null,
     providerStateSnapshot: JSON.stringify({
@@ -122,7 +121,7 @@ function createUserMessage(text: string): UIMessage {
   }
 }
 
-describe('ClaudeAgentProvider MCP integration', () => {
+describe('claudeAgentProvider MCP integration', () => {
   afterEach(() => {
     removeHostMcpServer('browser-use')
     sdkMocks.query.mockReset()
@@ -155,6 +154,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     })
     const chunks: UIMessageChunk[] = []
     for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Open the browser'),
@@ -234,6 +234,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
 
     const chunks: UIMessageChunk[] = []
     for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession,
       profile,
       message: createUserMessage('/review src/app.ts'),
@@ -262,6 +263,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     })
     const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession,
       profile: createProfile(),
       message: createUserMessage('Initial task'),
@@ -312,6 +314,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     })
 
     for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession: createRuntimeSession(),
       profile,
       message: createUserMessage('Use aliases'),
@@ -355,6 +358,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
     })
 
     for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession: createRuntimeSession(),
       profile,
       message: createUserMessage('Use defaults'),
@@ -399,6 +403,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
 
     const chunks: UIMessageChunk[] = []
     for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Run segmented tools'),
@@ -429,6 +434,7 @@ describe('ClaudeAgentProvider MCP integration', () => {
 
     await expect(async () => {
       for await (const _chunk of provider.streamTurn({
+        runId: 'run-claude-agent-test',
         runtimeSession: createRuntimeSession(),
         profile: createProfile(),
         message: {

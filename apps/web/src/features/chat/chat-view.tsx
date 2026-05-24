@@ -13,7 +13,7 @@ import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
-import { useAgentModels } from '~/features/agent-runtime/use-agent-models'
+import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
@@ -41,7 +41,11 @@ interface ChatViewProps {
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
-  sendOverridesRef?: React.MutableRefObject<{ agentProfileId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null }>
+  sendOverridesRef?: React.MutableRefObject<{
+    agentProfileId?: string
+    modelId?: string
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null
+  }>
   /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
   composerModel?: ModelDescriptor | null
   /** Custom context bar rendered before the send button */
@@ -58,11 +62,15 @@ interface ChatScrollMetrics {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
-const SessionBindingSchema = z.object({
-  agentProfileId: z.string().nullable(),
-  modelId: z.string().nullable(),
-  modelProfileId: z.string().nullable().optional(),
-}).passthrough()
+const SessionBindingSchema = z
+  .object({
+    agentProfileId: z.string().nullable(),
+    providerTargetKind: z.enum(['manual-profile', 'external-record']).nullable().optional(),
+    providerTargetId: z.string().nullable().optional(),
+    modelId: z.string().nullable(),
+    modelProfileId: z.string().nullable().optional()
+  })
+  .passthrough()
 
 function invertContinuationMode(mode: ChatContinuationMode): ChatContinuationMode {
   return mode === 'queue' ? 'steer' : 'queue'
@@ -82,7 +90,7 @@ function ChatMessageListPane({
   scrollMetrics,
   minimapRef,
   onScrollToIndex,
-  onScrollTo,
+  onScrollTo
 }: {
   messages: ReturnType<typeof useChatSession>['messages']
   status: ReturnType<typeof useChatSession>['status']
@@ -101,7 +109,10 @@ function ChatMessageListPane({
 }) {
   return (
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
-      <ScrollArea viewportRef={viewportRef} className="h-full **:data-[slot=scroll-area-scrollbar]:hidden">
+      <ScrollArea
+        viewportRef={viewportRef}
+        className="h-full **:data-[slot=scroll-area-scrollbar]:hidden"
+      >
         <div className="mx-auto max-w-208 px-4 pt-4">
           {messages.length === 0 && !isReady && (
             <div className="space-y-6 py-4">
@@ -131,11 +142,8 @@ function ChatMessageListPane({
             keepMounted={keepMountedIndices}
             onScroll={onVirtualScroll}
           >
-            {messages.map(message => (
-              <MessageBubbleWithStreamState
-                key={message.id}
-                message={message}
-              />
+            {messages.map((message) => (
+              <MessageBubbleWithStreamState key={message.id} message={message} />
             ))}
           </Virtualizer>
 
@@ -164,7 +172,10 @@ function ChatMessageListPane({
               transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
               className="flex items-center gap-2 pl-1 pt-4"
             >
-              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" aria-hidden="true" />
+              <LoaderCircleIcon
+                className="size-3.5 animate-spin text-muted-foreground/50"
+                aria-hidden="true"
+              />
               <span className="text-xs text-muted-foreground">Thinking...</span>
             </m.div>
           )}
@@ -185,7 +196,11 @@ function ChatMessageListPane({
   )
 }
 
-function ChatAwaitBanner({ awaitSummary }: { awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']> }) {
+function ChatAwaitBanner({
+  awaitSummary
+}: {
+  awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
+}) {
   if (!awaitSummary?.awaiting) {
     return null
   }
@@ -194,7 +209,8 @@ function ChatAwaitBanner({ awaitSummary }: { awaitSummary: Awaited<ReturnType<ty
     <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
-        {(awaitSummary.reason as string) ?? `Waiting for ${(awaitSummary.primarySource as string) ?? 'event'}...`}
+        {(awaitSummary.reason as string) ??
+          `Waiting for ${(awaitSummary.primarySource as string) ?? 'event'}...`}
       </span>
       <button
         type="button"
@@ -225,13 +241,17 @@ function ChatComposerSection({
   droppedPath,
   sessionTokens,
   sessionContextWindow,
-  supportsAttachments,
+  supportsAttachments
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
   onReorderQueueItems: (queueItemIds: string[]) => void
-  onSend: (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => void
+  onSend: (
+    text: string,
+    files: FileUIPart[],
+    options?: { invertContinuationMode?: boolean }
+  ) => void
   onStop: () => void
   isStreaming: boolean
   disabled: boolean
@@ -240,7 +260,7 @@ function ChatComposerSection({
   slashCommands: ChatSlashCommand[]
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
-  droppedPath: { text: string, ts: number } | null
+  droppedPath: { text: string; ts: number } | null
   sessionTokens: number
   sessionContextWindow: number | null
   supportsAttachments: boolean
@@ -283,7 +303,7 @@ export function ChatView({
   composerContextBar,
   sendOverridesRef,
   composerModel,
-  placeholder,
+  placeholder
 }: ChatViewProps) {
   const {
     messages,
@@ -294,7 +314,7 @@ export function ChatView({
     isReady,
     queueItems,
     cancelQueueItem,
-    reorderQueueItems,
+    reorderQueueItems
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const { data: chatPreferences } = useChatPreferencesQuery()
@@ -303,20 +323,34 @@ export function ChatView({
     queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 60_000,
-    retry: false,
+    retry: false
   })
   const isAwaiting = awaitSummary?.awaiting ?? false
-  const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [droppedPath, setDroppedPath] = useState<{ text: string; ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const { data: sessionBinding } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     enabled: !!sessionId,
     staleTime: 60_000,
-    select: data => data ? SessionBindingSchema.parse(data) : null,
+    select: (data) => (data ? SessionBindingSchema.parse(data) : null)
   })
-  const boundModelProfileId = sessionBinding?.modelProfileId ?? sessionBinding?.agentProfileId ?? null
-  const { models: sessionModels } = useAgentModels(boundModelProfileId)
+  const boundProviderTarget = useMemo(() => {
+    if (sessionBinding?.providerTargetKind && sessionBinding.providerTargetId) {
+      return {
+        kind: sessionBinding.providerTargetKind,
+        id: sessionBinding.providerTargetId
+      }
+    }
+    const profileId = sessionBinding?.modelProfileId ?? sessionBinding?.agentProfileId ?? null
+    return profileId ? { kind: 'manual-profile' as const, id: profileId } : null
+  }, [
+    sessionBinding?.agentProfileId,
+    sessionBinding?.modelProfileId,
+    sessionBinding?.providerTargetId,
+    sessionBinding?.providerTargetKind
+  ])
+  const { models: sessionModels } = useProviderTargetModels(boundProviderTarget)
   const currentSessionModel = useMemo(() => {
     if (composerModel) {
       return composerModel
@@ -324,7 +358,7 @@ export function ChatView({
     if (!sessionBinding?.modelId) {
       return null
     }
-    return sessionModels.find(candidate => candidate.id === sessionBinding.modelId) ?? null
+    return sessionModels.find((candidate) => candidate.id === sessionBinding.modelId) ?? null
   }, [composerModel, sessionBinding?.modelId, sessionModels])
   const sessionContextWindow = useMemo(() => {
     const contextWindow = currentSessionModel?.capabilities.contextWindow
@@ -332,7 +366,7 @@ export function ChatView({
   }, [currentSessionModel])
   const supportsAttachments = useMemo(() => {
     const modalities = currentSessionModel?.capabilities.inputModalities ?? []
-    return modalities.some(modality => modality !== 'text')
+    return modalities.some((modality) => modality !== 'text')
   }, [currentSessionModel])
 
   /**
@@ -352,7 +386,7 @@ export function ChatView({
   const isStreaming = status === 'streaming'
 
   // Keep the streaming message mounted to prevent re-animation on scroll recycle
-  const generatingIds = useChatStore(s => s.generatingMessageIds)
+  const generatingIds = useChatStore((s) => s.generatingMessageIds)
   const keepMountedIndices = useMemo(() => {
     if (generatingIds.size === 0) {
       return undefined
@@ -367,10 +401,9 @@ export function ChatView({
   }, [generatingIds, messages])
 
   const lastMsg = messages.at(-1)
-  const assistantHasVisibleText = lastMsg?.role === 'assistant'
-    && lastMsg.parts.some(
-      p => p.type === 'text' && (p as { text: string }).text.trim().length > 0,
-    )
+  const assistantHasVisibleText =
+    lastMsg?.role === 'assistant' &&
+    lastMsg.parts.some((p) => p.type === 'text' && (p as { text: string }).text.trim().length > 0)
   const showThinking = isStreaming && !assistantHasVisibleText
 
   const scrollToBottom = useCallback(() => {
@@ -390,7 +423,7 @@ export function ChatView({
     return {
       offset: vp.scrollTop,
       scrollHeight: vp.scrollHeight,
-      viewportHeight: vp.offsetHeight,
+      viewportHeight: vp.offsetHeight
     }
   }, [])
 
@@ -476,9 +509,9 @@ export function ChatView({
         const viewportHeight = vp.offsetHeight
 
         if (
-          scrollTop !== lastScrollTop
-          || scrollHeight !== lastScrollHeight
-          || viewportHeight !== lastViewportHeight
+          scrollTop !== lastScrollTop ||
+          scrollHeight !== lastScrollHeight ||
+          viewportHeight !== lastViewportHeight
         ) {
           lastScrollTop = scrollTop
           lastScrollHeight = scrollHeight
@@ -505,11 +538,13 @@ export function ChatView({
   // Fetch session token count after each turn completes
   useEffect(() => {
     if (sessionId && status !== 'streaming') {
-      getUsageSessionsBySessionId({ path: { sessionId } }).then((res) => {
-        if (res.data) {
-          setSessionTokens(res.data.totalTokens)
-        }
-      }).catch(() => { })
+      getUsageSessionsBySessionId({ path: { sessionId } })
+        .then((res) => {
+          if (res.data) {
+            setSessionTokens(res.data.totalTokens)
+          }
+        })
+        .catch(() => {})
     }
   }, [sessionId, status, messages.length])
 
@@ -525,30 +560,24 @@ export function ChatView({
         : defaultContinuationMode
       sendMessage(text, { ...overrides, continuationMode }, files)
     },
-    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef],
+    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef]
   )
 
-  const handleMinimapScrollToIndex = useCallback(
-    (index: number) => {
-      const virt = virtualizerRef.current
-      const vp = viewportRef.current
-      if (!virt || !vp) {
-        return
-      }
-      virt.scrollToIndex(index, { align: 'start', smooth: true })
-    },
-    [],
-  )
+  const handleMinimapScrollToIndex = useCallback((index: number) => {
+    const virt = virtualizerRef.current
+    const vp = viewportRef.current
+    if (!virt || !vp) {
+      return
+    }
+    virt.scrollToIndex(index, { align: 'start', smooth: true })
+  }, [])
 
-  const handleMinimapScrollTo = useCallback(
-    (offset: number) => {
-      const vp = viewportRef.current
-      if (vp) {
-        vp.scrollTop = offset
-      }
-    },
-    [],
-  )
+  const handleMinimapScrollTo = useCallback((offset: number) => {
+    const vp = viewportRef.current
+    if (vp) {
+      vp.scrollTop = offset
+    }
+  }, [])
 
   return (
     <div
@@ -565,7 +594,7 @@ export function ChatView({
           setDroppedPath({ text: path, ts: Date.now() })
         }
       }}
-      onDragOver={e => e.preventDefault()}
+      onDragOver={(e) => e.preventDefault()}
     >
       <ChatMessageListPane
         messages={messages}
@@ -590,8 +619,8 @@ export function ChatView({
       <ChatComposerSection
         awaitSummary={awaitSummary}
         queueItems={queueItems}
-        onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
-        onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+        onCancelQueueItem={(queueItemId) => void cancelQueueItem(queueItemId)}
+        onReorderQueueItems={(queueItemIds) => void reorderQueueItems(queueItemIds)}
         onSend={handleSend}
         onStop={stop}
         isStreaming={isStreaming}

@@ -1,28 +1,24 @@
 // Output: Provider list grouping and ordering helpers for Agent Runtime Settings.
-// Input: Agent profiles, external provider records, and external provider sources.
+// Input: Manual provider profiles, external provider records, and external provider sources.
 // Position: Keeps provider sidebar ownership grouping independent from React rendering.
 
 import type { AgentProfile } from '~/lib/types'
 
-export interface ExternalProviderRecordSummary {
-  id: string
-  sourceKey: string
-}
-
-export interface ExternalProviderSourceSummary {
-  id: string
-  pluginName: string
-}
+import type { ExternalProviderRecordView, ExternalProviderSourceView, ProviderListEntry } from './provider-settings-utils'
+import {
+  createExternalProviderListEntry,
+  createManualProviderListEntry,
+} from './provider-settings-utils'
 
 export interface ProviderListGroup {
   id: string
   label: string
   kind: 'external-plugin' | 'external-source' | 'manual'
-  profiles: AgentProfile[]
+  entries: ProviderListEntry[]
 }
 
 const MANUAL_GROUP_ID = 'manual'
-const MANUAL_GROUP_LABEL = 'Manual providers'
+const MANUAL_GROUP_LABEL = 'Manual profiles'
 const UNKNOWN_EXTERNAL_SOURCE_LABEL = 'External source'
 
 function compareProviderProfiles(a: AgentProfile, b: AgentProfile): number {
@@ -44,8 +40,8 @@ function compareProviderGroups(a: ProviderListGroup, b: ProviderListGroup): numb
     return a.kind === 'manual' ? -1 : 1
   }
 
-  const aHasEnabled = a.profiles.some(profile => profile.enabled)
-  const bHasEnabled = b.profiles.some(profile => profile.enabled)
+  const aHasEnabled = entriesEnabled(a)
+  const bHasEnabled = entriesEnabled(b)
   if (aHasEnabled !== bHasEnabled) {
     return aHasEnabled ? -1 : 1
   }
@@ -62,20 +58,50 @@ function compareProviderGroups(a: ProviderListGroup, b: ProviderListGroup): numb
   return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' })
 }
 
-function profileGroupDescriptor(
-  profile: AgentProfile,
-  sourceKeyByProfileId: Map<string, string>,
-  sourceById: Map<string, ExternalProviderSourceSummary>,
-): Pick<ProviderListGroup, 'id' | 'kind' | 'label'> {
-  const sourceKey = sourceKeyByProfileId.get(profile.id)
-  if (!sourceKey) {
-    return { id: MANUAL_GROUP_ID, kind: 'manual', label: MANUAL_GROUP_LABEL }
+const EXTERNAL_STATUS_ORDER: Record<ExternalProviderRecordView['status'], number> = {
+  active: 0,
+  stale: 1,
+  unsupported: 2,
+  error: 3,
+  missing: 4,
+}
+
+function compareExternalRecords(a: ExternalProviderRecordView, b: ExternalProviderRecordView): number {
+  const aIsActive = a.status === 'active' && a.runtimeTargetEnabled
+  const bIsActive = b.status === 'active' && b.runtimeTargetEnabled
+  if (aIsActive !== bIsActive) {
+    return aIsActive ? -1 : 1
   }
 
-  const source = sourceById.get(sourceKey)
+  return (
+    EXTERNAL_STATUS_ORDER[a.status] - EXTERNAL_STATUS_ORDER[b.status]
+    || Number(b.runtimeTargetEnabled) - Number(a.runtimeTargetEnabled)
+    || a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+    || a.externalId.localeCompare(b.externalId, undefined, { numeric: true, sensitivity: 'base' })
+  )
+}
+
+function entriesEnabled(group: ProviderListGroup): boolean {
+  return group.entries.some((entry) => {
+    if (entry.kind === 'manual-profile') {
+      return entry.profile.enabled
+    }
+    return entry.record.status === 'active' && entry.record.runtimeTargetEnabled
+  })
+}
+
+function manualGroupDescriptor(): Pick<ProviderListGroup, 'id' | 'kind' | 'label'> {
+  return { id: MANUAL_GROUP_ID, kind: 'manual', label: MANUAL_GROUP_LABEL }
+}
+
+function externalGroupDescriptor(
+  record: ExternalProviderRecordView,
+  sourceById: Map<string, ExternalProviderSourceView>,
+): Pick<ProviderListGroup, 'id' | 'kind' | 'label'> {
+  const source = sourceById.get(record.sourceKey)
   if (!source) {
     return {
-      id: `external-source:${sourceKey}`,
+      id: `external-source:${record.sourceKey}`,
       kind: 'external-source',
       label: UNKNOWN_EXTERNAL_SOURCE_LABEL,
     }
@@ -84,7 +110,7 @@ function profileGroupDescriptor(
   return {
     id: `external-plugin:${source.pluginName}`,
     kind: 'external-plugin',
-    label: source.pluginName,
+    label: `External sources / ${source.pluginName}`,
   }
 }
 
@@ -94,24 +120,37 @@ export function sortProviderProfilesByStatus(profiles: AgentProfile[]): AgentPro
 
 export function collectProviderListGroups(
   profiles: AgentProfile[],
-  externalRecords: ExternalProviderRecordSummary[],
-  externalSources: ExternalProviderSourceSummary[],
+  externalRecords: ExternalProviderRecordView[],
+  externalSources: ExternalProviderSourceView[],
 ): ProviderListGroup[] {
   const sourceById = new Map(externalSources.map(source => [source.id, source]))
-  const sourceKeyByProfileId = new Map(externalRecords.map(record => [record.id, record.sourceKey]))
   const groups = new Map<string, ProviderListGroup>()
 
   for (const profile of sortProviderProfilesByStatus(profiles)) {
-    const descriptor = profileGroupDescriptor(profile, sourceKeyByProfileId, sourceById)
+    const descriptor = manualGroupDescriptor()
     const group = groups.get(descriptor.id)
     if (group) {
-      group.profiles.push(profile)
+      group.entries.push(createManualProviderListEntry(profile))
       continue
     }
 
     groups.set(descriptor.id, {
       ...descriptor,
-      profiles: [profile],
+      entries: [createManualProviderListEntry(profile)],
+    })
+  }
+
+  for (const record of [...externalRecords].sort(compareExternalRecords)) {
+    const descriptor = externalGroupDescriptor(record, sourceById)
+    const group = groups.get(descriptor.id)
+    if (group) {
+      group.entries.push(createExternalProviderListEntry(record))
+      continue
+    }
+
+    groups.set(descriptor.id, {
+      ...descriptor,
+      entries: [createExternalProviderListEntry(record)],
     })
   }
 

@@ -1,8 +1,10 @@
-import { providerModelCache } from '@cradle/db'
+import { providerModelCache, providerTargetModelCache } from '@cradle/db'
 import { eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
+import type { ProviderTarget } from '../provider-targets/service'
+import { providerTargetCacheId } from '../provider-targets/service'
 import type { ModelDescriptor } from './types'
 
 const STALE_THRESHOLD_S = 60 * 60 * 24 // 24 hours
@@ -48,7 +50,20 @@ const CachedModelsJsonSchema = z.string()
   .pipe(z.array(ModelDescriptorSchema))
 
 export function getCachedModels(profileId: string): CachedModelsResult | null {
-  const row = db().select().from(providerModelCache).where(eq(providerModelCache.profileId, profileId)).get()
+  const row = db().select().from(providerModelCache).where(eq(providerModelCache.providerTargetId, profileId)).get()
+  if (!row) {
+    return null
+  }
+  const models = CachedModelsJsonSchema.parse(row.modelsJson)
+  return { models, fetchedAt: row.fetchedAt, cached: true }
+}
+
+export function getCachedModelsForTarget(target: ProviderTarget): CachedModelsResult | null {
+  const row = db()
+    .select()
+    .from(providerTargetModelCache)
+    .where(eq(providerTargetModelCache.providerTargetId, providerTargetCacheId(target)))
+    .get()
   if (!row) {
     return null
   }
@@ -59,11 +74,26 @@ export function getCachedModels(profileId: string): CachedModelsResult | null {
 export function setCachedModels(profileId: string, models: ModelDescriptor[]): void {
   const now = Math.floor(Date.now() / 1000)
   db().insert(providerModelCache).values({
-    profileId,
+    providerTargetId: profileId,
     modelsJson: JSON.stringify(models),
     fetchedAt: now,
   }).onConflictDoUpdate({
-    target: providerModelCache.profileId,
+    target: providerModelCache.providerTargetId,
+    set: {
+      modelsJson: JSON.stringify(models),
+      fetchedAt: now,
+    },
+  }).run()
+}
+
+export function setCachedModelsForTarget(target: ProviderTarget, models: ModelDescriptor[]): void {
+  const now = Math.floor(Date.now() / 1000)
+  db().insert(providerTargetModelCache).values({
+    providerTargetId: providerTargetCacheId(target),
+    modelsJson: JSON.stringify(models),
+    fetchedAt: now,
+  }).onConflictDoUpdate({
+    target: providerTargetModelCache.providerTargetId,
     set: {
       modelsJson: JSON.stringify(models),
       fetchedAt: now,
@@ -72,7 +102,11 @@ export function setCachedModels(profileId: string, models: ModelDescriptor[]): v
 }
 
 export function deleteCachedModels(profileId: string): void {
-  db().delete(providerModelCache).where(eq(providerModelCache.profileId, profileId)).run()
+  db().delete(providerModelCache).where(eq(providerModelCache.providerTargetId, profileId)).run()
+}
+
+export function deleteCachedModelsForTarget(target: ProviderTarget): void {
+  db().delete(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, providerTargetCacheId(target))).run()
 }
 
 export function isCacheStale(fetchedAt: number): boolean {
@@ -82,6 +116,6 @@ export function isCacheStale(fetchedAt: number): boolean {
 
 export function getStaleProfileIds(): string[] {
   const threshold = Math.floor(Date.now() / 1000) - STALE_THRESHOLD_S
-  const rows = db().select({ profileId: providerModelCache.profileId }).from(providerModelCache).where(lt(providerModelCache.fetchedAt, threshold)).all()
+  const rows = db().select({ profileId: providerModelCache.providerTargetId }).from(providerModelCache).where(lt(providerModelCache.fetchedAt, threshold)).all()
   return rows.map(r => r.profileId)
 }

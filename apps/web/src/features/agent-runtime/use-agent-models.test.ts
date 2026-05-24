@@ -4,7 +4,11 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { AGENT_MODELS_QUERY_KEY, agentModelsQueryKey } from './use-agent-models'
+import {
+  AGENT_MODELS_QUERY_KEY,
+  agentModelsQueryKey,
+  providerTargetModelsQueryKey
+} from './use-agent-models'
 
 describe('agentModelsQueryKey', () => {
   it('uses one stable cache slot per profile', () => {
@@ -13,5 +17,21 @@ describe('agentModelsQueryKey', () => {
 
   it('uses a stable disabled-query key for empty profile selection', () => {
     expect(agentModelsQueryKey(null)).toEqual([...AGENT_MODELS_QUERY_KEY, 'no-profile'])
+  })
+})
+
+describe('providerTargetModelsQueryKey', () => {
+  it('uses one stable cache slot per provider target', () => {
+    expect(providerTargetModelsQueryKey({ kind: 'external-record', id: 'target-1' })).toEqual([
+      ...AGENT_MODELS_QUERY_KEY,
+      'external-record:target-1'
+    ])
+  })
+
+  it('uses a stable disabled-query key for empty target selection', () => {
+    expect(providerTargetModelsQueryKey(null)).toEqual([
+      ...AGENT_MODELS_QUERY_KEY,
+      'no-provider-target'
+    ])
   })
 })

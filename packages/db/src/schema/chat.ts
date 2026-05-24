@@ -1,7 +1,8 @@
 import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
-import { agentProfiles, agents } from './identity'
+import { agents } from './identity'
 import { issues } from './issue'
+import { providerTargets } from './provider-target'
 import { createdAt, textPk, timestamps, workspaces } from './shared'
 
 export const sessions = sqliteTable('sessions', {
@@ -9,8 +10,8 @@ export const sessions = sqliteTable('sessions', {
   workspaceId: text('workspace_id')
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
-  agentProfileId: text('agent_profile_id')
-    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+  providerTargetId: text('provider_target_id')
+    .references(() => providerTargets.id, { onDelete: 'restrict' }),
   runtimeKind: text('runtime_kind', {
     enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
   }).notNull().default('standard'),
@@ -24,7 +25,7 @@ export const sessions = sqliteTable('sessions', {
   ...timestamps(),
 }, table => ({
   byWorkspace: index('sessions_workspace_id_idx').on(table.workspaceId),
-  byAgentProfile: index('sessions_agent_profile_id_idx').on(table.agentProfileId),
+  byProviderTarget: index('sessions_provider_target_id_idx').on(table.providerTargetId),
   byLinkedIssue: index('sessions_linked_issue_id_idx').on(table.linkedIssueId),
 }))
 
@@ -58,7 +59,8 @@ export const usageLogs = sqliteTable('usage_logs', {
     .references(() => sessions.id, { onDelete: 'cascade' }),
   messageId: text('message_id')
     .references(() => messages.id, { onDelete: 'set null' }),
-  agentProfileId: text('agent_profile_id'),
+  providerTargetId: text('provider_target_id')
+    .references(() => providerTargets.id, { onDelete: 'set null' }),
   modelId: text('model_id'),
   promptTokens: int('prompt_tokens').notNull().default(0),
   completionTokens: int('completion_tokens').notNull().default(0),
@@ -67,7 +69,7 @@ export const usageLogs = sqliteTable('usage_logs', {
 }, table => ({
   bySession: index('usage_logs_session_id_idx').on(table.sessionId),
   byMessage: index('usage_logs_message_id_idx').on(table.messageId),
-  byAgentProfile: index('usage_logs_agent_profile_id_idx').on(table.agentProfileId),
+  byProviderTarget: index('usage_logs_provider_target_id_idx').on(table.providerTargetId),
 }))
 
 export const stepUsage = sqliteTable('step_usage', {
@@ -100,8 +102,8 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   }).notNull().default('pending'),
   text: text('text').notNull(),
   filesJson: text('files_json').notNull().default('[]'),
-  agentProfileId: text('agent_profile_id')
-    .references(() => agentProfiles.id, { onDelete: 'set null' }),
+  providerTargetId: text('provider_target_id')
+    .references(() => providerTargets.id, { onDelete: 'set null' }),
   modelId: text('model_id'),
   thinkingEffort: text('thinking_effort', {
     enum: ['low', 'medium', 'high'],
@@ -116,7 +118,7 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
     .on(table.sessionId, table.status, table.position),
   bySessionCreatedAt: index('chat_session_queue_items_session_created_at_idx')
     .on(table.sessionId, table.createdAt),
-  byAgentProfile: index('chat_session_queue_items_agent_profile_id_idx').on(table.agentProfileId),
+  byProviderTarget: index('chat_session_queue_items_provider_target_id_idx').on(table.providerTargetId),
   byStartedRun: index('chat_session_queue_items_started_run_id_idx').on(table.startedRunId),
 }))
 

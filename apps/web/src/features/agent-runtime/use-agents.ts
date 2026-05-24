@@ -13,6 +13,8 @@ const AgentSchema = z.object({
   avatarStyle: z.string(),
   avatarSeed: z.string(),
   agentProfileId: z.string().nullable(),
+  providerTargetKind: z.enum(['manual-profile', 'external-record']).nullable(),
+  providerTargetId: z.string().nullable(),
   modelId: z.string().nullable(),
   thinkingEffort: z.enum(['low', 'medium', 'high', 'auto']),
   runtimeKind: z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui']),

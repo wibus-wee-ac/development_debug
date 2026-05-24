@@ -1,12 +1,15 @@
-import { agentProfiles } from '@cradle/db'
-import { eq } from 'drizzle-orm'
 import { Elysia, t } from 'elysia'
 
-import { db } from '../../infra'
+import { resolveProviderTarget } from '../provider-targets/service'
 import { ProvidersModel } from './model'
-import { getCachedModels, isCacheStale, setCachedModels } from './model-cache'
-import { enrichModelsFromRegistryMappings, lookupModel, searchModels } from './model-info-registry'
-import { ProfileConfigWithModelRegistryJsonSchema } from './model-registry-mappings'
+import {
+  getCachedModels,
+  getCachedModelsForTarget,
+  isCacheStale,
+  setCachedModels,
+  setCachedModelsForTarget,
+} from './model-cache'
+import { lookupModel, searchModels } from './model-info-registry'
 import * as Providers from './service'
 
 export const providers = new Elysia({
@@ -16,7 +19,13 @@ export const providers = new Elysia({
   .post('/models', async ({ body }) => {
     const request = Providers.ProviderRequestSchema.parse(body)
     const models = await Providers.listModels(request)
-    if (body.profileId) {
+    if (request.providerTargetKind && request.providerTargetId) {
+      setCachedModelsForTarget({
+        kind: request.providerTargetKind,
+        id: request.providerTargetId,
+      }, models)
+    }
+    else if (body.profileId) {
       setCachedModels(body.profileId, models)
     }
     return models
@@ -30,21 +39,45 @@ export const providers = new Elysia({
     body: ProvidersModel.providerBody,
     response: { 200: t.Array(ProvidersModel.modelDescriptor) },
   })
+  .get('/targets/:providerTargetKind/:providerTargetId/models-cache', async ({ params }) => {
+    const target = {
+      kind: params.providerTargetKind,
+      id: params.providerTargetId,
+    } as const
+    const cached = getCachedModelsForTarget(target)
+    if (!cached) {
+      return { models: [], cached: false, stale: false, providerLabel: '' }
+    }
+    const resolved = resolveProviderTarget(target)
+    return {
+      models: cached.models,
+      cached: true,
+      stale: isCacheStale(cached.fetchedAt),
+      providerLabel: resolved.label,
+    }
+  }, {
+    detail: {
+      summary: 'Get cached models for a provider target',
+    },
+    params: t.Object({
+      providerTargetKind: t.Union([t.Literal('manual-profile'), t.Literal('external-record')]),
+      providerTargetId: t.String({ minLength: 1 }),
+    }),
+    response: {
+      200: t.Object({
+        models: t.Array(ProvidersModel.modelDescriptor),
+        cached: t.Boolean(),
+        stale: t.Boolean(),
+        providerLabel: t.String(),
+      }),
+    },
+  })
   .get('/:profileId/models-cache', async ({ params }) => {
     const cached = getCachedModels(params.profileId)
     if (!cached) {
       return { models: [], cached: false, stale: false }
     }
-    const profile = db()
-      .select({ configJson: agentProfiles.configJson })
-      .from(agentProfiles)
-      .where(eq(agentProfiles.id, params.profileId))
-      .get()
-    const mappings = profile
-      ? ProfileConfigWithModelRegistryJsonSchema.parse(profile.configJson).modelRegistryMappings
-      : []
-    const stale = isCacheStale(cached.fetchedAt)
-    return { models: await enrichModelsFromRegistryMappings(cached.models, mappings), cached: true, stale }
+    return { models: cached.models, cached: true, stale: isCacheStale(cached.fetchedAt) }
   }, {
     detail: {
       summary: 'Get cached models for a provider profile',

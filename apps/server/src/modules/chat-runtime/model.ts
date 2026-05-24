@@ -44,6 +44,23 @@ const queueStatusSchema = t.Union([
   t.Literal('completed'),
   t.Literal('failed'),
 ])
+const messageStatusSchema = t.Union([
+  t.Literal('streaming'),
+  t.Literal('complete'),
+  t.Literal('aborted'),
+  t.Literal('failed'),
+])
+const tracePhaseSchema = t.Union([
+  t.Literal('run_started'),
+  t.Literal('provider_raw'),
+  t.Literal('mapper_output'),
+  t.Literal('runtime_chunk'),
+  t.Literal('projection_apply'),
+  t.Literal('sse_emit'),
+  t.Literal('run_completed'),
+  t.Literal('run_failed'),
+  t.Literal('run_aborted'),
+])
 
 const queueItemSchema = t.Object({
   id: t.String(),
@@ -52,7 +69,7 @@ const queueItemSchema = t.Object({
   status: queueStatusSchema,
   text: t.String(),
   files: t.Array(filePartSchema),
-  agentProfileId: t.Union([t.String(), t.Null()]),
+  providerTargetId: t.Union([t.String(), t.Null()]),
   modelId: t.Union([t.String(), t.Null()]),
   thinkingEffort: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Null()]),
   position: t.Number(),
@@ -63,9 +80,39 @@ const queueItemSchema = t.Object({
   updatedAt: t.Number(),
 })
 
+const traceRecordSchema = t.Object({
+  schema: t.Literal('cradle.chat-stream-trace.v1'),
+  seq: t.Number(),
+  phase: tracePhaseSchema,
+  timestamp: t.Number(),
+  chatSessionId: t.String(),
+  runId: t.String(),
+  messageId: t.String(),
+  runtimeKind: t.String(),
+  providerSessionId: t.Union([t.String(), t.Null()]),
+  toolCallId: t.Union([t.String(), t.Null()]),
+  payload: t.Any(),
+})
+
+const runTraceSchema = t.Object({
+  runId: t.String(),
+  sessionId: t.String(),
+  messageId: t.Union([t.String(), t.Null()]),
+  status: messageStatusSchema,
+  startedAt: t.Number(),
+  finishedAt: t.Union([t.Number(), t.Null()]),
+  path: t.String(),
+  recordCount: t.Number(),
+  records: t.Array(traceRecordSchema),
+})
+
 export const ChatRuntimeModel = {
   sessionIdParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
+  }),
+
+  runIdParams: t.Object({
+    runId: t.String({ minLength: 1 }),
   }),
 
   queueItemParams: t.Object({
@@ -76,7 +123,7 @@ export const ChatRuntimeModel = {
   responseBody: t.Object({
     text: t.Optional(t.String()),
     files: t.Optional(t.Array(filePartSchema)),
-    agentProfileId: t.Optional(t.String()),
+    providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),
   }),
@@ -99,11 +146,20 @@ export const ChatRuntimeModel = {
     items: t.Array(queueItemSchema),
   }),
 
+  traceRecord: traceRecordSchema,
+
+  runTrace: runTraceSchema,
+
+  sessionTraces: t.Object({
+    sessionId: t.String(),
+    traces: t.Array(runTraceSchema),
+  }),
+
   queueEnqueueBody: t.Object({
     mode: queueModeSchema,
     text: t.Optional(t.String({ minLength: 1 })),
     files: t.Optional(t.Array(filePartSchema)),
-    agentProfileId: t.Optional(t.String()),
+    providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),
   }),

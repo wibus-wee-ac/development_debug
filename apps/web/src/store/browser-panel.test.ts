@@ -1,3 +1,6 @@
+// Verifies BrowserPanel store tab shortcuts and render subscription boundaries.
+import { act, cleanup, render } from '@testing-library/react'
+import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
@@ -19,10 +22,12 @@ function commandKeyEvent(key: string): KeyboardEvent {
 
 describe('browser panel shortcuts', () => {
   beforeEach(() => {
+    cleanup()
     useBrowserPanelStore.setState({
       tabs: [],
       activeTabId: null,
       requestedTab: null,
+      scrollToFilePath: null,
     })
   })
 
@@ -89,5 +94,65 @@ describe('browser panel shortcuts', () => {
 
     expect(useBrowserPanelStore.getState().tabs).toHaveLength(1)
     expect(event.preventDefault).not.toHaveBeenCalled()
+  })
+
+  it('scopes file scroll requests to a workspace diff tab', () => {
+    const tabId = useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+
+    useBrowserPanelStore.getState().requestScrollToFilePath({
+      path: 'src/index.ts',
+      tabId,
+    })
+
+    expect(useBrowserPanelStore.getState().scrollToFilePath).toMatchObject({
+      path: 'src/index.ts',
+      tabId,
+    })
+  })
+
+  it('does not notify tab subscribers for file scroll requests', () => {
+    const tabId = useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+    let renderCount = 0
+
+    function TabsProbe() {
+      useBrowserPanelStore(state => state.tabs)
+      renderCount++
+      return null
+    }
+
+    render(createElement(TabsProbe))
+    expect(renderCount).toBe(1)
+
+    act(() => {
+      useBrowserPanelStore.getState().requestScrollToFilePath({
+        path: 'src/index.ts',
+        tabId,
+      })
+    })
+
+    expect(renderCount).toBe(1)
+  })
+
+  it('does not notify store subscribers when reopening the active diff tab', () => {
+    useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+    const listener = vi.fn()
+    const unsubscribe = useBrowserPanelStore.subscribe(listener)
+
+    useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+
+    unsubscribe()
+    expect(listener).not.toHaveBeenCalled()
   })
 })

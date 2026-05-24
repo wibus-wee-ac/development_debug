@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest'
 import type { AgentProfile } from '~/lib/types'
 
 import { collectProviderListGroups, sortProviderProfilesByStatus } from './provider-list-groups'
+import type { ExternalProviderRecordView, ExternalProviderSourceView } from './provider-settings-utils'
 
 function profile(input: Pick<AgentProfile, 'id' | 'name' | 'enabled'>): AgentProfile {
   return {
@@ -21,6 +22,35 @@ function profile(input: Pick<AgentProfile, 'id' | 'name' | 'enabled'>): AgentPro
   }
 }
 
+function externalRecord(
+  input: Pick<ExternalProviderRecordView, 'id' | 'sourceKey' | 'externalId' | 'name' | 'status'> & {
+    runtimeTargetEnabled?: boolean
+  },
+): ExternalProviderRecordView {
+  return {
+    ...input,
+    app: 'codex',
+    providerKind: 'openai-compatible',
+    runtimeTargetEnabled: input.runtimeTargetEnabled ?? true,
+    metadata: {},
+    warnings: [],
+  }
+}
+
+function externalSource(
+  input: Pick<ExternalProviderSourceView, 'id' | 'pluginName' | 'label'>,
+): ExternalProviderSourceView {
+  return {
+    ...input,
+    lastSyncStatus: 'ok',
+    lastSyncMessage: null,
+    lastSyncError: null,
+    lastSyncAt: null,
+    inventory: {},
+    warnings: [],
+  }
+}
+
 describe('provider-list-groups', () => {
   it('sorts enabled providers before disabled providers', () => {
     expect(
@@ -32,27 +62,79 @@ describe('provider-list-groups', () => {
     ).toEqual(['on-a', 'on-c', 'off-b'])
   })
 
-  it('groups external profiles by source plugin owner rather than source label', () => {
+  it('groups external records by source plugin owner rather than source label', () => {
     const groups = collectProviderListGroups(
       [
-        profile({ id: 'p-1', name: 'CC Switch / 0516', enabled: false }),
-        profile({ id: 'p-2', name: 'CC Switch / 0523', enabled: true }),
         profile({ id: 'manual', name: 'OpenAI', enabled: true }),
       ],
       [
-        { id: 'p-1', sourceKey: 'source-a' },
-        { id: 'p-2', sourceKey: 'source-b' },
+        externalRecord({
+          id: 'record-1',
+          sourceKey: 'source-a',
+          externalId: 'cc-switch:one',
+          name: 'CC Switch / 0516',
+          status: 'missing',
+        }),
+        externalRecord({
+          id: 'record-2',
+          sourceKey: 'source-b',
+          externalId: 'cc-switch:two',
+          name: 'CC Switch / 0523',
+          status: 'active',
+        }),
       ],
       [
-        { id: 'source-a', pluginName: 'cc-switch' },
-        { id: 'source-b', pluginName: 'cc-switch' },
+        externalSource({ id: 'source-a', pluginName: 'cc-switch', label: 'CC Switch A' }),
+        externalSource({ id: 'source-b', pluginName: 'cc-switch', label: 'CC Switch B' }),
       ],
     )
 
-    expect(groups.map(group => ({ id: group.id, profiles: group.profiles.map(item => item.id) })))
+    expect(groups.map(group => ({ id: group.id, entries: group.entries.map(item => item.id) })))
       .toEqual([
-        { id: 'manual', profiles: ['manual'] },
-        { id: 'external-plugin:cc-switch', profiles: ['p-2', 'p-1'] },
+        { id: 'manual', entries: ['manual-profile:manual'] },
+        {
+          id: 'external-plugin:cc-switch',
+          entries: ['external-record:record-2', 'external-record:record-1'],
+        },
       ])
+  })
+
+  it('sorts enabled active external records before disabled active records', () => {
+    const groups = collectProviderListGroups(
+      [],
+      [
+        externalRecord({
+          id: 'record-disabled',
+          sourceKey: 'source-a',
+          externalId: 'cc-switch:disabled',
+          name: 'Disabled',
+          status: 'active',
+          runtimeTargetEnabled: false,
+        }),
+        externalRecord({
+          id: 'record-stale',
+          sourceKey: 'source-a',
+          externalId: 'cc-switch:stale',
+          name: 'Stale',
+          status: 'stale',
+          runtimeTargetEnabled: true,
+        }),
+        externalRecord({
+          id: 'record-active',
+          sourceKey: 'source-a',
+          externalId: 'cc-switch:active',
+          name: 'Active',
+          status: 'active',
+          runtimeTargetEnabled: true,
+        }),
+      ],
+      [externalSource({ id: 'source-a', pluginName: 'cc-switch', label: 'CC Switch' })],
+    )
+
+    expect(groups[0]?.entries.map(item => item.id)).toEqual([
+      'external-record:record-active',
+      'external-record:record-disabled',
+      'external-record:record-stale',
+    ])
   })
 })

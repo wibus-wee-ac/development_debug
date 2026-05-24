@@ -19,9 +19,10 @@ import { Spinner } from '~/components/ui/spinner'
 import { ModelVisibilitySchema, modelIsVisible } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
-import type { ModelCapabilities, ModelDescriptor } from '~/lib/types'
+import type { ModelCapabilities, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import { ALL_DISABLED_SENTINEL } from './provider-settings-utils'
+import { providerTargetPath } from './provider-target-model-settings'
 
 function formatTimeAgo(ts: number): string {
   const seconds = Math.round((Date.now() - ts) / 1000)
@@ -283,7 +284,7 @@ async function searchProviderModels(query: string): Promise<SearchResult[]> {
 
 export function ModelsPanel({
   loading,
-  profileId,
+  providerTarget,
   models,
   enabledModels,
   onChange,
@@ -292,7 +293,7 @@ export function ModelsPanel({
   cachedAt
 }: {
   loading: boolean
-  profileId: string
+  providerTarget: ProviderTarget
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
@@ -424,7 +425,7 @@ export function ModelsPanel({
         : { modelId: model.id, registryModelId: result.id }
       try {
         const response = await fetch(
-          `${getServerUrl()}/profiles/${encodeURIComponent(profileId)}/model-registry-mappings`,
+          `${getServerUrl()}/provider-targets/${providerTargetPath(providerTarget)}/model-registry-mappings`,
           {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
@@ -440,7 +441,7 @@ export function ModelsPanel({
         setSavingMapping(false)
       }
     },
-    [closeMappingDialog, onModelRegistryMapped, profileId]
+    [closeMappingDialog, onModelRegistryMapped, providerTarget]
   )
 
   const saveManualMapping = useCallback(() => {

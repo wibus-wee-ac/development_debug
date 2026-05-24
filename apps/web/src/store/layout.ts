@@ -65,10 +65,13 @@ export const useLayoutStore = create<LayoutState>()(
       setAsideActiveTab: (asideActiveTab: string) => set({ asideActiveTab }),
       openAsideTab: (tab: string) => set({ asideOpen: true, asideActiveTab: tab }),
       toggleBottomPanel: () => set(s => ({ bottomPanelOpen: !s.bottomPanelOpen })),
-      setBottomPanelOpen: (open: boolean) => set({ bottomPanelOpen: open }),
+      setBottomPanelOpen: (open: boolean) => set(s => (s.bottomPanelOpen === open ? s : { bottomPanelOpen: open })),
       toggleBrowserPanel: () => set(s => ({ browserPanelOpen: !s.browserPanelOpen })),
-      setBrowserPanelOpen: (open: boolean) => set({ browserPanelOpen: open }),
-      setBrowserPanelRatio: (r: number) => set({ browserPanelRatio: Math.max(0.2, Math.min(0.7, r)) }),
+      setBrowserPanelOpen: (open: boolean) => set(s => (s.browserPanelOpen === open ? s : { browserPanelOpen: open })),
+      setBrowserPanelRatio: (r: number) => set((s) => {
+        const browserPanelRatio = Math.max(0.2, Math.min(0.7, r))
+        return s.browserPanelRatio === browserPanelRatio ? s : { browserPanelRatio }
+      }),
     }),
     {
       name: layoutPersistKey,

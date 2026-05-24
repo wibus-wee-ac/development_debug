@@ -118,7 +118,7 @@ export class SystemAgentProvider implements ChatRuntime {
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
-      agentProfileId: input.profile.id,
+      providerTargetId: input.profile.providerTargetId,
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({

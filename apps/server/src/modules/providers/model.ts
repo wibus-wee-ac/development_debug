@@ -1,6 +1,13 @@
 import { t } from 'elysia'
 
 const nullableRef = t.Optional(t.Union([t.String({ minLength: 1 }), t.Null()]))
+const nullableTargetKind = t.Optional(t.Union([
+  t.Literal('manual'),
+  t.Literal('external'),
+  t.Literal('manual-profile'),
+  t.Literal('external-record'),
+  t.Null(),
+]))
 
 const openaiCompatibleConfig = t.Object({
   baseUrl: t.Optional(t.String()),
@@ -44,6 +51,8 @@ export const ProvidersModel = {
     config: openaiCompatibleConfig,
     secretRef: nullableRef,
     profileId: nullableRef,
+    providerTargetKind: nullableTargetKind,
+    providerTargetId: nullableRef,
   }),
 
   modelDescriptor: t.Object({

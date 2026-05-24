@@ -38,7 +38,7 @@ import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, ModelDescriptor } from '~/lib/types'
+import type { Agent, AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import type { AgentBatchThinkingEffort, AgentProviderBatchSelection } from './agent-batch-configuration'
 import {
@@ -65,6 +65,36 @@ const BATCH_AGENT_THINKING_OPTIONS: Array<ThinkingOption<AgentBatchThinkingEffor
     value: option.value ?? 'auto',
   }))
 
+function providerTargetFromAgent(agent: Agent): ProviderTarget | null {
+  if (agent.providerTargetKind && agent.providerTargetId) {
+    return { kind: agent.providerTargetKind, id: agent.providerTargetId }
+  }
+  if (agent.agentProfileId) {
+    return { kind: 'manual-profile', id: agent.agentProfileId }
+  }
+  return null
+}
+
+function providerTargetKey(target: ProviderTarget | null): string | null {
+  return target ? `${target.kind}:${target.id}` : null
+}
+
+function providerTargetFromKey(key: string | null): ProviderTarget | null {
+  if (!key) {
+    return null
+  }
+  const separatorIndex = key.indexOf(':')
+  if (separatorIndex < 0) {
+    return null
+  }
+  const kind = key.slice(0, separatorIndex)
+  const id = key.slice(separatorIndex + 1)
+  if ((kind !== 'manual-profile' && kind !== 'external-record') || !id) {
+    return null
+  }
+  return { kind, id }
+}
+
 function commonString(values: Array<string | null>): string | null {
   if (values.length === 0) {
     return null
@@ -73,24 +103,32 @@ function commonString(values: Array<string | null>): string | null {
   return values.every(value => value === first) ? first : null
 }
 
-function defaultBatchProfileId(agents: Agent[], profiles: AgentProfile[]): string | null {
+function defaultBatchProviderTarget(agents: Agent[], profiles: AgentProfile[]): ProviderTarget | null {
   const enabledProfileIds = new Set(
     profiles.filter(profile => profile.enabled).map(profile => profile.id),
   )
   const providerAgents = agents.filter(agent => agent.runtimeKind !== 'cli-tui')
-  const commonProfileId = commonString(providerAgents.map(agent => agent.agentProfileId))
-  if (commonProfileId && enabledProfileIds.has(commonProfileId)) {
-    return commonProfileId
+  const commonTarget = providerTargetFromKey(commonString(
+    providerAgents.map(agent => providerTargetKey(providerTargetFromAgent(agent))),
+  ))
+  if (commonTarget?.kind === 'manual-profile' && enabledProfileIds.has(commonTarget.id)) {
+    return commonTarget
   }
-  return profiles.find(profile => profile.enabled)?.id ?? null
+  if (commonTarget?.kind === 'external-record') {
+    return commonTarget
+  }
+  const fallbackProfileId = profiles.find(profile => profile.enabled)?.id ?? null
+  return fallbackProfileId ? { kind: 'manual-profile', id: fallbackProfileId } : null
 }
 
-function defaultBatchModelId(agents: Agent[], profileId: string | null): string | null {
-  if (!profileId) {
+function defaultBatchModelId(agents: Agent[], providerTarget: ProviderTarget | null): string | null {
+  if (!providerTarget) {
     return null
   }
   const matchingAgents = agents.filter(
-    agent => agent.runtimeKind !== 'cli-tui' && agent.agentProfileId === profileId,
+    agent =>
+      agent.runtimeKind !== 'cli-tui'
+      && providerTargetKey(providerTargetFromAgent(agent)) === providerTargetKey(providerTarget),
   )
   return commonString(matchingAgents.map(agent => agent.modelId))
 }
@@ -121,7 +159,10 @@ function AgentSidebarRow({
 }) {
   const checkboxShiftKeyRef = useRef(false)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
-  const profile = profiles.find(p => p.id === agent.agentProfileId)
+  const providerTarget = providerTargetFromAgent(agent)
+  const profile = providerTarget?.kind === 'manual-profile'
+    ? profiles.find(p => p.id === providerTarget.id)
+    : null
   const cliTuiLaunch
     = agent.runtimeKind === 'cli-tui'
       ? AgentRuntimeConfigJsonSchema.parse(agent.configJson).cliTui
@@ -217,13 +258,13 @@ function AgentBatchProviderPanel({
   const skippedCliTuiCount = selectedAgents.length - providerAgents.length
   const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
   const defaultSelection = useMemo((): AgentProviderBatchSelection | null => {
-    const agentProfileId = defaultBatchProfileId(selectedAgents, profiles)
-    if (!agentProfileId) {
+    const providerTarget = defaultBatchProviderTarget(selectedAgents, profiles)
+    if (!providerTarget) {
       return null
     }
     return {
-      agentProfileId,
-      modelId: defaultBatchModelId(selectedAgents, agentProfileId),
+      providerTarget,
+      modelId: defaultBatchModelId(selectedAgents, providerTarget),
       thinkingEffort: defaultBatchThinkingEffort(selectedAgents),
     }
   }, [profiles, selectedAgents])
@@ -232,19 +273,22 @@ function AgentBatchProviderPanel({
   )
   const selection = selectionOverride ?? defaultSelection
   const initialProfileIds = useMemo(
-    () => [selection?.agentProfileId ?? null],
-    [selection?.agentProfileId],
+    () => [selection?.providerTarget.kind === 'manual-profile' ? selection.providerTarget.id : null],
+    [selection?.providerTarget],
   )
   const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(
     enabledProfiles,
     initialProfileIds,
   )
-  const selectedModels = selection?.agentProfileId
-    ? (modelsByProfileId[selection.agentProfileId] ?? [])
+  const selectedProfileId = selection?.providerTarget.kind === 'manual-profile'
+    ? selection.providerTarget.id
+    : null
+  const selectedModels = selectedProfileId
+    ? (modelsByProfileId[selectedProfileId] ?? [])
     : []
   const selectedModel = selectedModels.find(model => model.id === selection?.modelId) ?? null
-  const isLoadingSelectedModels = selection?.agentProfileId
-    ? loadingProfileIds.has(selection.agentProfileId)
+  const isLoadingSelectedModels = selectedProfileId
+    ? loadingProfileIds.has(selectedProfileId)
     : false
 
   const resolveThinkingForModel = (
@@ -257,7 +301,7 @@ function AgentBatchProviderPanel({
     requestProfileModels(nextProfileId)
     const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
     setSelectionOverride({
-      agentProfileId: nextProfileId,
+      providerTarget: { kind: 'manual-profile', id: nextProfileId },
       modelId: nextModel?.id ?? null,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
@@ -268,7 +312,7 @@ function AgentBatchProviderPanel({
       ? ((modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null)
       : null
     setSelectionOverride({
-      agentProfileId: nextProfileId,
+      providerTarget: { kind: 'manual-profile', id: nextProfileId },
       modelId: nextModelId,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
@@ -305,7 +349,7 @@ skipped.
         <div className="flex flex-wrap items-center justify-center gap-2">
           <ProviderModelPicker
             profiles={enabledProfiles}
-            selectedProfileId={selection?.agentProfileId ?? null}
+            selectedProfileId={selectedProfileId}
             selectedModelId={selection?.modelId ?? null}
             selectedModel={selectedModel}
             modelsByProfileId={modelsByProfileId}
@@ -512,6 +556,8 @@ export function AgentList() {
                 avatarSeed: agent.avatarSeed,
                 avatarUrl: agent.avatarUrl,
                 agentProfileId: agent.agentProfileId,
+                providerTargetKind: agent.providerTargetKind,
+                providerTargetId: agent.providerTargetId,
                 modelId: agent.modelId,
                 thinkingEffort: agent.thinkingEffort,
                 runtimeKind: agent.runtimeKind,

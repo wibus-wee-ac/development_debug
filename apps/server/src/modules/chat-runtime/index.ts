@@ -9,19 +9,22 @@ export const chatRuntime = new Elysia({
 })
   // POST /chat/sessions/:sessionId/response → SSE stream (send message + get streaming response)
   .post('/sessions/:sessionId/response', async ({ params, body }) => {
-    const stream = await ChatRuntime.streamResponse({
+    const response = await ChatRuntime.streamResponse({
       sessionId: params.sessionId,
       text: body.text ?? '',
       files: body.files,
-      agentProfileId: body.agentProfileId?.trim() || undefined,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
     })
-    return new Response(stream, {
+    return new Response(response.stream, {
       headers: {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         'connection': 'keep-alive',
+        'x-cradle-run-id': response.runId,
+        'x-cradle-assistant-message-id': response.assistantMessageId,
+        'x-cradle-user-message-id': response.userMessageId,
       },
     })
   }, {
@@ -64,7 +67,7 @@ export const chatRuntime = new Elysia({
       mode: body.mode,
       text: body.text,
       files: body.files,
-      agentProfileId: body.agentProfileId?.trim() || undefined,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
     })
@@ -128,6 +131,32 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.chatMessages },
+  })
+  // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
+  .get('/runs/:runId/trace', ({ params }) => {
+    return ChatRuntime.getRunTrace(params.runId)
+  }, {
+    detail: {
+      'summary': 'Get chat stream trace records for a run',
+      'x-cradle-cli': {
+        command: ['chat', 'trace', 'run'],
+      },
+    },
+    params: ChatRuntimeModel.runIdParams,
+    response: { 200: ChatRuntimeModel.runTrace },
+  })
+  // GET /chat/sessions/:sessionId/traces → all dev-mode stream traces for a session
+  .get('/sessions/:sessionId/traces', ({ params }) => {
+    return ChatRuntime.getSessionTraces(params.sessionId)
+  }, {
+    detail: {
+      'summary': 'Get chat stream traces for a session',
+      'x-cradle-cli': {
+        command: ['chat', 'trace', 'session'],
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.sessionTraces },
   })
   // POST /chat/sessions/:sessionId/cancel → abort active run
   .post('/sessions/:sessionId/cancel', async ({ params }) => {

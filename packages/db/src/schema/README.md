@@ -15,7 +15,7 @@
 - **identity.ts**: Agent identity / credential 相关表
 - **chat.ts**: Product session、message、usage log、Chat Session continuation queue 相关表；`messages.message_json` 是 chat hydration 真相源，`messages.content` 是派生纯文本 cache，`chat_session_queue_items` 由 Chat Runtime 拥有，用于持久化 `queue` / `steer` follow-up
 - **chronicle.ts**: Chronicle 本地活动记忆相关表，包含 screen snapshot、accessibility evidence/event history、activity session/segment/pipeline run、knowledge card/version/source、dream run/candidate、raw audio segment、audio transcript、speaker profile、memory、memory chunk/keyword/embedding index、model resource status 与 event
-- **external-sources.ts**: Plugin-provided external provider source、source record 与 profile link projection 表；Cradle 写自己的 mirror namespace，不写外部产品 namespace
+- **external-sources.ts**: Plugin-provided external provider source、source record 与 external runtime target 表；Cradle 只写自己的 external-source namespace，不写外部产品 namespace，也不再把外部记录投影进 manual profile 表
 - **handoff.ts**: Agent-to-Agent handoff proposal lifecycle 表；只拥有交接 proposal/status/result，通过 ID 引用 chat session 和 agent identity
 - **runtime.ts**: Runtime audit 相关表
 - **acp.ts**: ACP agent 与 ACP audit 相关表

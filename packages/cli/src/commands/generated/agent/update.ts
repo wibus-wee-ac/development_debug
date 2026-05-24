@@ -48,6 +48,18 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "providerTargetKind",
+      "required": false,
+      "target": "body.providerTargetKind",
+      "type": "string"
+    },
+    {
+      "name": "providerTargetId",
+      "required": false,
+      "target": "body.providerTargetId",
+      "type": "string"
+    },
+    {
       "name": "modelId",
       "required": false,
       "target": "body.modelId",

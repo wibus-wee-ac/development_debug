@@ -25,4 +25,7 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0037_sweet_paibok.sql**: Drizzle Kit 生成的 plugin storage migration，新增 `plugin_storage_entries` 表与 plugin/key 隔离索引
 - **0038_chat_session_queue_items.sql**: Chat Runtime-owned continuation queue migration，新增 `chat_session_queue_items` 表与 session/status/run 查询索引
 - **0039_chat_session_queue_repair.sql**: 幂等修复 migration，用于补齐已经记录 0038 但缺少 `chat_session_queue_items` 的开发库
+- **0041_keen_maggott.sql**: Drizzle Kit 生成的 provider-target foundation migration，新增 external runtime target、provider-target model cache 与 provider-target 引用列，并移除旧 external profile link 的 profile FK
+- **0042_bitter_mimic.sql**: Drizzle Kit 生成的 nullable runtime profile migration，让 backend binding/capability snapshot 可以记录 external-record target 而不伪造 profile FK
+- **0043_serious_stature.sql**: Drizzle Kit 生成的 external profile link cleanup migration，删除已废弃的 `external_provider_profile_links` 表
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

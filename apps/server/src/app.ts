@@ -20,7 +20,7 @@ import {
   initDaemon as chronicleInitDaemon,
   stopActivityPipelineScheduler as chronicleStopActivityPipelineScheduler,
   startSlackBackgroundSync as chronicleStartSlackBackgroundSync,
-  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync,
+  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync
 } from './modules/chronicle/service'
 import { desktop } from './modules/desktop'
 import { filesystem } from './modules/filesystem'
@@ -35,6 +35,7 @@ import { observability } from './modules/observability'
 import { packCodebase } from './modules/pack-codebase'
 import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
+import { providerTargets } from './modules/provider-targets'
 import { providers } from './modules/providers'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
@@ -61,10 +62,11 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
 
   try {
     const parsed = new URL(origin)
-    return (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-      && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
-  }
-  catch {
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+      ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+    )
+  } catch {
     return false
   }
 }
@@ -74,10 +76,19 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),
-    normalize: 'typebox',
+    normalize: 'typebox'
   })
 
-  app.use(cors({ origin: isAllowedCorsOrigin }))
+  app.use(
+    cors({
+      origin: isAllowedCorsOrigin,
+      exposeHeaders: [
+        'x-cradle-run-id',
+        'x-cradle-assistant-message-id',
+        'x-cradle-user-message-id'
+      ]
+    })
+  )
   app.use(createRequestIdPlugin())
   app.use(createRequestLoggerPlugin())
   app.onError(createErrorHandler())
@@ -88,6 +99,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(filesystem)
   app.use(usage)
   app.use(profiles)
+  app.use(providerTargets)
   app.use(externalProviderSources)
   app.use(secrets)
   app.use(providers)
@@ -119,7 +131,12 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
 
-  app.onStop([() => chronicleStopActivityPipelineScheduler(), () => chronicleStopSlackBackgroundSync(), () => chronicleCleanup(), () => shutdownInfra()])
+  app.onStop([
+    () => chronicleStopActivityPipelineScheduler(),
+    () => chronicleStopSlackBackgroundSync(),
+    () => chronicleCleanup(),
+    () => shutdownInfra()
+  ])
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
@@ -132,8 +149,8 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
               data: {
                 sourceKey: result.sourceKey,
                 label: result.sourceKey,
-                error: result.message ?? 'Unknown sync error',
-              },
+                error: result.message ?? 'Unknown sync error'
+              }
             })
           }
         }

@@ -79,7 +79,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
-      agentProfileId: input.profile.id,
+      providerTargetId: input.profile.providerTargetId,
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
@@ -118,6 +118,8 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       textItemId,
       assistantStarted: false,
       hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
       activeToolBlockIds: new Map(),
       currentParentToolUseId: null,
     }

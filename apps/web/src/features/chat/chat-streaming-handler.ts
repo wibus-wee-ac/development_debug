@@ -2,9 +2,10 @@ import type { UIMessage } from 'ai'
 
 import { useChatStore } from '~/store/chat'
 
-import type { ChatPartDelta, ChatStreamEvent, SubagentMessageContext } from './chat-delta-events'
+import type { ChatPartDelta, ChatStreamEvent, ChatToolEntityPatch, SubagentMessageContext } from './chat-delta-events'
 import {
   applyChatPartDeltas,
+  collectChatToolEntityPatches,
 } from './chat-delta-events'
 
 // ── Handler ─────────────────────────────────────────────────
@@ -24,17 +25,23 @@ export class ChatStreamingHandler {
   private activeMessageId: string | null = null
   private seenSeqsByStream = new Map<string, Set<number>>()
   private terminated = false
+  private requestStartedAtMs: number
+  private pendingToolEntityPatches: QueuedToolEntityPatch[] = []
+  private toolEntityPatchFlushFrame: number | null = null
 
-  constructor(sessionId: string, messageId: string) {
+  constructor(sessionId: string, messageId: string, requestStartedAtMs = performance.now()) {
     this.sessionId = sessionId
     this.messageId = messageId
+    this.requestStartedAtMs = requestStartedAtMs
   }
 
   /**
    * Register this handler with the store and create the initial assistant message.
    */
   start(controller: AbortController): void {
-    useChatStore.getState().startGeneration(this.sessionId, this.messageId, controller)
+    const store = useChatStore.getState()
+    store.beginRunDisplayMeta(this.messageId, this.requestStartedAtMs)
+    store.startGeneration(this.sessionId, this.messageId, controller)
   }
 
   /**
@@ -66,6 +73,7 @@ export class ChatStreamingHandler {
       return
     }
     this.terminated = true
+    this.flushToolEntityPatches()
     useChatStore.getState().finishGeneration(this.activeMessageId ?? this.messageId)
   }
 
@@ -77,6 +85,7 @@ export class ChatStreamingHandler {
       return
     }
     this.terminated = true
+    this.flushToolEntityPatches()
     useChatStore.getState().failGeneration(this.activeMessageId ?? this.messageId, error)
   }
 
@@ -84,6 +93,7 @@ export class ChatStreamingHandler {
    * Clean up any pending timers.
    */
   dispose(): void {
+    this.flushToolEntityPatches()
   }
 
   // ── Private ─────────────────────────────────────────────
@@ -93,8 +103,25 @@ export class ChatStreamingHandler {
     if (nextDeltas.length === 0) {
       return
     }
+    const receivedAtMs = performance.now()
     this.activateServerMessage(messageId)
-    useChatStore.getState().updateMessage(this.sessionId, messageId, message => applyChatPartDeltas(message, nextDeltas))
+    const store = useChatStore.getState()
+    store.markRunFirstEvent(messageId, receivedAtMs)
+    if (hasVisibleContentDelta(nextDeltas)) {
+      store.markRunFirstContent(messageId, receivedAtMs)
+    }
+    const currentMessage = store.messagesMap.get(this.sessionId)?.find(message => message.id === messageId)
+    if (!currentMessage) {
+      return
+    }
+    const nextMessage = hasMessagePartDelta(nextDeltas)
+      ? applyChatPartDeltas(currentMessage, nextDeltas)
+      : currentMessage
+    const toolPatches = collectChatToolEntityPatches(nextMessage, nextDeltas)
+    if (nextMessage !== currentMessage) {
+      store.updateMessage(this.sessionId, messageId, () => nextMessage)
+    }
+    this.queueToolEntityPatches(messageId, toolPatches)
   }
 
   private applySubagentDeltas(context: SubagentMessageContext, deltas: ChatPartDelta[]): void {
@@ -114,11 +141,18 @@ export class ChatStreamingHandler {
         role: 'assistant' as const,
         parts: [],
       }
-    store.upsertSubagentMessage(
-      context.parentMessageId,
-      context.parentToolCallId,
-      applyChatPartDeltas(current, nextDeltas),
-    )
+    const nextMessage = hasMessagePartDelta(nextDeltas)
+      ? applyChatPartDeltas(current, nextDeltas)
+      : current
+    const toolPatches = collectChatToolEntityPatches(nextMessage, nextDeltas)
+    if (nextMessage !== current) {
+      store.upsertSubagentMessage(
+        context.parentMessageId,
+        context.parentToolCallId,
+        nextMessage,
+      )
+    }
+    this.queueToolEntityPatches(context.messageId, toolPatches)
   }
 
   private activateServerMessage(messageId: string): void {
@@ -137,6 +171,7 @@ export class ChatStreamingHandler {
     }
     if (this.activeMessageId === null) {
       const controller = store.activeAbortControllers.get(this.messageId) ?? new AbortController()
+      store.moveRunDisplayMeta(this.messageId, messageId)
       store.startGeneration(this.sessionId, messageId, controller)
       store.finishGeneration(this.messageId)
     }
@@ -158,4 +193,87 @@ export class ChatStreamingHandler {
     }
     return next
   }
+
+  private queueToolEntityPatches(messageId: string, patches: ChatToolEntityPatch[]): void {
+    const mergedPatches = mergeToolEntityPatches(messageId, patches)
+    if (mergedPatches.length === 0) {
+      return
+    }
+    this.pendingToolEntityPatches.push(...mergedPatches)
+
+    if (typeof globalThis.requestAnimationFrame !== 'function') {
+      this.flushToolEntityPatches()
+      return
+    }
+    if (this.toolEntityPatchFlushFrame !== null) {
+      return
+    }
+    this.toolEntityPatchFlushFrame = globalThis.requestAnimationFrame(() => {
+      this.toolEntityPatchFlushFrame = null
+      this.flushToolEntityPatches()
+    })
+  }
+
+  private flushToolEntityPatches(): void {
+    if (this.toolEntityPatchFlushFrame !== null && typeof globalThis.cancelAnimationFrame === 'function') {
+      globalThis.cancelAnimationFrame(this.toolEntityPatchFlushFrame)
+      this.toolEntityPatchFlushFrame = null
+    }
+    if (this.pendingToolEntityPatches.length === 0) {
+      return
+    }
+    const patches = this.pendingToolEntityPatches
+    this.pendingToolEntityPatches = []
+    useChatStore.getState().patchToolEntities(patches)
+  }
+}
+
+function hasMessagePartDelta(deltas: ChatPartDelta[]): boolean {
+  return deltas.some(delta =>
+    delta.type !== 'tool_arguments_append' && delta.type !== 'tool_output_streaming',
+  )
+}
+
+interface QueuedToolEntityPatch {
+  messageId: string
+  toolCallId: string
+  updater: ChatToolEntityPatch['updater']
+}
+
+function mergeToolEntityPatches(
+  messageId: string,
+  patches: ChatToolEntityPatch[],
+): QueuedToolEntityPatch[] {
+  const patchesByToolCallId = new Map<string, typeof patches>()
+  for (const patch of patches) {
+    const current = patchesByToolCallId.get(patch.toolCallId) ?? []
+    current.push(patch)
+    patchesByToolCallId.set(patch.toolCallId, current)
+  }
+
+  const mergedPatches: QueuedToolEntityPatch[] = []
+  for (const [toolCallId, toolPatches] of patchesByToolCallId) {
+    mergedPatches.push({
+      messageId,
+      toolCallId,
+      updater: entity => toolPatches.reduce((current, patch) => patch.updater(current), entity),
+    })
+  }
+  return mergedPatches
+}
+
+function hasVisibleContentDelta(deltas: ChatPartDelta[]): boolean {
+  return deltas.some((delta) => {
+    switch (delta.type) {
+      case 'text_append':
+      case 'tool_arguments_append':
+      case 'tool_output_streaming':
+        return delta.text.length > 0
+      case 'tool_input_set':
+      case 'tool_output_set':
+        return true
+      default:
+        return false
+    }
+  })
 }

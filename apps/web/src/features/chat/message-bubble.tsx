@@ -1,12 +1,15 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
-import { CheckIcon, CopyIcon, FileIcon, ImageIcon } from 'lucide-react'
+import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
+import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
-import { useChatStore } from '~/store/chat'
+import { chatSelectors, useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
@@ -14,8 +17,12 @@ import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
 import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
+import { describeToolCall } from './tool-ui-classifier'
+import type { ChatToolEntity } from './chat-tool-entities'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
+const IS_DEV = import.meta.env.DEV
+const EMPTY_SUBAGENT_MESSAGES: UIMessage[] = []
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
@@ -48,6 +55,80 @@ function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   )
 }
 
+function RunDebugCaption({ messageId }: { messageId: string }) {
+  const meta = useChatStore(chatSelectors.runDisplayMeta(messageId))
+  if (!IS_DEV || !meta) {
+    return null
+  }
+
+  const ttfbMs = meta.firstEventAtMs === null
+    ? null
+    : Math.max(0, meta.firstEventAtMs - meta.requestStartedAtMs)
+  const ttftMs = meta.firstContentAtMs === null
+    ? null
+    : Math.max(0, meta.firstContentAtMs - meta.requestStartedAtMs)
+  const totalMs = meta.completedAtMs === null
+    ? null
+    : Math.max(0, meta.completedAtMs - meta.requestStartedAtMs)
+  const shortRunId = meta.runId ? `${meta.runId.slice(0, 8)}…` : 'pending'
+
+  return (
+    <TooltipProvider delayDuration={250}>
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+        <Tooltip>
+          <TooltipTrigger
+            render={(
+              <Badge
+                variant="outline"
+                className="h-5 max-w-full gap-1 border-border/50 bg-muted/25 px-1.5 font-mono font-normal text-[10px] text-muted-foreground tabular-nums"
+              >
+                <HashIcon className="size-3" aria-hidden="true" />
+                <span className="truncate">{shortRunId}</span>
+              </Badge>
+            )}
+          />
+          <TooltipContent sideOffset={6}>
+            {meta.runId ?? 'Run has not been assigned yet'}
+          </TooltipContent>
+        </Tooltip>
+        <MetricBadge icon={<ActivityIcon className="size-3" aria-hidden="true" />} label="TTFB" value={ttfbMs} />
+        <MetricBadge icon={<TimerIcon className="size-3" aria-hidden="true" />} label="TTFT" value={ttftMs} />
+        {totalMs !== null && (
+          <MetricBadge icon={<CheckIcon className="size-3" aria-hidden="true" />} label="Done" value={totalMs} />
+        )}
+      </div>
+    </TooltipProvider>
+  )
+}
+
+function MetricBadge({
+  icon,
+  label,
+  value,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: number | null
+}) {
+  return (
+    <Badge
+      variant="ghost"
+      className="h-5 gap-1 px-1.5 font-normal text-[10px] text-muted-foreground/80 tabular-nums"
+    >
+      {icon}
+      <span>{label}</span>
+      <span className="font-mono">{value === null ? '…' : formatDuration(value)}</span>
+    </Badge>
+  )
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) {
+    return `${Math.round(ms)}ms`
+  }
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
 /* ─── Subagent part render ──────────────────────────────────────── */
 
 function renderSubagentItem(
@@ -70,22 +151,12 @@ function renderSubagentItem(
     case 'reasoning':
       return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
     case 'tool-call': {
-      const toolPart = item.part
       return (
-        <ToolCallBlock
-          key={item.key}
-          toolName={toolPart.toolName ?? toolPart.type.replace('tool-', '')}
-          toolCallId={toolPart.toolCallId}
-          state={toolPart.state}
-          argumentsText={toolPart.argumentsText}
-          input={toolPart.input}
-          output={toolPart.output}
-          errorText={toolPart.errorText}
-        />
+        <ToolCallBlockFromStore key={item.key} toolCallId={item.toolCallId} />
       )
     }
     case 'tool-group':
-      return <GroupedToolCallBlock key={item.key} items={item.items} uiKind={item.uiKind} />
+      return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} />
     case 'file-attachment':
       return <FileAttachmentBlock key={item.key} part={item.part} />
     default:
@@ -136,6 +207,75 @@ interface MessageBubbleProps {
   executionDetailsDefaultOpen?: boolean
 }
 
+function ToolCallBlockFromStore({
+  toolCallId,
+  children,
+}: {
+  toolCallId: string
+  children?: React.ReactNode
+}) {
+  const tool = useChatStore(chatSelectors.toolEntity(toolCallId))
+  if (!tool) {
+    return null
+  }
+
+  return (
+    <ToolCallBlock
+      toolName={tool.toolName}
+      toolCallId={tool.toolCallId}
+      state={tool.state}
+      argumentsText={tool.argumentsText}
+      input={tool.input}
+      output={tool.output}
+      errorText={tool.errorText}
+    >
+      {children}
+    </ToolCallBlock>
+  )
+}
+
+function GroupedToolCallBlockFromStore({
+  items,
+  uiKind,
+}: {
+  items: Array<{ key: string, messageId: string, toolCallId: string }>
+  uiKind: ReturnType<typeof describeToolCall>['kind']
+}) {
+  const selectedToolState = useChatStore(useShallow(state =>
+    items.flatMap(item => [
+      state.toolEntitiesMap.get(item.toolCallId),
+      state.subagentMessagesMap.get(item.messageId)?.get(item.toolCallId) ?? EMPTY_SUBAGENT_MESSAGES,
+    ])))
+  const tools = useMemo(() =>
+    items.flatMap((item, index) => {
+      const entity = selectedToolState[index * 2] as ChatToolEntity | undefined
+      if (!entity) {
+        return []
+      }
+      const subagentMessages = selectedToolState[index * 2 + 1] as UIMessage[]
+      return [{
+        key: item.key,
+        part: {
+          type: 'dynamic-tool' as const,
+          toolCallId: entity.toolCallId,
+          toolName: entity.toolName,
+          state: entity.state,
+          argumentsText: entity.argumentsText,
+          input: entity.input,
+          output: entity.output,
+          errorText: entity.errorText,
+        },
+        subagentMessages,
+      }]
+    }), [items, selectedToolState])
+
+  if (tools.length === 0) {
+    return null
+  }
+
+  return <GroupedToolCallBlock items={tools} uiKind={uiKind} />
+}
+
 function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
@@ -156,8 +296,27 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   }, [message.parts])
 
   const groupedItems = useMemo(
-    () => groupMessageParts(message.parts, message.id, subagentMap),
-    [message.parts, message.id, subagentMap],
+    () => groupMessageParts({
+      parts: message.parts,
+      messageId: message.id,
+      describeToolKind: (toolCallId) => {
+        const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
+        if (!tool) {
+          return null
+        }
+        return describeToolCall({
+          type: 'dynamic-tool',
+          toolCallId: tool.toolCallId,
+          toolName: tool.toolName,
+          state: tool.state,
+          argumentsText: tool.argumentsText,
+          input: tool.input,
+          output: tool.output,
+          errorText: tool.errorText,
+        }).kind
+      },
+    }),
+    [message.parts, message.id],
   )
 
   const executionPhaseSplit = useMemo(
@@ -213,31 +372,38 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
         return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
 
       case 'tool-group':
-        return (
-          <GroupedToolCallBlock
-            key={item.key}
-            items={item.items}
-            uiKind={item.uiKind}
-          />
-        )
+        return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} />
 
       case 'tool-call':
         return (
-          <ToolCallBlock
+          <ToolCallBlockFromStore
             key={item.key}
-            toolName={item.part.toolName ?? item.part.type.replace('tool-', '')}
-            toolCallId={item.part.toolCallId}
-            state={item.part.state}
-            argumentsText={item.part.argumentsText}
-            input={item.part.input}
-            output={item.part.output}
-            errorText={item.part.errorText}
+            toolCallId={item.toolCallId}
           >
-            {item.subagentMessages.flatMap((subMsg) => {
-              const groupedParts = groupMessageParts(subMsg.parts, subMsg.id, undefined)
+            {(subagentMap?.get(item.toolCallId) ?? []).flatMap((subMsg) => {
+              const groupedParts = groupMessageParts({
+                parts: subMsg.parts,
+                messageId: subMsg.id,
+                describeToolKind: (toolCallId) => {
+                  const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
+                  if (!tool) {
+                    return null
+                  }
+                  return describeToolCall({
+                    type: 'dynamic-tool',
+                    toolCallId: tool.toolCallId,
+                    toolName: tool.toolName,
+                    state: tool.state,
+                    argumentsText: tool.argumentsText,
+                    input: tool.input,
+                    output: tool.output,
+                    errorText: tool.errorText,
+                  }).kind
+                },
+              })
               return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, { animationPreset, animateMode, showCursor }))
             })}
-          </ToolCallBlock>
+          </ToolCallBlockFromStore>
         )
 
       case 'file-attachment':
@@ -295,6 +461,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
         >
           {renderContent()}
         </div>
+
+        {isAssistant && <RunDebugCaption messageId={message.id} />}
 
         {/* Action bar — appears on hover for all messages */}
         {!isStreaming && plainText.length > 0 && (

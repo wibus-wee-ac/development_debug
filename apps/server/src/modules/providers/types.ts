@@ -2,6 +2,10 @@ export const providerKinds = ['openai-compatible', 'anthropic'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]
 
+export const providerTargetKinds = ['manual', 'external'] as const
+
+export type ProviderTargetKind = (typeof providerTargetKinds)[number]
+
 export const runtimeKinds = ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'] as const
 
 export type RuntimeKind = (typeof runtimeKinds)[number]
@@ -20,6 +24,8 @@ export interface ProviderRequest {
   configJson: string
   secretRef: string | null
   profileId: string | null
+  providerTargetKind: ProviderTargetKind | 'manual-profile' | 'external-record' | null
+  providerTargetId: string | null
 }
 
 export interface ModelCapabilities {

@@ -14,7 +14,7 @@ export const ALL_DISABLED_SENTINEL = ALL_MODELS_DISABLED_SENTINEL
 
 export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
-  anthropic: 'Anthropic'
+  'anthropic': 'Anthropic',
 }
 
 export interface DraftProvider {
@@ -22,14 +22,91 @@ export interface DraftProvider {
   presetId: string | null
 }
 
+export interface ExternalProviderSourceView {
+  id: string
+  pluginName: string
+  label: string
+  lastSyncStatus: 'never' | 'ok' | 'warning' | 'error'
+  lastSyncMessage: string | null
+  lastSyncError: string | null
+  lastSyncAt: number | null
+  inventory: Record<string, unknown>
+  warnings: Array<{ code: string, message: string, severity: 'info' | 'warning' | 'error' }>
+}
+
+export interface ExternalProviderRecordView {
+  id: string
+  sourceKey: string
+  externalId: string
+  app: string
+  name: string
+  providerKind: ProviderKind
+  status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
+  runtimeTargetEnabled: boolean
+  metadata: Record<string, unknown>
+  warnings: Array<{ code: string, message: string, severity: 'info' | 'warning' | 'error' }>
+}
+
+export interface ExternalProviderRuntimeTargetView {
+  id: string
+  sourceKey: string
+  externalRecordId: string
+  providerKind: ProviderKind
+  displayName: string
+  enabled: boolean
+  credentialRef: string | null
+  iconSlug: string | null
+  lastResolvedFingerprint: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ManualProviderListEntry {
+  id: string
+  kind: 'manual-profile'
+  profile: AgentProfile
+}
+
+export interface ExternalProviderListEntry {
+  id: string
+  kind: 'external-record'
+  record: ExternalProviderRecordView
+}
+
+export type ProviderListEntry = ManualProviderListEntry | ExternalProviderListEntry
+
 export function buildProfileId(name: string, fallback: string): string {
   const base = name.trim().toLowerCase().replace(RE_WHITESPACE, '-')
   return base || fallback
 }
 
-export function presetForProfile(profile: AgentProfile): ProviderPreset {
+export function providerListEntryId(kind: ProviderListEntry['kind'], id: string): string {
+  return `${kind}:${id}`
+}
+
+export function createManualProviderListEntry(profile: AgentProfile): ManualProviderListEntry {
+  return {
+    id: providerListEntryId('manual-profile', profile.id),
+    kind: 'manual-profile',
+    profile,
+  }
+}
+
+export function createExternalProviderListEntry(record: ExternalProviderRecordView): ExternalProviderListEntry {
+  return {
+    id: providerListEntryId('external-record', record.id),
+    kind: 'external-record',
+    record,
+  }
+}
+
+export function presetForProviderKind(providerKind: ProviderKind): ProviderPreset {
   return (
-    PROVIDER_PRESETS.find((p) => p.providerKind === profile.providerKind) ??
-    PROVIDER_PRESETS.at(-1)!
+    PROVIDER_PRESETS.find(preset => preset.providerKind === providerKind)
+    ?? PROVIDER_PRESETS.at(-1)!
   )
+}
+
+export function presetForProfile(profile: AgentProfile): ProviderPreset {
+  return presetForProviderKind(profile.providerKind)
 }

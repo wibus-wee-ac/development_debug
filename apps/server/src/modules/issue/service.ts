@@ -431,6 +431,7 @@ export function createIssue(rawInput: {
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${issues.order}), 0)` }).from(issues).where(eq(issues.workspaceId, input.workspaceId)).get()
   const order = (maxOrderRow?.maxOrder ?? 0) + 1024
   const statusId = resolveStatusId(input.workspaceId, input, { useDefaultWhenMissing: true })
+  const createdByKind = actor.kind === 'provider-target' ? 'system' : actor.kind
   const issue = db().insert(issues).values({
     id: identity.id,
     workspaceId: input.workspaceId,
@@ -444,7 +445,7 @@ export function createIssue(rawInput: {
     number: identity.number,
     assigneeKind: null,
     assigneeId: null,
-    createdByKind: actor.kind,
+    createdByKind,
     createdById: actor.id,
     delegateAgentId: null,
     delegateAgentProfileId: null,
@@ -510,12 +511,12 @@ export function moveIssueToStatusName(id: string, statusName: string): IssueView
   return updateIssue(id, { statusName })
 }
 
-export function updateIssueDelegation(id: string, delegation: { agentId: string, agentProfileId: string } | null): IssueView {
+export function updateIssueDelegation(id: string, delegation: { agentId: string, providerTargetId: string } | null): IssueView {
   db().update(issues).set({
     assigneeKind: delegation ? 'agent' : null,
     assigneeId: delegation?.agentId ?? null,
     delegateAgentId: delegation?.agentId ?? null,
-    delegateAgentProfileId: delegation?.agentProfileId ?? null,
+    delegateAgentProfileId: delegation?.providerTargetId ?? null,
     updatedAt: currentUnixSeconds(),
   }).where(eq(issues.id, id)).run()
   return getIssue(id)

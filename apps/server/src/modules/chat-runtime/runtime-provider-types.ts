@@ -1,7 +1,19 @@
-import type { AgentProfile } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 
-import type { RuntimeKind } from '../providers/types'
+import type { ProviderKind, RuntimeKind } from '../providers/types'
+
+export interface RuntimeProviderTargetProfile {
+  id: string
+  name: string
+  providerKind: ProviderKind
+  enabled: boolean
+  configJson: string
+  credentialRef: string | null
+  customModels: string
+  iconSlug: string | null
+  providerTargetKind: 'manual' | 'external'
+  providerTargetId: string
+}
 
 export interface RuntimeSlashCommand {
   name: string
@@ -19,7 +31,7 @@ export interface ChatRuntimeCapabilities {
 export interface RuntimeSession {
   id: string
   chatSessionId: string
-  agentProfileId: string
+  providerTargetId: string
   runtimeKind: RuntimeKind
   providerSessionId: string | null
   providerStateSnapshot: string | null
@@ -27,21 +39,22 @@ export interface RuntimeSession {
 
 export interface StartChatSessionInput {
   chatSessionId: string
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
   workspacePath: string
   modelId?: string
 }
 
 export interface ResumeChatSessionInput {
   runtimeSession: RuntimeSession
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
   workspacePath: string
   modelId?: string
 }
 
 export interface StreamTurnInput {
+  runId: string
   runtimeSession: RuntimeSession
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
   message: UIMessage
   responseMessageId?: string
   modelId?: string
@@ -56,18 +69,18 @@ export interface StreamTurnInput {
 
 export interface CancelTurnInput {
   runtimeSession: RuntimeSession
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
 }
 
 export interface SteerTurnInput {
   runtimeSession: RuntimeSession
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
   message: UIMessage
 }
 
 export interface GetCapabilitiesInput {
   runtimeSession: RuntimeSession
-  profile: AgentProfile
+  profile: RuntimeProviderTargetProfile
   workspaceId?: string | null
   workspacePath: string
   modelId?: string

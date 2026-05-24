@@ -39,6 +39,8 @@ import { register as registerChatQueue } from './chat/queue'
 import { register as registerChatQueueAdd } from './chat/queue/add'
 import { register as registerChatQueueCancel } from './chat/queue/cancel'
 import { register as registerChatQueueReorder } from './chat/queue/reorder'
+import { register as registerChatTraceRun } from './chat/trace/run'
+import { register as registerChatTraceSession } from './chat/trace/session'
 import { register as registerChronicleAccessibilityEventsList } from './chronicle/accessibility-events/list'
 import { register as registerChronicleAccessibilitySnapshotsList } from './chronicle/accessibility-snapshots/list'
 import { register as registerChronicleActivityPipelineTick } from './chronicle/activity-pipeline/tick'
@@ -184,6 +186,7 @@ import { register as registerWorkspaceGet } from './workspace/get'
 import { register as registerWorkspaceGitBranchCreate } from './workspace/git/branch/create'
 import { register as registerWorkspaceGitBranches } from './workspace/git/branches'
 import { register as registerWorkspaceGitCheckout } from './workspace/git/checkout'
+import { register as registerWorkspaceGitDiff } from './workspace/git/diff'
 import { register as registerWorkspaceGitFetch } from './workspace/git/fetch'
 import { register as registerWorkspaceGitGraph } from './workspace/git/graph'
 import { register as registerWorkspaceGitStatus } from './workspace/git/status'
@@ -233,6 +236,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerChatQueueAdd(program)
   registerChatQueueCancel(program)
   registerChatQueueReorder(program)
+  registerChatTraceRun(program)
+  registerChatTraceSession(program)
   registerChronicleAccessibilityEventsList(program)
   registerChronicleAccessibilitySnapshotsList(program)
   registerChronicleActivityPipelineTick(program)
@@ -378,6 +383,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceGitBranchCreate(program)
   registerWorkspaceGitBranches(program)
   registerWorkspaceGitCheckout(program)
+  registerWorkspaceGitDiff(program)
   registerWorkspaceGitFetch(program)
   registerWorkspaceGitGraph(program)
   registerWorkspaceGitStatus(program)

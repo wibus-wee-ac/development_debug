@@ -1,24 +1,10 @@
-import type { AgentProfile } from '@cradle/db'
-import {
-  agentProfiles,
-  agents,
-  agentSessions,
-  backendCapabilitySnapshots,
-  runtimeAuditLog,
-  usageLogs,
-} from '@cradle/db'
-import { eq } from 'drizzle-orm'
-import stringify from 'safe-stable-stringify'
+import type { AgentProfile, ProviderTarget } from '@cradle/db'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { db } from '../../infra'
-import { isExternalProfile } from '../external-provider-sources/profile-link-store'
 import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
-import { enrichModelsFromRegistry, lookupModelRawExact } from '../providers/model-info-registry'
-import { serializeProfileConfigWithMapping } from '../providers/model-registry-mappings'
 import type { ModelCapabilities, ProviderKind } from '../providers/types'
-import * as Session from '../session/service'
+import * as ProviderTargets from '../provider-targets/service'
 
 // ── types ──
 
@@ -32,23 +18,22 @@ export interface UpsertProfileInput {
   iconSlug?: string | null
 }
 
-// ── public API ──
+function toProfile(target: ProviderTarget): AgentProfile {
+  return {
+    id: target.id,
+    name: target.displayName,
+    providerKind: target.providerKind,
+    enabled: target.enabled,
+    configJson: target.connectionConfigJson,
+    credentialRef: target.credentialRef,
+    customModels: target.customModelsJson,
+    iconSlug: target.iconSlug,
+    createdAt: target.createdAt,
+    updatedAt: target.updatedAt,
+  }
+}
 
-const EXTERNAL_PROFILE_MODEL_CONFIG_KEYS = new Set(['enabledModels', 'modelRegistryMappings'])
-const JsonValueSchema = z.json()
-const JsonRecordSchema = z.record(z.string(), JsonValueSchema)
-const ProfileConfigJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(JsonRecordSchema)
-const ProfileConfigProjectionJsonSchema = ProfileConfigJsonSchema.transform((config) => {
-  const modelConfig = Object.fromEntries(
-    Object.entries(config).filter(([key]) => EXTERNAL_PROFILE_MODEL_CONFIG_KEYS.has(key)),
-  )
-  const sourceConfig = Object.fromEntries(
-    Object.entries(config).filter(([key, value]) => !EXTERNAL_PROFILE_MODEL_CONFIG_KEYS.has(key) && value !== undefined),
-  )
-  return { modelConfig, sourceConfig }
-})
+// ── public API ──
 
 const ModelCapabilitiesSchema = z.object({
   contextWindow: z.number().optional(),
@@ -79,158 +64,59 @@ const CustomModelInputSchema = z.object({
   capabilities: ModelCapabilitiesSchema.default({}),
 })
 
-function mergeExternalProfileModelConfig(currentConfigJson: string, requestedConfigJson: string): string {
-  const currentConfig = ProfileConfigProjectionJsonSchema.parse(currentConfigJson)
-  const requestedConfig = ProfileConfigProjectionJsonSchema.parse(requestedConfigJson)
-
-  if (stringify(currentConfig.sourceConfig) !== stringify(requestedConfig.sourceConfig)) {
-    throw new AppError({
-      code: 'profile_managed_by_external_source',
-      status: 409,
-      message: 'Profile is managed by an external provider source',
-    })
-  }
-
-  return JSON.stringify({
-    ...currentConfig.sourceConfig,
-    ...requestedConfig.modelConfig,
-  })
-}
-
 export function listProfiles(): AgentProfile[] {
-  return db().select().from(agentProfiles).orderBy(agentProfiles.name).all()
+  return ProviderTargets.listProviderTargets()
+    .filter(target => target.kind === 'manual')
+    .toSorted((a, b) => a.displayName.localeCompare(b.displayName))
+    .map(toProfile)
 }
 
 export function getProfile(id: string): AgentProfile | null {
-  return db().select().from(agentProfiles).where(eq(agentProfiles.id, id)).get() ?? null
+  const target = ProviderTargets.getProviderTarget(id)
+  return target?.kind === 'manual' ? toProfile(target) : null
 }
 
 function assertProfileEditable(profileId: string, next?: UpsertProfileInput): void {
-  if (!isExternalProfile(profileId)) {
+  const existing = getProfile(profileId)
+  if (!existing) {
     return
   }
 
   if (!next) {
-    throw new AppError({
-      code: 'profile_managed_by_external_source',
-      status: 409,
-      message: 'Profile is managed by an external provider source',
-      details: { profileId },
-    })
-  }
-
-  const current = getProfile(profileId)
-  if (!current) {
-    throw new AppError({
-      code: 'profile_not_found',
-      status: 404,
-      message: 'Profile not found',
-      details: { profileId },
-    })
-  }
-
-  const normalizedCurrentCredential = current.credentialRef ?? null
-  const normalizedNextCredential = next.credentialRef ? String(next.credentialRef) : null
-  const sameIcon = next.iconSlug === undefined || current.iconSlug === (next.iconSlug ?? null)
-  const mergedConfigJson = mergeExternalProfileModelConfig(current.configJson, next.configJson)
-  const isAllowedCradleOwnedChange = current.name === next.name
-    && current.providerKind === next.providerKind
-    && normalizedCurrentCredential === normalizedNextCredential
-    && sameIcon
-
-  if (isAllowedCradleOwnedChange) {
-    next.configJson = mergedConfigJson
     return
   }
 
-  throw new AppError({
-    code: 'profile_managed_by_external_source',
-    status: 409,
-    message: 'Profile is managed by an external provider source',
-    details: { profileId },
-  })
-}
-
-function writeProfile(input: UpsertProfileInput, database = db()): AgentProfile {
-  const now = Math.floor(Date.now() / 1000)
-  const configJson = input.configJson
-  database.insert(agentProfiles).values({
-      id: input.id,
-      name: input.name,
-      providerKind: input.providerKind,
-      enabled: input.enabled,
-      configJson,
-      credentialRef: input.credentialRef,
-      iconSlug: input.iconSlug ?? null,
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({
-      target: agentProfiles.id,
-      set: {
-        name: input.name,
-        providerKind: input.providerKind,
-        enabled: input.enabled,
-        configJson,
-        credentialRef: input.credentialRef,
-        ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
-        updatedAt: now,
-      },
-    }).run()
-
-  return database.select().from(agentProfiles).where(eq(agentProfiles.id, input.id)).get()!
+  if (existing.providerKind !== next.providerKind) {
+    throw new AppError({
+      code: 'invalid_profile_input',
+      status: 400,
+      message: 'Provider kind cannot be changed for an existing profile',
+      details: { profileId, providerKind: next.providerKind },
+    })
+  }
 }
 
 export function upsertProfile(input: UpsertProfileInput): AgentProfile {
-  if (isExternalProfile(input.id)) {
-    const current = getProfile(input.id)
-    if (!current) {
-      throw new AppError({
-        code: 'profile_not_found',
-        status: 404,
-        message: 'Profile not found',
-        details: { profileId: input.id },
-      })
-    }
-
-    assertProfileEditable(input.id, input)
-    return writeProfile({
-      id: input.id,
-      name: current.name,
-      providerKind: current.providerKind,
-      enabled: input.enabled,
-      configJson: input.configJson,
-      credentialRef: current.credentialRef,
-      iconSlug: current.iconSlug,
-    })
-  }
-
   assertProfileEditable(input.id, input)
-  return writeProfile(input)
-}
-
-export function upsertMirroredProfile(input: UpsertProfileInput, database = db()): AgentProfile {
-  return writeProfile(input, database)
+  return toProfile(ProviderTargets.upsertManualProviderTarget({
+    id: input.id,
+    displayName: input.name,
+    providerKind: input.providerKind,
+    enabled: input.enabled,
+    connectionConfigJson: input.configJson,
+    credentialRef: input.credentialRef,
+    iconSlug: input.iconSlug,
+  }))
 }
 
 export function updateIcon(profileId: string, iconSlug: string | null): AgentProfile {
   assertProfileEditable(profileId)
-  const now = Math.floor(Date.now() / 1000)
-  db().update(agentProfiles).set({ iconSlug, updatedAt: now }).where(eq(agentProfiles.id, profileId)).run()
-  return db().select().from(agentProfiles).where(eq(agentProfiles.id, profileId)).get()!
+  return toProfile(ProviderTargets.updateProviderTargetIcon(profileId, iconSlug))
 }
 
 export function removeProfile(id: string): void {
   assertProfileEditable(id)
-  const d = db()
-  d.transaction((tx) => {
-    Session.deleteByAgentProfileInDb(id, tx)
-    tx.delete(agents).where(eq(agents.agentProfileId, id)).run()
-    tx.delete(agentSessions).where(eq(agentSessions.agentProfileId, id)).run()
-    tx.delete(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.agentProfileId, id)).run()
-    tx.delete(runtimeAuditLog).where(eq(runtimeAuditLog.agentProfileId, id)).run()
-    tx.delete(usageLogs).where(eq(usageLogs.agentProfileId, id)).run()
-    tx.delete(agentProfiles).where(eq(agentProfiles.id, id)).run()
-  })
+  ProviderTargets.removeProviderTarget(id)
 }
 
 // ── custom models ──
@@ -254,37 +140,7 @@ export async function updateCustomModels(
       details: { profileId },
     })
   }
-  // Build descriptors for enrichment
-  const descriptors = parsedModels.map(m => ({
-    id: m.id,
-    label: m.label ?? m.id,
-    providerKind: 'openai-compatible' as const,
-    capabilities: m.capabilities,
-  }))
-
-  // Only enrich entries that don't already have contextWindow
-  const needsEnrich = descriptors.filter(d => d.capabilities.contextWindow == null)
-  const enriched = needsEnrich.length > 0 ? await enrichModelsFromRegistry(needsEnrich) : []
-  const enrichedMap = new Map(enriched.map(e => [e.id, e]))
-
-  const entries: CustomModelEntry[] = descriptors.map((m) => {
-    if (m.capabilities.contextWindow != null) {
-      return { id: m.id, label: m.label, capabilities: m.capabilities }
-    }
-    const enrichedEntry = enrichedMap.get(m.id)
-    return {
-      id: m.id,
-      label: enrichedEntry?.label ?? m.label,
-      capabilities: enrichedEntry?.capabilities ?? m.capabilities,
-    }
-  })
-
-  db().update(agentProfiles).set({
-      customModels: JSON.stringify(entries),
-      updatedAt: Math.floor(Date.now() / 1000),
-    }).where(eq(agentProfiles.id, profileId)).run()
-
-  return entries
+  return ProviderTargets.updateProviderTargetCustomModels(profileId, parsedModels)
 }
 
 // ── available model registry mappings ──
@@ -298,24 +154,5 @@ export async function updateModelRegistryMapping(
     return []
   }
 
-  const registryModelId = input.registryModelId?.trim() || input.model?.id
-  if (!registryModelId) {
-    return []
-  }
-
-  const registryModel = input.model ?? await lookupModelRawExact(registryModelId)
-  const mapping: ModelRegistryMappingEntry = {
-    modelId: input.modelId,
-    registryModelId,
-    ...(registryModel === null ? {} : { model: registryModel }),
-    updatedAt: Math.floor(Date.now() / 1000),
-  }
-  const next = serializeProfileConfigWithMapping(profile.configJson, mapping)
-
-  db().update(agentProfiles).set({
-      configJson: next.configJson,
-      updatedAt: Math.floor(Date.now() / 1000),
-    }).where(eq(agentProfiles.id, profileId)).run()
-
-  return next.mappings
+  return ProviderTargets.updateProviderTargetModelRegistryMapping(profileId, input)
 }

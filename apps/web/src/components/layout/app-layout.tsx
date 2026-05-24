@@ -125,18 +125,16 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
-  const {
-    asideWidth,
-    setAsideWidth,
-    asideOpen,
-    bottomPanelHeight,
-    setBottomPanelHeight,
-    bottomPanelOpen,
-    browserPanelOpen,
-    browserPanelRatio,
-    setBrowserPanelOpen,
-    setBrowserPanelRatio,
-  } = useLayoutStore()
+  const asideWidth = useLayoutStore(state => state.asideWidth)
+  const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
+  const asideOpen = useLayoutStore(state => state.asideOpen)
+  const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
+  const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
+  const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
+  const browserPanelOpen = useLayoutStore(state => state.browserPanelOpen)
+  const browserPanelRatio = useLayoutStore(state => state.browserPanelRatio)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
+  const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
   const isSettings = settingsTabId !== null && settingsTabId === activeTabId
 
   useEffect(() => {
@@ -170,34 +168,30 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">{children}</div>
 
             {/* Browser panel split — reveal animation */}
-            {isElectron && (
-              <>
-                {browserPanelOpen && (
-                  <ResizeHandle
-                    direction="horizontal"
-                    value={() => browserPanelRatio * readMainWidth()}
-                    onChange={(px) => {
-                      setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / readMainWidth())))
-                    }}
-                    onDragStart={() => setDragging('browser')}
-                    onDragEnd={() => setDragging(null)}
-                    min={() => readMainWidth() * 0.2}
-                    max={() => readMainWidth() * 0.7}
-                    inverted
-                    className="bg-background"
-                  />
-                )}
-                <m.div
-                  initial={false}
-                  animate={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
-                  transition={dragging === 'browser' ? INSTANT : SPRING}
-                  className="overflow-hidden shrink-0 border-l border-border/50 flex flex-col"
-                  data-testid="app-layout-browser-panel"
-                >
-                  {browserPanelOpen && <BrowserPanel />}
-                </m.div>
-              </>
+            {browserPanelOpen && (
+              <ResizeHandle
+                direction="horizontal"
+                value={() => browserPanelRatio * readMainWidth()}
+                onChange={(px) => {
+                  setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / readMainWidth())))
+                }}
+                onDragStart={() => setDragging('browser')}
+                onDragEnd={() => setDragging(null)}
+                min={() => readMainWidth() * 0.2}
+                max={() => readMainWidth() * 0.7}
+                inverted
+                className="bg-background"
+              />
             )}
+            <m.div
+              initial={false}
+              animate={{ flexBasis: browserPanelOpen ? `${browserPanelRatio * 100}%` : '0%' }}
+              transition={dragging === 'browser' ? INSTANT : SPRING}
+              className="overflow-hidden shrink-0 border-l border-border/50 flex flex-col"
+              data-testid="app-layout-browser-panel"
+            >
+              {browserPanelOpen && <BrowserPanel />}
+            </m.div>
           </main>
 
           {/* Bottom panel resize handle */}
@@ -248,7 +242,6 @@ function AppLayoutContent({ children, hasPanel, panel, showFooter = true }: AppL
                 min={ASIDE.min}
                 max={ASIDE.max}
                 inverted
-                className="bg-sidebar"
               />
             )}
             <m.aside

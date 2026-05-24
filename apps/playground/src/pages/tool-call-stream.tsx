@@ -1,7 +1,7 @@
 /**
- * Output: Interactive reproduction for chat tool-call argument streaming.
- * Input: A fixed sequence of message_delta events that mimics Claude Agent tool input streaming.
- * Position: Playground page for debugging chat renderer reducer and parser behavior.
+ * Output: Interactive reproduction for event-driven chat tool entity streaming.
+ * Input: A fixed sequence of message_delta events that mimics early tool anchors, live argument patches, and delayed tool completion.
+ * Position: Playground page for validating the entity-based tool rendering model outside the production chat surface.
  */
 
 import { useMemo, useState } from 'react'
@@ -13,10 +13,6 @@ interface DynamicToolPart {
   toolName: string
   toolCallId: string
   state: ToolState
-  argumentsText?: string
-  input?: unknown
-  output?: unknown
-  errorText?: string
 }
 
 interface TextPart {
@@ -45,6 +41,17 @@ interface SimulatedMessage {
   parts: MessagePart[]
 }
 
+interface ToolEntity {
+  messageId: string
+  toolCallId: string
+  toolName: string
+  state: ToolState
+  argumentsText?: string
+  input?: unknown
+  output?: unknown
+  errorText?: string
+}
+
 interface ToolPayload {
   rawText: string | null
   filePath: string | null
@@ -61,7 +68,6 @@ const readToolStartPart: DynamicToolPart = {
   toolName: 'Read',
   toolCallId: 'call_read',
   state: 'input-streaming',
-  argumentsText: '',
 }
 
 const editToolStartPart: DynamicToolPart = {
@@ -69,7 +75,6 @@ const editToolStartPart: DynamicToolPart = {
   toolName: 'Edit',
   toolCallId: 'call_edit',
   state: 'input-streaming',
-  argumentsText: '',
 }
 
 const writeToolStartPart: DynamicToolPart = {
@@ -77,7 +82,6 @@ const writeToolStartPart: DynamicToolPart = {
   toolName: 'Write',
   toolCallId: 'call_write',
   state: 'input-streaming',
-  argumentsText: '',
 }
 
 const readInputObject = { file_path: '/Users/wibus/dev/Cradle/README.md' }
@@ -227,25 +231,17 @@ function applyDelta(message: SimulatedMessage, delta: ChatPartDelta): SimulatedM
     case 'part_add':
       next.parts[delta.partIndex] = cloneValue(delta.part)
       break
-    case 'tool_arguments_append':
-      updateToolPart(next.parts, delta.partIndex, (part) => {
-        part.argumentsText = `${part.argumentsText ?? ''}${delta.text}`
-      })
-      break
     case 'tool_input_set':
       updateToolPart(next.parts, delta.partIndex, (part) => {
-        part.input = delta.input
         part.state = 'input-available'
       })
       break
     case 'tool_output_set':
       updateToolPart(next.parts, delta.partIndex, (part) => {
         part.state = delta.state
-        if ('output' in delta) {
-          part.output = delta.output
-        }
-        part.errorText = delta.errorText
       })
+      break
+    case 'tool_arguments_append':
       break
   }
 
@@ -260,14 +256,88 @@ function updateToolPart(parts: MessagePart[], index: number, update: (part: Dyna
   update(part)
 }
 
-function applyEvents(limit: number): SimulatedMessage {
-  return STREAM_EVENTS.slice(0, limit).reduce(
-    (message, event) => applyDelta(message, event.delta),
-    INITIAL_MESSAGE,
-  )
+function readToolAnchor(message: SimulatedMessage, partIndex: number): DynamicToolPart | null {
+  const part = message.parts[partIndex]
+  if (!part || part.type !== 'dynamic-tool') {
+    return null
+  }
+  return part
 }
 
-function readToolInputPayload(tool: DynamicToolPart): ToolPayload {
+function applyToolDelta(
+  entities: Map<string, ToolEntity>,
+  messageId: string,
+  message: SimulatedMessage,
+  delta: ChatPartDelta,
+): Map<string, ToolEntity> {
+  const next = new Map(entities)
+  if (delta.type === 'part_add' && delta.part.type === 'dynamic-tool') {
+    next.set(delta.part.toolCallId, {
+      messageId,
+      toolCallId: delta.part.toolCallId,
+      toolName: delta.part.toolName,
+      state: delta.part.state,
+      argumentsText: '',
+    })
+    return next
+  }
+
+  const anchor = readToolAnchor(message, delta.partIndex)
+  if (!anchor) {
+    return next
+  }
+
+  const current = next.get(anchor.toolCallId) ?? {
+    messageId,
+    toolCallId: anchor.toolCallId,
+    toolName: anchor.toolName,
+    state: anchor.state,
+    argumentsText: '',
+  }
+
+  switch (delta.type) {
+    case 'tool_arguments_append':
+      next.set(anchor.toolCallId, {
+        ...current,
+        state: anchor.state,
+        argumentsText: `${current.argumentsText ?? ''}${delta.text}`,
+      })
+      break
+    case 'tool_input_set':
+      next.set(anchor.toolCallId, {
+        ...current,
+        state: 'input-available',
+        input: delta.input,
+      })
+      break
+    case 'tool_output_set':
+      next.set(anchor.toolCallId, {
+        ...current,
+        state: delta.state,
+        output: delta.output,
+        errorText: delta.errorText,
+      })
+      break
+    default:
+      break
+  }
+
+  return next
+}
+
+function applyEvents(limit: number): { message: SimulatedMessage, toolEntities: Map<string, ToolEntity> } {
+  let message = INITIAL_MESSAGE
+  let toolEntities = new Map<string, ToolEntity>()
+
+  for (const event of STREAM_EVENTS.slice(0, limit)) {
+    message = applyDelta(message, event.delta)
+    toolEntities = applyToolDelta(toolEntities, INITIAL_MESSAGE.id, message, event.delta)
+  }
+
+  return { message, toolEntities }
+}
+
+function readToolInputPayload(tool: ToolEntity): ToolPayload {
   if (tool.input !== undefined) {
     return parsePayloadObject(tool.input, null)
   }
@@ -503,11 +573,17 @@ function readString(value: unknown): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-function getToolParts(message: SimulatedMessage): DynamicToolPart[] {
-  return message.parts.filter((part): part is DynamicToolPart => part.type === 'dynamic-tool')
+function getToolParts(message: SimulatedMessage, toolEntities: Map<string, ToolEntity>): ToolEntity[] {
+  return message.parts.flatMap((part) => {
+    if (part.type !== 'dynamic-tool') {
+      return []
+    }
+    const entity = toolEntities.get(part.toolCallId)
+    return entity ? [entity] : []
+  })
 }
 
-function readPreviewState(tool: DynamicToolPart): { target: string, preview: string, payloadSize: string } {
+function readPreviewState(tool: ToolEntity): { target: string, preview: string, payloadSize: string } {
   const input = readToolInputPayload(tool)
   const output = parsePayloadObject(tool.output, typeof tool.output === 'string' ? tool.output : null)
   const rawPayloadSize = tool.argumentsText?.length ?? 0
@@ -577,7 +653,7 @@ function DeltaTimeline({
   )
 }
 
-function ToolPartCard({ tool }: { tool: DynamicToolPart }) {
+function ToolPartCard({ tool }: { tool: ToolEntity }) {
   const input = readToolInputPayload(tool)
   const preview = readPreviewState(tool)
 
@@ -622,8 +698,8 @@ function ToolPartCard({ tool }: { tool: DynamicToolPart }) {
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
-        <CodePanel title="part.argumentsText" value={tool.argumentsText ?? ''} />
-        <CodePanel title="part.input" value={tool.input ?? null} />
+        <CodePanel title="toolEntity.argumentsText" value={tool.argumentsText ?? ''} />
+        <CodePanel title="toolEntity.input" value={tool.input ?? null} />
       </div>
     </section>
   )
@@ -690,9 +766,9 @@ function DeltaInspector({ event }: { event: SimulatedEvent | null }) {
 
 export function ToolCallStreamPage() {
   const [currentStep, setCurrentStep] = useState(0)
-  const message = useMemo(() => applyEvents(currentStep), [currentStep])
+  const simulation = useMemo(() => applyEvents(currentStep), [currentStep])
   const currentEvent = currentStep === 0 ? null : STREAM_EVENTS[currentStep - 1]
-  const toolParts = getToolParts(message)
+  const toolParts = getToolParts(simulation.message, simulation.toolEntities)
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -701,7 +777,7 @@ export function ToolCallStreamPage() {
           <div>
             <h1 className="text-base font-semibold text-foreground">Tool Call Argument Stream</h1>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-              This page replays the new delta contract: part_add creates the block, tool_arguments_append updates raw arguments in place, and tool_input_set commits structured input later.
+              This page replays the new event-driven model: part_add creates a lightweight message anchor, tool_arguments_append patches a store-owned tool entity, and tool_input_set commits structured input later.
             </p>
           </div>
           <div className="rounded-md bg-muted px-3 py-2 text-right">
@@ -722,7 +798,7 @@ export function ToolCallStreamPage() {
 
             {toolParts.length === 0 && (
               <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">
-                No tool part has been added yet.
+                No tool anchor has been added yet.
               </div>
             )}
 
@@ -730,7 +806,8 @@ export function ToolCallStreamPage() {
               <ToolPartCard key={tool.toolCallId} tool={tool} />
             ))}
 
-            <CodePanel title="message.parts" value={message.parts} />
+            <CodePanel title="message.parts" value={simulation.message.parts} />
+            <CodePanel title="toolEntities" value={Object.fromEntries(simulation.toolEntities)} />
           </div>
         </section>
       </main>

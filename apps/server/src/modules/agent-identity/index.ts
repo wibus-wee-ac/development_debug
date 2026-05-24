@@ -10,7 +10,10 @@ export const agentIdentity = new Elysia({
 })
   .get('/', ({ query }) => {
     const enabled = query.enabled === 'true' ? true : query.enabled === 'false' ? false : undefined
-    return AgentIdentity.list({ enabled, agentProfileId: query.agentProfileId })
+    return AgentIdentity.list({
+      enabled,
+      providerTargetId: query.providerTargetId,
+    })
   }, {
     detail: {
       'summary': 'List agents',

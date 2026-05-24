@@ -84,6 +84,19 @@ cradle issue list --workspace-id <workspaceId> --format ndjson
 
 Use default output for human inspection, `--json <fields>` for structured Agent reads, and `--format ndjson` when streaming rows into shell pipelines.
 
+## Chat Stream Trace
+
+In development, chat runtime writes provider-to-SSE trace files under `CRADLE_DATA_DIR/chat-runtime/traces`. Use these commands to decide whether a streaming issue came from the provider, SDK mapper, projection, SSE emit, store, or UI layer.
+
+```bash
+cradle chat trace session "$CRADLE_CHAT_SESSION_ID" --format json
+cradle chat trace session "$CRADLE_CHAT_SESSION_ID" --json traces
+cradle chat trace run <runId> --format json
+cradle chat trace run <runId> --json records
+```
+
+Inspect phases in order: `provider_raw`, `mapper_output`, `runtime_chunk`, `projection_apply`, `sse_emit`.
+
 ## Session Await (Pause & Resume)
 
 Register an await to pause your session and let Cradle automatically resume it when an external condition is met:
@@ -136,7 +149,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `approval` | 2 | Inspect and respond to pending approvals. | `cradle man approval` |
 | `automation` | 13 | Manage scheduled automations, runs, and artifacts. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
-| `chat` | 6 | Control chat runtime commands. | `cradle man chat` |
+| `chat` | 8 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 49 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
 | `issue` | 28 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
@@ -151,7 +164,6 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
 | `workflow-rule` | 4 | Manage workflow rules. | `cradle man workflow-rule` |
-| `workspace` | 17 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
+| `workspace` | 18 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
-

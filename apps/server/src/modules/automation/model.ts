@@ -48,7 +48,7 @@ const recipeSchema = t.Object({
   inputs: t.Array(automationInputSchema),
   artifactRequests: t.Array(artifactRequestSchema),
   agentId: t.Optional(t.String({ minLength: 1 })),
-  agentProfileId: t.String({ minLength: 1 }),
+  providerTargetId: t.Optional(t.String({ minLength: 1 })),
   runtimeKind: t.Optional(runtimeKindSchema),
   modelId: t.Optional(t.String({ minLength: 1 })),
   thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),

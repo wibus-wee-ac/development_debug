@@ -24,6 +24,7 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { recordChatStreamTrace } from '../../stream-trace'
 import { projectTextOnlyInput } from '../../ui-message-input'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 import type { ClaudeAgentChunkMapperState } from './mapper'
@@ -71,7 +72,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
-      agentProfileId: input.profile.id,
+      providerTargetId: input.profile.providerTargetId,
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
@@ -141,6 +142,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
     this.activeQueries.set(sessionId, activeEntry)
     this._lastUsage = null
+    const traceMessageId = input.responseMessageId ?? input.message.id
 
     const mapperState: ClaudeAgentChunkMapperState = {
       textItemId,
@@ -174,8 +176,34 @@ export class ClaudeAgentProvider implements ChatRuntime {
           break
         }
 
+        recordChatStreamTrace({
+          chatSessionId: input.runtimeSession.chatSessionId,
+          runId: input.runId,
+          messageId: traceMessageId,
+          runtimeKind: this.runtimeKind,
+          providerSessionId: input.runtimeSession.providerSessionId,
+          phase: 'provider_raw',
+          payload: message,
+        })
+
         const result = mapClaudeAgentMessageToChunks(message, mapperState)
         mapperState.assistantStarted = result.assistantStarted
+
+        recordChatStreamTrace({
+          chatSessionId: input.runtimeSession.chatSessionId,
+          runId: input.runId,
+          messageId: traceMessageId,
+          runtimeKind: this.runtimeKind,
+          providerSessionId: result.sessionId ?? input.runtimeSession.providerSessionId,
+          phase: 'mapper_output',
+          payload: {
+            messageType: message.type,
+            chunks: result.chunks,
+            sessionId: result.sessionId ?? null,
+            usage: result.usage ?? null,
+            assistantStarted: result.assistantStarted,
+          },
+        })
 
         for (const chunk of result.chunks) {
           // Collect text output for Langfuse

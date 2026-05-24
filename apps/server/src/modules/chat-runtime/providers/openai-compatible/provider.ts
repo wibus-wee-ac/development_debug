@@ -58,7 +58,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
-      agentProfileId: input.profile.id,
+      providerTargetId: input.profile.providerTargetId,
       runtimeKind: this.runtimeKind,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({

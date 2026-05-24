@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { AgentProfile } from '@cradle/db'
+import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const jarCoreMocks = vi.hoisted(() => ({
@@ -25,6 +25,7 @@ vi.mock('../src/modules/providers/model-info-registry', () => ({
 }))
 
 import { SystemAgentProvider } from '../src/modules/chat-runtime/providers/system-agent/provider'
+import type { RuntimeProviderTargetProfile } from '../src/modules/chat-runtime/runtime-provider-types'
 
 describe('SystemAgentProvider', () => {
   afterEach(() => {
@@ -47,7 +48,7 @@ describe('SystemAgentProvider', () => {
         readSecret: () => 'secret',
         resolveSkillPaths: () => [],
       })
-      const profile: AgentProfile = {
+      const profile: RuntimeProviderTargetProfile = {
         id: 'profile-jarvis',
         name: 'Jarvis',
         providerKind: 'openai-compatible',
@@ -56,21 +57,29 @@ describe('SystemAgentProvider', () => {
         credentialRef: null,
         customModels: '[]',
         iconSlug: null,
-        createdAt: 1,
-        updatedAt: 1,
+        providerTargetKind: 'manual-profile',
+        providerTargetId: 'profile-jarvis',
+      }
+      const message: UIMessage = {
+        id: 'message-jarvis',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Create an issue' }],
       }
 
       for await (const _chunk of provider.streamTurn({
+        runId: 'run-jarvis-provider',
         runtimeSession: {
           id: 'chat-session-jarvis',
           chatSessionId: 'chat-session-jarvis',
           agentProfileId: 'profile-jarvis',
+          providerTargetKind: 'manual-profile',
+          providerTargetId: 'profile-jarvis',
           runtimeKind: 'jar-core',
           providerSessionId: null,
           providerStateSnapshot: null,
         },
         profile,
-        message: 'Create an issue',
+        message,
         workspaceId: 'workspace-cradle',
       })) {
         // The mock completes through an agent_end event without yielding chunks.

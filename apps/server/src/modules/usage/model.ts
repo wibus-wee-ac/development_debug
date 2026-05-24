@@ -15,8 +15,8 @@ export const UsageModel = {
     totalTokens: t.Number(),
     totalTurns: t.Number(),
     byAgent: t.Array(t.Object({
-      agentProfileId: t.String(),
-      agentProfileName: t.Nullable(t.String()),
+      providerTargetId: t.String(),
+      providerTargetName: t.Nullable(t.String()),
       totalTokens: t.Number(),
       count: t.Number(),
     })),

@@ -6,7 +6,7 @@ import { db } from '../infra'
 
 export const CRADLE_CHAT_SESSION_ID_HEADER = 'x-cradle-chat-session-id'
 
-export type MutationActorKind = 'user' | 'agent' | 'system'
+export type MutationActorKind = 'user' | 'agent' | 'system' | 'provider-target'
 
 export interface MutationActor {
   kind: MutationActorKind
@@ -17,7 +17,7 @@ export interface MutationActor {
 const DEFAULT_USER_ACTOR: MutationActor = {
   kind: 'user',
   id: '__self__',
-  source: 'default-user',
+  source: 'default-user'
 }
 
 export function resolveActorContext(request: Request): MutationActor {
@@ -27,7 +27,12 @@ export function resolveActorContext(request: Request): MutationActor {
   }
 
   const session = db()
-    .select({ id: sessions.id, agentId: sessions.agentId, agentProfileId: sessions.agentProfileId })
+    .select({
+      id: sessions.id,
+      agentId: sessions.agentId,
+      providerTargetId: sessions.providerTargetId,
+      runtimeKind: sessions.runtimeKind
+    })
     .from(sessions)
     .where(eq(sessions.id, chatSessionId))
     .get()
@@ -37,7 +42,7 @@ export function resolveActorContext(request: Request): MutationActor {
       code: 'runtime_context_not_found',
       status: 401,
       message: 'Runtime context not found',
-      details: { chatSessionId },
+      details: { chatSessionId }
     })
   }
 
@@ -45,22 +50,29 @@ export function resolveActorContext(request: Request): MutationActor {
     return {
       kind: 'agent',
       id: session.agentId,
-      source: 'chat-session',
+      source: 'chat-session'
     }
   }
 
-  if (session.agentProfileId) {
-    throw new AppError({
-      code: 'runtime_agent_identity_missing',
-      status: 409,
-      message: 'Runtime session is missing agent identity',
-      details: { chatSessionId, agentProfileId: session.agentProfileId },
-    })
+  if (session.runtimeKind === 'jar-core') {
+    return {
+      kind: 'system',
+      id: 'jarvis',
+      source: 'chat-session'
+    }
+  }
+
+  if (session.providerTargetId) {
+    return {
+      kind: 'provider-target',
+      id: session.providerTargetId,
+      source: 'chat-session'
+    }
   }
 
   return {
     kind: 'user',
     id: '__self__',
-    source: 'chat-session',
+    source: 'chat-session'
   }
 }

@@ -108,8 +108,8 @@ function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
   if (rows.some(row => row.status === 'streaming')) {
     return 'streaming'
   }
-  const failedAssistant = [...rows].reverse().find(row => row.role === 'assistant' && row.status === 'failed')
-  if (failedAssistant) {
+  const latestAssistant = [...rows].reverse().find(row => row.role === 'assistant')
+  if (latestAssistant?.status === 'failed') {
     return 'error'
   }
   return 'idle'
@@ -370,7 +370,8 @@ export function useChatSession(chatSessionId: string | null) {
     // 2. Create handler for assistant response
     const assistantMessageId = `assistant-${Date.now()}`
     const controller = new AbortController()
-    const handler = new ChatStreamingHandler(chatSessionId, assistantMessageId)
+    const requestStartedAtMs = performance.now()
+    const handler = new ChatStreamingHandler(chatSessionId, assistantMessageId, requestStartedAtMs)
     handler.start(controller)
     handlerRef.current = handler
 
@@ -391,6 +392,11 @@ export function useChatSession(chatSessionId: string | null) {
       if (!res.ok) {
         const body = await res.text().catch(() => '')
         throw new Error(`Failed to start chat response: ${res.status} ${body}`)
+      }
+
+      const runId = res.headers.get('x-cradle-run-id')
+      if (runId) {
+        useChatStore.getState().setRunDisplayId(assistantMessageId, runId)
       }
 
       if (sessionBindingQueryKey) {

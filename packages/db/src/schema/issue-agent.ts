@@ -1,8 +1,9 @@
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { sessions } from './chat'
-import { agentProfiles, agents } from './identity'
+import { agents } from './identity'
 import { issues } from './issue'
+import { providerTargets } from './provider-target'
 import { createdAt, textPk, timestamps } from './shared'
 
 export const agentSessions = sqliteTable('agent_sessions', {
@@ -10,9 +11,9 @@ export const agentSessions = sqliteTable('agent_sessions', {
   issueId: text('issue_id')
     .notNull()
     .references(() => issues.id, { onDelete: 'cascade' }),
-  agentProfileId: text('agent_profile_id')
+  providerTargetId: text('provider_target_id')
     .notNull()
-    .references(() => agentProfiles.id, { onDelete: 'restrict' }),
+    .references(() => providerTargets.id, { onDelete: 'restrict' }),
   agentId: text('agent_id')
     .references(() => agents.id, { onDelete: 'set null' }),
   chatSessionId: text('chat_session_id')
@@ -23,7 +24,7 @@ export const agentSessions = sqliteTable('agent_sessions', {
   ...timestamps(),
 }, table => ({
   byIssue: index('agent_sessions_issue_id_idx').on(table.issueId),
-  byAgentProfile: index('agent_sessions_agent_profile_id_idx').on(table.agentProfileId),
+  byProviderTarget: index('agent_sessions_provider_target_id_idx').on(table.providerTargetId),
   byAgent: index('agent_sessions_agent_id_idx').on(table.agentId),
   byChatSession: index('agent_sessions_chat_session_id_idx').on(table.chatSessionId),
 }))

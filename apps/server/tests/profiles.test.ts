@@ -2,11 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { agents, sessions } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
-import { shutdownInfra } from '../src/infra'
+import { db, shutdownInfra } from '../src/infra'
 import { ProfileConfigWithModelRegistryJsonSchema } from '../src/modules/providers/model-registry-mappings'
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
@@ -186,6 +188,81 @@ describe('profiles capability', () => {
         delete process.env.CRADLE_CREDENTIAL_SECRET
       }
  else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('deletes profile-owned agents even when older sessions reference the agent only', async () => {
+    const dataDir = makeTempDir('cradle-profile-delete-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-profile-delete'
+
+    try {
+      const app = await createServerApp()
+      const createProfile = await app.handle(
+        new Request('http://localhost/profiles/profile-cleanup', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Cleanup Profile',
+            providerKind: 'openai-compatible',
+            enabled: true,
+            config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
+            credentialRef: null,
+          }),
+        }),
+      )
+      expect(createProfile.status).toBe(200)
+
+      db().insert(agents).values({
+        id: 'agent-cleanup',
+        name: 'Cleanup Agent',
+        description: null,
+        avatarUrl: null,
+        avatarStyle: 'bottts-neutral',
+        avatarSeed: 'cleanup',
+        agentProfileId: 'profile-cleanup',
+        providerTargetKind: 'manual-profile',
+        providerTargetId: 'profile-cleanup',
+        runtimeKind: 'standard',
+        configJson: '{}',
+        enabled: true,
+      }).run()
+      db().insert(sessions).values({
+        id: 'session-agent-only-cleanup',
+        workspaceId: null,
+        title: 'Legacy Agent Session',
+        agentProfileId: null,
+        providerTargetKind: 'manual-profile',
+        providerTargetId: 'profile-cleanup',
+        runtimeKind: 'standard',
+        agentId: 'agent-cleanup',
+        configJson: '{}',
+      }).run()
+
+      const deleteProfile = await app.handle(
+        new Request('http://localhost/profiles/profile-cleanup', { method: 'DELETE' }),
+      )
+      expect(deleteProfile.status).toBe(200)
+      expect(db().select().from(agents).where(eq(agents.id, 'agent-cleanup')).all()).toEqual([])
+      expect(db().select().from(sessions).where(eq(sessions.id, 'session-agent-only-cleanup')).all()).toEqual([])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }

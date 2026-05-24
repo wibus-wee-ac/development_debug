@@ -9,13 +9,12 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
+import { assertProviderTargetCompatibleWithRuntime } from '../provider-targets/service'
 import { buildAgentAvatarUrl } from './avatar'
-
-// ── types ──
 
 export interface AgentListFilters {
   enabled?: boolean
-  agentProfileId?: string
+  providerTargetId?: string
 }
 
 export interface CreateAgentInput {
@@ -23,7 +22,7 @@ export interface CreateAgentInput {
   description?: string | null
   avatarStyle: string
   avatarSeed: string
-  agentProfileId?: string | null
+  providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
@@ -35,7 +34,7 @@ export interface UpdateAgentInput {
   description?: string | null
   avatarStyle?: string
   avatarSeed?: string
-  agentProfileId?: string | null
+  providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
   runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
@@ -43,80 +42,109 @@ export interface UpdateAgentInput {
   enabled?: boolean
 }
 
-const AgentRuntimeKindSchema = z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'])
+const AgentRuntimeKindSchema = z.enum([
+  'standard',
+  'claude-agent',
+  'codex',
+  'jar-core',
+  'acp-chat',
+  'cli-tui'
+])
 const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'auto'])
-const AgentDescriptionSchema = z.string().trim().transform(value => value.length > 0 ? value : null).nullable().default(null)
+const AgentDescriptionSchema = z
+  .string()
+  .trim()
+  .transform((value) => (value.length > 0 ? value : null))
+  .nullable()
+  .default(null)
 const DefaultAgentRuntimeConfig = AgentRuntimeConfigJsonSchema.parse(undefined)
-const CreateAgentInputSchema = z.object({
-  name: z.string().trim(),
-  description: AgentDescriptionSchema,
-  avatarStyle: z.string(),
-  avatarSeed: z.string(),
-  agentProfileId: z.string().nullable().default(null),
-  modelId: z.string().nullable().default(null),
-  thinkingEffort: AgentThinkingEffortSchema.default('auto'),
-  runtimeKind: AgentRuntimeKindSchema.default('standard'),
-  configJson: AgentRuntimeConfigJsonSchema.default(DefaultAgentRuntimeConfig),
-}).superRefine((input, ctx) => {
-  if (input.runtimeKind === 'cli-tui') {
-    if (input.agentProfileId) {
+
+const CreateAgentInputSchema = z
+  .object({
+    name: z.string().trim().min(1),
+    description: AgentDescriptionSchema,
+    avatarStyle: z.string().min(1),
+    avatarSeed: z.string().min(1),
+    providerTargetId: z.string().trim().min(1).nullable().default(null),
+    modelId: z.string().trim().min(1).nullable().default(null),
+    thinkingEffort: AgentThinkingEffortSchema.default('auto'),
+    runtimeKind: AgentRuntimeKindSchema.default('standard'),
+    configJson: AgentRuntimeConfigJsonSchema.default(DefaultAgentRuntimeConfig)
+  })
+  .superRefine((input, ctx) => {
+    if (input.runtimeKind === 'cli-tui') {
+      if (input.providerTargetId) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'CLI TUI agents must not reference a provider target',
+          path: ['providerTargetId']
+        })
+        return
+      }
+
+      if (!input.configJson.cliTui) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'CLI TUI agents require launch configuration',
+          path: ['configJson']
+        })
+      }
+      return
+    }
+
+    if (!input.providerTargetId) {
       ctx.addIssue({
         code: 'custom',
-        message: 'CLI TUI agents must not reference a provider profile',
-        path: ['agentProfileId'],
+        message: 'Provider-backed agents require a provider target',
+        path: ['providerTargetId']
       })
       return
     }
 
-    if (!input.configJson.cliTui) {
+    try {
+      assertProviderTargetCompatibleWithRuntime(input.providerTargetId, input.runtimeKind)
+    } catch (error) {
       ctx.addIssue({
         code: 'custom',
-        message: 'CLI TUI agents require launch configuration',
-        path: ['configJson'],
+        message: error instanceof Error ? error.message : 'Invalid provider target',
+        path: ['providerTargetId']
       })
     }
-    return
-  }
+  })
+  .transform((input) => {
+    const parsed = {
+      ...input,
+      configJson: JSON.stringify(input.configJson)
+    }
+    return input.runtimeKind === 'cli-tui'
+      ? {
+          ...parsed,
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'auto' as const
+        }
+      : parsed
+  })
 
-  if (!input.agentProfileId) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Provider-backed agents require an agent profile',
-      path: ['agentProfileId'],
-    })
-  }
-}).transform((input) => {
-  const parsed = {
-    ...input,
-    configJson: JSON.stringify(input.configJson),
-  }
-  return input.runtimeKind === 'cli-tui'
-    ? {
-        ...parsed,
-        agentProfileId: null,
-        modelId: null,
-        thinkingEffort: 'auto' as const,
-      }
-  : parsed
-})
 type ParsedAgentInput = z.infer<typeof CreateAgentInputSchema>
-
-// ── public API ──
 
 export function list(filters: AgentListFilters = {}): Agent[] {
   const clauses: SQL[] = []
   if (filters.enabled !== undefined) {
     clauses.push(eq(agents.enabled, filters.enabled))
   }
-  if (filters.agentProfileId) {
-    clauses.push(eq(agents.agentProfileId, filters.agentProfileId))
+  if (filters.providerTargetId) {
+    clauses.push(eq(agents.providerTargetId, filters.providerTargetId))
   }
 
   const query = db().select().from(agents)
   if (clauses.length === 0) {
     return query.orderBy(desc(agents.updatedAt)).all()
   }
-  return query.where(clauses.length === 1 ? clauses[0]! : and(...clauses)).orderBy(desc(agents.updatedAt)).all()
+  return query
+    .where(clauses.length === 1 ? clauses[0]! : and(...clauses))
+    .orderBy(desc(agents.updatedAt))
+    .all()
 }
 
 export function get(id: string): Agent | null {
@@ -137,18 +165,17 @@ export function create(input: CreateAgentInput): Agent {
         avatarUrl,
         avatarStyle: parsed.avatarStyle,
         avatarSeed: parsed.avatarSeed,
-        agentProfileId: parsed.agentProfileId,
+        providerTargetId: parsed.providerTargetId,
         modelId: parsed.modelId,
         thinkingEffort: parsed.thinkingEffort,
         runtimeKind: parsed.runtimeKind,
         configJson: parsed.configJson,
-        enabled: true,
+        enabled: true
       })
       .returning()
       .get()
-  }
-  catch (error) {
-    throw mapAgentIdentityError(error, parsed?.agentProfileId)
+  } catch (error) {
+    throw mapAgentIdentityError(error, parsed?.providerTargetId)
   }
 }
 
@@ -166,15 +193,13 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
       description: patch.description ?? current.description,
       avatarStyle: patch.avatarStyle ?? current.avatarStyle,
       avatarSeed: patch.avatarSeed ?? current.avatarSeed,
-      agentProfileId: patch.agentProfileId ?? current.agentProfileId,
+      providerTargetId: patch.providerTargetId ?? current.providerTargetId,
       modelId: patch.modelId ?? current.modelId,
       thinkingEffort: patch.thinkingEffort ?? current.thinkingEffort,
       runtimeKind: patch.runtimeKind ?? current.runtimeKind,
-      configJson: patch.configJson ?? current.configJson,
+      configJson: patch.configJson ?? current.configJson
     })
 
-    const nextStyle = parsed.avatarStyle
-    const nextSeed = parsed.avatarSeed
     const updatePatch: Record<string, unknown> = { updatedAt: Math.floor(Date.now() / 1000) }
 
     if (patch.name !== undefined) {
@@ -189,8 +214,8 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
     if (patch.avatarSeed !== undefined) {
       updatePatch.avatarSeed = parsed.avatarSeed
     }
-    if (patch.agentProfileId !== undefined) {
-      updatePatch.agentProfileId = parsed.agentProfileId
+    if (patch.providerTargetId !== undefined) {
+      updatePatch.providerTargetId = parsed.providerTargetId
     }
     if (patch.modelId !== undefined) {
       updatePatch.modelId = parsed.modelId
@@ -208,13 +233,12 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
       updatePatch.enabled = patch.enabled
     }
     if (patch.avatarStyle !== undefined || patch.avatarSeed !== undefined) {
-      updatePatch.avatarUrl = buildAgentAvatarUrl(nextStyle, nextSeed)
+      updatePatch.avatarUrl = buildAgentAvatarUrl(parsed.avatarStyle, parsed.avatarSeed)
     }
 
     return db().update(agents).set(updatePatch).where(eq(agents.id, id)).returning().get() ?? null
-  }
-  catch (error) {
-    throw mapAgentIdentityError(error, parsed?.agentProfileId)
+  } catch (error) {
+    throw mapAgentIdentityError(error, parsed?.providerTargetId)
   }
 }
 
@@ -222,23 +246,23 @@ export function remove(id: string): void {
   db().delete(agents).where(eq(agents.id, id)).run()
 }
 
-function mapAgentIdentityError(error: unknown, agentProfileId: string | null | undefined): Error {
+function mapAgentIdentityError(error: unknown, providerTargetId: string | null | undefined): Error {
   if (error instanceof z.ZodError) {
     return new AppError({
       code: 'invalid_agent_input',
       status: 400,
       message: error.issues[0]?.message ?? 'Invalid agent input',
-      details: { issues: error.issues },
+      details: { issues: error.issues }
     })
   }
 
   const message = error instanceof Error ? error.message : String(error)
-  if (message.includes('FOREIGN KEY constraint failed') && agentProfileId) {
+  if (message.includes('FOREIGN KEY constraint failed') && providerTargetId) {
     return new AppError({
-      code: 'agent_profile_not_found',
+      code: 'provider_target_not_found',
       status: 400,
-      message: 'Agent profile not found',
-      details: { agentProfileId },
+      message: 'Provider target not found',
+      details: { providerTargetId }
     })
   }
   return error instanceof Error ? error : new Error(message)

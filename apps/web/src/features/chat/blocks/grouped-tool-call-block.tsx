@@ -24,15 +24,19 @@ import { useState } from 'react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
-import type { ToolCallItem } from '../chat-render-plan'
 import { hasTerminalDetails } from '../terminal-tool-details'
-import type { ToolState, ToolUiKind } from '../tool-ui-classifier'
+import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall } from '../tool-ui-classifier'
 import { TerminalExecutionDetails } from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
 
 type IconComponent = ComponentType<{ 'className'?: string, 'aria-hidden'?: boolean }>
+
+interface ToolCallItem {
+  key: string
+  part: RenderableToolPart
+}
 
 const TOOL_ICON_MAP: Record<ToolUiKind, IconComponent> = {
   'file-read': FileTextIcon,

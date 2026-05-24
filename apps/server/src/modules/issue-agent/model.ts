@@ -29,7 +29,7 @@ export const IssueAgentModel = {
   delegationState: t.Object({
     issueId: t.String(),
     delegated: t.Boolean(),
-    agentProfileId: t.Nullable(t.String()),
+    providerTargetId: t.Nullable(t.String()),
     agentId: t.Nullable(t.String()),
     agentSessionId: t.Nullable(t.String()),
     chatSessionId: t.Nullable(t.String()),
@@ -38,7 +38,7 @@ export const IssueAgentModel = {
   sessionView: t.Object({
     id: t.String(),
     issueId: t.String(),
-    agentProfileId: t.String(),
+    providerTargetId: t.String(),
     agentId: t.Nullable(t.String()),
     chatSessionId: t.Nullable(t.String()),
     status: agentSessionStatus,
@@ -54,7 +54,7 @@ export const IssueAgentModel = {
 
   delegateBody: t.Object({
     agentId: t.String({ minLength: 1 }),
-    agentProfileId: t.Optional(t.Nullable(t.String())),
+    providerTargetId: t.Optional(t.Nullable(t.String())),
   }),
 
   continuationBody: t.Object({

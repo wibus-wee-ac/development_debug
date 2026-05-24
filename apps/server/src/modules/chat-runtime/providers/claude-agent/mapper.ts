@@ -1,10 +1,35 @@
 import { randomUUID } from 'node:crypto'
 
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { BetaContentBlock, BetaRawContentBlockDeltaEvent, BetaRawContentBlockStartEvent } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
+
+interface BetaContentBlock {
+  type: string
+  text?: string
+  thinking?: string
+  id?: string
+  name?: string
+  input?: unknown
+}
+
+interface BetaRawContentBlockDeltaEvent {
+  type: 'content_block_delta'
+  index: number
+  delta: {
+    type: string
+    text?: string
+    thinking?: string
+    partial_json?: string
+  }
+}
+
+interface BetaRawContentBlockStartEvent {
+  type: 'content_block_start'
+  index: number
+  content_block: BetaContentBlock
+}
 
 export interface ClaudeAgentChunkMapperState {
   textItemId: string
@@ -229,6 +254,9 @@ function mapContentBlock(
       return { chunks, assistantStarted }
     }
     case 'tool_use':
+      if (!block.id || !block.name) {
+        return { chunks: [], assistantStarted }
+      }
       if (!state) {
         return {
           chunks: [
@@ -262,12 +290,13 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           chunks.push(withParentMeta({ type: 'text-start', id: state.textItemId }, parentToolUseId))
           assistantStarted = true
         }
-        appendEmittedText(state, state.textItemId, deltaEvent.delta.text)
-        chunks.push(withParentMeta({ type: 'text-delta', id: state.textItemId, delta: deltaEvent.delta.text }, parentToolUseId))
+        const textDelta = deltaEvent.delta.text ?? ''
+        appendEmittedText(state, state.textItemId, textDelta)
+        chunks.push(withParentMeta({ type: 'text-delta', id: state.textItemId, delta: textDelta }, parentToolUseId))
       }
       else if (deltaEvent.delta.type === 'thinking_delta') {
         const itemId = `thinking-${deltaEvent.index}`
-        chunks.push(withParentMeta({ type: 'reasoning-delta', id: itemId, delta: deltaEvent.delta.thinking }, parentToolUseId))
+        chunks.push(withParentMeta({ type: 'reasoning-delta', id: itemId, delta: deltaEvent.delta.thinking ?? '' }, parentToolUseId))
       }
       else if (deltaEvent.delta.type === 'input_json_delta') {
         const partialJson = (deltaEvent.delta as { type: 'input_json_delta', partial_json: string }).partial_json
@@ -285,6 +314,9 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
         chunks.push(withParentMeta({ type: 'reasoning-start', id: itemId }, parentToolUseId))
       }
       else if (startEvent.content_block.type === 'tool_use') {
+        if (!startEvent.content_block.id || !startEvent.content_block.name) {
+          break
+        }
         state.hadToolCallSinceLastText = true
         state.activeToolBlockIds.set(startEvent.index, startEvent.content_block.id)
         const emitted = emitToolUseChunks(

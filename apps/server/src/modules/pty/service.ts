@@ -69,7 +69,7 @@ export interface TerminalSessionContext {
 interface TerminalSessionRecord {
   id: string
   workspaceId: string | null
-  agentProfileId: string | null
+  providerTargetId: string | null
   runtimeKind: string
   configJson: string
   ptyStartedAt: number | null
@@ -80,7 +80,7 @@ function getSession(sessionId: string): TerminalSessionRecord | undefined {
     .select({
       id: sessions.id,
       workspaceId: sessions.workspaceId,
-      agentProfileId: sessions.agentProfileId,
+      providerTargetId: sessions.providerTargetId,
       runtimeKind: sessions.runtimeKind,
       configJson: sessions.configJson,
       ptyStartedAt: sessions.ptyStartedAt

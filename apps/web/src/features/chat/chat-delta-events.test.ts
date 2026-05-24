@@ -7,10 +7,15 @@
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 
-import { applyChatPartDeltas, type ChatPartDelta } from './chat-delta-events'
+import {
+  applyChatPartDeltas,
+  collectChatToolEntityPatches,
+  type ChatPartDelta,
+} from './chat-delta-events'
+import type { ChatToolEntity } from './chat-tool-entities'
 
 describe('applyChatPartDeltas', () => {
-  it('streams tool arguments separately from committed structured input', () => {
+  it('keeps tool payload in entity patches while message parts retain only anchors', () => {
     const message: UIMessage = {
       id: 'assistant-1',
       role: 'assistant',
@@ -26,7 +31,6 @@ describe('applyChatPartDeltas', () => {
           toolName: 'Edit',
           toolCallId: 'call-edit',
           state: 'input-streaming',
-          argumentsText: '',
         },
       },
       {
@@ -54,11 +58,30 @@ describe('applyChatPartDeltas', () => {
 
     const next = applyChatPartDeltas(message, deltas)
     const part = next.parts[0]
+    const initialEntity: ChatToolEntity = {
+      toolCallId: 'call-edit',
+      messageId: 'assistant-1',
+      toolName: 'Edit',
+      state: 'input-streaming',
+    }
+    const entity = collectChatToolEntityPatches(next, deltas).reduce<ChatToolEntity>((current, patch) => {
+      if (patch.toolCallId !== 'call-edit') {
+        return current
+      }
+      return patch.updater(current)
+    }, initialEntity)
 
     expect(part).toMatchObject({
       type: 'dynamic-tool',
       toolName: 'Edit',
       toolCallId: 'call-edit',
+      state: 'input-available',
+    })
+
+    expect(entity).toMatchObject({
+      toolCallId: 'call-edit',
+      messageId: 'assistant-1',
+      toolName: 'Edit',
       state: 'input-available',
       argumentsText: '{"file_path":"/tmp/a.md","old_string":"hello',
       input: {

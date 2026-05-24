@@ -86,3 +86,17 @@ export const git = new Elysia({
     params: GitModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
+  .get('/:id/git/diff', async ({ params, query }) => {
+    const paths = query.paths ? query.paths.split(',').map(p => p.trim()).filter(Boolean) : undefined
+    return await Git.getDiff(params.id, paths)
+  }, {
+    detail: {
+      'summary': 'Get git diff',
+      'x-cradle-cli': {
+        command: ['workspace', 'git', 'diff'],
+      },
+    },
+    params: GitModel.idParams,
+    query: GitModel.diffQuery,
+    response: { 200: t.String() },
+  })
