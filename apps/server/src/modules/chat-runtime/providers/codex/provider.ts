@@ -6,10 +6,11 @@ import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
@@ -29,9 +30,10 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
-import { projectTextOnlyInput } from '../../ui-message-input'
+import { extractUiMessageText } from '../../ui-message-input'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
-import { CodexAppServerClient, type CodexAppServerClientOptions, type CodexAppServerMessage } from './app-server-client'
+import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
+import { CodexAppServerClient } from './app-server-client'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
@@ -85,6 +87,12 @@ interface TurnNotificationParams {
 interface ItemNotificationParams {
   item?: { type?: string, id?: string }
 }
+
+type RuntimeMessageInput = UIMessage | string
+type MessagePart = UIMessage['parts'][number]
+type CodexUserInput = { type: 'text', text: string, text_elements: [] }
+  | { type: 'image', detail?: 'high' | 'original', url: string }
+  | { type: 'localImage', detail?: 'high' | 'original', path: string }
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
 const MAX_EVENT_SAMPLES = 20
@@ -144,7 +152,8 @@ export class CodexProvider implements ChatRuntime {
     const config = CodexConfigJsonSchema.parse(input.profile.configJson)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
-    const userPrompt = projectTextOnlyInput(input.message, 'Codex provider')
+    const userInput = projectCodexUserInput(input.message, 'Codex provider')
+    const userPromptText = extractUiMessageText(input.message).trim()
     if (!apiKey) {
       throw new Error('Codex provider requires an API key')
     }
@@ -168,8 +177,8 @@ export class CodexProvider implements ChatRuntime {
       generation = startObservation('codex-generation', {
         model: effectiveModel ?? 'codex',
         input: input.systemPrompt
-          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: userPrompt }]
-          : [{ role: 'user', content: userPrompt }],
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: describeCodexUserInput(userInput, userPromptText) }]
+          : [{ role: 'user', content: describeCodexUserInput(userInput, userPromptText) }],
       }, { asType: 'generation' }) as LangfuseGeneration
       const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
@@ -190,7 +199,7 @@ export class CodexProvider implements ChatRuntime {
 
       const turnResponse = await client.request('turn/start', {
         threadId,
-        input: [toTextUserInput(userPrompt)],
+        input: userInput,
         cwd: workspacePath,
         approvalPolicy: config.approvalPolicy,
         sandboxPolicy: toSandboxPolicy(config.sandboxMode, workspacePath, config.additionalDirectories),
@@ -296,11 +305,11 @@ export class CodexProvider implements ChatRuntime {
     if (!entry?.turnId) {
       throw new Error('Codex live steer requires an active turn')
     }
-    const text = projectTextOnlyInput(input.message, 'Codex provider live steer')
+    const userInput = projectCodexUserInput(input.message, 'Codex provider live steer')
     await entry.client.request('turn/steer', {
       threadId: entry.threadId,
       expectedTurnId: entry.turnId,
-      input: [toTextUserInput(text)],
+      input: userInput,
     })
   }
 
@@ -443,8 +452,69 @@ function writeSystemPromptFile(systemPrompt: string | undefined): string | null 
   return filePath
 }
 
-function toTextUserInput(text: string): { type: 'text', text: string, text_elements: [] } {
+function projectCodexUserInput(message: RuntimeMessageInput, runtimeLabel: string): CodexUserInput[] {
+  if (typeof message === 'string') {
+    const text = message.trim()
+    if (!text) {
+      throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+    }
+    return [toTextUserInput(text)]
+  }
+
+  const input: CodexUserInput[] = []
+  const unsupportedParts: string[] = []
+  for (const part of message.parts) {
+    if (part.type === 'text') {
+      const text = part.text.trim()
+      if (text) {
+        input.push(toTextUserInput(text))
+      }
+      continue
+    }
+    if (part.type === 'file') {
+      if (part.mediaType.startsWith('image/')) {
+        input.push(toCodexImageInput(part))
+      }
+      else {
+        unsupportedParts.push(describeUnsupportedFilePart(part))
+      }
+      continue
+    }
+    unsupportedParts.push(part.type)
+  }
+
+  if (unsupportedParts.length > 0) {
+    throw new Error(`${runtimeLabel} only supports text and image input; unsupported parts: ${unsupportedParts.join(', ')}`)
+  }
+  if (input.length === 0) {
+    throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+  }
+  return input
+}
+
+function toTextUserInput(text: string): CodexUserInput {
   return { type: 'text', text, text_elements: [] }
+}
+
+function toCodexImageInput(part: Extract<MessagePart, { type: 'file' }>): CodexUserInput {
+  if (part.url.startsWith('file:')) {
+    return { type: 'localImage', path: fileURLToPath(part.url) }
+  }
+  return { type: 'image', url: part.url }
+}
+
+function describeUnsupportedFilePart(part: Extract<MessagePart, { type: 'file' }>): string {
+  const filename = part.filename ? ` (${part.filename})` : ''
+  return `file${filename} (${part.mediaType})`
+}
+
+function describeCodexUserInput(input: CodexUserInput[], text: string): string {
+  const imageCount = input.filter(item => item.type === 'image' || item.type === 'localImage').length
+  if (imageCount === 0) {
+    return text
+  }
+  const suffix = `[${imageCount} image${imageCount === 1 ? '' : 's'}]`
+  return text ? `${text}\n${suffix}` : suffix
 }
 
 function toSandboxPolicy(

@@ -2,7 +2,7 @@
 
 Provides server-owned chat turn execution for existing sessions, including text/file user input, durable continuation queue items, message snapshot persistence, sequenced delta streaming, usage writes, run state updates, cancellation terminal transitions, and ACP live runtime orchestration.
 `messages.message_json` is the only hydration source of truth; invalid snapshots must fail fast instead of falling back to `messages.content`.
-User attachments are represented as AI SDK `FileUIPart` entries in `UIMessage.parts`; the OpenAI-compatible AI SDK provider converts those through `convertToModelMessages`, while text-only runtime providers reject non-text parts explicitly instead of silently dropping attachments.
+User attachments are represented as AI SDK `FileUIPart` entries in `UIMessage.parts`; the OpenAI-compatible AI SDK provider converts those through `convertToModelMessages`, Codex maps image parts into app-server `UserInput` items, and text-only runtime providers reject unsupported parts explicitly instead of silently dropping attachments.
 `POST /chat/sessions/:sessionId/cancel` owns the canonical aborted transition: it marks active runs/messages terminal before asking the provider to stop, ignores late provider chunks after terminal state, and repairs persisted `streaming` rows when no in-memory active run exists.
 Route metadata includes `x-cradle-cli` descriptors for non-streaming generated CLI commands.
 In development, chat stream traces are written directly to `CRADLE_DATA_DIR/chat-runtime/traces/*.jsonl` so provider raw events, mapper output, projection results, and emitted SSE events can be compared without relying on rewritten UI state.
@@ -30,10 +30,10 @@ Chat Session queue and steer are owned here: `/chat/sessions/:sessionId/queue` s
   - `providers/claude-agent/provider.ts`: Claude Agent SDK runtime bound to the unified `/chat` API; injects plugin-registered MCP servers and `config.claudeAgent.modelAliases` environment overrides into Claude Agent SDK query options, and rejects non-text user parts at the provider boundary.
   - `providers/claude-agent/mapper.ts`: Claude Agent SDK message → unified chat delta input mapper.
   - `providers/mock-claude-agent/provider.ts`: debug/test runtime that mimics Claude Agent chunk output under mock configuration.
-  - `providers/codex/provider.ts`: Codex app-server runtime bound to the unified `/chat` API; starts/resumes app-server threads, maps `turn/start` notifications into chat deltas, supports live `turn/steer`, interrupts active turns through `turn/interrupt`, projects plugin-registered MCP servers into Codex `mcp_servers` config, and rejects non-text user parts at the provider boundary.
+  - `providers/codex/provider.ts`: Codex app-server runtime bound to the unified `/chat` API; starts/resumes app-server threads, maps `turn/start` notifications into chat deltas, supports live `turn/steer`, maps text/image user parts into Codex app-server input, interrupts active turns through `turn/interrupt`, projects plugin-registered MCP servers into Codex `mcp_servers` config, and rejects unsupported user parts at the provider boundary.
   - `providers/codex/app-server-client.ts`: newline-delimited JSON-RPC client for per-turn Codex app-server processes.
   - `providers/codex/app-server-mapper.ts`: Codex app-server notification → unified chat delta input mapper.
-  - `providers/codex/provider.test.ts`: focused app-server provider coverage for streaming, thread resume, and live steer.
+  - `providers/codex/provider.test.ts`: focused app-server provider coverage for text/image input projection, streaming, thread resume, and live steer.
   - `providers/system-agent/provider.ts`: System Agent (`jar-core`) runtime bridged into the same snapshot + delta contract, using jar-core `defaultRuntimeConfig` while keeping Cradle-owned session/workspace paths, injecting Cradle chat/workspace env for shell-driven skills, applying profile-owned models.dev mappings as per-model metadata, normalizing thinking level against model reasoning capability, rejecting non-text user parts, and forwarding jar-core result usage/model metadata into Cradle-owned usage logs.
 - `runtime-provider-types.ts`: chat runtime provider contracts, including the optional `steerTurn` side-channel used only by providers that can inject input into an active turn.
 

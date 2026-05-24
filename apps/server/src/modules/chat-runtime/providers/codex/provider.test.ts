@@ -102,10 +102,14 @@ function createRuntimeSession(providerSessionId: string | null = null): RuntimeS
 }
 
 function createUserMessage(text: string): UIMessage {
+  return createMessage([{ type: 'text', text }])
+}
+
+function createMessage(parts: UIMessage['parts']): UIMessage {
   return {
-    id: `user-${text}`,
+    id: `user-${parts.length}`,
     role: 'user',
-    parts: [{ type: 'text', text }],
+    parts,
   }
 }
 
@@ -119,6 +123,71 @@ function createProvider(client: FakeCodexAppServerClient): CodexProvider {
 }
 
 describe('codexProvider app-server integration', () => {
+  it('maps image attachments to Codex app-server user input', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createMessage([
+        { type: 'text', text: 'Read these screenshots' },
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'screen.png',
+          url: 'data:image/png;base64,test',
+        },
+        {
+          type: 'file',
+          mediaType: 'image/jpeg',
+          filename: 'local.jpg',
+          url: 'file:///tmp/local.jpg',
+        },
+      ]),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    expect(client.requests[1]).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        input: [
+          { type: 'text', text: 'Read these screenshots', text_elements: [] },
+          { type: 'image', url: 'data:image/png;base64,test' },
+          { type: 'localImage', path: '/tmp/local.jpg' },
+        ],
+      }),
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Read',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
   it('streams app-server notifications and applies live steer to the active turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
@@ -186,6 +255,96 @@ describe('codexProvider app-server integration', () => {
     ]))
     expect(runtimeSession.providerSessionId).toBe('codex-thread-1')
     expect(client.close).toHaveBeenCalledOnce()
+  })
+
+  it('maps image attachments in live steer input', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Start'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    await provider.steerTurn({
+      runtimeSession,
+      profile: createProfile(),
+      message: createMessage([
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'steer.png',
+          url: 'data:image/png;base64,steer',
+        },
+      ]),
+    })
+
+    expect(client.requests.at(-1)).toEqual({
+      method: 'turn/steer',
+      params: {
+        threadId: 'codex-thread-1',
+        expectedTurnId: 'codex-turn-1',
+        input: [{ type: 'image', url: 'data:image/png;base64,steer' }],
+      },
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
+  it('rejects non-image file attachments before starting Codex app-server work', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(async () => {
+      for await (const _chunk of provider.streamTurn({
+        runId: 'run-codex-test',
+        runtimeSession: createRuntimeSession(),
+        profile: createProfile(),
+        message: createMessage([
+          { type: 'text', text: 'Read this file' },
+          {
+            type: 'file',
+            mediaType: 'application/pdf',
+            filename: 'brief.pdf',
+            url: 'data:application/pdf;base64,test',
+          },
+        ]),
+        workspaceId: 'workspace-1',
+      })) {
+        // Drain stream to force input projection.
+      }
+    }).rejects.toThrow('Codex provider only supports text and image input; unsupported parts: file (brief.pdf) (application/pdf)')
+
+    expect(client.requests).toEqual([])
   })
 
   it('resumes existing app-server threads before starting the turn', async () => {
