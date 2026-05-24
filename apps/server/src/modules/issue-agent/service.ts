@@ -42,6 +42,7 @@ interface IssueAgentDelegationState {
 // ── in-memory state ──
 
 const activeRuns = new Map<string, ActiveAgentRun>()
+const continuationWatchers = new Map<string, Promise<void>>()
 
 const AgentActivityInputSchema = z.object({
   agentSessionId: z.string(),
@@ -230,7 +231,7 @@ function buildIssuePrompt(
     }
   }
 
-  parts.push('', 'Please work on this issue. When done, summarize what you changed.')
+  parts.push('', 'Please work on this issue. When done, summarize what you changed. Send the summary as a comment on the issue. If you need to ask for more information, send a comment.')
   return parts.join('\n')
 }
 
@@ -243,6 +244,14 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
     activeRuns.delete(agentSessionId)
 
     if (run.status === 'complete') {
+      if (tracked?.chatSessionId && hasQueuedContinuationWork(tracked.chatSessionId)) {
+        startContinuationWatcher({
+          agentSessionId,
+          chatSessionId: tracked.chatSessionId,
+          since: currentUnixSeconds(),
+        })
+        return
+      }
       updateAgentSessionStatus(agentSessionId, 'completed')
       createActivity({
         agentSessionId,
@@ -283,6 +292,111 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
       body: error instanceof Error ? error.message : 'Issue agent run disappeared before completion',
       signal: 'run.failed',
     })
+  }
+}
+
+function hasQueuedContinuationWork(chatSessionId: string): boolean {
+  return ChatRuntime.listSessionQueueItems(chatSessionId)
+    .some(item => item.status === 'pending' || item.status === 'running')
+}
+
+function hasChatSessionContinuationWork(chatSessionId: string): boolean {
+  const hasActiveRun = ChatRuntime.listActiveRunSummaries()
+    .some(run => run.sessionId === chatSessionId)
+  if (hasActiveRun) {
+    return true
+  }
+  return hasQueuedContinuationWork(chatSessionId)
+}
+
+function startContinuationWatcher(input: {
+  agentSessionId: string
+  chatSessionId: string
+  since: number
+}): void {
+  if (continuationWatchers.has(input.agentSessionId)) {
+    return
+  }
+
+  const watcher = watchContinuationWork(input)
+  continuationWatchers.set(input.agentSessionId, watcher)
+  void watcher.finally(() => {
+    continuationWatchers.delete(input.agentSessionId)
+  })
+}
+
+async function watchContinuationWork(input: {
+  agentSessionId: string
+  chatSessionId: string
+  since: number
+}): Promise<void> {
+  try {
+    updateAgentSessionStatus(input.agentSessionId, 'active')
+    while (hasChatSessionContinuationWork(input.chatSessionId)) {
+      await delay(500)
+    }
+
+    const session = getAgentSession(input.agentSessionId)
+    if (!session || session.status === 'stopped') {
+      return
+    }
+
+    const queueItems = ChatRuntime.listSessionQueueItems(input.chatSessionId)
+      .filter(item => item.createdAt >= input.since)
+    const failedItem = queueItems.find(item => item.status === 'failed')
+    if (failedItem) {
+      updateAgentSessionStatus(input.agentSessionId, 'failed')
+      createActivity({
+        agentSessionId: input.agentSessionId,
+        type: 'error',
+        body: failedItem.errorText ?? 'Continuation failed',
+        signal: 'continuation.failed',
+        signalMetadata: {
+          chatSessionId: input.chatSessionId,
+          queueItemId: failedItem.id,
+        },
+      })
+      return
+    }
+
+    updateAgentSessionStatus(input.agentSessionId, 'completed')
+    createActivity({
+      agentSessionId: input.agentSessionId,
+      type: 'response',
+      body: 'Completed queued continuation',
+      signal: 'continuation.completed',
+      signalMetadata: { chatSessionId: input.chatSessionId },
+    })
+  }
+  catch (error) {
+    updateAgentSessionStatus(input.agentSessionId, 'failed')
+    createActivity({
+      agentSessionId: input.agentSessionId,
+      type: 'error',
+      body: error instanceof Error ? error.message : 'Continuation watcher failed',
+      signal: 'continuation.failed',
+      signalMetadata: { chatSessionId: input.chatSessionId },
+    })
+  }
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function cancelChatSessionContinuationWork(chatSessionId: string): Promise<void> {
+  await ChatRuntime.cancelSession(chatSessionId)
+  const queueItems = ChatRuntime.listSessionQueueItems(chatSessionId)
+  for (const item of queueItems) {
+    if (item.status !== 'pending') {
+      continue
+    }
+    try {
+      ChatRuntime.cancelSessionQueueItem(chatSessionId, item.id)
+    }
+    catch {
+      // The queue item may have been claimed by the runtime between list and cancel.
+    }
   }
 }
 
@@ -382,6 +496,69 @@ export function listActivities(agentSessionId: string): AgentActivity[] {
   return listAgentActivities(agentSessionId)
 }
 
+export async function enqueueContinuation(input: {
+  agentSessionId: string
+  mode: ChatRuntime.ChatSessionQueueMode
+  text: string
+}): Promise<{
+  ok: true
+  chatSessionId: string
+  queueItemId: string
+  mode: ChatRuntime.ChatSessionQueueMode
+}> {
+  const session = requireAgentSession(input.agentSessionId)
+  const text = input.text.trim()
+  if (!text) {
+    throw new AppError({
+      code: 'issue_agent_prompt_empty',
+      status: 400,
+      message: 'Issue agent continuation requires text',
+      details: { agentSessionId: input.agentSessionId },
+    })
+  }
+  if (!session.chatSessionId) {
+    throw new AppError({
+      code: 'issue_agent_chat_session_not_ready',
+      status: 409,
+      message: 'Issue agent chat session is not ready',
+      details: { agentSessionId: input.agentSessionId },
+    })
+  }
+
+  const queueItem = await ChatRuntime.enqueueSessionQueueItem({
+    sessionId: session.chatSessionId,
+    mode: input.mode,
+    text,
+  })
+
+  createActivity({
+    agentSessionId: session.id,
+    type: 'prompt',
+    body: text,
+    signal: input.mode === 'steer' ? 'continuation.steer' : 'continuation.queued',
+    signalMetadata: {
+      chatSessionId: session.chatSessionId,
+      queueItemId: queueItem.id,
+      mode: input.mode,
+    },
+  })
+
+  if (queueItem.status !== 'completed') {
+    startContinuationWatcher({
+      agentSessionId: session.id,
+      chatSessionId: session.chatSessionId,
+      since: queueItem.createdAt,
+    })
+  }
+
+  return {
+    ok: true,
+    chatSessionId: session.chatSessionId,
+    queueItemId: queueItem.id,
+    mode: input.mode,
+  }
+}
+
 export async function delegateIssue(input: { issueId: string, agentId: string, agentProfileId?: string | null }): Promise<IssueAgentSessionView> {
   requireIssue(input.issueId)
   const agent = requireDelegationAgent(input.agentId)
@@ -456,7 +633,11 @@ export async function undelegateIssue(issueId: string): Promise<void> {
   const run = activeRuns.get(state.agentSessionId)
   if (run) {
     run.aborted = true
-    await ChatRuntime.abortRun(run.runId)
+    await cancelChatSessionContinuationWork(run.chatSessionId)
+    updateAgentSessionStatus(state.agentSessionId, 'stopped')
+  }
+  else if (state.chatSessionId) {
+    await cancelChatSessionContinuationWork(state.chatSessionId)
     updateAgentSessionStatus(state.agentSessionId, 'stopped')
   }
 
@@ -474,11 +655,14 @@ export async function undelegateIssue(issueId: string): Promise<void> {
 }
 
 export async function stopSession(agentSessionId: string): Promise<void> {
-  requireAgentSession(agentSessionId)
+  const session = requireAgentSession(agentSessionId)
   const run = activeRuns.get(agentSessionId)
   if (run) {
     run.aborted = true
-    await ChatRuntime.abortRun(run.runId)
+    await cancelChatSessionContinuationWork(run.chatSessionId)
+  }
+  else if (session.chatSessionId) {
+    await cancelChatSessionContinuationWork(session.chatSessionId)
   }
   updateAgentSessionStatus(agentSessionId, 'stopped')
   createActivity({

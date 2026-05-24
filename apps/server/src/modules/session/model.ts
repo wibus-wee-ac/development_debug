@@ -17,6 +17,7 @@ export const SessionModel = {
     agentProfileId: t.Nullable(t.String()),
     agentId: t.Nullable(t.String()),
     modelId: t.Nullable(t.String()),
+    modelProfileId: t.Nullable(t.String()),
     linkedIssueId: t.Nullable(t.String()),
     runtimeKind: runtimeKindSchema,
     pinned: t.Number(),

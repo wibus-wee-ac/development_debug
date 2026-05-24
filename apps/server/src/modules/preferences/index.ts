@@ -30,7 +30,7 @@ export const preferences = new Elysia({
         command: ['preferences', 'chat', 'set'],
       },
     },
-    body: PreferencesModel.chatPreferences,
+    body: PreferencesModel.chatPreferencesUpdate,
     response: {
       200: PreferencesModel.savedResponse,
     },

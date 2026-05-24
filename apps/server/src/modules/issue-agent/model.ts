@@ -57,5 +57,17 @@ export const IssueAgentModel = {
     agentProfileId: t.Optional(t.Nullable(t.String())),
   }),
 
+  continuationBody: t.Object({
+    mode: t.Union([t.Literal('queue'), t.Literal('steer')]),
+    text: t.String({ minLength: 1 }),
+  }),
+
+  continuationResponse: t.Object({
+    ok: t.Literal(true),
+    chatSessionId: t.String(),
+    queueItemId: t.String(),
+    mode: t.Union([t.Literal('queue'), t.Literal('steer')]),
+  }),
+
   rerunBody: t.Object({}),
 }

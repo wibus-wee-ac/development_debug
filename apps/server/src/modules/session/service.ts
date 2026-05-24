@@ -10,11 +10,12 @@ import { AgentRuntimeConfigJsonSchema, buildSessionRuntimeConfigJson } from '../
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { buildAgentAvatarUrl } from '../agent-identity/avatar'
+import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
 import { runtimeKinds, type RuntimeKind } from '../providers/types'
 
 // ── session CRUD ──
 
-export type SessionView = Session & { modelId: string | null }
+export type SessionView = Session & { modelId: string | null, modelProfileId: string | null }
 
 const RuntimeKindSchema = z.enum(runtimeKinds)
 
@@ -34,7 +35,7 @@ const ProfileBackedSessionInputSchema = z.object({
   runtimeKind: RuntimeKindSchema.default('standard'),
 })
 
-function listRequestedModelIdsBySessionIds(sessionIds: string[]): Map<string, string | null> {
+function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, { modelId: string | null, modelProfileId: string | null }> {
   if (sessionIds.length === 0) {
     return new Map()
   }
@@ -42,19 +43,24 @@ function listRequestedModelIdsBySessionIds(sessionIds: string[]): Map<string, st
   const bindings = db()
     .select({
       chatSessionId: backendSessionBindings.chatSessionId,
+      agentProfileId: backendSessionBindings.agentProfileId,
       requestedModelId: backendSessionBindings.requestedModelId,
     })
     .from(backendSessionBindings)
     .where(inArray(backendSessionBindings.chatSessionId, sessionIds))
     .all()
 
-  return new Map(bindings.map(binding => [binding.chatSessionId, binding.requestedModelId ?? null]))
+  return new Map(bindings.map(binding => [binding.chatSessionId, {
+    modelId: binding.requestedModelId ?? null,
+    modelProfileId: binding.agentProfileId ?? null,
+  }]))
 }
 
-function toSessionView(session: Session, modelId: string | null): SessionView {
+function toSessionView(session: Session, binding: { modelId: string | null, modelProfileId: string | null } | null): SessionView {
   return {
     ...session,
-    modelId,
+    modelId: binding?.modelId ?? null,
+    modelProfileId: binding?.modelProfileId ?? null,
   }
 }
 
@@ -126,6 +132,36 @@ function resolveProfileBackedAgent(input: { agentProfileId: string, runtimeKind:
   return created.id
 }
 
+function assertProfileCompatibleWithRuntime(input: { agentProfileId: string, runtimeKind: RuntimeKind }): void {
+  const profile = db()
+    .select({ id: agentProfiles.id, providerKind: agentProfiles.providerKind })
+    .from(agentProfiles)
+    .where(eq(agentProfiles.id, input.agentProfileId))
+    .get()
+
+  if (!profile) {
+    throw new AppError({
+      code: 'agent_profile_not_found',
+      status: 404,
+      message: 'Agent profile not found',
+      details: { agentProfileId: input.agentProfileId },
+    })
+  }
+
+  if (!runtimeSupportsProviderKind(input.runtimeKind, profile.providerKind)) {
+    throw new AppError({
+      code: 'invalid_session_input',
+      status: 400,
+      message: 'Agent profile is not compatible with the selected runtime',
+      details: {
+        agentProfileId: input.agentProfileId,
+        runtimeKind: input.runtimeKind,
+        providerKind: profile.providerKind,
+      },
+    })
+  }
+}
+
 export function list(workspaceId: string): SessionView[] {
   const rows = db()
     .select()
@@ -134,8 +170,8 @@ export function list(workspaceId: string): SessionView[] {
     .orderBy(desc(sessions.updatedAt))
     .all()
 
-  const modelIdsBySessionId = listRequestedModelIdsBySessionIds(rows.map(row => row.id))
-  return rows.map(row => toSessionView(row, modelIdsBySessionId.get(row.id) ?? null))
+  const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
+  return rows.map(row => toSessionView(row, modelsBySessionId.get(row.id) ?? null))
 }
 
 export function get(id: string): SessionView | null {
@@ -144,14 +180,18 @@ export function get(id: string): SessionView | null {
     return null
   }
 
-  const modelId = db()
-    .select({ requestedModelId: backendSessionBindings.requestedModelId })
+  const binding = db()
+    .select({
+      agentProfileId: backendSessionBindings.agentProfileId,
+      requestedModelId: backendSessionBindings.requestedModelId,
+    })
     .from(backendSessionBindings)
     .where(eq(backendSessionBindings.chatSessionId, id))
-    .get()
-?.requestedModelId ?? null
+    .get() ?? null
 
-  return toSessionView(row, modelId)
+  return toSessionView(row, binding
+    ? { modelId: binding.requestedModelId ?? null, modelProfileId: binding.agentProfileId ?? null }
+    : null)
 }
 
 export function create(input: {
@@ -235,6 +275,10 @@ function resolveSessionCreateInput(input: {
       }
     }
 
+    if (agent.agentProfileId) {
+      assertProfileCompatibleWithRuntime({ agentProfileId: agent.agentProfileId, runtimeKind: agent.runtimeKind })
+    }
+
     return {
       agentProfileId: agent.agentProfileId,
       runtimeKind: agent.runtimeKind,
@@ -263,6 +307,11 @@ function resolveSessionCreateInput(input: {
       message: 'Session requires an agent profile or an agent',
     })
   }
+
+  assertProfileCompatibleWithRuntime({
+    agentProfileId: profileInput.agentProfileId,
+    runtimeKind: profileInput.runtimeKind,
+  })
 
   return {
     agentProfileId: profileInput.agentProfileId,

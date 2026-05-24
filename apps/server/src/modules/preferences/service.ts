@@ -26,10 +26,11 @@ export async function getChatPreferences(): Promise<Static<typeof PreferencesMod
   }
 }
 
-export async function setChatPreferences(preferences: Static<typeof PreferencesModel['chatPreferences']>): Promise<void> {
+export async function setChatPreferences(preferences: Static<typeof PreferencesModel['chatPreferencesUpdate']>): Promise<void> {
   const filePath = getPath('chat')
+  const normalized = ChatPreferencesJsonSchema.parse(JSON.stringify(preferences))
   await mkdir(dirname(filePath), { recursive: true })
-  await writeFile(filePath, JSON.stringify(preferences, null, 2), 'utf8')
+  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }
 
 export async function getJarvisPreferences(): Promise<Static<typeof PreferencesModel['jarvisPreferences']>> {

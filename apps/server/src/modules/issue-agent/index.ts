@@ -78,6 +78,20 @@ export const issueAgent = new Elysia({
     response: { 200: t.Array(IssueAgentModel.agentActivity) },
   })
 
+  .post('/issue-agent-sessions/:agentSessionId/continuation', ({ params, body }) =>
+    IssueAgent.enqueueContinuation({
+      agentSessionId: params.agentSessionId,
+      mode: body.mode,
+      text: body.text,
+    }), {
+    detail: {
+      summary: 'Enqueue a Chat Session continuation for an issue agent session',
+    },
+    params: IssueAgentModel.agentSessionIdParams,
+    body: IssueAgentModel.continuationBody,
+    response: { 200: IssueAgentModel.continuationResponse },
+  })
+
   .post('/issue-agent-sessions/:agentSessionId/rerun', ({ params }) =>
     IssueAgent.rerunSession({
       agentSessionId: params.agentSessionId,

@@ -398,7 +398,17 @@ export function searchIssues(q: string, limit = 20): IssueView[] {
   const lowerQ = q.toLowerCase()
   const all = db().select().from(issues).orderBy(desc(issues.createdAt)).all()
   return all
-    .filter(issue => issue.title.toLowerCase().includes(lowerQ) || (issue.description ?? '').toLowerCase().includes(lowerQ))
+    .filter((issue) => {
+      const searchableText = [
+        issue.id,
+        String(issue.number),
+        issue.title,
+        issue.description ?? '',
+      ]
+        .join(' ')
+        .toLowerCase()
+      return searchableText.includes(lowerQ)
+    })
     .slice(0, limit)
     .map(toIssueView)
 }

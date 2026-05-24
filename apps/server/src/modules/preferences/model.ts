@@ -6,6 +6,18 @@ export const PreferencesModel = {
   chatPreferences: t.Object({
     modelId: t.Nullable(t.String()),
     configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
+    continuationBehavior: t.Union([
+      t.Literal('queue'),
+      t.Literal('steer'),
+    ], { default: 'queue' }),
+  }, { additionalProperties: false }),
+  chatPreferencesUpdate: t.Object({
+    modelId: t.Nullable(t.String()),
+    configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
+    continuationBehavior: t.Optional(t.Union([
+      t.Literal('queue'),
+      t.Literal('steer'),
+    ], { default: 'queue' })),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     profileId: t.Nullable(t.String({ description: 'ID of the agent profile to use for Jarvis' })),
@@ -29,9 +41,11 @@ export const ChatPreferencesJsonSchema = z.union([
 ]).pipe(z.object({
   modelId: z.string().nullable().default(null),
   configSelections: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
+  continuationBehavior: z.enum(['queue', 'steer']).default('queue'),
 }).default({
   modelId: null,
   configSelections: {},
+  continuationBehavior: 'queue',
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([
