@@ -27,7 +27,10 @@ export interface AutomationRecipe {
   inputs?: AutomationInput[]
   artifactRequests?: AutomationArtifactRequest[]
   agentId?: string | null
-  agentProfileId?: string | null
+  providerTargetId?: string | null
+  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | null
+  modelId?: string | null
+  thinkingEffort?: 'low' | 'medium' | 'high' | null
 }
 
 export interface AutomationDefinition {
