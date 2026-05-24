@@ -89,6 +89,37 @@ export const stepUsage = sqliteTable('step_usage', {
   bySession: index('step_usage_session_id_idx').on(table.sessionId),
 }))
 
+export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
+  id: textPk(),
+  sessionId: text('session_id')
+    .notNull()
+    .references(() => sessions.id, { onDelete: 'cascade' }),
+  mode: text('mode', { enum: ['queue', 'steer'] }).notNull(),
+  status: text('status', {
+    enum: ['pending', 'running', 'cancelled', 'completed', 'failed'],
+  }).notNull().default('pending'),
+  text: text('text').notNull(),
+  filesJson: text('files_json').notNull().default('[]'),
+  agentProfileId: text('agent_profile_id')
+    .references(() => agentProfiles.id, { onDelete: 'set null' }),
+  modelId: text('model_id'),
+  thinkingEffort: text('thinking_effort', {
+    enum: ['low', 'medium', 'high'],
+  }),
+  position: int('position').notNull(),
+  sourceRunId: text('source_run_id'),
+  startedRunId: text('started_run_id'),
+  errorText: text('error_text'),
+  ...timestamps(),
+}, table => ({
+  bySessionStatusPosition: index('chat_session_queue_items_session_status_position_idx')
+    .on(table.sessionId, table.status, table.position),
+  bySessionCreatedAt: index('chat_session_queue_items_session_created_at_idx')
+    .on(table.sessionId, table.createdAt),
+  byAgentProfile: index('chat_session_queue_items_agent_profile_id_idx').on(table.agentProfileId),
+  byStartedRun: index('chat_session_queue_items_started_run_id_idx').on(table.startedRunId),
+}))
+
 export const approvalAudit = sqliteTable('approval_audit', {
   id: textPk(),
   sessionId: text('session_id')
@@ -107,5 +138,7 @@ export type UsageLog = typeof usageLogs.$inferSelect
 export type NewUsageLog = typeof usageLogs.$inferInsert
 export type StepUsageRow = typeof stepUsage.$inferSelect
 export type NewStepUsageRow = typeof stepUsage.$inferInsert
+export type ChatSessionQueueItem = typeof chatSessionQueueItems.$inferSelect
+export type NewChatSessionQueueItem = typeof chatSessionQueueItems.$inferInsert
 export type ApprovalAuditRow = typeof approvalAudit.$inferSelect
 export type NewApprovalAuditRow = typeof approvalAudit.$inferInsert

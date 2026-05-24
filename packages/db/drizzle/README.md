@@ -23,5 +23,6 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0035_lethal_greymalkin.sql**: Drizzle Kit 生成的 external provider source migration，新增 plugin-provided provider source、record 与 profile link projection 表
 - **0036_thankful_psylocke.sql**: Drizzle Kit 生成的 Chronicle accessibility event migration，新增 accessibility event history 表与查询索引
 - **0037_sweet_paibok.sql**: Drizzle Kit 生成的 plugin storage migration，新增 `plugin_storage_entries` 表与 plugin/key 隔离索引
-- **0038_overconfident_molecule_man.sql**: Drizzle Kit 生成的 Handoff migration，新增 `handoff_proposals` 表与 status/session/agent 查询索引
+- **0038_chat_session_queue_items.sql**: Chat Runtime-owned continuation queue migration，新增 `chat_session_queue_items` 表与 session/status/run 查询索引
+- **0039_chat_session_queue_repair.sql**: 幂等修复 migration，用于补齐已经记录 0038 但缺少 `chat_session_queue_items` 的开发库
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败
