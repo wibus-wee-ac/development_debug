@@ -1,3 +1,7 @@
+// Output: Codex Chat Runtime provider backed by the Codex app-server protocol.
+// Input: Chat Runtime turn requests, Codex profile config, and app-server notifications.
+// Position: Runtime provider that streams Codex turns and supports true live steering.
+
 import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -5,8 +9,6 @@ import { join } from 'node:path'
 
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { CodexOptions, Thread, ThreadEvent } from '@openai/codex-sdk'
-import { Codex } from '@openai/codex-sdk'
 import type { UIMessageChunk } from 'ai'
 import { z } from 'zod'
 
@@ -14,6 +16,7 @@ import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
+import type { CodexConfig } from '../../../providers/provider-base'
 import { CodexConfigJsonSchema, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
@@ -23,29 +26,39 @@ import type {
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
+  SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
+import { projectTextOnlyInput } from '../../ui-message-input'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
-import type { CodexChunkMapperState } from './mapper'
-import { closeOpenCodexReasoning, mapCodexThreadEventToChunks } from './mapper'
+import { CodexAppServerClient, type CodexAppServerClientOptions, type CodexAppServerMessage } from './app-server-client'
+import {
+  closeOpenCodexAppServerReasoning,
+  closeOpenCodexAppServerText,
+  createCodexAppServerMapperState,
+  mapCodexAppServerNotificationToChunks,
+} from './app-server-mapper'
 
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
   resolveSkillPaths: (workspacePath: string) => string[]
   recordObservability: (input: CreateEventInput) => void
+  createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
 }
 
-const RUNTIME_KIND: RuntimeKind = 'codex'
-const MAX_EVENT_SAMPLES = 20
-type ActiveCodexThread = { thread: Thread, abortController: AbortController }
-const LangfuseGenerationSpanSchema = z.object({
-  otelSpan: z.object({
-    setAttribute: z.function({
-      input: [z.string(), z.string()],
-      output: z.void(),
-    }),
-  }),
-}).passthrough()
+interface CodexAppServerClientLike {
+  initialize: () => Promise<void>
+  request: (method: string, params?: unknown) => Promise<unknown>
+  nextNotification: (signal?: AbortSignal) => Promise<CodexAppServerMessage | null>
+  close: () => void
+}
+
+interface ActiveCodexTurn {
+  client: CodexAppServerClientLike
+  abortController: AbortController
+  threadId: string
+  turnId: string | null
+}
 
 interface CodexStreamDiagnostics {
   totalEvents: number
@@ -55,10 +68,39 @@ interface CodexStreamDiagnostics {
   sampleEvents: Array<Record<string, unknown>>
 }
 
+interface ThreadResponse {
+  thread?: { id?: string }
+}
+
+interface TurnResponse {
+  turn?: { id?: string, status?: string, error?: { message?: string } | null }
+  turnId?: string
+}
+
+interface TurnNotificationParams {
+  threadId?: string
+  turn?: { id?: string, status?: string, error?: { message?: string } | null }
+}
+
+interface ItemNotificationParams {
+  item?: { type?: string, id?: string }
+}
+
+const RUNTIME_KIND: RuntimeKind = 'codex'
+const MAX_EVENT_SAMPLES = 20
+const LangfuseGenerationSpanSchema = z.object({
+  otelSpan: z.object({
+    setAttribute: z.function({
+      input: [z.string(), z.string()],
+      output: z.void(),
+    }),
+  }),
+}).passthrough()
+
 export class CodexProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
 
-  private readonly activeThreads = new Map<string, ActiveCodexThread>()
+  private readonly activeTurns = new Map<string, ActiveCodexTurn>()
   private _lastUsage: TokenUsage | null = null
 
   get lastUsage(): TokenUsage | null {
@@ -67,9 +109,9 @@ export class CodexProvider implements ChatRuntime {
 
   constructor(private readonly deps: CodexProviderDeps) {}
 
-  private releaseThread(sessionId: string, entry: ActiveCodexThread): void {
-    if (this.activeThreads.get(sessionId) === entry) {
-      this.activeThreads.delete(sessionId)
+  private releaseTurn(sessionId: string, entry: ActiveCodexTurn): void {
+    if (this.activeTurns.get(sessionId) === entry) {
+      this.activeTurns.delete(sessionId)
     }
   }
 
@@ -102,77 +144,32 @@ export class CodexProvider implements ChatRuntime {
     const config = CodexConfigJsonSchema.parse(input.profile.configJson)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
+    const userPrompt = projectTextOnlyInput(input.message, 'Codex provider')
     if (!apiKey) {
       throw new Error('Codex provider requires an API key')
     }
 
-    const abortController = new AbortController()
     const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
-    const skillPaths = config.skillPaths.length > 0
-      ? config.skillPaths
-      : this.deps.resolveSkillPaths(workspacePath)
-    const instructionPaths = [...skillPaths]
-    const codexConfig: NonNullable<CodexOptions['config']> = {}
-    const mcpServers = buildCodexMcpServersConfig()
-    if (Object.keys(mcpServers).length > 0) {
-      codexConfig.mcp_servers = mcpServers
-    }
-
-    // Inject system prompt via a temp instructions file
-    let systemPromptFile: string | null = null
-    if (input.systemPrompt) {
-      systemPromptFile = join(tmpdir(), `cradle-codex-prompt-${randomUUID()}.md`)
-      writeFileSync(systemPromptFile, input.systemPrompt, 'utf-8')
-      instructionPaths.push(systemPromptFile)
-    }
-    if (instructionPaths.length > 0) {
-      codexConfig.instructions_paths = instructionPaths
-    }
-
-    const codex = new Codex({
-      apiKey,
-      baseUrl: config.baseUrl,
-      config: Object.keys(codexConfig).length > 0 ? codexConfig : undefined,
-    })
-
-    const threadOptions = {
-      model: effectiveModel,
-      workingDirectory: workspacePath,
-      sandboxMode: config.sandboxMode,
-      approvalPolicy: config.approvalPolicy,
-      modelReasoningEffort: config.reasoningEffort,
-      additionalDirectories: config.additionalDirectories,
-    }
-
-    const thread = input.runtimeSession.providerSessionId
-      ? codex.resumeThread(input.runtimeSession.providerSessionId, threadOptions)
-      : codex.startThread(threadOptions)
-
+    const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile)
+    const client = this.createAppServerClient({ apiKey, baseUrl: config.baseUrl, config: codexConfig })
+    const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
-    const activeEntry: ActiveCodexThread = { thread, abortController }
-    this.activeThreads.set(sessionId, activeEntry)
     this._lastUsage = null
 
     const textItemId = randomUUID()
-    const mapperState: CodexChunkMapperState = { textItemId, assistantStarted: false, openReasoningItemId: null }
-    const diagnostics: CodexStreamDiagnostics = {
-      totalEvents: 0,
-      mappedEvents: 0,
-      eventTypeCounts: {},
-      itemTypeCounts: {},
-      sampleEvents: [],
-    }
-    let threadId: string | null = null
+    const mapperState = createCodexAppServerMapperState(textItemId)
+    const diagnostics = createDiagnostics()
+    let activeEntry: ActiveCodexTurn | null = null
 
-    // Langfuse tracing via @langfuse/tracing SDK
     let generation: LangfuseGeneration | null = null
     if (langfuseEnabled) {
       generation = startObservation('codex-generation', {
         model: effectiveModel ?? 'codex',
         input: input.systemPrompt
-          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: input.message }]
-          : [{ role: 'user', content: input.message }],
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: userPrompt }]
+          : [{ role: 'user', content: userPrompt }],
       }, { asType: 'generation' }) as LangfuseGeneration
       const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
@@ -181,66 +178,70 @@ export class CodexProvider implements ChatRuntime {
     let outputTextCollector = ''
 
     try {
-      const { events } = await thread.runStreamed(input.message, { signal: abortController.signal })
-      for await (const event of events) {
+      await client.initialize()
+      const threadId = await startOrResumeThread(client, input.runtimeSession, {
+        model: effectiveModel,
+        cwd: workspacePath,
+        approvalPolicy: config.approvalPolicy,
+        sandbox: config.sandboxMode,
+        config: codexConfig,
+      })
+      input.runtimeSession.providerSessionId = threadId
+
+      const turnResponse = await client.request('turn/start', {
+        threadId,
+        input: [toTextUserInput(userPrompt)],
+        cwd: workspacePath,
+        approvalPolicy: config.approvalPolicy,
+        sandboxPolicy: toSandboxPolicy(config.sandboxMode, workspacePath, config.additionalDirectories),
+        model: effectiveModel,
+        effort: config.reasoningEffort,
+      }) as TurnResponse
+      const turnId = turnResponse.turn?.id ?? turnResponse.turnId ?? null
+      activeEntry = { client, abortController, threadId, turnId }
+      this.activeTurns.set(sessionId, activeEntry)
+
+      for await (const notification of readTurnNotifications(client, threadId, turnId, abortController.signal)) {
         if (abortController.signal.aborted) {
           break
         }
-
-        collectCodexStreamDiagnostics(diagnostics, event)
-
-        for (const syntheticChunk of closeOpenCodexReasoning(event, mapperState)) {
-          diagnostics.mappedEvents += 1
-          yield syntheticChunk
-        }
-
-        if (event.type === 'turn.failed') {
-          throw new Error(formatCodexThreadFailure(event, diagnostics))
-        }
-        if (event.type === 'error') {
-          throw new Error(formatCodexThreadFailure(event, diagnostics))
-        }
-
-        const result = mapCodexThreadEventToChunks(event, mapperState)
-        if (event.type === 'item.started' && event.item.type === 'reasoning') {
-          mapperState.openReasoningItemId = event.item.id
-        }
-        else if (event.type === 'item.completed' && event.item.type === 'reasoning') {
-          mapperState.openReasoningItemId = null
-        }
-        mapperState.assistantStarted = result.assistantStarted
-        diagnostics.mappedEvents += result.chunks.length
-        for (const chunk of result.chunks) {
+        collectCodexStreamDiagnostics(diagnostics, notification)
+        const chunks = mapCodexAppServerNotificationToChunks(notification, mapperState)
+        diagnostics.mappedEvents += chunks.length
+        for (const chunk of chunks) {
           if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
             outputTextCollector += (chunk as { delta: string }).delta
           }
           yield chunk
         }
 
-        if (event.type === 'thread.started') {
-          threadId = event.thread_id
+        if (notification.method === 'turn/started' && !activeEntry.turnId) {
+          activeEntry.turnId = getTurnId(notification)
         }
-        if (event.type === 'turn.completed') {
-          this._lastUsage = {
-            promptTokens: event.usage.input_tokens,
-            completionTokens: event.usage.output_tokens,
-            totalTokens: event.usage.input_tokens + event.usage.output_tokens,
+        if (notification.method === 'turn/completed') {
+          const turn = (notification.params as TurnNotificationParams | undefined)?.turn
+          if (turn?.status === 'failed') {
+            throw new Error(formatCodexTurnFailure(turn.error?.message, diagnostics))
           }
+          break
+        }
+        if (notification.method === 'error') {
+          throw new Error(formatCodexAppServerError(notification, diagnostics))
         }
       }
 
-      for (const syntheticChunk of closeOpenCodexReasoning({ type: 'turn.completed', usage: { input_tokens: 0, output_tokens: 0 } } as ThreadEvent, mapperState)) {
+      for (const chunk of closeOpenCodexAppServerReasoning(mapperState)) {
         diagnostics.mappedEvents += 1
-        yield syntheticChunk
+        yield chunk
       }
-
-      if (threadId) {
-        input.runtimeSession.providerSessionId = threadId
+      for (const chunk of closeOpenCodexAppServerText(mapperState)) {
+        diagnostics.mappedEvents += 1
+        yield chunk
       }
 
       const validation = validateCodexStreamOutput(diagnostics)
       if (!validation.ok) {
-        const errorText = validation.errorText ?? 'Codex stream produced no timeline output events'
+        const errorText = validation.errorText ?? 'Codex app-server stream produced no timeline output events'
         this.deps.recordObservability({
           source: 'provider',
           code: OBSERVABILITY_CODES.providerEmptyEventStream,
@@ -258,22 +259,11 @@ export class CodexProvider implements ChatRuntime {
         throw new Error(errorText)
       }
 
-      if (mapperState.assistantStarted) {
-        yield { type: 'text-end', id: textItemId }
-      }
-
-      // Record usage and output in the generation
       if (generation) {
-        generation.update({
+        const update: Parameters<LangfuseGeneration['update']>[0] = {
           output: outputTextCollector || undefined,
-          ...(this._lastUsage && {
-            usageDetails: {
-              input: this._lastUsage.promptTokens,
-              output: this._lastUsage.completionTokens,
-              total: this._lastUsage.totalTokens,
-            },
-          }),
-        })
+        }
+        generation.update(update)
       }
       generation?.end()
     }
@@ -288,8 +278,10 @@ export class CodexProvider implements ChatRuntime {
       throw error
     }
     finally {
-      this.releaseThread(sessionId, activeEntry)
-      // Clean up temp system prompt file
+      if (activeEntry) {
+        this.releaseTurn(sessionId, activeEntry)
+      }
+      client.close()
       if (systemPromptFile) {
         try {
           unlinkSync(systemPromptFile)
@@ -299,15 +291,132 @@ export class CodexProvider implements ChatRuntime {
     }
   }
 
+  async steerTurn(input: SteerTurnInput): Promise<void> {
+    const entry = this.activeTurns.get(input.runtimeSession.chatSessionId)
+    if (!entry?.turnId) {
+      throw new Error('Codex live steer requires an active turn')
+    }
+    const text = projectTextOnlyInput(input.message, 'Codex provider live steer')
+    await entry.client.request('turn/steer', {
+      threadId: entry.threadId,
+      expectedTurnId: entry.turnId,
+      input: [toTextUserInput(text)],
+    })
+  }
+
   async cancelTurn(input: CancelTurnInput): Promise<void> {
     const sessionId = input.runtimeSession.chatSessionId
-    const entry = this.activeThreads.get(sessionId)
+    const entry = this.activeTurns.get(sessionId)
     if (!entry) {
       return
     }
     entry.abortController.abort()
-    this.releaseThread(sessionId, entry)
+    if (entry.turnId) {
+      await entry.client.request('turn/interrupt', {
+        threadId: entry.threadId,
+        turnId: entry.turnId,
+      }).catch(() => undefined)
+    }
+    this.releaseTurn(sessionId, entry)
+    entry.client.close()
   }
+
+  private createAppServerClient(options: CodexAppServerClientOptions): CodexAppServerClientLike {
+    return this.deps.createAppServerClient?.(options) ?? new CodexAppServerClient(options)
+  }
+}
+
+async function startOrResumeThread(
+  client: CodexAppServerClientLike,
+  runtimeSession: RuntimeSession,
+  params: {
+    model?: string | null
+    cwd: string
+    approvalPolicy: CodexConfig['approvalPolicy']
+    sandbox: CodexConfig['sandboxMode']
+    config: Record<string, unknown>
+  },
+): Promise<string> {
+  const baseParams = {
+    model: params.model,
+    cwd: params.cwd,
+    approvalPolicy: params.approvalPolicy,
+    sandbox: params.sandbox,
+    config: params.config,
+  }
+  const response = await client.request(
+    runtimeSession.providerSessionId ? 'thread/resume' : 'thread/start',
+    runtimeSession.providerSessionId
+      ? { ...baseParams, threadId: runtimeSession.providerSessionId, excludeTurns: true }
+      : baseParams,
+  ) as ThreadResponse
+  const threadId = response.thread?.id
+  if (!threadId) {
+    throw new Error('Codex app-server did not return a thread id')
+  }
+  return threadId
+}
+
+async function* readTurnNotifications(
+  client: CodexAppServerClientLike,
+  threadId: string,
+  initialTurnId: string | null,
+  signal: AbortSignal,
+): AsyncGenerator<CodexAppServerMessage, void, void> {
+  let turnId = initialTurnId
+  while (!signal.aborted) {
+    let notification: CodexAppServerMessage | null
+    try {
+      notification = await client.nextNotification(signal)
+    }
+    catch (error) {
+      if (signal.aborted) {
+        return
+      }
+      throw error
+    }
+    if (!notification) {
+      return
+    }
+    const notificationThreadId = getThreadId(notification)
+    if (notificationThreadId && notificationThreadId !== threadId) {
+      continue
+    }
+    if (notification.method === 'turn/started') {
+      turnId = getTurnId(notification)
+      yield notification
+      continue
+    }
+    const notificationTurnId = getNotificationTurnId(notification)
+    if (turnId && notificationTurnId && notificationTurnId !== turnId) {
+      continue
+    }
+    yield notification
+    if (notification.method === 'turn/completed') {
+      return
+    }
+  }
+}
+
+function buildCodexConfig(
+  config: CodexConfig,
+  workspacePath: string,
+  resolveSkillPaths: (workspacePath: string) => string[],
+  systemPromptFile: string | null,
+): Record<string, unknown> {
+  const skillPaths = config.skillPaths.length > 0
+    ? config.skillPaths
+    : resolveSkillPaths(workspacePath)
+  const instructionPaths = [...skillPaths, ...(systemPromptFile ? [systemPromptFile] : [])]
+  const codexConfig: Record<string, unknown> = {}
+  const mcpServers = buildCodexMcpServersConfig()
+  if (Object.keys(mcpServers).length > 0) {
+    codexConfig.mcp_servers = mcpServers
+  }
+  if (instructionPaths.length > 0) {
+    codexConfig.instructions_paths = instructionPaths
+  }
+  return codexConfig
 }
 
 function buildCodexMcpServersConfig(): Record<string, { command: string, args: string[], env?: Record<string, string> }> {
@@ -325,34 +434,80 @@ function buildCodexMcpServersConfig(): Record<string, { command: string, args: s
   )
 }
 
-function formatCodexThreadFailure(event: ThreadEvent, diagnostics: CodexStreamDiagnostics): string {
-  const suffix = ` (raw=${formatCodexDiagnostics(diagnostics)})`
-  if (event.type === 'turn.failed') {
-    return `Codex turn failed${suffix}`
+function writeSystemPromptFile(systemPrompt: string | undefined): string | null {
+  if (!systemPrompt) {
+    return null
   }
-  return `Codex stream error${suffix}`
+  const filePath = join(tmpdir(), `cradle-codex-prompt-${randomUUID()}.md`)
+  writeFileSync(filePath, systemPrompt, 'utf-8')
+  return filePath
 }
 
-function collectCodexStreamDiagnostics(diagnostics: CodexStreamDiagnostics, event: ThreadEvent): void {
+function toTextUserInput(text: string): { type: 'text', text: string, text_elements: [] } {
+  return { type: 'text', text, text_elements: [] }
+}
+
+function toSandboxPolicy(
+  sandboxMode: CodexConfig['sandboxMode'],
+  workspacePath: string,
+  additionalDirectories: string[],
+): unknown {
+  if (sandboxMode === 'danger-full-access') {
+    return { type: 'dangerFullAccess' }
+  }
+  if (sandboxMode === 'read-only') {
+    return { type: 'readOnly', networkAccess: false }
+  }
+  return {
+    type: 'workspaceWrite',
+    writableRoots: [workspacePath, ...additionalDirectories],
+    networkAccess: false,
+    excludeTmpdirEnvVar: false,
+    excludeSlashTmp: false,
+  }
+}
+
+function createDiagnostics(): CodexStreamDiagnostics {
+  return {
+    totalEvents: 0,
+    mappedEvents: 0,
+    eventTypeCounts: {},
+    itemTypeCounts: {},
+    sampleEvents: [],
+  }
+}
+
+function collectCodexStreamDiagnostics(diagnostics: CodexStreamDiagnostics, notification: CodexAppServerMessage): void {
+  const method = notification.method ?? 'response'
   diagnostics.totalEvents += 1
-  incrementCount(diagnostics.eventTypeCounts, event.type)
-  if (isItemEvent(event)) {
-    incrementCount(diagnostics.itemTypeCounts, event.item.type)
+  incrementCount(diagnostics.eventTypeCounts, method)
+  const itemType = (notification.params as ItemNotificationParams | undefined)?.item?.type
+  if (itemType) {
+    incrementCount(diagnostics.itemTypeCounts, itemType)
   }
   if (diagnostics.sampleEvents.length < MAX_EVENT_SAMPLES) {
-    diagnostics.sampleEvents.push(buildSampleEvent(event))
+    diagnostics.sampleEvents.push(buildSampleEvent(notification))
   }
 }
 
-function isItemEvent(event: ThreadEvent): event is Extract<ThreadEvent, { type: 'item.started' | 'item.updated' | 'item.completed' }> {
-  return event.type === 'item.started' || event.type === 'item.updated' || event.type === 'item.completed'
+function buildSampleEvent(notification: CodexAppServerMessage): Record<string, unknown> {
+  const item = (notification.params as ItemNotificationParams | undefined)?.item
+  if (!item) {
+    return { method: notification.method }
+  }
+  return { method: notification.method, itemType: item.type, itemId: item.id }
 }
 
-function buildSampleEvent(event: ThreadEvent): Record<string, unknown> {
-  if (!isItemEvent(event)) {
-    return { type: event.type }
-  }
-  return { type: event.type, itemType: event.item.type, itemId: event.item.id }
+function getThreadId(notification: CodexAppServerMessage): string | null {
+  return (notification.params as { threadId?: string } | undefined)?.threadId ?? null
+}
+
+function getTurnId(notification: CodexAppServerMessage): string | null {
+  return (notification.params as TurnNotificationParams | undefined)?.turn?.id ?? null
+}
+
+function getNotificationTurnId(notification: CodexAppServerMessage): string | null {
+  return (notification.params as { turnId?: string } | undefined)?.turnId ?? getTurnId(notification)
 }
 
 function incrementCount(counts: Record<string, number>, key: string): void {
@@ -365,8 +520,17 @@ function validateCodexStreamOutput(diagnostics: CodexStreamDiagnostics): { ok: b
   }
   return {
     ok: false,
-    errorText: `Codex stream completed without mapped timeline events. ${formatCodexDiagnostics(diagnostics)}`,
+    errorText: `Codex app-server stream completed without mapped timeline events. ${formatCodexDiagnostics(diagnostics)}`,
   }
+}
+
+function formatCodexTurnFailure(message: string | undefined, diagnostics: CodexStreamDiagnostics): string {
+  return `Codex turn failed${message ? `: ${message}` : ''} (raw=${formatCodexDiagnostics(diagnostics)})`
+}
+
+function formatCodexAppServerError(notification: CodexAppServerMessage, diagnostics: CodexStreamDiagnostics): string {
+  const message = (notification.params as { message?: string } | undefined)?.message ?? 'Codex app-server error'
+  return `${message} (raw=${formatCodexDiagnostics(diagnostics)})`
 }
 
 function formatCodexDiagnostics(diagnostics: CodexStreamDiagnostics): string {
