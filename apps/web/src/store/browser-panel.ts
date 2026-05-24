@@ -25,6 +25,16 @@ export interface BrowserWorkspaceFileTab {
 export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab
 
 let tabCounter = 0
+const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
+export const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
+
+interface BrowserPanelTabShortcutInput {
+  key: string
+  metaKey: boolean
+  altKey: boolean
+  ctrlKey: boolean
+  shiftKey: boolean
+}
 
 interface BrowserPanelState {
   tabs: BrowserPanelTab[]
@@ -151,3 +161,70 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
     }))
   },
 }))
+
+function isBrowserPanelTabShortcutPayload(payload: unknown): payload is BrowserPanelTabShortcutInput {
+  if (!payload || typeof payload !== 'object') {
+    return false
+  }
+
+  const candidate = payload as Partial<BrowserPanelTabShortcutInput>
+  return typeof candidate.key === 'string'
+    && typeof candidate.metaKey === 'boolean'
+    && typeof candidate.altKey === 'boolean'
+    && typeof candidate.ctrlKey === 'boolean'
+    && typeof candidate.shiftKey === 'boolean'
+}
+
+export function handleBrowserPanelTabShortcutInput(input: BrowserPanelTabShortcutInput, options: { panelOpen: boolean }): boolean {
+  if (!options.panelOpen) {
+    return false
+  }
+
+  const isCommandOnly = input.metaKey && !input.altKey && !input.ctrlKey && !input.shiftKey
+  if (!isCommandOnly) {
+    return false
+  }
+
+  const state = useBrowserPanelStore.getState()
+  const currentTab = state.tabs.find(tab => tab.id === state.activeTabId)
+  if (currentTab?.kind !== 'browser') {
+    return false
+  }
+
+  const key = input.key.toLowerCase()
+  if (key === 'w') {
+    state.closeTab(currentTab.id)
+    return true
+  }
+
+  if (!BROWSER_PANEL_TAB_SHORTCUT_KEYS.has(key)) {
+    return false
+  }
+
+  const targetIndex = key === '0' ? 9 : Number.parseInt(key, 10) - 1
+  const targetTab = state.tabs[targetIndex]
+  if (targetTab) {
+    state.setActiveTab(targetTab.id)
+  }
+  return true
+}
+
+export function handleBrowserPanelTabShortcutPayload(payload: unknown, options: { panelOpen: boolean }): boolean {
+  if (!isBrowserPanelTabShortcutPayload(payload)) {
+    return false
+  }
+
+  return handleBrowserPanelTabShortcutInput(payload, options)
+}
+
+export function handleBrowserPanelTabShortcut(event: KeyboardEvent, options: { panelOpen: boolean }): boolean {
+  const handled = handleBrowserPanelTabShortcutInput(event, options)
+  if (!handled) {
+    return false
+  }
+
+  event.preventDefault()
+  event.stopPropagation()
+  event.stopImmediatePropagation()
+  return true
+}

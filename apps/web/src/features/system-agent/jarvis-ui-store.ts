@@ -1,13 +1,20 @@
+import { installPersistedStoreSync } from '@cradle/tabs-next'
+import { z } from 'zod'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-interface JarvisSession {
+const JARVIS_UI_SYNC_CHANNEL_NAME = 'cradle:jarvis-ui:persist-sync'
+const DEFAULT_JARVIS_UI_PERSIST_KEY = 'jarvis-ui'
+const DEFAULT_PANEL_WIDTH = 420
+const DEFAULT_PANEL_HEIGHT = 520
+
+export interface JarvisSession {
   id: string
   title: string
   createdAt: number
 }
 
-interface JarvisUiState {
+export interface JarvisUiState {
   expanded: boolean
   setExpanded: (expanded: boolean) => void
 
@@ -27,37 +34,112 @@ interface JarvisUiState {
   removeSession: (id: string) => void
 }
 
-export const useJarvisUiStore = create<JarvisUiState>()(
-  persist(
-    set => ({
-      expanded: false,
-      setExpanded: expanded => set({ expanded }),
+interface JarvisUiStoreOptions {
+  persistKey?: string
+  crossWindowSync?: boolean
+}
 
-      includeContext: true,
-      setIncludeContext: includeContext => set({ includeContext }),
+interface PersistedJarvisUiSlice {
+  includeContext: boolean
+  panelWidth: number
+  panelHeight: number
+  sessions: JarvisSession[]
+  activeSessionId: string | null
+}
 
-      panelWidth: 420,
-      panelHeight: 520,
-      setPanelSize: (panelWidth, panelHeight) => set({ panelWidth, panelHeight }),
+const JarvisSessionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  createdAt: z.number().finite(),
+})
 
-      sessions: [],
-      activeSessionId: null,
-      setActiveSessionId: activeSessionId => set({ activeSessionId }),
-      addSession: session => set(s => ({ sessions: [...s.sessions, session] })),
-      removeSession: id => set(s => ({
-        sessions: s.sessions.filter(sess => sess.id !== id),
-        activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
-      })),
-    }),
-    {
-      name: 'jarvis-ui',
-      partialize: state => ({
-        includeContext: state.includeContext,
-        panelWidth: state.panelWidth,
-        panelHeight: state.panelHeight,
-        sessions: state.sessions,
-        activeSessionId: state.activeSessionId,
+const PersistedJarvisUiSliceSchema = z.object({
+  includeContext: z.boolean().default(true),
+  panelWidth: z.number().finite().positive().default(DEFAULT_PANEL_WIDTH),
+  panelHeight: z.number().finite().positive().default(DEFAULT_PANEL_HEIGHT),
+  sessions: z.array(JarvisSessionSchema).default([]),
+  activeSessionId: z.string().nullable().default(null),
+})
+
+function selectPersistedJarvisUiSlice(state: JarvisUiState): PersistedJarvisUiSlice {
+  return {
+    includeContext: state.includeContext,
+    panelWidth: state.panelWidth,
+    panelHeight: state.panelHeight,
+    sessions: state.sessions,
+    activeSessionId: state.activeSessionId,
+  }
+}
+
+function sanitizePersistedJarvisUiState(value: unknown): PersistedJarvisUiSlice {
+  const result = PersistedJarvisUiSliceSchema.safeParse(value ?? {})
+  const persisted = result.success
+    ? result.data
+    : {
+        includeContext: true,
+        panelWidth: DEFAULT_PANEL_WIDTH,
+        panelHeight: DEFAULT_PANEL_HEIGHT,
+        sessions: [],
+        activeSessionId: null,
+      }
+  const activeSessionId = persisted.activeSessionId !== null
+    && persisted.sessions.some(session => session.id === persisted.activeSessionId)
+    ? persisted.activeSessionId
+    : null
+
+  return {
+    ...persisted,
+    activeSessionId,
+  }
+}
+
+export function createJarvisUiStore(options?: JarvisUiStoreOptions) {
+  const persistKey = options?.persistKey ?? DEFAULT_JARVIS_UI_PERSIST_KEY
+
+  const store = create<JarvisUiState>()(
+    persist(
+      set => ({
+        expanded: false,
+        setExpanded: expanded => set({ expanded }),
+
+        includeContext: true,
+        setIncludeContext: includeContext => set({ includeContext }),
+
+        panelWidth: DEFAULT_PANEL_WIDTH,
+        panelHeight: DEFAULT_PANEL_HEIGHT,
+        setPanelSize: (panelWidth, panelHeight) => set({ panelWidth, panelHeight }),
+
+        sessions: [],
+        activeSessionId: null,
+        setActiveSessionId: activeSessionId => set({ activeSessionId }),
+        addSession: session => set(s => ({ sessions: [...s.sessions, session] })),
+        removeSession: id => set(s => ({
+          sessions: s.sessions.filter(sess => sess.id !== id),
+          activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
+        })),
       }),
-    },
-  ),
-)
+      {
+        name: persistKey,
+        partialize: selectPersistedJarvisUiSlice,
+        merge: (persisted, current) => ({
+          ...current,
+          ...sanitizePersistedJarvisUiState(persisted),
+        }),
+      },
+    ),
+  )
+
+  if (options?.crossWindowSync !== false && typeof window !== 'undefined') {
+    installPersistedStoreSync({
+      store,
+      persistKey,
+      channelName: JARVIS_UI_SYNC_CHANNEL_NAME,
+      selectPersistedState: selectPersistedJarvisUiSlice,
+      applyPersistedState: persistedState => store.setState(sanitizePersistedJarvisUiState(persistedState)),
+    })
+  }
+
+  return store
+}
+
+export const useJarvisUiStore = createJarvisUiStore()

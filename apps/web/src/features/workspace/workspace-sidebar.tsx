@@ -6,7 +6,6 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   GitBranchIcon,
-  HomeIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PackageIcon,
@@ -34,6 +33,7 @@ import {
 } from '~/components/ui/context-menu'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
@@ -50,7 +50,6 @@ import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigatio
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
-import { toastManager } from '~/components/ui/toast'
 
 function SessionRenameInput({
   initialTitle,
@@ -278,6 +277,18 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
       testId: `session-menu-copy-markdown-${session.id}`,
       invoke: handleExport,
     },
+    //
+    ...(import.meta.env.DEV
+      ? [
+        {
+          key: 'copy-session-id',
+          label: '复制会话 ID',
+          icon: <ClipboardCopyIcon />,
+          testId: `session-menu-copy-session-id-${session.id}`,
+          invoke: () => { navigator.clipboard.writeText(session.id) },
+        },
+      ]
+      : []), // Hide export in production until we add a proper UI for it
     {
       key: 'delete',
       label: '删除会话',
@@ -322,10 +333,10 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
               {session.pinned
-? (
-                <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
-              )
-: null}
+                ? (
+                  <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
+                )
+                : null}
               <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
               {isUnread && !isActive && (
                 <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
@@ -597,15 +608,16 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       {/* ── Top navigation ── */}
       <TooltipProvider delayDuration={collapsed ? 0 : 600}>
         <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
-          <TopNavItem
+          {/* <TopNavItem
             icon={<HomeIcon className="size-3.5" />}
             label="首页"
             collapsed={collapsed}
             to="home"
             dataTestId="nav-home"
-          />
+          /> */}
           <TopNavItem
             icon={<MessageSquarePlusIcon className="size-3.5" />}
+            // label="新建聊天"
             label="新建聊天"
             collapsed={collapsed}
             to="new-chat"

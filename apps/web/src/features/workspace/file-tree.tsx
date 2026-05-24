@@ -2,7 +2,7 @@ import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
 import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react'
 import { z } from 'zod'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
@@ -10,6 +10,8 @@ import { useGitFileStatuses } from '~/features/git/use-git'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 import type { GitFileStatus } from '~/lib/types'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
+import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
 
@@ -34,6 +36,30 @@ function getDraggedTreeItemPath(event: DragEvent): string | null {
   for (const entry of event.composedPath()) {
     if (entry instanceof HTMLElement && entry.dataset.itemPath) {
       return entry.dataset.itemPath
+    }
+  }
+
+  return null
+}
+
+function getTreeItemFromEvent(event: Event): { path: string, kind: 'file' | 'directory' } | null {
+  const target = event.target instanceof HTMLElement
+    ? event.target.closest('[data-item-path]')
+    : null
+
+  if (target instanceof HTMLElement && target.dataset.itemPath) {
+    return {
+      path: target.dataset.itemPath,
+      kind: target.dataset.itemType === 'folder' ? 'directory' : 'file',
+    }
+  }
+
+  for (const entry of event.composedPath()) {
+    if (entry instanceof HTMLElement && entry.dataset.itemPath) {
+      return {
+        path: entry.dataset.itemPath,
+        kind: entry.dataset.itemType === 'folder' ? 'directory' : 'file',
+      }
     }
   }
 
@@ -102,6 +128,8 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   return (
     <FileTreeInner
+      workspaceId={workspaceId}
+      paths={paths}
       preparedInput={preparedInput}
       ready={filesQuery.isSuccess && gitStatusQuery.isSuccess}
       gitStatus={treeGitStatus}
@@ -114,6 +142,8 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 // ── Inner tree (mounted once model exists) ────────────────────────────────────
 
 interface FileTreeInnerProps {
+  workspaceId: string
+  paths: string[]
   preparedInput: ReturnType<typeof prepareFileTreeInput>
   ready: boolean
   gitStatus?: TreeGitStatus[]
@@ -121,7 +151,18 @@ interface FileTreeInnerProps {
   onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+  const activeWorkspaceFilePath = useBrowserPanelStore((state) => {
+    const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
+    if (activeTab?.kind !== 'workspace-file' || activeTab.workspaceId !== workspaceId) {
+      return null
+    }
+    return activeTab.path
+  })
+  const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
+  const activeWorkspaceFilePathRef = useRef<string | null>(null)
+
   const { model } = useFileTree({
     preparedInput,
     initialSearchQuery: '',
@@ -134,6 +175,12 @@ function FileTreeInner({ preparedInput, ready, gitStatus, workspacePath, onPackR
     initialExpansion: 'closed',
     initialExpandedPaths: ['src'],
     gitStatus,
+    // renderRowDecoration: ({ item }) => {
+    //   if (item.kind !== 'file' || item.path !== activeWorkspaceFilePathRef.current) {
+    //     return null
+    //   }
+    //   return { text: 'OPEN', title: 'Active editor tab' }
+    // },
     composition: {
       contextMenu: {
         enabled: true,
@@ -146,10 +193,62 @@ function FileTreeInner({ preparedInput, ready, gitStatus, workspacePath, onPackR
   const selectedPaths = useFileTreeSelection(model)
   const search = useFileTreeSearch(model)
   const hasSearchValue = search.value.length > 0
+
+  const openWorkspaceFile = useCallback((path: string, view: 'editor' | 'preview') => {
+    openWorkspaceFileTab({ workspaceId, path, view })
+    setBrowserPanelOpen(true)
+  }, [openWorkspaceFileTab, setBrowserPanelOpen, workspaceId])
+  const startDragFromTree = useEffectEvent((event: DragEvent) => {
+    const itemPath = getDraggedTreeItemPath(event)
+    if (!itemPath || !event.dataTransfer) {
+      return
+    }
+
+    writeWorkspaceFileDragData(
+      event.dataTransfer,
+      serializeWorkspaceFileDragPayload({ relativePath: itemPath, workspacePath }),
+    )
+    event.dataTransfer.effectAllowed = 'copy'
+  })
+  const openWorkspaceFileFromTree = useEffectEvent((path: string) => {
+    openWorkspaceFile(path, 'editor')
+  })
+  const openPeekFromTree = useEffectEvent((path: string) => {
+    openWorkspaceFile(path, 'preview')
+  })
+
+  useEffect(() => {
+    model.resetPaths(paths, { preparedInput })
+  }, [model, paths, preparedInput])
+
   // Update git status when it changes
   useEffect(() => {
     model.setGitStatus(gitStatus)
   }, [model, gitStatus])
+
+  useEffect(() => {
+    activeWorkspaceFilePathRef.current = activeWorkspaceFilePath
+
+    if (!activeWorkspaceFilePath) {
+      model.resetPaths(paths, { preparedInput })
+      return
+    }
+
+    const item = model.getItem(activeWorkspaceFilePath)
+    if (!item || item.isDirectory()) {
+      return
+    }
+
+    for (const selectedPath of model.getSelectedPaths()) {
+      if (selectedPath !== activeWorkspaceFilePath) {
+        model.getItem(selectedPath)?.deselect()
+      }
+    }
+    if (!item.isSelected()) {
+      item.select()
+    }
+    item.focus()
+  }, [activeWorkspaceFilePath, model, paths, preparedInput])
 
   // Drag handler: expose workspace file paths to chat and TUI drop targets.
   useEffect(() => {
@@ -158,22 +257,55 @@ function FileTreeInner({ preparedInput, ready, gitStatus, workspacePath, onPackR
       return
     }
 
-    function handleDragStart(e: DragEvent) {
-      const itemPath = getDraggedTreeItemPath(e)
-      if (!itemPath || !e.dataTransfer) {
-        return
-      }
-
-      writeWorkspaceFileDragData(
-        e.dataTransfer,
-        serializeWorkspaceFileDragPayload({ relativePath: itemPath, workspacePath }),
-      )
-      e.dataTransfer.effectAllowed = 'copy'
+    function handleDragStart(event: DragEvent) {
+      startDragFromTree(event)
     }
 
     container.addEventListener('dragstart', handleDragStart)
     return () => container.removeEventListener('dragstart', handleDragStart)
-  }, [model, workspacePath])
+  }, [model])
+
+  useEffect(() => {
+    const container = model.getFileTreeContainer()
+    if (!container) {
+      return
+    }
+
+    function handleDoubleClick(event: MouseEvent) {
+      const item = getTreeItemFromEvent(event)
+      if (!item || item.kind !== 'file') {
+        return
+      }
+      event.preventDefault()
+      model.focusPath(item.path)
+      const handle = model.getItem(item.path)
+      handle?.select()
+      openWorkspaceFileFromTree(item.path)
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
+        return
+      }
+      const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0]
+      if (!selectedPath) {
+        return
+      }
+      const selectedItem = model.getItem(selectedPath)
+      if (!selectedItem || selectedItem.isDirectory()) {
+        return
+      }
+      event.preventDefault()
+      openPeekFromTree(selectedPath)
+    }
+
+    container.addEventListener('dblclick', handleDoubleClick)
+    container.addEventListener('keydown', handleKeyDown)
+    return () => {
+      container.removeEventListener('dblclick', handleDoubleClick)
+      container.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [model])
 
   return (
     <div

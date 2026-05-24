@@ -98,9 +98,14 @@ export function ChatRuntimeView({
   })
 
   // Ref to communicate per-message overrides to ChatView's internal sendMessage
-  const sendOverridesRef = useRef({ modelId: undefined as string | undefined, thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined })
+  const sendOverridesRef = useRef({
+    agentProfileId: undefined as string | undefined,
+    modelId: undefined as string | undefined,
+    thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
+  })
   // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
   sendOverridesRef.current = {
+    agentProfileId: composerState.selection.profileId ?? undefined,
     modelId: composerState.selection.modelId ?? undefined,
     thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
   }
@@ -121,6 +126,7 @@ export function ChatRuntimeView({
         sessionId={sessionId}
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}
+        composerModel={composerState.effectiveModel}
       />
     </Suspense>
   )

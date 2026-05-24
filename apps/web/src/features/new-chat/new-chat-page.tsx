@@ -245,7 +245,7 @@ function useNewChatPageOwner() {
       if (!session?.id) {
         return
       }
-      await startChatResponse({
+      void startChatResponse({
         sessionId: session.id,
         body: {
           text: input.trim(),

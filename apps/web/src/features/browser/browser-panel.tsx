@@ -5,7 +5,7 @@ import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
-import { useBrowserPanelStore } from '~/store/browser-panel'
+import { handleBrowserPanelTabShortcut, useBrowserPanelStore } from '~/store/browser-panel'
 
 // Electron webview element — not in React's JSX types
 type WebviewElement = HTMLElement & {
@@ -75,7 +75,6 @@ export function BrowserPanel() {
     }
     fulfillRequestedTab(requestedTab.id)
   }, [fulfillRequestedTab, requestedTab])
-
 
   // Sync URL input with active tab
   const activeTabUrl = activeBrowserTab?.url
@@ -227,6 +226,9 @@ export function BrowserPanel() {
       className="flex flex-col flex-1 overflow-hidden"
       data-testid="browser-panel"
       data-browser-panel-ready="true"
+      onKeyDownCapture={(event) => {
+        handleBrowserPanelTabShortcut(event.nativeEvent, { panelOpen: true })
+      }}
     >
       {/* Tab bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 shrink-0 border-b border-border/30 bg-card">
