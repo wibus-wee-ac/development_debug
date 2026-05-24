@@ -1,7 +1,17 @@
 import type { UIMessage } from 'ai'
 import { z } from 'zod'
 
-type MessagePart = UIMessage['parts'][number]
+type AiMessagePart = UIMessage['parts'][number]
+type MessagePart = AiMessagePart | {
+  type: 'dynamic-tool'
+  toolName: string
+  toolCallId: string
+  state: string
+  argumentsText?: string
+  input?: unknown
+  output?: unknown
+  errorText?: string
+}
 type TextPartKind = 'text' | 'reasoning'
 
 const MutableTextPartSchema = z.custom<{ type: TextPartKind, text: string }>((part) => {
@@ -22,10 +32,11 @@ const MutablePartStateSchema = z.custom<{ state?: string } | undefined>((part) =
   return true
 })
 
-const MutableToolPartSchema = z.custom<{ toolCallId: string, state?: string, input?: unknown, output?: unknown, errorText?: string }>((part) => {
+const MutableToolPartSchema = z.custom<{ toolCallId: string, state?: string, argumentsText?: string, input?: unknown, output?: unknown, errorText?: string }>((part) => {
   z.object({
     toolCallId: z.string(),
     state: z.string().optional(),
+    argumentsText: z.string().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
     errorText: z.string().optional(),
@@ -41,7 +52,7 @@ export type ChatPartDelta
   = | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
     | { seq: number, type: 'text_append', partIndex: number, partType: TextPartKind, text: string }
     | { seq: number, type: 'text_done', partIndex: number, partType: TextPartKind }
-    | { seq: number, type: 'tool_input_append', partIndex: number, inputKey: string, text: string }
+    | { seq: number, type: 'tool_arguments_append', partIndex: number, text: string }
     | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
     | { seq: number, type: 'tool_output_streaming', partIndex: number, stream: 'stdout' | 'stderr', text: string }
     | { seq: number, type: 'tool_output_set', partIndex: number, output?: unknown, state: 'output-available' | 'output-error' | 'output-denied', errorText?: string }
@@ -75,9 +86,9 @@ export interface ChatMessageSnapshotRow {
 }
 
 export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[]): UIMessage {
-  const next: UIMessage = {
+  const next = {
     ...message,
-    parts: [...message.parts],
+    parts: [...message.parts] as MessagePart[],
   }
 
   for (const delta of [...deltas].sort((left, right) => left.seq - right.seq)) {
@@ -91,9 +102,9 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
       case 'text_done':
         updatePartState(next.parts, delta.partIndex, 'done')
         break
-      case 'tool_input_append':
+      case 'tool_arguments_append':
         updateToolPart(next.parts, delta.partIndex, (part) => {
-          part.input = appendInputText(part.input, delta.inputKey, delta.text)
+          part.argumentsText = `${part.argumentsText ?? ''}${delta.text}`
         })
         break
       case 'tool_input_set':
@@ -122,7 +133,7 @@ export function applyChatPartDeltas(message: UIMessage, deltas: ChatPartDelta[])
     }
   }
 
-  return next
+  return next as UIMessage
 }
 
 function updateTextPart(
@@ -144,18 +155,9 @@ function updatePartState(parts: MessagePart[], index: number, state: 'done'): vo
   }
 }
 
-function updateToolPart(parts: MessagePart[], index: number, update: (part: { state?: string, input?: unknown, output?: unknown, errorText?: string }) => void): void {
+function updateToolPart(parts: MessagePart[], index: number, update: (part: { state?: string, argumentsText?: string, input?: unknown, output?: unknown, errorText?: string }) => void): void {
   const part = MutableToolPartSchema.parse(parts[index])
   update(part)
-}
-
-function appendInputText(input: unknown, inputKey: string, text: string): Record<string, string> {
-  const current = z.object({ [inputKey]: z.string() }).catchall(z.string()).parse(input)
-  const existingText = current[inputKey]
-  return {
-    ...current,
-    [inputKey]: `${existingText}${text}`,
-  }
 }
 
 function clonePart(part: MessagePart): MessagePart {

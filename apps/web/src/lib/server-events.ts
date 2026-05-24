@@ -1,6 +1,6 @@
 import { toastManager } from '~/components/ui/toast'
 
-const SERVER_BASE = import.meta.env.VITE_SERVER_URL ?? 'http://localhost:39200'
+import { getServerUrl } from './electron'
 
 interface SourceSyncErrorEvent {
   type: 'source_sync_error'
@@ -22,7 +22,7 @@ interface DaemonErrorEvent {
 type ServerStatusEvent = SourceSyncErrorEvent | DaemonErrorEvent
 
 export function connectServerEvents(): () => void {
-  const es = new EventSource(`${SERVER_BASE}/server/events`)
+  const es = new EventSource(`${getServerUrl()}/server/events`)
 
   es.onmessage = (e) => {
     try {

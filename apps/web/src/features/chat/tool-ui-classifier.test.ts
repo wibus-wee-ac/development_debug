@@ -52,4 +52,20 @@ describe('describeToolCall', () => {
       summary: 'stdout available',
     })
   })
+
+  it('describes file edits while tool arguments are still streaming', () => {
+    const part: RenderableToolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'call-edit',
+      toolName: 'Edit',
+      state: 'input-streaming',
+      argumentsText: '{"file_path":"/tmp/story.html","old_string":"<main>draft',
+    }
+
+    expect(describeToolCall(part)).toMatchObject({
+      kind: 'file-diff',
+      title: 'Edit file',
+      target: '/tmp/story.html',
+    })
+  })
 })

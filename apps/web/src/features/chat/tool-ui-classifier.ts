@@ -29,6 +29,7 @@ interface BaseRenderableToolPart {
   type: string
   toolCallId: string
   state: ToolState
+  argumentsText?: string
   input?: unknown
   output?: unknown
   errorText?: string
@@ -348,9 +349,24 @@ export const ToolPayloadSchema = z.union([
   z.undefined().transform((): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({}))),
 ])
 
+export function readToolInputPayload(input: unknown, argumentsText?: string): ToolPayload {
+  const inputPayload = ToolPayloadSchema.parse(input)
+  if (input !== undefined || argumentsText === undefined) {
+    return inputPayload
+  }
+
+  const argumentsObject = parsePartialJsonObject(argumentsText)
+  const argumentsPayload = ToolPayloadSchema.parse(argumentsObject)
+  return {
+    ...argumentsPayload,
+    rawText: argumentsText,
+    inputText: argumentsText,
+  }
+}
+
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
   const toolName = part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
-  const input = ToolPayloadSchema.parse(part.input)
+  const input = readToolInputPayload(part.input, part.argumentsText)
   const output = ToolPayloadSchema.parse(part.output)
   const normalizedName = normalizeToolName(toolName)
   const kind = classifyToolKind(normalizedName, input, output)
@@ -364,6 +380,233 @@ export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
     target,
     summary: readToolSummary(kind, input, output),
   }
+}
+
+function parsePartialJsonObject(text: string): Record<string, unknown> {
+  const trimmed = text.trim()
+  if (!trimmed) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed)
+    return z.record(z.string(), z.unknown()).parse(parsed)
+  }
+  catch {
+    return parseTopLevelObjectPrefix(trimmed)
+  }
+}
+
+function parseTopLevelObjectPrefix(text: string): Record<string, unknown> {
+  if (!text.startsWith('{')) {
+    return {}
+  }
+
+  const object: Record<string, unknown> = {}
+  let index = 1
+  while (index < text.length) {
+    index = skipJsonSeparators(text, index)
+    if (text[index] === '}') {
+      break
+    }
+    if (text[index] !== '"') {
+      break
+    }
+
+    const key = readJsonString(text, index)
+    if (!key.complete) {
+      break
+    }
+    index = skipJsonWhitespace(text, key.next)
+    if (text[index] !== ':') {
+      break
+    }
+    index = skipJsonWhitespace(text, index + 1)
+
+    const value = readJsonValue(text, index)
+    if (value.read) {
+      object[key.value] = value.value
+    }
+    index = value.next
+    if (!value.complete) {
+      break
+    }
+  }
+
+  return object
+}
+
+function skipJsonSeparators(text: string, index: number): number {
+  let nextIndex = skipJsonWhitespace(text, index)
+  while (text[nextIndex] === ',') {
+    nextIndex = skipJsonWhitespace(text, nextIndex + 1)
+  }
+  return nextIndex
+}
+
+function skipJsonWhitespace(text: string, index: number): number {
+  let nextIndex = index
+  while (/\s/.test(text[nextIndex] ?? '')) {
+    nextIndex += 1
+  }
+  return nextIndex
+}
+
+function readJsonString(text: string, start: number): { value: string, next: number, complete: boolean } {
+  let escaped = false
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index]
+    if (escaped) {
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      return {
+        value: JSON.parse(text.slice(start, index + 1)) as string,
+        next: index + 1,
+        complete: true,
+      }
+    }
+  }
+
+  return {
+    value: readPartialJsonStringText(text, start),
+    next: text.length,
+    complete: false,
+  }
+}
+
+function readPartialJsonStringText(text: string, start: number): string {
+  let value = ''
+  let escaped = false
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index]
+    if (escaped) {
+      value += readEscapedJsonChar(char)
+      escaped = false
+      continue
+    }
+    if (char === '\\') {
+      escaped = true
+      continue
+    }
+    if (char === '"') {
+      break
+    }
+    value += char
+  }
+  return value
+}
+
+function readEscapedJsonChar(char: string): string {
+  switch (char) {
+    case '"':
+    case '\\':
+    case '/':
+      return char
+    case 'b':
+      return '\b'
+    case 'f':
+      return '\f'
+    case 'n':
+      return '\n'
+    case 'r':
+      return '\r'
+    case 't':
+      return '\t'
+    case 'u':
+      return ''
+    default:
+      return char
+  }
+}
+
+function readJsonValue(text: string, start: number): { value: unknown, next: number, complete: boolean, read: boolean } {
+  const first = text[start]
+  if (first === '"') {
+    const value = readJsonString(text, start)
+    return { value: value.value, next: value.next, complete: value.complete, read: true }
+  }
+  if (first === '{' || first === '[') {
+    return readJsonContainer(text, start)
+  }
+
+  const tokenEnd = readPrimitiveEnd(text, start)
+  const token = text.slice(start, tokenEnd).trim()
+  if (!token) {
+    return { value: undefined, next: tokenEnd, complete: false, read: false }
+  }
+
+  if (token === 'true' || token === 'false' || token === 'null' || /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(token)) {
+    return {
+      value: JSON.parse(token),
+      next: tokenEnd,
+      complete: tokenEnd < text.length,
+      read: true,
+    }
+  }
+
+  return { value: undefined, next: tokenEnd, complete: false, read: false }
+}
+
+function readPrimitiveEnd(text: string, start: number): number {
+  let index = start
+  while (index < text.length && text[index] !== ',' && text[index] !== '}') {
+    index += 1
+  }
+  return index
+}
+
+function readJsonContainer(text: string, start: number): { value: unknown, next: number, complete: boolean, read: boolean } {
+  const opening = text[start]
+  const stack = [opening]
+  let inString = false
+  let escaped = false
+
+  for (let index = start + 1; index < text.length; index += 1) {
+    const char = text[index]
+    if (inString) {
+      if (escaped) {
+        escaped = false
+      }
+      else if (char === '\\') {
+        escaped = true
+      }
+      else if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+    if (char === '{' || char === '[') {
+      stack.push(char)
+      continue
+    }
+    if (char === '}' || char === ']') {
+      const previous = stack.pop()
+      if ((previous === '{' && char !== '}') || (previous === '[' && char !== ']')) {
+        break
+      }
+      if (stack.length === 0) {
+        return {
+          value: JSON.parse(text.slice(start, index + 1)),
+          next: index + 1,
+          complete: true,
+          read: true,
+        }
+      }
+    }
+  }
+
+  return { value: undefined, next: text.length, complete: false, read: false }
 }
 
 export function normalizeToolName(toolName: string): string {

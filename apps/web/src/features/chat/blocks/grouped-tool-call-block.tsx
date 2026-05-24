@@ -25,9 +25,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { cn } from '~/lib/cn'
 
 import type { ToolCallItem } from '../chat-render-plan'
+import { hasTerminalDetails } from '../terminal-tool-details'
 import type { ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall } from '../tool-ui-classifier'
-import { hasTerminalDetails, TerminalExecutionDetails } from './tool-call-block'
+import { TerminalExecutionDetails } from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
 
@@ -171,7 +172,7 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
           const descriptor = describeToolCall(item.part)
           const label = getItemLabel(descriptor.target, uiKind)
           const isLast = idx === items.length - 1
-          const expandable = uiKind === 'terminal' && hasTerminalDetails(item.part.input, item.part.output, item.part.errorText)
+          const expandable = uiKind === 'terminal' && hasTerminalDetails(item.part.input, item.part.output, item.part.errorText, item.part.argumentsText)
           const expanded = expandedItems.has(item.key)
           return (
             <div key={item.key} className="relative py-0.5 pl-7">
@@ -219,6 +220,7 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
                     input={item.part.input}
                     output={item.part.output}
                     errorText={item.part.errorText}
+                    argumentsText={item.part.argumentsText}
                   />
                 </div>
               )}

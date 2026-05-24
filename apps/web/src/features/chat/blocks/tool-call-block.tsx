@@ -32,9 +32,11 @@ import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
+import { readTerminalOutputSections, summarizeTerminalOutput } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
   describeToolCall,
+  readToolInputPayload,
   ToolPayloadSchema,
 } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
@@ -43,6 +45,7 @@ interface ToolCallBlockProps {
   toolName: string
   toolCallId: string
   state: ToolState
+  argumentsText?: string
   input?: unknown
   output?: unknown
   errorText?: string
@@ -91,7 +94,7 @@ const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
     z.boolean(),
     z.null(),
     z.array(JsonValueSchema),
-    z.record(JsonValueSchema),
+    z.record(z.string(), JsonValueSchema),
   ]),
 )
 const DisplayValueTextSchema = z.union([
@@ -145,57 +148,6 @@ function safePercent(value: number | null, max: number): number {
     return 0
   }
   return Math.min(100, Math.max(0, (value / max) * 100))
-}
-
-interface TerminalOutputSection {
-  label: string
-  text: string
-  destructive: boolean
-}
-
-function readTerminalOutputSections(output: ToolPayload, errorText?: string): TerminalOutputSection[] {
-  const sections: TerminalOutputSection[] = []
-  const stderr = output.stderr
-  const stdout = output.stdout
-  const fallback = output.rawText ?? output.outputText ?? output.contentText ?? output.text
-
-  if (errorText) {
-    sections.push({ label: 'Error', text: errorText, destructive: true })
-  }
-  if (stderr && stderr !== errorText) {
-    sections.push({ label: 'stderr', text: stderr, destructive: true })
-  }
-  if (stdout) {
-    sections.push({ label: 'stdout', text: stdout, destructive: false })
-  }
-  if (fallback && fallback !== stdout && fallback !== stderr && fallback !== errorText) {
-    sections.push({ label: 'output', text: fallback, destructive: false })
-  }
-
-  return sections
-}
-
-function summarizeTerminalOutput(sections: TerminalOutputSection[]): string {
-  const lineCount = sections.reduce((total, section) => {
-    return total + section.text.split('\n').length
-  }, 0)
-  const labels = sections.map(section => section.label).join(' + ')
-  return `${labels} · ${formatCount(lineCount, 'line')}`
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function hasTerminalOutput(output: unknown, errorText?: string): boolean {
-  return readTerminalOutputSections(ToolPayloadSchema.parse(output), errorText).length > 0
-}
-
-// eslint-disable-next-line react-refresh/only-export-components
-export function hasTerminalDetails(input: unknown, output: unknown, errorText?: string): boolean {
-  const inputPayload = ToolPayloadSchema.parse(input)
-  const outputPayload = ToolPayloadSchema.parse(output)
-  return inputPayload.command !== null
-    || inputPayload.timeout !== null
-    || outputPayload.backgroundTaskId !== null
-    || readTerminalOutputSections(outputPayload, errorText).length > 0
 }
 
 interface EditDiffPreview {
@@ -383,14 +335,16 @@ export function TerminalExecutionDetails({
   input,
   output,
   errorText,
+  argumentsText,
   className,
 }: {
   input: unknown
   output: unknown
   errorText?: string
+  argumentsText?: string
   className?: string
 }) {
-  const inputPayload = ToolPayloadSchema.parse(input)
+  const inputPayload = readToolInputPayload(input, argumentsText)
   const outputPayload = ToolPayloadSchema.parse(output)
   const sections = readTerminalOutputSections(outputPayload, errorText)
   const command = inputPayload.command
@@ -867,8 +821,8 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, input, output, errorText, children }: ToolCallBlockProps) {
-  const inputPayload = useMemo(() => ToolPayloadSchema.parse(input), [input])
+export function ToolCallBlock({ toolName, toolCallId, state, argumentsText, input, output, errorText, children }: ToolCallBlockProps) {
+  const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
   const outputPayload = useMemo(() => ToolPayloadSchema.parse(output), [output])
   const descriptor = useMemo(() => {
     const part: RenderableToolPart = {
@@ -876,12 +830,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
       toolName,
       toolCallId,
       state,
+      argumentsText,
       input,
       output,
       errorText,
     }
     return describeToolCall(part)
-  }, [errorText, input, output, state, toolCallId, toolName])
+  }, [argumentsText, errorText, input, output, state, toolCallId, toolName])
 
   const hasTerminalPanel = descriptor.kind === 'terminal' && (
     inputPayload.command !== null
@@ -1014,7 +969,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, input, output, erro
 
         {hasTerminalPanel && expanded && (
           <div className="px-3 pb-3">
-            <TerminalExecutionDetails input={input} output={output} errorText={errorText} />
+            <TerminalExecutionDetails input={input} output={output} errorText={errorText} argumentsText={argumentsText} />
           </div>
         )}
 

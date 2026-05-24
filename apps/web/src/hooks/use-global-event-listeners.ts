@@ -2,6 +2,11 @@ import { useEffect } from 'react'
 
 import { onAnyChatRunEvent } from '~/features/chat/sse-chat-transport'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import {
+  BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
+  handleBrowserPanelTabShortcut,
+  handleBrowserPanelTabShortcutPayload,
+} from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -52,6 +57,10 @@ export function useGlobalEventListeners() {
       }
 
       // ── Tab shortcuts ──────────────────────────────────────────────
+      if (handleBrowserPanelTabShortcut(e, { panelOpen: useLayoutStore.getState().browserPanelOpen })) {
+        return
+      }
+
       const store = useCradleTabStore.getState()
 
       // Cmd+W → close active tab
@@ -98,9 +107,17 @@ export function useGlobalEventListeners() {
         store.setActiveTab(tabs[nextIndex].id)
       }
     }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
+    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true })
   }, [toggleBottomPanel, toggleAside])
+
+  useEffect(() => {
+    return window.cradle?.ipc.on(BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL, (payload) => {
+      handleBrowserPanelTabShortcutPayload(payload, {
+        panelOpen: useLayoutStore.getState().browserPanelOpen,
+      })
+    }) ?? (() => {})
+  }, [])
 
   useEffect(() => {
     const visibleSessionId = deriveVisibleChatSessionId({

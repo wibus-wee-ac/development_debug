@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import type { UIMessage } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { z } from 'zod'
 
@@ -12,7 +12,15 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import type { ChatMessageSnapshotRow } from './chat-delta-events'
-import { cancelChatResponse, startChatResponse } from './chat-response-command'
+import type { ChatContinuationMode } from './chat-response-command'
+import {
+  cancelChatResponse,
+  cancelChatSessionQueueItem,
+  enqueueChatSessionQueueItem,
+  listChatSessionQueue,
+  reorderChatSessionQueue,
+  startChatResponse,
+} from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildEventStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
 
@@ -55,6 +63,14 @@ export async function stopChatTurn(args: {
 // ── Message Snapshot Types ──────────────────────────────────
 
 export type ChatSessionMessageRow = ChatMessageSnapshotRow
+export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
+
+export interface SendMessageOptions {
+  agentProfileId?: string
+  modelId?: string
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined
+  continuationMode?: ChatContinuationMode
+}
 
 /**
  * Extract subagent message snapshots, keyed by parent message and tool call.
@@ -167,6 +183,10 @@ export function useChatSession(chatSessionId: string | null) {
     () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
     [chatSessionId],
   )
+  const queueQueryKey = useMemo(
+    () => ['chat', 'session-queue', chatSessionId ?? 'none'] as const,
+    [chatSessionId],
+  )
 
   const snapshotRowsQuery = useQuery<
     unknown,
@@ -187,6 +207,13 @@ export function useChatSession(chatSessionId: string | null) {
         : false
     },
     select: data => ChatMessageSnapshotRowsSchema.parse(data),
+  })
+
+  const queueQuery = useQuery({
+    queryKey: queueQueryKey,
+    queryFn: () => listChatSessionQueue(chatSessionId!),
+    enabled: !!chatSessionId,
+    refetchInterval: () => visibleStatus === 'streaming' ? 1000 : false,
   })
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
@@ -269,6 +296,7 @@ export function useChatSession(chatSessionId: string | null) {
         useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
         useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
         scheduleSnapshotRefresh(0)
+        void queryClient.invalidateQueries({ queryKey: queueQueryKey })
         return
       }
 
@@ -287,28 +315,55 @@ export function useChatSession(chatSessionId: string | null) {
           useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
           useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
           scheduleSnapshotRefresh(0)
+          void queryClient.invalidateQueries({ queryKey: queueQueryKey })
           break
         default:
           useChatStore.getState().setPassiveStatus(chatSessionId, 'streaming')
           scheduleSnapshotRefresh()
+          void queryClient.invalidateQueries({ queryKey: queueQueryKey })
           break
       }
     })
-  }, [chatSessionId, scheduleSnapshotRefresh])
+  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh])
 
   // ── Send message ──
 
-  const sendMessage = useCallback(async (text: string, opts?: { modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined }) => {
-    if (!chatSessionId || !text.trim()) {
+  const sendMessage = useCallback(async (
+    text: string,
+    opts?: SendMessageOptions,
+    files: FileUIPart[] = [],
+  ) => {
+    const trimmedText = text.trim()
+    if (!chatSessionId || (!trimmedText && files.length === 0)) {
+      return
+    }
+
+    const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
+    const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
+    if (isBusy) {
+      await enqueueChatSessionQueueItem({
+        sessionId: chatSessionId,
+        body: {
+          mode: opts?.continuationMode ?? 'queue',
+          text: trimmedText,
+          files,
+          agentProfileId: opts?.agentProfileId ?? undefined,
+          modelId: opts?.modelId ?? undefined,
+          thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+        },
+      })
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       return
     }
 
     // 1. Optimistic user message
     const userMessageId = `user-${Date.now()}`
+    const userParts: UIMessage['parts'] = trimmedText ? [{ type: 'text', text: trimmedText }] : []
+    userParts.push(...files)
     const userMessage: UIMessage = {
       id: userMessageId,
       role: 'user',
-      parts: [{ type: 'text', text }],
+      parts: userParts,
     }
     useChatStore.getState().appendMessage(chatSessionId, userMessage)
 
@@ -324,7 +379,9 @@ export function useChatSession(chatSessionId: string | null) {
       const res = await startChatResponse({
         sessionId: chatSessionId,
         body: {
-          text,
+          text: trimmedText,
+          files,
+          agentProfileId: opts?.agentProfileId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
         },
@@ -368,13 +425,34 @@ export function useChatSession(chatSessionId: string | null) {
     finally {
       const wasLocallyAborted = controller.signal.aborted
       handlerRef.current = null
-      useChatStore.getState().setSessionMeta(chatSessionId, { locallyDriving: false, localDriverMessageId: undefined, passiveStatus: 'idle' })
+      const currentPassiveStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus
+      useChatStore.getState().setSessionMeta(chatSessionId, {
+        locallyDriving: false,
+        localDriverMessageId: undefined,
+        passiveStatus: currentPassiveStatus === 'streaming' ? 'streaming' : 'idle',
+      })
       if (!wasLocallyAborted) {
         // Sync from server to get canonical message IDs
         scheduleSnapshotRefresh(0)
       }
     }
-  }, [chatSessionId, queryClient, scheduleSnapshotRefresh, sessionBindingQueryKey])
+  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+
+  const cancelQueueItem = useCallback(async (queueItemId: string) => {
+    if (!chatSessionId) {
+      return
+    }
+    await cancelChatSessionQueueItem({ sessionId: chatSessionId, queueItemId })
+    void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+  }, [chatSessionId, queryClient, queueQueryKey])
+
+  const reorderQueueItems = useCallback(async (queueItemIds: string[]) => {
+    if (!chatSessionId) {
+      return
+    }
+    await reorderChatSessionQueue({ sessionId: chatSessionId, queueItemIds })
+    void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+  }, [chatSessionId, queryClient, queueQueryKey])
 
   // ── Stop ──
 
@@ -414,5 +492,8 @@ export function useChatSession(chatSessionId: string | null) {
     sendMessage,
     stop,
     isReady,
+    queueItems: queueQuery.data?.items ?? [],
+    cancelQueueItem,
+    reorderQueueItems,
   }
 }
