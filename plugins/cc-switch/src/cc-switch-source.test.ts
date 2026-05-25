@@ -303,6 +303,60 @@ describe('CC Switch external provider source', () => {
     }
   })
 
+  it('skips Claude providers that require non-Anthropic Messages routing', async () => {
+    const dir = createTempWorkspace()
+    const dbPath = join(dir, 'cc-switch.db')
+    const settingsPath = join(dir, 'settings.json')
+    writeFixtureDatabase(dbPath)
+    writeFileSync(settingsPath, JSON.stringify({ currentProviderClaude: 'anthropic-a' }))
+
+    const db = new Database(dbPath)
+    try {
+      db.prepare(`
+        INSERT INTO providers (id, app_type, name, settings_config, meta)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(
+        'claude-openai-responses',
+        'claude',
+        'Claude Routed OpenAI',
+        JSON.stringify({
+          env: {
+            ANTHROPIC_BASE_URL: 'https://routed-openai.example.test',
+            ANTHROPIC_AUTH_TOKEN: 'test-routed-key',
+            ANTHROPIC_MODEL: 'gpt-routed',
+          },
+        }),
+        JSON.stringify({ apiFormat: 'openai_responses' }),
+      )
+    }
+    finally {
+      db.close()
+    }
+
+    const snapshot = await readCcSwitchExternalProviderSnapshot({
+      signal: new AbortController().signal,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      },
+      sharedConfig: new Map([
+        ['CC_SWITCH_DB_PATH', dbPath],
+        ['CC_SWITCH_SETTINGS_PATH', settingsPath],
+      ]),
+    })
+
+    expect(snapshot.providers.some(provider => provider.externalId === 'cc-switch:claude:claude-openai-responses')).toBe(false)
+    expect(JSON.stringify(snapshot)).not.toContain('test-routed-key')
+    expect(snapshot.warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'cc-switch-claude-api-format-unsupported',
+        severity: 'info',
+      }),
+    ]))
+  })
+
   it('tolerates nullable external fields and skips only malformed provider rows', async () => {
     const dir = createTempWorkspace()
     const dbPath = join(dir, 'cc-switch.db')

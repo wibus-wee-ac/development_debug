@@ -32,4 +32,4 @@ The paths can be overridden with shared config keys or environment variables:
 
 ## Supported Projection
 
-The first version projects `claude`, `codex`, and OpenAI-compatible `gemini` providers. Other CC Switch app families are counted and reported as warnings, but they are not projected as runnable Cradle provider profiles yet.
+The first version projects `claude`, `codex`, and OpenAI-compatible `gemini` providers. Claude providers are projected only when their CC Switch API format is native Anthropic Messages (`anthropic`); routed formats such as `openai_chat`, `openai_responses`, and `gemini_native` are skipped because Cradle does not own CC Switch's routing converter. Other CC Switch app families are counted and reported as warnings, but they are not projected as runnable Cradle provider profiles yet.

@@ -3,6 +3,7 @@
 This module owns host-side persistence of plugin-provided provider source snapshots and external runtime targets.
 
 - `index.ts`: HTTP routes for listing sources, refreshing sources, listing source records, and reading external runtime target metadata.
+- `local-agent-config-source.ts`: Onboarding utility that reads allowlisted local Claude and Codex config files into an `ExternalProviderSourceSnapshot`; it is intentionally not registered on startup yet.
 - `model.ts`: Elysia response schemas for the fixed external provider source API.
 - `service.ts`: Snapshot validation, source persistence, runtime target projection, secret upsert, missing-record handling, runtime preference preservation, and view serialization.
 

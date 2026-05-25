@@ -27,6 +27,7 @@
 - [x] (2026-05-21 11:45Z) 运行 `pnpm --filter @cradle/cc-switch build`、`pnpm --filter @cradle/cc-switch typecheck`、`pnpm exec vitest run plugins/cc-switch/src/cc-switch-source.test.ts`、`pnpm --filter @cradle/server exec vitest run tests/cc-switch-plugin.test.ts tests/external-provider-sources.test.ts` 均通过。
 - [x] (2026-05-21 16:05Z) 完成 CC Switch host projection 的补充验证；更新、删除/missing、DB locked、旧 schema 与 current provider 切换已按 Wibus 确认收口。
 - [x] (2026-05-21 16:05Z) 完成真实或测试 CC Switch DB 路径验证；新增、更新、删除、current 切换、锁定和旧 schema 兼容场景已不再作为未完成项追踪。
+- [x] (2026-05-25 08:35Z) 补齐 Claude provider API 格式约束：CC Switch `claude` provider 只有 `meta.apiFormat` 缺省或为原生 Anthropic Messages 时才投影；`openai_chat`、`openai_responses`、`gemini_native` 等需要 CC Switch 路由转换的格式只读告警并跳过。
 
 ## Surprises & Discoveries（发现）
 
@@ -53,6 +54,9 @@
 
 - 观察：当前 plugin 文档把 server storage 称作 persistent KV，但实现并不是持久存储。
   证据：`packages/plugin-sdk/DEVELOPERS.md` 描述 `ctx.storage` 为 persistent KV；`apps/server/src/plugins/storage.ts` 使用进程内 `Map`，并有 TODO 表示等待 Drizzle-backed `plugin_storage`。因此 plugin 可以缓存 inspector 状态，但不能把 mirror state 放在当前 storage 中。
+
+- 观察：CC Switch 的 Claude provider 高级选项 `API 格式` 不总是 Anthropic Messages。`openai_chat`、`openai_responses`、`gemini_native` 代表 CC Switch 本地路由层会做协议转换，Cradle 的 external provider target 不能直接拥有这层转换语义。
+  证据：CC Switch 源码 `src-tauri/src/provider.rs` 和 stream check 逻辑把 `meta.apiFormat` 定义为 `anthropic`、`openai_chat`、`openai_responses`、`gemini_native`；Cradle 当前 `plugins/cc-switch/src/cc-switch-source.ts` 只把 snapshot 投影成 `providerKind='anthropic' | 'openai-compatible'` 加 base URL/credential，没有 CC Switch proxy converter。
 
 ## Decision Log（决策记录）
 
@@ -91,6 +95,10 @@
 - 决策：CCDB catalog 的统一接口使用 `ExternalSourceSnapshotObject`，provider projection 仍使用专门的 `external_provider_mirrors`。
   理由：Provider 需要写 Cradle `agent_profiles`、`agent_credentials` 并参与 runtime selection，属于强语义 projection。MCP、prompt、skill、usage、pricing、proxy 等对象第一版只需要 inventory、fingerprint、redacted raw JSON 和 status；统一 snapshot object 足够表达，且不会提前冻结它们未来的 owner-specific schema。
   日期 / 作者：2026-05-20 / Codex.
+
+- 决策：CC Switch `claude` provider 只有原生 Anthropic Messages API 格式可以投影为 Cradle Claude provider；其它 Claude API 格式直接 skip，并记录 `cc-switch-claude-api-format-unsupported` warning。
+  理由：非 Anthropic Messages 的 Claude 配置依赖 CC Switch 的 local routing/protocol conversion。把它们投影进 Cradle 会让用户看到一个看似可用、实际缺少转换层的 provider target，还可能把 OpenAI/Gemini secret 误交给 Anthropic runtime。
+  日期 / 作者：2026-05-25 / Codex.
 
 ## Outcomes & Retrospective（结果与复盘）
 
@@ -186,7 +194,7 @@ Cradle 当前 backend 在 `apps/server`，数据库 schema 在 `packages/db/src/
 
 CC Switch `providers.settings_config` 的 shape 由 `app_type` 决定。
 
-对于 `claude`，`settings_config` 是 Claude Code settings JSON。常见结构是 `{ "env": { "ANTHROPIC_BASE_URL": "...", "ANTHROPIC_AUTH_TOKEN": "...", "ANTHROPIC_MODEL": "...", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "...", "ANTHROPIC_DEFAULT_SONNET_MODEL": "...", "ANTHROPIC_DEFAULT_OPUS_MODEL": "..." } }`。API key 可能在 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。`meta.apiFormat` 可能是 `anthropic`、`openai_chat`、`openai_responses` 或 `gemini_native`。`meta.apiKeyField` 记录 UI 选择的 key field。
+对于 `claude`，`settings_config` 是 Claude Code settings JSON。常见结构是 `{ "env": { "ANTHROPIC_BASE_URL": "...", "ANTHROPIC_AUTH_TOKEN": "...", "ANTHROPIC_MODEL": "...", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "...", "ANTHROPIC_DEFAULT_SONNET_MODEL": "...", "ANTHROPIC_DEFAULT_OPUS_MODEL": "..." } }`。API key 可能在 `ANTHROPIC_AUTH_TOKEN` 或 `ANTHROPIC_API_KEY`。`meta.apiFormat` 可能是 `anthropic`、`openai_chat`、`openai_responses` 或 `gemini_native`。其中只有缺省值或 `anthropic` 表示原生 Anthropic Messages API，可以直接投影给 Cradle Claude runtime；其它值表示 CC Switch 会通过本地路由做协议转换，Cradle 第一版必须跳过，不得投影成 `anthropic` 或 `openai-compatible` target。`meta.apiKeyField` 记录 UI 选择的 key field。
 
 对于 `codex`，`settings_config` 是 `{ "auth": { "OPENAI_API_KEY": "..." }, "config": "TOML text" }`。TOML 通常包含 `model_provider = "..."`、`model = "..."`、`model_reasoning_effort = "high"`，以及 `[model_providers.<id>]` 下的 `base_url`、`wire_api`、`requires_openai_auth`、`query_params` 等。CC Switch 写 live config 时会稳定 provider id，常量为 `ccswitch`，但 DB 中保存的是用户 provider 原始 TOML。Cradle reader 必须解析 TOML，不能用 regex 当正式实现。
 
@@ -303,7 +311,7 @@ Mirror sync service 的职责是：读取 CC Switch DB 与 settings JSON，生�
 
 ## Mapping rules（字段映射规则）
 
-对于 `claude`，默认创建 `providerKind='anthropic'` 的 `agent_profiles` 行。如果 `meta.apiFormat` 是 `openai_chat`、`openai_responses` 或 `gemini_native`，只有在 Cradle runtime 确认能直接访问该 endpoint 时，才映射为 `providerKind='openai-compatible'`。第一版更稳妥的选择是对 Claude Code-compatible endpoint 继续使用 `anthropic`，因为 Claude Agent runtime 理解 `ANTHROPIC_BASE_URL`。字段映射如下：
+对于 `claude`，只有 `meta.apiFormat` 缺省、`anthropic`，或兼容别名 `anthropic-messages` / `anthropic_messages` 时，才创建 `providerKind='anthropic'` 的 external provider target。若 `meta.apiFormat` 是 `openai_chat`、`openai_responses` 或 `gemini_native`，该 provider 依赖 CC Switch 的 routing/conversion 层，Cradle 第一版必须 skip，并返回 info warning；不要把它映射为 `openai-compatible`，也不要把它塞进 Claude Agent runtime。字段映射如下：
 
 - `name`: `CC Switch / Claude / <provider.name>`
 - `enabled`: 除非 provider 已被删除或不支持，否则为 true
@@ -429,6 +437,8 @@ SQLite 写入可能使用 WAL，事件会成批出现。Watcher event 应 deboun
 
 Fixture SQL 应创建 `providers`、`provider_endpoints`、`settings`、`mcp_servers`、`prompts`、`skills`、`skill_repos`、`proxy_config`、`provider_health`、`stream_check_logs`、`model_pricing`、`usage_daily_rollups` 并插入 fake rows。Fake secret 可以用 `test-anthropic-key` 和 `test-openai-key`。Reader test 必须证明 secrets 在 HTTP snapshot response 中被 redacted。
 
+Fixture 还必须包含一个 `app_type='claude'` 且 `meta.apiFormat='openai_responses'` 或 `openai_chat` 的 provider。运行 CC Switch external provider snapshot 后，预期它不出现在 `snapshot.providers` 或 host-projected records 中，warning 包含 `cc-switch-claude-api-format-unsupported`，并且该 provider 的 fake secret 不出现在序列化 snapshot 中。
+
 实现后运行聚焦测试：
 
     pnpm --filter @cradle/server exec vitest run tests/provider-mirror.test.ts tests/sdk-providers.test.ts
@@ -455,6 +465,8 @@ Fixture SQL 应创建 `providers`、`provider_endpoints`、`settings`、`mcp_ser
 模拟 DB locked 或 unreadable。预期结果：sync 返回 error status，上一轮 mirror rows 保持不变，Cradle 不基于失败读取删除或 disable rows。
 
 Claude runtime 验证：使用 mirrored Claude profile 启动 chat session，并 mock Claude Agent SDK 或 test secret reader。预期结果：`ClaudeAgentProvider` 收到从 CC Switch env 派生出的 `ANTHROPIC_API_KEY`、可选 `ANTHROPIC_BASE_URL` 和 model aliases。
+
+Claude API 格式验证：fixture 中同时放入原生 Anthropic Messages provider 和 `openai_responses` provider。预期结果：只有原生 provider 可在 Provider settings / external records 中选择；`openai_responses` provider 被跳过并展示 info warning。这个验证必须证明 Cradle 不会把需要 CC Switch 路由转换的 provider target 暴露给 Claude runtime。
 
 Codex runtime 验证：使用 mirrored Codex profile，并 mock Codex SDK。预期结果：`CodexProvider` 从 `credentialRef` 读取 API key，从 active TOML `[model_providers.<id>]` 读取 base URL，从 top-level TOML `model` 读取 model，从 top-level TOML `model_reasoning_effort` 读取 reasoning effort。
 
@@ -752,3 +764,5 @@ Provider mapper 应暴露纯函数：
 Revision note: 初版调研规格基于 CC Switch 源码、真实本机 DB 结构只读检查和 Cradle provider/runtime schema 检查创建；随后补齐完整 CC Switch DB 表结构总览，并统一正文为中文；本次修订扩展 CCDB catalog snapshot interfaces、redaction 约束和 plugin-first host API 缺口，使文档能直接指导 provider mirror 与只读 CCDB inspector 两条实现路线。
 
 Revision note: 2026-05-21 11:41Z 修订记录 Plugin SDK / Host 已升级为 fixed-shape external provider source 架构，并新增 `plugins/cc-switch` 作为真实 CC Switch reader。旧的“core source 优先”决策保留为历史记录，但后续实施以 plugin source + host projection 为准。
+
+Revision note: 2026-05-25 08:35Z 修订 Claude provider API 格式边界。CC Switch `claude` provider 只有 Anthropic Messages 格式可投影；`openai_chat`、`openai_responses`、`gemini_native` 等需要 CC Switch routing 的配置必须 skip，避免把不可直接运行的 provider target 暴露给 Cradle runtime。

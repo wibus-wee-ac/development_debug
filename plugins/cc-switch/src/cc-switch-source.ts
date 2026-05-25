@@ -446,7 +446,30 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
   }
 }
 
+function optionalStringFromRecord(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== 'object') { return undefined }
+  const entry = (value as Record<string, unknown>)[key]
+  if (typeof entry !== 'string') { return undefined }
+  const trimmed = entry.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
+function claudeApiFormat(provider: CcSwitchProviderRow): string {
+  return provider.meta.apiFormat
+    ?? optionalStringFromRecord(provider.settingsConfig, 'apiFormat')
+    ?? optionalStringFromRecord(provider.settingsConfig, 'api_format')
+    ?? 'anthropic'
+}
+
+function isClaudeAnthropicMessages(provider: CcSwitchProviderRow): boolean {
+  const apiFormat = claudeApiFormat(provider)
+  return apiFormat === 'anthropic' || apiFormat === 'anthropic-messages' || apiFormat === 'anthropic_messages'
+}
+
 function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
+  const apiFormat = claudeApiFormat(provider)
+  if (!isClaudeAnthropicMessages(provider)) { return null }
+
   const env = provider.settingsConfig.env
   const baseUrl = env.ANTHROPIC_BASE_URL
   const model = env.ANTHROPIC_MODEL
@@ -468,7 +491,7 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
       ...metadataBase(provider),
       baseUrl,
       model,
-      apiFormat: provider.meta.apiFormat ?? 'anthropic',
+      apiFormat,
     }),
   }
 }
@@ -563,6 +586,23 @@ function unsupportedWarnings(providers: CcSwitchProviderRow[]): ExternalProvider
   return warnings
 }
 
+function skippedProviderWarning(provider: CcSwitchProviderRow): ExternalProviderWarning {
+  if (provider.appType === 'claude' && !isClaudeAnthropicMessages(provider)) {
+    const apiFormat = claudeApiFormat(provider)
+    return {
+      code: 'cc-switch-claude-api-format-unsupported',
+      message: `Claude provider "${provider.name}" uses API format "${apiFormat}", which requires CC Switch routing and is not projected as a Cradle Claude provider.`,
+      severity: 'info',
+    }
+  }
+
+  return {
+    code: 'cc-switch-provider-unsupported-runtime',
+    message: `${provider.appType} provider "${provider.name}" was detected but cannot be projected to a Cradle runtime yet.`,
+    severity: 'info',
+  }
+}
+
 export async function readCcSwitchExternalProviderSnapshot(ctx: ExternalProviderSourceReadContext): Promise<ExternalProviderSourceSnapshot> {
   const config = resolveCcSwitchSourceConfig(ctx)
   const snapshot = readCcSwitchSnapshot(config)
@@ -581,11 +621,7 @@ export async function readCcSwitchExternalProviderSnapshot(ctx: ExternalProvider
       return []
     }
     if (!record && SUPPORTED_APPS.has(provider.appType)) {
-      skippedWarnings.push({
-        code: 'cc-switch-provider-unsupported-runtime',
-        message: `${provider.appType} provider "${provider.name}" was detected but cannot be projected to a Cradle runtime yet.`,
-        severity: 'info',
-      })
+      skippedWarnings.push(skippedProviderWarning(provider))
     }
     return record ? [record] : []
   })

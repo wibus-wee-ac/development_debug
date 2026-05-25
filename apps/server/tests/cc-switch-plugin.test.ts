@@ -56,6 +56,23 @@ function writeCcSwitchDatabase(path: string): void {
       JSON.stringify({ apiFormat: 'anthropic' }),
       1,
     )
+    db.prepare(`
+      INSERT INTO providers (id, app_type, name, settings_config, meta, is_current)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      'claude-routed-openai',
+      'claude',
+      'Claude Routed OpenAI',
+      JSON.stringify({
+        env: {
+          ANTHROPIC_BASE_URL: 'https://cc-switch-routed.example.test',
+          ANTHROPIC_AUTH_TOKEN: 'cc-switch-routed-secret',
+          ANTHROPIC_MODEL: 'gpt-routed',
+        },
+      }),
+      JSON.stringify({ apiFormat: 'openai_responses' }),
+      0,
+    )
   }
   finally {
     db.close()
@@ -112,7 +129,7 @@ describe('cc switch external provider plugin', () => {
       const refresh = await app.handle(new Request(`http://localhost/external-provider-sources/${ccSwitchSource!.id}/refresh`, { method: 'POST' }))
       expect(refresh.status).toBe(200)
       expect(await refresh.json()).toEqual(expect.objectContaining({
-        status: 'ok',
+        status: 'warning',
         recordsSeen: 1,
         recordsProjected: 1,
       }))
@@ -126,6 +143,8 @@ describe('cc switch external provider plugin', () => {
       expect(recordsRes.status).toBe(200)
       const records = await recordsRes.json() as Array<{ externalId: string, name: string }>
       expect(JSON.stringify(records)).not.toContain('cc-switch-secret')
+      expect(JSON.stringify(records)).not.toContain('cc-switch-routed-secret')
+      expect(records.some(record => record.externalId === 'cc-switch:claude:claude-routed-openai')).toBe(false)
       expect(records).toEqual([
         expect.objectContaining({
           externalId: 'cc-switch:claude:claude-fixture',
