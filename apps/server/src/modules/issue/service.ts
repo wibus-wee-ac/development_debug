@@ -97,7 +97,6 @@ export type IssueCommentView = IssueComment & { author: IssueCommentAuthorView }
 export type IssueView = Omit<Issue, 'labels'> & { labels: string[] }
 
 const DEFAULT_STATUSES = [
-  { name: 'Triage', color: '#a855f7', category: 'triage' as const },
   { name: 'Backlog', color: '#6b7280', category: 'backlog' as const },
   { name: 'To Do', color: '#9ca3af', category: 'unstarted' as const },
   { name: 'In Progress', color: '#f59e0b', category: 'started' as const },

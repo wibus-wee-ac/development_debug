@@ -70,10 +70,14 @@ describe('kanban capability', () => {
       const listStatuses = await app.handle(new Request('http://localhost/issues/statuses?workspaceId=workspace-kanban'))
       expect(listStatuses.status).toBe(200)
       const statuses = await listStatuses.json() as KanbanStatus[]
-      expect(statuses.map(status => status.name)).toEqual(['Triage', 'Backlog', 'To Do', 'In Progress', 'Done', 'Canceled'])
+      expect(statuses.map(status => status.name)).toEqual(['Backlog', 'To Do', 'In Progress', 'Done', 'Canceled'])
 
-      const todoStatusId = statuses[2].id // 'To Do'
-      const inProgressStatusId = statuses[3].id // 'In Progress'
+      const backlogStatusId = statuses.find(status => status.name === 'Backlog')?.id
+      const todoStatusId = statuses.find(status => status.name === 'To Do')?.id
+      const inProgressStatusId = statuses.find(status => status.name === 'In Progress')?.id
+      expect(backlogStatusId).toBeTruthy()
+      expect(todoStatusId).toBeTruthy()
+      expect(inProgressStatusId).toBeTruthy()
 
       const createIssue = await app.handle(new Request('http://localhost/issues', {
         method: 'POST',
@@ -83,7 +87,7 @@ describe('kanban capability', () => {
           title: 'Server issue',
           description: 'Issue created from HTTP server',
           priority: 'high',
-          statusId: todoStatusId,
+          statusId: todoStatusId!,
         }),
       }))
       expect(createIssue.status).toBe(200)
@@ -103,7 +107,7 @@ describe('kanban capability', () => {
       expect(createIssueWithoutStatus.status).toBe(200)
       const issueWithoutStatus = await createIssueWithoutStatus.json() as Issue
       expect(issueWithoutStatus).toEqual(expect.objectContaining({ id: 'KAN-002', number: 2 }))
-      expect(issueWithoutStatus).toEqual(expect.objectContaining({ statusId: statuses[0].id }))
+      expect(issueWithoutStatus).toEqual(expect.objectContaining({ statusId: backlogStatusId }))
 
       const createIssueWithStatusName = await app.handle(new Request('http://localhost/issues', {
         method: 'POST',
@@ -125,7 +129,7 @@ describe('kanban capability', () => {
         body: JSON.stringify({
           workspaceId: 'workspace-kanban',
           title: 'Server issue with conflicting status refs',
-          statusId: todoStatusId,
+          statusId: todoStatusId!,
           statusName: 'in_progress',
         }),
       }))
@@ -142,7 +146,7 @@ describe('kanban capability', () => {
       const moveIssue = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ statusId: inProgressStatusId }),
+        body: JSON.stringify({ statusId: inProgressStatusId! }),
       }))
       expect(moveIssue.status).toBe(200)
       expect(await moveIssue.json()).toEqual(expect.objectContaining({ statusId: inProgressStatusId }))
@@ -157,7 +161,7 @@ describe('kanban capability', () => {
       expect(listIssues.status).toBe(200)
       expect(await listIssues.json()).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: issue.id, statusId: inProgressStatusId }),
-        expect.objectContaining({ id: issueWithoutStatus.id, statusId: statuses[0].id }),
+        expect.objectContaining({ id: issueWithoutStatus.id, statusId: backlogStatusId }),
         expect.objectContaining({ id: issueWithStatusName.id, statusId: inProgressStatusId }),
       ]))
 

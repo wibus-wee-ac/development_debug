@@ -93,7 +93,8 @@ async function createIssue(app: ElysiaApp, workspaceId: string) {
 
   const statusesRes = await app.handle(new Request(`http://localhost/issues/statuses?workspaceId=${encodeURIComponent(workspaceId)}`))
   const statuses = await statusesRes.json() as Array<{ id: string, name: string }>
-  const todoStatusId = statuses[0].id
+  const todoStatusId = statuses.find(status => status.name === 'To Do')?.id
+  expect(todoStatusId).toBeTruthy()
 
   const issueRes = await app.handle(new Request('http://localhost/issues', {
     method: 'POST',
@@ -102,7 +103,7 @@ async function createIssue(app: ElysiaApp, workspaceId: string) {
       workspaceId,
       title: 'Delegated issue',
       description: 'Please investigate this server task.',
-      statusId: todoStatusId,
+      statusId: todoStatusId!,
       priority: 'high',
       labels: ['backend'],
     }),
