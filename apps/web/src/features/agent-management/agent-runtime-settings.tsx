@@ -13,6 +13,7 @@ import {
   XIcon
 } from 'lucide-react'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   getExternalProviderSourcesOptions,
@@ -68,6 +69,19 @@ import {
 } from './settings-multi-selection'
 import { useSettingsSelectionShortcuts } from './settings-selection-shortcuts'
 
+type ExternalRecordStatusLabelKey =
+  | 'runtime.provider.status.error'
+  | 'runtime.provider.status.missing'
+  | 'runtime.provider.status.stale'
+  | 'runtime.provider.status.unsupported'
+
+const EXTERNAL_RECORD_STATUS_LABEL_KEYS: Record<Exclude<ExternalProviderRecordView['status'], 'active'>, ExternalRecordStatusLabelKey> = {
+  error: 'runtime.provider.status.error',
+  missing: 'runtime.provider.status.missing',
+  stale: 'runtime.provider.status.stale',
+  unsupported: 'runtime.provider.status.unsupported'
+}
+
 function parseProfileConfigForUpdate(configJson: string): Record<string, unknown> {
   const parsed = JSON.parse(configJson) as unknown
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -111,6 +125,7 @@ const ProviderRow = memo(
     onOpenEntry: (entryId: string, shiftKey: boolean) => void
     onSelectEntry: (entryId: string, selected: boolean, shiftKey: boolean) => void
   }) => {
+    const { t } = useTranslation('agentManagement')
     const checkboxShiftKeyRef = useRef(false)
     const providerKind =
       entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
@@ -132,12 +147,12 @@ const ProviderRow = memo(
       entry.kind === 'manual'
         ? entry.profile.enabled
           ? null
-          : 'Off'
+          : t('runtime.provider.status.off')
         : !entry.record.runtimeTargetEnabled
-          ? 'Off'
+          ? t('runtime.provider.status.off')
           : entry.record.status === 'active'
             ? null
-            : entry.record.status
+            : t(EXTERNAL_RECORD_STATUS_LABEL_KEYS[entry.record.status])
     const testId =
       entry.kind === 'manual'
         ? `agent-profile-row-${entry.profile.id}`
@@ -215,6 +230,7 @@ const ProviderRow = memo(
 ProviderRow.displayName = 'ProviderRow'
 
 export function AgentRuntimeSettings() {
+  const { t } = useTranslation('agentManagement')
   const {
     profiles,
     isSuccess: profilesReady,
@@ -261,20 +277,23 @@ export function AgentRuntimeSettings() {
       if (errors.length > 0) {
         toastManager.add({
           type: 'error',
-          title: `${errors.length} source(s) failed to sync`,
+          title: t('runtime.toast.syncFailed', { sourceCount: errors.length }),
           description: errors.map((e) => e.message ?? e.sourceKey).join(', ') || undefined
         })
       }
       if (ok.length > 0) {
-        toastManager.add({ type: 'success', title: `${ok.length} source(s) refreshed` })
+        toastManager.add({
+          type: 'success',
+          title: t('runtime.toast.sourcesRefreshed', { sourceCount: ok.length })
+        })
       }
     },
     onError: (error) => {
       toastManager.add({
         type: 'error',
-        title: 'Refresh failed',
+        title: t('runtime.toast.refreshFailed'),
         description:
-          error instanceof Error ? error.message : 'External sources could not be refreshed'
+          error instanceof Error ? error.message : t('runtime.toast.externalSourcesRefreshFailed')
       })
     }
   })
@@ -368,6 +387,21 @@ export function AgentRuntimeSettings() {
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleEntries, selectedIds)
   const hasFilter = deferredFilter.trim().length > 0
+  const providerGroupLabel = useCallback(
+    (group: (typeof visibleProfileGroups)[number]) => {
+      if (group.kind === 'manual') {
+        return t('runtime.group.manual')
+      }
+      if (group.kind === 'external-source') {
+        return t('runtime.group.externalSource')
+      }
+      const pluginName = group.id.startsWith('external-plugin:')
+        ? group.id.slice('external-plugin:'.length)
+        : group.label
+      return t('runtime.group.externalPlugin', { pluginName })
+    },
+    [t]
+  )
 
   const toggleGroupCollapsed = useCallback((groupId: string, open: boolean) => {
     setGroupOpenOverrides((prev) => {
@@ -575,28 +609,27 @@ export function AgentRuntimeSettings() {
       <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 pb-5">
         <div className="min-w-0 flex-1 space-y-1">
           <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground text-balance">
-            Provider targets
+            {t('runtime.header.title')}
           </h3>
           <p className="max-w-full break-words text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
-            Manual providers are editable provider targets. External source records stay source-owned
-            and are shown in separate read-only groups.
+            {t('runtime.header.description')}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
           <Button
             size="sm"
             variant="outline"
-            onClick={() => refreshExternalSources.mutate({})}
+            onClick={() => refreshExternalSources.mutate()}
             disabled={refreshExternalSources.isPending}
           >
             <RefreshCwIcon
               className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
             />
-            Refresh sources
+            {t('runtime.action.refreshSources')}
           </Button>
           <Button data-testid="add-provider-btn" size="sm" onClick={startDraft} disabled={!!draft}>
             <PlusIcon />
-            Add manual provider
+            {t('runtime.action.addManualProvider')}
           </Button>
         </div>
       </header>
@@ -616,14 +649,14 @@ export function AgentRuntimeSettings() {
               ) : (
                 <SquareIcon className="size-3.5" />
               )}
-              <span>{selectedIds.size} selected</span>
+              <span>{t('runtime.selection.selected', { selectedCount: selectedIds.size })}</span>
             </button>
             <button
               type="button"
               onClick={clearSelection}
               className="text-muted-foreground/70 hover:text-foreground"
             >
-              Clear
+              {t('runtime.selection.clear')}
             </button>
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -633,7 +666,7 @@ export function AgentRuntimeSettings() {
               onClick={() => void handleBatchToggle(true)}
               disabled={batchBusy || toggleableSelectedCount === 0}
             >
-              Enable
+              {t('runtime.selection.enable')}
             </Button>
             <Button
               size="xs"
@@ -641,7 +674,7 @@ export function AgentRuntimeSettings() {
               onClick={() => void handleBatchToggle(false)}
               disabled={batchBusy || toggleableSelectedCount === 0}
             >
-              Disable
+              {t('runtime.selection.disable')}
             </Button>
             <Button
               size="xs"
@@ -650,7 +683,7 @@ export function AgentRuntimeSettings() {
               disabled={batchBusy || removableSelectedProfiles.length === 0}
             >
               <Trash2Icon className="size-3" />
-              Delete
+              {t('runtime.selection.delete')}
             </Button>
           </div>
         </div>
@@ -667,7 +700,7 @@ export function AgentRuntimeSettings() {
             <Input
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Search provider targets"
+              placeholder={t('runtime.search.placeholder')}
               className="h-8 pl-8 pr-2 text-[12.5px]"
             />
           </div>
@@ -695,10 +728,10 @@ export function AgentRuntimeSettings() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
-                        New provider
+                        {t('runtime.draft.title')}
                       </span>
                       <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
-                        Pick a template
+                        {t('runtime.draft.description')}
                       </span>
                     </span>
                   </button>
@@ -714,13 +747,15 @@ export function AgentRuntimeSettings() {
 
               {visibleEntries.length > 0 && (
                 <div className="mb-1 flex items-center justify-between gap-2 px-2 py-0.5 text-[10.5px] text-muted-foreground/60">
-                  <span>{visibleEntries.length} visible</span>
+                  <span>{t('runtime.visible.count', { visibleCount: visibleEntries.length })}</span>
                   <button
                     type="button"
                     onClick={toggleVisibleSelected}
                     className="text-muted-foreground/70 hover:text-foreground"
                   >
-                    {allVisibleSelected ? 'Unselect visible' : 'Select visible'}
+                    {allVisibleSelected
+                      ? t('runtime.visible.unselect')
+                      : t('runtime.visible.select')}
                   </button>
                 </div>
               )}
@@ -757,7 +792,7 @@ export function AgentRuntimeSettings() {
                             )}
                             aria-hidden
                           />
-                          <span className="min-w-0 truncate">{group.label}</span>
+                          <span className="min-w-0 truncate">{providerGroupLabel(group)}</span>
                         </span>
                         <span className="shrink-0 tabular-nums">{group.entries.length}</span>
                       </button>
@@ -781,7 +816,7 @@ export function AgentRuntimeSettings() {
               {visibleEntries.length === 0 && !draft && (
                 <div className="px-2 py-6 text-center">
                   <p className="text-[11.5px] text-muted-foreground/70">
-                    {filter ? 'No matches' : 'No providers yet'}
+                    {filter ? t('runtime.empty.noMatches') : t('runtime.empty.noProviders')}
                   </p>
                 </div>
               )}
@@ -790,7 +825,10 @@ export function AgentRuntimeSettings() {
 
           {(profiles.length > 0 || externalRecords.length > 0) && (
             <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
-              {profiles.length} manual providers · {externalRecords.length} external records
+              {t('runtime.summary.providers', {
+                manualCount: profiles.length,
+                externalCount: externalRecords.length,
+              })}
             </div>
           )}
         </aside>
@@ -814,15 +852,15 @@ export function AgentRuntimeSettings() {
                   <EmptyMedia variant="icon">
                     <ServerIcon />
                   </EmptyMedia>
-                  <EmptyTitle>{selectedEntries.length} items selected</EmptyTitle>
+                  <EmptyTitle>{t('runtime.multiSelected.title', { selectedCount: selectedEntries.length })}</EmptyTitle>
                   <EmptyDescription>
-                    Batch actions apply only to manual providers. External records stay read-only.
+                    {t('runtime.multiSelected.description')}
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" variant="outline" onClick={clearSelection}>
                     <XIcon />
-                    Clear selection
+                    {t('runtime.selection.clearSelection')}
                   </Button>
                 </EmptyContent>
               </Empty>
@@ -856,16 +894,15 @@ export function AgentRuntimeSettings() {
                   <EmptyMedia variant="icon">
                     <ServerIcon />
                   </EmptyMedia>
-                  <EmptyTitle>No provider selected</EmptyTitle>
+                  <EmptyTitle>{t('runtime.noSelection.title')}</EmptyTitle>
                   <EmptyDescription>
-                    Pick a provider on the left to view its configuration, or add a new one to get
-                    started.
+                    {t('runtime.noSelection.description')}
                   </EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" variant="outline" onClick={startDraft}>
                     <PlusIcon />
-                    Add provider
+                    {t('runtime.noSelection.addProvider')}
                   </Button>
                 </EmptyContent>
               </Empty>

@@ -1,4 +1,5 @@
 import { CheckIcon, XIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import type { ApprovalRequestedPayload } from '~/lib/contracts/approval-events'
 import { cn } from '~/lib/cn'
@@ -11,6 +12,7 @@ interface ApprovalCardProps {
 }
 
 export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
+  const { t } = useTranslation('approval')
   const allowOnceOption = approval.options.find(o => o.description === 'allow_once')
   const allowAlwaysOption = approval.options.find(o => o.description === 'allow_always')
   const rejectOption = approval.options.find(o => o.description === 'reject_once' || o.description === 'reject_always')
@@ -42,7 +44,7 @@ export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
       data-testid="approval-card"
     >
       <div className="flex-1 min-w-0">
-        <span className="text-muted-foreground">Permission required: </span>
+        <span className="text-muted-foreground">{t('request.prefix')} </span>
         <span className="text-foreground font-medium">{approval.prompt}</span>
       </div>
       <div className="flex items-center gap-1 shrink-0">
@@ -59,7 +61,7 @@ export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
             data-testid="approval-allow-btn"
           >
             <CheckIcon className="size-3" aria-hidden="true" />
-            Allow
+            {t('action.allow')}
           </button>
         )}
         {allowAlwaysOption && (
@@ -74,7 +76,7 @@ export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
             )}
           >
             <CheckIcon className="size-3" aria-hidden="true" />
-            Always Allow
+            {t('action.allowAlways')}
           </button>
         )}
         {rejectOption && (
@@ -90,7 +92,7 @@ export function ApprovalCard({ approval, onRespond }: ApprovalCardProps) {
             data-testid="approval-deny-btn"
           >
             <XIcon className="size-3" aria-hidden="true" />
-            Deny
+            {t('action.deny')}
           </button>
         )}
       </div>

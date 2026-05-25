@@ -12,6 +12,7 @@ import {
   MonitorIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getFilesystemBrowse, getFilesystemFavorites } from '~/api-gen/sdk.gen'
@@ -64,9 +65,11 @@ export function DirectoryBrowserDialog({
   open,
   onOpenChange,
   onSelect,
-  title = '选择目录',
+  title,
   description,
 }: DirectoryBrowserDialogProps) {
+  const { t } = useTranslation('filesystem')
+  const resolvedTitle = title ?? t('directory.title')
   const [currentPath, setCurrentPath] = useState<string | undefined>(() => {
     return localStorage.getItem(LAST_PATH_KEY) ?? undefined
   })
@@ -187,7 +190,7 @@ export function DirectoryBrowserDialog({
           {/* Sidebar */}
           <nav className="w-44 shrink-0 border-r py-3 px-2 flex flex-col gap-0.5">
             <DialogTitle className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-              {title}
+              {resolvedTitle}
             </DialogTitle>
             {favoritesData?.map(fav => (
               <SidebarItem
@@ -219,7 +222,7 @@ export function DirectoryBrowserDialog({
 
               {error && (
                 <div className="flex flex-col items-center justify-center h-full min-h-40 gap-1 px-6">
-                  <p className="text-xs font-medium text-destructive">无法访问该路径</p>
+                  <p className="text-xs font-medium text-destructive">{t('directory.error')}</p>
                   <p className="text-[11px] text-muted-foreground text-center">
                     {(error as Error).message}
                   </p>
@@ -228,7 +231,7 @@ export function DirectoryBrowserDialog({
 
               {!isLoading && !error && directories.length === 0 && files.length === 0 && (
                 <div className="flex flex-col items-center justify-center h-full min-h-40 gap-1">
-                  <p className="text-xs text-muted-foreground">空目录</p>
+                  <p className="text-xs text-muted-foreground">{t('directory.empty')}</p>
                 </div>
               )}
 
@@ -237,7 +240,7 @@ export function DirectoryBrowserDialog({
                   className="py-0.5 outline-none"
                   tabIndex={0}
                   role="group"
-                  aria-label="Directories"
+                  aria-label={t('directory.listing')}
                   onKeyDown={handleListingKeyDown}
                   data-testid="directory-browser-listing"
                 >
@@ -279,7 +282,7 @@ export function DirectoryBrowserDialog({
               className="text-xs"
               onClick={() => onOpenChange(false)}
             >
-              取消
+              {t('action.cancel')}
             </Button>
             <Button
               size="sm"
@@ -288,7 +291,7 @@ export function DirectoryBrowserDialog({
               disabled={!data?.current && !selectedEntry}
               data-testid="directory-browser-confirm"
             >
-              选择
+              {t('action.select')}
             </Button>
           </div>
         </DialogFooter>

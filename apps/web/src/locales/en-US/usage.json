@@ -1,0 +1,23 @@
+{
+  "breakdown.byAgent": "By Agent",
+  "breakdown.byModel": "By Model",
+  "breakdown.costByModel": "Cost by Model",
+  "chart.dailyCostLast30Days": "Daily cost (last 30 days)",
+  "chart.last30Days": "Last 30 days",
+  "description": "Token consumption over the past year",
+  "empty.noData": "No usage data yet: send a message to start tracking",
+  "pill.activeDays": "Active days",
+  "pill.avgDaily": "Avg / day",
+  "pill.bestStreak": "Best streak",
+  "pill.completion": "Completion",
+  "pill.peak": "Peak",
+  "pill.peakValue": "{{tokens}} on {{date}}",
+  "pill.prompt": "Prompt",
+  "pill.today": "Today",
+  "pill.totalCost": "Total Cost",
+  "pill.turns": "Turns",
+  "streak.day": "day streak",
+  "summary.estimatedCost": "estimated cost",
+  "summary.totalTokens": "total tokens",
+  "title": "Usage"
+}

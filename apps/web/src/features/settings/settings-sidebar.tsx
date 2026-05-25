@@ -1,24 +1,27 @@
 import { ActivityIcon, ArrowLeftIcon, BotIcon, DownloadIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 
+type SettingsKey = keyof typeof import('~/locales/default').default.settings
+
 interface SettingsNavItem {
   id: string
-  label: string
+  labelKey: SettingsKey
   icon: typeof PaletteIcon
 }
 
 const SETTINGS_NAV: SettingsNavItem[] = [
-  { id: 'appearance', label: '外观', icon: PaletteIcon },
-  { id: 'providers', label: '模型服务', icon: PlugIcon },
-  { id: 'agents', label: '助手', icon: BotIcon },
-  { id: 'chat', label: '对话', icon: MessageSquareIcon },
-  { id: 'jarvis', label: 'Jarvis', icon: MousePointer2Icon },
-  { id: 'chronicle', label: '记录', icon: ActivityIcon },
-  { id: 'skills', label: '技能', icon: SparklesIcon },
-  { id: 'desktop', label: '桌面端', icon: DownloadIcon },
-  { id: 'support', label: '支持', icon: LifeBuoyIcon },
+  { id: 'appearance', labelKey: 'nav.appearance', icon: PaletteIcon },
+  { id: 'providers', labelKey: 'nav.providers', icon: PlugIcon },
+  { id: 'agents', labelKey: 'nav.agents', icon: BotIcon },
+  { id: 'chat', labelKey: 'nav.chat', icon: MessageSquareIcon },
+  { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
+  { id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon },
+  { id: 'skills', labelKey: 'nav.skills', icon: SparklesIcon },
+  { id: 'desktop', labelKey: 'nav.desktop', icon: DownloadIcon },
+  { id: 'support', labelKey: 'nav.support', icon: LifeBuoyIcon },
 ]
 
 interface SettingsSidebarProps {
@@ -28,6 +31,8 @@ interface SettingsSidebarProps {
 }
 
 export function SettingsSidebar({ activeSection, onSetSection, onClose }: SettingsSidebarProps) {
+  const { t } = useTranslation('settings')
+
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Back header */}
@@ -36,17 +41,17 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
           variant="ghost"
           size="icon-xs"
           onClick={onClose}
-          aria-label="关闭设置"
+          aria-label={t('sidebar.close')}
           data-testid="settings-close"
         >
           <ArrowLeftIcon aria-hidden="true" />
         </Button>
-        <span className="text-xs font-medium text-foreground select-none">设置</span>
+        <span className="text-xs font-medium text-foreground select-none">{t('sidebar.title')}</span>
       </div>
 
       {/* Section nav */}
       <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-1 pb-2">
-        {SETTINGS_NAV.map(({ id, label, icon: Icon }) => (
+        {SETTINGS_NAV.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -60,7 +65,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
             )}
           >
             <Icon className="size-3.5" aria-hidden="true" />
-            {label}
+            {t(labelKey)}
           </button>
         ))}
       </nav>

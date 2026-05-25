@@ -1,0 +1,23 @@
+{
+  "breakdown.byAgent": "按 Agent",
+  "breakdown.byModel": "按模型",
+  "breakdown.costByModel": "按模型统计成本",
+  "chart.dailyCostLast30Days": "每日成本（最近 30 天）",
+  "chart.last30Days": "最近 30 天",
+  "description": "过去一年的 token 消耗",
+  "empty.noData": "暂无使用数据：发送一条消息后开始统计",
+  "pill.activeDays": "活跃天数",
+  "pill.avgDaily": "日均",
+  "pill.bestStreak": "最长连续",
+  "pill.completion": "Completion",
+  "pill.peak": "峰值",
+  "pill.peakValue": "{{tokens}} 于 {{date}}",
+  "pill.prompt": "Prompt",
+  "pill.today": "今日",
+  "pill.totalCost": "总成本",
+  "pill.turns": "轮次",
+  "streak.day": "天连续",
+  "summary.estimatedCost": "预估成本",
+  "summary.totalTokens": "总 tokens",
+  "title": "使用量"
+}

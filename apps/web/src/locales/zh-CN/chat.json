@@ -1,0 +1,8 @@
+{
+  "await.action.view": "查看",
+  "await.source.event": "事件",
+  "await.waitingFor": "正在等待 {{source}}...",
+  "empty.startConversation": "发送一条消息以开始对话",
+  "error.loadMessages": "消息加载失败。（未知错误）",
+  "status.thinking": "正在思考..."
+}

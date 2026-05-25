@@ -3,6 +3,7 @@ import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
+import { useTranslation } from 'react-i18next'
 
 import {
   AlertDialog,
@@ -44,29 +45,41 @@ const _ClaudeCodeIcon = PROVIDER_ICONS['claude-cli']!
 // eslint-disable-next-line dot-notation
 const CodexIcon = PROVIDER_ICONS['codex']!
 
-const RUNTIME_OPTIONS: { value: RuntimeKind, label: string, description: string, icon: React.ReactNode }[] = [
+type RuntimeOptionLabelKey =
+  | 'detail.runtime.standard.label'
+  | 'detail.runtime.claudeAgent.label'
+  | 'detail.runtime.codex.label'
+  | 'detail.runtime.cliTui.label'
+
+type RuntimeOptionDescriptionKey =
+  | 'detail.runtime.standard.description'
+  | 'detail.runtime.claudeAgent.description'
+  | 'detail.runtime.codex.description'
+  | 'detail.runtime.cliTui.description'
+
+const RUNTIME_OPTIONS: { value: RuntimeKind, labelKey: RuntimeOptionLabelKey, descriptionKey: RuntimeOptionDescriptionKey, icon: React.ReactNode }[] = [
   {
     value: 'standard',
-    label: 'Standard',
-    description: 'Direct model calls via the configured provider target',
+    labelKey: 'detail.runtime.standard.label',
+    descriptionKey: 'detail.runtime.standard.description',
     icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/60 text-[9px] font-bold leading-none">AI</span>,
   },
   {
     value: 'claude-agent',
-    label: 'Claude Agent',
-    description: 'Agentic loop powered by Claude with tool-use support',
+    labelKey: 'detail.runtime.claudeAgent.label',
+    descriptionKey: 'detail.runtime.claudeAgent.description',
     icon: <ClaudeIcon className="size-4 text-[#D97757]" />,
   },
   {
     value: 'codex',
-    label: 'Codex',
-    description: 'OpenAI Codex CLI for code-focused autonomous tasks',
+    labelKey: 'detail.runtime.codex.label',
+    descriptionKey: 'detail.runtime.codex.description',
     icon: <CodexIcon className="size-4 text-foreground/70" />,
   },
   {
     value: 'cli-tui',
-    label: 'CLI TUI',
-    description: 'Terminal-native runtime launched from an explicit command',
+    labelKey: 'detail.runtime.cliTui.label',
+    descriptionKey: 'detail.runtime.cliTui.description',
     icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/70 text-[9px] font-semibold leading-none">&gt;_</span>,
   },
 ]
@@ -78,21 +91,31 @@ const CLI_TUI_PRESETS = [
 ] as const
 
 const AVATAR_STYLES = [
-  { id: 'bottts-neutral', label: 'Bottts' },
-  { id: 'thumbs', label: 'Thumbs' },
-  { id: 'shapes', label: 'Shapes' },
-  { id: 'identicon', label: 'Identicon' },
-  { id: 'pixel-art', label: 'Pixel' },
-  { id: 'adventurer', label: 'Adventurer' },
+  { id: 'bottts-neutral', labelKey: 'detail.avatar.style.bottts' },
+  { id: 'thumbs', labelKey: 'detail.avatar.style.thumbs' },
+  { id: 'shapes', labelKey: 'detail.avatar.style.shapes' },
+  { id: 'identicon', labelKey: 'detail.avatar.style.identicon' },
+  { id: 'pixel-art', labelKey: 'detail.avatar.style.pixel' },
+  { id: 'adventurer', labelKey: 'detail.avatar.style.adventurer' },
 ] as const
 
 type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
+type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
 
-const AGENT_THINKING_OPTIONS: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map(option => ({
-  ...option,
-  value: option.value ?? 'auto',
-}))
+const thinkingLabelKeys = {
+  auto: 'detail.thinking.auto.label',
+  low: 'detail.thinking.low.label',
+  medium: 'detail.thinking.medium.label',
+  high: 'detail.thinking.high.label',
+} satisfies Record<ThinkingEffort, AgentManagementKey>
+
+const thinkingDescriptionKeys = {
+  auto: 'detail.thinking.auto.description',
+  low: 'detail.thinking.low.description',
+  medium: 'detail.thinking.medium.description',
+  high: 'detail.thinking.high.description',
+} satisfies Record<ThinkingEffort, AgentManagementKey>
 
 interface AgentDetailFormValues {
   name: string
@@ -120,12 +143,23 @@ interface ClaudeAgentModelAliases {
 }
 
 type ClaudeAgentModelField = 'claudeAgentHaikuModel' | 'claudeAgentSonnetModel' | 'claudeAgentOpusModel'
+type ClaudeAgentAliasNameKey =
+  | 'detail.claudeAgent.alias.haiku.name'
+  | 'detail.claudeAgent.alias.sonnet.name'
+  | 'detail.claudeAgent.alias.opus.name'
 
-const CLAUDE_AGENT_ALIAS_LABELS: Record<ClaudeAgentModelField, string> = {
-  claudeAgentHaikuModel: 'haiku alias',
-  claudeAgentSonnetModel: 'sonnet alias',
-  claudeAgentOpusModel: 'opus alias',
+const CLAUDE_AGENT_ALIAS_LABELS: Record<ClaudeAgentModelField, ClaudeAgentAliasNameKey> = {
+  claudeAgentHaikuModel: 'detail.claudeAgent.alias.haiku.name',
+  claudeAgentSonnetModel: 'detail.claudeAgent.alias.sonnet.name',
+  claudeAgentOpusModel: 'detail.claudeAgent.alias.opus.name',
 }
+
+type AgentCreateDisabledReason =
+  | 'detail.create.disabled.nameRequired'
+  | 'detail.create.disabled.cliExecutableRequired'
+  | 'detail.create.disabled.providerRequired'
+  | 'detail.create.disabled.creating'
+  | 'detail.create.disabled.noChanges'
 
 interface AgentDetailUiState {
   avatarSpinKey: number
@@ -214,21 +248,21 @@ export function getAgentCreateDisabledReason(input: {
   draft: Pick<AgentDetailDraft, 'name' | 'runtimeKind' | 'providerTargetId' | 'cliTuiExecutable'>
   isDirty: boolean
   createSaving: boolean
-}): string | null {
+}): AgentCreateDisabledReason | null {
   if (!input.draft.name.trim()) {
-    return 'Name is required.'
+    return 'detail.create.disabled.nameRequired'
   }
   if (input.draft.runtimeKind === 'cli-tui' && !input.draft.cliTuiExecutable.trim()) {
-    return 'CLI TUI agents need an executable command.'
+    return 'detail.create.disabled.cliExecutableRequired'
   }
   if (input.draft.runtimeKind !== 'cli-tui' && !input.draft.providerTargetId) {
-    return 'Select a provider target before creating.'
+    return 'detail.create.disabled.providerRequired'
   }
   if (input.createSaving) {
-    return 'Creating agent...'
+    return 'detail.create.disabled.creating'
   }
   if (!input.isDirty) {
-    return 'Make a change before creating.'
+    return 'detail.create.disabled.noChanges'
   }
   return null
 }
@@ -370,7 +404,16 @@ function AgentProviderModelPicker({
   modelId: string | null
   thinkingEffort: ThinkingEffort
 }) {
+  const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(() => THINKING_EFFORTS.map((option) => {
+    const value = option.value ?? 'auto'
+    return {
+      value,
+      label: t(thinkingLabelKeys[value]),
+      description: t(thinkingDescriptionKeys[value]),
+    }
+  }), [t])
   const initialModelProfileIds = useMemo(() => [profileId], [profileId])
   const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(profiles, initialModelProfileIds)
   const models = profileId ? modelsByProfileId[profileId] ?? [] : []
@@ -378,7 +421,7 @@ function AgentProviderModelPicker({
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
 
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
-    selectSupportedThinkingValue(model, AGENT_THINKING_OPTIONS, thinkingEffort, 'auto')
+    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'auto')
 
   const applyDefaultModel = useEffectEvent((nextModel: ModelDescriptor) => {
     form.setValue('modelId', nextModel.id, { shouldDirty: false })
@@ -401,14 +444,14 @@ function AgentProviderModelPicker({
       modelsByProfileId={modelsByProfileId}
       loadingProfileIds={loadingProfileIds}
       thinkingValue={thinkingEffort}
-      thinkingOptions={AGENT_THINKING_OPTIONS}
+      thinkingOptions={thinkingOptions}
       isLoadingSelectedModels={isLoadingModels}
-      emptyProfilesLabel="No provider targets configured"
-      emptySelectionLabel="Select a provider"
+      emptyProfilesLabel={t('detail.providerModel.emptyProfiles')}
+      emptySelectionLabel={t('detail.providerModel.emptySelection')}
       menuSide="bottom"
       menuAlign="end"
       triggerTestId="agent-provider-model-selector"
-      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, AGENT_THINKING_OPTIONS)}
+      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
       onRequestProfileModels={requestProfileModels}
       onSelectProfile={(nextProfileId) => {
         requestProfileModels(nextProfileId)
@@ -447,21 +490,24 @@ function ClaudeAgentAliasModelPicker({
   loadingProfileIds: Set<string>
   testId: string
 }) {
+  const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
   const value = useWatch({ control: form.control, name: field }) ?? ''
   const models = profileId ? modelsByProfileId[profileId] ?? [] : []
   const selectedModel = models.find(model => model.id === value) ?? null
   const mainModel = models.find(model => model.id === mainModelId) ?? null
   const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
-  const mainModelLabel = mainModel?.label ?? mainModelId ?? 'main model'
+  const mainModelLabel = mainModel?.label ?? mainModelId ?? t('detail.claudeAgent.mainModel')
   const label = selectedModel?.label ?? (value || mainModelLabel)
-  const aliasLabel = CLAUDE_AGENT_ALIAS_LABELS[field]
+  const aliasLabel = t(CLAUDE_AGENT_ALIAS_LABELS[field])
   const reusedMainModelRow = !value && mainModelId && pickerProfiles.length > 0
     ? (
         <MenuItem disabled className="items-start">
           <span className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <div className="flex min-w-0 flex-col gap-0.5">
-            <span className="text-[11px] text-muted-foreground/60">Reusing main model</span>
+            <span className="text-[11px] text-muted-foreground/60">
+              {t('detail.claudeAgent.reusingMainModel')}
+            </span>
             <span className="max-w-48 truncate text-[12px] text-foreground/75">{mainModelLabel}</span>
           </div>
         </MenuItem>
@@ -477,20 +523,20 @@ function ClaudeAgentAliasModelPicker({
           </span>
           {!value && (
             <span className="text-muted-foreground/45">
-              (reused)
+              {t('detail.claudeAgent.reusedBadge')}
             </span>
           )}
         </MenuTrigger>
         <MenuPopup side="bottom" align="end">
           {pickerProfiles.length === 0 && (
-            <MenuItem disabled>Select a provider first</MenuItem>
+            <MenuItem disabled>{t('detail.claudeAgent.selectProviderFirst')}</MenuItem>
           )}
           {pickerProfiles.length > 0 && (
             <CurrentProviderModelList
               models={models}
               selectedModelId={value || null}
               thinkingValue={null}
-              getThinkingOptionsForModel={() => [{ value: null, label: 'Auto', description: '' }]}
+              getThinkingOptionsForModel={() => [{ value: null, label: t('detail.thinking.auto.label'), description: '' }]}
               isLoadingModels={isLoadingModels}
               leadingContent={reusedMainModelRow}
               onSelectModel={modelId => form.setValue(field, modelId, { shouldDirty: true })}
@@ -504,7 +550,7 @@ function ClaudeAgentAliasModelPicker({
           type="button"
           variant="ghost"
           size="icon-xs"
-          aria-label={`Reuse main model for ${aliasLabel}`}
+          aria-label={t('detail.claudeAgent.reuseMainModelAria', { alias: aliasLabel })}
           onClick={() => form.setValue(field, '', { shouldDirty: true })}
           className="text-muted-foreground/60 hover:text-foreground"
         >
@@ -524,6 +570,7 @@ function ClaudeAgentSdkSettings({
   profileId: string | null
   mainModelId: string | null
 }) {
+  const { t } = useTranslation('agentManagement')
   const selectedProfile = profileId ? profiles.find(profile => profile.id === profileId) ?? null : null
   const pickerProfiles = useMemo(() => selectedProfile ? [selectedProfile] : [], [selectedProfile])
   const initialModelProfileIds = useMemo(() => [profileId], [profileId])
@@ -535,14 +582,14 @@ function ClaudeAgentSdkSettings({
       <div className="flex flex-col gap-0">
         <div className="mb-2">
           <h5 className="font-heading text-[13px] font-medium text-foreground">
-            Claude Agent SDK
+            {t('detail.claudeAgent.section.title')}
           </h5>
           <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">
-            Configure the models used when this agent asks the SDK for model aliases.
+            {t('detail.claudeAgent.section.description')}
           </p>
         </div>
 
-        <SettingsRow label="Haiku alias" description="Used when the SDK requests the haiku alias.">
+        <SettingsRow label={t('detail.claudeAgent.alias.haiku.label')} description={t('detail.claudeAgent.alias.haiku.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentHaikuModel"
             pickerProfiles={pickerProfiles}
@@ -555,7 +602,7 @@ function ClaudeAgentSdkSettings({
         </SettingsRow>
 
         <SettingsDivider />
-        <SettingsRow label="Sonnet alias" description="Used when the SDK requests the sonnet alias.">
+        <SettingsRow label={t('detail.claudeAgent.alias.sonnet.label')} description={t('detail.claudeAgent.alias.sonnet.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentSonnetModel"
             pickerProfiles={pickerProfiles}
@@ -568,7 +615,7 @@ function ClaudeAgentSdkSettings({
         </SettingsRow>
 
         <SettingsDivider />
-        <SettingsRow label="Opus alias" description="Used when the SDK requests the opus alias.">
+        <SettingsRow label={t('detail.claudeAgent.alias.opus.label')} description={t('detail.claudeAgent.alias.opus.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentOpusModel"
             pickerProfiles={pickerProfiles}
@@ -587,6 +634,8 @@ function ClaudeAgentSdkSettings({
 // ── Save Indicator ─────────────────────────────────────────────────────────────
 
 function SaveIndicator({ state }: { state: SaveState }) {
+  const { t } = useTranslation('agentManagement')
+
   if (state === 'idle') {
     return null
   }
@@ -605,10 +654,10 @@ function SaveIndicator({ state }: { state: SaveState }) {
     >
       {(state === 'saving' || state === 'pending') && <Spinner className="size-2.5" />}
       {state === 'saved' && <CheckIcon className="size-3" />}
-      {state === 'saving' && 'Saving...'}
-      {state === 'pending' && 'Saving...'}
-      {state === 'saved' && 'Saved'}
-      {state === 'error' && 'Save failed'}
+      {state === 'saving' && t('detail.save.saving')}
+      {state === 'pending' && t('detail.save.saving')}
+      {state === 'saved' && t('detail.save.saved')}
+      {state === 'error' && t('detail.save.failed')}
     </m.span>
   )
 }
@@ -645,6 +694,8 @@ function AgentDetailHeader({
   onBack?: () => void
   onDelete: () => void
 }) {
+  const { t } = useTranslation('agentManagement')
+
   return (
     <div className={cn('flex items-center justify-between', onBack ? 'mb-6' : 'mb-4')}>
       {onBack
@@ -656,7 +707,7 @@ function AgentDetailHeader({
             className="flex items-center gap-1.5 text-[12px] text-muted-foreground transition-colors hover:text-foreground"
           >
             <ArrowLeftIcon className="size-3.5" />
-            Agents
+            {t('detail.header.backToAgents')}
           </button>
         )
         : <div />}
@@ -672,30 +723,28 @@ function AgentDetailHeader({
                 data-testid="agent-detail-delete-trigger"
                 className="text-[11px] text-muted-foreground/40 transition-colors hover:text-destructive"
               >
-                Delete
+                {t('detail.header.delete')}
               </button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>
-                  Delete
-                  {' '}
-                  {agentName}
-                  ?
+                  {t('detail.deleteDialog.title', {
+                    name: agentName ?? t('detail.deleteDialog.unnamedAgent'),
+                  })}
                 </AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently remove the agent and all its private skills.
-                  This cannot be undone.
+                  {t('detail.deleteDialog.description')}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t('detail.action.cancel')}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={() => void onDelete()}
                   className="bg-destructive text-white hover:bg-destructive/90"
                   data-testid="agent-detail-delete-confirm"
                 >
-                  Delete
+                  {t('detail.header.delete')}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
@@ -719,6 +768,7 @@ function AgentIdentitySection({
   avatarSpinKey: number
   onShuffleAvatar: () => void
 }) {
+  const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
   const cliEnvParseResult = useMemo(() => parseCliEnvText(draft.cliTuiEnvText), [draft.cliTuiEnvText])
   const invalidEnvLineSummary = cliEnvParseResult.invalidLineNumbers.join(', ')
@@ -733,13 +783,13 @@ function AgentIdentitySection({
             onClick={onShuffleAvatar}
             data-testid="agent-avatar-preview"
             className="group relative size-16 cursor-pointer overflow-hidden rounded-2xl bg-foreground/5"
-            title="Click to shuffle"
+            title={t('detail.avatar.shuffle')}
             whileTap={{ scale: 0.91 }}
           >
             <m.img
               key={avatarSpinKey}
               src={avatarUrl}
-              alt={draft.name || 'Agent'}
+              alt={draft.name || t('detail.avatar.alt')}
               className="size-full object-cover"
               crossOrigin="anonymous"
               initial={{ scale: 0.82, opacity: 0 }}
@@ -762,7 +812,7 @@ function AgentIdentitySection({
             <SelectContent>
               {AVATAR_STYLES.map(style => (
                 <SelectItem key={style.id} value={style.id} className="text-xs">
-                  {style.label}
+                  {t(style.labelKey)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -773,14 +823,14 @@ function AgentIdentitySection({
           <input
             type="text"
             {...form.register('name')}
-            placeholder="Name your agent"
+            placeholder={t('detail.identity.name.placeholder')}
             data-testid="agent-detail-name"
             className="bg-transparent text-[17px] font-semibold leading-tight text-foreground outline-none placeholder:text-muted-foreground/25"
           />
           <input
             type="text"
             {...form.register('description')}
-            placeholder="Add a tagline..."
+            placeholder={t('detail.identity.description.placeholder')}
             data-testid="agent-detail-description"
             className="bg-transparent text-[12px] text-muted-foreground outline-none placeholder:text-muted-foreground/25"
           />
@@ -789,25 +839,25 @@ function AgentIdentitySection({
 
       {/* Runtime row */}
       <SettingsDivider />
-      <SettingsRow label="Runtime" description="Which execution mode the agent runs in">
+      <SettingsRow label={t('detail.runtime.label')} description={t('detail.runtime.description')}>
         <Select
           value={draft.runtimeKind}
           onValueChange={value => form.setValue('runtimeKind', value as RuntimeKind, { shouldDirty: true })}
         >
           <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-runtime-select">
-          <div className="flex items-center gap-2">
-          {(() => {
-              const opt = RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
-              return opt
-                ? (
-                  <span className="">
-                    {opt.icon}
-                  </span>
-                )
-                : <span className="text-muted-foreground">Select runtime…</span>
-            })()}
-            <SelectValue />
-          </div>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const opt = RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
+                return opt
+                  ? (
+                      <span>
+                        {opt.icon}
+                      </span>
+                    )
+                  : <span className="text-muted-foreground">{t('detail.runtime.placeholder')}</span>
+              })()}
+              <SelectValue />
+            </div>
           </SelectTrigger>
           <SelectContent className="w-64">
             {RUNTIME_OPTIONS.map(opt => (
@@ -828,10 +878,10 @@ function AgentIdentitySection({
                 <span className="mt-0.5 shrink-0">{opt.icon}</span>
                 <div className="flex flex-col gap-0.5 min-w-0">
                   <RadixSelect.ItemText className="text-[12.5px] font-medium">
-                    {opt.label}
+                    {t(opt.labelKey)}
                   </RadixSelect.ItemText>
                   <span className="text-[11px] text-muted-foreground leading-snug">
-                    {opt.description}
+                    {t(opt.descriptionKey)}
                   </span>
                 </div>
               </RadixSelect.Item>
@@ -844,16 +894,14 @@ function AgentIdentitySection({
         ? (
             <>
               <SettingsDivider />
-              <SettingsRow label="Launch preset" description="A named starting point for the terminal runtime">
+              <SettingsRow label={t('detail.cliTui.preset.label')} description={t('detail.cliTui.preset.description')}>
                 <Select
                   value={draft.cliTuiPreset}
                   onValueChange={(value) => {
                     form.setValue('cliTuiPreset', value, { shouldDirty: true })
-                    // const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === value)?.executable ?? ''
-                    // const presetArgs = CLI_TUI_PRESETS.find(preset => preset.id === value)?.args ?? ''
                     const preset = CLI_TUI_PRESETS.find(preset => preset.id === value)
-                     const presetExecutable = preset?.executable ?? ''
-                     const presetArgs = preset?.args ?? ''
+                    const presetExecutable = preset?.executable ?? ''
+                    const presetArgs = preset?.args ?? ''
                     if (value !== 'custom') {
                       form.setValue('cliTuiExecutable', presetExecutable, { shouldDirty: true })
                       form.setValue('cliTuiArguments', presetArgs, { shouldDirty: true })
@@ -861,7 +909,7 @@ function AgentIdentitySection({
                   }}
                 >
                   <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-cli-preset-select">
-                    <SelectValue placeholder="Select a preset…" />
+                    <SelectValue placeholder={t('detail.cliTui.preset.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {CLI_TUI_PRESETS.map(preset => (
@@ -874,7 +922,7 @@ function AgentIdentitySection({
               </SettingsRow>
 
               <SettingsDivider />
-              <SettingsRow label="Executable" description="The command Cradle will launch for this terminal runtime">
+              <SettingsRow label={t('detail.cliTui.executable.label')} description={t('detail.cliTui.executable.description')}>
                 <input
                   type="text"
                   {...form.register('cliTuiExecutable')}
@@ -885,7 +933,7 @@ function AgentIdentitySection({
               </SettingsRow>
 
               <SettingsDivider />
-              <SettingsRow label="Arguments" description="Optional CLI arguments appended to the executable">
+              <SettingsRow label={t('detail.cliTui.arguments.label')} description={t('detail.cliTui.arguments.description')}>
                 <input
                   type="text"
                   {...form.register('cliTuiArguments')}
@@ -896,7 +944,7 @@ function AgentIdentitySection({
               </SettingsRow>
 
               <SettingsDivider />
-              <SettingsRow label="Environment" description="Optional KEY=value lines injected into the launched process" vertical>
+              <SettingsRow label={t('detail.cliTui.environment.label')} description={t('detail.cliTui.environment.description')} vertical>
                 <div className="flex w-full flex-col gap-1.5">
                   <textarea
                     {...form.register('cliTuiEnvText')}
@@ -913,12 +961,9 @@ function AgentIdentitySection({
                   />
                   {cliEnvParseResult.invalidLineNumbers.length > 0 && (
                     <p className="text-[11px] leading-snug text-destructive/85" data-testid="agent-cli-env-warning">
-                      Ignoring invalid env
-                      {' '}
-                      {cliEnvParseResult.invalidLineNumbers.length === 1 ? 'line' : 'lines'}
-                      {' '}
-                      {invalidEnvLineSummary}
-                      . Use KEY=value.
+                      {t('detail.cliTui.environment.invalidLines', {
+                        lineNumbers: invalidEnvLineSummary,
+                      })}
                     </p>
                   )}
                 </div>
@@ -928,7 +973,7 @@ function AgentIdentitySection({
         : (
             <>
               <SettingsDivider />
-              <SettingsRow label="Model" description="Choose provider, model, and thinking effort">
+              <SettingsRow label={t('detail.model.label')} description={t('detail.model.description')}>
                 <AgentProviderModelPicker
                   profiles={enabledProfiles}
                   profileId={draft.providerTargetId}
@@ -951,13 +996,14 @@ function AgentIdentitySection({
 }
 
 function AgentSystemPromptSection() {
+  const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
 
   return (
-    <SettingsRow label="System Prompt" description="Optional instructions for this agent" vertical>
+    <SettingsRow label={t('detail.systemPrompt.label')} description={t('detail.systemPrompt.description')} vertical>
       <textarea
         {...form.register('systemPrompt')}
-        placeholder="Optional instructions for this agent..."
+        placeholder={t('detail.systemPrompt.placeholder')}
         rows={5}
         data-testid="agent-detail-system-prompt"
         className={cn(
@@ -980,22 +1026,24 @@ function AgentCreateActions({
 }: {
   createSaving: boolean
   createDisabled: boolean
-  createDisabledReason: string | null
+  createDisabledReason: AgentCreateDisabledReason | null
   saveError: string | null
   onCancel?: () => void
   onCreate: () => void
 }) {
+  const { t } = useTranslation('agentManagement')
+
   return (
     <div className="flex items-center justify-end gap-2 py-4">
       {saveError && <p className="mr-auto text-[11px] text-destructive">{saveError}</p>}
       {!saveError && createDisabledReason && (
         <p className="mr-auto text-[11px] text-muted-foreground" data-testid="agent-create-disabled-reason">
-          {createDisabledReason}
+          {t(createDisabledReason)}
         </p>
       )}
       {onCancel && (
         <Button variant="outline" size="sm" onClick={onCancel}>
-          Cancel
+          {t('detail.action.cancel')}
         </Button>
       )}
       <Button
@@ -1005,19 +1053,21 @@ function AgentCreateActions({
         data-testid="agent-detail-save"
       >
         {createSaving && <Spinner className="size-3.5" />}
-        Create Agent
+        {t('detail.create.action')}
       </Button>
     </div>
   )
 }
 
 function AgentSkillsSection({ agentId }: { agentId: string }) {
+  const { t } = useTranslation('agentManagement')
+
   return (
     <SkillManager
       agentId={agentId}
       editableScope="agent"
-      title="Skills"
-      description={`Agent-exclusive skills stored in ~/.cradle/agents/${agentId}/skills`}
+      title={t('detail.skills.title')}
+      description={t('detail.skills.description', { agentId })}
       pageTestId={`agent-skills-${agentId}`}
     />
   )

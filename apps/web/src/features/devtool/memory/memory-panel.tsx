@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { formatTimeOnly } from '~/lib/format-time'
 import { getPerfSnapshots, getWebVitals } from '~/lib/perf-monitor'
@@ -8,6 +9,7 @@ function toMB(bytes: number): string {
 }
 
 export function MemoryPanel() {
+  const { t } = useTranslation('devtool')
   const [, setTick] = useState(0)
 
   useEffect(() => {
@@ -23,13 +25,13 @@ export function MemoryPanel() {
   return (
     <div className="h-full overflow-auto p-4 font-mono text-[11px]">
       <div className="mb-4">
-        <div className="mb-2 text-xs text-muted-foreground">Current Heap Usage</div>
+        <div className="mb-2 text-xs text-muted-foreground">{t('memory.currentHeapUsage')}</div>
         {latest
           ? (
               <table className="w-full text-left">
                 <tbody>
                   <tr className="border-b border-border">
-                    <td className="py-1.5 pr-6 text-muted-foreground">Heap Used</td>
+                    <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapUsed')}</td>
                     <td className="py-1.5 text-foreground">
 {toMB(latest.heapUsed)}
 {' '}
@@ -37,7 +39,7 @@ MB
                     </td>
                   </tr>
                   <tr className="border-b border-border">
-                    <td className="py-1.5 pr-6 text-muted-foreground">Heap Total</td>
+                    <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapTotal')}</td>
                     <td className="py-1.5 text-foreground">
 {toMB(latest.heapTotal)}
 {' '}
@@ -45,7 +47,7 @@ MB
                     </td>
                   </tr>
                   <tr className="border-b border-border">
-                    <td className="py-1.5 pr-6 text-muted-foreground">Heap Limit</td>
+                    <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapLimit')}</td>
                     <td className="py-1.5 text-foreground">
 {toMB(latest.heapLimit)}
 {' '}
@@ -55,23 +57,20 @@ MB
                 </tbody>
               </table>
             )
-          : <div className="text-muted-foreground/50">No memory data available (requires Chromium with performance.memory)</div>}
+          : <div className="text-muted-foreground/50">{t('memory.unavailable')}</div>}
       </div>
 
       {recentSnapshots.length > 0 && (
         <div className="mb-4">
           <div className="mb-2 text-xs text-muted-foreground">
-Recent Trend (last
-{recentSnapshots.length}
-{' '}
-samples)
+            {t('memory.trend', { count: recentSnapshots.length })}
           </div>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="py-1.5 pr-3 font-normal">Time</th>
-                <th className="py-1.5 pr-3 font-normal">Heap Used</th>
-                <th className="py-1.5 font-normal">Heap Total</th>
+                <th className="py-1.5 pr-3 font-normal">{t('memory.time')}</th>
+                <th className="py-1.5 pr-3 font-normal">{t('memory.heapUsed')}</th>
+                <th className="py-1.5 font-normal">{t('memory.heapTotal')}</th>
               </tr>
             </thead>
             <tbody>
@@ -99,13 +98,13 @@ MB
 
       {vitals.length > 0 && (
         <div>
-          <div className="mb-2 text-xs text-muted-foreground">Web Vitals</div>
+          <div className="mb-2 text-xs text-muted-foreground">{t('memory.webVitals')}</div>
           <table className="w-full text-left">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="py-1.5 pr-3 font-normal">Metric</th>
-                <th className="py-1.5 pr-3 font-normal">Value</th>
-                <th className="py-1.5 font-normal">Rating</th>
+                <th className="py-1.5 pr-3 font-normal">{t('memory.metric')}</th>
+                <th className="py-1.5 pr-3 font-normal">{t('memory.value')}</th>
+                <th className="py-1.5 font-normal">{t('memory.rating')}</th>
               </tr>
             </thead>
             <tbody>
@@ -123,7 +122,7 @@ MB
 
       {!latest && vitals.length === 0 && (
         <div className="text-xs text-muted-foreground/50">
-          No performance data collected yet
+          {t('memory.empty')}
         </div>
       )}
     </div>

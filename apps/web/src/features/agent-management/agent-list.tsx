@@ -11,6 +11,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -59,11 +60,22 @@ import {
 import { useSettingsSelectionShortcuts } from './settings-selection-shortcuts'
 
 const DRAFT_ID = '__agent-draft__'
-const BATCH_AGENT_THINKING_OPTIONS: Array<ThinkingOption<AgentBatchThinkingEffort>>
-  = THINKING_EFFORTS.map(option => ({
-    ...option,
-    value: option.value ?? 'auto',
-  }))
+
+type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
+
+const thinkingLabelKeys = {
+  auto: 'detail.thinking.auto.label',
+  low: 'detail.thinking.low.label',
+  medium: 'detail.thinking.medium.label',
+  high: 'detail.thinking.high.label',
+} satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
+
+const thinkingDescriptionKeys = {
+  auto: 'detail.thinking.auto.description',
+  low: 'detail.thinking.low.description',
+  medium: 'detail.thinking.medium.description',
+  high: 'detail.thinking.high.description',
+} satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
 
 function providerTargetFromAgent(agent: Agent): ProviderTarget | null {
   return agent.providerTargetId ? { kind: 'manual', id: agent.providerTargetId } : null
@@ -248,9 +260,18 @@ function AgentBatchProviderPanel({
   onApply: (selection: AgentProviderBatchSelection) => void
   onClear: () => void
 }) {
+  const { t } = useTranslation('agentManagement')
   const providerAgents = selectedAgents.filter(agent => agent.runtimeKind !== 'cli-tui')
   const skippedCliTuiCount = selectedAgents.length - providerAgents.length
   const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
+  const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = useMemo(() => THINKING_EFFORTS.map((option) => {
+    const value = option.value ?? 'auto'
+    return {
+      value,
+      label: t(thinkingLabelKeys[value]),
+      description: t(thinkingDescriptionKeys[value]),
+    }
+  }), [t])
   const defaultSelection = useMemo((): AgentProviderBatchSelection | null => {
     const providerTarget = defaultBatchProviderTarget(selectedAgents, profiles)
     if (!providerTarget) {
@@ -289,7 +310,7 @@ function AgentBatchProviderPanel({
     model: ModelDescriptor | null,
     current: AgentBatchThinkingEffort,
   ): AgentBatchThinkingEffort =>
-    selectSupportedThinkingValue(model, BATCH_AGENT_THINKING_OPTIONS, current, 'auto')
+    selectSupportedThinkingValue(model, thinkingOptions, current, 'auto')
 
   const applyProfileSelection = (nextProfileId: string) => {
     requestProfileModels(nextProfileId)
@@ -320,21 +341,14 @@ function AgentBatchProviderPanel({
         </div>
         <div className="space-y-2">
           <h4 className="font-heading text-sm font-medium tracking-tight text-foreground">
-            {selectedAgents.length}
-{' '}
-agents selected
+            {t('batch.provider.selected', { count: selectedAgents.length })}
           </h4>
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-            Apply provider, model, and thinking settings to the selected provider-backed agents.
+            {t('batch.provider.description')}
             {skippedCliTuiCount > 0 && (
               <>
                 {' '}
-                {skippedCliTuiCount}
-{' '}
-CLI TUI
-{skippedCliTuiCount === 1 ? ' agent is' : ' agents are'}
-{' '}
-skipped.
+                {t('batch.provider.skippedCliTui', { count: skippedCliTuiCount })}
               </>
             )}
           </p>
@@ -349,16 +363,16 @@ skipped.
             modelsByProfileId={modelsByProfileId}
             loadingProfileIds={loadingProfileIds}
             thinkingValue={selection?.thinkingEffort ?? 'auto'}
-            thinkingOptions={BATCH_AGENT_THINKING_OPTIONS}
+            thinkingOptions={thinkingOptions}
             isLoadingSelectedModels={isLoadingSelectedModels}
-            emptyProfilesLabel="No enabled providers configured"
-            emptySelectionLabel="Select provider"
+            emptyProfilesLabel={t('batch.provider.emptyProfiles')}
+            emptySelectionLabel={t('batch.provider.emptySelection')}
             menuSide="bottom"
             menuAlign="center"
             triggerTestId="agent-batch-provider-model-selector"
             disabled={providerAgents.length === 0}
             getThinkingOptionsForModel={model =>
-              filterThinkingOptionsForModel(model, BATCH_AGENT_THINKING_OPTIONS)}
+              filterThinkingOptionsForModel(model, thinkingOptions)}
             onRequestProfileModels={requestProfileModels}
             onSelectProfile={applyProfileSelection}
             onSelectModel={applyModelSelection}
@@ -378,11 +392,11 @@ skipped.
             }}
             disabled={busy || !selection || providerAgents.length === 0}
           >
-            Apply to agents
+            {t('batch.provider.apply')}
           </Button>
           <Button size="sm" variant="outline" onClick={onClear} disabled={busy}>
             <XIcon />
-            Clear selection
+            {t('batch.provider.clearSelection')}
           </Button>
         </div>
       </div>

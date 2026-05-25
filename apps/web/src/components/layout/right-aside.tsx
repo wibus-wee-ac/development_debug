@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
 import { LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
@@ -17,17 +18,17 @@ import { useLayoutStore } from '~/store/layout'
 
 interface Tab {
   id: string
-  label: string
+  labelKey: 'rightAside.tab.files' | 'rightAside.tab.changes' | 'rightAside.tab.issue' | 'rightAside.tab.await'
   labelWidth: number
   icon: typeof FolderTreeIcon
 }
 
 const TABS: Tab[] = [
-  { id: 'files', label: '文件', labelWidth: 24, icon: FolderTreeIcon },
-  { id: 'changes', label: 'Changes', labelWidth: 50, icon: FileDiffIcon },
+  { id: 'files', labelKey: 'rightAside.tab.files', labelWidth: 24, icon: FolderTreeIcon },
+  { id: 'changes', labelKey: 'rightAside.tab.changes', labelWidth: 50, icon: FileDiffIcon },
   // { id: 'git', label: 'Git', labelWidth: 20, icon: GitBranchIcon },
-  { id: 'issue', label: 'Issue', labelWidth: 32, icon: CircleDotIcon },
-  { id: 'await', label: 'Feed', labelWidth: 28, icon: RssIcon },
+  { id: 'issue', labelKey: 'rightAside.tab.issue', labelWidth: 32, icon: CircleDotIcon },
+  { id: 'await', labelKey: 'rightAside.tab.await', labelWidth: 28, icon: RssIcon },
 ]
 
 const TAB_GAP = 2
@@ -65,6 +66,7 @@ interface RightAsideProps {
 }
 
 export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId = null }: RightAsideProps) {
+  const { t } = useTranslation('chrome')
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [packOpen, setPackOpen] = useState(false)
@@ -110,10 +112,11 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
       <div className="flex shrink-0 justify-center border-b border-border px-2 py-1.5">
         <LayoutGroup id="right-aside-tabs">
           <div className="relative flex items-center justify-center" style={{ gap: TAB_GAP }}>
-            {TABS.map(({ id, label, labelWidth, icon: Icon }) => {
+            {TABS.map(({ id, labelKey, labelWidth, icon: Icon }) => {
               const isActive = activeTab === id
               const showBadge = id === 'await' && hasPendingAwaits && !isActive
-              const tab = { id, label, labelWidth, icon: Icon }
+              const label = t(labelKey)
+              const tab = { id, labelKey, labelWidth, icon: Icon }
               const width = tabWidth(tab, isActive, showBadge)
 
               const button = (
@@ -219,7 +222,7 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
             className="flex flex-1 items-center justify-center"
             data-testid="right-aside-panel-issue-empty"
           >
-            <p className="text-[11px] text-muted-foreground">未选择会话</p>
+            <p className="text-[11px] text-muted-foreground">{t('rightAside.issue.empty')}</p>
           </div>
         )}
         {activeTab === 'await' && (

@@ -1,11 +1,17 @@
 import { CheckIcon } from 'lucide-react'
+import { startTransition, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '~/lib/cn'
+import { useI18n } from '~/i18n/client'
+import { localeOptions, normalizeLocale, type SupportedLocale } from '~/i18n/locales'
 import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+
+type SettingsKey = keyof typeof import('~/locales/default').default.settings
 
 /** Mini UI preview that simulates the look of each theme */
 function ThemePreview({ theme }: { theme: 'light' | 'dark' }) {
@@ -73,24 +79,32 @@ function SystemThemePreview() {
   )
 }
 
-const THEME_OPTIONS: Array<{ value: ThemeMode, label: string }> = [
-  { value: 'light', label: '浅色' },
-  { value: 'dark', label: '深色' },
-  { value: 'system', label: '自动' },
+const THEME_OPTIONS: Array<{ value: ThemeMode, labelKey: SettingsKey }> = [
+  { value: 'light', labelKey: 'appearance.theme.light' },
+  { value: 'dark', labelKey: 'appearance.theme.dark' },
+  { value: 'system', labelKey: 'appearance.theme.system' },
 ]
 
 const ANIMATION_PRESETS = [
-  { value: 'minimal', label: '极简', description: '快速淡入，无特效' },
-  { value: 'balanced', label: '平衡', description: '柔和淡入 + 区块光晕' },
-  { value: 'dramatic', label: '戏剧', description: '慢淡入 + 光晕 + 光标拖尾 + 入场动画' },
-] as const
+  { value: 'minimal', labelKey: 'streaming.preset.minimal.label', descriptionKey: 'streaming.preset.minimal.description' },
+  { value: 'balanced', labelKey: 'streaming.preset.balanced.label', descriptionKey: 'streaming.preset.balanced.description' },
+  { value: 'dramatic', labelKey: 'streaming.preset.dramatic.label', descriptionKey: 'streaming.preset.dramatic.description' },
+] as const satisfies Array<{ value: string, labelKey: SettingsKey, descriptionKey: SettingsKey }>
 
 const GRANULARITY_OPTIONS = [
-  { value: 'word', label: '逐词' },
-  { value: 'char', label: '逐字' },
-] as const
+  { value: 'word', labelKey: 'streaming.granularity.word' },
+  { value: 'char', labelKey: 'streaming.granularity.char' },
+] as const satisfies Array<{ value: string, labelKey: SettingsKey }>
+
+const LOCALE_LABEL_KEYS = {
+  'en-US': 'appearance.language.option.en-US',
+  'zh-CN': 'appearance.language.option.zh-CN',
+  'ja-JP': 'appearance.language.option.ja-JP',
+  'es-ES': 'appearance.language.option.es-ES',
+} as const satisfies Record<SupportedLocale, SettingsKey>
 
 export function AppearanceSettings() {
+  const { t } = useTranslation('settings')
   const mode = useThemeStore(s => s.mode)
   const setMode = useThemeStore(s => s.setMode)
   const settingsAppearanceReady = THEME_OPTIONS.length > 0 && ANIMATION_PRESETS.length > 0
@@ -101,16 +115,16 @@ export function AppearanceSettings() {
       data-testid="appearance-settings"
       data-settings-appearance-ready={settingsAppearanceReady ? 'true' : 'false'}
     >
-      <SettingsSectionHeader title="外观" description="自定义应用的视觉风格" />
+      <SettingsSectionHeader title={t('appearance.page.title')} description={t('appearance.page.description')} />
       <SettingsDivider />
 
       <SettingsRow
-        label="主题"
-        description="选择应用的外观主题"
-        info="浅色和深色主题适合不同环境。自动模式将跟随系统设置切换。"
+        label={t('appearance.theme.label')}
+        description={t('appearance.theme.description')}
+        info={t('appearance.theme.info')}
       >
         <div className="flex gap-3">
-          {THEME_OPTIONS.map(({ value, label }) => {
+          {THEME_OPTIONS.map(({ value, labelKey }) => {
             const selected = mode === value
             return (
               <button
@@ -145,7 +159,7 @@ export function AppearanceSettings() {
                     selected ? 'text-foreground font-medium' : 'text-muted-foreground',
                   )}
                 >
-                  {label}
+                  {t(labelKey)}
                 </span>
               </button>
             )
@@ -154,7 +168,9 @@ export function AppearanceSettings() {
       </SettingsRow>
 
       <SettingsDivider />
-      <SettingsSectionHeader title="流式动画" description="自定义 AI 回复的流式渲染效果" />
+      <LanguageSettings />
+      <SettingsDivider />
+      <SettingsSectionHeader title={t('streaming.section.title')} description={t('streaming.section.description')} />
       <SettingsDivider />
 
       <StreamdownSettings />
@@ -162,17 +178,77 @@ export function AppearanceSettings() {
   )
 }
 
+function LanguageSettings() {
+  const { t } = useTranslation('settings')
+  const { i18n, switchLang } = useI18n()
+  const [activeLocale, setActiveLocale] = useState<SupportedLocale>(() => normalizeLocale(i18n.language))
+  const [pendingLocale, setPendingLocale] = useState<SupportedLocale | null>(null)
+
+  useEffect(() => {
+    const syncLocale = (locale: string): void => {
+      setActiveLocale(normalizeLocale(locale))
+    }
+
+    i18n.on('languageChanged', syncLocale)
+    return () => {
+      i18n.off('languageChanged', syncLocale)
+    }
+  }, [i18n])
+
+  function selectLocale(locale: SupportedLocale): void {
+    if (pendingLocale || locale === activeLocale) {
+      return
+    }
+
+    setPendingLocale(locale)
+    startTransition(() => {
+      void switchLang(locale).finally(() => {
+        setPendingLocale(null)
+      })
+    })
+  }
+
+  return (
+    <SettingsRow
+      label={t('appearance.language.label')}
+      description={pendingLocale ? t('appearance.language.pending') : t('appearance.language.description')}
+    >
+      <div className="flex gap-1 rounded-lg border border-border p-0.5">
+        {localeOptions.map(option => {
+          const selected = activeLocale === option.value
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => selectLocale(option.value)}
+              aria-pressed={selected}
+              disabled={pendingLocale !== null}
+              className={cn(
+                'h-7 rounded-md px-2.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                selected ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {t(LOCALE_LABEL_KEYS[option.value])}
+            </button>
+          )
+        })}
+      </div>
+    </SettingsRow>
+  )
+}
+
 function StreamdownSettings() {
+  const { t } = useTranslation('settings')
   const { animationPreset, animateMode, showCursor, setAnimationPreset, setAnimateMode, setShowCursor } = useStreamdownStore()
 
   return (
     <>
       <SettingsRow
-        label="动画预设"
-        description="控制流式文字出现时的视觉效果强度"
+        label={t('streaming.preset.label')}
+        description={t('streaming.preset.description')}
       >
         <div className="flex gap-2">
-          {ANIMATION_PRESETS.map(({ value, label, description }) => {
+          {ANIMATION_PRESETS.map(({ value, labelKey, descriptionKey }) => {
             const selected = animationPreset === value
             return (
               <button
@@ -187,9 +263,9 @@ function StreamdownSettings() {
                 )}
               >
                 <span className={cn('text-xs font-medium', selected ? 'text-foreground' : 'text-muted-foreground')}>
-                  {label}
+                  {t(labelKey)}
                 </span>
-                <span className="text-[10px] text-muted-foreground/70">{description}</span>
+                <span className="text-[10px] text-muted-foreground/70">{t(descriptionKey)}</span>
               </button>
             )
           })}
@@ -197,11 +273,11 @@ function StreamdownSettings() {
       </SettingsRow>
 
       <SettingsRow
-        label="动画粒度"
-        description="文字逐词或逐字动画"
+        label={t('streaming.granularity.label')}
+        description={t('streaming.granularity.description')}
       >
         <div className="flex gap-1 rounded-lg border border-border p-0.5">
-          {GRANULARITY_OPTIONS.map(({ value, label }) => {
+          {GRANULARITY_OPTIONS.map(({ value, labelKey }) => {
             const selected = animateMode === value
             return (
               <button
@@ -213,7 +289,7 @@ function StreamdownSettings() {
                   selected ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {label}
+                {t(labelKey)}
               </button>
             )
           })}
@@ -221,13 +297,13 @@ function StreamdownSettings() {
       </SettingsRow>
 
       <SettingsRow
-        label="显示光标"
-        description="流式输入时在文本末尾显示闪烁光标"
+        label={t('streaming.cursor.label')}
+        description={t('streaming.cursor.description')}
       >
         <button
           type="button"
           onClick={() => setShowCursor(!showCursor)}
-          aria-label="Toggle stream cursor"
+          aria-label={t('streaming.cursor.toggle')}
           aria-pressed={showCursor}
           className={cn(
             'relative h-5 w-9 rounded-full transition-colors',

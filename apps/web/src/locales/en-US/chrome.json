@@ -1,0 +1,18 @@
+{
+  "dev.action.hardReload": "Hard reload",
+  "dev.action.hardReload.title": "Hard reload (ignore cache)",
+  "dev.action.openDevtools": "Open DevTools",
+  "dev.action.openDevtools.title": "Open DevTools window",
+  "footer.action.askJarvis": "Ask Jarvis",
+  "header.action.collapseSidebar": "Collapse sidebar",
+  "header.action.expandSidebar": "Expand sidebar",
+  "header.action.toggleBottomPanel": "Toggle bottom panel",
+  "header.action.toggleBrowserPanel": "Toggle browser panel",
+  "header.action.toggleRightPanel": "Toggle right panel",
+  "header.tab.settings": "Settings",
+  "rightAside.issue.empty": "No session selected",
+  "rightAside.tab.await": "Feed",
+  "rightAside.tab.changes": "Changes",
+  "rightAside.tab.files": "Files",
+  "rightAside.tab.issue": "Issue"
+}

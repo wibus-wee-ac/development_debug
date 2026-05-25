@@ -1,4 +1,6 @@
 // Chat settings for default continuation behavior.
+import { useTranslation } from 'react-i18next'
+
 import { Switch } from '~/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 
@@ -7,6 +9,7 @@ import type { ApprovalMode, ContinuationBehavior } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
 
 export function ChatSettings() {
+  const { t } = useTranslation('settings')
   const { prefs, isSaving, savePrefs } = useChatPreferences()
 
   if (!prefs) {
@@ -28,14 +31,14 @@ export function ChatSettings() {
   return (
     <div className="flex flex-col gap-0" data-testid="chat-settings">
       <SettingsSectionHeader
-        title="对话"
-        description="配置对话与代理会话的默认行为。"
+        title={t('chat.page.title')}
+        description={t('chat.page.description')}
       />
       <SettingsDivider />
 
       <SettingsRow
-        label="跟进行为"
-        description="在 Cradle 运行时将后续操作加入队列，或引导当前运行。按下“⇧⌘⏎”可对单条消息执行相反操作"
+        label={t('chat.continuation.label')}
+        description={t('chat.continuation.description')}
       >
         <ToggleGroup
           type="single"
@@ -44,14 +47,14 @@ export function ChatSettings() {
           value={prefs.continuationBehavior}
           onValueChange={handleBehaviorChange}
           disabled={isSaving}
-          aria-label="Continuation behavior"
+          aria-label={t('chat.continuation.label')}
           data-testid="chat-continuation-behavior"
         >
-          <ToggleGroupItem value="queue" aria-label="排队">
-            排队
+          <ToggleGroupItem value="queue" aria-label={t('chat.continuation.queue')}>
+            {t('chat.continuation.queue')}
           </ToggleGroupItem>
-          <ToggleGroupItem value="steer" aria-label="引导">
-            引导
+          <ToggleGroupItem value="steer" aria-label={t('chat.continuation.steer')}>
+            {t('chat.continuation.steer')}
           </ToggleGroupItem>
         </ToggleGroup>
       </SettingsRow>
@@ -59,15 +62,15 @@ export function ChatSettings() {
       <SettingsDivider />
 
       <SettingsRow
-        label="自动允许工具请求"
-        description="跳过 Cradle 的工具审批弹窗，并对每次请求直接返回允许；不会写入 Always Allow 规则，也不会切换底层运行时权限模式。"
+        label={t('chat.approval.label')}
+        description={t('chat.approval.description')}
       >
         <Switch
           size="sm"
           checked={prefs.approvalMode === 'allowAll'}
           onCheckedChange={handleApprovalModeChange}
           disabled={isSaving}
-          aria-label="自动允许工具请求"
+          aria-label={t('chat.approval.label')}
           data-testid="chat-approval-mode"
         />
       </SettingsRow>

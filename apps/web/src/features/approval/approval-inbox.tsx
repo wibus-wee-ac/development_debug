@@ -1,4 +1,5 @@
 import { CheckSquareIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import {
   Empty,
@@ -12,6 +13,7 @@ import { ApprovalCard } from './approval-card'
 import { useSessionApprovalRequests } from './use-approval'
 
 export function ApprovalInbox() {
+  const { t } = useTranslation('approval')
   const { pending, respond } = useSessionApprovalRequests(null)
 
   return (
@@ -21,8 +23,8 @@ export function ApprovalInbox() {
       data-approvals-ready="true"
     >
       <div className="shrink-0 border-b border-border/50 px-5 py-4">
-        <h1 className="text-base font-semibold text-foreground">Approvals</h1>
-        <p className="text-xs text-muted-foreground">Pending agent permission requests</p>
+        <h1 className="text-base font-semibold text-foreground">{t('inbox.title')}</h1>
+        <p className="text-xs text-muted-foreground">{t('inbox.description')}</p>
       </div>
 
       {pending.length === 0 ? (
@@ -31,8 +33,8 @@ export function ApprovalInbox() {
             <EmptyMedia variant="icon">
               <CheckSquareIcon />
             </EmptyMedia>
-            <EmptyTitle>No pending approvals</EmptyTitle>
-            <EmptyDescription>Agent approval requests will appear here.</EmptyDescription>
+            <EmptyTitle>{t('empty.title')}</EmptyTitle>
+            <EmptyDescription>{t('empty.description')}</EmptyDescription>
           </EmptyHeader>
         </Empty>
       ) : (

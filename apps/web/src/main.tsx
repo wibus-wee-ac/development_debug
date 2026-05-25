@@ -7,6 +7,8 @@ import * as ReactDOMClient from 'react-dom/client'
 import { App } from './app'
 import { AppErrorBoundary } from './components/common/app-error-boundary'
 import { DevtoolPage } from './features/devtool/ipc-devtool-page'
+import { resolveInitialLocale } from './i18n/browser-locale'
+import { I18nProvider } from './i18n/client'
 import { initPerfMonitor } from './lib/perf-monitor'
 import { loadWebPlugins } from './lib/plugin-host'
 
@@ -37,15 +39,19 @@ const queryClient = new QueryClient({
 const isDevtoolWindow = window.location.hash === '#devtool' || window.location.hash === '#/devtool'
 
 async function startApp(): Promise<void> {
+  const initialLocale = resolveInitialLocale()
+
   // Load web plugins before rendering.
   await loadWebPlugins()
 
   ReactDOMClient.createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
       <AppErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          {isDevtoolWindow ? <DevtoolPage /> : <App />}
-        </QueryClientProvider>
+        <I18nProvider initialLocale={initialLocale}>
+          <QueryClientProvider client={queryClient}>
+            {isDevtoolWindow ? <DevtoolPage /> : <App />}
+          </QueryClientProvider>
+        </I18nProvider>
       </AppErrorBoundary>
     </React.StrictMode>,
   )

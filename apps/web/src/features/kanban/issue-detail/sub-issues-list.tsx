@@ -1,5 +1,6 @@
 import { CornerDownRightIcon, PlusIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   DropdownMenu,
@@ -18,6 +19,14 @@ import type { IssuePriority } from '../use-kanban'
 import { useCreateIssue, useIssues } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
 
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 interface SubIssuesListProps {
   issueId: string
   workspaceId: string
@@ -26,6 +35,7 @@ interface SubIssuesListProps {
 }
 
 export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: SubIssuesListProps) {
+  const { t } = useTranslation('kanban')
   const { data: subIssues = [] } = useIssues({ workspaceId, parentIssueId: issueId })
   const createIssue = useCreateIssue()
   const [creating, setCreating] = useState(false)
@@ -79,7 +89,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
             onClick={() => onOpenIssue(sub.id)}
             className="flex h-7 w-full items-center gap-2 rounded-md px-1.5 text-left text-[13px] hover:bg-fill transition-colors"
             data-testid={`sub-issue-${sub.id}`}
-            aria-label={`Open sub-issue ${sub.title}`}
+            aria-label={t('subIssue.openAria', { title: sub.title })}
           >
             <CornerDownRightIcon className="ml-1 size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
             {status
@@ -107,9 +117,9 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                     handleCancel()
                   }
                 }}
-                placeholder="Sub-issue title"
+                placeholder={t('subIssue.titlePlaceholder')}
                 data-testid="sub-issue-title-input"
-                aria-label="Sub-issue title"
+                aria-label={t('subIssue.titleAria')}
                 className="w-full bg-transparent text-[14px] font-medium text-foreground outline-none placeholder:text-muted-foreground/60"
               />
             </div>
@@ -129,7 +139,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                             <span>{currentStatus.name}</span>
 </>
 )
-                        : <span>Status</span>}
+                        : <span>{t('property.status')}</span>}
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-44">
@@ -151,7 +161,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                       className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
                     >
                       <PriorityIcon priority={priority as IssuePriority} size={11} />
-                      <span>{priorityOptions.find(p => p.value === priority)?.label ?? 'Priority'}</span>
+                      <span>{t(priorityLabelKeys[priority as IssuePriority] ?? 'property.priority')}</span>
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-40">
@@ -159,7 +169,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                       {priorityOptions.map(p => (
                         <DropdownMenuRadioItem key={p.value} value={p.value}>
                           <PriorityIcon priority={p.value} size={13} />
-                          {p.label}
+                          {t(priorityLabelKeys[p.value])}
                         </DropdownMenuRadioItem>
                       ))}
                     </DropdownMenuRadioGroup>
@@ -173,7 +183,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                   onClick={handleCancel}
                   className="rounded px-2 py-0.5 text-[11px] text-text-dim hover:text-foreground transition-colors"
                 >
-                  Cancel
+                  {t('subIssue.cancel')}
                 </button>
                 <button
                   type="button"
@@ -186,7 +196,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
                     'disabled:opacity-40 disabled:cursor-not-allowed',
                   )}
                 >
-                  Create
+                  {t('subIssue.create')}
                   <kbd
                     className="ml-0.5 rounded border border-border/30 bg-primary-foreground/10 px-1 text-[9px] leading-4"
                     aria-hidden="true"
@@ -206,7 +216,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
             className="flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-text-dim hover:text-foreground hover:bg-fill transition-colors w-fit"
           >
             <PlusIcon className="size-3.5" aria-hidden="true" />
-            Add sub-issue
+            {t('subIssue.add')}
           </button>
         )}
     </div>

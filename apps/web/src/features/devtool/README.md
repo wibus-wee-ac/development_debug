@@ -5,6 +5,7 @@
 Developer tooling feature with runtime diagnostics for observability, health, memory, tabs-next state, and plugin runtime state.
 Rendered at the `/devtool` route in a separate Electron window or at `#/devtool` in the web app.
 The root page owns the devtool tab model and window-level `Cmd/Ctrl + 1..5` tab switching listener.
+User-facing diagnostic labels and status text are owned by the `devtool` i18n namespace.
 
 ## Directories
 
@@ -21,4 +22,6 @@ The root page owns the devtool tab model and window-level `Cmd/Ctrl + 1..5` tab 
 - **ipc-devtool-page.tsx**: DevtoolPage — root component for the devtool window; composes all devtool panels and installs `Cmd/Ctrl + 1..5` tab shortcuts
 - **ipc-devtool-page.test.tsx**: Regression tests for devtool tab shortcut routing
 - **flow-color.ts**: Shared color helpers for flow direction rendering (shared by ipc/ and acp/)
+- **health/health-panel.tsx**: Server health panel with localized loading/error labels and health metric rows.
+- **memory/memory-panel.tsx**: Renderer memory and Web Vitals panel with localized headings and empty states.
 - **index.ts**: Barrel export

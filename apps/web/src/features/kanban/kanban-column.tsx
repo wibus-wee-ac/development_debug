@@ -1,6 +1,7 @@
 import { useDroppable } from '@dnd-kit/core'
 import { PlusIcon } from 'lucide-react'
 import { useCallback, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -47,6 +48,7 @@ export function KanbanColumn({
   highlightedIssueId,
   selectedIssueIds,
 }: ColumnProps) {
+  const { t } = useTranslation('kanban')
   const { setNodeRef, isOver } = useDroppable({ id: groupId })
   const [showInlineInput, setShowInlineInput] = useState(false)
   const [inlineTitle, setInlineTitle] = useState('')
@@ -134,7 +136,7 @@ export function KanbanColumn({
                   }
                 }}
                 onBlur={handleConfirmInlineCreate}
-                placeholder="事项标题"
+                placeholder={t('issue.newTitlePlaceholder')}
                 data-testid="kanban-new-issue-input"
                 className="w-full rounded-md border border-border bg-background px-2 py-1 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring"
               />
@@ -155,7 +157,7 @@ export function KanbanColumn({
           )}
         >
           <PlusIcon className="size-3" />
-          新建
+          {t('issue.create')}
         </button>
       </div>
     </div>

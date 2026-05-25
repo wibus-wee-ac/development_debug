@@ -1,6 +1,7 @@
 # Kanban
 
 Kanban renders board/list/detail views over Issue-owned workspace data. Issue metadata, comments, relations, statuses, milestones, and delegation controls call the Issue and Issue Agent capabilities rather than making Kanban the data owner.
+User-facing board, issue, filter, status, and label-management copy is owned by the `kanban` i18n namespace; issue/workspace data values remain Issue-owned data.
 
 ## Files
 

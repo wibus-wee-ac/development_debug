@@ -1,12 +1,14 @@
 import { useTabsContext } from '@cradle/tabs-next'
 import { LayoutDashboardIcon } from 'lucide-react'
 import { useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Spinner } from '~/components/ui/spinner'
 import { KanbanView } from '~/features/kanban/index'
 import { useBoard, useIssue } from '~/features/kanban/use-kanban'
 
 export function KanbanBoardTabContent({ params }: { params: { boardId?: string, issue?: string, milestoneId?: string } }) {
+  const { t } = useTranslation('kanban')
   const { store } = useTabsContext()
   const { data: board, isLoading } = useBoard(params.boardId ?? '')
   const { data: issue } = useIssue(params.issue ?? '')
@@ -43,7 +45,7 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
         <LayoutDashboardIcon className="size-8" />
-        <p className="text-[12px]">从左侧选择或创建一个看板</p>
+        <p className="text-[12px]">{t('board.emptySelection')}</p>
       </div>
     )
   }

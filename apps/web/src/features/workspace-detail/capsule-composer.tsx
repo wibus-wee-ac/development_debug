@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import type { MentionItem } from '~/features/chat'
@@ -288,6 +289,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 }
 
 export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
+  const { t } = useTranslation('workspace')
   const owner = useCapsuleComposerOwner({ workspaceId, onSend })
 
   /* eslint-disable react-hooks/refs */
@@ -330,11 +332,11 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           onFocus={owner.expand}
           onKeyDown={owner.handleKeyDown}
           onPaste={owner.attachmentController.handlePaste}
-          placeholder="在此工作区开始新对话..."
+          placeholder={t('capsule.placeholder')}
           disabled={owner.sending}
           rows={1}
           data-testid="workspace-detail-capsule-textarea"
-          aria-label="Workspace task message"
+          aria-label={t('capsule.aria.message')}
           aria-controls={owner.slashPanelHasResults ? 'workspace-detail-capsule-slash-command-listbox' : undefined}
           aria-expanded={owner.slashActive}
           aria-activedescendant={owner.slashPanelHasResults ? owner.activeSlashOptionId : undefined}
@@ -382,7 +384,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
                   size="icon-xs"
                   disabled={!owner.canSend}
                   onClick={() => void owner.handleSend()}
-                  aria-label="Send message"
+                  aria-label={t('capsule.aria.send')}
                   data-testid="workspace-detail-capsule-send-btn"
                 >
                   {owner.sending

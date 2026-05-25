@@ -1,6 +1,7 @@
 import { StaticRender } from '@cradle/streamdown'
 import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -14,6 +15,7 @@ interface ActivityTimelineProps {
 }
 
 export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: ActivityTimelineProps) {
+  const { t } = useTranslation('kanban')
   const { data: comments = [] } = useComments(issueId)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
@@ -34,7 +36,7 @@ export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: Acti
 
   return (
     <div data-testid="issue-activity-timeline">
-      <h3 className="text-sm font-semibold text-foreground text-balance">Activity</h3>
+      <h3 className="text-sm font-semibold text-foreground text-balance">{t('issue.activity.title')}</h3>
 
       <div className="mt-3 flex flex-col gap-3">
         {comments.map(comment => (
@@ -57,13 +59,13 @@ export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: Acti
               handleSubmit()
             }
           }}
-          placeholder="Leave a comment..."
+          placeholder={t('issue.comment.placeholder')}
           rows={2}
           data-testid="issue-comment-input"
           className="w-full resize-none rounded-t-lg bg-transparent px-3 py-2.5 text-[13px] text-foreground outline-none placeholder:text-text-dim"
         />
         <div className="flex items-center justify-between border-t border-border px-2.5 py-1.5">
-          <span className="text-[11px] text-text-dim">⌘↵ to submit</span>
+          <span className="text-[11px] text-text-dim">{t('issue.comment.submitHint', { shortcut: '⌘↵' })}</span>
           <Button
             variant="ghost"
             size="sm"
@@ -72,7 +74,7 @@ export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: Acti
             disabled={!commentText.trim()}
             data-testid="issue-comment-submit"
           >
-            Comment
+            {t('issue.comment.submit')}
           </Button>
         </div>
       </div>

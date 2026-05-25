@@ -1,0 +1,8 @@
+{
+  "await.action.view": "表示",
+  "await.source.event": "イベント",
+  "await.waitingFor": "{{source}} を待機中...",
+  "empty.startConversation": "メッセージを送信して会話を開始",
+  "error.loadMessages": "メッセージを読み込めませんでした。（不明なエラー）",
+  "status.thinking": "考えています..."
+}

@@ -1,0 +1,125 @@
+// Output: Provider-scoped i18next instance and language switching hook for React consumers.
+// Input: Initial locale resolved during Vite app bootstrap and locale resources.
+// Position: Client runtime boundary; React components read copy through react-i18next context.
+
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createInstance, type i18n as I18nInstance } from 'i18next'
+import resourcesToBackend from 'i18next-resources-to-backend'
+import { I18nextProvider, initReactI18next } from 'react-i18next'
+
+import enUS, { allNamespaces } from '~/locales/default'
+
+import { applyDocumentLocale, writeLocaleCookie } from './browser-locale'
+import { DEFAULT_LOCALE, normalizeLocale, type SupportedLocale } from './locales'
+import { getI18nSettings } from './settings'
+
+interface I18nContextValue {
+  i18n: I18nInstance
+  switchLang: (locale: string) => Promise<void>
+}
+
+interface I18nRuntime {
+  i18n: I18nInstance
+  readyPromise: Promise<void>
+}
+
+const I18nContext = createContext<I18nContextValue | null>(null)
+
+function createI18nInstance(initialLocale: SupportedLocale): I18nRuntime {
+  const instance = createInstance()
+
+  const readyPromise = Promise.resolve(instance
+    .use(initReactI18next)
+    .use(
+      resourcesToBackend(async (lng: string, ns: string) => {
+        const normalizedLocale = normalizeLocale(lng)
+
+        if (normalizedLocale === DEFAULT_LOCALE) {
+          return enUS[ns as keyof typeof enUS] ?? {}
+        }
+
+        try {
+          const mod = await import(`../locales/${normalizedLocale}/${ns}.json`)
+          return mod.default ?? mod
+        }
+        catch {
+          if (import.meta.env.DEV) {
+            console.warn(`Missing i18n namespace: ${normalizedLocale}/${ns}`)
+          }
+          return enUS[ns as keyof typeof enUS] ?? {}
+        }
+      }),
+    )
+    .init({
+      ...getI18nSettings(initialLocale, allNamespaces),
+      partialBundledLanguages: true,
+      returnEmptyString: false,
+      returnNull: false,
+      react: {
+        useSuspense: false,
+      },
+    }))
+    .then(() => undefined)
+
+  return { i18n: instance, readyPromise }
+}
+
+export function I18nProvider({
+  children,
+  initialLocale,
+}: {
+  children: ReactNode
+  initialLocale: SupportedLocale
+}) {
+  const runtime = useMemo(() => createI18nInstance(initialLocale), [initialLocale])
+  const { i18n, readyPromise } = runtime
+  const [isReady, setIsReady] = useState(() => i18n.isInitialized)
+
+  useEffect(() => {
+    if (i18n.isInitialized) {
+      setIsReady(true)
+      return
+    }
+
+    let cancelled = false
+    void readyPromise.then(() => {
+      if (!cancelled) {
+        setIsReady(true)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [i18n, readyPromise])
+
+  const value = useMemo<I18nContextValue>(() => {
+    return {
+      i18n,
+      async switchLang(locale: string) {
+        const normalizedLocale = normalizeLocale(locale)
+        await i18n.changeLanguage(normalizedLocale)
+        writeLocaleCookie(normalizedLocale)
+        applyDocumentLocale(normalizedLocale)
+      },
+    }
+  }, [i18n])
+
+  if (!isReady) {
+    return null
+  }
+
+  return (
+    <I18nContext.Provider value={value}>
+      <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
+    </I18nContext.Provider>
+  )
+}
+
+export function useI18n(): I18nContextValue {
+  const value = useContext(I18nContext)
+  if (!value) {
+    throw new Error('useI18n must be used within I18nProvider')
+  }
+  return value
+}

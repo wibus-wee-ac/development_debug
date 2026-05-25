@@ -7,6 +7,7 @@ import {
   SlidersHorizontalIcon,
   SortAscIcon,
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Checkbox } from '~/components/ui/checkbox'
 import {
@@ -22,6 +23,14 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { cn } from '~/lib/cn'
 
 import type { FilterState, ViewConfig } from './use-view-config'
+
+const priorityLabelKeys = {
+  urgent: 'priority.urgent',
+  high: 'priority.high',
+  medium: 'priority.medium',
+  low: 'priority.low',
+  none: 'filter.none',
+} as const
 
 interface ToolbarProps {
   config: ViewConfig
@@ -66,6 +75,7 @@ export function KanbanToolbar({
   onSearchChange: _onSearchChange,
   onCreateIssue,
 }: ToolbarProps) {
+  const { t } = useTranslation('kanban')
   const hasFilter = !!(
     filter.statusIds?.length
     || filter.priorities?.length
@@ -88,7 +98,7 @@ export function KanbanToolbar({
         <DisplayPopover config={config} setConfig={setConfig} />
 
         {onCreateIssue && (
-          <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn" aria-label="Create issue">
+          <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn" aria-label={t('issue.createAria')}>
             <PlusIcon className="size-3.5" aria-hidden="true" />
           </ToolbarPill>
         )}
@@ -96,7 +106,7 @@ export function KanbanToolbar({
         <div className="flex items-center gap-0.5 ml-1 rounded-full border border-border p-0.5">
           <button
             onClick={() => setConfig({ layout: 'board' })}
-            aria-label="Board layout"
+            aria-label={t('layout.boardAria')}
             aria-pressed={config.layout === 'board'}
             className={cn(
               'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
@@ -107,7 +117,7 @@ export function KanbanToolbar({
           </button>
           <button
             onClick={() => setConfig({ layout: 'list' })}
-            aria-label="List layout"
+            aria-label={t('layout.listAria')}
             aria-pressed={config.layout === 'list'}
             className={cn(
               'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
@@ -128,20 +138,21 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
   resetFilter: () => void
   hasFilter: boolean
 }) {
+  const { t } = useTranslation('kanban')
   const priorities = ['urgent', 'high', 'medium', 'low', 'none'] as const
   const selectedPriorities = filter.priorities ?? []
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <ToolbarPill active={hasFilter} data-testid="kanban-filter-btn" aria-label="Filter issues">
+        <ToolbarPill active={hasFilter} data-testid="kanban-filter-btn" aria-label={t('filter.aria')}>
           <FilterIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-56 p-0">
         <div className="p-3 space-y-3">
           <div>
-            <p className="text-[12px] font-medium text-muted-foreground mb-1.5">优先级</p>
+            <p className="text-[12px] font-medium text-muted-foreground mb-1.5">{t('filter.priority')}</p>
             <div className="space-y-1">
               {priorities.map(p => (
                 <label
@@ -159,7 +170,7 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
                       setFilter({ priorities: next.length ? next : undefined })
                     }}
                   />
-                  <span className="capitalize">{p === 'none' ? '无' : p}</span>
+                  <span className="capitalize">{t(priorityLabelKeys[p])}</span>
                 </label>
               ))}
             </div>
@@ -173,12 +184,12 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
                   setFilter({ isDelegated: checked ? true : null })
                 }}
               />
-              仅委派给 Agent
+              {t('filter.delegatedOnly')}
             </label>
           </div>
           {hasFilter && (
             <button onClick={resetFilter} className="text-[12px] text-muted-foreground hover:text-foreground">
-              清除筛选
+              {t('filter.clear')}
             </button>
           )}
         </div>
@@ -188,18 +199,19 @@ function FilterPopover({ filter, setFilter, resetFilter, hasFilter }: {
 }
 
 function GroupByDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
+  const { t } = useTranslation('kanban')
   const options = [
-    { value: 'status', label: '状态' },
-    { value: 'priority', label: '优先级' },
-    { value: 'milestone', label: '里程碑' },
-    { value: 'assignee', label: '负责人' },
-    { value: 'label', label: '标签' },
+    { value: 'status', label: t('group.status') },
+    { value: 'priority', label: t('group.priority') },
+    { value: 'milestone', label: t('group.milestone') },
+    { value: 'assignee', label: t('group.assignee') },
+    { value: 'label', label: t('group.label') },
   ] as const
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ToolbarPill data-testid="kanban-group-btn" aria-label="Group issues">
+        <ToolbarPill data-testid="kanban-group-btn" aria-label={t('group.aria')}>
           <GroupIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </DropdownMenuTrigger>
@@ -217,18 +229,19 @@ function GroupByDropdown({ config, setConfig }: { config: ViewConfig, setConfig:
 }
 
 function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
+  const { t } = useTranslation('kanban')
   const options = [
-    { value: 'manual', label: '手动' },
-    { value: 'priority', label: '优先级' },
-    { value: 'created', label: '创建时间' },
-    { value: 'updated', label: '更新时间' },
-    { value: 'status', label: '状态' },
+    { value: 'manual', label: t('sort.manual') },
+    { value: 'priority', label: t('sort.priority') },
+    { value: 'created', label: t('sort.created') },
+    { value: 'updated', label: t('sort.updated') },
+    { value: 'status', label: t('sort.status') },
   ] as const
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <ToolbarPill data-testid="kanban-sort-btn" aria-label="Sort issues">
+        <ToolbarPill data-testid="kanban-sort-btn" aria-label={t('sort.aria')}>
           <SortAscIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </DropdownMenuTrigger>
@@ -242,7 +255,7 @@ function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p
         </DropdownMenuRadioGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => setConfig({ orderDirection: config.orderDirection === 'asc' ? 'desc' : 'asc' })}>
-          {config.orderDirection === 'asc' ? '升序 ↑' : '降序 ↓'}
+          {config.orderDirection === 'asc' ? t('sort.asc') : t('sort.desc')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -250,22 +263,23 @@ function SortDropdown({ config, setConfig }: { config: ViewConfig, setConfig: (p
 }
 
 function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: (p: Partial<ViewConfig>) => void }) {
+  const { t } = useTranslation('kanban')
   const properties: { key: keyof ViewConfig['displayProperties'], label: string }[] = [
-    { key: 'id', label: '编号' },
-    { key: 'priority', label: '优先级' },
-    { key: 'status', label: '状态' },
-    { key: 'labels', label: '标签' },
-    { key: 'assignee', label: '负责人' },
-    { key: 'agentIndicator', label: 'Agent 状态' },
-    { key: 'milestone', label: '里程碑' },
-    { key: 'dueDate', label: '截止日期' },
-    { key: 'createdAt', label: '创建时间' },
+    { key: 'id', label: t('display.id') },
+    { key: 'priority', label: t('display.priority') },
+    { key: 'status', label: t('display.status') },
+    { key: 'labels', label: t('display.labels') },
+    { key: 'assignee', label: t('display.assignee') },
+    { key: 'agentIndicator', label: t('display.agentIndicator') },
+    { key: 'milestone', label: t('display.milestone') },
+    { key: 'dueDate', label: t('display.dueDate') },
+    { key: 'createdAt', label: t('display.createdAt') },
   ]
 
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <ToolbarPill data-testid="kanban-display-btn" aria-label="Display options">
+        <ToolbarPill data-testid="kanban-display-btn" aria-label={t('display.aria')}>
           <SlidersHorizontalIcon className="size-3.5" aria-hidden="true" />
         </ToolbarPill>
       </PopoverTrigger>
@@ -294,7 +308,7 @@ function DisplayPopover({ config, setConfig }: { config: ViewConfig, setConfig: 
                 checked={config.showEmptyGroups}
                 onCheckedChange={checked => setConfig({ showEmptyGroups: !!checked })}
               />
-              显示空分组
+              {t('display.showEmptyGroups')}
             </label>
           </div>
         </div>

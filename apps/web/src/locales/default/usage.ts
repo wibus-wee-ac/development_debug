@@ -1,0 +1,27 @@
+// Output: Default English copy for usage analytics.
+// Input: Usage dashboard labels, chart headings, stat pills, and breakdown headings.
+// Position: Source of truth for usage feature i18n namespace.
+
+export default {
+  'title': 'Usage',
+  'description': 'Token consumption over the past year',
+  'streak.day': 'day streak',
+  'pill.totalCost': 'Total Cost',
+  'pill.today': 'Today',
+  'pill.prompt': 'Prompt',
+  'pill.completion': 'Completion',
+  'pill.turns': 'Turns',
+  'pill.avgDaily': 'Avg / day',
+  'pill.activeDays': 'Active days',
+  'pill.bestStreak': 'Best streak',
+  'pill.peak': 'Peak',
+  'pill.peakValue': '{{tokens}} on {{date}}',
+  'chart.last30Days': 'Last 30 days',
+  'chart.dailyCostLast30Days': 'Daily cost (last 30 days)',
+  'summary.estimatedCost': 'estimated cost',
+  'summary.totalTokens': 'total tokens',
+  'breakdown.costByModel': 'Cost by Model',
+  'breakdown.byModel': 'By Model',
+  'breakdown.byAgent': 'By Agent',
+  'empty.noData': 'No usage data yet: send a message to start tracking',
+} as const

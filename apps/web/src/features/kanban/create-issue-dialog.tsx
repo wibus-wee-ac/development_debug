@@ -1,6 +1,7 @@
 import { ChevronRightIcon, MaximizeIcon, PaperclipIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import {
@@ -20,6 +21,14 @@ import { StatusIcon } from './shared/status-icon'
 import type { IssuePriority } from './use-kanban'
 import { useCreateIssue, useStatuses } from './use-kanban'
 
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 interface CreateIssueDialogProps {
   workspaceId: string
   defaultStatusId?: string
@@ -28,6 +37,7 @@ interface CreateIssueDialogProps {
 }
 
 export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
+  const { t } = useTranslation('kanban')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('none')
@@ -37,7 +47,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
   const { workspaces } = useWorkspaces()
   const createIssue = useCreateIssue()
 
-  const workspaceName = workspaces.find(w => w.id === workspaceId)?.name ?? 'Issues'
+  const workspaceName = workspaces.find(w => w.id === workspaceId)?.name ?? t('createIssue.workspaceFallback')
   const currentStatus = statuses.find((s: KanbanStatus) => s.id === statusId)
 
   useEffect(() => {
@@ -114,7 +124,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
               <span className="text-[12px] text-muted-foreground flex items-center gap-1">
                 <span className="font-medium text-muted-foreground">{workspaceName}</span>
                 <ChevronRightIcon className="size-3" />
-                <span>New issue</span>
+                <span>{t('createIssue.breadcrumb')}</span>
               </span>
               <div className="flex-1" />
               <button
@@ -138,7 +148,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
                 ref={titleInputRef}
                 value={title}
                 onChange={e => setTitle(e.target.value)}
-                placeholder="Issue title"
+                placeholder={t('createIssue.titlePlaceholder')}
                 className="w-full bg-transparent text-[15px] font-semibold text-foreground outline-none placeholder:text-muted-foreground leading-snug"
               />
             </div>
@@ -147,7 +157,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
               <MarkdownEditor
                 content={description}
                 onSave={setDescription}
-                placeholder="Add description..."
+                placeholder={t('createIssue.descriptionPlaceholder')}
                 className="text-[13px] text-muted-foreground"
               />
             </div>
@@ -161,8 +171,8 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
                 currentStatus={currentStatus}
               />
               <PriorityPicker value={priority} onChange={setPriority} />
-              <MetaBadge label="Assignee" />
-              <MetaBadge label="Labels" />
+              <MetaBadge label={t('property.assignee')} />
+              <MetaBadge label={t('property.labels')} />
             </div>
 
             {/* ── Footer ── */}
@@ -187,7 +197,7 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
                   'shadow-[var(--shadow-sm)]',
                 )}
               >
-                Create issue
+                {t('createIssue.submit')}
                 <kbd className="ml-0.5 rounded border border-border bg-muted px-1 text-[10px] text-muted-foreground font-sans leading-4">⌘↵</kbd>
               </button>
             </div>
@@ -220,6 +230,8 @@ function StatusPicker({ statuses, value, onChange, currentStatus }: {
   onChange: (v: string) => void
   currentStatus?: KanbanStatus
 }) {
+  const { t } = useTranslation('kanban')
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -234,7 +246,7 @@ function StatusPicker({ statuses, value, onChange, currentStatus }: {
                 <span>{currentStatus.name}</span>
 </>
 )
-            : <span>Status</span>}
+            : <span>{t('property.status')}</span>}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-44">
@@ -252,6 +264,9 @@ function StatusPicker({ statuses, value, onChange, currentStatus }: {
 }
 
 function PriorityPicker({ value, onChange }: { value: string, onChange: (v: string) => void }) {
+  const { t } = useTranslation('kanban')
+  const priority = value as IssuePriority
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -259,8 +274,8 @@ function PriorityPicker({ value, onChange }: { value: string, onChange: (v: stri
           type="button"
           className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
         >
-          <PriorityIcon priority={value as IssuePriority} size={13} />
-          <span>{priorityOptions.find(p => p.value === value)?.label ?? 'Priority'}</span>
+          <PriorityIcon priority={priority} size={13} />
+          <span>{t(priorityLabelKeys[priority] ?? 'property.priority')}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-40">
@@ -268,7 +283,7 @@ function PriorityPicker({ value, onChange }: { value: string, onChange: (v: stri
           {priorityOptions.map(p => (
             <DropdownMenuRadioItem key={p.value} value={p.value}>
               <PriorityIcon priority={p.value} size={13} />
-              {p.label}
+              {t(priorityLabelKeys[p.value])}
             </DropdownMenuRadioItem>
           ))}
         </DropdownMenuRadioGroup>

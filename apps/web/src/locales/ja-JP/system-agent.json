@@ -1,0 +1,17 @@
+{
+  "action.close": "閉じる",
+  "action.collapse": "折りたたむ",
+  "action.expand": "展開",
+  "action.send": "送信",
+  "action.stop": "停止",
+  "empty.noProfile.description": "Settings → Jarvis に移動し、provider profile と model を選択してください。",
+  "empty.noProfile.title": "profile が未設定です",
+  "empty.ready.description": "ワークスペース、アクティブなタブ、チャットセッション、現在のレイアウトを把握しています。",
+  "empty.ready.title": "何を手伝いましょうか？",
+  "error.createSessionFailed": "セッションの作成に失敗しました",
+  "error.sessionCreationFailed": "セッション作成に失敗しました",
+  "input.aria": "Jarvis メッセージ",
+  "input.includeContext": "コンテキストを含める",
+  "input.placeholder.ask": "Jarvis に質問...",
+  "input.placeholder.configureProfile": "設定 → Jarvis で profile を設定してください"
+}

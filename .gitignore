@@ -15,6 +15,9 @@ chronicle/target/
 apps/desktop/release
 .cradle/
 apps/server/openapi.json
+apps/web/i18n-hardcoded-report.json
+apps/web/i18n-missing-report.json
+apps/web/i18n-unused-keys-report.json
 
 .build
 tmp

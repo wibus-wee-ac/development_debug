@@ -1,4 +1,5 @@
 import { ChevronDownIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
@@ -7,6 +8,9 @@ import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 
 import { RUNTIME_KIND_OPTIONS } from './constants'
+
+type CommonKey = keyof typeof import('~/locales/default').default.common
+type RuntimeOptionKind = (typeof RUNTIME_KIND_OPTIONS)[number]['value']
 
 const RUNTIME_ICON_KEYS: Record<RuntimeKind, string> = {
   'standard': 'custom',
@@ -17,12 +21,27 @@ const RUNTIME_ICON_KEYS: Record<RuntimeKind, string> = {
   'acp-chat': 'custom',
 }
 
+const runtimeLabelKeys = {
+  standard: 'runtime.standard.label',
+  'claude-agent': 'runtime.claudeAgent.label',
+  codex: 'runtime.codex.label',
+  'cli-tui': 'runtime.cliTui.label',
+} satisfies Record<RuntimeOptionKind, CommonKey>
+
+const runtimeDescriptionKeys = {
+  standard: 'runtime.standard.description',
+  'claude-agent': 'runtime.claudeAgent.description',
+  codex: 'runtime.codex.description',
+  'cli-tui': 'runtime.cliTui.description',
+} satisfies Record<RuntimeOptionKind, CommonKey>
+
 interface RuntimeSelectorProps {
   value: RuntimeKind
   onChange: (kind: RuntimeKind) => void
 }
 
 export function RuntimeSelector({ value, onChange }: RuntimeSelectorProps) {
+  const { t } = useTranslation('common')
   const current = RUNTIME_KIND_OPTIONS.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS[0]
   const Icon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[value]] ?? PROVIDER_ICONS.custom!
 
@@ -34,7 +53,7 @@ export function RuntimeSelector({ value, onChange }: RuntimeSelectorProps) {
         )}
       >
         <Icon className="size-3.5 shrink-0" />
-        <span>{current.label}</span>
+        <span>{t(runtimeLabelKeys[current.value])}</span>
         <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
       </MenuTrigger>
       <MenuPopup align="start" side="top" sideOffset={4}>
@@ -48,8 +67,10 @@ export function RuntimeSelector({ value, onChange }: RuntimeSelectorProps) {
             >
               <OptIcon className="size-3.5" />
               <div className="flex flex-col">
-                <span>{opt.label}</span>
-                <span className="text-[11px] text-muted-foreground">{opt.description}</span>
+                <span>{t(runtimeLabelKeys[opt.value])}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {t(runtimeDescriptionKeys[opt.value])}
+                </span>
               </div>
             </MenuItem>
           )

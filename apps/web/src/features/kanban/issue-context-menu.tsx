@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   AlertDialog,
@@ -74,18 +75,27 @@ const priorityOptions: Array<{ value: IssuePriority, label: string }> = [
   { value: 'none', label: 'None' },
 ]
 
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 function statusCategory(status: KanbanStatus): StatusCategory {
   return status.category as StatusCategory
 }
 
-function copyText(value: string, successTitle: string) {
+function copyText(value: string, successTitle: string, failureTitle: string) {
   void navigator.clipboard.writeText(value).then(
     () => toastManager.add({ type: 'success', title: successTitle }),
-    () => toastManager.add({ type: 'error', title: 'Copy failed' }),
+    () => toastManager.add({ type: 'error', title: failureTitle }),
   )
 }
 
 export function IssueContextMenu({ issue, statuses, milestones, onOpen, children }: IssueContextMenuProps) {
+  const { t } = useTranslation('kanban')
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const { workspaces } = useWorkspaces()
   const { agents } = useAgents()
@@ -100,10 +110,11 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
     || agent.id === issue.delegateAgentId
     || agent.providerTargetId === issue.delegateAgentProfileId
   )) ?? null
+  const currentUserName = t('assignee.currentUser')
   const assignedHuman = issue.assigneeKind === 'user'
     ? issue.assigneeId === CURRENT_USER_ASSIGNEE.id
-      ? CURRENT_USER_ASSIGNEE
-      : { id: issue.assigneeId ?? '', name: issue.assigneeId ?? 'Unknown user' }
+      ? { ...CURRENT_USER_ASSIGNEE, name: currentUserName }
+      : { id: issue.assigneeId ?? '', name: issue.assigneeId ?? t('assignee.unknownUser') }
     : null
   const assigneeValue = assignedAgent
     ? `agent:${assignedAgent.id}`
@@ -168,22 +179,22 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
           </ContextMenuLabel>
           <ContextMenuItem onSelect={onOpen}>
             <ExternalLinkIcon className="size-4" />
-            Open issue
+            {t('context.openIssue')}
           </ContextMenuItem>
 
         <ContextMenuSeparator />
 
-        <ContextMenuItem onSelect={() => copyText(issueKey, 'Issue key copied')}>
+        <ContextMenuItem onSelect={() => copyText(issueKey, t('context.copyIssueKeySuccess'), t('context.copyFailed'))}>
           <CopyIcon className="size-4" />
-          Copy issue key
+          {t('context.copyIssueKey')}
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => copyText(issue.title, 'Issue title copied')}>
+        <ContextMenuItem onSelect={() => copyText(issue.title, t('context.copyTitleSuccess'), t('context.copyFailed'))}>
           <ClipboardIcon className="size-4" />
-          Copy title
+          {t('context.copyTitle')}
         </ContextMenuItem>
-        <ContextMenuItem onSelect={() => copyText(issue.id, 'Issue ID copied')}>
+        <ContextMenuItem onSelect={() => copyText(issue.id, t('context.copyIssueIdSuccess'), t('context.copyFailed'))}>
           <ClipboardIcon className="size-4" />
-          Copy issue ID
+          {t('context.copyIssueId')}
         </ContextMenuItem>
 
         <ContextMenuSeparator />
@@ -191,7 +202,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
         <ContextMenuSub>
           <ContextMenuSubTrigger disabled={isMutating || statuses.length === 0}>
             <CircleDashedIcon className="size-4" />
-            Status
+            {t('property.status')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-56">
             <ContextMenuRadioGroup
@@ -211,7 +222,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
         <ContextMenuSub>
           <ContextMenuSubTrigger disabled={isMutating}>
             <FlagIcon className="size-4" />
-            Priority
+            {t('property.priority')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-44">
             <ContextMenuRadioGroup
@@ -221,7 +232,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
               {priorityOptions.map(priority => (
                 <ContextMenuRadioItem key={priority.value} value={priority.value} disabled={isMutating}>
                   <PriorityIcon priority={priority.value} size={14} />
-                  {priority.label}
+                  {t(priorityLabelKeys[priority.value])}
                 </ContextMenuRadioItem>
               ))}
             </ContextMenuRadioGroup>
@@ -231,7 +242,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
         <ContextMenuSub>
           <ContextMenuSubTrigger disabled={isMutating}>
             <MilestoneIcon className="size-4" />
-            Milestone
+            {t('property.milestone')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-56">
             <ContextMenuRadioGroup
@@ -240,7 +251,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
             >
               <ContextMenuRadioItem value="" disabled={isMutating}>
                 <CircleDashedIcon className="size-4" />
-                No milestone
+                {t('issue.label.noMilestone')}
               </ContextMenuRadioItem>
               {milestones.length > 0 && <ContextMenuSeparator />}
               {milestones.map(milestone => (
@@ -260,27 +271,27 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
               : assignedHuman
                 ? <UserIcon className="size-4" />
                 : <UserRoundXIcon className="size-4" />}
-            Assignee
+            {t('property.assignee')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-56">
             <ContextMenuRadioGroup value={assigneeValue} onValueChange={handleAssigneeChange}>
               <ContextMenuRadioItem value="" disabled={isMutating}>
                 <UserRoundXIcon className="size-4" />
-                Unassigned
+                {t('assignee.unassigned')}
               </ContextMenuRadioItem>
               <ContextMenuSeparator />
-              <ContextMenuLabel>Team members</ContextMenuLabel>
+              <ContextMenuLabel>{t('assignee.teamMembers')}</ContextMenuLabel>
               <ContextMenuRadioItem value={`user:${CURRENT_USER_ASSIGNEE.id}`} disabled={isMutating}>
-                <AssigneeAvatar name={CURRENT_USER_ASSIGNEE.name} size={18} />
-                <span className="truncate">{CURRENT_USER_ASSIGNEE.name}</span>
+                <AssigneeAvatar name={currentUserName} size={18} />
+                <span className="truncate">{currentUserName}</span>
               </ContextMenuRadioItem>
               <ContextMenuSeparator />
-              <ContextMenuLabel>AI Agents</ContextMenuLabel>
+              <ContextMenuLabel>{t('assignee.aiAgents')}</ContextMenuLabel>
               {delegateAgents.length === 0
                 ? (
                     <ContextMenuItem disabled>
                       <BotIcon className="size-4" />
-                      No agents configured
+                      {t('assignee.noAgentsConfigured')}
                     </ContextMenuItem>
                   )
                 : delegateAgents.map(agent => (
@@ -301,12 +312,12 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
         <ContextMenuItem disabled={isMutating} variant="destructive" onSelect={() => setDeleteDialogOpen(true)}>
           <Trash2Icon className="size-4" />
-          Delete issue
+          {t('context.deleteIssue')}
         </ContextMenuItem>
         {isMutating && (
           <ContextMenuItem disabled>
             <CheckIcon className="size-4" />
-            Applying changes
+            {t('context.applyingChanges')}
           </ContextMenuItem>
         )}
         </ContextMenuContent>
@@ -319,20 +330,20 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
               <Trash2Icon className="size-5 text-destructive" />
             </AlertDialogMedia>
             <AlertDialogTitle>
-              Delete issue
+              {t('context.deleteIssue')}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <span>Delete </span>
+              <span>{t('context.deleteDescriptionPrefix')}</span>
               <span>{issueKey}</span>
-              <span>? This cannot be undone.</span>
+              <span>{t('context.deleteDescriptionSuffix')}</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>
-              Cancel
+              {t('context.cancel')}
             </AlertDialogCancel>
             <AlertDialogAction variant="destructive" onClick={handleDelete}>
-              Delete
+              {t('context.delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

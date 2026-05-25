@@ -1,0 +1,23 @@
+{
+  "breakdown.byAgent": "Agent 別",
+  "breakdown.byModel": "モデル別",
+  "breakdown.costByModel": "モデル別コスト",
+  "chart.dailyCostLast30Days": "日別コスト（直近 30 日）",
+  "chart.last30Days": "直近 30 日",
+  "description": "過去 1 年の token 消費",
+  "empty.noData": "使用データはまだありません。メッセージを送信すると記録が始まります",
+  "pill.activeDays": "アクティブ日数",
+  "pill.avgDaily": "日平均",
+  "pill.bestStreak": "最長継続",
+  "pill.completion": "Completion",
+  "pill.peak": "ピーク",
+  "pill.peakValue": "{{date}} に {{tokens}}",
+  "pill.prompt": "Prompt",
+  "pill.today": "今日",
+  "pill.totalCost": "総コスト",
+  "pill.turns": "ターン",
+  "streak.day": "日継続",
+  "summary.estimatedCost": "推定コスト",
+  "summary.totalTokens": "総 tokens",
+  "title": "使用量"
+}

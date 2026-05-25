@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -46,6 +48,8 @@ interface GlobalSearchDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
 }
+
+type SearchTranslation = TFunction<'search'>
 
 const DEBOUNCE_MS = 150
 const SessionWorkspaceSchema = z
@@ -114,6 +118,7 @@ const GlobalSearchBoardListSchema = z
   .default([])
 
 function useCommands(close: () => void): CommandAction[] {
+  const { t } = useTranslation('search')
   const { openTab } = useCradleNavigation()
   const openSettings = useSettingsOverlayStore((s) => s.openSettings)
   const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
@@ -122,8 +127,8 @@ function useCommands(close: () => void): CommandAction[] {
     () => [
       {
         id: 'new-chat',
-        label: '新建对话',
-        keywords: 'new chat session 新建',
+        label: t('command.newChat.label'),
+        keywords: t('command.newChat.keywords'),
         icon: MessageSquareIcon,
         handler: () => {
           close()
@@ -132,8 +137,8 @@ function useCommands(close: () => void): CommandAction[] {
       },
       {
         id: 'open-settings',
-        label: '打开设置',
-        keywords: 'settings preferences 设置',
+        label: t('command.openSettings.label'),
+        keywords: t('command.openSettings.keywords'),
         icon: SettingsIcon,
         shortcut: '⌘,',
         handler: () => {
@@ -146,8 +151,8 @@ function useCommands(close: () => void): CommandAction[] {
       },
       {
         id: 'toggle-sidebar',
-        label: '切换侧栏',
-        keywords: 'sidebar toggle 侧栏',
+        label: t('command.toggleSidebar.label'),
+        keywords: t('command.toggleSidebar.keywords'),
         icon: TerminalIcon,
         shortcut: '⌘B',
         handler: () => {
@@ -157,8 +162,8 @@ function useCommands(close: () => void): CommandAction[] {
       },
       {
         id: 'open-usage',
-        label: '用量统计',
-        keywords: 'usage cost token 用量 费用',
+        label: t('command.openUsage.label'),
+        keywords: t('command.openUsage.keywords'),
         icon: CircleDotIcon,
         handler: () => {
           close()
@@ -166,7 +171,7 @@ function useCommands(close: () => void): CommandAction[] {
         }
       }
     ],
-    [close, openTab, openSettings, toggleSidebar]
+    [close, openTab, openSettings, t, toggleSidebar]
   )
 }
 
@@ -249,6 +254,7 @@ function useFileSearch(query: string, enabled: boolean) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogProps) {
+  const { t } = useTranslation('search')
   const { openTab } = useCradleNavigation()
   const openSettings = useSettingsOverlayStore((s) => s.openSettings)
   const setSettingsSection = useSettingsOverlayStore((s) => s.setSettingsSection)
@@ -441,16 +447,16 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Command Palette"
+        aria-label={t('aria.dialog')}
         className="w-full max-w-2xl overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
       >
         <Command shouldFilter={false} data-testid="global-search-dialog">
           <div className="overflow-hidden rounded-xl!">
             <CommandInput
-              placeholder="搜索对话、文件、Issue、命令..."
+              placeholder={t('placeholder')}
               value={query}
               onValueChange={handleQueryChange}
-              aria-label="全局搜索"
+              aria-label={t('aria.input')}
               data-testid="global-search-input"
             />
             <div>
@@ -462,7 +468,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {filteredCommands.length > 0 && !hasQuery && (
                   <>
                     <CommandGroup>
-                      <GroupHeader label="命令" count={filteredCommands.length} />
+                      <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
                       {filteredCommands.map((cmd) => (
                         <CommandActionRow key={cmd.id} command={cmd} />
                       ))}
@@ -475,7 +481,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {filteredCommands.length > 0 && hasQuery && (
                   <>
                     <CommandGroup>
-                      <GroupHeader label="命令" count={filteredCommands.length} />
+                      <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
                       {filteredCommands.map((cmd) => (
                         <CommandActionRow key={cmd.id} command={cmd} />
                       ))}
@@ -490,7 +496,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {threadHits.length > 0 && (
                   <>
                     <CommandGroup>
-                      <GroupHeader label="对话" count={threadHits.length} />
+                      <GroupHeader label={t('group.threads')} count={threadHits.length} />
                       {threadGroups.map((group) =>
                         group.items
                           .slice(0, 5)
@@ -512,7 +518,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {chronicleHits.length > 0 && (
                   <>
                     <CommandGroup>
-                      <GroupHeader label="记忆" count={chronicleHits.length} />
+                      <GroupHeader label={t('group.chronicle')} count={chronicleHits.length} />
                       {chronicleHits.slice(0, 8).map((hit) => (
                         <ChronicleSearchCommandRow
                           key={`${hit.type}-${hit.id}`}
@@ -529,7 +535,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {issues.length > 0 && (
                   <>
                     <CommandGroup>
-                      <GroupHeader label="Issue" count={issues.length} />
+                      <GroupHeader label={t('group.issues')} count={issues.length} />
                       {issues.slice(0, 8).map((issue) => (
                         <IssueSearchCommandRow
                           key={issue.id}
@@ -545,7 +551,7 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                 {/* File results */}
                 {files.length > 0 && (
                   <CommandGroup>
-                    <GroupHeader label="文件" count={files.length} />
+                    <GroupHeader label={t('group.files')} count={files.length} />
                     {files.map((file) => (
                       <FileSearchCommandRow
                         key={file.path}
@@ -570,17 +576,17 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                       <ArrowDownIcon />
                     </Kbd>
                   </KbdGroup>
-                  <span>选择</span>
+                  <span>{t('footer.select')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Kbd>
                     <CornerDownLeftIcon />
                   </Kbd>
-                  <span>打开</span>
+                  <span>{t('footer.open')}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Kbd>Esc</Kbd>
-                  <span>关闭</span>
+                  <span>{t('footer.close')}</span>
                 </div>
               </div>
               {isPending && <Spinner className="size-3" />}
@@ -710,12 +716,13 @@ const FileSearchCommandRow = memo(function FileSearchCommandRow({
 })
 
 function GroupHeader({ label, count }: { label: string; count: number }) {
+  const { t } = useTranslation('search')
+
   return (
     <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
       <span className="font-medium">{label}</span>
       <span className="text-[10px] text-muted-foreground">
-        {count}
-        {' 个结果'}
+        {t('group.resultCount', { count })}
       </span>
     </div>
   )
@@ -728,6 +735,7 @@ function ThreadSearchResultRow({
   hit: ThreadSearchHit
   workspaceLabel: string
 }) {
+  const { t } = useTranslation('search')
   const snippets = hit.snippets ?? []
 
   return (
@@ -750,13 +758,14 @@ function ThreadSearchResultRow({
           ))}
         </div>
       ) : (
-        <div className="pl-6 text-[11px] text-muted-foreground">仅标题匹配</div>
+        <div className="pl-6 text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</div>
       )}
     </>
   )
 }
 
 function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippets'][number] }) {
+  const { t } = useTranslation('search')
   const isUser = snippet.messageRole === 'user'
 
   return (
@@ -769,7 +778,7 @@ function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippet
           'mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm',
           isUser ? 'bg-primary/10 text-primary' : 'bg-foreground/10 text-foreground/70'
         )}
-        title={isUser ? '用户' : '助手'}
+        title={isUser ? t('thread.role.user') : t('thread.role.assistant')}
         aria-hidden="true"
       >
         {isUser ? <UserIcon className="size-2.5" /> : <SparklesIcon className="size-2.5" />}
@@ -782,8 +791,9 @@ function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippet
 }
 
 function ChronicleSearchResultRow({ hit }: { hit: ChronicleSearchHit }) {
-  const workspaceLabel = hit.workspaceName ?? 'No workspace'
-  const typeLabel = hit.type === 'memory' ? formatMemorySearchType(hit) : formatKnowledgeSearchType(hit)
+  const { t } = useTranslation('search')
+  const workspaceLabel = hit.workspaceName ?? t('workspace.none')
+  const typeLabel = hit.type === 'memory' ? formatMemorySearchType(hit, t) : formatKnowledgeSearchType(hit, t)
 
   return (
     <>
@@ -809,25 +819,25 @@ function ChronicleSearchResultRow({ hit }: { hit: ChronicleSearchHit }) {
   )
 }
 
-function formatMemorySearchType(hit: ChronicleSearchHit): string {
+function formatMemorySearchType(hit: ChronicleSearchHit, t: SearchTranslation): string {
   if (hit.memorySource === 'imported') {
-    return 'Imported'
+    return t('type.imported')
   }
-  return hit.memoryType === '6h' ? '6h Memory' : 'Memory'
+  return hit.memoryType === '6h' ? t('type.memory.sixHour') : t('type.memory')
 }
 
-function formatKnowledgeSearchType(hit: ChronicleSearchHit): string {
+function formatKnowledgeSearchType(hit: ChronicleSearchHit, t: SearchTranslation): string {
   switch (hit.cardType) {
     case 'decision':
-      return 'Decision'
+      return t('type.knowledge.decision')
     case 'insight':
-      return 'Insight'
+      return t('type.knowledge.insight')
     case 'task':
-      return 'Task'
+      return t('type.knowledge.task')
     case 'pattern':
-      return 'Pattern'
+      return t('type.knowledge.pattern')
     default:
-      return 'Knowledge'
+      return t('type.knowledge')
   }
 }
 
@@ -840,36 +850,50 @@ const PRIORITY_CLASSES: Record<string, string> = {
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
+  const { t } = useTranslation('search')
+  const priorityLabel = {
+    urgent: t('priority.urgent'),
+    high: t('priority.high'),
+    medium: t('priority.medium'),
+    low: t('priority.low'),
+  }[priority]
+
   return (
     <span
       className={cn('text-[10px] shrink-0', PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES.none)}
     >
-      {priority === 'none' ? '' : priority.charAt(0).toUpperCase() + priority.slice(1)}
+      {priorityLabel ?? ''}
     </span>
   )
 }
 
 function LoadingState() {
+  const { t } = useTranslation('search')
+
   return (
     <div className="flex flex-col items-center gap-2">
       <Spinner className="size-4" />
-      <span className="text-xs text-muted-foreground">搜索中...</span>
+      <span className="text-xs text-muted-foreground">{t('state.loading')}</span>
     </div>
   )
 }
 
 function NoResults() {
+  const { t } = useTranslation('search')
+
   return (
     <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground">没有找到匹配的结果</span>
+      <span className="text-xs text-muted-foreground">{t('state.noResults')}</span>
     </div>
   )
 }
 
 function IdleState() {
+  const { t } = useTranslation('search')
+
   return (
     <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground">输入关键词开始搜索</span>
+      <span className="text-xs text-muted-foreground">{t('state.idle')}</span>
     </div>
   )
 }

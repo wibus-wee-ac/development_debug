@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { m } from 'motion/react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { postSessions } from '~/api-gen/sdk.gen'
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
@@ -41,6 +42,7 @@ export function JarvisPopover({
   anchorRef: React.RefObject<HTMLElement | null>
   anchorKey: string
 }) {
+  const { t } = useTranslation('system-agent')
   const [input, setInput] = React.useState('')
   const [creating, setCreating] = React.useState(false)
   const [pendingInitialText, setPendingInitialText] = React.useState<string | null>(null)
@@ -164,7 +166,7 @@ export function JarvisPopover({
           setSendError(
             res.error
               ? String((res.error as { message?: string }).message ?? res.error)
-              : 'Session creation failed',
+              : t('error.sessionCreationFailed'),
           )
           return
         }
@@ -175,7 +177,7 @@ export function JarvisPopover({
         return
       }
       catch (e) {
-        setSendError(e instanceof Error ? e.message : 'Failed to create session')
+        setSendError(e instanceof Error ? e.message : t('error.createSessionFailed'))
         return
       }
       finally {
@@ -293,17 +295,17 @@ export function JarvisPopover({
       {!prefs?.profileId
         ? (
             <>
-              <p className="text-[13px] font-medium text-foreground mb-1.5">No profile configured</p>
+              <p className="text-[13px] font-medium text-foreground mb-1.5">{t('empty.noProfile.title')}</p>
               <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                Go to Settings → Jarvis and select a provider profile and model.
+                {t('empty.noProfile.description')}
               </p>
             </>
           )
         : (
             <>
-              <p className="text-[13px] font-medium text-foreground mb-1.5">What can I help with?</p>
+              <p className="text-[13px] font-medium text-foreground mb-1.5">{t('empty.ready.title')}</p>
               <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                I have full awareness of your workspace, active tabs, chat sessions, and current layout.
+                {t('empty.ready.description')}
               </p>
               {sendError && <p className="text-xs text-destructive/80 text-center mt-3">{sendError}</p>}
             </>
@@ -328,7 +330,7 @@ export function JarvisPopover({
 
   const sendButton = isStreaming
     ? (
-        <Button variant="outline" size="icon-xs" onClick={stop} aria-label="Stop">
+        <Button variant="outline" size="icon-xs" onClick={stop} aria-label={t('action.stop')}>
           <SquareIcon />
         </Button>
       )
@@ -338,7 +340,7 @@ export function JarvisPopover({
           size="icon-xs"
           disabled={!input.trim() || creating || !prefs?.profileId}
           onClick={() => void handleSend()}
-          aria-label="Send"
+          aria-label={t('action.send')}
         >
           <ArrowUpIcon />
         </Button>
@@ -390,7 +392,7 @@ export function JarvisPopover({
               variant="ghost"
               size="icon-xs"
               onClick={() => setJarvisExpanded(!jarvisExpanded)}
-              aria-label={jarvisExpanded ? 'Collapse' : 'Expand'}
+              aria-label={jarvisExpanded ? t('action.collapse') : t('action.expand')}
             >
               {jarvisExpanded ? <MinimizeIcon /> : <MaximizeIcon />}
             </Button>
@@ -401,7 +403,7 @@ export function JarvisPopover({
                 setJarvisExpanded(false)
                 onOpenChange(false)
               }}
-              aria-label="Close"
+              aria-label={t('action.close')}
             >
               <XIcon />
             </Button>
@@ -419,7 +421,7 @@ export function JarvisPopover({
             <textarea
               ref={textareaRef}
               value={input}
-              aria-label="Jarvis message"
+              aria-label={t('input.aria')}
               onChange={(e) => {
                 setInput(e.target.value)
                 const el = e.target
@@ -428,7 +430,7 @@ export function JarvisPopover({
               }}
               onKeyDown={handleKeyDown}
               placeholder={
-                !prefs?.profileId ? 'Configure a profile in Settings → Jarvis' : 'Ask Jarvis...'
+                !prefs?.profileId ? t('input.placeholder.configureProfile') : t('input.placeholder.ask')
               }
               rows={1}
               disabled={!prefs?.profileId}
@@ -447,7 +449,7 @@ export function JarvisPopover({
                   htmlFor={includeContextSwitchId}
                   className="truncate text-[11px] text-muted-foreground"
                 >
-                  Include context
+                  {t('input.includeContext')}
                 </label>
               </div>
               {sendButton}

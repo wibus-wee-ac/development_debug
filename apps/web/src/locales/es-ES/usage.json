@@ -1,0 +1,23 @@
+{
+  "breakdown.byAgent": "Por Agent",
+  "breakdown.byModel": "Por modelo",
+  "breakdown.costByModel": "Costo por modelo",
+  "chart.dailyCostLast30Days": "Costo diario (últimos 30 días)",
+  "chart.last30Days": "Últimos 30 días",
+  "description": "Consumo de tokens durante el último año",
+  "empty.noData": "Aún no hay datos de uso: envía un mensaje para empezar a registrar",
+  "pill.activeDays": "Días activos",
+  "pill.avgDaily": "Prom. / día",
+  "pill.bestStreak": "Mejor racha",
+  "pill.completion": "Completion",
+  "pill.peak": "Pico",
+  "pill.peakValue": "{{tokens}} el {{date}}",
+  "pill.prompt": "Prompt",
+  "pill.today": "Hoy",
+  "pill.totalCost": "Costo total",
+  "pill.turns": "Turnos",
+  "streak.day": "días de racha",
+  "summary.estimatedCost": "costo estimado",
+  "summary.totalTokens": "tokens totales",
+  "title": "Uso"
+}

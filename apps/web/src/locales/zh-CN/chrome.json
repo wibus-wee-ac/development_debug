@@ -1,0 +1,18 @@
+{
+  "dev.action.hardReload": "强制刷新",
+  "dev.action.hardReload.title": "强制刷新（忽略缓存）",
+  "dev.action.openDevtools": "打开 DevTools",
+  "dev.action.openDevtools.title": "打开 DevTools 窗口",
+  "footer.action.askJarvis": "询问 Jarvis",
+  "header.action.collapseSidebar": "收起侧边栏",
+  "header.action.expandSidebar": "展开侧边栏",
+  "header.action.toggleBottomPanel": "切换底部面板",
+  "header.action.toggleBrowserPanel": "切换浏览器面板",
+  "header.action.toggleRightPanel": "切换右侧面板",
+  "header.tab.settings": "设置",
+  "rightAside.issue.empty": "未选择会话",
+  "rightAside.tab.await": "动态",
+  "rightAside.tab.changes": "变更",
+  "rightAside.tab.files": "文件",
+  "rightAside.tab.issue": "事项"
+}

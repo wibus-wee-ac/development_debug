@@ -5,6 +5,7 @@
 Jarvis / system-agent feature surface for the renderer.
 This directory owns workspace-context collection, prompt formatting for Jarvis, the Jarvis popover UI,
 cross-window Jarvis footer tab synchronization, and the single React Query boundary used to read/write Jarvis preferences.
+Jarvis popover empty-state copy and setup guidance are owned by the `system-agent` i18n namespace.
 
 ## Files
 

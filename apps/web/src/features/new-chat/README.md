@@ -5,6 +5,7 @@
 Chat launcher domain: the empty-state home screen where users compose a new chat.
 Handles workspace selection, Agent Profile selection, and session creation before navigating to the chat route.
 Split from `features/workspace/` to keep workspace management separate from new-session creation.
+User-facing composer placeholders, quick prompt labels, readiness notices, workspace picker fallbacks, and recent-session labels are owned by the `new-chat` i18n namespace.
 
 ## Files
 

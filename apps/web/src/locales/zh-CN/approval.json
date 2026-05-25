@@ -1,0 +1,10 @@
+{
+  "action.allow": "允许",
+  "action.allowAlways": "始终允许",
+  "action.deny": "拒绝",
+  "empty.description": "代理审批请求会显示在这里。",
+  "empty.title": "暂无待处理审批",
+  "inbox.description": "待处理的代理权限请求",
+  "inbox.title": "审批",
+  "request.prefix": "需要权限："
+}

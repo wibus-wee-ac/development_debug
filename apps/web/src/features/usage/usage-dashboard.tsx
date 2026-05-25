@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import {
@@ -114,6 +115,7 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
 }
 
 export function UsageDashboard() {
+  const { t } = useTranslation('usage')
   const dailyQuery = useQuery({
     ...getUsageDailyOptions({ query: { days: '365' } }),
     select: DailyUsageListSchema.parse,
@@ -160,13 +162,13 @@ export function UsageDashboard() {
         {/* Header row with streak */}
         <div className="flex items-end justify-between">
           <div>
-            <h1 className="text-lg font-semibold text-foreground text-balance" data-testid="usage-dashboard-title">Usage</h1>
-            <p className="mt-0.5 text-sm text-muted-foreground">Token consumption over the past year</p>
+            <h1 className="text-lg font-semibold text-foreground text-balance" data-testid="usage-dashboard-title">{t('title')}</h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">{t('description')}</p>
           </div>
           {stats && stats.currentStreak > 0 && (
             <div className="flex items-center gap-1.5 text-sm text-foreground">
               <span className="font-semibold tabular-nums">{stats.currentStreak}</span>
-              <span className="text-muted-foreground text-xs">day streak</span>
+              <span className="text-muted-foreground text-xs">{t('streak.day')}</span>
             </div>
           )}
         </div>
@@ -175,17 +177,17 @@ export function UsageDashboard() {
         {stats && hasData && (
           <div className="mt-6 flex flex-wrap gap-3">
             {costSummary && costSummary.totalCostUsd > 0 && (
-              <Pill label="Total Cost" value={formatUsd(costSummary.totalCostUsd)} dataTestId="usage-pill-total-cost" accent />
+              <Pill label={t('pill.totalCost')} value={formatUsd(costSummary.totalCostUsd)} dataTestId="usage-pill-total-cost" accent />
             )}
-            <Pill label="Today" value={formatTokens(stats.todayTokens)} dataTestId="usage-pill-today-tokens" />
-            <Pill label="Prompt" value={formatTokens(summary!.totalPromptTokens)} dataTestId="usage-pill-prompt-tokens" />
-            <Pill label="Completion" value={formatTokens(summary!.totalCompletionTokens)} dataTestId="usage-pill-completion-tokens" />
-            <Pill label="Turns" value={String(summary!.totalTurns)} dataTestId="usage-pill-total-turns" />
-            <Pill label="Avg / day" value={formatTokens(stats.avgDailyTokens)} dataTestId="usage-pill-avg-daily-tokens" />
-            <Pill label="Active days" value={String(stats.activeDays)} dataTestId="usage-pill-active-days" />
-            <Pill label="Best streak" value={`${stats.longestStreak}d`} dataTestId="usage-pill-best-streak" />
+            <Pill label={t('pill.today')} value={formatTokens(stats.todayTokens)} dataTestId="usage-pill-today-tokens" />
+            <Pill label={t('pill.prompt')} value={formatTokens(summary!.totalPromptTokens)} dataTestId="usage-pill-prompt-tokens" />
+            <Pill label={t('pill.completion')} value={formatTokens(summary!.totalCompletionTokens)} dataTestId="usage-pill-completion-tokens" />
+            <Pill label={t('pill.turns')} value={String(summary!.totalTurns)} dataTestId="usage-pill-total-turns" />
+            <Pill label={t('pill.avgDaily')} value={formatTokens(stats.avgDailyTokens)} dataTestId="usage-pill-avg-daily-tokens" />
+            <Pill label={t('pill.activeDays')} value={String(stats.activeDays)} dataTestId="usage-pill-active-days" />
+            <Pill label={t('pill.bestStreak')} value={`${stats.longestStreak}d`} dataTestId="usage-pill-best-streak" />
             {stats.peakDay && (
-              <Pill label="Peak" value={`${formatTokens(stats.peakDay.totalTokens)} on ${stats.peakDay.date.slice(5)}`} dataTestId="usage-pill-peak-day" />
+              <Pill label={t('pill.peak')} value={t('pill.peakValue', { tokens: formatTokens(stats.peakDay.totalTokens), date: stats.peakDay.date.slice(5) })} dataTestId="usage-pill-peak-day" />
             )}
           </div>
         )}
@@ -194,14 +196,14 @@ export function UsageDashboard() {
         {hasData && (
           <div className="mt-8 flex items-end gap-8">
             <div className="flex-1">
-              <p className="text-[11px] text-muted-foreground mb-1.5">Last 30 days</p>
+              <p className="text-[11px] text-muted-foreground mb-1.5">{t('chart.last30Days')}</p>
               <Sparkline data={daily} />
             </div>
             <div className="text-right">
               {costSummary && costSummary.totalCostUsd > 0 && (
                 <>
                   <p className="text-3xl font-semibold tabular-nums text-foreground" data-testid="usage-total-cost">{formatUsd(costSummary.totalCostUsd)}</p>
-                  <p className="text-[11px] text-muted-foreground mt-0.5">estimated cost</p>
+                  <p className="text-[11px] text-muted-foreground mt-0.5">{t('summary.estimatedCost')}</p>
                 </>
               )}
               <p
@@ -213,7 +215,7 @@ export function UsageDashboard() {
               >
                 {formatTokens(summary!.totalTokens)}
               </p>
-              <p className="text-[11px] text-muted-foreground mt-0.5">total tokens</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">{t('summary.totalTokens')}</p>
             </div>
           </div>
         )}
@@ -221,7 +223,7 @@ export function UsageDashboard() {
         {/* Cost sparkline */}
         {dailyCost.length > 1 && (
           <div className="mt-6">
-            <p className="text-[11px] text-muted-foreground mb-1.5">Daily cost (last 30 days)</p>
+            <p className="text-[11px] text-muted-foreground mb-1.5">{t('chart.dailyCostLast30Days')}</p>
             <CostSparkline data={dailyCost} />
           </div>
         )}
@@ -237,7 +239,7 @@ export function UsageDashboard() {
             {/* By Model — cost */}
             {costSummary && costSummary.byModel.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">Cost by Model</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.costByModel')}</p>
                 <div className="space-y-2.5">
                   {costSummary.byModel.map(m => (
                     <CostBarRow key={m.modelId} label={m.modelId} costUsd={m.costUsd} tokens={m.totalTokens} max={costSummary.byModel[0].costUsd} />
@@ -248,7 +250,7 @@ export function UsageDashboard() {
             {/* By Model — tokens (fallback if no cost data) */}
             {(!costSummary || costSummary.byModel.length === 0) && summary!.byModel.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">By Model</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.byModel')}</p>
                 <div className="space-y-2.5">
                   {summary!.byModel.map(m => (
                     <BarRow key={m.modelId} label={m.modelId} value={m.totalTokens} max={summary!.byModel[0].totalTokens} />
@@ -259,7 +261,7 @@ export function UsageDashboard() {
             {/* By Agent */}
             {summary!.byAgent.length > 0 && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">By Agent</p>
+                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.byAgent')}</p>
                 <div className="space-y-2.5">
                   {summary!.byAgent.map(a => (
                     <BarRow key={a.agentProfileId} label={a.agentProfileName ?? a.agentProfileId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
@@ -274,7 +276,7 @@ export function UsageDashboard() {
         {summary && summary.totalTokens === 0 && (
           <div className="mt-20 text-center" data-testid="usage-empty-state">
             <p className="text-sm text-muted-foreground">
-              No usage data yet: send a message to start tracking
+              {t('empty.noData')}
             </p>
           </div>
         )}
