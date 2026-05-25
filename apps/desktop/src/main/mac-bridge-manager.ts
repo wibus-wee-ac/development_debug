@@ -10,11 +10,41 @@ import {
   MacBridgeEventSchema,
   MacBridgeResponseSchema,
   MacBridgeStatusSchema,
+  MacAppshotCaptureFrontmostWindowResultSchema,
+  MacAppshotFrontmostContextSchema,
+  MacAppshotProbeTransitionRequestSchema,
+  MacAppshotProbeTransitionResultSchema,
   MacCaptureFrontmostWindowResultSchema,
+  MacCodexAppshotNextUpdateRequestSchema,
+  MacCodexAppshotServiceResultSchema,
+  MacCodexAppshotStartRequestSchema,
+  MacCodexAppshotStartResultSchema,
+  MacCodexAppshotUpdateSchema,
+  MacDisplayRecordingFinishRequestSchema,
+  MacDisplayRecordingFinishResultSchema,
+  MacDisplayRecordingStartRequestSchema,
+  MacDisplayRecordingStartResultSchema,
+  MacWindowRecordingStartRequestSchema,
+  MacScreenCaptureKitDiagnosticsSchema,
   type MacBridgeRuntimeStatus,
   type MacBridgeStatus,
+  type MacAppshotCaptureFrontmostWindowRequest,
+  type MacAppshotCaptureFrontmostWindowResult,
+  type MacAppshotFrontmostContext,
+  type MacAppshotProbeTransitionRequest,
+  type MacAppshotProbeTransitionResult,
   type MacCaptureFrontmostWindowRequest,
   type MacCaptureFrontmostWindowResult,
+  type MacCodexAppshotNextUpdateRequest,
+  type MacCodexAppshotServiceResult,
+  type MacCodexAppshotStartRequest,
+  type MacCodexAppshotStartResult,
+  type MacCodexAppshotUpdate,
+  type MacDisplayRecordingFinishRequest,
+  type MacDisplayRecordingFinishResult,
+  type MacDisplayRecordingStartRequest,
+  type MacDisplayRecordingStartResult,
+  type MacWindowRecordingStartRequest,
   type MacHotkeyTriggeredEvent,
   type MacInputConfigureRequest,
   type MacInputConfigureResult,
@@ -27,6 +57,7 @@ import {
   MacHotkeyTriggeredEventSchema,
   MacInputConfigureResultSchema,
   type MacPermissionsStatus,
+  type MacScreenCaptureKitDiagnostics,
   MacPermissionsStatusSchema,
 } from './mac-bridge-protocol'
 
@@ -114,9 +145,12 @@ export function resolveMacBridgeBinaryPath(options: MacBridgeManagerOptions = {}
   return candidates.find(candidate => existsSync(candidate)) ?? candidates[0]!
 }
 
-function createBridgeError(message: string, code = 'mac-bridge-error'): Error {
-  const error = new Error(message)
+function createBridgeError(message: string, code = 'mac-bridge-error', details?: unknown): Error {
+  const error = new Error(message) as Error & { details?: unknown }
   error.name = code
+  if (details !== undefined) {
+    error.details = details
+  }
   return error
 }
 
@@ -295,6 +329,80 @@ export class MacBridgeManager {
     return MacCaptureFrontmostWindowResultSchema.parse(result)
   }
 
+  async captureAppshotFrontmostWindow(
+    params: MacAppshotCaptureFrontmostWindowRequest,
+  ): Promise<MacAppshotCaptureFrontmostWindowResult> {
+    const result = await this.request<unknown>('mac.appshot.captureFrontmostWindow', params, { timeoutMs: 30_000 })
+    return MacAppshotCaptureFrontmostWindowResultSchema.parse(result)
+  }
+
+  async readAppshotFrontmostContext(): Promise<MacAppshotFrontmostContext> {
+    const result = await this.request<unknown>('mac.appshot.frontmostContext')
+    return MacAppshotFrontmostContextSchema.parse(result)
+  }
+
+  async probeAppshotTransitionVisibility(
+    params: MacAppshotProbeTransitionRequest,
+  ): Promise<MacAppshotProbeTransitionResult> {
+    const parsedParams = MacAppshotProbeTransitionRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.appshot.probeTransitionVisibility', parsedParams, { timeoutMs: 30_000 })
+    return MacAppshotProbeTransitionResultSchema.parse(result)
+  }
+
+  async probeAppshotTransitionPresentation(
+    params: MacAppshotProbeTransitionRequest,
+  ): Promise<MacAppshotProbeTransitionResult> {
+    const parsedParams = MacAppshotProbeTransitionRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.appshot.probeTransitionPresentation', parsedParams, { timeoutMs: 30_000 })
+    return MacAppshotProbeTransitionResultSchema.parse(result)
+  }
+
+  async readScreenCaptureKitDiagnostics(): Promise<MacScreenCaptureKitDiagnostics> {
+    const result = await this.request<unknown>('mac.screenCaptureKit.diagnostics', {}, { timeoutMs: 12_000 })
+    return MacScreenCaptureKitDiagnosticsSchema.parse(result)
+  }
+
+  async startDisplayRecording(params: MacDisplayRecordingStartRequest): Promise<MacDisplayRecordingStartResult> {
+    const parsedParams = MacDisplayRecordingStartRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.recording.startDisplay', parsedParams, { timeoutMs: 12_000 })
+    return MacDisplayRecordingStartResultSchema.parse(result)
+  }
+
+  async finishDisplayRecording(params: MacDisplayRecordingFinishRequest): Promise<MacDisplayRecordingFinishResult> {
+    const parsedParams = MacDisplayRecordingFinishRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.recording.finishDisplay', parsedParams, { timeoutMs: 12_000 })
+    return MacDisplayRecordingFinishResultSchema.parse(result)
+  }
+
+  async startWindowRecording(params: MacWindowRecordingStartRequest): Promise<MacDisplayRecordingStartResult> {
+    const parsedParams = MacWindowRecordingStartRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.recording.startWindow', parsedParams, { timeoutMs: 12_000 })
+    return MacDisplayRecordingStartResultSchema.parse(result)
+  }
+
+  async finishWindowRecording(params: MacDisplayRecordingFinishRequest): Promise<MacDisplayRecordingFinishResult> {
+    const parsedParams = MacDisplayRecordingFinishRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.recording.finishWindow', parsedParams, { timeoutMs: 12_000 })
+    return MacDisplayRecordingFinishResultSchema.parse(result)
+  }
+
+  async readCodexAppshotService(): Promise<MacCodexAppshotServiceResult> {
+    const result = await this.request<unknown>('mac.codexAppshot.service')
+    return MacCodexAppshotServiceResultSchema.parse(result)
+  }
+
+  async startCodexAppshotCapture(params: MacCodexAppshotStartRequest): Promise<MacCodexAppshotStartResult> {
+    const parsedParams = MacCodexAppshotStartRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.codexAppshot.startCapture', parsedParams, { timeoutMs: 120_000 })
+    return MacCodexAppshotStartResultSchema.parse(result)
+  }
+
+  async readCodexAppshotCaptureUpdate(params: MacCodexAppshotNextUpdateRequest): Promise<MacCodexAppshotUpdate> {
+    const parsedParams = MacCodexAppshotNextUpdateRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.codexAppshot.nextCaptureUpdate', parsedParams, { timeoutMs: 130_000 })
+    return MacCodexAppshotUpdateSchema.parse(result)
+  }
+
   on(eventName: MacBridgeEventName, handler: (event: MacHotkeyTriggeredEvent) => void): () => void {
     this.events.on(eventName, handler)
     return () => this.events.off(eventName, handler)
@@ -334,9 +442,13 @@ export class MacBridgeManager {
     clearTimeout(pending.timer)
     if (error) {
       const parsed = typeof error === 'object' && error && 'message' in error
-        ? error as { code?: string, message?: string }
+        ? error as { code?: string, message?: string, details?: unknown }
         : null
-      pending.reject(createBridgeError(parsed?.message ?? `Mac Bridge request failed: ${pending.method}`, parsed?.code))
+      pending.reject(createBridgeError(
+        parsed?.message ?? `Mac Bridge request failed: ${pending.method}`,
+        parsed?.code,
+        parsed?.details,
+      ))
       return
     }
     pending.resolve(result)

@@ -70,6 +70,12 @@ struct WindowCandidate {
     let bounds: [String: Double]?
 }
 
+struct WindowTarget {
+    let windowId: Int
+    let processId: Int?
+    let bundleId: String?
+}
+
 final class InputMonitor: @unchecked Sendable {
     private let output: OutputWriter
     private let stateLock = NSLock()
@@ -312,6 +318,9 @@ final class InputMonitor: @unchecked Sendable {
 final class BridgeRuntime: @unchecked Sendable {
     private let output = OutputWriter()
     private let feedbackPresenter = FeedbackIndicatorPresenter()
+    private let appshotTransitionPresenter = AppshotTransitionPresenter()
+    private let codexAppshotPrivateAdapter = CodexAppshotPrivateAdapter()
+    private let displayRecordingRegistry = DisplayRecordingRegistry()
     private lazy var inputMonitor = InputMonitor(output: output)
 
     @MainActor
@@ -399,6 +408,30 @@ final class BridgeRuntime: @unchecked Sendable {
             ]
         case "mac.capture.frontmostWindow":
             return try captureFrontmostWindow(params: params, feedbackPresenter: feedbackPresenter)
+        case "mac.appshot.frontmostContext":
+            return try readAppshotFrontmostContext()
+        case "mac.appshot.captureFrontmostWindow":
+            return try captureAppshotFrontmostWindow(params: params, appshotTransitionPresenter: appshotTransitionPresenter)
+        case "mac.appshot.probeTransitionVisibility":
+            return try probeAppshotTransitionVisibility(params: params, appshotTransitionPresenter: appshotTransitionPresenter)
+        case "mac.appshot.probeTransitionPresentation":
+            return try probeAppshotTransitionPresentation(params: params, appshotTransitionPresenter: appshotTransitionPresenter)
+        case "mac.screenCaptureKit.diagnostics":
+            return readScreenCaptureKitDiagnostics()
+        case "mac.recording.startDisplay":
+            return try displayRecordingRegistry.start(params: params)
+        case "mac.recording.finishDisplay":
+            return try displayRecordingRegistry.finish(params: params)
+        case "mac.recording.startWindow":
+            return try displayRecordingRegistry.startWindow(params: params)
+        case "mac.recording.finishWindow":
+            return try displayRecordingRegistry.finish(params: params)
+        case "mac.codexAppshot.service":
+            return codexAppshotPrivateAdapter.readService()
+        case "mac.codexAppshot.startCapture":
+            return try codexAppshotPrivateAdapter.startCapture(params: params)
+        case "mac.codexAppshot.nextCaptureUpdate":
+            return try codexAppshotPrivateAdapter.nextCaptureUpdate(params: params)
         default:
             throw BridgeError("unknown-method", "Unknown Mac Bridge method: \(method)")
         }
@@ -503,7 +536,7 @@ func captureFrontmostWindow(params: [String: Any], feedbackPresenter: FeedbackIn
     }
 
     do {
-        let window = try readFrontmostWindow()
+        let window = try readCaptureWindow(params: params)
         try enforcePrivacyRules(window: window, params: params)
 
         let fileManager = FileManager.default
@@ -512,15 +545,19 @@ func captureFrontmostWindow(params: [String: Any], feedbackPresenter: FeedbackIn
         let captureId = "capture-\(Int(Date().timeIntervalSince1970 * 1000))-\(window.windowId)"
         let filePath = (outputDir as NSString).appendingPathComponent("\(captureId).png")
         let metadataPath = (outputDir as NSString).appendingPathComponent("\(captureId).json")
-        try runScreenCapture(windowId: window.windowId, filePath: filePath)
+        let captureResult = try captureWindowImage(window: window, filePath: filePath)
 
         let capturedAt = isoTimestamp()
-        let metadata: [String: Any] = [
+        var metadata: [String: Any] = [
             "filePath": filePath,
             "metadataPath": metadataPath,
             "capturedAt": capturedAt,
+            "captureBackend": captureResult.backend,
             "window": serialize(window: window),
         ]
+        if let screenCaptureKitError = captureResult.screenCaptureKitError {
+            metadata["screenCaptureKitError"] = screenCaptureKitError
+        }
         let metadataData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
         try metadataData.write(to: URL(fileURLWithPath: metadataPath), options: [.atomic])
 
@@ -542,41 +579,272 @@ func captureFrontmostWindow(params: [String: Any], feedbackPresenter: FeedbackIn
     }
 }
 
+func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPresenter: AppshotTransitionPresenter) throws -> [String: Any] {
+    guard let outputDir = params["outputDir"] as? String, !outputDir.isEmpty else {
+        throw BridgeError("invalid-params", "mac.appshot.captureFrontmostWindow requires outputDir.")
+    }
+
+    let window = try readCaptureWindow(params: params)
+    try enforcePrivacyRules(window: window, params: params)
+
+    let fileManager = FileManager.default
+    try fileManager.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
+
+    let captureId = "appshot-\(Int(Date().timeIntervalSince1970 * 1000))-\(window.windowId)"
+    let filePath = (outputDir as NSString).appendingPathComponent("\(captureId).png")
+    let metadataPath = (outputDir as NSString).appendingPathComponent("\(captureId).json")
+    let captureResult = try captureWindowImage(window: window, filePath: filePath)
+
+    let transitionSnapshotPath = copyTransitionSnapshot(from: filePath, outputDir: outputDir, captureId: captureId)
+    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: window.bounds)
+    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let transition = appshotTransitionPresenter.present(
+        screenshotPath: filePath,
+        transitionSnapshotPath: transitionSnapshotPath,
+        target: target,
+        calibration: calibration,
+        appTitle: window.appName,
+        bundleIdentifier: window.bundleId,
+        soundEnabled: (params["soundEnabled"] as? Bool) ?? true
+    )
+
+    let capturedAt = isoTimestamp()
+    var metadata: [String: Any] = [
+        "filePath": filePath,
+        "metadataPath": metadataPath,
+        "capturedAt": capturedAt,
+        "captureBackend": captureResult.backend,
+        "window": serialize(window: window),
+        "appshot": transition.serialize(),
+    ]
+    if let screenCaptureKitError = captureResult.screenCaptureKitError {
+        metadata["screenCaptureKitError"] = screenCaptureKitError
+    }
+    let metadataData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
+    try metadataData.write(to: URL(fileURLWithPath: metadataPath), options: [.atomic])
+
+    return metadata
+}
+
+func readAppshotFrontmostContext() throws -> [String: Any] {
+    let window = try readFrontmostWindow()
+    let target = AppshotTransitionTarget.from(params: [:], fallbackWindowBounds: window.bounds)
+    return [
+        "window": serialize(window: window),
+        "bundleIdentifier": window.bundleId ?? NSNull(),
+        "animationTarget": serialize(target: target),
+    ]
+}
+
+func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPresenter: AppshotTransitionPresenter) throws -> [String: Any] {
+    guard let outputDir = params["outputDir"] as? String, !outputDir.isEmpty else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionVisibility requires outputDir.")
+    }
+    guard let screenshotPath = params["screenshotPath"] as? String, !screenshotPath.isEmpty else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionVisibility requires screenshotPath.")
+    }
+    guard FileManager.default.fileExists(atPath: screenshotPath) else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionVisibility screenshotPath does not exist.", details: [
+            "screenshotPath": screenshotPath,
+        ])
+    }
+
+    let fallbackWindowBounds = readProbeWindowBounds(raw: params["sourceWindow"])
+    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: fallbackWindowBounds)
+    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let sampleCount = max(readInteger(params["sampleCount"]) ?? 12, 1)
+    let sampleIntervalSeconds = readPositiveProbeDouble(params["sampleIntervalSeconds"]) ?? 0.2
+    let sourceWindow = params["sourceWindow"] as? [String: Any]
+
+    return try appshotTransitionPresenter.probeVisibility(
+        screenshotPath: screenshotPath,
+        outputDir: outputDir,
+        target: target,
+        calibration: calibration,
+        appTitle: sourceWindow?["appName"] as? String,
+        bundleIdentifier: sourceWindow?["bundleId"] as? String,
+        sampleCount: sampleCount,
+        sampleIntervalSeconds: sampleIntervalSeconds
+    )
+}
+
+func probeAppshotTransitionPresentation(params: [String: Any], appshotTransitionPresenter: AppshotTransitionPresenter) throws -> [String: Any] {
+    guard let outputDir = params["outputDir"] as? String, !outputDir.isEmpty else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionPresentation requires outputDir.")
+    }
+    guard let screenshotPath = params["screenshotPath"] as? String, !screenshotPath.isEmpty else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionPresentation requires screenshotPath.")
+    }
+    guard FileManager.default.fileExists(atPath: screenshotPath) else {
+        throw BridgeError("invalid-params", "mac.appshot.probeTransitionPresentation screenshotPath does not exist.", details: [
+            "screenshotPath": screenshotPath,
+        ])
+    }
+
+    let fallbackWindowBounds = readProbeWindowBounds(raw: params["sourceWindow"])
+    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: fallbackWindowBounds)
+    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let sampleCount = max(readInteger(params["sampleCount"]) ?? 16, 1)
+    let sampleIntervalSeconds = readPositiveProbeDouble(params["sampleIntervalSeconds"]) ?? 0.06
+    let sourceWindow = params["sourceWindow"] as? [String: Any]
+
+    return try appshotTransitionPresenter.probePresentation(
+        screenshotPath: screenshotPath,
+        outputDir: outputDir,
+        target: target,
+        calibration: calibration,
+        appTitle: sourceWindow?["appName"] as? String,
+        bundleIdentifier: sourceWindow?["bundleId"] as? String,
+        sampleCount: sampleCount,
+        sampleIntervalSeconds: sampleIntervalSeconds
+    )
+}
+
+func readPositiveProbeDouble(_ raw: Any?) -> Double? {
+    if let number = raw as? NSNumber {
+        let value = number.doubleValue
+        return value.isFinite && value > 0 ? value : nil
+    }
+    if let value = raw as? Double {
+        return value.isFinite && value > 0 ? value : nil
+    }
+    return nil
+}
+
+func readProbeWindowBounds(raw: Any?) -> [String: Double]? {
+    guard let rawWindow = raw as? [String: Any] else {
+        return nil
+    }
+    if let bounds = rawWindow["bounds"] as? [String: Any] {
+        return [
+            "x": (bounds["x"] as? NSNumber)?.doubleValue ?? 0,
+            "y": (bounds["y"] as? NSNumber)?.doubleValue ?? 0,
+            "width": (bounds["width"] as? NSNumber)?.doubleValue ?? 0,
+            "height": (bounds["height"] as? NSNumber)?.doubleValue ?? 0,
+        ]
+    }
+    return nil
+}
+
+func readCaptureWindow(params: [String: Any]) throws -> WindowCandidate {
+    if let target = try readWindowTarget(raw: params["targetWindow"]) {
+        return try readTargetWindow(target: target)
+    }
+    return try readFrontmostWindow()
+}
+
+func readWindowTarget(raw: Any?) throws -> WindowTarget? {
+    guard let raw else {
+        return nil
+    }
+    guard let payload = raw as? [String: Any] else {
+        throw BridgeError("invalid-params", "targetWindow must be an object.")
+    }
+    guard let windowId = readInteger(payload["windowId"]) else {
+        throw BridgeError("invalid-params", "targetWindow.windowId is required.")
+    }
+    return WindowTarget(
+        windowId: windowId,
+        processId: readInteger(payload["processId"]),
+        bundleId: (payload["bundleId"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    )
+}
+
 func readFrontmostWindow() throws -> WindowCandidate {
     guard let app = NSWorkspace.shared.frontmostApplication else {
         throw BridgeError("frontmost-app-unavailable", "No frontmost application is available.")
     }
     let pid = Int(app.processIdentifier)
+    let rawWindows = try readRawWindowInventory()
+
+    let frontmostCandidates = rawWindows.compactMap { raw -> WindowCandidate? in
+        guard let ownerPid = readInteger(raw[kCGWindowOwnerPID as String]), ownerPid == pid else {
+            return nil
+        }
+        return readWindowCandidate(raw: raw, application: app)
+    }
+    if let selected = frontmostCandidates.first {
+        return selected
+    }
+
+    let fallbackCandidates = rawWindows.compactMap { raw -> WindowCandidate? in
+        readWindowCandidate(raw: raw, application: nil)
+    }
+    guard let selected = fallbackCandidates.first else {
+        throw BridgeError("frontmost-window-unavailable", "No capturable frontmost window was found.")
+    }
+    return selected
+}
+
+func readTargetWindow(target: WindowTarget) throws -> WindowCandidate {
+    let rawWindows = try readRawWindowInventory()
+    let matchingWindows = rawWindows.compactMap { raw -> WindowCandidate? in
+        readWindowCandidate(raw: raw, application: nil)
+    }.filter { candidate in
+        if candidate.windowId != target.windowId {
+            return false
+        }
+        if let processId = target.processId, candidate.processId != processId {
+            return false
+        }
+        if let bundleId = target.bundleId, candidate.bundleId != bundleId {
+            return false
+        }
+        return true
+    }
+    guard let selected = matchingWindows.first else {
+        var details = [
+            "windowId": String(target.windowId),
+        ]
+        if let processId = target.processId {
+            details["processId"] = String(processId)
+        }
+        if let bundleId = target.bundleId {
+            details["bundleId"] = bundleId
+        }
+        throw BridgeError("target-window-unavailable", "The requested target window is no longer capturable.", details: details)
+    }
+    return selected
+}
+
+func readRawWindowInventory() throws -> [[String: Any]] {
     let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
     guard let rawWindows = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
         throw BridgeError("window-inventory-unavailable", "CoreGraphics did not return a window inventory.")
     }
+    return rawWindows
+}
 
-    let candidates = rawWindows.compactMap { raw -> WindowCandidate? in
-        guard let ownerPid = raw[kCGWindowOwnerPID as String] as? Int, ownerPid == pid,
-              let layer = raw[kCGWindowLayer as String] as? Int, layer == 0,
-              let windowId = raw[kCGWindowNumber as String] as? Int
-        else {
-            return nil
-        }
-        let bounds = readBounds(raw[kCGWindowBounds as String])
-        if let bounds, (bounds["width"] ?? 0) <= 1 || (bounds["height"] ?? 0) <= 1 {
-            return nil
-        }
-        return WindowCandidate(
-            windowId: windowId,
-            appName: app.localizedName ?? raw[kCGWindowOwnerName as String] as? String,
-            bundleId: app.bundleIdentifier,
-            processId: pid,
-            title: raw[kCGWindowName as String] as? String,
-            bounds: bounds
-        )
+func readWindowCandidate(raw: [String: Any], application: NSRunningApplication?) -> WindowCandidate? {
+    guard let ownerPid = readInteger(raw[kCGWindowOwnerPID as String]),
+          let layer = readInteger(raw[kCGWindowLayer as String]), layer == 0,
+          let windowId = readInteger(raw[kCGWindowNumber as String])
+    else {
+        return nil
     }
+    let bounds = readBounds(raw[kCGWindowBounds as String])
+    if let bounds, (bounds["width"] ?? 0) <= 1 || (bounds["height"] ?? 0) <= 1 {
+        return nil
+    }
+    let ownerApplication = application ?? NSRunningApplication(processIdentifier: pid_t(ownerPid))
+    return WindowCandidate(
+        windowId: windowId,
+        appName: ownerApplication?.localizedName ?? raw[kCGWindowOwnerName as String] as? String,
+        bundleId: ownerApplication?.bundleIdentifier,
+        processId: ownerPid,
+        title: raw[kCGWindowName as String] as? String,
+        bounds: bounds
+    )
+}
 
-    guard let selected = candidates.first else {
-        throw BridgeError("frontmost-window-unavailable", "No capturable frontmost window was found.")
+func readInteger(_ raw: Any?) -> Int? {
+    if let value = raw as? Int {
+        return value
     }
-    return selected
+    if let value = raw as? NSNumber {
+        return value.intValue
+    }
+    return nil
 }
 
 func readBounds(_ raw: Any?) -> [String: Double]? {
@@ -640,6 +908,46 @@ func serialize(window: WindowCandidate) -> [String: Any] {
         "title": window.title ?? NSNull(),
         "bounds": window.bounds ?? NSNull(),
     ]
+}
+
+func serialize(target: AppshotTransitionTarget) -> [String: Any] {
+    [
+        "codexDisplay": [
+            "id": displayIdentifier(for: target.displayFrame),
+            "scaleFactor": Double(target.displayScaleFactor),
+            "bounds": serialize(rect: target.displayFrame),
+            "workArea": serialize(rect: target.displayWorkArea),
+        ],
+        "destinationBackgroundColor": hexColor(target.destinationBackgroundColor),
+        "destinationCornerRadius": Double(target.destinationCornerRadius),
+        "destinationFrame": serialize(rect: target.destinationFrame),
+        "destinationPrimaryTextColor": hexColor(target.destinationPrimaryTextColor),
+        "transitionSnapshotScale": Double(target.transitionSnapshotScale),
+    ]
+}
+
+func serialize(rect: CGRect) -> [String: Double] {
+    [
+        "x": Double(rect.origin.x),
+        "y": Double(rect.origin.y),
+        "width": Double(rect.size.width),
+        "height": Double(rect.size.height),
+    ]
+}
+
+func displayIdentifier(for frame: CGRect) -> Int {
+    guard let screen = NSScreen.screens.first(where: { $0.frame == frame || $0.frame.intersects(frame) }) else {
+        return 0
+    }
+    return (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.intValue ?? 0
+}
+
+func hexColor(_ color: NSColor) -> String {
+    let converted = color.usingColorSpace(.sRGB) ?? color
+    let red = Int(round(max(0, min(converted.redComponent, 1)) * 255))
+    let green = Int(round(max(0, min(converted.greenComponent, 1)) * 255))
+    let blue = Int(round(max(0, min(converted.blueComponent, 1)) * 255))
+    return String(format: "#%02x%02x%02x", red, green, blue)
 }
 
 func isoTimestamp() -> String {

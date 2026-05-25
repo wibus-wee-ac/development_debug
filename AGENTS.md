@@ -12,6 +12,9 @@ We should keep the compatibility with other products, we can read data from othe
 
 For example, if we want to use skills in agent, we can read skills data from (\~/.)/.agents/skills namespace, but we should never write skills data to skills namespace, we should write skills data to our Cradle namespace, and let agent own the lifecycle of skills data in agent context.
 
+- 破坏性重构，不要做兼容性代码！务必要从大局的架构上思考问题，而不是局限于某个文件、某个模块、某个功能点的实现细节！如果你发现了一个问题，并且你认为这个问题的解决方案需要对现有代码进行破坏性的重构，那么请大胆地进行重构！不要担心兼容性问题，因为我们现在还没有发布任何版本，我们可以随时进行破坏性的重构！我们要追求的是一个干净、简洁、易于维护的代码库，而不是一个充斥着兼容性代码的代码库！所以，请务必从大局的架构上思考问题，勇敢地进行破坏性的重构！
+- 如果能选择架构升级，就直接架构升级，不要犹豫！不要担心兼容性问题！我们现在还没有发布任何版本，我们可以随时进行架构升级！我们要追求的是一个干净、简洁、易于维护的代码库，而不是一个充斥着兼容性代码的代码库！所以，请务必从大局的架构上思考问题，勇敢地进行架构升级！
+
 ## Stacks
 
 - **Frontend**: React, TypeScript, Tailwind CSS

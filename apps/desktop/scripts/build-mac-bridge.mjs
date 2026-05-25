@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
+import { chmodSync, cpSync, copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
@@ -8,8 +8,10 @@ const desktopRoot = resolve(__dirname, '..')
 const packageRoot = resolve(desktopRoot, 'native/macos/mac-bridge')
 const outputDir = resolve(packageRoot, '.build/cradle-dist')
 const builtBinary = resolve(packageRoot, '.build/release/cradle-mac-bridge')
+const resourceSourceDir = resolve(packageRoot, 'Resources')
 const outputBinary = resolve(outputDir, 'cradle-mac-bridge')
 const nextOutputBinary = resolve(outputDir, 'cradle-mac-bridge.next')
+const outputResourceDir = resolve(outputDir, 'resources')
 
 mkdirSync(outputDir, { recursive: true })
 
@@ -39,4 +41,8 @@ rmSync(nextOutputBinary, { force: true })
 copyFileSync(builtBinary, nextOutputBinary)
 chmodSync(nextOutputBinary, 0o755)
 renameSync(nextOutputBinary, outputBinary)
+rmSync(outputResourceDir, { recursive: true, force: true })
+if (existsSync(resourceSourceDir)) {
+  cpSync(resourceSourceDir, outputResourceDir, { recursive: true })
+}
 console.log(`Copied Mac Bridge binary to ${outputBinary}`)

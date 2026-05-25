@@ -5,7 +5,7 @@ import windowStateKeeper from 'electron-window-state'
 
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
-import { captureFrontmostWindowWithMacBridge, createNativeServices } from './native-services'
+import { captureAppshotWithMacBridge, createNativeServices } from './native-services'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
@@ -321,8 +321,8 @@ export async function startDesktopApp(): Promise<void> {
     moduleDir: __dirname,
   })
   macBridgeManager.on('hotkeyTriggered', () => {
-    captureFrontmostWindowWithMacBridge({ sink: 'file' }).catch((error) => {
-      console.error('[mac-bridge] hotkey capture failed:', error)
+    captureAppshotWithMacBridge({ sink: 'file', strategy: 'auto' }).catch((error) => {
+      console.error('[mac-bridge] hotkey appshot capture failed:', error)
     })
   })
   createNativeServices({

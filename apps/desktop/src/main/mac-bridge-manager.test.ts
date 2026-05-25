@@ -15,6 +15,31 @@ function createFakeBridgeScript(): string {
 import readline from 'node:readline'
 
 const rl = readline.createInterface({ input: process.stdin })
+const defaultTransitionStyle = {
+  transitionBackgroundOpacity: 0.08,
+  shutterPeakOpacity: 0.48,
+  shutterPeakProgress: 0.2,
+  backgroundPeakProgress: 0.22,
+  snapshotFadeInProgress: 0.18,
+  appIconFadeStartProgress: 0.18,
+  appIconVisibleProgress: 0.58,
+  titleFadeStartProgress: 0.28,
+  titleVisibleProgress: 0.6,
+  completionDelay: 0.08,
+  destinationShadowRadius: 18,
+  destinationShadowYOffset: -6,
+  destinationShadowOpacity: 0.16,
+  keyShadowRadius: 34,
+  keyShadowYOffset: -12,
+  keyShadowOpacity: 0.18,
+  ambientShadowRadius: 64,
+  ambientShadowYOffset: -22,
+  ambientShadowOpacity: 0.10,
+  shadowFillOpacity: 0.08,
+  accessoryIconSize: 24,
+  accessoryIconYOffset: 12,
+  accessoryTitleYOffset: -18
+}
 rl.on('line', (line) => {
   const request = JSON.parse(line)
   if (request.method === 'bridge.status') {
@@ -67,6 +92,265 @@ rl.on('line', (line) => {
         target: request.params.target ?? 'privacy',
         url: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
         opened: true
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.appshot.captureFrontmostWindow') {
+    const targetWindow = request.params.targetWindow ?? {}
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        filePath: request.params.outputDir + '/appshot-1.png',
+        metadataPath: request.params.outputDir + '/appshot-1.json',
+        capturedAt: '2026-05-22T15:56:23Z',
+        captureBackend: 'screen-capture-kit',
+        window: {
+          windowId: targetWindow.windowId ?? 42,
+          appName: 'Safari',
+          bundleId: targetWindow.bundleId ?? 'com.apple.Safari',
+          processId: targetWindow.processId ?? 123,
+          title: 'Example',
+          bounds: {
+            x: 10,
+            y: 20,
+            width: 800,
+            height: 600
+          }
+        },
+        appshot: {
+          strategy: 'cradle-native',
+          animationDuration: 0.88,
+          transitionSnapshotPath: request.params.outputDir + '/appshot-1-transition.png',
+          transitionSnapshotHeight: 360,
+          transitionSpringDampingFraction: 0.82,
+          transitionSpringResponse: 0.52,
+          transitionStyle: defaultTransitionStyle
+        }
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.appshot.frontmostContext') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        window: {
+          windowId: 42,
+          appName: 'Safari',
+          bundleId: 'com.apple.Safari',
+          processId: 123,
+          title: 'Example',
+          bounds: {
+            x: 10,
+            y: 20,
+            width: 800,
+            height: 600
+          }
+        },
+        bundleIdentifier: 'com.apple.Safari',
+        animationTarget: {
+          codexDisplay: {
+            id: 1,
+            scaleFactor: 2,
+            bounds: { x: 0, y: 0, width: 1440, height: 900 },
+            workArea: { x: 0, y: 0, width: 1440, height: 875 }
+          },
+          destinationBackgroundColor: '#ffffff',
+          destinationCornerRadius: 12,
+          destinationFrame: { x: 10, y: 20, width: 800, height: 600 },
+          destinationPrimaryTextColor: '#000000'
+        }
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.recording.startDisplay') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        recordingId: request.params.recordingId ?? 'recording-1',
+        outputPath: request.params.outputPath,
+        backend: 'core-graphics-window-list-polling',
+        displayId: 1,
+        width: 1512,
+        height: 982,
+        frameRate: request.params.frameRate ?? 30,
+        fallbackFrom: 'screen-capture-kit-display',
+        fallbackError: {
+          code: 'screen-recording-display-unavailable',
+          message: 'ScreenCaptureKit did not return any displays.'
+        },
+        startedAt: '2026-05-22T15:56:24Z'
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.recording.finishDisplay') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        recordingId: request.params.recordingId,
+        outputPath: '/tmp/cradle-appshot-test/recording.mov',
+        backend: 'core-graphics-window-list-polling',
+        displayId: 1,
+        width: 1512,
+        height: 982,
+        frameRate: 30,
+        frameCount: 270,
+        durationSeconds: 9,
+        fallbackFrom: 'screen-capture-kit-display',
+        fallbackError: {
+          code: 'screen-recording-display-unavailable',
+          message: 'ScreenCaptureKit did not return any displays.'
+        },
+        finishedAt: '2026-05-22T15:56:33Z'
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.recording.startWindow') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        recordingId: request.params.recordingId ?? 'recording-1',
+        outputPath: request.params.outputPath,
+        backend: 'screen-capture-kit-window',
+        displayId: null,
+        width: 1512,
+        height: 982,
+        frameRate: request.params.frameRate ?? 30,
+        windowId: 9001,
+        processId: request.params.processId ?? null,
+        bundleIdentifier: request.params.bundleIdentifier ?? null,
+        displayBounds: request.params.displayBounds ?? null,
+        discoveryTimeoutSeconds: request.params.discoveryTimeoutSeconds ?? 2,
+        discoveryPollIntervalSeconds: request.params.discoveryPollIntervalSeconds ?? 0.04,
+        startedAt: '2026-05-22T15:56:24Z'
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.recording.finishWindow') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        recordingId: request.params.recordingId,
+        outputPath: '/tmp/cradle-appshot-test/window-recording.mov',
+        backend: 'screen-capture-kit-window',
+        displayId: null,
+        width: 1512,
+        height: 982,
+        frameRate: 30,
+        windowId: 9001,
+        processId: 777,
+        bundleIdentifier: 'com.openai.sky.CUAService',
+        frameCount: 90,
+        durationSeconds: 3,
+        finishedAt: '2026-05-22T15:56:27Z'
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.appshot.probeTransitionVisibility') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        panelWindowNumber: 101,
+        sampleCount: 1,
+        sampleIntervalSeconds: request.params.sampleIntervalSeconds ?? 0.12,
+        animationDuration: request.params.animationDuration ?? 0.88,
+        samples: [{
+          index: 0,
+          capturedAt: '2026-05-22T15:56:34Z',
+          imagePath: null,
+          imageStatus: 'timeout',
+          panelFoundInCoreGraphicsWindowList: true
+        }]
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.appshot.probeTransitionPresentation') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        panelWindowNumber: 102,
+        sampleCount: 2,
+        sampleIntervalSeconds: request.params.sampleIntervalSeconds ?? 0.06,
+        animationDuration: request.params.animationDuration ?? 0.88,
+        samples: [{
+          index: 0,
+          capturedAt: '2026-05-22T15:56:35Z',
+          imagePath: request.params.outputDir + '/sample-000.png',
+          imageStatus: 'written',
+          snapshotFrame: { x: 10, y: 20, width: 800, height: 600 },
+          snapshotImageOpacity: 0
+        }, {
+          index: 1,
+          capturedAt: '2026-05-22T15:56:35Z',
+          imagePath: request.params.outputDir + '/sample-001.png',
+          imageStatus: 'written',
+          snapshotFrame: { x: 100, y: 100, width: 420, height: 320 },
+          snapshotImageOpacity: 1
+        }]
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.codexAppshot.service') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        bundleIdentifier: 'com.openai.sky.CUAService',
+        processIdentifier: 777,
+        running: true
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.codexAppshot.startCapture') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        animationDuration: 0.94,
+        transitionSnapshotHeight: 360,
+        transitionSpringDampingFraction: 0.82,
+        transitionSpringResponse: 0.52,
+        cradleTranscript: {
+          status: 'succeeded',
+          request: {
+            requestType: 'ComputerUseIPCAppStartCaptureRequest',
+            eventClass: 'SkCu',
+            eventIdentifier: 'SndR'
+          },
+          reply: {
+            directObjectDescriptorType: 'tdta',
+            responseSha256: 'abc123'
+          }
+        }
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.codexAppshot.nextCaptureUpdate') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        type: 'completed',
+        transitionSnapshotURL: null,
+        cradleTranscript: {
+          status: 'succeeded',
+          request: {
+            requestType: 'ComputerUseIPCAppNextCaptureUpdateRequest',
+            eventClass: 'SkCu',
+            eventIdentifier: 'SndR'
+          },
+          reply: {
+            directObjectDescriptorType: 'tdta',
+            responseSha256: 'def456'
+          }
+        }
       }
     }) + '\\n')
     return
@@ -170,6 +454,169 @@ describe('MacBridgeManager', () => {
       target: 'accessibility',
       url: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility',
       opened: true,
+    })
+    await expect(manager.captureAppshotFrontmostWindow({
+      outputDir: '/tmp/cradle-appshot-test',
+      targetWindow: {
+        windowId: 42,
+        processId: 123,
+        bundleId: 'com.apple.Safari',
+      },
+      soundEnabled: false,
+    })).resolves.toMatchObject({
+      filePath: '/tmp/cradle-appshot-test/appshot-1.png',
+      captureBackend: 'screen-capture-kit',
+      window: {
+        windowId: 42,
+        processId: 123,
+        bundleId: 'com.apple.Safari',
+      },
+      appshot: {
+        strategy: 'cradle-native',
+        animationDuration: 0.88,
+      },
+    })
+    await expect(manager.readCodexAppshotService()).resolves.toEqual({
+      bundleIdentifier: 'com.openai.sky.CUAService',
+      processIdentifier: 777,
+      running: true,
+    })
+    await expect(manager.readAppshotFrontmostContext()).resolves.toMatchObject({
+      bundleIdentifier: 'com.apple.Safari',
+      window: {
+        windowId: 42,
+      },
+      animationTarget: {
+        destinationFrame: { x: 10, y: 20, width: 800, height: 600 },
+      },
+    })
+    await expect(manager.startDisplayRecording({
+      recordingId: 'recording-1',
+      outputPath: '/tmp/cradle-appshot-test/recording.mov',
+      frameRate: 30,
+    })).resolves.toMatchObject({
+      recordingId: 'recording-1',
+      outputPath: '/tmp/cradle-appshot-test/recording.mov',
+      backend: 'core-graphics-window-list-polling',
+      fallbackFrom: 'screen-capture-kit-display',
+      width: 1512,
+      height: 982,
+    })
+    await expect(manager.finishDisplayRecording({
+      recordingId: 'recording-1',
+    })).resolves.toMatchObject({
+      recordingId: 'recording-1',
+      backend: 'core-graphics-window-list-polling',
+      frameCount: 270,
+      durationSeconds: 9,
+    })
+    await expect(manager.startWindowRecording({
+      recordingId: 'window-recording-1',
+      outputPath: '/tmp/cradle-appshot-test/window-recording.mov',
+      frameRate: 30,
+      processId: 777,
+      bundleIdentifier: 'com.openai.sky.CUAService',
+      displayBounds: { x: 0, y: 0, width: 1440, height: 900 },
+      discoveryTimeoutSeconds: 2,
+      discoveryPollIntervalSeconds: 0.04,
+    })).resolves.toMatchObject({
+      recordingId: 'window-recording-1',
+      outputPath: '/tmp/cradle-appshot-test/window-recording.mov',
+      backend: 'screen-capture-kit-window',
+      processId: 777,
+      bundleIdentifier: 'com.openai.sky.CUAService',
+    })
+    await expect(manager.finishWindowRecording({
+      recordingId: 'window-recording-1',
+    })).resolves.toMatchObject({
+      recordingId: 'window-recording-1',
+      backend: 'screen-capture-kit-window',
+      frameCount: 90,
+      durationSeconds: 3,
+    })
+    await expect(manager.probeAppshotTransitionVisibility({
+      outputDir: '/tmp/cradle-appshot-test/visibility',
+      screenshotPath: '/tmp/cradle-appshot-test/appshot-1.png',
+      sampleCount: 1,
+      sampleIntervalSeconds: 0.12,
+    })).resolves.toMatchObject({
+      panelWindowNumber: 101,
+      samples: [{
+        index: 0,
+        imageStatus: 'timeout',
+        panelFoundInCoreGraphicsWindowList: true,
+      }],
+    })
+    await expect(manager.probeAppshotTransitionPresentation({
+      outputDir: '/tmp/cradle-appshot-test/presentation',
+      screenshotPath: '/tmp/cradle-appshot-test/appshot-1.png',
+      sampleCount: 2,
+      sampleIntervalSeconds: 0.06,
+    })).resolves.toMatchObject({
+      panelWindowNumber: 102,
+      sampleCount: 2,
+      samples: [{
+        index: 0,
+        imageStatus: 'written',
+        snapshotImageOpacity: 0,
+      }, {
+        index: 1,
+        imageStatus: 'written',
+        snapshotImageOpacity: 1,
+      }],
+    })
+    await expect(manager.startCodexAppshotCapture({
+      requestId: 'request-1',
+      bundleIdentifier: 'com.apple.Safari',
+      serviceProcessIdentifier: 777,
+      animationTarget: {
+        codexDisplay: {
+          id: 1,
+          scaleFactor: 2,
+          bounds: { x: 0, y: 0, width: 1440, height: 900 },
+          workArea: { x: 0, y: 0, width: 1440, height: 875 },
+        },
+        destinationBackgroundColor: '#101014',
+        destinationCornerRadius: 14,
+        destinationFrame: { x: 100, y: 100, width: 420, height: 320 },
+        destinationPrimaryTextColor: '#ffffff',
+      },
+    })).resolves.toEqual({
+      animationDuration: 0.94,
+      transitionSnapshotHeight: 360,
+      transitionSpringDampingFraction: 0.82,
+      transitionSpringResponse: 0.52,
+      cradleTranscript: {
+        status: 'succeeded',
+        request: {
+          requestType: 'ComputerUseIPCAppStartCaptureRequest',
+          eventClass: 'SkCu',
+          eventIdentifier: 'SndR',
+        },
+        reply: {
+          directObjectDescriptorType: 'tdta',
+          responseSha256: 'abc123',
+        },
+      },
+    })
+    await expect(manager.readCodexAppshotCaptureUpdate({
+      requestId: 'request-1',
+      serviceProcessIdentifier: 777,
+    })).resolves.toEqual({
+      type: 'completed',
+      transitionSnapshotURL: null,
+      cradleTranscript: {
+        status: 'succeeded',
+        request: {
+          requestType: 'ComputerUseIPCAppNextCaptureUpdateRequest',
+          eventClass: 'SkCu',
+          eventIdentifier: 'SndR',
+        },
+        reply: {
+          directObjectDescriptorType: 'tdta',
+          responseSha256: 'def456',
+        },
+      },
     })
 
     await new Promise(resolve => setTimeout(resolve, 50))
