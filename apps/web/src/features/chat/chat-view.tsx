@@ -13,22 +13,25 @@ import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
+import { toastManager } from '~/components/ui/toast'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { cn } from '~/lib/cn'
+import { isElectron, nativeIpc, platform, type MacAppshotCaptureResponse } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
 import { SessionApprovalList } from '../approval/approval-card'
-import type { ChatSlashCommand } from './chat-capabilities'
 import { getChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
-import { Composer } from './composer'
+import { Composer, type ComposerSlashCommandActionContext, type ComposerSlashCommandActionResult } from './composer'
 import { modelSupportsAttachments } from './composer-attachment-state'
+import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import { CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, getFallbackRuntimeSlashCommands, mergeChatSlashCommands, withSlashCommandAvailability } from './chat-slash-commands'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
 import type { ChatContinuationMode, ChatQueueItem } from './use-chat-session'
@@ -67,11 +70,33 @@ const SessionBindingSchema = z
   .object({
     providerTargetId: z.string().nullable(),
     modelId: z.string().nullable(),
+    runtimeKind: z.string().nullable().optional(),
   })
   .passthrough()
 
 function invertContinuationMode(mode: ChatContinuationMode): ChatContinuationMode {
   return mode === 'queue' ? 'steer' : 'queue'
+}
+
+function readAppshotCaptureAsset(response: MacAppshotCaptureResponse) {
+  if (response.strategy === 'cradle-native') {
+    return response.asset
+  }
+  for (let index = response.updates.length - 1; index >= 0; index -= 1) {
+    const update = response.updates[index]
+    if (!update) {
+      continue
+    }
+    const asset = update.screenshotAsset ?? update.transitionSnapshotAsset
+    if (asset) {
+      return asset
+    }
+  }
+  return null
+}
+
+function readFileNameFromPath(path: string, fallback: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? fallback
 }
 
 function ChatMessageListPane({
@@ -228,6 +253,7 @@ function ChatComposerSection({
   onCancelQueueItem,
   onReorderQueueItems,
   onSend,
+  onSlashCommandAction,
   onStop,
   isStreaming,
   disabled,
@@ -250,12 +276,13 @@ function ChatComposerSection({
     files: FileUIPart[],
     options?: { invertContinuationMode?: boolean }
   ) => void
+  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   onStop: () => void
   isStreaming: boolean
   disabled: boolean
   placeholder?: string
   availableFiles: MentionItem[]
-  slashCommands: ChatSlashCommand[]
+  slashCommands: ChatComposerSlashCommand[]
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string; ts: number } | null
@@ -275,6 +302,7 @@ function ChatComposerSection({
         />
         <Composer
           onSend={onSend}
+          onSlashCommandAction={onSlashCommandAction}
           onStop={onStop}
           isStreaming={isStreaming}
           disabled={disabled}
@@ -353,6 +381,30 @@ export function ChatView({
   const supportsAttachments = useMemo(() => {
     return modelSupportsAttachments(currentSessionModel)
   }, [currentSessionModel])
+  const cradleSlashCommands = useMemo(() => {
+    if (!isElectron || platform !== 'darwin') {
+      return [
+        withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires the macOS desktop app.',
+        }),
+      ]
+    }
+    if (!supportsAttachments) {
+      return [
+        withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires an image-capable model.',
+        }),
+      ]
+    }
+    return [withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)]
+  }, [supportsAttachments])
+  const slashCommands = useMemo(() => mergeChatSlashCommands({
+    runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
+    fallbackRuntimeCommands: getFallbackRuntimeSlashCommands(runtimeCapabilities?.runtimeKind ?? sessionBinding?.runtimeKind),
+    cradleCommands: cradleSlashCommands,
+  }), [cradleSlashCommands, runtimeCapabilities?.runtimeKind, runtimeCapabilities?.slashCommands, sessionBinding?.runtimeKind])
 
   /**
    * Ref to the ScrollArea's scrollable viewport — shared with Virtualizer so
@@ -548,6 +600,66 @@ export function ChatView({
     [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef]
   )
 
+  const handleSlashCommandAction = useCallback(async (
+    command: ChatComposerSlashCommand,
+    context: ComposerSlashCommandActionContext,
+  ): Promise<void | ComposerSlashCommandActionResult> => {
+    if (command.action.kind !== 'uiAction' || command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
+      return
+    }
+    if (!nativeIpc) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot is unavailable',
+        description: 'Appshot capture requires the Electron desktop app.',
+      })
+      return
+    }
+    if (!supportsAttachments) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot attachment is unavailable',
+        description: 'The selected model does not accept image attachments.',
+      })
+      return
+    }
+
+    try {
+      const response = await nativeIpc.macCapture.captureAppshot({
+        sink: 'file',
+        strategy: 'auto',
+        animationTarget: context.animationTarget,
+      })
+      if (import.meta.env.DEV) {
+        toastManager.add({
+          type: 'info',
+          title: 'Appshot strategy',
+          description: response.strategy,
+        })
+      }
+      const asset = readAppshotCaptureAsset(response)
+      if (!asset) {
+        throw new Error('Appshot capture did not return an image asset.')
+      }
+      return {
+        insertText: '',
+        fileParts: [{
+          type: 'file',
+          mediaType: asset.mimeType,
+          filename: readFileNameFromPath(asset.path, 'appshot.png'),
+          url: asset.dataURL,
+        }],
+      }
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot capture failed',
+        description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
+      })
+    }
+  }, [supportsAttachments])
+
   const handleMinimapScrollToIndex = useCallback((index: number) => {
     const virt = virtualizerRef.current
     const vp = viewportRef.current
@@ -607,12 +719,13 @@ export function ChatView({
         onCancelQueueItem={(queueItemId) => void cancelQueueItem(queueItemId)}
         onReorderQueueItems={(queueItemIds) => void reorderQueueItems(queueItemIds)}
         onSend={handleSend}
+        onSlashCommandAction={handleSlashCommandAction}
         onStop={stop}
         isStreaming={isStreaming}
         disabled={!isReady || isAwaiting}
         placeholder={placeholder}
         availableFiles={availableFiles}
-        slashCommands={runtimeCapabilities?.slashCommands ?? []}
+        slashCommands={slashCommands}
         toolbar={composerToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}

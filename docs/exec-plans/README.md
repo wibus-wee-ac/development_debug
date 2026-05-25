@@ -61,3 +61,4 @@ Current canonical backend implementation for active product work lives under `ap
 - **20260523-02-boxsh-integration-research.md**: Boxsh 集成调研与执行计划，覆盖 MCP 插件接入、copy-on-write workspace、Cradle-owned 写入边界、binary 生命周期、license 风险和验证路径。
 - **20260523-03-frontend-query-refresh-policy.md**: 前端 workspace 数据刷新策略执行计划，覆盖 React Query refresh policy、Kanban/FileTree/Git/Await 首批接入、验证路径和五轮 reviewer/fix 工作流。
 - **20260523-04-cross-window-tab-sync.md**: Window Tab 与 Jarvis Tab 跨窗口同步执行计划，覆盖 persisted store sync、main/tear-off key 隔离、Jarvis footer tab 同步、验证路径和一轮 reviewer/fix 工作流。
+- **20260525-02-chat-slash-command-registry.md**: Execution plan for a simple chat slash command registry, keeping UI-owned command listing in the web composer, runtime-native command discovery through `/chat/sessions/:sessionId/capabilities`, and raw provider slash command passthrough without adding a server-side command-list API.

@@ -1,14 +1,13 @@
 import type { FileUIPart } from 'ai'
 import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
-import type { ChatSlashCommand } from './chat-capabilities'
 import type { ComposerAttachmentController } from './composer-attachment-state'
 import { useComposerAttachments } from './composer-attachment-state'
 import {
@@ -16,9 +15,18 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from './composer-attachments'
+import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type { MentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
-import { SlashCommandPanel } from './slash-command-panel'
+import { getSlashCommandPanelItems, SlashCommandPanel } from './slash-command-panel'
+import {
+  CHAT_SLASH_COMMAND_LISTBOX_ID,
+  getActiveSlashCommand,
+  getSlashCommandPrefix,
+  getVisibleSlashCommands,
+  readSlashTriggerState,
+  replaceSlashTrigger,
+} from './slash-command-input'
 
 /** Shrinks the textarea to content height, capped at 240 px. */
 function autoResize(el: HTMLTextAreaElement) {
@@ -35,7 +43,8 @@ interface ComposerProps {
   supportsAttachments?: boolean
   placeholder?: string
   availableFiles?: MentionItem[]
-  slashCommands?: ChatSlashCommand[]
+  slashCommands?: ChatComposerSlashCommand[]
+  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext) => void | ComposerSlashCommandActionResult | Promise<void | ComposerSlashCommandActionResult>
   className?: string
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
@@ -47,9 +56,46 @@ interface ComposerProps {
   sessionContextWindow?: number | null
 }
 
+export interface ComposerSlashCommandActionResult {
+  insertText?: string
+  fileParts?: FileUIPart[]
+}
+
+export interface ComposerSlashCommandRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export interface ComposerSlashCommandDisplay {
+  id: number
+  scaleFactor: number
+  bounds: ComposerSlashCommandRect
+  workArea: ComposerSlashCommandRect
+}
+
+export interface ComposerSlashCommandAnimationTarget {
+  codexDisplay: ComposerSlashCommandDisplay
+  destinationBackgroundColor: string
+  destinationCornerRadius: number
+  destinationFrame: ComposerSlashCommandRect
+  destinationPrimaryTextColor: string
+  transitionSnapshotScale?: number
+}
+
+export interface ComposerSlashCommandActionContext {
+  animationTarget?: ComposerSlashCommandAnimationTarget
+}
+
 const EMPTY_FILES: MentionItem[] = []
-const EMPTY_SLASH_COMMANDS: ChatSlashCommand[] = []
-const RE_WHITESPACE = /\s/
+const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
+const FALLBACK_APPSHOT_BACKGROUND = '#ffffff'
+const FALLBACK_APPSHOT_TEXT = '#111111'
+const APPSHOT_ATTACHMENT_LEADING_OFFSET = 88
+const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232
+const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
+const APPSHOT_ATTACHMENT_SLOT_STEP = 240
 
 interface ComposerState {
   inputValue: string
@@ -57,7 +103,7 @@ interface ComposerState {
   mentionQuery: string
   slashActive: boolean
   slashQuery: string
-  selectedSlashCommand: ChatSlashCommand | null
+  selectedSlashCommand: ChatComposerSlashCommand | null
 }
 
 type ComposerAction
@@ -66,7 +112,7 @@ type ComposerAction
     | { type: 'mention/closed' }
     | { type: 'mention/selected', inputValue: string, query: string, keepOpen: boolean }
     | { type: 'slash/closed' }
-    | { type: 'slash/selected', inputValue: string, command: ChatSlashCommand }
+    | { type: 'slash/selected', inputValue: string, command: ChatComposerSlashCommand | null }
     | { type: 'pickers/closed' }
     | { type: 'external/appended', text: string }
     | { type: 'drop/inserted', inputValue: string }
@@ -140,16 +186,116 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
   }
 }
 
-function getSlashCommandPrefix(command: ChatSlashCommand): string {
-  return `/${command.name} `
+function readFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function getActiveSlashCommand(inputValue: string, selectedCommand: ChatSlashCommand | null, commands: ChatSlashCommand[]): ChatSlashCommand | null {
-  if (selectedCommand && inputValue.startsWith(getSlashCommandPrefix(selectedCommand))) {
-    return selectedCommand
+function readPositiveNumber(value: unknown): number | null {
+  const parsed = readFiniteNumber(value)
+  return parsed != null && parsed > 0 ? parsed : null
+}
+
+function readHexPair(value: number): string {
+  return Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')
+}
+
+function readCssHexColor(value: string, fallback: string): string {
+  const trimmed = value.trim()
+  if (/^#[0-9a-f]{6}$/i.test(trimmed) || /^#[0-9a-f]{8}$/i.test(trimmed)) {
+    return trimmed
   }
 
-  return commands.find(command => inputValue.startsWith(getSlashCommandPrefix(command))) ?? null
+  const match = trimmed.match(/^rgba?\(([^)]+)\)$/i)
+  if (!match) {
+    return fallback
+  }
+
+  const channels = match[1]
+    .split(',')
+    .map(channel => Number.parseFloat(channel.trim()))
+
+  if (channels.length < 3 || channels.slice(0, 3).some(channel => !Number.isFinite(channel))) {
+    return fallback
+  }
+  if (channels.length >= 4 && Number.isFinite(channels[3]) && channels[3] <= 0) {
+    return fallback
+  }
+
+  return `#${readHexPair(channels[0])}${readHexPair(channels[1])}${readHexPair(channels[2])}`
+}
+
+function readBrowserScreenRect(): { bounds: ComposerSlashCommandRect, workArea: ComposerSlashCommandRect } {
+  const browserScreen = window.screen as Screen & {
+    availLeft?: number
+    availTop?: number
+  }
+  const originX = readFiniteNumber(browserScreen.availLeft) ?? 0
+  const originY = readFiniteNumber(browserScreen.availTop) ?? 0
+  const width = readPositiveNumber(browserScreen.width) ?? readPositiveNumber(window.innerWidth) ?? 1
+  const height = readPositiveNumber(browserScreen.height) ?? readPositiveNumber(window.innerHeight) ?? 1
+  const workAreaWidth = readPositiveNumber(browserScreen.availWidth) ?? width
+  const workAreaHeight = readPositiveNumber(browserScreen.availHeight) ?? height
+
+  return {
+    bounds: { x: originX, y: originY, width, height },
+    workArea: { x: originX, y: originY, width: workAreaWidth, height: workAreaHeight },
+  }
+}
+
+function readAppshotDestinationFrame(targetElement: HTMLElement, scaleFactor: number): ComposerSlashCommandRect | null {
+  const composerRect = targetElement.getBoundingClientRect()
+  const attachmentsRow = targetElement.querySelector<HTMLElement>('[data-composer-attachments-row]')
+  const chips = Array.from(targetElement.querySelectorAll<HTMLElement>('[data-chat-attachment-chip]'))
+  const attachmentCount = chips.length
+  const lastChipRect = chips.at(-1)?.getBoundingClientRect() ?? null
+  const rowRect = attachmentsRow?.getBoundingClientRect() ?? null
+  const scrollLeft = attachmentsRow?.scrollLeft ?? 0
+  const baseLeft = lastChipRect
+    ? lastChipRect.right + 8
+    : composerRect.left + APPSHOT_ATTACHMENT_LEADING_OFFSET * scaleFactor - scrollLeft * scaleFactor
+  const rowTop = rowRect?.top ?? composerRect.top
+  const nextSlotOffset = lastChipRect ? 0 : attachmentCount * APPSHOT_ATTACHMENT_SLOT_STEP * scaleFactor
+
+  return {
+    x: window.screenX + baseLeft + nextSlotOffset,
+    y: window.screenY + rowTop,
+    width: APPSHOT_ATTACHMENT_SLOT_WIDTH * scaleFactor,
+    height: APPSHOT_ATTACHMENT_SLOT_HEIGHT * scaleFactor,
+  }
+}
+
+function readComposerActionContext(targetElement: HTMLElement | null): ComposerSlashCommandActionContext {
+  if (!targetElement) {
+    return {}
+  }
+
+  const rect = targetElement.getBoundingClientRect()
+  if (rect.width <= 0 || rect.height <= 0) {
+    return {}
+  }
+
+  const computed = window.getComputedStyle(targetElement)
+  const screenRect = readBrowserScreenRect()
+  const scaleFactor = Math.max(window.devicePixelRatio || 1, 1)
+  const destinationFrame = readAppshotDestinationFrame(targetElement, scaleFactor)
+  if (!destinationFrame) {
+    return {}
+  }
+  return {
+    animationTarget: {
+      codexDisplay: {
+        id: 0,
+        scaleFactor,
+        bounds: screenRect.bounds,
+        workArea: screenRect.workArea,
+      },
+      destinationBackgroundColor: readCssHexColor(computed.backgroundColor, FALLBACK_APPSHOT_BACKGROUND),
+      destinationCornerRadius: 0,
+      destinationFrame,
+      destinationPrimaryTextColor: readCssHexColor(computed.color, FALLBACK_APPSHOT_TEXT),
+      transitionSnapshotScale: scaleFactor,
+    },
+  }
 }
 
 function formatTokenCount(tokens: number): string {
@@ -273,6 +419,7 @@ export function Composer({
   placeholder = '输入消息...',
   availableFiles = EMPTY_FILES,
   slashCommands = EMPTY_SLASH_COMMANDS,
+  onSlashCommandAction,
   className,
   toolbar,
   contextBar,
@@ -282,28 +429,42 @@ export function Composer({
   sessionContextWindow,
 }: ComposerProps) {
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
+  const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const attachmentController = useComposerAttachments({ supportsAttachments })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const actionTargetRef = useRef<HTMLDivElement>(null)
+  const visibleSlashCommands = useMemo(
+    () => getVisibleSlashCommands(slashCommands, Boolean(onSlashCommandAction)),
+    [onSlashCommandAction, slashCommands],
+  )
+  const slashPanelItems = useMemo(
+    () => getSlashCommandPanelItems(visibleSlashCommands, state.slashQuery),
+    [state.slashQuery, visibleSlashCommands],
+  )
+  const slashPanelHasResults = state.slashActive && slashPanelItems.length > 0
 
   // Track @ trigger position for path completion
   const mentionStartRef = useRef<number>(-1)
-  const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, slashCommands)
+  const slashStartRef = useRef<number>(-1)
+  const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, visibleSlashCommands)
   const slashCommandPrefix = activeSlashCommand ? getSlashCommandPrefix(activeSlashCommand) : ''
-  const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue === slashCommandPrefix
+  const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue.replace(/^[ \t]+/, '') === slashCommandPrefix
     ? activeSlashCommand.argumentHint
     : ''
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
     autoResize(e.target)
-    const selectedSlashCommand = getActiveSlashCommand(value, state.selectedSlashCommand, slashCommands)
+    const selectedSlashCommand = getActiveSlashCommand(value, state.selectedSlashCommand, visibleSlashCommands)
 
     const cursor = e.target.selectionStart ?? value.length
     const textBefore = value.slice(0, cursor)
+    const slashTrigger = readSlashTriggerState(value, cursor, visibleSlashCommands, state.selectedSlashCommand)
 
     // Check for slash command trigger at the start of a message.
-    if (slashCommands.length > 0 && textBefore.startsWith('/') && !textBefore.includes('\n') && !RE_WHITESPACE.test(textBefore)) {
+    if (slashTrigger) {
       mentionStartRef.current = -1
+      slashStartRef.current = slashTrigger.start
       dispatch({
         type: 'input/changed',
         state: {
@@ -311,8 +472,8 @@ export function Composer({
           mentionActive: false,
           mentionQuery: '',
           slashActive: true,
-          slashQuery: textBefore.slice(1),
-          selectedSlashCommand,
+          slashQuery: slashTrigger.query,
+          selectedSlashCommand: slashTrigger.selectedCommand,
         },
       })
       return
@@ -326,6 +487,7 @@ export function Composer({
       // Show panel if typing after @ without newline
       if (!afterAt.includes('\n')) {
         mentionStartRef.current = atIdx
+        slashStartRef.current = -1
         dispatch({
           type: 'input/changed',
           state: {
@@ -351,7 +513,8 @@ export function Composer({
         selectedSlashCommand,
       },
     })
-  }, [slashCommands, state.selectedSlashCommand])
+    slashStartRef.current = -1
+  }, [state.selectedSlashCommand, visibleSlashCommands])
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
     // Replace @query with @path (inline text completion)
@@ -391,22 +554,68 @@ export function Composer({
     })
   }, [state.inputValue])
 
-  const handleSlashCommandSelect = useCallback((command: ChatSlashCommand) => {
+  const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
     const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
-    const after = state.inputValue.slice(cursor)
-    const insertText = `/${command.name} `
-    const newValue = `${insertText}${after}`
-    dispatch({ type: 'slash/selected', inputValue: newValue, command })
+    const start = slashStartRef.current >= 0 ? slashStartRef.current : 0
+
+    if (command.action.kind === 'uiAction') {
+      slashStartRef.current = -1
+      const inputSnapshot = state.inputValue
+      dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
+      void (async () => {
+        if (!onSlashCommandAction) {
+          return
+        }
+
+        const result = await onSlashCommandAction(command, readComposerActionContext(actionTargetRef.current))
+        if (result?.fileParts?.length) {
+          attachmentController.appendFileParts(result.fileParts)
+        }
+        if (typeof result?.insertText !== 'string') {
+          return
+        }
+
+        const currentValue = textareaRef.current?.value ?? inputSnapshot
+        if (currentValue !== inputSnapshot) {
+          return
+        }
+
+        const next = replaceSlashTrigger(inputSnapshot, cursor, start, result.insertText)
+        dispatch({ type: 'slash/selected', inputValue: next.value, command: null })
+        requestAnimationFrame(() => {
+          const el = textareaRef.current
+          if (el) {
+            el.focus()
+            el.setSelectionRange(next.cursor, next.cursor)
+            autoResize(el)
+          }
+        })
+      })()
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        if (el) {
+          el.focus()
+          el.setSelectionRange(cursor, cursor)
+          autoResize(el)
+        }
+      })
+      return
+    }
+
+    const insertText = command.action.text
+    const next = replaceSlashTrigger(state.inputValue, cursor, start, insertText)
+    slashStartRef.current = -1
+    dispatch({ type: 'slash/selected', inputValue: next.value, command })
 
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
         el.focus()
-        el.setSelectionRange(insertText.length, insertText.length)
+        el.setSelectionRange(next.cursor, next.cursor)
         autoResize(el)
       }
     })
-  }, [state.inputValue])
+  }, [attachmentController, onSlashCommandAction, state.inputValue])
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()
@@ -439,8 +648,8 @@ export function Composer({
       return
     }
 
-    // If a picker is active, let it handle Enter/Escape/arrows
-    if (state.mentionActive || state.slashActive) {
+    // If a picker is active, let it handle Enter/Escape/arrows.
+    if (state.mentionActive || (state.slashActive && slashPanelHasResults)) {
       if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
         return
       }
@@ -456,7 +665,7 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [handleSend, state.mentionActive, state.slashActive])
+  }, [handleSend, slashPanelHasResults, state.mentionActive, state.slashActive])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
@@ -508,7 +717,9 @@ export function Composer({
         visible={state.mentionActive}
       />
       <SlashCommandPanel
-        commands={slashCommands}
+        commands={visibleSlashCommands}
+        listboxId={CHAT_SLASH_COMMAND_LISTBOX_ID}
+        onActiveOptionIdChange={setActiveSlashOptionId}
         query={state.slashQuery}
         onSelect={handleSlashCommandSelect}
         onClose={() => dispatch({ type: 'slash/closed' })}
@@ -516,7 +727,11 @@ export function Composer({
       />
 
       {/* Input card — modern clean style, no border-t separator */}
-      <div className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150">
+      <div
+        ref={actionTargetRef}
+        className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150"
+        data-testid="chat-composer-action-target"
+      >
         <ComposerAttachmentInput
           fileInputRef={attachmentController.fileInputRef}
           onFilesSelected={attachmentController.handleFilesSelected}
@@ -553,6 +768,9 @@ export function Composer({
             placeholder={placeholder}
             disabled={disabled}
             aria-label="Message"
+            aria-controls={slashPanelHasResults ? CHAT_SLASH_COMMAND_LISTBOX_ID : undefined}
+            aria-expanded={state.slashActive}
+            aria-activedescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
             data-testid="chat-composer-textarea"
             rows={2}
             className="relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"

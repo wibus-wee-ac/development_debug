@@ -96,7 +96,10 @@ export function ComposerAttachmentList({
   }
 
   return (
-    <div className={cn('flex flex-wrap gap-1.5 border-t border-border/40 px-3 py-2', className)}>
+    <div
+      className={cn('flex flex-wrap gap-1.5 border-t border-border/40 px-3 py-2', className)}
+      data-composer-attachments-row
+    >
       {attachments.map((attachment, index) => {
         const label = attachment.filename ?? attachment.mediaType
         const isImage = attachment.mediaType.startsWith('image/')
@@ -104,6 +107,7 @@ export function ComposerAttachmentList({
           <div
             key={`${attachment.url}-${attachment.filename ?? attachment.mediaType}`}
             className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+            data-chat-attachment-chip
             data-testid="chat-attachment-chip"
           >
             {isImage

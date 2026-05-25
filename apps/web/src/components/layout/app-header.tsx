@@ -143,7 +143,7 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             <GlobeIcon aria-hidden="true" />
           </Button>
         )}
-        {hasPanel && (
+        {!isSettingsActive && hasPanel && (
           <Button
             variant="ghost"
             size="icon-xs"
@@ -157,7 +157,7 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             <PanelBottomIcon aria-hidden="true" />
           </Button>
         )}
-        {hasAside && (
+        {!isSettingsActive && hasAside && (
           <Button
             variant="ghost"
             size="icon-xs"

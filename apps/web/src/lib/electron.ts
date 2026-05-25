@@ -182,6 +182,135 @@ export interface MacCaptureResponse {
   }
 }
 
+export interface MacCaptureWindowTarget {
+  windowId: number
+  processId?: number
+  bundleId?: string
+}
+
+export interface MacAppshotAnimationTarget {
+  codexDisplay: {
+    id: number
+    scaleFactor: number
+    bounds: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+    workArea: {
+      x: number
+      y: number
+      width: number
+      height: number
+    }
+  }
+  destinationBackgroundColor: string
+  destinationCornerRadius: number
+  destinationFrame: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  destinationPrimaryTextColor: string
+  transitionSnapshotScale?: number
+}
+
+export interface MacAppshotTransitionStyle {
+  transitionBackgroundOpacity?: number
+  shutterPeakOpacity?: number
+  shutterPeakProgress?: number
+  backgroundPeakProgress?: number
+  snapshotFadeInProgress?: number
+  appIconFadeStartProgress?: number
+  appIconVisibleProgress?: number
+  titleFadeStartProgress?: number
+  titleVisibleProgress?: number
+  completionDelay?: number
+  shadowRadius?: number
+  shadowYOffset?: number
+  shadowOpacity?: number
+  shadowFillOpacity?: number
+  accessoryIconSize?: number
+  accessoryIconYOffset?: number
+  accessoryTitleYOffset?: number
+}
+
+export interface MacAppshotFrontmostContext {
+  window: MacCaptureResponse['capture']['window']
+  bundleIdentifier: string | null
+  animationTarget: MacAppshotAnimationTarget
+}
+
+export interface MacAppshotImageAsset {
+  path: string
+  dataURL: string
+  mimeType: 'image/png' | 'image/jpeg'
+}
+
+export interface MacCradleAppshotCaptureResponse {
+  strategy: 'cradle-native'
+  capture: MacCaptureResponse['capture'] & {
+    appshot: {
+      strategy: 'cradle-native'
+      animationDuration: number
+      transitionSnapshotPath: string | null
+      transitionSnapshotHeight: number | null
+      transitionSpringDampingFraction: number | null
+      transitionSpringResponse: number | null
+      transitionStyle: Required<MacAppshotTransitionStyle>
+    }
+  }
+  asset: MacAppshotImageAsset | null
+  sink: MacCaptureResponse['sink']
+}
+
+export interface MacCodexAppshotCaptureResponse {
+  strategy: 'codex-private'
+  requestId: string
+  start: {
+    animationDuration: number | null
+    transitionSnapshotHeight: number | null
+    transitionSpringDampingFraction: number | null
+    transitionSpringResponse: number | null
+  }
+  updates: Array<{
+    type: 'metadata' | 'axText' | 'screenshot' | 'completed' | 'failed'
+    screenshotAsset?: MacAppshotImageAsset | null
+    transitionSnapshotAsset?: MacAppshotImageAsset | null
+  }>
+}
+
+export type MacAppshotCaptureResponse = MacCradleAppshotCaptureResponse | MacCodexAppshotCaptureResponse
+
+export interface MacCodexAppshotObservedAsset extends MacAppshotImageAsset {
+  relativePath: string
+  size: number
+  modifiedAtMs: number
+  sha256: string
+}
+
+export interface MacCodexAppshotObserveResponse {
+  rootPath: string
+  startedAtMs: number
+  durationMs: number
+  assets: MacCodexAppshotObservedAsset[]
+}
+
+export interface MacAppshotParityProbeResponse {
+  context: MacAppshotFrontmostContext
+  animationTarget: MacAppshotAnimationTarget
+  codex: MacCodexAppshotCaptureResponse
+  cradle: MacCradleAppshotCaptureResponse
+  appliedCalibration: {
+    animationDuration?: number
+    transitionSnapshotHeight?: number
+    transitionSpringDampingFraction?: number
+    transitionSpringResponse?: number
+  }
+}
+
 interface MacCaptureServiceMethods {
   getStatus: () => Promise<MacBridgeRuntimeStatus>
   getPermissions: () => Promise<MacPermissionsStatus>
@@ -190,9 +319,43 @@ interface MacCaptureServiceMethods {
   configureBothCommandHotkey: (enabled: boolean) => Promise<{ trigger: 'bothCommand', enabled: boolean }>
   captureFrontmostWindow: (options?: {
     sink?: 'file' | 'clipboard' | 'cleanshot'
+    targetWindow?: MacCaptureWindowTarget
     privacySensitiveAppBundleIds?: string[]
     privacySensitiveTitlePatterns?: string[]
   }) => Promise<MacCaptureResponse>
+  captureAppshot: (options?: {
+    sink?: 'file' | 'clipboard' | 'cleanshot'
+    strategy?: 'auto' | 'cradle-native' | 'codex-private'
+    targetWindow?: MacCaptureWindowTarget
+    animationTarget?: MacAppshotAnimationTarget
+    animationDuration?: number
+    requestId?: string
+    bundleIdentifier?: string
+    soundEnabled?: boolean
+    transitionSnapshotHeight?: number
+    transitionSpringDampingFraction?: number
+    transitionSpringResponse?: number
+    transitionStyle?: MacAppshotTransitionStyle
+    privacySensitiveAppBundleIds?: string[]
+    privacySensitiveTitlePatterns?: string[]
+  }) => Promise<MacAppshotCaptureResponse>
+  captureAppshotParityProbe: (options?: {
+    sink?: 'file' | 'clipboard' | 'cleanshot'
+    targetWindow?: MacCaptureWindowTarget
+    requestId?: string
+    soundEnabled?: boolean
+    animationTarget?: MacAppshotAnimationTarget
+    transitionStyle?: MacAppshotTransitionStyle
+    privacySensitiveAppBundleIds?: string[]
+    privacySensitiveTitlePatterns?: string[]
+  }) => Promise<MacAppshotParityProbeResponse>
+  observeCodexAppshotAssets: (options?: {
+    durationMs?: number
+    pollIntervalMs?: number
+    baselinePaths?: string[]
+    startedAtMs?: number
+  }) => Promise<MacCodexAppshotObserveResponse>
+  getAppshotFrontmostContext: () => Promise<MacAppshotFrontmostContext>
 }
 
 interface CradleIpcServices {

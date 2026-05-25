@@ -365,7 +365,7 @@ function syncRecordRow(
       updatedAt: now
     })
     .onConflictDoUpdate({
-      target: externalProviderRecords.id,
+      target: [externalProviderRecords.sourceKey, externalProviderRecords.externalId],
       set: {
         app: record.app,
         name: record.name,
@@ -391,7 +391,12 @@ function syncRuntimeTarget(
   const existing = database
     .select()
     .from(providerTargets)
-    .where(eq(providerTargets.id, id))
+    .where(
+      and(
+        eq(providerTargets.sourceKey, sourceKey),
+        eq(providerTargets.externalRecordId, record.externalId)
+      )
+    )
     .get()
   const credentialRef = record.credential
     ? upsertSecretInDb(database, {
@@ -424,7 +429,7 @@ function syncRuntimeTarget(
       updatedAt: now
     })
     .onConflictDoUpdate({
-      target: providerTargets.id,
+      target: [providerTargets.sourceKey, providerTargets.externalRecordId],
       set: {
         providerKind: record.providerKind,
         displayName: record.name,

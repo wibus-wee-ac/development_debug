@@ -18,6 +18,8 @@ import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Kbd } from '~/components/ui/kbd'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import type { ChatComposerSlashCommand } from '~/features/chat/chat-slash-commands'
+import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import { modelSupportsAttachments, useComposerAttachments } from '~/features/chat/composer-attachment-state'
 import {
@@ -25,6 +27,12 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from '~/features/chat/composer-attachments'
+import { getSlashCommandPanelItems, SlashCommandPanel } from '~/features/chat/slash-command-panel'
+import {
+  getActiveSlashCommand,
+  readSlashTriggerState,
+  replaceSlashTrigger,
+} from '~/features/chat/slash-command-input'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
@@ -110,6 +118,10 @@ function useNewChatPageOwner() {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
+  const [slashActive, setSlashActive] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const [selectedSlashCommand, setSelectedSlashCommand] = useState<ChatComposerSlashCommand | null>(null)
+  const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
 
   const effectiveWorkspaceId = useMemo(() => {
     if (selectedWorkspaceId && workspaces.some(w => w.id === selectedWorkspaceId)) {
@@ -125,6 +137,16 @@ function useNewChatPageOwner() {
   const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const attachmentController = useComposerAttachments({ supportsAttachments })
+  const slashCommands = useMemo(
+    () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
+    [selection.runtimeKind],
+  )
+  const slashPanelItems = useMemo(
+    () => getSlashCommandPanelItems(slashCommands, slashQuery),
+    [slashCommands, slashQuery],
+  )
+  const slashPanelHasResults = slashActive && slashPanelItems.length > 0
+  const slashStartRef = useRef<number>(-1)
   const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
@@ -285,6 +307,9 @@ function useNewChatPageOwner() {
 
   const handleQuickAction = useCallback((prompt: string) => {
     setInput(prompt)
+    setSlashActive(false)
+    setSlashQuery('')
+    setSelectedSlashCommand(null)
     requestAnimationFrame(() => {
       const el = textareaRef.current
       if (el) {
@@ -299,11 +324,49 @@ function useNewChatPageOwner() {
   }, [openTab])
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value)
+    const value = e.target.value
+    const cursor = e.target.selectionStart ?? value.length
+    const slashTrigger = readSlashTriggerState(value, cursor, slashCommands, selectedSlashCommand)
+    setInput(value)
     autoResize(e.target)
-  }, [])
+    if (slashTrigger) {
+      slashStartRef.current = slashTrigger.start
+      setSlashActive(true)
+      setSlashQuery(slashTrigger.query)
+      setSelectedSlashCommand(slashTrigger.selectedCommand)
+      return
+    }
+    slashStartRef.current = -1
+    setSlashActive(false)
+    setSlashQuery('')
+    setSelectedSlashCommand(getActiveSlashCommand(value, selectedSlashCommand, slashCommands))
+  }, [selectedSlashCommand, slashCommands])
+
+  const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
+    if (command.action.kind !== 'insertText') {
+      return
+    }
+    const cursor = textareaRef.current?.selectionStart ?? input.length
+    const start = slashStartRef.current >= 0 ? slashStartRef.current : 0
+    const next = replaceSlashTrigger(input, cursor, start, command.action.text)
+    slashStartRef.current = -1
+    setInput(next.value)
+    setSlashActive(false)
+    setSlashQuery('')
+    setSelectedSlashCommand(command)
+
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(next.cursor, next.cursor)
+        autoResize(el)
+      }
+    })
+  }, [input])
 
   return {
+    activeSlashOptionId,
     canSend,
     attachmentController,
     composerState,
@@ -314,6 +377,7 @@ function useNewChatPageOwner() {
     handleReadinessAction,
     handleResumeSession,
     handleSend,
+    handleSlashCommandSelect,
     input,
     isReady,
     now,
@@ -324,7 +388,13 @@ function useNewChatPageOwner() {
     selectedWorkspace,
     sending,
     setSelectedWorkspaceId,
+    setSlashActive,
+    setActiveSlashOptionId,
     textareaRef,
+    slashActive,
+    slashCommands,
+    slashPanelHasResults,
+    slashQuery,
     workspaces,
   }
 }
@@ -340,11 +410,19 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     handleKeyDown,
     handleSend,
     input,
+    activeSlashOptionId,
     sending,
     setSelectedWorkspaceId,
+    setSlashActive,
+    setActiveSlashOptionId,
     selectedWorkspace,
+    handleSlashCommandSelect,
     textareaRef,
     placeholder,
+    slashActive,
+    slashCommands,
+    slashPanelHasResults,
+    slashQuery,
     workspaces,
   } = owner
 
@@ -358,6 +436,15 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
         'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
       )}
     >
+      <SlashCommandPanel
+        commands={slashCommands}
+        listboxId="new-chat-slash-command-listbox"
+        onActiveOptionIdChange={setActiveSlashOptionId}
+        query={slashQuery}
+        onSelect={handleSlashCommandSelect}
+        onClose={() => setSlashActive(false)}
+        visible={slashActive}
+      />
       <div className="relative bg-background">
         <ComposerAttachmentInput
           fileInputRef={attachmentController.fileInputRef}
@@ -374,6 +461,9 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
           disabled={sending}
           data-testid="new-chat-textarea"
           aria-label="New chat message"
+          aria-controls={slashPanelHasResults ? 'new-chat-slash-command-listbox' : undefined}
+          aria-expanded={slashActive}
+          aria-activedescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
           rows={5}
           className={cn(
             'block w-full resize-none bg-transparent outline-none',

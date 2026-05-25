@@ -13,6 +13,7 @@ import type { ModelDescriptor } from '~/lib/types'
 
 export interface ComposerAttachmentController {
   attachments: FileUIPart[]
+  appendFileParts: (fileParts: FileUIPart[]) => void
   fileInputRef: RefObject<HTMLInputElement | null>
   hasAttachments: boolean
   supportsAttachments: boolean
@@ -142,6 +143,7 @@ export function useComposerAttachments({
 
   return useMemo(() => ({
     attachments,
+    appendFileParts,
     fileInputRef,
     hasAttachments: attachments.length > 0,
     supportsAttachments,
@@ -152,6 +154,7 @@ export function useComposerAttachments({
     removeAttachment,
   }), [
     attachments,
+    appendFileParts,
     clearAttachments,
     handleFilesSelected,
     handlePaste,

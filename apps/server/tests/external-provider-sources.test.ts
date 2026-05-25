@@ -2,12 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { externalProviderRecords, providerTargets } from '@cradle/db'
 import type { ExternalProviderRecord } from '@cradle/plugin-sdk/server'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
-import { shutdownInfra } from '../src/infra'
+import { db, shutdownInfra } from '../src/infra'
 import { registerExternalProviderSource } from '../src/plugins/external-provider-source-registry'
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
@@ -391,6 +392,143 @@ describe('external provider sources capability', () => {
           lastSyncError: 'fixture source unavailable'
         })
       ])
+
+      registration.dispose()
+    } finally {
+      shutdownInfra()
+      restoreEnv(previous)
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('refreshes legacy external records and targets by source record identity', async () => {
+    const dataDir = makeTempDir('cradle-external-provider-source-legacy-')
+    const previous = {
+      dataDir: process.env.CRADLE_DATA_DIR,
+      credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
+      pluginsDir: process.env.CRADLE_PLUGINS_DIR,
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+    }
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-legacy-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
+
+    try {
+      const app = await createServerApp({ startBackgroundTasks: false })
+      const registration = registerExternalProviderSource('fixture-legacy-plugin', {
+        id: 'fixture-legacy-providers',
+        label: 'Fixture Legacy Providers',
+        async readSnapshot() {
+          return {
+            source: { status: 'ok' },
+            providers: [
+              {
+                externalId: 'codex:legacy-openai',
+                app: 'codex',
+                name: 'Updated Legacy OpenAI',
+                providerKind: 'openai-compatible',
+                config: { baseUrl: 'https://legacy.example.test/v1', model: 'gpt-legacy' },
+                metadata: {
+                  baseUrl: 'https://legacy.example.test/v1',
+                  model: 'gpt-legacy'
+                }
+              }
+            ]
+          }
+        }
+      })
+
+      const sources = (await (
+        await app.handle(new Request('http://localhost/external-provider-sources'))
+      ).json()) as Array<{ id: string }>
+      const sourceKey = sources[0].id
+      const now = Math.floor(Date.now() / 1000)
+
+      db()
+        .insert(externalProviderRecords)
+        .values({
+          id: 'legacy-record-id',
+          sourceKey,
+          externalId: 'codex:legacy-openai',
+          app: 'codex',
+          name: 'Legacy OpenAI',
+          providerKind: 'openai-compatible',
+          status: 'missing',
+          fingerprint: 'legacy-record-fingerprint',
+          metadataJson: '{}',
+          warningsJson: '[]',
+          lastSeenAt: now,
+          createdAt: now,
+          updatedAt: now
+        })
+        .run()
+      db()
+        .insert(providerTargets)
+        .values({
+          id: 'legacy-target-id',
+          kind: 'external',
+          sourceKey,
+          externalRecordId: 'codex:legacy-openai',
+          providerKind: 'openai-compatible',
+          displayName: 'Legacy OpenAI',
+          enabled: false,
+          connectionConfigJson: '{}',
+          credentialRef: null,
+          enabledModelsJson: '[]',
+          customModelsJson: '[]',
+          modelRegistryMappingsJson: '[]',
+          iconSlug: null,
+          sourceFingerprint: 'legacy-target-fingerprint',
+          createdAt: now,
+          updatedAt: now
+        })
+        .run()
+
+      const refresh = await app.handle(
+        new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
+          method: 'POST'
+        })
+      )
+      expect(refresh.status).toBe(200)
+      expect(await refresh.json()).toEqual(
+        expect.objectContaining({
+          sourceKey,
+          status: 'ok',
+          recordsSeen: 1,
+          recordsProjected: 1,
+          recordsMissing: 0
+        })
+      )
+
+      const recordsRes = await app.handle(
+        new Request('http://localhost/external-provider-sources/records')
+      )
+      expect(recordsRes.status).toBe(200)
+      expect(await recordsRes.json()).toEqual([
+        expect.objectContaining({
+          id: 'legacy-record-id',
+          providerTargetId: 'legacy-target-id',
+          externalId: 'codex:legacy-openai',
+          name: 'Updated Legacy OpenAI',
+          status: 'active'
+        })
+      ])
+
+      const targetRes = await app.handle(
+        new Request(
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:legacy-openai/runtime-target`
+        )
+      )
+      expect(targetRes.status).toBe(200)
+      expect(RuntimeTargetResponseSchema.parse(await targetRes.json())).toEqual(
+        expect.objectContaining({
+          id: 'legacy-target-id',
+          externalRecordId: 'codex:legacy-openai',
+          displayName: 'Updated Legacy OpenAI',
+          enabled: false
+        })
+      )
 
       registration.dispose()
     } finally {

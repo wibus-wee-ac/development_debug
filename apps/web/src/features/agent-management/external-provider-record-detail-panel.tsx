@@ -357,7 +357,7 @@ export function ExternalProviderRecordDetailPanel({
     if (health === 'failed') {
       return 'Failed'
     }
-    return 'Unknown'
+    return 'Not checked'
   }, [health, runtimeTarget?.enabled])
 
   return (

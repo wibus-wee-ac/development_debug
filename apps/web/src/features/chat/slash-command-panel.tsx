@@ -4,27 +4,66 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
-import type { ChatSlashCommand } from './chat-capabilities'
+import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import { getSlashCommandSourceLabel, hasDuplicateSlashCommandName } from './chat-slash-commands'
+import { isSlashCommandAvailable } from './slash-command-input'
 
 interface SlashCommandPanelProps {
-  commands: ChatSlashCommand[]
+  commands: ChatComposerSlashCommand[]
   query: string
-  onSelect: (command: ChatSlashCommand) => void
+  listboxId?: string
+  onActiveOptionIdChange?: (optionId: string | undefined) => void
+  onSelect: (command: ChatComposerSlashCommand) => void
   onClose: () => void
   visible: boolean
 }
 
 const MAX_RESULTS = 24
 
-function formatCommandSubtitle(command: ChatSlashCommand): string {
+function formatCommandSubtitle(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
   const aliases = command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `/${alias}`).join(', ')}` : ''
-  if (command.description && aliases) {
-    return `${command.description} · ${aliases}`
-  }
-  return command.description || aliases
+  return [command.description, command.availability?.enabled === false ? command.availability.reason : '', aliases].filter(Boolean).join(' · ')
 }
 
-export function SlashCommandPanel({ commands, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
+export function formatSlashCommandSearchText(command: ChatComposerSlashCommand): string {
+  return [
+    command.name,
+    command.description,
+    command.argumentHint,
+    ...(command.aliases ?? []),
+    getSlashCommandSourceLabel(command),
+  ].join(' ')
+}
+
+export function getSlashCommandPanelItems(commands: ChatComposerSlashCommand[], query: string): ChatComposerSlashCommand[] {
+  if (!query) {
+    return commands.slice(0, MAX_RESULTS)
+  }
+  return new Fzf(commands, {
+    selector: formatSlashCommandSearchText,
+    limit: MAX_RESULTS,
+  }).find(query).map(result => result.item)
+}
+
+export function formatSlashCommandOptionId(command: ChatComposerSlashCommand, index: number): string {
+  return `chat-slash-command-${formatCommandKey(command, index).replace(/[^a-zA-Z0-9_-]/g, '-')}`
+}
+
+function formatCommandKey(command: ChatComposerSlashCommand, index: number): string {
+  return command.id || `${command.source}:${command.name}:${index}`
+}
+
+function getCommandBadge(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
+  return hasDuplicateSlashCommandName(commands, command) ? getSlashCommandSourceLabel(command) : ''
+}
+
+function getCommandBadgeClassName(command: ChatComposerSlashCommand): string {
+  return command.source === 'runtime'
+    ? 'border-primary/20 bg-primary/10 text-primary'
+    : 'border-border bg-muted text-muted-foreground'
+}
+
+export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
@@ -32,7 +71,7 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
 
   const fzfIndex = useMemo(
     () => new Fzf(commands, {
-      selector: command => `${command.name} ${command.description} ${command.argumentHint} ${(command.aliases ?? []).join(' ')}`,
+      selector: formatSlashCommandSearchText,
       limit: MAX_RESULTS,
     }),
     [commands],
@@ -75,7 +114,7 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
       e.preventDefault()
       setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
     }
-    else if (e.key === 'Enter' && results[effectiveActiveIndex]) {
+    else if (e.key === 'Enter' && results[effectiveActiveIndex] && isSlashCommandAvailable(results[effectiveActiveIndex].item)) {
       e.preventDefault()
       onSelect(results[effectiveActiveIndex].item)
     }
@@ -94,40 +133,55 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  const handleOptionClick = useCallback((command: ChatSlashCommand) => {
+  const handleOptionClick = useCallback((command: ChatComposerSlashCommand) => {
+    if (!isSlashCommandAvailable(command)) {
+      return
+    }
     onSelect(command)
   }, [onSelect])
+
+  const activeCommand = results[effectiveActiveIndex]?.item
+  const activeSubtitle = activeCommand ? formatCommandSubtitle(commands, activeCommand) : ''
+  const activeBadge = activeCommand ? getCommandBadge(commands, activeCommand) : ''
+  const activeOptionId = activeCommand ? formatSlashCommandOptionId(activeCommand, effectiveActiveIndex) : undefined
+
+  useEffect(() => {
+    onActiveOptionIdChange?.(visible ? activeOptionId : undefined)
+  }, [activeOptionId, onActiveOptionIdChange, visible])
 
   if (!visible || results.length === 0) {
     return null
   }
 
-  const activeCommand = results[effectiveActiveIndex]?.item
-  const activeSubtitle = activeCommand ? formatCommandSubtitle(activeCommand) : ''
-
   return (
     <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl backdrop-blur-md">
-      <div
-        className="flex max-h-72 min-h-0"
-      >
+      <div className="flex max-h-72 min-h-0">
         <div
           ref={listRef}
           className="max-h-72 min-w-0 flex-1 overflow-y-auto p-1"
+          id={listboxId}
           role="listbox"
         >
           {results.map(({ item }, idx) => {
-            const subtitle = formatCommandSubtitle(item)
+            const subtitle = formatCommandSubtitle(commands, item)
+            const badge = getCommandBadge(commands, item)
+            const isAvailable = isSlashCommandAvailable(item)
             return (
               <button
-                key={idx}
+                key={formatCommandKey(item, idx)}
                 type="button"
+                id={formatSlashCommandOptionId(item, idx)}
                 role="option"
-                aria-selected={idx === effectiveActiveIndex}
+                aria-label={`/${item.name} ${getSlashCommandSourceLabel(item)}`}
+                aria-selected={formatSlashCommandOptionId(item, idx) === activeOptionId}
+                disabled={!isAvailable}
                 className={cn(
                   'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
-                  idx === effectiveActiveIndex
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-foreground/80 hover:bg-accent/40',
+                  isAvailable
+                    ? idx === effectiveActiveIndex
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-foreground/80 hover:bg-accent/40'
+                    : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
                 )}
                 onMouseEnter={() => setActiveIndex(idx)}
                 onFocus={() => setActiveIndex(idx)}
@@ -143,6 +197,11 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
                     {item.argumentHint && (
                       <span className="truncate text-[11px] text-muted-foreground">
                         {item.argumentHint}
+                      </span>
+                    )}
+                    {badge && (
+                      <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(item))}>
+                        {badge}
                       </span>
                     )}
                   </span>
@@ -169,6 +228,11 @@ export function SlashCommandPanel({ commands, query, onSelect, onClose, visible 
               {activeCommand.argumentHint && (
                 <span className="truncate font-mono text-[11px] text-primary/75">
                   {activeCommand.argumentHint}
+                </span>
+              )}
+              {activeBadge && (
+                <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(activeCommand))}>
+                  {activeBadge}
                 </span>
               )}
             </div>

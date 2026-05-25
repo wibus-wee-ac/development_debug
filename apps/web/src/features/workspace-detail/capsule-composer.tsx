@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import type { MentionItem } from '~/features/chat'
+import type { ChatComposerSlashCommand } from '~/features/chat/chat-slash-commands'
+import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
 import { modelSupportsAttachments, useComposerAttachments } from '~/features/chat/composer-attachment-state'
 import {
   ComposerAttachmentButton,
@@ -15,6 +17,12 @@ import {
   ComposerAttachmentList,
 } from '~/features/chat/composer-attachments'
 import { MentionPanel } from '~/features/chat/mention-panel'
+import { getSlashCommandPanelItems, SlashCommandPanel } from '~/features/chat/slash-command-panel'
+import {
+  getActiveSlashCommand,
+  readSlashTriggerState,
+  replaceSlashTrigger,
+} from '~/features/chat/slash-command-input'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
@@ -33,11 +41,25 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
   const [sending, setSending] = useState(false)
   const [mentionActive, setMentionActive] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
+  const [slashActive, setSlashActive] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const [selectedSlashCommand, setSelectedSlashCommand] = useState<ChatComposerSlashCommand | null>(null)
+  const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const attachmentController = useComposerAttachments({ supportsAttachments })
   const mentionStartRef = useRef<number>(-1)
+  const slashStartRef = useRef<number>(-1)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
+  const slashCommands = useMemo(
+    () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
+    [selection.runtimeKind],
+  )
+  const slashPanelItems = useMemo(
+    () => getSlashCommandPanelItems(slashCommands, slashQuery),
+    [slashCommands, slashQuery],
+  )
+  const slashPanelHasResults = slashActive && slashPanelItems.length > 0
 
   const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
   const availableFiles: MentionItem[] = useMemo(
@@ -79,6 +101,19 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     autoResize()
     const cursor = e.target.selectionStart ?? value.length
     const textBefore = value.slice(0, cursor)
+    const slashTrigger = readSlashTriggerState(value, cursor, slashCommands, selectedSlashCommand)
+
+    if (slashTrigger) {
+      mentionStartRef.current = -1
+      slashStartRef.current = slashTrigger.start
+      setMentionActive(false)
+      setMentionQuery('')
+      setSlashActive(true)
+      setSlashQuery(slashTrigger.query)
+      setSelectedSlashCommand(slashTrigger.selectedCommand)
+      return
+    }
+
     const atIdx = textBefore.lastIndexOf('@')
 
     if (atIdx >= 0) {
@@ -87,12 +122,19 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
         setMentionActive(true)
         setMentionQuery(afterAt)
         mentionStartRef.current = atIdx
+        slashStartRef.current = -1
+        setSlashActive(false)
+        setSlashQuery('')
         return
       }
     }
     setMentionActive(false)
     setMentionQuery('')
-  }, [autoResize])
+    slashStartRef.current = -1
+    setSlashActive(false)
+    setSlashQuery('')
+    setSelectedSlashCommand(getActiveSlashCommand(value, selectedSlashCommand, slashCommands))
+  }, [autoResize, selectedSlashCommand, slashCommands])
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
     const start = mentionStartRef.current
@@ -154,6 +196,9 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
       setInput('')
       setExpanded(false)
       setMentionActive(false)
+      setSlashActive(false)
+      setSlashQuery('')
+      setSelectedSlashCommand(null)
     }
     finally {
       setSending(false)
@@ -164,7 +209,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     if (e.nativeEvent.isComposing) {
       return
     }
-    if (mentionActive && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    if ((mentionActive || (slashActive && slashPanelHasResults)) && ['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
       return
     }
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -175,7 +220,30 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
       setExpanded(false)
       textareaRef.current?.blur()
     }
-  }, [handleSend, mentionActive])
+  }, [handleSend, mentionActive, slashActive, slashPanelHasResults])
+
+  const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
+    if (command.action.kind !== 'insertText') {
+      return
+    }
+    const cursor = textareaRef.current?.selectionStart ?? input.length
+    const start = slashStartRef.current >= 0 ? slashStartRef.current : 0
+    const next = replaceSlashTrigger(input, cursor, start, command.action.text)
+    slashStartRef.current = -1
+    setInput(next.value)
+    setSlashActive(false)
+    setSlashQuery('')
+    setSelectedSlashCommand(command)
+
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.focus()
+        el.setSelectionRange(next.cursor, next.cursor)
+        autoResize()
+      }
+    })
+  }, [autoResize, input])
 
   const expand = useCallback(() => {
     setExpanded(true)
@@ -192,6 +260,7 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
 
   return {
     attachmentController,
+    activeSlashOptionId,
     availableFiles,
     canSend,
     closeMention,
@@ -202,11 +271,18 @@ function useCapsuleComposerOwner({ workspaceId, onSend }: CapsuleComposerProps) 
     handleKeyDown,
     handleMentionSelect,
     handleSend,
+    handleSlashCommandSelect,
     input,
     expanded,
     mentionActive,
     mentionQuery,
     sending,
+    setActiveSlashOptionId,
+    setSlashActive,
+    slashActive,
+    slashCommands,
+    slashPanelHasResults,
+    slashQuery,
     textareaRef,
   }
 }
@@ -218,13 +294,24 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
   return (
     <div ref={owner.containerRef} className="relative">
       {owner.expanded && (
-        <MentionPanel
-          items={owner.availableFiles}
-          query={owner.mentionQuery}
-          onSelect={owner.handleMentionSelect}
-          onClose={owner.closeMention}
-          visible={owner.mentionActive}
-        />
+        <>
+          <MentionPanel
+            items={owner.availableFiles}
+            query={owner.mentionQuery}
+            onSelect={owner.handleMentionSelect}
+            onClose={owner.closeMention}
+            visible={owner.mentionActive}
+          />
+          <SlashCommandPanel
+            commands={owner.slashCommands}
+            listboxId="workspace-detail-capsule-slash-command-listbox"
+            onActiveOptionIdChange={owner.setActiveSlashOptionId}
+            query={owner.slashQuery}
+            onSelect={owner.handleSlashCommandSelect}
+            onClose={() => owner.setSlashActive(false)}
+            visible={owner.slashActive}
+          />
+        </>
       )}
 
       <div
@@ -248,6 +335,9 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
           rows={1}
           data-testid="workspace-detail-capsule-textarea"
           aria-label="Workspace task message"
+          aria-controls={owner.slashPanelHasResults ? 'workspace-detail-capsule-slash-command-listbox' : undefined}
+          aria-expanded={owner.slashActive}
+          aria-activedescendant={owner.slashPanelHasResults ? owner.activeSlashOptionId : undefined}
           className={cn(
             'block w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/40 outline-none disabled:opacity-50',
             owner.expanded
