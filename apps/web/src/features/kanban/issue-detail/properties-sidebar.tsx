@@ -1,5 +1,6 @@
 import { BotIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon, TagsIcon, Trash2Icon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   DropdownMenu,
@@ -33,6 +34,14 @@ import { useDelegateIssue, usePatchIssueLabels, useUndelegateIssue } from '../us
 import type { StatusCategory } from '../use-view-config'
 import { RelationManager } from './relation-manager'
 
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 type IssuePatch = Partial<{
   title: string
   description: string | null
@@ -52,10 +61,7 @@ interface HumanAssignee {
   name: string
 }
 
-const CURRENT_USER_ASSIGNEE: HumanAssignee = {
-  id: '__self__',
-  name: 'Me',
-}
+const CURRENT_USER_ASSIGNEE_ID = '__self__'
 
 interface PropertiesSidebarProps {
   issue: KanbanIssue
@@ -66,6 +72,7 @@ interface PropertiesSidebarProps {
 }
 
 export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, onUpdate }: PropertiesSidebarProps) => {
+  const { t } = useTranslation('kanban')
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
   const labels = issue.labels
@@ -82,11 +89,11 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
     <div className="flex flex-col gap-1">
       <div className="bg-card rounded-lg px-3 py-2 text-sm shadow-xs font-medium text-muted-foreground border border-border">
         {/* Status */}
-        <PropertyRow label="Status">
+        <PropertyRow label={t('property.status')}>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
               {currentStatus && <StatusIcon category={currentStatus.category as StatusCategory} size={14} />}
-              <span>{currentStatus?.name ?? 'None'}</span>
+              <span>{currentStatus?.name ?? t('priority.none')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
               <DropdownMenuRadioGroup value={issue.statusId ?? ''} onValueChange={v => onUpdate({ statusId: v })}>
@@ -102,21 +109,21 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
         </PropertyRow>
 
         {/* Priority */}
-        <PropertyRow label="Priority">
+        <PropertyRow label={t('property.priority')}>
           <DropdownMenu>
             <DropdownMenuTrigger
               className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors"
               data-testid="issue-priority-trigger"
             >
               <PriorityIcon priority={issue.priority as IssuePriority} size={14} />
-              <span>{priorityOptions.find(p => p.value === issue.priority)?.label ?? 'No priority'}</span>
+              <span>{t(priorityLabelKeys[issue.priority as IssuePriority] ?? 'issue.label.noPriority')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-40">
               <DropdownMenuRadioGroup value={issue.priority} onValueChange={v => onUpdate({ priority: v as IssuePriority })}>
                 {priorityOptions.map(p => (
                   <DropdownMenuRadioItem key={p.value} value={p.value} data-testid={`issue-priority-option-${p.value}`}>
                     <PriorityIcon priority={p.value} size={14} />
-                    {p.label}
+                    {t(priorityLabelKeys[p.value])}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -125,25 +132,25 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
         </PropertyRow>
 
         {/* Assignee */}
-        <PropertyRow label="Assignee">
+        <PropertyRow label={t('property.assignee')}>
           <AssigneePicker issue={issue} onUpdate={onUpdate} />
         </PropertyRow>
 
         {/* Labels */}
-        <PropertyRow label="Labels">
+        <PropertyRow label={t('property.labels')}>
           <LabelsEditor labels={labels} workspaceIssues={labelWorkspaceIssues} onUpdate={newLabels => onUpdate({ labels: newLabels })} />
         </PropertyRow>
 
         {/* Milestone */}
-        <PropertyRow label="Milestone">
+        <PropertyRow label={t('property.milestone')}>
           <DropdownMenu>
             <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
-              <span>{currentMilestone?.title ?? 'None'}</span>
+              <span>{currentMilestone?.title ?? t('priority.none')}</span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-44">
               <DropdownMenuRadioGroup value={issue.milestoneId ?? ''} onValueChange={v => onUpdate({ milestoneId: v || null })}>
                 <DropdownMenuRadioItem value="">
-                  No milestone
+                  {t('issue.label.noMilestone')}
                 </DropdownMenuRadioItem>
                 {milestones.length > 0 && <DropdownMenuSeparator />}
                 {milestones.map(m => (
@@ -179,13 +186,14 @@ function PropertyRow({ label, children }: { label: string, children: React.React
 
 function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (patch: IssuePatch) => void }) {
   const { agents } = useAgents()
+  const { t } = useTranslation('kanban')
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
   const agentCandidates = useMemo(
     () => agents.filter(agent => !!agent.providerTargetId),
     [agents],
   )
-  const humanCandidates = useMemo(() => [CURRENT_USER_ASSIGNEE], [])
+  const humanCandidates = useMemo(() => [{ id: CURRENT_USER_ASSIGNEE_ID, name: t('assignee.currentUser') }], [t])
   const assignedAgent = agentCandidates.find(agent => (
     (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
     || agent.id === issue.delegateAgentId
@@ -194,7 +202,7 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
   const assignedHuman = issue.assigneeKind === 'user'
     ? humanCandidates.find(candidate => candidate.id === issue.assigneeId) ?? {
         id: issue.assigneeId ?? '',
-        name: issue.assigneeId ?? 'Unknown user',
+        name: issue.assigneeId ?? t('assignee.unknownUser'),
       }
     : null
   const selectedValue = assignedAgent
@@ -253,17 +261,17 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
             ? <AssigneeAvatar name={assignedHuman.name} size={16} />
             : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
         <span className="truncate">
-          {assignedAgent?.name ?? assignedHuman?.name ?? 'Unassigned'}
+          {assignedAgent?.name ?? assignedHuman?.name ?? t('assignee.unassigned')}
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuRadioGroup value={selectedValue} onValueChange={handleAssigneeChange}>
           <DropdownMenuRadioItem value="" data-testid="issue-assignee-option-unassigned">
             <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-            <span>Unassigned</span>
+            <span>{t('assignee.unassigned')}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>Team members</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('assignee.teamMembers')}</DropdownMenuLabel>
           {humanCandidates.map(candidate => (
             <DropdownMenuRadioItem key={candidate.id} value={`user:${candidate.id}`} data-testid={`issue-assignee-option-user-${candidate.id}`}>
               <AssigneeAvatar name={candidate.name} size={18} />
@@ -271,12 +279,12 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
             </DropdownMenuRadioItem>
           ))}
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>AI Agents</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('assignee.aiAgents')}</DropdownMenuLabel>
           {agentCandidates.length === 0
             ? (
                 <DropdownMenuItem disabled>
                   <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-                  No agents configured
+                  {t('assignee.noAgentsConfigured')}
                 </DropdownMenuItem>
               )
             : agentCandidates.map(agent => (
@@ -306,6 +314,7 @@ function LabelsEditor({
   workspaceIssues: KanbanIssue[]
   onUpdate: (labels: string[]) => void
 }) {
+  const { t } = useTranslation('kanban')
   const [inputValue, setInputValue] = useState('')
   const [open, setOpen] = useState(false)
   const [editingLabel, setEditingLabel] = useState<string | null>(null)
@@ -417,7 +426,7 @@ function LabelsEditor({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-fill transition-colors"
-          aria-label="Add label"
+          aria-label={t('issue.label.addAria')}
           data-testid="issue-label-add-trigger"
         >
           <PlusIcon className="size-3" aria-hidden="true" />
@@ -439,9 +448,9 @@ function LabelsEditor({
                     setOpen(false)
                   }
                 }}
-                placeholder="Search or create label"
+                placeholder={t('issue.label.inputPlaceholder')}
                 data-testid="issue-label-input"
-                aria-label="Issue label"
+                aria-label={t('issue.label.inputAria')}
                 className="min-w-0 flex-1 border-none bg-transparent text-[13px] text-foreground outline-none placeholder:text-muted-foreground"
               />
             </div>
@@ -453,7 +462,7 @@ function LabelsEditor({
                   type="button"
                   onClick={() => handleAddLabel(option.label)}
                   className="flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-foreground hover:bg-fill transition-colors"
-                  aria-label={`Add label ${option.label}`}
+                  aria-label={t('issue.label.addSuggestionAria', { label: option.label })}
                   data-testid={`issue-label-suggestion-${option.label}`}
                 >
                   <LabelChip label={option.label} tone={option.tone} />
@@ -466,17 +475,17 @@ function LabelsEditor({
                   type="button"
                   onClick={() => handleAddLabel(trimmedInput)}
                   className="flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-[12px] text-foreground hover:bg-fill transition-colors"
-                  aria-label={`Create label ${trimmedInput}`}
+                  aria-label={t('issue.label.createAria', { label: trimmedInput })}
                   data-testid="issue-label-create-option"
                 >
                   <PlusIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate">Create "{trimmedInput}"</span>
+                  <span className="min-w-0 flex-1 truncate">{t('issue.label.create', { label: trimmedInput })}</span>
                 </button>
               )}
 
               {!canCreateLabel && labelSuggestions.length === 0 && (
                 <div className="px-1.5 py-2 text-[12px] text-muted-foreground">
-                  No matching labels
+                  {t('issue.label.noMatches')}
                 </div>
               )}
             </div>
@@ -485,14 +494,14 @@ function LabelsEditor({
           <div className="p-2">
             <div className="mb-1 flex items-center gap-1.5 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
               <TagsIcon className="size-3" aria-hidden="true" />
-              Workspace labels
+              {t('issue.label.workspaceLabels')}
             </div>
 
             <div className="max-h-52 overflow-y-auto pr-1">
               {workspaceLabelOptions.length === 0
                 ? (
                     <div className="px-1 py-2 text-[12px] text-muted-foreground">
-                      No labels yet
+                      {t('issue.label.empty')}
                     </div>
                   )
                 : workspaceLabelOptions.map(option => (

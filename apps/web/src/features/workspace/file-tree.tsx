@@ -3,6 +3,7 @@ import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTree
 import { useQuery } from '@tanstack/react-query'
 import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
@@ -75,6 +76,7 @@ interface FileTreeProps {
 }
 
 export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
+  const { t } = useTranslation('workspace')
   const filesQuery = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
@@ -105,7 +107,7 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
   if (!workspaceId) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-xs text-muted-foreground">未关联工作区</p>
+        <p className="text-xs text-muted-foreground">{t('fileTree.status.noWorkspace')}</p>
       </div>
     )
   }
@@ -121,7 +123,7 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
   if (!preparedInput) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-xs text-muted-foreground">工作区为空</p>
+        <p className="text-xs text-muted-foreground">{t('fileTree.status.empty')}</p>
       </div>
     )
   }
@@ -152,6 +154,7 @@ interface FileTreeInnerProps {
 }
 
 function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+  const { t } = useTranslation('workspace')
   const activeWorkspaceFilePath = useBrowserPanelStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
     if (activeTab?.kind !== 'workspace-file' || activeTab.workspaceId !== workspaceId) {
@@ -319,8 +322,8 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
           <input
             value={search.value}
             onChange={event => search.setValue(event.target.value)}
-            placeholder="Search files"
-            aria-label="Search files"
+            placeholder={t('fileTree.search.placeholder')}
+            aria-label={t('fileTree.search.aria')}
             className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/45"
           />
           {hasSearchValue && (
@@ -332,7 +335,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
             <button
               type="button"
               onClick={() => search.setValue('')}
-              aria-label="Clear search"
+              aria-label={t('fileTree.action.clearSearch')}
               className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
             >
               <XIcon className="size-3" aria-hidden="true" />
@@ -357,7 +360,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
         renderContextMenu={(item, context) => (
           <div className="min-w-40 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md">
             <ContextMenuItem
-              label="复制路径"
+              label={t('fileTree.action.copyPath')}
               onClick={() => {
                 const absPath = workspacePath ? `${workspacePath}/${item.path}` : item.path
                 navigator.clipboard.writeText(absPath)
@@ -365,7 +368,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
               }}
             />
             <ContextMenuItem
-              label="复制相对路径"
+              label={t('fileTree.action.copyRelativePath')}
               onClick={() => {
                 navigator.clipboard.writeText(item.path)
                 context.close({ restoreFocus: true })
@@ -373,7 +376,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
             />
             {workspacePath && (
               <ContextMenuItem
-                label="在 Finder 中显示"
+                label={t('fileTree.action.revealInFinder')}
                 onClick={() => {
                   context.close({ restoreFocus: true })
                 }}
@@ -383,7 +386,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
               <>
                 <div className="mx-1 my-1 h-px bg-border/60" />
                 <ContextMenuItem
-                  label="Pack & Copy to AI"
+                  label={t('fileTree.action.packToAi')}
                   icon={<PackageIcon className="size-3" />}
                   onClick={() => {
                     // Use current selection if it includes this item; otherwise just this item
@@ -404,7 +407,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
       {selectedPaths.length > 0 && (
         <div className="shrink-0 border-t border-border px-2.5 py-1">
           <p className="truncate text-[10px] text-muted-foreground/50">
-            {selectedPaths.length === 1 ? selectedPaths[0] : `${selectedPaths.length} 个文件`}
+            {selectedPaths.length === 1 ? selectedPaths[0] : t('fileTree.selection.files', { count: selectedPaths.length })}
           </p>
         </div>
       )}

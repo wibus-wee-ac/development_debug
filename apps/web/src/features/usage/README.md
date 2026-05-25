@@ -7,6 +7,7 @@ Displays a GitHub-style contribution heatmap of daily token consumption with agg
 Data sourced from the `usage_logs` SQLite table via the Usage API.
 By Agent rows prefer matched agent profile names and fall back to stable profile IDs for historical rows.
 当前 UI 公开最小稳定锚点供真实入口 E2E 使用：dashboard 根节点、空状态、关键 summary pills、总 token 数，以及 heatmap cell / tooltip。
+Dashboard headings, stat labels, chart labels, and empty states are owned by the `usage` i18n namespace.
 
 ## Files
 

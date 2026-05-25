@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -27,6 +28,7 @@ function getLayerStatus(plugin: PluginInfo, layer: 'server' | 'web' | 'desktop')
 }
 
 export function PluginsPanel() {
+  const { t } = useTranslation('devtool')
   const { plugins, loading, error, refresh, getActivatedAt } = usePluginData()
   const panels = usePluginStore((s) => s.panels)
   const commands = usePluginStore((s) => s.commands)
@@ -41,17 +43,17 @@ export function PluginsPanel() {
       {/* Stats bar */}
       {!loading && !error && (
         <div className="mb-3 flex items-center gap-2 text-muted-foreground">
-          <span>{plugins.length} plugins</span>
+          <span>{t('plugins.stats.plugins', { count: plugins.length })}</span>
           <span>|</span>
-          <span>{serverCount} server</span>
+          <span>{t('plugins.stats.server', { count: serverCount })}</span>
           <span>|</span>
-          <span>{webCount} web</span>
+          <span>{t('plugins.stats.web', { count: webCount })}</span>
           <span>|</span>
-          <span>{desktopCount} desktop</span>
+          <span>{t('plugins.stats.desktop', { count: desktopCount })}</span>
           <span>|</span>
-          <span>{panels.length} panel</span>
+          <span>{t('plugins.stats.panel', { count: panels.length })}</span>
           <span>|</span>
-          <span>{commands.length} command</span>
+          <span>{t('plugins.stats.command', { count: commands.length })}</span>
         </div>
       )}
 
@@ -62,20 +64,20 @@ export function PluginsPanel() {
 
       {/* Header */}
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-foreground font-medium">Plugins</span>
+        <span className="text-foreground font-medium">{t('plugins.title')}</span>
         <span className="text-muted-foreground">({plugins.length})</span>
         <button
           type="button"
           onClick={() => void refresh()}
           className="ml-auto rounded border border-border px-2 py-0.5 text-muted-foreground hover:bg-fill hover:text-foreground"
         >
-          Refresh
+          {t('plugins.refresh')}
         </button>
       </div>
 
       {/* Loading / Error */}
-      {loading && <div className="text-muted-foreground">Loading&hellip;</div>}
-      {error && <div className="text-red-400">Error: {error}</div>}
+      {loading && <div className="text-muted-foreground">{t('plugins.loading')}</div>}
+      {error && <div className="text-red-400">{t('plugins.error', { message: error })}</div>}
 
       {/* Plugin list */}
       {!loading && !error && (
@@ -95,19 +97,19 @@ export function PluginsPanel() {
             />
           ))}
           {plugins.length === 0 && (
-            <div className="text-muted-foreground">No plugins registered.</div>
+            <div className="text-muted-foreground">{t('plugins.empty')}</div>
           )}
         </div>
       )}
 
       {/* Client-side registrations */}
       <div className="mt-6 border-t border-border pt-4">
-        <div className="mb-2 text-foreground font-medium">Client Registrations</div>
+        <div className="mb-2 text-foreground font-medium">{t('plugins.clientRegistrations')}</div>
 
         {/* Panels */}
         <div className="mb-3">
-          <div className="mb-1 text-muted-foreground">Panels ({panels.length})</div>
-          {panels.length === 0 && <div className="text-muted-foreground/60">None</div>}
+          <div className="mb-1 text-muted-foreground">{t('plugins.panels', { count: panels.length })}</div>
+          {panels.length === 0 && <div className="text-muted-foreground/60">{t('plugins.none')}</div>}
           {panels.map((panel) => (
             <div key={panel.id} className="flex items-center gap-2 py-0.5">
               <span className="text-foreground">{panel.title}</span>
@@ -122,16 +124,16 @@ export function PluginsPanel() {
 
         {/* Commands */}
         <div>
-          <div className="mb-1 text-muted-foreground">Commands ({commands.length})</div>
-          {commands.length === 0 && <div className="text-muted-foreground/60">None</div>}
+          <div className="mb-1 text-muted-foreground">{t('plugins.commands', { count: commands.length })}</div>
+          {commands.length === 0 && <div className="text-muted-foreground/60">{t('plugins.none')}</div>}
           {commands.map((cmd) => (
             <div key={cmd.id} className="flex items-center gap-2 py-0.5">
               <button
                 type="button"
                 onClick={() => void cmd.execute()}
                 className="rounded border border-border px-1 py-0.5 text-muted-foreground hover:bg-fill hover:text-foreground"
-                aria-label={`Execute ${cmd.title}`}
-                title="Execute command"
+                aria-label={t('plugins.executeAria', { title: cmd.title })}
+                title={t('plugins.executeTitle')}
               >
                 <span aria-hidden="true">▶</span>
               </button>

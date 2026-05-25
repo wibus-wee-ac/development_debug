@@ -1,5 +1,6 @@
 import { MousePointer2Icon, XIcon } from 'lucide-react'
 import * as React from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { JarvisPopover } from '~/features/system-agent/jarvis-popover'
@@ -8,6 +9,7 @@ import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
 
 export function AppFooter({ className }: { className?: string }) {
+  const { t } = useTranslation('chrome')
   const [jarvisOpen, setJarvisOpen] = React.useState(false)
   const { registerFooter } = useLayoutGeometry()
   const activeTabRef = React.useRef<HTMLButtonElement>(null)
@@ -81,7 +83,7 @@ export function AppFooter({ className }: { className?: string }) {
           )}
         >
           <MousePointer2Icon className="size-3" aria-hidden="true" />
-          <span>Ask Jarvis</span>
+          <span>{t('footer.action.askJarvis')}</span>
         </button>
       </div>
 

@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { useTranslation } from 'react-i18next'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
@@ -23,6 +24,7 @@ import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './
 // ── Create Board Dialog ───────────────────────────────────────────────────────
 
 function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, onOpenChange: (v: boolean) => void, onCreated: (board: { id: string }) => void }) {
+  const { t } = useTranslation('kanban')
   const [name, setName] = useState('')
   const [workspaceId, setWorkspaceId] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -99,12 +101,12 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
             <div className="flex items-center justify-between px-4 pt-3.5 pb-0">
               <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
                 <LayoutDashboardIcon className="size-3.5" />
-                <span>新建看板</span>
+                <span>{t('board.create.title')}</span>
               </div>
               <button
                 type="button"
                 onClick={() => onOpenChange(false)}
-                aria-label="Close create board dialog"
+                aria-label={t('board.closeCreateDialog')}
                 className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               >
                 <XIcon className="size-3" />
@@ -118,8 +120,8 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
                 value={name}
                 onChange={e => setName(e.target.value)}
                 data-testid="kanban-new-board-input"
-                aria-label="Board name"
-                placeholder="看板名称"
+                aria-label={t('board.nameAria')}
+                placeholder={t('board.create.placeholder')}
                 className="w-full bg-transparent text-[15px] font-medium text-foreground outline-none placeholder:text-muted-foreground/40 leading-snug"
                 autoComplete="off"
               />
@@ -136,7 +138,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
                       'hover:bg-muted/50 hover:text-foreground transition-colors',
                     )}
                   >
-                    <span>{selectedWorkspace?.name ?? '选择工作区'}</span>
+                    <span>{selectedWorkspace?.name ?? t('board.create.workspacePlaceholder')}</span>
                   </MenuTrigger>
                   <MenuPopup>
                     {workspaces.map(ws => (
@@ -162,7 +164,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
                   'disabled:opacity-40 disabled:cursor-not-allowed',
                 )}
               >
-                创建看板
+                {t('board.create.action')}
                 <kbd className="ml-0.5 rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 text-[10px] font-sans leading-4">↵</kbd>
               </button>
             </div>
@@ -177,6 +179,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
 // ── Board Item ────────────────────────────────────────────────────────────────
 
 function BoardItem({ board }: { board: { id: string, name: string } }) {
+  const { t } = useTranslation('kanban')
   const isActive = useIsActiveTab('kanban-board', { boardId: board.id })
   const deleteBoard = useDeleteBoard()
   const updateBoard = useUpdateBoard()
@@ -233,7 +236,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
             onChange={e => setRenameValue(e.target.value)}
             onBlur={handleRenameSubmit}
             onKeyDown={handleRenameKeyDown}
-            aria-label="Board name"
+            aria-label={t('board.nameAria')}
             className="flex-1 bg-transparent text-xs text-foreground outline-none border-b border-primary/40"
           />
         </div>
@@ -263,7 +266,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
             data-testid={`kanban-board-rename-${board.id}`}
           >
             <PencilIcon className="size-3.5 mr-2" />
-            Rename
+            {t('board.rename')}
           </MenuItem>
           <MenuItem
             onClick={handleDelete}
@@ -271,7 +274,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
             data-testid={`kanban-board-delete-${board.id}`}
           >
             <TrashIcon className="size-3.5 mr-2" />
-            Delete Board
+            {t('board.delete')}
           </MenuItem>
         </MenuPopup>
       </Menu>
@@ -282,6 +285,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
 // ── Main Section ──────────────────────────────────────────────────────────────
 
 export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
+  const { t } = useTranslation('kanban')
   const boards = useAllBoards()
   const { openTab } = useCradleNavigation()
   const [isCreating, setIsCreating] = useState(false)
@@ -295,11 +299,11 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
       data-kanban-sidebar-ready={ready ? 'true' : 'false'}
     >
       <div className="flex items-center px-2.5 py-1.5">
-        <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">看板</span>
+        <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">{t('board.sectionTitle')}</span>
         <button
           type="button"
           onClick={() => setIsCreating(true)}
-          aria-label="Create board"
+          aria-label={t('board.addAria')}
           className="size-5 flex items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent/50"
           data-testid="kanban-add-board-btn"
         >
@@ -309,7 +313,7 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
 
       <div className="pb-1">
         {boards.data?.length === 0 && (
-          <p className="px-5 py-1.5 text-[11px] text-muted-foreground/50">暂无看板</p>
+          <p className="px-5 py-1.5 text-[11px] text-muted-foreground/50">{t('board.empty')}</p>
         )}
         {boards.data?.map(board => (
           <BoardItem key={board.id} board={board} />

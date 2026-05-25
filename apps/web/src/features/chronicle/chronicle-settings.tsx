@@ -18,8 +18,10 @@ import {
   TriangleAlertIcon,
   UserRoundIcon,
 } from 'lucide-react'
+import type { TFunction } from 'i18next'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
@@ -83,6 +85,8 @@ import {
 } from './use-chronicle.ts'
 
 const MEMORY_SEARCH_LIMIT = 50
+type ChronicleTranslate = TFunction<'chronicle'>
+
 const AccessibilityTreeNodeSchema = z.object({
   role: z.string().min(1).default('AXElement'),
   label: z.string().default(''),
@@ -112,36 +116,36 @@ const TimestampMsSchema = z.union([
   z.null().transform(() => null),
 ])
 
-function formatDateTime(value: string | number | null): string {
+function formatDateTime(t: ChronicleTranslate, value: string | number | null): string {
   const time = TimestampMsSchema.parse(value)
   if (time === null) {
-    return '从未'
+    return t('time.never')
   }
 
-  return new Date(time).toLocaleString('zh-CN')
+  return new Date(time).toLocaleString()
 }
 
-function formatRelativeTime(value: string | number | null): string {
+function formatRelativeTime(t: ChronicleTranslate, value: string | number | null): string {
   const time = TimestampMsSchema.parse(value)
   if (time === null) {
-    return '从未'
+    return t('time.never')
   }
 
   const diff = Date.now() - time
   const seconds = Math.max(0, Math.floor(diff / 1000))
   if (seconds < 60) {
-    return '刚刚'
+    return t('time.justNow')
   }
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) {
-    return `${minutes} 分钟前`
+    return t('time.minutesAgo', { count: minutes })
   }
   const hours = Math.floor(minutes / 60)
   if (hours < 24) {
-    return `${hours} 小时前`
+    return t('time.hoursAgo', { count: hours })
   }
   const days = Math.floor(hours / 24)
-  return `${days} 天前`
+  return t('time.daysAgo', { count: days })
 }
 
 function getResourceTone(resource: ChronicleModelResource): 'ready' | 'optional' | 'warning' | 'error' | 'loading' {
@@ -164,20 +168,20 @@ function hasVerifiedManifestDownload(resource: ChronicleModelResource): boolean 
   return ModelResourceManifestSchema.parse(resource.metadata?.manifest).files.length > 0
 }
 
-function getResourceStateLabel(resource: ChronicleModelResource): string {
+function getResourceStateLabel(t: ChronicleTranslate, resource: ChronicleModelResource): string {
   if (resource.state === 'available') {
-    return '可用'
+    return t('resource.state.available')
   }
   if (resource.state === 'installing') {
-    return '安装中'
+    return t('resource.state.installing')
   }
   if (resource.state === 'error') {
-    return '异常'
+    return t('common.status.error')
   }
   if (resource.required) {
-    return '缺失'
+    return t('resource.state.missing')
   }
-  return '可选'
+  return t('resource.state.optional')
 }
 
 interface ChronicleSetupNotice {
@@ -188,10 +192,12 @@ interface ChronicleSetupNotice {
 }
 
 function getChronicleSetupNotice({
+  t,
   config,
   profileCount,
   loadingProfiles,
 }: {
+  t: ChronicleTranslate
   config: ChronicleConfig | null
   profileCount: number
   loadingProfiles: boolean
@@ -201,39 +207,41 @@ function getChronicleSetupNotice({
   }
   if (loadingProfiles) {
     return {
-      title: '正在读取可用模型',
-      description: '记录功能需要一个模型来理解活动并生成记忆。模型列表读取完成后，你就可以选择整理模型。',
+      title: t('setup.loadingModels.title'),
+      description: t('setup.loadingModels.description'),
       actionLabel: null,
       actionKind: null,
     }
   }
   if (profileCount === 0) {
     return {
-      title: '记录功能还不能开启',
-      description: '你还没有配置任何模型服务。先在「模型服务」里添加可用模型，然后回到这里选择整理模型。',
-      actionLabel: '去配置模型服务',
+      title: t('setup.missingProvider.title'),
+      description: t('setup.missingProvider.description'),
+      actionLabel: t('setup.missingProvider.action'),
       actionKind: 'open-providers',
     }
   }
   return {
-    title: '记录功能还不能开启',
-    description: '你还没有选择整理模型。Cradle 需要知道用哪个模型来理解活动、生成摘要和沉淀记忆。',
-    actionLabel: '选择整理模型',
+    title: t('setup.missingModel.title'),
+    description: t('setup.missingModel.description'),
+    actionLabel: t('setup.missingModel.action'),
     actionKind: 'select-model',
   }
 }
 
 function getControlDisabledReason({
+  t,
   saving,
   blocked,
   reason,
 }: {
+  t: ChronicleTranslate
   saving: boolean
   blocked: boolean
   reason: string
 }): string | null {
   if (saving) {
-    return '正在保存设置'
+    return t('common.status.savingSettings')
   }
   return blocked ? reason : null
 }
@@ -250,6 +258,7 @@ function prependFocusedItem<T extends { id: string }>(items: T[], focusedItem: T
 }
 
 export function ChronicleSettings() {
+  const { t } = useTranslation('chronicle')
   const { config, loading: configLoading, saving, updateConfig } = useChronicleConfig()
   const { status, loading: statusLoading } = useChronicleStatus()
   const { resources, loading: resourcesLoading } = useChronicleModelResources()
@@ -311,36 +320,41 @@ export function ChronicleSettings() {
     && visibleKnowledgeCards.some(card => card.id === chronicleFocusTarget.id)
   const modelLabel = status?.configuredModel ?? selectedModel?.id ?? config?.modelId ?? null
   const canEnable = Boolean(config?.profileId && config?.modelId)
-  const disabledRootReason = canEnable ? '需要先开启记录活动' : '需要先选择整理模型，再开启记录活动'
+  const disabledRootReason = canEnable ? t('control.reason.enableCaptureFirst') : t('control.reason.selectModelAndEnableCapture')
   const setupNotice = getChronicleSetupNotice({
+    t,
     config,
     profileCount: profiles.length,
     loadingProfiles: loadingProfileIds.size > 0,
   })
   const captureDisabledReason = getControlDisabledReason({
+    t,
     saving,
     blocked: !canEnable,
-    reason: '需要先选择整理模型',
+    reason: t('control.reason.selectModelFirst'),
   })
   const activityDisabledReason = getControlDisabledReason({
+    t,
     saving,
     blocked: !config?.enabled,
     reason: disabledRootReason,
   })
   const audioDisabledReason = getControlDisabledReason({
+    t,
     saving,
     blocked: !config?.enabled,
     reason: disabledRootReason,
   })
   const audioSourceDisabledReason = getControlDisabledReason({
+    t,
     saving,
     blocked: !config?.enabled || !config?.audioCaptureEnabled,
-    reason: !config?.enabled ? disabledRootReason : '需要先开启会议与音频',
+    reason: !config?.enabled ? disabledRootReason : t('control.reason.enableAudioFirst'),
   })
   const dependencyNotice = canEnable && !config?.enabled
     ? {
-        title: '有些开关会先保持不可用',
-        description: '自动整理、会议与音频都依赖「记录活动」。先打开记录活动后，这些能力才会变成可操作状态。',
+        title: t('dependencyNotice.title'),
+        description: t('dependencyNotice.description'),
       }
     : null
   const settingsChronicleReady = !configLoading
@@ -458,20 +472,20 @@ export function ChronicleSettings() {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
         <UserSection
-          title="最近记录"
-          description="这里展示 Cradle 最近看到的屏幕、消息或音频线索。你可以确认它正在理解怎样的上下文。"
+          title={t('recentActivity.title')}
+          description={t('recentActivity.description')}
         >
           {timelineLoading
-            ? <EmptyState icon={<ImageIcon className="size-4" />} title="正在读取活动时间线" />
+            ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.loading')} />
             : timelineEntries.length === 0
-              ? <EmptyState icon={<ImageIcon className="size-4" />} title="还没有活动记录" />
+              ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.empty')} />
               : <TimelineScrubber entries={timelineEntries} />}
         </UserSection>
 
         <div ref={memorySectionRef}>
           <UserSection
-            title="搜索记忆"
-            description="搜索已经整理出来的活动记忆，找回最近做过的事、讨论过的问题和相关上下文。"
+            title={t('memorySearch.title')}
+            description={t('memorySearch.description')}
           >
             <div className="flex flex-col gap-3">
               <div className="relative">
@@ -479,17 +493,17 @@ export function ChronicleSettings() {
                 <Input
                   value={searchQuery}
                   onChange={event => setSearchQuery(event.target.value)}
-                  placeholder="搜索记忆"
+                  placeholder={t('memorySearch.placeholder')}
                   className="h-9 pl-8 text-[13px]"
                 />
               </div>
               {memoriesLoading || searchingMemories || focusedMemoryLoading
-                ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在搜索记忆" />
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('memorySearch.loading')} />
                 : visibleMemoryEntries.length === 0
                   ? (
                       <EmptyState
                         icon={<BrainIcon className="size-4" />}
-                        title={hasSearchQuery ? '没有匹配的记忆' : '还没有记忆'}
+                        title={hasSearchQuery ? t('memorySearch.noMatches') : t('memorySearch.empty')}
                       />
                     )
                   : (
@@ -506,33 +520,33 @@ export function ChronicleSettings() {
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <div ref={knowledgeSectionRef}>
           <UserSection
-            title="沉淀出来的知识"
-            description="当 Cradle 认为某段活动值得长期保留时，会把它整理成决定、任务、洞察或模式。"
+            title={t('knowledge.title')}
+            description={t('knowledge.description')}
           >
             {knowledgeCardsLoading || focusedKnowledgeLoading
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title="正在读取知识卡片" />
+              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.loading')} />
               : visibleKnowledgeCards.length === 0
-                ? <EmptyState icon={<BrainIcon className="size-4" />} title="还没有知识卡片" />
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.empty')} />
                 : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
           </UserSection>
         </div>
 
         <UserSection
-          title="会议人物"
-          description="如果你导入会议转写，Cradle 会逐步学会说话人标签，帮助之后回顾谁说过什么。"
+          title={t('speakers.title')}
+          description={t('speakers.description')}
         >
           {speakerProfilesLoading
-            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title="正在读取说话人" />
+            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.loading')} />
             : speakerProfiles.length === 0
-              ? <EmptyState icon={<UserRoundIcon className="size-4" />} title="还没有说话人记录" />
+              ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.empty')} />
               : <SpeakerProfileList profiles={speakerProfiles} />}
         </UserSection>
       </section>
 
       <details className="group rounded-lg bg-muted/20 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] font-medium text-foreground">
-          高级与诊断
-          <span className="text-[12px] font-normal text-muted-foreground">模型资源、原始线索、整理记录和导入来源</span>
+          {t('advanced.summary.title')}
+          <span className="text-[12px] font-normal text-muted-foreground">{t('advanced.summary.description')}</span>
         </summary>
         <div className="border-t border-foreground/5 px-4 pb-4 pt-3">
           <section className="py-2">
@@ -574,11 +588,11 @@ export function ChronicleSettings() {
             />
           </section>
 
-          <AdvancedSection title="消息来源" description="连接 Slack 频道，把重要讨论纳入活动记忆。">
+          <AdvancedSection title={t('advanced.messageSources.title')} description={t('advanced.messageSources.description')}>
             <SlackSourcePanel loading={messageSourcesLoading} sources={messageSources} />
           </AdvancedSection>
 
-          <AdvancedSection title="隐私规则" description="配置不应被截图或写入记录的应用、窗口标题和网页地址。">
+          <AdvancedSection title={t('advanced.privacy.title')} description={t('advanced.privacy.description')}>
             <PrivacyRulesPanel
               config={config}
               saving={saving}
@@ -586,51 +600,51 @@ export function ChronicleSettings() {
             />
           </AdvancedSection>
 
-          <AdvancedSection title="本地能力" description="识别画面、处理音频、区分说话人和语义搜索所需的本地资源。">
+          <AdvancedSection title={t('advanced.resources.title')} description={t('advanced.resources.description')}>
             <ResourceGrid loading={resourcesLoading} resources={resources} />
           </AdvancedSection>
 
-          <AdvancedSection title="窗口线索" description="最近从本机窗口和界面结构中捕捉到的原始线索。">
+          <AdvancedSection title={t('advanced.accessibilitySnapshots.title')} description={t('advanced.accessibilitySnapshots.description')}>
             {accessibilitySnapshotsLoading
-              ? <EmptyState icon={<EyeIcon className="size-4" />} title="正在读取窗口线索" />
+              ? <EmptyState icon={<EyeIcon className="size-4" />} title={t('advanced.accessibilitySnapshots.loading')} />
               : accessibilitySnapshots.length === 0
-                ? <EmptyState icon={<EyeIcon className="size-4" />} title="还没有窗口线索" />
+                ? <EmptyState icon={<EyeIcon className="size-4" />} title={t('advanced.accessibilitySnapshots.empty')} />
                 : <AccessibilitySnapshotList snapshots={accessibilitySnapshots} />}
           </AdvancedSection>
 
-          <AdvancedSection title="窗口事件" description="AXObserver 捕捉到的本机界面变化事件。">
+          <AdvancedSection title={t('advanced.accessibilityEvents.title')} description={t('advanced.accessibilityEvents.description')}>
             {accessibilityEventsLoading
-              ? <EmptyState icon={<ActivityIcon className="size-4" />} title="正在读取窗口事件" />
+              ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.accessibilityEvents.loading')} />
               : accessibilityEvents.length === 0
-                ? <EmptyState icon={<ActivityIcon className="size-4" />} title="还没有窗口事件" />
+                ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.accessibilityEvents.empty')} />
                 : <AccessibilityEventList events={accessibilityEvents} />}
           </AdvancedSection>
 
-          <AdvancedSection title="音频片段" description="最近捕捉到的原始音频片段，以及 VAD、ASR 和说话人处理状态。">
+          <AdvancedSection title={t('advanced.audioSegments.title')} description={t('advanced.audioSegments.description')}>
             {audioRawSegmentsLoading
-              ? <EmptyState icon={<FileAudioIcon className="size-4" />} title="正在读取音频片段" />
+              ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.audioSegments.loading')} />
               : audioRawSegments.length === 0
-                ? <EmptyState icon={<FileAudioIcon className="size-4" />} title="还没有音频片段" />
+                ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.audioSegments.empty')} />
                 : <AudioRawSegmentList segments={audioRawSegments} />}
           </AdvancedSection>
 
-          <AdvancedSection title="会议转写" description="已经导入或生成的会议文本，后续会成为搜索和总结上下文。">
+          <AdvancedSection title={t('advanced.transcripts.title')} description={t('advanced.transcripts.description')}>
             {audioTranscriptsLoading
-              ? <EmptyState icon={<FileAudioIcon className="size-4" />} title="正在读取会议转写" />
+              ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.transcripts.loading')} />
               : audioTranscripts.length === 0
-                ? <EmptyState icon={<FileAudioIcon className="size-4" />} title="还没有会议转写" />
+                ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.transcripts.empty')} />
                 : <AudioTranscriptList transcripts={audioTranscripts} />}
           </AdvancedSection>
 
-          <AdvancedSection title="活动片段" description="由窗口、消息和音频线索聚合出的片段，以及自动整理记录。">
+          <AdvancedSection title={t('advanced.activitySegments.title')} description={t('advanced.activitySegments.description')}>
             {activitySegmentsLoading || pipelineRunsLoading
-              ? <EmptyState icon={<ActivityIcon className="size-4" />} title="正在整理活动片段" />
+              ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.activitySegments.loading')} />
               : activitySegments.length === 0
-                ? <EmptyState icon={<ActivityIcon className="size-4" />} title="还没有活动片段" />
+                ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.activitySegments.empty')} />
                 : <ActivityPipelinePanel segments={activitySegments} runs={pipelineRuns} />}
           </AdvancedSection>
 
-          <AdvancedSection title="记忆整理预览" description="预览哪些知识卡片可能可以合并；这里只展示候选结果，不会改动现有记忆。">
+          <AdvancedSection title={t('advanced.dreamRuns.title')} description={t('advanced.dreamRuns.description')}>
             <DreamRunPanel loading={dreamRunsLoading} runs={dreamRuns} />
           </AdvancedSection>
         </div>
@@ -658,6 +672,8 @@ function ChronicleHero({
   totalKnowledgeCards: number
   onRefresh: () => void
 }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <section className="rounded-lg bg-background p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -668,26 +684,28 @@ function ChronicleHero({
             </span>
             <StatusBadge running={running} available={available} />
           </div>
-          <h2 className="text-2xl font-semibold leading-tight text-foreground text-balance">记录会把你的工作现场整理成可搜索的记忆</h2>
+          <h2 className="text-2xl font-semibold leading-tight text-foreground text-balance">{t('hero.title')}</h2>
           <p className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground text-pretty">
-            Cradle 会在本机捕捉屏幕、消息和会议线索，自动理解一段时间里发生了什么，并把值得保留的内容沉淀下来。
+            {t('hero.description')}
           </p>
         </div>
         <div className="flex flex-col items-start gap-3 lg:items-end">
           <Button type="button" variant="outline" size="sm" onClick={onRefresh} className="active:scale-[0.96] transition-transform">
             <RefreshCwIcon className="size-3.5" />
-            刷新
+            {t('common.action.refresh')}
           </Button>
           <span className="text-[12px] text-muted-foreground">
-            {enabled ? `最近记忆 ${formatRelativeTime(lastSummaryAt)}` : '开启后才会开始记录'}
+            {enabled
+              ? t('hero.lastMemory', { time: formatRelativeTime(t, lastSummaryAt) })
+              : t('hero.disabledHint')}
           </span>
         </div>
       </div>
 
       <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <HeroMetric icon={<BrainIcon className="size-3.5" />} label="已整理记忆" value={String(totalSummaries)} />
-        <HeroMetric icon={<ActivityIcon className="size-3.5" />} label="活动片段" value={String(totalActivitySegments)} />
-        <HeroMetric icon={<CheckCircle2Icon className="size-3.5" />} label="知识卡片" value={String(totalKnowledgeCards)} />
+        <HeroMetric icon={<BrainIcon className="size-3.5" />} label={t('hero.metric.memories')} value={String(totalSummaries)} />
+        <HeroMetric icon={<ActivityIcon className="size-3.5" />} label={t('hero.metric.activitySegments')} value={String(totalActivitySegments)} />
+        <HeroMetric icon={<CheckCircle2Icon className="size-3.5" />} label={t('hero.metric.knowledgeCards')} value={String(totalKnowledgeCards)} />
       </div>
     </section>
   )
@@ -834,34 +852,39 @@ function ChronicleControlPanel({
   requestProfileModels: ReturnType<typeof useAgentModelMap>['requestProfileModels']
   onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
 }) {
-  const captureStatus = !canEnable ? '待选择模型' : config?.enabled ? '已开启' : '未开启'
-  const activityStatus = !config?.enabled
-    ? '待开启记录'
+  const { t } = useTranslation('chronicle')
+  const localizedCaptureStatus = !canEnable
+    ? t('control.status.waitingForModel')
+    : config?.enabled
+      ? t('common.status.enabled')
+      : t('common.status.notEnabled')
+  const localizedActivityStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
     : config?.activityPipelineEnabled ?? true
-      ? '已开启'
-      : '已关闭'
-  const dreamStatus = !config?.enabled
-    ? '待开启记录'
+      ? t('common.status.enabled')
+      : t('common.status.disabled')
+  const localizedDreamStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
     : config?.dreamSchedulerEnabled ?? true
       ? config?.dreamSchedulerApplyMerge
-        ? '自动合并'
-        : '只预览'
-      : '已关闭'
-  const audioStatus = !config?.enabled
-    ? '待开启记录'
+        ? t('control.status.autoMerge')
+        : t('control.status.previewOnly')
+      : t('common.status.disabled')
+  const localizedAudioStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
     : config?.audioCaptureEnabled
-      ? '已开启'
-      : '未开启'
-  const modelStatus = selectedModelId ? '已选择' : '未选择'
+      ? t('common.status.enabled')
+      : t('common.status.notEnabled')
+  const modelStatus = selectedModelId ? t('control.status.selected') : t('control.status.notSelected')
 
   return (
-    <UserSection title="开始记录" description="这里决定 Cradle 是否开始记录，以及记录后如何整理成记忆。">
+    <UserSection title={t('control.title')} description={t('control.description')}>
       <div className="grid gap-2">
         <ControlRow
           icon={<ActivityIcon className="size-3.5" />}
-          title="记录活动"
-          description={canEnable ? '开启后，Cradle 会在本机持续整理你的活动线索。' : '先选择用于整理记忆的模型，然后再开启记录。'}
-          status={captureStatus}
+          title={t('control.capture.title')}
+          description={canEnable ? t('control.capture.description.enabled') : t('control.capture.description.blocked')}
+          status={localizedCaptureStatus}
           statusTone={config?.enabled ? 'enabled' : captureDisabledReason ? 'warning' : 'disabled'}
           reason={captureDisabledReason}
         >
@@ -874,9 +897,9 @@ function ChronicleControlPanel({
 
         <ControlRow
           icon={<BrainIcon className="size-3.5" />}
-          title="自动整理"
-          description={config?.enabled ? '把零散活动归类、总结，并沉淀成长期记忆。' : '记录活动开启后，自动整理才会变成可操作。'}
-          status={activityStatus}
+          title={t('control.activity.title')}
+          description={config?.enabled ? t('control.activity.description.enabled') : t('control.activity.description.blocked')}
+          status={localizedActivityStatus}
           statusTone={config?.enabled && (config?.activityPipelineEnabled ?? true) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}
           reason={activityDisabledReason}
         >
@@ -889,9 +912,9 @@ function ChronicleControlPanel({
 
         <ControlRow
           icon={<LayersIcon className="size-3.5" />}
-          title="记忆维护"
-          description={config?.enabled ? '定期预览相似知识，并在显式允许时自动合并。' : '记录活动开启后，记忆维护才会变成可操作。'}
-          status={dreamStatus}
+          title={t('control.dream.title')}
+          description={config?.enabled ? t('control.dream.description.enabled') : t('control.dream.description.blocked')}
+          status={localizedDreamStatus}
           statusTone={config?.enabled && (config?.dreamSchedulerEnabled ?? true) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}
           reason={activityDisabledReason}
         >
@@ -904,9 +927,9 @@ function ChronicleControlPanel({
 
         <ControlRow
           icon={<FileAudioIcon className="size-3.5" />}
-          title="会议与音频"
-          description={config?.enabled ? '捕捉会议音频，并在模型可用时转写为会议线索。' : '记录活动开启后，会议与音频才会变成可操作。'}
-          status={audioStatus}
+          title={t('control.audio.title')}
+          description={config?.enabled ? t('control.audio.description.enabled') : t('control.audio.description.blocked')}
+          status={localizedAudioStatus}
           statusTone={config?.enabled && config?.audioCaptureEnabled ? 'enabled' : audioDisabledReason || audioSourceDisabledReason ? 'warning' : 'disabled'}
           reason={audioDisabledReason ?? audioSourceDisabledReason}
         >
@@ -917,9 +940,9 @@ function ChronicleControlPanel({
               onChange={event => void onUpdateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
               disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
             >
-              <option value="microphone">麦克风</option>
-              <option value="system">系统声音</option>
-              <option value="mixed">麦克风与系统声音</option>
+              <option value="microphone">{t('control.audio.source.microphone')}</option>
+              <option value="system">{t('control.audio.source.system')}</option>
+              <option value="mixed">{t('control.audio.source.mixed')}</option>
             </select>
             <Switch
               checked={config?.audioCaptureEnabled ?? false}
@@ -931,11 +954,11 @@ function ChronicleControlPanel({
 
         <ControlRow
           icon={<CpuIcon className="size-3.5" />}
-          title="整理模型"
-          description="这个模型会负责理解活动、生成摘要和沉淀记忆。"
+          title={t('control.model.title')}
+          description={t('control.model.description')}
           status={modelStatus}
           statusTone={selectedModelId ? 'enabled' : 'warning'}
-          reason={saving ? '正在保存设置' : null}
+          reason={saving ? t('common.status.savingSettings') : null}
         >
           <ProviderModelPicker
             profiles={profiles}
@@ -946,8 +969,8 @@ function ChronicleControlPanel({
             loadingProfileIds={loadingProfileIds}
             thinkingValue={null}
             thinkingOptions={[]}
-            emptyProfilesLabel="还没有配置模型服务"
-            emptySelectionLabel="选择模型"
+            emptyProfilesLabel={t('control.model.emptyProfiles')}
+            emptySelectionLabel={t('control.model.emptySelection')}
             menuSide="bottom"
             menuAlign="end"
             triggerTestId="chronicle-provider-model-selector"
@@ -989,12 +1012,29 @@ function CaptureSourceOverview({
   audioEnabled: boolean
   slackConnected: boolean
 }) {
+  const { t } = useTranslation('chronicle')
+
   return (
-    <UserSection title="它会记录什么" description="Cradle 会把不同来源放在同一条时间线里，而不是让你分别翻找。">
+    <UserSection title={t('sourceOverview.title')} description={t('sourceOverview.description')}>
       <div className="grid gap-2">
-        <SourceOverviewItem icon={<EyeIcon className="size-3.5" />} title="屏幕与窗口" value={`${screenCount} 条线索`} detail="理解当前应用、窗口标题和可读文本。" />
-        <SourceOverviewItem icon={<MessageSquareIcon className="size-3.5" />} title="Slack 消息" value={slackConnected ? `${messageCount} 条消息` : '未连接'} detail="把频道讨论放进同一段工作上下文。" />
-        <SourceOverviewItem icon={<FileAudioIcon className="size-3.5" />} title="会议与音频" value={audioEnabled ? `${audioCount} 条转写` : '未开启'} detail="记录会议线索，并在可用时生成转写。" />
+        <SourceOverviewItem
+          icon={<EyeIcon className="size-3.5" />}
+          title={t('sourceOverview.screen.title')}
+          value={t('sourceOverview.screen.count', { count: screenCount })}
+          detail={t('sourceOverview.screen.detail')}
+        />
+        <SourceOverviewItem
+          icon={<MessageSquareIcon className="size-3.5" />}
+          title={t('sourceOverview.slack.title')}
+          value={slackConnected ? t('sourceOverview.slack.count', { count: messageCount }) : t('common.status.disconnected')}
+          detail={t('sourceOverview.slack.detail')}
+        />
+        <SourceOverviewItem
+          icon={<FileAudioIcon className="size-3.5" />}
+          title={t('sourceOverview.audio.title')}
+          value={audioEnabled ? t('sourceOverview.audio.count', { count: audioCount }) : t('common.status.notEnabled')}
+          detail={t('sourceOverview.audio.detail')}
+        />
       </div>
     </UserSection>
   )
@@ -1018,11 +1058,13 @@ function SourceOverviewItem({ icon, title, value, detail }: { icon: ReactNode, t
 }
 
 function ChronicleJourney() {
+  const { t } = useTranslation('chronicle')
+
   return (
     <section className="grid grid-cols-1 gap-2 md:grid-cols-3">
-      <JourneyStep icon={<EyeIcon className="size-3.5" />} title="先看到线索" description="屏幕、消息和会议会先成为本机线索。" />
-      <JourneyStep icon={<ActivityIcon className="size-3.5" />} title="再整理成片段" description="连续发生的事情会被归到同一段活动里。" />
-      <JourneyStep icon={<BrainIcon className="size-3.5" />} title="最后成为记忆" description="值得保留的内容会进入搜索和知识卡片。" />
+      <JourneyStep icon={<EyeIcon className="size-3.5" />} title={t('journey.clues.title')} description={t('journey.clues.description')} />
+      <JourneyStep icon={<ActivityIcon className="size-3.5" />} title={t('journey.segments.title')} description={t('journey.segments.description')} />
+      <JourneyStep icon={<BrainIcon className="size-3.5" />} title={t('journey.memories.title')} description={t('journey.memories.description')} />
     </section>
   )
 }
@@ -1138,83 +1180,85 @@ function StatusPanel({
   modelLabel,
   storageRoot,
 }: StatusPanelProps) {
+  const { t } = useTranslation('chronicle')
+
   if (loading) {
-    return <EmptyState icon={<ActivityIcon className="size-4" />} title="正在读取状态" />
+    return <EmptyState icon={<ActivityIcon className="size-4" />} title={t('status.loading')} />
   }
 
   return (
     <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
         <ActivityIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-[13px] font-medium text-foreground">当前状态</span>
+        <span className="text-[13px] font-medium text-foreground">{t('status.title')}</span>
         <StatusBadge running={running} available={available} />
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-10 xl:grid-cols-12">
         <StatusItem
           icon={<EyeIcon className="size-3.5" />}
-          label="记录服务"
-          value={running ? `运行中 ${pid ?? '未知'}` : '已停止'}
+          label={t('status.item.service')}
+          value={running ? t('status.service.running', { pid: pid ?? t('common.status.unknown') }) : t('common.status.stopped')}
         />
         <StatusItem
           icon={<ClockIcon className="size-3.5" />}
-          label="最近记忆"
-          value={formatRelativeTime(lastSummaryAt)}
-          detail={formatDateTime(lastSummaryAt)}
+          label={t('status.item.lastMemory')}
+          value={formatRelativeTime(t, lastSummaryAt)}
+          detail={formatDateTime(t, lastSummaryAt)}
         />
         <StatusItem
           icon={<BrainIcon className="size-3.5" />}
-          label="记忆"
+          label={t('status.item.memories')}
           value={String(totalSummaries)}
         />
         <StatusItem
           icon={<MessageSquareIcon className="size-3.5" />}
           label="Slack"
           value={String(totalMessages)}
-          detail={formatRelativeTime(lastMessageAt)}
+          detail={formatRelativeTime(t, lastMessageAt)}
         />
         <StatusItem
           icon={<EyeIcon className="size-3.5" />}
-          label="窗口"
+          label={t('status.item.windows')}
           value={String(totalAccessibilitySnapshots)}
-          detail={formatRelativeTime(lastAccessibilitySnapshotAt)}
+          detail={formatRelativeTime(t, lastAccessibilitySnapshotAt)}
         />
         <StatusItem
           icon={<ActivityIcon className="size-3.5" />}
-          label="事件"
+          label={t('status.item.events')}
           value={String(totalAccessibilityEvents)}
-          detail={formatRelativeTime(lastAccessibilityEventAt)}
+          detail={formatRelativeTime(t, lastAccessibilityEventAt)}
         />
         <StatusItem
           icon={<FileAudioIcon className="size-3.5" />}
-          label="转写"
+          label={t('status.item.transcripts')}
           value={String(totalAudioTranscripts)}
-          detail={formatRelativeTime(lastAudioTranscriptAt)}
+          detail={formatRelativeTime(t, lastAudioTranscriptAt)}
         />
         <StatusItem
           icon={<FileAudioIcon className="size-3.5" />}
-          label="音频"
+          label={t('status.item.audio')}
           value={String(totalAudioRawSegments)}
-          detail={audioCaptureEnabled ? formatRelativeTime(lastAudioRawSegmentAt) : formatAudioRuntimeStatus(audioRuntimeStatus)}
+          detail={audioCaptureEnabled ? formatRelativeTime(t, lastAudioRawSegmentAt) : formatAudioRuntimeStatus(t, audioRuntimeStatus)}
         />
         <StatusItem
           icon={<ActivityIcon className="size-3.5" />}
-          label="活动"
+          label={t('status.item.activities')}
           value={String(totalActivitySegments)}
         />
         <StatusItem
           icon={<CpuIcon className="size-3.5" />}
-          label="整理"
+          label={t('status.item.pipeline')}
           value={String(totalPipelineRuns)}
         />
         <StatusItem
           icon={<BrainIcon className="size-3.5" />}
-          label="知识"
+          label={t('status.item.knowledge')}
           value={String(totalKnowledgeCards)}
         />
         <StatusItem
           icon={<ClockIcon className="size-3.5" />}
-          label="预览"
+          label={t('status.item.preview')}
           value={String(totalDreamRuns)}
         />
       </div>
@@ -1222,32 +1266,42 @@ function StatusPanel({
       <div className="mt-3 grid gap-2 border-t border-foreground/5 pt-3 text-[12px] text-muted-foreground md:grid-cols-2">
         <div className="flex min-w-0 items-center gap-2">
           <HardDriveIcon className="size-3.5 shrink-0" />
-          <span className="truncate">{storageRoot ?? '存储位置暂不可用'}</span>
+          <span className="truncate">{storageRoot ?? t('status.storageUnavailable')}</span>
         </div>
         <div className="flex min-w-0 items-center gap-2 md:justify-end">
           <CpuIcon className="size-3.5 shrink-0" />
           <span className="truncate">
             {activityPipelineEnabled
-              ? `自动整理${activityPipelineRunning ? '运行中' : '就绪'} · ${Math.round(activityPipelineIntervalMs / 1000)} 秒 · 每次 ${activityPipelineBatchSize} 段`
-              : '自动整理已关闭'}
+              ? t('status.pipelineSummary', {
+                  state: activityPipelineRunning ? t('common.status.running') : t('common.status.ready'),
+                  seconds: Math.round(activityPipelineIntervalMs / 1000),
+                  count: activityPipelineBatchSize,
+                })
+              : t('status.pipelineDisabled')}
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2">
           <LayersIcon className="size-3.5 shrink-0" />
           <span className="truncate">
             {dreamSchedulerEnabled
-              ? `记忆维护${dreamSchedulerRunning ? '运行中' : '就绪'} · ${dreamSchedulerApplyMerge ? '自动合并' : '只预览'} · ${Math.round(dreamSchedulerIntervalMs / 3_600_000)} 小时`
-              : '记忆维护已关闭'}
+              ? t('status.dreamSummary', {
+                  state: dreamSchedulerRunning ? t('common.status.running') : t('common.status.ready'),
+                  mode: dreamSchedulerApplyMerge ? t('control.status.autoMerge') : t('control.status.previewOnly'),
+                  hours: Math.round(dreamSchedulerIntervalMs / 3_600_000),
+                })
+              : t('status.dreamDisabled')}
           </span>
         </div>
         <div className="flex min-w-0 items-center gap-2 md:justify-end">
           <CpuIcon className="size-3.5 shrink-0" />
-          <span className="truncate">{modelLabel ?? '还没有选择模型'}</span>
+          <span className="truncate">{modelLabel ?? t('status.noModel')}</span>
         </div>
         <div className="flex min-w-0 items-center gap-2">
           <TriangleAlertIcon className="size-3.5 shrink-0" />
           <span className="truncate">
-            {lastExitCode === null ? '没有异常退出记录' : `上次退出代码 ${lastExitCode}，时间 ${formatDateTime(lastExitAt)}`}
+            {lastExitCode === null
+              ? t('status.noExitRecord')
+              : t('status.lastExit', { code: lastExitCode, time: formatDateTime(t, lastExitAt) })}
           </span>
         </div>
       </div>
@@ -1255,34 +1309,36 @@ function StatusPanel({
   )
 }
 
-function formatAudioRuntimeStatus(status: ChronicleStatus['audioRuntimeStatus']): string {
+function formatAudioRuntimeStatus(t: ChronicleTranslate, status: ChronicleStatus['audioRuntimeStatus']): string {
   if (status === 'armed') {
-    return '已准备'
+    return t('common.status.armed')
   }
   if (status === 'unavailable') {
-    return '不可用'
+    return t('common.status.unavailable')
   }
-  return '已关闭'
+  return t('common.status.disabled')
 }
 
-function formatSlackRealtimeMode(mode: ChronicleMessageSource['realtimeMode']): string {
+function formatSlackRealtimeMode(t: ChronicleTranslate, mode: ChronicleMessageSource['realtimeMode']): string {
   if (mode === 'events-api') {
     return 'Events API'
   }
   if (mode === 'socket-mode') {
     return 'Socket Mode'
   }
-  return '轮询'
+  return t('slack.mode.polling')
 }
 
 function StatusBadge({ running, available }: { running: boolean, available: boolean }) {
+  const { t } = useTranslation('chronicle')
+
   if (running) {
-    return <Badge className="ml-auto bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">运行中</Badge>
+    return <Badge className="ml-auto bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">{t('common.status.running')}</Badge>
   }
   if (available) {
-    return <Badge variant="secondary" className="ml-auto">已就绪</Badge>
+    return <Badge variant="secondary" className="ml-auto">{t('common.status.ready')}</Badge>
   }
-  return <Badge variant="outline" className="ml-auto">未配置</Badge>
+  return <Badge variant="outline" className="ml-auto">{t('common.status.notConfigured')}</Badge>
 }
 
 export function PrivacyRulesPanel({
@@ -1294,6 +1350,7 @@ export function PrivacyRulesPanel({
   saving: boolean
   onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
 }) {
+  const { t } = useTranslation('chronicle')
   const [draft, setDraft] = useState<PrivacyRulesDraft>({
     appBundleText: '',
     titlePatternText: '',
@@ -1331,9 +1388,9 @@ export function PrivacyRulesPanel({
     <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
       <div className="mb-3 flex min-w-0 items-center gap-2">
         <ShieldIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-[13px] font-medium text-foreground">敏感内容排除</span>
+        <span className="truncate text-[13px] font-medium text-foreground">{t('privacy.title')}</span>
         <Badge variant="outline" className="ml-auto text-[11px]">
-          {ruleCount === 0 ? '未配置' : `${ruleCount} 条规则`}
+          {ruleCount === 0 ? t('common.status.notConfigured') : t('privacy.ruleCount', { count: ruleCount })}
         </Badge>
       </div>
 
@@ -1342,13 +1399,13 @@ export function PrivacyRulesPanel({
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
               <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate text-[12px] font-medium text-foreground">闭眼与离席丢弃</span>
+              <span className="truncate text-[12px] font-medium text-foreground">{t('privacy.closedEyes.title')}</span>
               <Badge variant={closedEyesEnabled ? 'secondary' : 'outline'} className="text-[11px]">
-                {closedEyesEnabled ? '已启用' : '已关闭'}
+                {closedEyesEnabled ? t('common.status.enabled') : t('common.status.disabled')}
               </Badge>
             </div>
             <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
-              detector 上报闭眼或离席时，Server 会在写入截图、窗口线索和活动片段前丢弃该帧。
+              {t('privacy.closedEyes.description')}
             </p>
           </div>
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
@@ -1364,18 +1421,18 @@ export function PrivacyRulesPanel({
               className="rounded-md bg-background p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
               size="sm"
             >
-              <ToggleGroupItem value="auto" aria-label="自动闭眼丢弃" className="h-8 px-2 text-[12px]">
-                自动
+              <ToggleGroupItem value="auto" aria-label={t('privacy.closedEyes.mode.auto.ariaLabel')} className="h-8 px-2 text-[12px]">
+                {t('privacy.closedEyes.mode.auto')}
               </ToggleGroupItem>
-              <ToggleGroupItem value="always-record" aria-label="始终记录" className="h-8 px-2 text-[12px]">
-                始终记录
+              <ToggleGroupItem value="always-record" aria-label={t('privacy.closedEyes.mode.alwaysRecord.ariaLabel')} className="h-8 px-2 text-[12px]">
+                {t('privacy.closedEyes.mode.alwaysRecord')}
               </ToggleGroupItem>
-              <ToggleGroupItem value="always-pause" aria-label="始终暂停" className="h-8 px-2 text-[12px]">
-                始终暂停
+              <ToggleGroupItem value="always-pause" aria-label={t('privacy.closedEyes.mode.alwaysPause.ariaLabel')} className="h-8 px-2 text-[12px]">
+                {t('privacy.closedEyes.mode.alwaysPause')}
               </ToggleGroupItem>
             </ToggleGroup>
             <Switch
-              aria-label="闭眼丢弃"
+              aria-label={t('privacy.closedEyes.toggle')}
               checked={closedEyesEnabled}
               onCheckedChange={closedEyesDiscardEnabled => void onUpdateConfig({ closedEyesDiscardEnabled })}
               disabled={saving || !config}
@@ -1387,21 +1444,21 @@ export function PrivacyRulesPanel({
       <div className="grid gap-3 lg:grid-cols-3">
         <PrivacyRuleTextarea
           label="App bundle id"
-          placeholder="com.apple.Terminal"
+          placeholder={t('privacy.appBundle.placeholder')}
           value={draft.appBundleText}
           onChange={appBundleText => setDraft(current => ({ ...current, appBundleText }))}
           disabled={saving || !config}
         />
         <PrivacyRuleTextarea
-          label="窗口标题片段"
-          placeholder="Bank Dashboard"
+          label={t('privacy.titlePattern.label')}
+          placeholder={t('privacy.titlePattern.placeholder')}
           value={draft.titlePatternText}
           onChange={titlePatternText => setDraft(current => ({ ...current, titlePatternText }))}
           disabled={saving || !config}
         />
         <PrivacyRuleTextarea
-          label="网页地址片段"
-          placeholder="admin.example.com"
+          label={t('privacy.urlPattern.label')}
+          placeholder={t('privacy.urlPattern.placeholder')}
           value={draft.urlPatternText}
           onChange={urlPatternText => setDraft(current => ({ ...current, urlPatternText }))}
           disabled={saving || !config}
@@ -1410,11 +1467,11 @@ export function PrivacyRulesPanel({
 
       <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
         <p className="text-[12px] leading-5 text-muted-foreground text-pretty">
-          每行一条。保存后 daemon 会重启并在截图前排除匹配窗口，持久化前也会再过滤一次。
+          {t('privacy.help')}
         </p>
         <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
           {saveError && <span className="text-[12px] text-destructive">{saveError}</span>}
-          {!saveError && saved && <span className="text-[12px] text-muted-foreground">已保存</span>}
+          {!saveError && saved && <span className="text-[12px] text-muted-foreground">{t('common.status.saved')}</span>}
           <Button
             type="button"
             variant="outline"
@@ -1434,11 +1491,11 @@ export function PrivacyRulesPanel({
                   }
                 })
                 .catch((error: unknown) => {
-                  setSaveError(error instanceof Error ? error.message : '保存失败')
+                  setSaveError(error instanceof Error ? error.message : t('common.error.saveFailed'))
                 })
             }}
           >
-            保存规则
+            {t('privacy.saveRules')}
           </Button>
         </div>
       </div>
@@ -1503,6 +1560,7 @@ function stringListsEqual(left: string[], right: string[]): boolean {
 }
 
 function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: ChronicleMessageSource[] }) {
+  const { t } = useTranslation('chronicle')
   const { saveSource, syncSource, saving, syncing } = useChronicleSlackSourceActions()
   const [draft, setDraft] = useState<ChronicleSlackSourceDraft>({
     label: 'Slack',
@@ -1523,9 +1581,9 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
       <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
           <MessageSquareIcon className="size-3.5 text-muted-foreground" />
-          <span className="text-[13px] font-medium text-foreground">Slack 来源</span>
+          <span className="text-[13px] font-medium text-foreground">{t('slack.title')}</span>
           <Badge variant="outline" className="ml-auto text-[11px]">
-            {sources.length === 0 ? '未连接' : `${sources.length} 个来源`}
+            {sources.length === 0 ? t('common.status.disconnected') : t('slack.sourceCount', { count: sources.length })}
           </Badge>
         </div>
 
@@ -1533,13 +1591,13 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
           <Input
             value={draft.label}
             onChange={event => setDraft(current => ({ ...current, label: event.target.value }))}
-            placeholder="来源名称"
+            placeholder={t('slack.placeholder.label')}
             className="h-9 text-[13px]"
           />
           <Input
             value={draft.channelIds}
             onChange={event => setDraft(current => ({ ...current, channelIds: event.target.value }))}
-            placeholder="频道 ID，用逗号分隔"
+            placeholder={t('slack.placeholder.channelIds')}
             className="h-9 font-mono text-[13px]"
           />
         </div>
@@ -1560,12 +1618,12 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
             <ToggleGroupItem value="events-api" aria-label="Slack Events API" className="h-8 px-2 text-[12px]">
               Events API
             </ToggleGroupItem>
-            <ToggleGroupItem value="polling" aria-label="Slack 轮询" className="h-8 px-2 text-[12px]">
-              轮询
+            <ToggleGroupItem value="polling" aria-label={t('slack.mode.pollingAriaLabel')} className="h-8 px-2 text-[12px]">
+              {t('slack.mode.polling')}
             </ToggleGroupItem>
           </ToggleGroup>
           <span className="text-[12px] text-muted-foreground">
-            {draft.realtimeMode === 'events-api' ? '实时接收事件，并保留轮询兜底' : '只在后台定时同步'}
+            {draft.realtimeMode === 'events-api' ? t('slack.mode.eventsDescription') : t('slack.mode.pollingDescription')}
           </span>
         </div>
 
@@ -1603,19 +1661,19 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
               })
             }}
           >
-            保存
+            {t('common.action.save')}
           </Button>
         </div>
 
         <p className="mt-2 text-[12px] text-muted-foreground">
-          Token 和 signing secret 会存放在 Cradle secrets；记录功能只保存密钥引用和允许导入的频道列表。
+          {t('slack.secretHelp')}
         </p>
       </div>
 
       {loading
-        ? <EmptyState icon={<MessageSquareIcon className="size-4" />} title="正在读取 Slack 来源" />
+        ? <EmptyState icon={<MessageSquareIcon className="size-4" />} title={t('slack.loading')} />
         : sources.length === 0
-          ? <EmptyState icon={<MessageSquareIcon className="size-4" />} title="还没有连接 Slack 来源" />
+          ? <EmptyState icon={<MessageSquareIcon className="size-4" />} title={t('slack.empty')} />
           : (
               <div className="flex flex-col gap-2">
                 {sources.map(source => (
@@ -1626,21 +1684,21 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
                       <Badge variant="outline" className="ml-auto text-[11px]">{source.status}</Badge>
                     </div>
                     <div className="mt-2 grid gap-1 text-[12px] text-muted-foreground md:grid-cols-2">
-                      <span className="truncate font-mono">{source.channelIds.join(', ') || '还没有频道'}</span>
+                      <span className="truncate font-mono">{source.channelIds.join(', ') || t('slack.noChannels')}</span>
                       <span className="truncate md:text-right">
-                        最近消息
+                        {t('slack.lastMessage')}
                         {' '}
-                        {formatRelativeTime(source.lastMessageAt)}
+                        {formatRelativeTime(t, source.lastMessageAt)}
                       </span>
                       <span className="truncate">
-                        模式
+                        {t('slack.mode.label')}
                         {' '}
-                        {formatSlackRealtimeMode(source.realtimeMode)}
+                        {formatSlackRealtimeMode(t, source.realtimeMode)}
                       </span>
                       <span className="truncate font-mono md:text-right">
                         {source.realtimeMode === 'events-api'
                           ? `${getServerUrl()}/chronicle/message-sources/${source.id}/slack/events`
-                          : '轮询同步已启用'}
+                          : t('slack.pollingEnabled')}
                       </span>
                       {source.lastError && <span className="truncate text-destructive md:col-span-2">{source.lastError}</span>}
                     </div>
@@ -1657,12 +1715,12 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
                         }}
                       >
                         <RefreshCwIcon className="size-3.5" />
-                        同步
+                        {t('common.action.sync')}
                       </Button>
                       <span className="text-[12px] text-muted-foreground">
-                        最近同步
+                        {t('slack.lastSync')}
                         {' '}
-                        {formatRelativeTime(source.lastSyncAt)}
+                        {formatRelativeTime(t, source.lastSyncAt)}
                       </span>
                     </div>
                   </div>
@@ -1676,6 +1734,7 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
 }
 
 function ResourceGrid({ loading, resources }: { loading: boolean, resources: ChronicleModelResource[] }) {
+  const { t } = useTranslation('chronicle')
   const {
     reconcileResources,
     installAllResources,
@@ -1689,7 +1748,7 @@ function ResourceGrid({ loading, resources }: { loading: boolean, resources: Chr
   const downloadProgress = useChronicleDownloadProgress(installingAll || installing)
 
   if (loading) {
-    return <EmptyState icon={<CpuIcon className="size-4" />} title="正在读取本地能力" />
+    return <EmptyState icon={<CpuIcon className="size-4" />} title={t('resources.loading')} />
   }
 
   const busy = reconciling || installingAll || verifying || installing
@@ -1705,7 +1764,7 @@ function ResourceGrid({ loading, resources }: { loading: boolean, resources: Chr
           onClick={() => void installAllResources()}
         >
           <DownloadIcon className="size-3.5" />
-          全部安装
+          {t('resources.installAll')}
         </Button>
         <Button
           type="button"
@@ -1715,7 +1774,7 @@ function ResourceGrid({ loading, resources }: { loading: boolean, resources: Chr
           onClick={() => void reconcileResources()}
         >
           <RefreshCwIcon className="size-3.5" />
-          重新检查
+          {t('resources.recheck')}
         </Button>
       </div>
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
@@ -1747,6 +1806,7 @@ function ResourceItem({
   verifyResource: ReturnType<typeof useChronicleModelResourceActions>['verifyResource']
   downloadProgress: ReturnType<typeof useChronicleDownloadProgress>
 }) {
+  const { t } = useTranslation('chronicle')
   const tone = getResourceTone(resource)
   const [message, setMessage] = useState<string | null>(null)
   const canInstall = resource.category !== 'ocr'
@@ -1762,7 +1822,7 @@ function ResourceItem({
             <ResourceBadge resource={resource} />
           </div>
           <p className="mt-1 line-clamp-2 text-[12px] text-muted-foreground">
-            {resource.message ?? resource.provider ?? '记录服务会提供这个本地能力的当前状态。'}
+            {resource.message ?? resource.provider ?? t('resources.defaultMessage')}
           </p>
           {resource.path && (
             <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground/70">{resource.path}</p>
@@ -1790,12 +1850,12 @@ function ResourceItem({
                   onClick={() => {
                     setMessage(null)
                     void installResource({ category: resource.category, source: 'manifest' }).then((updated) => {
-                      setMessage(updated?.message ?? '资源已下载')
+                      setMessage(updated?.message ?? t('resources.downloaded'))
                     })
                   }}
                 >
                   <DownloadIcon className="size-3" />
-                  下载
+                  {t('common.action.download')}
                 </Button>
               )}
               <Button
@@ -1804,24 +1864,21 @@ function ResourceItem({
                 size="xs"
                 disabled={busy}
                 onClick={() => {
-                  setMessage(null)
-                  void verifyResource(resource.category).then((updated) => {
-                    setMessage(updated?.message ?? '资源已验证')
-                  })
-                }}
-              >
-                <RefreshCwIcon className="size-3" />
-                验证
-              </Button>
+                    setMessage(null)
+                    void verifyResource(resource.category).then((updated) => {
+                      setMessage(updated?.message ?? t('resources.verified'))
+                    })
+                  }}
+                >
+                  <RefreshCwIcon className="size-3" />
+                  {t('common.action.verify')}
+                </Button>
             </div>
           )}
           {message && <p className="mt-1 text-[11px] text-muted-foreground">{message}</p>}
           {downloadProgress[resource.category] && (
             <p className="mt-1 text-[11px] text-muted-foreground">
-              下载进度：
-{' '}
-{downloadProgress[resource.category]}
-%
+              {t('resources.downloadProgress', { progress: downloadProgress[resource.category] })}
             </p>
           )}
         </div>
@@ -1849,6 +1906,7 @@ function ResourceIcon({ tone }: { tone: ReturnType<typeof getResourceTone> }) {
 }
 
 function ResourceBadge({ resource }: { resource: ChronicleModelResource }) {
+  const { t } = useTranslation('chronicle')
   const tone = getResourceTone(resource)
 
   return (
@@ -1864,12 +1922,13 @@ function ResourceBadge({ resource }: { resource: ChronicleModelResource }) {
         },
       )}
     >
-      {getResourceStateLabel(resource)}
+      {getResourceStateLabel(t, resource)}
     </Badge>
   )
 }
 
 function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
+  const { t } = useTranslation('chronicle')
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const seekRef = useRef<HTMLDivElement>(null)
@@ -1921,7 +1980,7 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
                   <div className="mb-2 flex min-w-0 items-center gap-2">
                     <FileAudioIcon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="truncate text-[13px] font-medium">
-                      {displayEntry.channelName ?? displayEntry.windowTitle ?? '音频转写'}
+                      {displayEntry.channelName ?? displayEntry.windowTitle ?? t('timeline.fallback.audioTranscript')}
                     </span>
                   </div>
                   <p className="line-clamp-5 text-[14px] leading-6">{displayEntry.ocrText}</p>
@@ -1937,7 +1996,7 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
                     <span className="truncate text-[13px] font-medium">
                       {displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? 'Slack'}
                     </span>
-                    <span className="shrink-0 text-[12px] text-muted-foreground">{displayEntry.userName ?? '未知用户'}</span>
+                    <span className="shrink-0 text-[12px] text-muted-foreground">{displayEntry.userName ?? t('timeline.fallback.unknownUser')}</span>
                   </div>
                   <p className="line-clamp-5 text-[14px] leading-6">{displayEntry.ocrText}</p>
                 </div>
@@ -1947,13 +2006,13 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
           ? (
               <img
                 src={frameUrl(displayEntry)}
-                alt={`${formatDateTime(displayEntry.capturedAt)} 的活动记录`}
+                alt={t('timeline.frameAlt', { time: formatDateTime(t, displayEntry.capturedAt) })}
                 className="aspect-video w-full object-contain outline-solid outline-1 -outline-offset-1 outline-white/10"
               />
             )
           : (
               <div className="flex aspect-video items-center justify-center text-[13px] text-white/60">
-                画面暂不可用
+                {t('timeline.frameUnavailable')}
               </div>
             )}
       </div>
@@ -1967,13 +2026,13 @@ function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
             : <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" />}
           <span className="truncate text-[13px] font-medium text-foreground">
             {displayEntry?.sourceType === 'audio'
-              ? displayEntry.channelName ?? displayEntry.windowTitle ?? '音频转写'
+              ? displayEntry.channelName ?? displayEntry.windowTitle ?? t('timeline.fallback.audioTranscript')
               : displayEntry?.sourceType === 'message'
-              ? displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? 'Slack 消息'
-              : displayEntry?.appBundleId ?? displayEntry?.windowTitle ?? '屏幕记录'}
+              ? displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? t('timeline.fallback.slackMessage')
+              : displayEntry?.appBundleId ?? displayEntry?.windowTitle ?? t('timeline.fallback.screenRecord')}
           </span>
           <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
-            {formatDateTime(displayEntry?.capturedAt ?? selected.capturedAt)}
+            {formatDateTime(t, displayEntry?.capturedAt ?? selected.capturedAt)}
           </span>
         </div>
 
@@ -2035,6 +2094,7 @@ function ActivityPipelinePanel({
   segments: ChronicleActivitySegment[]
   runs: ChroniclePipelineRun[]
 }) {
+  const { t } = useTranslation('chronicle')
   const { triageSegment, summarizeSegment, crystallizeSegment, runPipelineTick, triaging, summarizing, crystallizing, ticking } = useChronicleActivityPipelineActions()
   const busy = triaging || summarizing || crystallizing || ticking
 
@@ -2055,7 +2115,7 @@ function ActivityPipelinePanel({
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
         <div className="mb-2 flex min-w-0 items-center gap-2">
           <CpuIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-[13px] font-medium text-foreground">整理记录</span>
+          <span className="truncate text-[13px] font-medium text-foreground">{t('pipeline.runs.title')}</span>
           <Badge variant="outline" className="ml-auto text-[11px]">{runs.length}</Badge>
           <Button
             type="button"
@@ -2065,12 +2125,12 @@ function ActivityPipelinePanel({
             onClick={() => void runPipelineTick()}
           >
             <RefreshCwIcon className="size-3.5" />
-            立即整理
+            {t('pipeline.runs.runNow')}
           </Button>
         </div>
         {runs.length === 0
           ? (
-              <p className="text-[12px] text-muted-foreground">还没有整理记录。</p>
+              <p className="text-[12px] text-muted-foreground">{t('pipeline.runs.empty')}</p>
             )
           : (
               <div className="flex flex-col gap-1.5">
@@ -2078,7 +2138,7 @@ function ActivityPipelinePanel({
                   <div key={run.id} className="rounded-md bg-muted/40 px-2.5 py-2">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[12px] font-medium text-foreground">
-                        {formatPipelineTrigger(run.trigger)}
+                        {formatPipelineTrigger(t, run.trigger)}
                       </span>
                       <Badge
                         variant={run.status === 'success' ? 'secondary' : 'outline'}
@@ -2090,12 +2150,12 @@ function ActivityPipelinePanel({
                           },
                         )}
                       >
-                        {formatPipelineRunStatus(run.status)}
+                        {formatPipelineRunStatus(t, run.status)}
                       </Badge>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-                      <span className="truncate">{formatPipelineStage(run.stage)}</span>
-                      <span className="shrink-0 font-mono">{formatRelativeTime(run.startedAt)}</span>
+                      <span className="truncate">{formatPipelineStage(t, run.stage)}</span>
+                      <span className="shrink-0 font-mono">{formatRelativeTime(t, run.startedAt)}</span>
                     </div>
                     {run.errorMessage && (
                       <p className="mt-1 line-clamp-2 text-[11px] text-destructive">{run.errorMessage}</p>
@@ -2122,32 +2182,34 @@ function ActivitySegmentCard({
   onSummarize: () => void
   onCrystallize: () => void
 }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <article className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
       <div className="mb-2 flex min-w-0 items-center gap-2">
         <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" />
         <span className="truncate text-[13px] font-medium text-foreground">
-          {segment.title ?? segment.frontApp ?? '活动片段'}
+          {segment.title ?? segment.frontApp ?? t('activitySegment.fallback.title')}
         </span>
         <Badge variant="outline" className="ml-auto text-[11px]">
-          {formatActivitySegmentType(segment.segmentType)}
+          {formatActivitySegmentType(t, segment.segmentType)}
         </Badge>
       </div>
       <p className="line-clamp-3 min-h-15 text-[13px] leading-5 text-foreground">
-        {segment.summary ?? '这个片段还在收集来源线索。'}
+        {segment.summary ?? t('activitySegment.fallback.summary')}
       </p>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate font-mono">{formatDateTime(segment.startedAt)}</span>
-        <span className="truncate text-right">{formatDurationSeconds(segment.durationSeconds)}</span>
-        <span className="truncate">{segment.frontApp ?? '未知应用'}</span>
-        <span className="truncate text-right">{formatActivityPipelineStatus(segment.pipelineStatus)}</span>
+        <span className="truncate font-mono">{formatDateTime(t, segment.startedAt)}</span>
+        <span className="truncate text-right">{formatDurationSeconds(t, segment.durationSeconds)}</span>
+        <span className="truncate">{segment.frontApp ?? t('common.status.unknownApp')}</span>
+        <span className="truncate text-right">{formatActivityPipelineStatus(t, segment.pipelineStatus)}</span>
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <ActivitySourceBadge label="画面" value={segment.sourceCounts.snapshotIds ?? 0} />
+        <ActivitySourceBadge label={t('activitySegment.source.screen')} value={segment.sourceCounts.snapshotIds ?? 0} />
         <ActivitySourceBadge label="Slack" value={segment.sourceCounts.messageIds ?? 0} />
-        <ActivitySourceBadge label="音频" value={segment.sourceCounts.audioRawSegmentIds ?? 0} />
-        <ActivitySourceBadge label="转写" value={segment.sourceCounts.audioTranscriptIds ?? 0} />
-        <ActivitySourceBadge label="记忆" value={segment.sourceCounts.memoryIds ?? 0} />
+        <ActivitySourceBadge label={t('activitySegment.source.audio')} value={segment.sourceCounts.audioRawSegmentIds ?? 0} />
+        <ActivitySourceBadge label={t('activitySegment.source.transcript')} value={segment.sourceCounts.audioTranscriptIds ?? 0} />
+        <ActivitySourceBadge label={t('activitySegment.source.memory')} value={segment.sourceCounts.memoryIds ?? 0} />
       </div>
       <div className="mt-3 flex items-center gap-2">
         <Button
@@ -2158,7 +2220,7 @@ function ActivitySegmentCard({
           onClick={onTriage}
         >
           <CpuIcon className="size-3.5" />
-          判断价值
+          {t('activitySegment.action.triage')}
         </Button>
         <Button
           type="button"
@@ -2168,7 +2230,7 @@ function ActivitySegmentCard({
           onClick={onSummarize}
         >
           <BrainIcon className="size-3.5" />
-          总结
+          {t('activitySegment.action.summarize')}
         </Button>
         <Button
           type="button"
@@ -2178,7 +2240,7 @@ function ActivitySegmentCard({
           onClick={onCrystallize}
         >
           <CheckCircle2Icon className="size-3.5" />
-          沉淀
+          {t('activitySegment.action.crystallize')}
         </Button>
       </div>
     </article>
@@ -2198,202 +2260,204 @@ function ActivitySourceBadge({ label, value }: { label: string, value: number })
   )
 }
 
-function formatActivitySegmentType(type: ChronicleActivitySegment['segmentType']): string {
+function formatActivitySegmentType(t: ChronicleTranslate, type: ChronicleActivitySegment['segmentType']): string {
   if (type === 'meeting') {
-    return '会议'
+    return t('activitySegment.type.meeting')
   }
   if (type === 'browsing') {
-    return '浏览'
+    return t('activitySegment.type.browsing')
   }
   if (type === 'chat') {
-    return '对话'
+    return t('activitySegment.type.chat')
   }
   if (type === 'audio') {
-    return '音频'
+    return t('activitySegment.type.audio')
   }
   if (type === 'idle') {
-    return '空闲'
+    return t('activitySegment.type.idle')
   }
   if (type === 'work') {
-    return '工作'
+    return t('activitySegment.type.work')
   }
-  return '未知'
+  return t('common.status.unknown')
 }
 
-function formatActivityPipelineStatus(status: ChronicleActivitySegment['pipelineStatus']): string {
+function formatActivityPipelineStatus(t: ChronicleTranslate, status: ChronicleActivitySegment['pipelineStatus']): string {
   if (status === 'triaged') {
-    return '已判断'
+    return t('activitySegment.pipelineStatus.triaged')
   }
   if (status === 'summarized') {
-    return '已总结'
+    return t('activitySegment.pipelineStatus.summarized')
   }
   if (status === 'crystallized') {
-    return '已沉淀'
+    return t('activitySegment.pipelineStatus.crystallized')
   }
   if (status === 'error') {
-    return '异常'
+    return t('common.status.error')
   }
-  return '收集中'
+  return t('activitySegment.pipelineStatus.collecting')
 }
 
-function formatPipelineTrigger(trigger: ChroniclePipelineRun['trigger']): string {
+function formatPipelineTrigger(t: ChronicleTranslate, trigger: ChroniclePipelineRun['trigger']): string {
   if (trigger === 'audio-raw') {
-    return '原始音频'
+    return t('pipeline.trigger.audioRaw')
   }
   if (trigger === 'audio-transcript') {
-    return '会议转写'
+    return t('pipeline.trigger.audioTranscript')
   }
   if (trigger === 'message') {
-    return 'Slack 消息'
+    return t('pipeline.trigger.message')
   }
   if (trigger === 'memory') {
-    return '记忆'
+    return t('pipeline.trigger.memory')
   }
   if (trigger === 'summarize') {
-    return '摘要'
+    return t('pipeline.trigger.summarize')
   }
   if (trigger === 'manual') {
-    return '手动触发'
+    return t('pipeline.trigger.manual')
   }
-  return '屏幕记录'
+  return t('pipeline.trigger.snapshot')
 }
 
-function formatPipelineStage(stage: ChroniclePipelineRun['stage']): string {
+function formatPipelineStage(t: ChronicleTranslate, stage: ChroniclePipelineRun['stage']): string {
   if (stage === 'collection') {
-    return '收集线索'
+    return t('pipeline.stage.collection')
   }
   if (stage === 'triage') {
-    return '判断价值'
+    return t('pipeline.stage.triage')
   }
   if (stage === 'summarization') {
-    return '生成摘要'
+    return t('pipeline.stage.summarization')
   }
   if (stage === 'crystallization') {
-    return '沉淀记忆'
+    return t('pipeline.stage.crystallization')
   }
-  return '划分片段'
+  return t('pipeline.stage.segmentation')
 }
 
-function formatPipelineRunStatus(status: ChroniclePipelineRun['status']): string {
+function formatPipelineRunStatus(t: ChronicleTranslate, status: ChroniclePipelineRun['status']): string {
   if (status === 'success') {
-    return '已完成'
+    return t('common.status.completed')
   }
   if (status === 'error') {
-    return '异常'
+    return t('common.status.error')
   }
   if (status === 'queued') {
-    return '排队中'
+    return t('common.status.queued')
   }
   if (status === 'running') {
-    return '运行中'
+    return t('common.status.running')
   }
   if (status === 'skipped') {
-    return '已跳过'
+    return t('common.status.skipped')
   }
-  return '未知'
+  return t('common.status.unknown')
 }
 
-function formatDurationSeconds(value: number): string {
+function formatDurationSeconds(t: ChronicleTranslate, value: number): string {
   if (value < 60) {
-    return `${Math.max(0, Math.floor(value))} 秒`
+    return t('duration.seconds', { count: Math.max(0, Math.floor(value)) })
   }
   const minutes = Math.floor(value / 60)
   if (minutes < 60) {
-    return `${minutes} 分钟`
+    return t('duration.minutes', { count: minutes })
   }
   const hours = Math.floor(minutes / 60)
   const remainder = minutes % 60
-  return remainder === 0 ? `${hours} 小时` : `${hours} 小时 ${remainder} 分钟`
+  return remainder === 0
+    ? t('duration.hours', { count: hours })
+    : t('duration.hoursMinutes', { hours, minutes: remainder })
 }
 
-function formatKnowledgeCardType(type: ChronicleKnowledgeCard['cardType']): string {
+function formatKnowledgeCardType(t: ChronicleTranslate, type: ChronicleKnowledgeCard['cardType']): string {
   if (type === 'insight') {
-    return '洞察'
+    return t('knowledgeCard.type.insight')
   }
   if (type === 'decision') {
-    return '决定'
+    return t('knowledgeCard.type.decision')
   }
   if (type === 'task') {
-    return '任务'
+    return t('knowledgeCard.type.task')
   }
   if (type === 'pattern') {
-    return '模式'
+    return t('knowledgeCard.type.pattern')
   }
-  return '事实'
+  return t('knowledgeCard.type.fact')
 }
 
-function formatKnowledgeDimension(dimension: ChronicleKnowledgeCard['dimension']): string {
+function formatKnowledgeDimension(t: ChronicleTranslate, dimension: ChronicleKnowledgeCard['dimension']): string {
   if (dimension === 'technical') {
-    return '技术'
+    return t('knowledgeCard.dimension.technical')
   }
   if (dimension === 'business') {
-    return '业务'
+    return t('knowledgeCard.dimension.business')
   }
   if (dimension === 'personal') {
-    return '个人'
+    return t('knowledgeCard.dimension.personal')
   }
   if (dimension === 'project') {
-    return '项目'
+    return t('knowledgeCard.dimension.project')
   }
-  return '通用'
+  return t('knowledgeCard.dimension.general')
 }
 
-function formatDreamRunType(type: ChronicleDreamRun['runType']): string {
+function formatDreamRunType(t: ChronicleTranslate, type: ChronicleDreamRun['runType']): string {
   if (type === 'merge') {
-    return '合并'
+    return t('dreamRun.type.merge')
   }
   if (type === 'archive') {
-    return '归档'
+    return t('dreamRun.type.archive')
   }
   if (type === 'prune') {
-    return '清理'
+    return t('dreamRun.type.prune')
   }
   if (type === 'restore') {
-    return '恢复'
+    return t('dreamRun.type.restore')
   }
-  return '预览'
+  return t('dreamRun.type.dryRun')
 }
 
-function formatDreamRunStatus(status: ChronicleDreamRun['status']): string {
+function formatDreamRunStatus(t: ChronicleTranslate, status: ChronicleDreamRun['status']): string {
   if (status === 'completed') {
-    return '已完成'
+    return t('common.status.completed')
   }
   if (status === 'failed') {
-    return '异常'
+    return t('common.status.error')
   }
   if (status === 'running') {
-    return '运行中'
+    return t('common.status.running')
   }
-  return '排队中'
+  return t('common.status.queued')
 }
 
-function formatKnowledgeCardStatus(status: ChronicleKnowledgeCard['status']): string {
+function formatKnowledgeCardStatus(t: ChronicleTranslate, status: ChronicleKnowledgeCard['status']): string {
   if (status === 'active') {
-    return '生效中'
+    return t('knowledgeCard.status.active')
   }
   if (status === 'merged') {
-    return '已合并'
+    return t('knowledgeCard.status.merged')
   }
   if (status === 'archived') {
-    return '已归档'
+    return t('knowledgeCard.status.archived')
   }
   if (status === 'deleted') {
-    return '已删除'
+    return t('knowledgeCard.status.deleted')
   }
   return status
 }
 
-function formatTranscriptStatus(status: ChronicleAudioTranscript['status']): string {
+function formatTranscriptStatus(t: ChronicleTranslate, status: ChronicleAudioTranscript['status']): string {
   if (status === 'recording') {
-    return '记录中'
+    return t('common.status.recording')
   }
   if (status === 'completed') {
-    return '已完成'
+    return t('common.status.completed')
   }
   if (status === 'imported') {
-    return '已导入'
+    return t('common.status.imported')
   }
-  return '异常'
+  return t('common.status.error')
 }
 
 function MemoryList({
@@ -2423,6 +2487,8 @@ function KnowledgeCardList({
   cards: ChronicleKnowledgeCard[]
   focusTarget: ChronicleFocusTarget | null
 }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {cards.map(card => (
@@ -2439,11 +2505,11 @@ function KnowledgeCardList({
           <div className="mb-2 flex min-w-0 items-center gap-2">
             <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{card.title}</span>
-            <Badge variant="outline" className="ml-auto text-[11px]">{formatKnowledgeDimension(card.dimension)}</Badge>
+            <Badge variant="outline" className="ml-auto text-[11px]">{formatKnowledgeDimension(t, card.dimension)}</Badge>
           </div>
           <p className="line-clamp-4 min-h-20 text-[13px] leading-5 text-foreground">{card.content}</p>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge variant="secondary" className="text-[11px]">{formatKnowledgeCardType(card.cardType)}</Badge>
+            <Badge variant="secondary" className="text-[11px]">{formatKnowledgeCardType(t, card.cardType)}</Badge>
             <Badge variant="outline" className="text-[11px]">
               v
               {card.version}
@@ -2452,16 +2518,14 @@ function KnowledgeCardList({
               {Math.round(card.confidence * 100)}
               %
             </Badge>
-            {card.status !== 'active' && <Badge variant="outline" className="text-[11px]">{formatKnowledgeCardStatus(card.status)}</Badge>}
+            {card.status !== 'active' && <Badge variant="outline" className="text-[11px]">{formatKnowledgeCardStatus(t, card.status)}</Badge>}
             {card.tags.slice(0, 4).map(tag => <Badge key={tag} variant="outline" className="text-[11px]">{tag}</Badge>)}
           </div>
           <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
             <span className="truncate">
-              {card.sourceSegmentIds.length}
-              {' '}
-              个来源片段
+              {t('knowledgeCard.sourceSegments', { count: card.sourceSegmentIds.length })}
             </span>
-            <span className="shrink-0 font-mono">{formatRelativeTime(card.updatedAt)}</span>
+            <span className="shrink-0 font-mono">{formatRelativeTime(t, card.updatedAt)}</span>
           </div>
         </article>
       ))}
@@ -2470,6 +2534,7 @@ function KnowledgeCardList({
 }
 
 function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDreamRun[] }) {
+  const { t } = useTranslation('chronicle')
   const { startDreamDryRun, startDreamMerge, startingDryRun, startingMerge } = useChronicleDreamActions()
   const starting = startingDryRun || startingMerge
 
@@ -2478,7 +2543,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-[13px] font-medium text-foreground">合并候选</span>
+          <span className="truncate text-[13px] font-medium text-foreground">{t('dreamRun.candidatesTitle')}</span>
           <Button
             type="button"
             variant="outline"
@@ -2488,7 +2553,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
             onClick={() => void startDreamDryRun()}
           >
             <RefreshCwIcon className="size-3.5" />
-            生成预览
+            {t('dreamRun.generatePreview')}
           </Button>
           <Button
             type="button"
@@ -2498,22 +2563,22 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
             onClick={() => void startDreamMerge()}
           >
             <CheckCircle2Icon className="size-3.5" />
-            应用合并
+            {t('dreamRun.applyMerge')}
           </Button>
         </div>
       </div>
 
       {loading
-        ? <EmptyState icon={<ClockIcon className="size-4" />} title="正在读取整理预览" />
+        ? <EmptyState icon={<ClockIcon className="size-4" />} title={t('dreamRun.loading')} />
         : runs.length === 0
-          ? <EmptyState icon={<ClockIcon className="size-4" />} title="还没有整理预览" />
+          ? <EmptyState icon={<ClockIcon className="size-4" />} title={t('dreamRun.empty')} />
           : (
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {runs.slice(0, 8).map(run => (
                   <article key={run.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
                     <div className="mb-2 flex min-w-0 items-center gap-2">
                       <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="truncate text-[13px] font-medium text-foreground">{formatDreamRunType(run.runType)}</span>
+                      <span className="truncate text-[13px] font-medium text-foreground">{formatDreamRunType(t, run.runType)}</span>
                       <Badge
                         variant={run.status === 'completed' ? 'secondary' : 'outline'}
                         className={cn(
@@ -2521,29 +2586,23 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
                           { 'border-destructive/20 bg-destructive/10 text-destructive': run.status === 'failed' },
                         )}
                       >
-                        {formatDreamRunStatus(run.status)}
+                        {formatDreamRunStatus(t, run.status)}
                       </Badge>
                     </div>
                     <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
                       <span>
-                        输入
-                        {' '}
-                        {run.inputCount}
+                        {t('dreamRun.inputCount', { count: run.inputCount })}
                       </span>
                       <span>
-                        候选
-                        {' '}
-                        {run.result.candidateCount}
+                        {t('dreamRun.candidateCount', { count: run.result.candidateCount })}
                       </span>
                       <span>
-                        合并
-                        {' '}
-                        {run.mergedCount}
+                        {t('dreamRun.mergedCount', { count: run.mergedCount })}
                       </span>
                     </div>
                     <div className="mt-2 flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
                       <span className="truncate">{run.result.vectorMode}</span>
-                      <span className="shrink-0 font-mono">{formatRelativeTime(run.startedAt)}</span>
+                      <span className="shrink-0 font-mono">{formatRelativeTime(t, run.startedAt)}</span>
                     </div>
                     {run.errorMessage && <p className="mt-1 line-clamp-2 text-[11px] text-destructive">{run.errorMessage}</p>}
                   </article>
@@ -2555,6 +2614,8 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
 }
 
 function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessibilitySnapshot[] }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {snapshots.map((snapshot) => {
@@ -2564,7 +2625,7 @@ function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessib
             <div className="mb-2 flex min-w-0 items-center gap-2">
               <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="truncate text-[13px] font-medium text-foreground">
-                {snapshot.windowTitle ?? snapshot.appBundleId ?? '窗口线索'}
+                {snapshot.windowTitle ?? snapshot.appBundleId ?? t('accessibility.snapshotFallback.title')}
               </span>
               <Badge
                 variant={snapshot.status === 'ready' ? 'secondary' : 'outline'}
@@ -2576,21 +2637,19 @@ function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessib
                   },
                 )}
               >
-                {formatAccessibilityStatus(snapshot.status)}
+                {formatAccessibilityStatus(t, snapshot.status)}
               </Badge>
             </div>
             <p className="line-clamp-4 text-[13px] leading-5 text-foreground">
-              {snapshot.text ?? '这次记录没有捕捉到可读的窗口文本。'}
+              {snapshot.text ?? t('accessibility.snapshotFallback.text')}
             </p>
             <div className="mt-2 grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
-              <span className="truncate font-mono">{formatDateTime(snapshot.capturedAt)}</span>
+              <span className="truncate font-mono">{formatDateTime(t, snapshot.capturedAt)}</span>
               <span className="truncate text-right">
-                {snapshot.elementCount}
-                {' '}
-                个界面元素
+                {t('accessibility.elementCount', { count: snapshot.elementCount })}
               </span>
               <span className="truncate">{snapshot.provider}</span>
-              <span className="truncate text-right">{snapshot.appBundleId ?? '未知应用'}</span>
+              <span className="truncate text-right">{snapshot.appBundleId ?? t('common.status.unknownApp')}</span>
             </div>
             {artifactPath && (
               <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/70">
@@ -2626,6 +2685,8 @@ function AccessibilityTreePreview({ tree }: { tree: unknown[] }) {
 }
 
 function AccessibilityEventList({ events }: { events: ChronicleAccessibilityEvent[] }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {events.map(event => (
@@ -2633,22 +2694,22 @@ function AccessibilityEventList({ events }: { events: ChronicleAccessibilityEven
           <div className="mb-2 flex min-w-0 items-center gap-2">
             <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
-              {formatAccessibilityEventNotification(event.notification)}
+              {formatAccessibilityEventNotification(t, event.notification)}
             </span>
             <Badge variant="outline" className="ml-auto text-[11px]">
               {event.droppedBefore > 0 ? `${event.droppedBefore} dropped` : 'captured'}
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-1 text-[11px] text-muted-foreground">
-            <span className="truncate font-mono">{formatDateTime(event.capturedAt)}</span>
-            <span className="truncate text-right">{event.appBundleId ?? '未知应用'}</span>
+            <span className="truncate font-mono">{formatDateTime(t, event.capturedAt)}</span>
+            <span className="truncate text-right">{event.appBundleId ?? t('common.status.unknownApp')}</span>
             <span className="truncate">{event.provider}</span>
-            <span className="truncate text-right">{event.pid === null ? '未知进程' : `PID ${event.pid}`}</span>
+            <span className="truncate text-right">{event.pid === null ? t('accessibility.unknownProcess') : `PID ${event.pid}`}</span>
             <span className="truncate">
-              {event.snapshotId ? '已关联屏幕快照' : '未关联屏幕快照'}
+              {event.snapshotId ? t('accessibility.snapshotLinked') : t('accessibility.snapshotNotLinked')}
             </span>
             <span className="truncate text-right">
-              {event.accessibilitySnapshotId ? '已关联窗口线索' : '未关联窗口线索'}
+              {event.accessibilitySnapshotId ? t('accessibility.windowClueLinked') : t('accessibility.windowClueNotLinked')}
             </span>
           </div>
           <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground/70">{event.sourceId}</p>
@@ -2674,39 +2735,41 @@ function getAccessibilityTreeDepthClass(depth: number): string {
   return 'pl-8'
 }
 
-function formatAccessibilityStatus(status: ChronicleAccessibilitySnapshot['status']): string {
+function formatAccessibilityStatus(t: ChronicleTranslate, status: ChronicleAccessibilitySnapshot['status']): string {
   if (status === 'permission-denied') {
-    return '需要授权'
+    return t('accessibility.status.permissionDenied')
   }
   if (status === 'unavailable') {
-    return '不可用'
+    return t('common.status.unavailable')
   }
   if (status === 'error') {
-    return '异常'
+    return t('common.status.error')
   }
-  return '可用'
+  return t('resource.state.available')
 }
 
-function formatAccessibilityEventNotification(notification: string): string {
+function formatAccessibilityEventNotification(t: ChronicleTranslate, notification: string): string {
   if (notification === 'AXFocusedWindowChanged') {
-    return '焦点窗口变化'
+    return t('accessibility.notification.focusedWindowChanged')
   }
   if (notification === 'AXFocusedUIElementChanged') {
-    return '焦点元素变化'
+    return t('accessibility.notification.focusedElementChanged')
   }
   if (notification === 'AXWindowCreated') {
-    return '窗口创建'
+    return t('accessibility.notification.windowCreated')
   }
   if (notification === 'AXWindowMoved') {
-    return '窗口移动'
+    return t('accessibility.notification.windowMoved')
   }
   if (notification === 'AXWindowResized') {
-    return '窗口尺寸变化'
+    return t('accessibility.notification.windowResized')
   }
   return notification
 }
 
 function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {profiles.map(profile => (
@@ -2715,27 +2778,23 @@ function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] 
             <UserRoundIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{profile.displayName}</span>
             <Badge variant="outline" className="ml-auto text-[11px]">
-              {profile.sampleCount}
-              {' '}
-              个样本
+              {t('speaker.sampleCount', { count: profile.sampleCount })}
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-2 text-[12px] text-muted-foreground">
             <span className="truncate">
-              最近出现
+              {t('speaker.lastSeen')}
               {' '}
-              {formatRelativeTime(profile.lastSeenAt)}
+              {formatRelativeTime(t, profile.lastSeenAt)}
             </span>
             <span className="truncate text-right">
-              {profile.embeddingDimensions ? `${profile.embeddingDimensions} 维` : '还没有声纹'}
+              {profile.embeddingDimensions ? t('speaker.embeddingDimensions', { count: profile.embeddingDimensions }) : t('speaker.noVoiceprint')}
             </span>
             <span className="truncate">
-              {profile.embeddingModelId ?? '说话人标签'}
+              {profile.embeddingModelId ?? t('speaker.labelFallback')}
             </span>
             <span className="truncate text-right">
-              {profile.aliases.length}
-              {' '}
-              个别名
+              {t('speaker.aliasCount', { count: profile.aliases.length })}
             </span>
           </div>
           {profile.aliases.length > 0 && (
@@ -2750,6 +2809,8 @@ function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] 
 }
 
 function AudioTranscriptList({ transcripts }: { transcripts: ChronicleAudioTranscript[] }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {transcripts.map(transcript => (
@@ -2757,22 +2818,20 @@ function AudioTranscriptList({ transcripts }: { transcripts: ChronicleAudioTrans
           <div className="mb-2 flex min-w-0 items-center gap-2">
             <FileAudioIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
-              {transcript.title ?? transcript.windowTitle ?? '音频转写'}
+              {transcript.title ?? transcript.windowTitle ?? t('timeline.fallback.audioTranscript')}
             </span>
-            <Badge variant="outline" className="ml-auto text-[11px]">{formatTranscriptStatus(transcript.status)}</Badge>
+            <Badge variant="outline" className="ml-auto text-[11px]">{formatTranscriptStatus(t, transcript.status)}</Badge>
           </div>
           <p className="line-clamp-4 text-[13px] leading-5 text-foreground">
-            {transcript.previewText || '这条转写还没有可预览的文本。'}
+            {transcript.previewText || t('audioTranscript.emptyPreview')}
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
-            <span className="font-mono">{formatDateTime(transcript.startedAt)}</span>
+            <span className="font-mono">{formatDateTime(t, transcript.startedAt)}</span>
             <span>
-              {transcript.segmentCount}
-              {' '}
-              个片段
+              {t('audioTranscript.segmentCount', { count: transcript.segmentCount })}
             </span>
             {transcript.language && <span>{transcript.language}</span>}
-            {transcript.source === 'asr' && <span>ASR 转写</span>}
+            {transcript.source === 'asr' && <span>{t('audioTranscript.asrTranscript')}</span>}
           </div>
         </article>
       ))}
@@ -2781,6 +2840,8 @@ function AudioTranscriptList({ transcripts }: { transcripts: ChronicleAudioTrans
 }
 
 function AudioRawSegmentList({ segments }: { segments: ChronicleAudioRawSegment[] }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
       {segments.map(segment => (
@@ -2788,15 +2849,15 @@ function AudioRawSegmentList({ segments }: { segments: ChronicleAudioRawSegment[
           <div className="mb-2 flex min-w-0 items-center gap-2">
             <FileAudioIcon className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
-              {formatAudioSegmentTitle(segment)}
+              {formatAudioSegmentTitle(t, segment)}
             </span>
             <Badge variant={segment.active ? 'secondary' : 'outline'} className="ml-auto text-[11px]">
-              {segment.active ? '有声音' : '安静'}
+              {segment.active ? t('audioRaw.active') : t('audioRaw.quiet')}
             </Badge>
           </div>
           <div className="grid grid-cols-2 gap-2 text-[12px] text-muted-foreground">
             <span className="truncate">
-              {formatDateTime(segment.recordedAt)}
+              {formatDateTime(t, segment.recordedAt)}
             </span>
             <span className="truncate text-right">
               {formatDurationMs(segment.durationMs)}
@@ -2819,13 +2880,13 @@ function AudioRawSegmentList({ segments }: { segments: ChronicleAudioRawSegment[
             <span className="truncate text-right">
               {segment.channels}
               {' '}
-              声道
+              {t('audioRaw.channels')}
             </span>
           </div>
           <div className="mt-2 flex flex-wrap gap-1.5">
             <AudioProcessingBadge label="VAD" status={segment.vadStatus} />
             <AudioProcessingBadge label="ASR" status={segment.asrStatus} />
-            <AudioProcessingBadge label="说话人" status={segment.speakerStatus} />
+            <AudioProcessingBadge label={t('audioRaw.speaker')} status={segment.speakerStatus} />
           </div>
           <div className="mt-2 space-y-1 text-[11px] text-muted-foreground/70">
             <p className="truncate font-mono">{segment.audioPath}</p>
@@ -2844,36 +2905,38 @@ function AudioProcessingBadge({
   label: string
   status: ChronicleAudioRawSegment['vadStatus']
 }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <Badge variant="outline" className="text-[11px]">
       {label}
       {' '}
-      {formatAudioProcessingStatus(status)}
+      {formatAudioProcessingStatus(t, status)}
     </Badge>
   )
 }
 
-function formatAudioSegmentTitle(segment: ChronicleAudioRawSegment): string {
+function formatAudioSegmentTitle(t: ChronicleTranslate, segment: ChronicleAudioRawSegment): string {
   if (segment.source === 'system') {
-    return '系统声音片段'
+    return t('audioRaw.title.system')
   }
   if (segment.source === 'mixed') {
-    return '混合音频片段'
+    return t('audioRaw.title.mixed')
   }
-  return '麦克风片段'
+  return t('audioRaw.title.microphone')
 }
 
-function formatAudioProcessingStatus(status: ChronicleAudioRawSegment['vadStatus']): string {
+function formatAudioProcessingStatus(t: ChronicleTranslate, status: ChronicleAudioRawSegment['vadStatus']): string {
   if (status === 'pending') {
-    return '等待中'
+    return t('common.status.pending')
   }
   if (status === 'ready') {
-    return '已完成'
+    return t('common.status.completed')
   }
   if (status === 'error') {
-    return '异常'
+    return t('common.status.error')
   }
-  return '未接入'
+  return t('audioRaw.processing.notConnected')
 }
 
 function formatDurationMs(value: number): string {
@@ -2887,14 +2950,16 @@ function formatRatioPercent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
 
-function formatMemoryType(type: MemoryEntry['type']): string {
+function formatMemoryType(t: ChronicleTranslate, type: MemoryEntry['type']): string {
   if (type === '10min') {
-    return '短时记忆'
+    return t('memory.type.short')
   }
-  return '长时记忆'
+  return t('memory.type.long')
 }
 
 function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }) {
+  const { t } = useTranslation('chronicle')
+
   return (
     <article
       className={cn(
@@ -2907,24 +2972,22 @@ function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }
     >
       <div className="mb-2 flex min-w-0 items-center gap-2">
         <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-[13px] font-medium text-foreground">{entry.title ?? '活动记忆'}</span>
+        <span className="truncate text-[13px] font-medium text-foreground">{entry.title ?? t('memory.fallbackTitle')}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {entry.matchKind && (
             <Badge variant="outline" className="text-[11px]">
-              {getMemoryMatchLabel(entry)}
+              {getMemoryMatchLabel(t, entry)}
             </Badge>
           )}
-          <Badge variant="secondary" className="text-[11px]">{formatMemoryType(entry.type)}</Badge>
+          <Badge variant="secondary" className="text-[11px]">{formatMemoryType(t, entry.type)}</Badge>
         </div>
       </div>
       <p className="line-clamp-4 text-[13px] leading-5 text-foreground">{entry.content}</p>
       <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-        <span className="font-mono">{formatDateTime(entry.createdAt)}</span>
+        <span className="font-mono">{formatDateTime(t, entry.createdAt)}</span>
         {entry.sourceCount !== null && entry.sourceCount !== undefined && (
           <span>
-            {entry.sourceCount}
-            {' '}
-            个来源
+            {t('memory.sourceCount', { count: entry.sourceCount })}
           </span>
         )}
       </div>
@@ -2932,16 +2995,16 @@ function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }
   )
 }
 
-function getMemoryMatchLabel(entry: MemoryEntry): string {
+function getMemoryMatchLabel(t: ChronicleTranslate, entry: MemoryEntry): string {
   if (entry.matchKind === 'hybrid') {
-    return '混合匹配'
+    return t('memory.match.hybrid')
   }
   if (entry.matchKind === 'semantic') {
     return entry.semanticScore !== null && entry.semanticScore !== undefined
-      ? `语义 ${entry.semanticScore.toFixed(2)}`
-      : '语义'
+      ? t('memory.match.semanticScore', { score: entry.semanticScore.toFixed(2) })
+      : t('memory.match.semantic')
   }
-  return '关键词'
+  return t('memory.match.keyword')
 }
 
 function StatusItem({

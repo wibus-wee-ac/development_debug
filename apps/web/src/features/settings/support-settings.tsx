@@ -7,6 +7,7 @@ import {
   Share2Icon,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getObservabilityExport, postObservabilityFlush } from '~/api-gen/sdk.gen'
@@ -23,6 +24,17 @@ const FEEDBACK_URL = 'https://github.com/wibus-wee/Cradle/issues/new'
 
 type SupportStatus = 'idle' | 'working' | 'ready' | 'error'
 type ObservabilityExportBundle = GetObservabilityExportResponses[200]
+interface SupportTemplateCopy {
+  title: string
+  version: string
+  runtime: string
+  server: string
+  whatHappened: string
+  expected: string
+  reproduction: string
+  diagnostics: string
+  diagnosticsNote: string
+}
 
 const ObservabilityEventSchema = z.object({
   id: z.string(),
@@ -69,27 +81,27 @@ const ObservabilityExportBundleSchema = z.object({
   timeline: z.array(z.record(z.string(), z.unknown())),
 })
 
-function createSupportTemplate(): string {
+function createSupportTemplate(copy: SupportTemplateCopy): string {
   return [
-    '# Cradle Preview Feedback',
+    copy.title,
     '',
-    `Version: ${import.meta.env.PACKAGE_VERSION ?? '0.0.1'}`,
-    `Runtime: ${isElectron ? 'Electron desktop' : 'Web preview'}`,
-    `Server: ${getServerUrl()}`,
+    copy.version,
+    copy.runtime,
+    copy.server,
     '',
-    '## What happened',
-    '',
-    '',
-    '## What I expected',
+    copy.whatHappened,
     '',
     '',
-    '## Reproduction steps',
+    copy.expected,
+    '',
+    '',
+    copy.reproduction,
     '',
     '1. ',
     '',
-    '## Diagnostics',
+    copy.diagnostics,
     '',
-    'Attach the local diagnostics JSON exported from Settings > Support. Review it before sharing.',
+    copy.diagnosticsNote,
   ].join('\n')
 }
 
@@ -108,11 +120,22 @@ function formatTimestampForFilename(timestamp: number): string {
 }
 
 export function SupportSettings() {
+  const { t } = useTranslation('settings')
   const [status, setStatus] = useState<SupportStatus>('idle')
   const [message, setMessage] = useState<string | null>(null)
   const [dataPath, setDataPath] = useState<string | null>(null)
 
-  const template = useMemo(() => createSupportTemplate(), [])
+  const template = useMemo(() => createSupportTemplate({
+    title: t('support.template.title'),
+    version: t('support.template.version', { version: import.meta.env.PACKAGE_VERSION ?? '0.0.1' }),
+    runtime: t('support.template.runtime', { runtime: isElectron ? t('support.template.runtime.electron') : t('support.template.runtime.web') }),
+    server: t('support.template.server', { server: getServerUrl() }),
+    whatHappened: t('support.template.whatHappened'),
+    expected: t('support.template.expected'),
+    reproduction: t('support.template.reproduction'),
+    diagnostics: t('support.template.diagnostics'),
+    diagnosticsNote: t('support.template.diagnosticsNote'),
+  }), [t])
   const canOpenDataPath = isElectron && !!nativeIpc
   const settingsSupportReady = template.length > 0
 
@@ -123,7 +146,7 @@ export function SupportSettings() {
       await postObservabilityFlush()
       const { data } = await getObservabilityExport()
       if (!data) {
-        throw new Error('No diagnostics bundle returned')
+        throw new Error(t('support.error.noDiagnosticsBundle'))
       }
       const bundle = ObservabilityExportBundleSchema.parse(data) satisfies ObservabilityExportBundle
       const exportedAt = bundle.exportedAt
@@ -131,7 +154,7 @@ export function SupportSettings() {
         schema: 'cradle.preview.diagnostics.v1',
         exportedAt,
         source: 'settings.support',
-        note: 'Local diagnostics export. Review before sharing; no automatic upload was performed.',
+        note: t('support.diagnostics.note'),
         bundle,
       }
       downloadTextFile(
@@ -139,7 +162,7 @@ export function SupportSettings() {
         JSON.stringify(payload, null, 2),
       )
       setStatus('ready')
-      setMessage(`Exported ${bundle.events.length} events and ${bundle.incidents.length} incidents.`)
+      setMessage(t('support.status.exported', { eventCount: bundle.events.length, incidentCount: bundle.incidents.length }))
     }
     catch (error) {
       setStatus('error')
@@ -153,7 +176,7 @@ export function SupportSettings() {
     try {
       await navigator.clipboard.writeText(template)
       setStatus('ready')
-      setMessage('Feedback template copied.')
+      setMessage(t('support.status.templateCopied'))
     }
     catch (error) {
       setStatus('error')
@@ -185,23 +208,23 @@ export function SupportSettings() {
       data-settings-support-ready={settingsSupportReady ? 'true' : 'false'}
     >
       <SettingsSectionHeader
-        title="Support"
-        description="Export local diagnostics, prepare feedback, and inspect Cradle-owned data before uninstalling."
-        action={<Badge variant="outline">Manual</Badge>}
+        title={t('support.page.title')}
+        description={t('support.page.description')}
+        action={<Badge variant="outline">{t('support.badge.manual')}</Badge>}
       />
 
       <Alert className="mb-4">
         <LifeBuoyIcon className="size-4" aria-hidden="true" />
-        <AlertTitle>Preview support is local-first</AlertTitle>
+        <AlertTitle>{t('support.alert.title')}</AlertTitle>
         <AlertDescription>
-          Cradle does not upload diagnostics automatically in this preview. Exported bundles stay on this machine until you attach them yourself.
+          {t('support.alert.description')}
         </AlertDescription>
       </Alert>
 
       <SettingsDivider />
       <SettingsRow
-        label="Diagnostics bundle"
-        description="Flush local observability data and download a JSON bundle you can review before sharing."
+        label={t('support.diagnostics.label')}
+        description={t('support.diagnostics.description')}
       >
         <Button
           type="button"
@@ -211,14 +234,14 @@ export function SupportSettings() {
           disabled={status === 'working'}
         >
           {status === 'working' ? <Spinner className="size-3.5" /> : <Share2Icon className="size-3.5" aria-hidden="true" />}
-          Export
+          {t('support.action.export')}
         </Button>
       </SettingsRow>
 
       <SettingsDivider />
       <SettingsRow
-        label="Feedback template"
-        description="Copy a compact issue template with version, runtime, server URL, and diagnostics instructions."
+        label={t('support.feedbackTemplate.label')}
+        description={t('support.feedbackTemplate.description')}
       >
         <Button
           type="button"
@@ -228,14 +251,14 @@ export function SupportSettings() {
           disabled={status === 'working'}
         >
           <ClipboardIcon className="size-3.5" aria-hidden="true" />
-          Copy
+          {t('support.action.copy')}
         </Button>
       </SettingsRow>
 
       <SettingsDivider />
       <SettingsRow
-        label="Feedback channel"
-        description="Open the public issue form. Attach diagnostics only after reviewing the exported JSON."
+        label={t('support.feedbackChannel.label')}
+        description={t('support.feedbackChannel.description')}
       >
         <Button
           type="button"
@@ -244,15 +267,15 @@ export function SupportSettings() {
           onClick={() => void openFeedback()}
         >
           <SendIcon className="size-3.5" aria-hidden="true" />
-          Open
+          {t('support.action.open')}
           <ExternalLinkIcon className="size-3" aria-hidden="true" />
         </Button>
       </SettingsRow>
 
       <SettingsDivider />
       <SettingsRow
-        label="Cradle data directory"
-        description={dataPath ?? 'Open the Cradle-owned data directory that stores the local database, logs, plugins, and runtime files.'}
+        label={t('support.dataDirectory.label')}
+        description={dataPath ?? t('support.dataDirectory.description')}
       >
         <Button
           type="button"
@@ -262,16 +285,16 @@ export function SupportSettings() {
           disabled={!canOpenDataPath}
         >
           <FolderOpenIcon className="size-3.5" aria-hidden="true" />
-          Reveal
+          {t('support.action.reveal')}
         </Button>
       </SettingsRow>
 
       <SettingsDivider />
       <SettingsRow
-        label="Uninstall"
-        description="Use the OS uninstall flow to remove the app. Cradle-owned user data is retained by default so accidental uninstall does not delete work."
+        label={t('support.uninstall.label')}
+        description={t('support.uninstall.description')}
       >
-        <Badge variant="outline">Documented</Badge>
+        <Badge variant="outline">{t('support.badge.documented')}</Badge>
       </SettingsRow>
 
       {message && (

@@ -1,5 +1,6 @@
 import { Link } from '@cradle/tabs-next'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import {
   BotIcon,
   ClockIcon,
@@ -14,6 +15,7 @@ import {
   ZapIcon,
 } from 'lucide-react'
 import { useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { getSessionsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
@@ -43,9 +45,17 @@ interface Artifact {
 }
 
 interface QuickAction {
-  id: string
-  label: string
-  description: string
+  id: 'browse' | 'code' | 'summarize' | 'automate'
+  labelKey:
+    | 'quickAction.browse.label'
+    | 'quickAction.code.label'
+    | 'quickAction.summarize.label'
+    | 'quickAction.automate.label'
+  descriptionKey:
+    | 'quickAction.browse.description'
+    | 'quickAction.code.description'
+    | 'quickAction.summarize.description'
+    | 'quickAction.automate.description'
   icon: React.ReactNode
 }
 
@@ -81,30 +91,50 @@ const MOCK_ARTIFACTS: Artifact[] = [
 ]
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { id: 'browse', label: '网页调研', description: '让 agent 去搜集资料', icon: <GlobeIcon className="size-3.5" /> },
-  { id: 'code', label: '修复代码', description: '选择文件，agent 给出 diff', icon: <CodeIcon className="size-3.5" /> },
-  { id: 'summarize', label: '沉淀为文档', description: '把会话内容整理成文档', icon: <FileTextIcon className="size-3.5" /> },
-  { id: 'automate', label: '新建自动化', description: '设置定时 / 触发任务', icon: <ZapIcon className="size-3.5" /> },
+  {
+    id: 'browse',
+    labelKey: 'quickAction.browse.label',
+    descriptionKey: 'quickAction.browse.description',
+    icon: <GlobeIcon className="size-3.5" />,
+  },
+  {
+    id: 'code',
+    labelKey: 'quickAction.code.label',
+    descriptionKey: 'quickAction.code.description',
+    icon: <CodeIcon className="size-3.5" />,
+  },
+  {
+    id: 'summarize',
+    labelKey: 'quickAction.summarize.label',
+    descriptionKey: 'quickAction.summarize.description',
+    icon: <FileTextIcon className="size-3.5" />,
+  },
+  {
+    id: 'automate',
+    labelKey: 'quickAction.automate.label',
+    descriptionKey: 'quickAction.automate.description',
+    icon: <ZapIcon className="size-3.5" />,
+  },
 ]
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function formatRelativeTime(unixTimestamp: number): string {
+function formatRelativeTime(unixTimestamp: number, t: TFunction<'home'>): string {
   const now = Math.floor(Date.now() / 1000)
   const diff = now - unixTimestamp
   if (diff < 60) {
-    return '刚刚'
+    return t('relative.justNow')
   }
   if (diff < 3600) {
-    return `${Math.floor(diff / 60)}m`
+    return t('relative.minute', { count: Math.floor(diff / 60) })
   }
   if (diff < 86400) {
-    return `${Math.floor(diff / 3600)}h`
+    return t('relative.hour', { count: Math.floor(diff / 3600) })
   }
   if (diff < 2592000) {
-    return `${Math.floor(diff / 86400)}d`
+    return t('relative.day', { count: Math.floor(diff / 86400) })
   }
-  return `${Math.floor(diff / 2592000)}mo`
+  return t('relative.month', { count: Math.floor(diff / 2592000) })
 }
 
 function asUnixSeconds(value: number | string | null | undefined): number | null {
@@ -119,17 +149,17 @@ function asUnixSeconds(value: number | string | null | undefined): number | null
   return Number.isNaN(parsed) ? null : Math.floor(parsed / 1000)
 }
 
-function formatSchedule(definition: AutomationDefinition): string {
+function formatSchedule(definition: AutomationDefinition, t: TFunction<'home'>): string {
   const trigger = definition.trigger ?? definition.triggerJson
   if (!trigger) {
-    return 'No trigger'
+    return t('automation.noTrigger')
   }
 
   const timezone = trigger.timezone ? ` · ${trigger.timezone}` : ''
   return `${trigger.rrule}${timezone}`
 }
 
-function formatLatestRun(run: AutomationRun | null | undefined): string | undefined {
+function formatLatestRun(run: AutomationRun | null | undefined, t: TFunction<'home'>): string | undefined {
   if (!run) {
     return undefined
   }
@@ -139,15 +169,15 @@ function formatLatestRun(run: AutomationRun | null | undefined): string | undefi
     return run.status
   }
 
-  return `${run.status} · ${formatRelativeTime(timestamp)}`
+  return `${run.status} · ${formatRelativeTime(timestamp, t)}`
 }
 
-function toScheduledTask(definition: AutomationDefinition): ScheduledTask {
+function toScheduledTask(definition: AutomationDefinition, t: TFunction<'home'>): ScheduledTask {
   return {
     id: definition.id,
     label: definition.title,
-    schedule: formatSchedule(definition),
-    status: formatLatestRun(definition.latestRun),
+    schedule: formatSchedule(definition, t),
+    status: formatLatestRun(definition.latestRun, t),
     latestRunAt: definition.latestRun?.finishedAt ?? definition.latestRun?.startedAt ?? definition.latestRun?.createdAt ?? null,
   }
 }
@@ -239,7 +269,7 @@ function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardPr
 
 // ── Pending run row ───────────────────────────────────────────────────────────
 
-function PendingRunRow({ run }: { run: PendingRun }) {
+function PendingRunRow({ run, t }: { run: PendingRun, t: TFunction<'home'> }) {
   return (
     <div className="flex items-start gap-2.5 rounded-md p-2 hover:bg-accent/50 transition-colors cursor-pointer">
       <TriangleAlertIcon className="size-3.5 mt-0.5 shrink-0 text-amber-500" />
@@ -252,8 +282,9 @@ function PendingRunRow({ run }: { run: PendingRun }) {
         </span>
       </div>
       <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums mt-0.5">
-        {formatRelativeTime(run.blockedAt)}
-        前
+        {formatRelativeTime(run.blockedAt, t)}
+        {' '}
+        {t('pending.relativeSuffix')}
       </span>
     </div>
   )
@@ -261,7 +292,7 @@ function PendingRunRow({ run }: { run: PendingRun }) {
 
 // ── Recent session row ────────────────────────────────────────────────────────
 
-function RecentSessionRow({ session, workspaceName }: { session: Session, workspaceName: string }) {
+function RecentSessionRow({ session, workspaceName, t }: { session: Session, workspaceName: string, t: TFunction<'home'> }) {
   return (
     <Link
       to="chat"
@@ -275,7 +306,7 @@ function RecentSessionRow({ session, workspaceName }: { session: Session, worksp
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{workspaceName}</span>
       <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground tabular-nums">
-        {formatRelativeTime(session.updatedAt)}
+        {formatRelativeTime(session.updatedAt, t)}
       </span>
     </Link>
   )
@@ -289,7 +320,7 @@ const ARTIFACT_ICONS: Record<Artifact['type'], React.ReactNode> = {
   diff: <CodeIcon className="size-3.5" />,
 }
 
-function ArtifactRow({ artifact }: { artifact: Artifact }) {
+function ArtifactRow({ artifact, t }: { artifact: Artifact, t: TFunction<'home'> }) {
   return (
     <div className="group flex items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 cursor-pointer">
       <span className="shrink-0 text-muted-foreground">
@@ -299,7 +330,7 @@ function ArtifactRow({ artifact }: { artifact: Artifact }) {
         {artifact.title}
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
-        {formatRelativeTime(artifact.createdAt)}
+        {formatRelativeTime(artifact.createdAt, t)}
       </span>
     </div>
   )
@@ -307,7 +338,17 @@ function ArtifactRow({ artifact }: { artifact: Artifact }) {
 
 // ── Quick action button ───────────────────────────────────────────────────────
 
-function QuickActionButton({ action, onClick }: { action: QuickAction, onClick?: () => void }) {
+function QuickActionButton({
+  action,
+  label,
+  description,
+  onClick,
+}: {
+  action: QuickAction
+  label: string
+  description: string
+  onClick?: () => void
+}) {
   return (
     <button
       type="button"
@@ -319,9 +360,9 @@ function QuickActionButton({ action, onClick }: { action: QuickAction, onClick?:
       </span>
       <span className="flex flex-col gap-0">
         <span className="font-medium text-foreground leading-tight">
-          {action.label}
+          {label}
         </span>
-        <span className="text-[10px] text-muted-foreground leading-tight">{action.description}</span>
+        <span className="text-[10px] text-muted-foreground leading-tight">{description}</span>
       </span>
     </button>
   )
@@ -354,6 +395,7 @@ type ActivityItem
     | { kind: Artifact['type'], artifact: Artifact }
 
 export function HomeDashboard() {
+  const { t: homeT } = useTranslation('home')
   const { workspaces } = useWorkspaces()
   const [searchOpen, setSearchOpen] = useState(false)
   const [automationOpen, setAutomationOpen] = useState(false)
@@ -374,7 +416,7 @@ export function HomeDashboard() {
     .slice(0, 10)
 
   const scheduledTasks = (automationDefinitionsQuery.data ?? [])
-    .map(toScheduledTask)
+    .map(definition => toScheduledTask(definition, homeT))
     .slice(0, 5)
 
   // Build activity cards: recent sessions + workspaces + mock artifacts, sorted by recency
@@ -392,13 +434,16 @@ export function HomeDashboard() {
   ]
 
   const handleAddWorkspace = useCallback(async () => {
-    const dirPath = await selectDirectory({ title: '添加项目', description: '选择一个项目目录导入到 Cradle' })
+    const dirPath = await selectDirectory({
+      title: homeT('workspace.addProjectDialogTitle'),
+      description: homeT('workspace.addProjectDialogDescription'),
+    })
     if (!dirPath) {
       return
     }
     await postWorkspacesFromDirectory({ body: { path: dirPath } })
     await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
-  }, [queryClient, selectDirectory])
+  }, [homeT, queryClient, selectDirectory])
 
   if (automationOpen) {
     return <AutomationDashboard onBack={() => setAutomationOpen(false)} />
@@ -414,7 +459,7 @@ export function HomeDashboard() {
           className="flex w-full items-center gap-2.5 rounded-md border border-border/50 bg-background px-3 h-8 text-xs text-muted-foreground transition-colors hover:border-border/80"
         >
           <SearchIcon className="size-3.5 shrink-0" />
-          <span className="flex-1 text-left">搜索会话、产物、项目...</span>
+          <span className="flex-1 text-left">{homeT('search.placeholder')}</span>
           <span className="font-mono text-[10px] text-muted-foreground/35">⌘K</span>
         </button>
       </div>
@@ -422,10 +467,10 @@ export function HomeDashboard() {
       {/* Needs attention — only if pending */}
       {MOCK_PENDING.length > 0 && (
         <div className="px-4 pb-3 shrink-0">
-          <SectionLabel label="需要确认" count={MOCK_PENDING.length} />
+          <SectionLabel label={homeT('section.needsAttention')} count={MOCK_PENDING.length} />
           <div className="flex flex-col gap-0.5">
             {MOCK_PENDING.map(run => (
-              <PendingRunRow key={run.id} run={run} />
+              <PendingRunRow key={run.id} run={run} t={homeT} />
             ))}
           </div>
         </div>
@@ -433,7 +478,7 @@ export function HomeDashboard() {
 
       {/* Activity cards — horizontal scroll */}
       <div className="px-4 pb-3 shrink-0">
-        <SectionLabel label="最近活动" />
+        <SectionLabel label={homeT('section.recentActivity')} />
         <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
           {activityCards.map((item) => {
             if (item.kind === 'workspace') {
@@ -442,7 +487,7 @@ export function HomeDashboard() {
                   key={`ws-${item.ws.id}`}
                   kind="workspace"
                   title={item.ws.name}
-                  meta="项目"
+                  meta={homeT('activity.workspace')}
                   to="workspace-detail"
                   params={{ workspaceId: item.ws.id }}
                 />
@@ -465,7 +510,7 @@ export function HomeDashboard() {
                 key={`art-${item.artifact.id}`}
                 kind={item.kind}
                 title={item.artifact.title}
-                meta={item.kind === 'doc' ? '文档' : item.kind === 'diff' ? 'Diff' : '摘要'}
+                meta={item.kind === 'doc' ? homeT('activity.document') : item.kind === 'diff' ? homeT('activity.diff') : homeT('activity.summary')}
               />
             )
           })}
@@ -476,7 +521,7 @@ export function HomeDashboard() {
             data-testid="home-add-project-btn"
           >
             <PlusIcon className="size-3.5" />
-            添加项目
+            {homeT('workspace.addProject')}
           </button>
         </div>
       </div>
@@ -486,10 +531,10 @@ export function HomeDashboard() {
         {/* Left column */}
         <div className="flex flex-col flex-1 overflow-y-auto min-w-0 px-4 py-2 gap-4">
           <section>
-            <SectionLabel label="继续" count={recentSessions.length} />
+            <SectionLabel label={homeT('section.continue')} count={recentSessions.length} />
             {recentSessions.length === 0
               ? (
-                <p className="px-2 py-3 text-xs text-muted-foreground">暂无最近会话</p>
+                <p className="px-2 py-3 text-xs text-muted-foreground">{homeT('empty.recentSessions')}</p>
               )
               : (
                 <div className="flex flex-col gap-0.5">
@@ -498,6 +543,7 @@ export function HomeDashboard() {
                       key={session.id}
                       session={session}
                       workspaceName={workspaceName}
+                      t={homeT}
                     />
                   ))}
                 </div>
@@ -505,10 +551,10 @@ export function HomeDashboard() {
           </section>
 
           <section>
-            <SectionLabel label="产物" count={MOCK_ARTIFACTS.length} />
+            <SectionLabel label={homeT('section.artifacts')} count={MOCK_ARTIFACTS.length} />
             <div className="flex flex-col gap-0.5">
               {MOCK_ARTIFACTS.map(a => (
-                <ArtifactRow key={a.id} artifact={a} />
+                <ArtifactRow key={a.id} artifact={a} t={homeT} />
               ))}
             </div>
           </section>
@@ -517,12 +563,14 @@ export function HomeDashboard() {
         {/* Right column — wider */}
         <div className="flex flex-col w-80 shrink-0 overflow-y-auto px-3 py-2 gap-4">
           <section>
-            <SectionLabel label="快速派发" />
+            <SectionLabel label={homeT('section.quickDispatch')} />
             <div className="flex flex-col gap-0.5">
               {QUICK_ACTIONS.map(a => (
                 <QuickActionButton
                   key={a.id}
                   action={a}
+                  label={homeT(a.labelKey)}
+                  description={homeT(a.descriptionKey)}
                   onClick={a.id === 'automate' ? () => setAutomationOpen(true) : undefined}
                 />
               ))}
@@ -530,29 +578,29 @@ export function HomeDashboard() {
           </section>
 
           <section>
-            <SectionLabel label="自动化" count={scheduledTasks.length} />
+            <SectionLabel label={homeT('section.automation')} count={scheduledTasks.length} />
             <div className="flex flex-col gap-0.5">
               {automationDefinitionsQuery.isLoading
 ? (
-                <div className="p-2 text-xs text-muted-foreground">Loading automations</div>
+                <div className="p-2 text-xs text-muted-foreground">{homeT('automation.loading')}</div>
               )
 : null}
               {!automationDefinitionsQuery.isLoading && scheduledTasks.length === 0
 ? (
                 <div className="p-2 text-xs text-muted-foreground">
-                  {automationDefinitionsQuery.isError ? 'Automation API unavailable' : 'No automations'}
+                  {automationDefinitionsQuery.isError ? homeT('automation.unavailable') : homeT('automation.empty')}
                 </div>
               )
 : null}
-              {scheduledTasks.map(t => (
-                <ScheduledRow key={t.id} task={t} onClick={() => setAutomationOpen(true)} />
+              {scheduledTasks.map(task => (
+                <ScheduledRow key={task.id} task={task} onClick={() => setAutomationOpen(true)} />
               ))}
               <button
                 type="button"
                 onClick={() => setAutomationOpen(true)}
                 className="mt-0.5 flex items-center gap-2 rounded-md border border-dashed border-border px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:border-border/60"
               >
-                查看自动化
+                {homeT('automation.open')}
               </button>
             </div>
           </section>

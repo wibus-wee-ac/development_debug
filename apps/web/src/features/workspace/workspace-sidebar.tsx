@@ -20,6 +20,8 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 
 import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
@@ -51,6 +53,8 @@ import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, useSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
 
+type WorkspaceTranslation = TFunction<'workspace'>
+
 function SessionRenameInput({
   initialTitle,
   sessionId,
@@ -66,6 +70,7 @@ function SessionRenameInput({
   onCommit: (nextTitle: string) => Promise<void>
   onCancel: () => void
 }) {
+  const { t } = useTranslation('workspace')
   const renameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -85,7 +90,7 @@ function SessionRenameInput({
       onKeyDown={e => e.stopPropagation()}
     >
       {pinned
-        ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${sessionId}`} />
+        ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${sessionId}`} />
         : null}
       <input
         ref={renameInputRef}
@@ -105,28 +110,28 @@ function SessionRenameInput({
         className="min-w-0 flex-1 bg-transparent text-left text-xs text-sidebar-foreground/90 outline-none placeholder:text-muted-foreground/40"
       />
       <span className="shrink-0 text-[11px] text-muted-foreground">
-        {formatRelativeTime(updatedAt)}
+        {formatRelativeTime(updatedAt, t)}
       </span>
     </div>
   )
 }
 
-function formatRelativeTime(unixTimestamp: number): string {
+function formatRelativeTime(unixTimestamp: number, t: WorkspaceTranslation): string {
   const now = Math.floor(Date.now() / 1000)
   const diff = now - unixTimestamp
   if (diff < 60) {
-    return '刚刚'
+    return t('session.relative.now')
   }
   if (diff < 3600) {
-    return `${Math.floor(diff / 60)} 分钟`
+    return t('session.relative.minutes', { count: Math.floor(diff / 60) })
   }
   if (diff < 86400) {
-    return `${Math.floor(diff / 3600)} 小时`
+    return t('session.relative.hours', { count: Math.floor(diff / 3600) })
   }
   if (diff < 2592000) {
-    return `${Math.floor(diff / 86400)} 天`
+    return t('session.relative.days', { count: Math.floor(diff / 86400) })
   }
-  return `${Math.floor(diff / 2592000)} 月`
+  return t('session.relative.months', { count: Math.floor(diff / 2592000) })
 }
 
 type SessionMenuAction = {
@@ -181,12 +186,13 @@ function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuActi
 
 function SessionItem({ session, workspaceId }: { session: WorkspaceSession, workspaceId: string }) {
   'use no memo'
+  const { t } = useTranslation('workspace')
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
   const { openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const [isRenaming, setIsRenaming] = useState(false)
-  const sessionTitle = session.title ?? 'Untitled'
+  const sessionTitle = session.title ?? t('session.fallbackTitle')
 
   const invalidateSessionQueries = useCallback(async () => {
     await Promise.all([
@@ -258,21 +264,21 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
   const sessionActions: SessionMenuAction[] = [
     {
       key: 'rename',
-      label: '重命名',
+      label: t('session.action.rename'),
       icon: <PencilIcon />,
       testId: `session-menu-rename-${session.id}`,
       invoke: handleStartRename,
     },
     {
       key: 'toggle-pin',
-      label: session.pinned ? '取消置顶' : '置顶',
+      label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
       icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
       testId: `session-menu-toggle-pin-${session.id}`,
       invoke: handleTogglePin,
     },
     {
       key: 'copy-markdown',
-      label: '复制为 Markdown',
+      label: t('session.action.copyMarkdown'),
       icon: <ClipboardCopyIcon />,
       testId: `session-menu-copy-markdown-${session.id}`,
       invoke: handleExport,
@@ -282,7 +288,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
       ? [
         {
           key: 'copy-session-id',
-          label: '复制会话 ID',
+          label: t('session.action.copySessionId'),
           icon: <ClipboardCopyIcon />,
           testId: `session-menu-copy-session-id-${session.id}`,
           invoke: () => { navigator.clipboard.writeText(session.id) },
@@ -291,7 +297,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
       : []), // Hide export in production until we add a proper UI for it
     {
       key: 'delete',
-      label: '删除会话',
+      label: t('session.action.delete'),
       icon: <Trash2Icon />,
       testId: `session-menu-delete-${session.id}`,
       invoke: handleDelete,
@@ -334,15 +340,15 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
             >
               {session.pinned
                 ? (
-                  <PinIcon className="size-3 shrink-0 text-primary/60" aria-label="已置顶" data-testid={`session-pin-indicator-${session.id}`} />
+                  <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${session.id}`} />
                 )
                 : null}
               <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
               {isUnread && !isActive && (
-                <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label="新回复" />
+                <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={t('session.aria.newReply')} />
               )}
               <span className="shrink-0 text-[11px] text-muted-foreground">
-                {formatRelativeTime(session.updatedAt)}
+                {formatRelativeTime(session.updatedAt, t)}
               </span>
             </Link>
             <Menu>
@@ -352,7 +358,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
                     type="button"
                     className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
                     onClick={e => e.stopPropagation()}
-                    aria-label="会话菜单"
+                    aria-label={t('session.aria.menu')}
                   />
                 )}
                 data-testid={`session-menu-trigger-${session.id}`}
@@ -393,6 +399,7 @@ function WorkspaceGroup({
   workspace: Workspace
   onDelete: (id: string) => void
 }) {
+  const { t } = useTranslation('workspace')
   const [expanded, setExpanded] = useState(true)
   const [packOpen, setPackOpen] = useState(false)
   const { sessions } = useSessions(expanded ? workspace.id : null)
@@ -406,7 +413,7 @@ function WorkspaceGroup({
         <button
           type="button"
           onClick={toggleExpanded}
-          aria-label="切换工作区折叠状态"
+          aria-label={t('workspace.aria.toggleExpanded')}
           className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70"
         >
           {expanded
@@ -443,14 +450,14 @@ function WorkspaceGroup({
               onClick={() => window.open(`file://${workspace.path}`, '_blank')}
             >
               <FolderOpenIcon />
-              在 Finder 中打开
+              {t('workspace.action.openInFinder')}
             </MenuItem>
             <MenuItem
               data-testid={`workspace-pack-codebase-${workspace.id}`}
               onClick={() => setPackOpen(true)}
             >
               <PackageIcon />
-              复制代码库
+              {t('workspace.action.packCodebase')}
             </MenuItem>
             <MenuSeparator />
             <MenuItem
@@ -458,7 +465,7 @@ function WorkspaceGroup({
               onClick={() => onDelete(workspace.id)}
             >
               <Trash2Icon />
-              移除工作区
+              {t('workspace.action.remove')}
             </MenuItem>
           </MenuPopup>
         </Menu>
@@ -484,7 +491,7 @@ function WorkspaceGroup({
           >
             <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
               {sessions.length === 0 && (
-                <p className="px-2.5 py-1.5 text-xs text-muted-foreground">暂无会话</p>
+                <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
               )}
               {sessions.toSorted((a, b) => {
                 const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
@@ -582,6 +589,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
 // ── Main sidebar content ──────────────────────────────────────────────────────
 
 export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
+  const { t } = useTranslation('workspace')
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
@@ -608,24 +616,16 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       {/* ── Top navigation ── */}
       <TooltipProvider delayDuration={collapsed ? 0 : 600}>
         <nav className="flex flex-col gap-0.5 px-2 pt-1 pb-2">
-          {/* <TopNavItem
-            icon={<HomeIcon className="size-3.5" />}
-            label="首页"
-            collapsed={collapsed}
-            to="home"
-            dataTestId="nav-home"
-          /> */}
           <TopNavItem
             icon={<MessageSquarePlusIcon className="size-3.5" />}
-            // label="新建聊天"
-            label="新建聊天"
+            label={t('nav.newChat')}
             collapsed={collapsed}
             to="new-chat"
             dataTestId="nav-new-chat"
           />
           <TopNavItem
             icon={<SearchIcon className="size-3.5" />}
-            label="搜索"
+            label={t('nav.search')}
             shortcut="⌘K"
             collapsed={collapsed}
             onClick={openSearch}
@@ -633,14 +633,14 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}
-            label="用量"
+            label={t('nav.usage')}
             collapsed={collapsed}
             to="usage"
             dataTestId="nav-usage"
           />
           <TopNavItem
             icon={<SettingsIcon className="size-3.5" />}
-            label="设置"
+            label={t('nav.settings')}
             shortcut="⌘,"
             collapsed={collapsed}
             onClick={handleOpenSettings}
@@ -668,14 +668,14 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         >
           <div className="flex items-center px-2.5 py-1.5">
             <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
-              项目
+              {t('sidebar.projects.title')}
             </span>
             <div className="flex items-center gap-0.5">
               <Button
                 variant="ghost"
                 size="icon-xs"
                 className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                title="排列"
+                title={t('sidebar.action.sort')}
               >
                 <SlidersHorizontalIcon className="size-3" />
               </Button>
@@ -683,12 +683,12 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                 variant="ghost"
                 size="icon-xs"
                 className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                title="筛选"
+                title={t('sidebar.action.filter')}
                 onClick={() => {
                   toastManager.add({
                     type: 'error',
-                    title: '敬请期待',
-                    description: '筛选功能正在开发中，敬请期待！',
+                    title: t('sidebar.filterSoon.title'),
+                    description: t('sidebar.filterSoon.description'),
                   })
                 }}
               >
@@ -700,7 +700,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                 className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
                 onClick={addFromPicker}
                 disabled={adding}
-                title="添加项目"
+                title={t('sidebar.action.addProject')}
                 data-testid="add-workspace-btn"
               >
                 <PlusIcon className="size-3" />
@@ -716,8 +716,8 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                   <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <p className="text-xs font-medium text-muted-foreground">还没有项目</p>
-                  <p className="text-[11px] text-muted-foreground">添加一个本地仓库开始使用</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
+                  <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
                 </div>
                 <Button
                   variant="outline"
@@ -728,7 +728,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                   data-testid="add-workspace-empty-btn"
                 >
                   <PlusIcon />
-                  添加项目
+                  {t('sidebar.action.addProject')}
                 </Button>
               </div>
             )}

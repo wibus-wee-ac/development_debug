@@ -3,6 +3,7 @@ import { TabBar } from '@cradle/tabs-next'
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
@@ -21,13 +22,14 @@ interface AppHeaderProps {
 
 export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel = false }: AppHeaderProps) {
   'use no memo'
+  const { t } = useTranslation('chrome')
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const activeTabId = useCradleTabStore(s => s.activeTabId)
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
   const isDrillIn = isSettingsActive
-  const sidebarToggleLabel = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
+  const sidebarToggleLabel = sidebarCollapsed ? t('header.action.expandSidebar') : t('header.action.collapseSidebar')
   const reserveTrafficLightSpace = isTearoffWindow && platform === 'darwin'
 
   const handleTabActivated = useCallback(() => {
@@ -62,10 +64,10 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
     return {
       [settingsTabId]: {
         icon: <SettingsIcon className="size-3 shrink-0" />,
-        label: 'Settings',
+        label: t('header.tab.settings'),
       },
     }
-  }, [settingsTabId])
+  }, [settingsTabId, t])
 
   const tabBarCustomization = useMemo<TabBarCustomization>(() => ({
     closeIcon: <XIcon className="size-3" />,
@@ -100,7 +102,7 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             className={cn('text-muted-foreground shrink-0')}
             onClick={toggleSidebar}
             aria-label={sidebarToggleLabel}
-            title={sidebarCollapsed ? '展开侧边栏' : '收起侧边栏'}
+            title={sidebarToggleLabel}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
             {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
@@ -135,9 +137,9 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             size="icon-xs"
             className={cn('text-muted-foreground', browserPanelOpen && 'text-foreground')}
             onClick={toggleBrowserPanel}
-            aria-label="Toggle browser panel"
+            aria-label={t('header.action.toggleBrowserPanel')}
             aria-pressed={browserPanelOpen}
-            title="切换浏览器"
+            title={t('header.action.toggleBrowserPanel')}
             data-testid="app-header-browser-toggle"
           >
             <GlobeIcon aria-hidden="true" />
@@ -149,9 +151,9 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             size="icon-xs"
             className={cn('text-muted-foreground', bottomPanelOpen && 'text-foreground')}
             onClick={toggleBottomPanel}
-            aria-label="Toggle bottom panel"
+            aria-label={t('header.action.toggleBottomPanel')}
             aria-pressed={bottomPanelOpen}
-            title="切换底部面板"
+            title={t('header.action.toggleBottomPanel')}
             data-testid="app-header-panel-toggle"
           >
             <PanelBottomIcon aria-hidden="true" />
@@ -163,9 +165,9 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             size="icon-xs"
             className={cn('text-muted-foreground', asideOpen && 'text-foreground')}
             onClick={toggleAside}
-            aria-label="Toggle right panel"
+            aria-label={t('header.action.toggleRightPanel')}
             aria-pressed={asideOpen}
-            title="切换右侧面板"
+            title={t('header.action.toggleRightPanel')}
             data-testid="app-header-aside-toggle"
           >
             <PanelRightIcon aria-hidden="true" />

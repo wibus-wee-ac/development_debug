@@ -1,5 +1,6 @@
 import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 
@@ -90,6 +91,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
   onSelectModel,
   onSelectThinking,
 }: CurrentProviderModelListProps<TThinking>) {
+  const { t } = useTranslation('common')
   const [modelSearch, setModelSearch] = useState('')
   const filteredModels = filterModelsBySearch(models, modelSearch)
 
@@ -119,7 +121,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
           <input
             value={modelSearch}
             onChange={event => setModelSearch(event.target.value)}
-            placeholder="Search models..."
+            placeholder={t('model.searchPlaceholder')}
             className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
             onClick={event => event.stopPropagation()}
             onKeyDown={event => event.stopPropagation()}
@@ -128,7 +130,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
       )}
       {leadingContent}
       {isLoadingModels && models.length === 0 && (
-        <MenuItem disabled>Loading models…</MenuItem>
+        <MenuItem disabled>{t('status.loading')}</MenuItem>
       )}
       <div className="max-h-80 overflow-y-auto">
         {visibleModels.map((model) => {
@@ -147,13 +149,13 @@ export function CurrentProviderModelList<TThinking extends string | null>({
         })}
       </div>
       {renderCount < filteredModels.length && (
-        <MenuItem disabled>Loading more…</MenuItem>
+        <MenuItem disabled>{t('status.loading')}</MenuItem>
       )}
       {filteredModels.length === 0 && models.length > 0 && (
-        <MenuItem disabled>No matching models</MenuItem>
+        <MenuItem disabled>{t('model.noMatchingModels')}</MenuItem>
       )}
       {models.length === 0 && !isLoadingModels && (
-        <MenuItem disabled>No models available</MenuItem>
+        <MenuItem disabled>{t('model.noModelsAvailable')}</MenuItem>
       )}
     </>
   )
@@ -224,6 +226,7 @@ function ModelSubmenu<TThinking extends string | null>({
   onSelectModel: () => void
   onSelectThinking: (value: TThinking) => void
 }) {
+  const { t } = useTranslation('common')
   const caps = model.capabilities
   const registryMatch = caps?.registryMatch
   const ctxK = caps?.contextWindow
@@ -239,7 +242,7 @@ function ModelSubmenu<TThinking extends string | null>({
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium">{model.label}</span>
           {registryMatch === 'fuzzy' && (
-            <span className="shrink-0 text-[9px] text-muted-foreground/50" title="Fuzzy models.dev match">≈</span>
+            <span className="shrink-0 text-[9px] text-muted-foreground/50" title={t('model.fuzzyMatchTitle')}>≈</span>
           )}
         </div>
         <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 leading-tight">
@@ -312,13 +315,14 @@ export function ProviderModelMenu<TThinking extends string | null>({
   thinkingValue,
   thinkingOptions,
   getThinkingOptionsForModel,
-  emptyProfilesLabel = 'No provider targets available',
+  emptyProfilesLabel,
   isProfileSelectionDisabled = false,
   onRequestProfileModels,
   onSelectProfile,
   onSelectModel,
   onSelectThinking,
 }: ProviderModelMenuProps<TThinking>) {
+  const { t } = useTranslation('common')
   const resolveThinkingOptions = getThinkingOptionsForModel ?? (() => thinkingOptions)
 
   return (
@@ -341,7 +345,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
         />
       ))}
       {profiles.length === 0 && (
-        <MenuItem disabled>{emptyProfilesLabel}</MenuItem>
+        <MenuItem disabled>{emptyProfilesLabel ?? t('model.noProviderTargets')}</MenuItem>
       )}
     </>
   )

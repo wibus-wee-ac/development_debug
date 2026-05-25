@@ -1,6 +1,7 @@
 import { CheckIcon, CircleDashedIcon, FlagIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -32,11 +33,20 @@ const priorityOptions: Array<{ value: IssuePriority, label: string }> = [
   { value: 'none', label: 'None' },
 ]
 
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 function statusCategory(status: KanbanStatus): StatusCategory {
   return status.category as StatusCategory
 }
 
 export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectionBarProps) {
+  const { t } = useTranslation('kanban')
   const bulkUpdateIssues = useBulkUpdateIssues()
   const issueIds = useMemo(() => issues.map(issue => issue.id), [issues])
   const isVisible = issues.length > 0
@@ -74,14 +84,14 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
             <span className="flex items-center gap-1.5 px-2 text-sm font-medium tabular-nums">
               <CheckIcon className="size-4 text-primary" aria-hidden="true" />
               <span>{issues.length}</span>
-              <span>selected</span>
+              <span>{t('selection.selected')}</span>
             </span>
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button type="button" variant="ghost" size="sm" disabled={isMutating || statuses.length === 0}>
                   <CircleDashedIcon className="size-4" aria-hidden="true" />
-                  Status
+                  {t('property.status')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="center" className="w-56">
@@ -100,7 +110,7 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
               <DropdownMenuTrigger asChild>
                 <Button type="button" variant="ghost" size="sm" disabled={isMutating}>
                   <FlagIcon className="size-4" aria-hidden="true" />
-                  Priority
+                  {t('property.priority')}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="center" className="w-44">
@@ -108,7 +118,7 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
                   {priorityOptions.map(priority => (
                     <DropdownMenuRadioItem key={priority.value} value={priority.value} disabled={isMutating}>
                       <PriorityIcon priority={priority.value} size={14} />
-                      {priority.label}
+                      {t(priorityLabelKeys[priority.value])}
                     </DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
@@ -117,7 +127,7 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
 
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
 
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Clear selected issues" onClick={onClear}>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={t('selection.clearAria')} onClick={onClear}>
               <XIcon className="size-4" aria-hidden="true" />
             </Button>
           </div>

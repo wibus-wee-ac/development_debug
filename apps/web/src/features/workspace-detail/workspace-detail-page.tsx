@@ -1,6 +1,7 @@
 import { Link } from '@cradle/tabs-next'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
+import type { TFunction } from 'i18next'
 import {
   ExternalLinkIcon,
   FileTextIcon,
@@ -14,6 +15,7 @@ import {
 import { m } from 'motion/react'
 import type { CSSProperties } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { getSessions, getWorkflowRulesByWorkspaceId, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
@@ -59,27 +61,29 @@ interface TocLayout {
   items: TocHeadingLayout[]
 }
 
+type WorkspaceTranslation = TFunction<'workspace'>
+
 /* ─── Helpers ────────────────────────────────────────────── */
 
-function timeAgo(ts: number, nowMs: number): string {
+function timeAgo(ts: number, nowMs: number, t: WorkspaceTranslation): string {
   const diff = Math.floor(nowMs / 1000) - ts
   if (diff < 60) {
-    return '刚刚'
+    return t('session.relative.now')
   }
   if (diff < 3600) {
-    return `${Math.floor(diff / 60)}m`
+    return t('session.relative.minutes', { count: Math.floor(diff / 60) })
   }
   if (diff < 86400) {
-    return `${Math.floor(diff / 3600)}h`
+    return t('session.relative.hours', { count: Math.floor(diff / 3600) })
   }
   if (diff < 2592000) {
-    return `${Math.floor(diff / 86400)}d`
+    return t('session.relative.days', { count: Math.floor(diff / 86400) })
   }
-  return `${Math.floor(diff / 2592000)}mo`
+  return t('session.relative.months', { count: Math.floor(diff / 2592000) })
 }
 
-function formatDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString('zh-CN', {
+function formatDate(ts: number, locale: string): string {
+  return new Date(ts * 1000).toLocaleDateString(locale, {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -182,6 +186,7 @@ function InlineEditTitleEditor({
   onCommit: (name: string) => void
   onCancel: () => void
 }) {
+  const { t } = useTranslation('workspace')
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -204,7 +209,7 @@ function InlineEditTitleEditor({
       ref={inputRef}
       data-testid="workspace-detail-title-input"
       defaultValue={initialValue}
-      aria-label="Workspace name"
+      aria-label={t('detail.title.aria')}
       onBlur={commit}
       onKeyDown={(e) => {
         if (e.key === 'Enter') {
@@ -267,6 +272,7 @@ function DocumentSection({
   file: { content: string | null, loading: boolean, saving: boolean, save: (md: string) => Promise<unknown> }
   placeholder: string
 }) {
+  const { t } = useTranslation('workspace')
   const saveDraft = useCallback((nextDraft: string) => {
     void file.save(nextDraft)
   }, [file])
@@ -275,7 +281,7 @@ function DocumentSection({
     return (
       <div id={id} className="flex items-center gap-2 py-8 text-sm text-muted-foreground">
         <Loader2Icon className="size-3.5 animate-spin" />
-        正在加载...
+        {t('document.status.loading')}
       </div>
     )
   }
@@ -291,7 +297,7 @@ function DocumentSection({
         {file.saving && (
           <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
             <Loader2Icon className="size-2.5 animate-spin" />
-            保存中
+            {t('document.status.saving')}
           </span>
         )}
       </div>
@@ -433,6 +439,7 @@ function FloatingToc({
 }
 
 function useWorkspaceDetailOwner(workspaceId: string) {
+  const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -506,10 +513,10 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return parseHeadings(agents.content, 'AGENTS.md')
     }
     if (activeTab === 'workflow-rules') {
-      return parseHeadings(workflowContent, 'Workflow Rules')
+      return parseHeadings(workflowContent, t('detail.toc.workflowRules'))
     }
     return []
-  }, [activeTab, agents.content, workflowContent])
+  }, [activeTab, agents.content, t, workflowContent])
 
   const handleRename = useCallback(async (newName: string) => {
     await patchWorkspacesById({ path: { id: workspaceId }, body: { name: newName } })
@@ -544,7 +551,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
         return
       }
       const { data: sessionData } = await postSessions({
-        body: { workspaceId, agentId: opts.agentId, title: text.slice(0, 80) || 'CLI TUI Session' },
+        body: { workspaceId, agentId: opts.agentId, title: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle') },
       })
       const session = sessionData as { id: string } | null
       if (!session?.id) {
@@ -555,7 +562,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return
     }
     const { data: sessionData } = await postSessions({
-      body: { workspaceId, providerTargetId: opts.providerTargetId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.providerTargetId || 'New Chat' },
+      body: { workspaceId, providerTargetId: opts.providerTargetId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle') },
     })
     const session = sessionData as { id: string } | null
     if (!session?.id) {
@@ -567,7 +574,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     })
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     openTab('chat', { sessionId: session.id })
-  }, [openTab, queryClient, workspace, workspaceId])
+  }, [openTab, queryClient, t, workspace, workspaceId])
 
   const handleTocNavigate = useCallback((slug: string) => {
     const el = document.getElementById(slug)
@@ -658,6 +665,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 }
 
 function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
+  const { t } = useTranslation('workspace')
   const { activeTab, agents, handleCapsuleSend, handleRename, scrollRef, selectedWorkflowAgentId, setActiveTab, setSelectedWorkflowAgentId, workspace, workspaceId } = owner
 
   if (!workspace) {
@@ -677,9 +685,9 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
 
           <div className="mb-6 flex items-center gap-0.5 overflow-x-auto scrollbar-none">
             {([
-              { id: 'overview', label: 'Overview', icon: FileTextIcon },
-              { id: 'workflow-rules', label: 'Workflow', icon: ScrollTextIcon },
-              { id: 'skills', label: 'Skills', icon: PencilIcon },
+              { id: 'overview', label: t('detail.tab.overview'), icon: FileTextIcon },
+              { id: 'workflow-rules', label: t('detail.tab.workflow'), icon: ScrollTextIcon },
+              { id: 'skills', label: t('detail.tab.skills'), icon: PencilIcon },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
@@ -713,18 +721,18 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
               filename="AGENTS.md"
               testId="workspace-detail-agents-section"
               file={agents}
-              placeholder="配置 Agent 指令..."
+              placeholder={t('detail.agents.placeholder')}
             />
 
             {agents.content === null && !agents.loading && (
               <div className="py-16 text-center text-sm text-muted-foreground">
-                该项目中没有 AGENTS.md 文件
+                {t('detail.agents.empty')}
               </div>
             )}
           </div>
 
           {activeTab === 'workflow-rules' && (
-            <Suspense fallback={<WorkspacePaneLoading label="Loading workflow…" testId="workspace-workflow-loading" />}>
+            <Suspense fallback={<WorkspacePaneLoading label={t('detail.loading.workflow')} testId="workspace-workflow-loading" />}>
               <LazyWorkspaceWorkflowRules
                 workspaceId={workspaceId}
                 selectedAgentId={selectedWorkflowAgentId}
@@ -734,13 +742,13 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           )}
 
           {activeTab === 'skills' && (
-            <Suspense fallback={<WorkspacePaneLoading label="Loading skills…" testId="workspace-skills-loading" />}>
+            <Suspense fallback={<WorkspacePaneLoading label={t('detail.loading.skills')} testId="workspace-skills-loading" />}>
               <LazySkillManager
                 workspaceId={workspaceId}
                 editableScope="workspace"
                 pageTestId="workspace-skills-page"
-                title="Workspace Skills"
-                description="Manage repository-standard skills under .agents/skills while reviewing inherited Cradle-only and built-in skills."
+                title={t('detail.skillManager.title')}
+                description={t('detail.skillManager.description')}
               />
             </Suspense>
           )}
@@ -774,6 +782,7 @@ function WorkspacePaneLoading({ label, testId }: { label: string, testId: string
 }
 
 function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
+  const { i18n, t } = useTranslation('workspace')
   const { gitStatus, handleNewChat, handleOpenInApp, handleOpenInFinder, now, openTab: _openTab, recentSessions, sessions, workspace } = owner
 
   if (!workspace) {
@@ -789,7 +798,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
           <FolderOpenIcon className="size-3.5" />
-          在 Finder 中打开
+          {t('detail.action.openInFinder')}
         </button>
         <button
           type="button"
@@ -797,7 +806,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
           className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
         >
           <ExternalLinkIcon className="size-3.5" />
-          在编辑器中打开
+          {t('detail.action.openInEditor')}
         </button>
       </div>
 
@@ -805,20 +814,20 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
 
       <div className="space-y-2.5 p-3">
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">分支</span>
+          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.branch')}</span>
           <span className="max-w-28 truncate font-mono text-[12px] text-muted-foreground">{(gitStatus as { branch?: string } | null)?.branch ?? '—'}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">会话</span>
+          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.sessions')}</span>
           <span className="text-[12px] text-muted-foreground">{sessions.length}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">创建</span>
-          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt)}</span>
+          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.created')}</span>
+          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt, i18n.language)}</span>
         </div>
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">更新</span>
-          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt)}</span>
+          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.updated')}</span>
+          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt, i18n.language)}</span>
         </div>
       </div>
 
@@ -826,15 +835,15 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
 
       <div className="px-3 pt-3">
         <div className="mb-2 flex items-center justify-between">
-          <span className="select-none text-[11px] text-muted-foreground">最近会话</span>
-          <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label="新建聊天">
+          <span className="select-none text-[11px] text-muted-foreground">{t('detail.recentSessions.title')}</span>
+          <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label={t('detail.action.newChat')}>
             <MessageSquarePlusIcon className="size-3" />
           </Button>
         </div>
 
         {recentSessions.length === 0
           ? (
-            <p className="py-4 text-center text-[11px] text-muted-foreground">暂无会话</p>
+            <p className="py-4 text-center text-[11px] text-muted-foreground">{t('detail.recentSessions.empty')}</p>
           )
           : (
             <div className="flex flex-col gap-0.5 pb-3">
@@ -847,9 +856,9 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
                   data-testid={`workspace-detail-recent-session-${session.id}`}
                 >
                   <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
-                  <span className="flex-1 truncate text-foreground">{session.title || 'Untitled'}</span>
+                  <span className="flex-1 truncate text-foreground">{session.title || t('detail.session.fallbackTitle')}</span>
                   <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" suppressHydrationWarning>
-                    {timeAgo(session.updatedAt, now)}
+                    {timeAgo(session.updatedAt, now, t)}
                   </time>
                 </Link>
               ))}

@@ -1,6 +1,8 @@
 import { StaticRender } from '@cradle/streamdown'
+import type { TFunction } from 'i18next'
 import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
+import { useTranslation } from 'react-i18next'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
@@ -11,19 +13,21 @@ import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import { useIssue, useStatuses } from './use-kanban'
 
+type IssuePriority = 'none' | 'low' | 'medium' | 'high' | 'urgent'
+
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
+
 interface IssuePeekPanelProps {
   issueId: string | null
   workspaceId: string
   onClose: () => void
   onOpenDetail: (id: string) => void
-}
-
-const priorityLabel: Record<string, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
-  none: 'None',
 }
 
 export function IssuePeekPanel({ issueId, workspaceId, onClose, onOpenDetail }: IssuePeekPanelProps) {
@@ -48,6 +52,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
   onClose: () => void
   onOpenDetail: (id: string) => void
 }) {
+  const { t } = useTranslation('kanban')
   const { workspaces } = useWorkspaces()
   const { data: issue, isLoading } = useIssue(issueId)
   const { data: statuses = [] } = useStatuses(workspaceId)
@@ -65,7 +70,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
       {/* eslint-disable-next-line style/multiline-ternary */}
       {isLoading || !issue ? (
         <div className="flex items-center justify-center h-24 text-[13px] text-muted-foreground">
-          Loading…
+          {t('issue.loading')}
         </div>
       ) : (
         <IssuePeekContent
@@ -73,6 +78,7 @@ function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
           status={status}
           issueId={issueId}
           workspaces={workspaces}
+          t={t}
           onClose={onClose}
           onOpenDetail={onOpenDetail}
         />
@@ -86,6 +92,7 @@ function IssuePeekContent({
   status,
   issueId,
   workspaces,
+  t,
   onClose,
   onOpenDetail,
 }: {
@@ -93,6 +100,7 @@ function IssuePeekContent({
   status: KanbanStatus | undefined
   issueId: string
   workspaces: ReturnType<typeof useWorkspaces>['workspaces']
+  t: TFunction<'kanban'>
   onClose: () => void
   onOpenDetail: (id: string) => void
 }) {
@@ -108,7 +116,7 @@ function IssuePeekContent({
           type="button"
           onClick={onClose}
           className="size-6 flex items-center justify-center rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
-          aria-label="Close peek"
+          aria-label={t('issue.closePeek')}
         >
           <XIcon className="size-3.5" />
         </button>
@@ -144,7 +152,7 @@ function IssuePeekContent({
           {issue.priority && issue.priority !== 'none' && (
             <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
               <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
-              <span>{priorityLabel[issue.priority] ?? ''}</span>
+              <span>{t(priorityLabelKeys[issue.priority as IssuePriority])}</span>
             </span>
           )}
         </div>

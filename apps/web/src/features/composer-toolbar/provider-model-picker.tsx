@@ -1,5 +1,6 @@
 import { CpuIcon } from 'lucide-react'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
@@ -47,8 +48,8 @@ export function ProviderModelPicker<TThinking extends string | null>({
   thinkingOptions,
   isLoadingSelectedModels = false,
   emptyProfilesLabel,
-  loadingLabel = 'Loading…',
-  emptySelectionLabel = 'Model',
+  loadingLabel,
+  emptySelectionLabel,
   menuSide = 'top',
   menuAlign = 'start',
   triggerTestId = 'provider-model-selector',
@@ -59,6 +60,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   onSelectModel,
   onSelectThinking,
 }: ProviderModelPickerProps<TThinking>) {
+  const { t } = useTranslation('common')
   const selectedProfile = profiles.find(profile => profile.id === selectedProfileId) ?? null
   const effectiveLoadingProfileIds = useMemo(() => {
     if (!selectedProfileId || !isLoadingSelectedModels || loadingProfileIds.has(selectedProfileId)) {
@@ -79,7 +81,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
     : null
   const modelLabel = selectedModel?.label
     ?? selectedModelId
-    ?? (isLoadingSelectedModels ? loadingLabel : emptySelectionLabel)
+    ?? (isLoadingSelectedModels ? loadingLabel ?? t('status.loading') : emptySelectionLabel ?? t('model.emptySelection'))
 
   return (
     <Menu>

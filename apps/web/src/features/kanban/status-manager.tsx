@@ -5,6 +5,7 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from '@dnd-kit/utilities'
 import { GripVerticalIcon, TrashIcon } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
@@ -18,6 +19,7 @@ interface StatusManagerProps {
 }
 
 export function StatusManager({ boardId }: StatusManagerProps) {
+  const { t } = useTranslation('kanban')
   const statuses = useStatuses(boardId)
   const createStatus = useCreateStatus()
   const updateStatus = useUpdateStatus()
@@ -68,7 +70,7 @@ export function StatusManager({ boardId }: StatusManagerProps) {
 
   return (
     <div data-testid="status-manager" className="w-72 rounded-lg border border-border bg-popover p-3 shadow-lg">
-      <h4 className="mb-2 text-[12px] font-medium text-muted-foreground">状态管理</h4>
+      <h4 className="mb-2 text-[12px] font-medium text-muted-foreground">{t('statusManager.title')}</h4>
 
       {/* Add new status */}
       <div className="mb-3 flex items-center gap-1">
@@ -82,7 +84,7 @@ export function StatusManager({ boardId }: StatusManagerProps) {
               handleAdd()
             }
           }}
-          placeholder="添加状态..."
+          placeholder={t('statusManager.addPlaceholder')}
           data-testid="status-name-input"
           className="h-7 flex-1 text-[13px]"
         />
@@ -93,7 +95,7 @@ export function StatusManager({ boardId }: StatusManagerProps) {
           onClick={handleAdd}
           disabled={!newName.trim()}
         >
-          添加
+          {t('statusManager.add')}
         </Button>
       </div>
 

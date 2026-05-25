@@ -7,6 +7,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { postWorkspacesByIdGitBranches, postWorkspacesByIdGitCheckout, postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
@@ -110,6 +111,8 @@ function BranchPickerCreatePanel({
   onNameChange: (value: string) => void
   inputRef: React.RefObject<HTMLInputElement | null>
 }) {
+  const { t } = useTranslation('git')
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
@@ -136,7 +139,7 @@ function BranchPickerCreatePanel({
           size="icon-xs"
           onClick={onCancel}
           className="shrink-0 text-muted-foreground"
-          aria-label="Cancel branch creation"
+          aria-label={t('branch.create.cancel')}
           data-testid="git-branch-create-cancel"
         >
           <XIcon className="size-3.5" aria-hidden="true" />
@@ -145,11 +148,7 @@ function BranchPickerCreatePanel({
 
       <div className="px-3 py-2">
         <p className="text-[10px] leading-relaxed text-muted-foreground">
-          将基于
-          {' '}
-          <span className="font-mono text-foreground/70">{currentBranch}</span>
-          {' '}
-          创建并切换分支。按 Enter 确认。
+          {t('branch.create.description', { branch: currentBranch })}
         </p>
         {createError && <p className="mt-1.5 text-[10px] text-destructive">{createError}</p>}
       </div>
@@ -169,10 +168,10 @@ function BranchPickerCreatePanel({
         >
           <PlusIcon className="size-3 shrink-0" aria-hidden />
           {createLoading
-            ? '创建中…'
+            ? t('branch.create.creating')
             : newName.trim()
-              ? `创建 "${newName.trim()}"`
-              : '输入分支名称'}
+              ? t('branch.create.named', { branch: newName.trim() })
+              : t('branch.create.empty')}
         </button>
       </div>
     </div>
@@ -202,13 +201,15 @@ function BranchPickerListPanel({
   onSearchChange: (value: string) => void
   onStartCreating: () => void
 }) {
+  const { t } = useTranslation('git')
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
         <Input
           ref={searchInputRef}
           className="h-7 text-xs"
-          placeholder="搜索或切换分支…"
+          placeholder={t('branch.search.placeholder')}
           value={search}
           data-testid="git-branch-search"
           onChange={e => onSearchChange(e.target.value)}
@@ -216,8 +217,8 @@ function BranchPickerListPanel({
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="Fetch branches"
-          title="fetch --all --prune"
+          aria-label={t('branch.fetch')}
+          title={t('branch.fetch.title')}
           onClick={() => { void onFetch() }}
           disabled={fetching}
           className="shrink-0"
@@ -231,7 +232,7 @@ function BranchPickerListPanel({
         {localFiltered.length > 0 && (
           <div>
             <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              本地分支
+              {t('branch.local')}
             </p>
             {localFiltered.map(branch => (
               <button
@@ -255,7 +256,7 @@ function BranchPickerListPanel({
         {remoteFiltered.length > 0 && (
           <div>
             <p className="px-3 pb-1 pt-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-              远端分支
+              {t('branch.remote')}
             </p>
             {remoteFiltered.map(branch => (
               <button
@@ -277,7 +278,7 @@ function BranchPickerListPanel({
 
         {localFiltered.length === 0 && remoteFiltered.length === 0 && (
           <p className="p-3 text-center text-xs text-muted-foreground">
-            {search ? '无匹配分支' : '加载中…'}
+            {search ? t('branch.noMatches') : t('branch.loading')}
           </p>
         )}
       </div>
@@ -290,7 +291,7 @@ function BranchPickerListPanel({
           data-testid="git-branch-start-create"
         >
           <PlusIcon className="size-3 shrink-0" aria-hidden />
-          新建分支…
+          {t('branch.new')}
         </button>
       </div>
     </div>
@@ -302,6 +303,7 @@ export function BranchPicker({
   currentBranch,
   children,
 }: BranchPickerProps) {
+  const { t } = useTranslation('git')
   const [state, dispatch] = useReducer(branchPickerReducer, INITIAL_BRANCH_PICKER_STATE)
   const createInputRef = useRef<HTMLInputElement>(null)
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -326,9 +328,9 @@ export function BranchPicker({
       invalidateAll()
     }
     catch (err) {
-      toastManager.add({ type: 'error', title: '切换分支失败', description: cleanGitError(err) })
+      toastManager.add({ type: 'error', title: t('branch.checkout.error'), description: cleanGitError(err) })
     }
-  }, [workspaceId, invalidateAll])
+  }, [workspaceId, invalidateAll, t])
 
   const handleFetch = useCallback(async () => {
     dispatch({ type: 'set-fetching', fetching: true })

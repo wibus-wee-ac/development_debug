@@ -13,7 +13,7 @@ available, and highlight matched spans in titles and snippets.
 - **global-search-actions.test.ts**: Unit coverage for file-result selection behavior and clipboard failure fallback
 - **chronicle-search-normalize.test.ts**: Boundary tests for Chronicle search result defaults and malformed identity rejection
 - **chronicle-search-normalize.ts**: Boundary normalizer for `/search/chronicle` results so the command palette can render memory and knowledge hits safely
-- **global-search-dialog.tsx**: `GlobalSearchDialog` — 当前真实搜索入口，作为 app-shell 热路径挂载，统一聚合线程 / Chronicle 记忆与知识 / 文件 / Issue / 命令结果；线程和 Chronicle 结果会渲染标题高亮与片段高亮，Chronicle 结果打开 Settings > Chronicle 并聚焦具体 memory/knowledge card，Issue 结果打开对应看板，文件结果会打开 Workspace 并复制相对路径；命令与 Issue 结果暴露稳定 E2E anchors；命令、对话、Chronicle、Issue 和文件结果使用 memoized row，父级只传稳定 select-by-id/path handlers
+- **global-search-dialog.tsx**: `GlobalSearchDialog` — 当前真实搜索入口，作为 app-shell 热路径挂载，统一聚合线程 / Chronicle 记忆与知识 / 文件 / Issue / 命令结果，并通过 search i18n namespace 提供命令、分组、空状态和结果 metadata 文案；线程和 Chronicle 结果会渲染标题高亮与片段高亮，Chronicle 结果打开 Settings > Chronicle 并聚焦具体 memory/knowledge card，Issue 结果打开对应看板，文件结果会打开 Workspace 并复制相对路径；命令与 Issue 结果暴露稳定 E2E anchors；命令、对话、Chronicle、Issue 和文件结果使用 memoized row，父级只传稳定 select-by-id/path handlers
 - **global-search-store.ts**: Search-owned app-wide command palette open state，供 `App` 中的 single host 和 home/workspace/desktop tray open handlers 共享
 - **index.ts**: Barrel re-exports for the search feature
 - **highlighted-text.tsx**: HighlightedText — renders a string with main-provided MatchRange spans wrapped in styled `<mark>`

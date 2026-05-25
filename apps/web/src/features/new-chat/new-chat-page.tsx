@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
+import type { TFunction } from 'i18next'
 import {
   ArrowUpIcon,
   ClockIcon,
@@ -10,6 +11,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { postSessions } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
@@ -36,42 +38,44 @@ import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
 
-const PLACEHOLDER_HINTS = [
-  'Describe the task you want the agent to do in this project...',
-  'Explain the codebase structure and where to begin...',
-  'Find risky changes and suggest the safest next step...',
-  'Fix a failing test and explain the root cause...',
-  'Plan a refactor before editing implementation code...',
-]
+const PLACEHOLDER_HINT_KEYS = [
+  'placeholder.task',
+  'placeholder.structure',
+  'placeholder.risk',
+  'placeholder.fixTest',
+  'placeholder.refactor',
+] as const
 
 const QUICK_ACTIONS = [
-  { label: 'Explain this codebase', prompt: 'Explain this codebase from the perspective of a new contributor. Focus on architecture, key modules, data flow, and where I should start.' },
-  { label: 'Find risky changes', prompt: 'Inspect the recent changes in this project and identify risky areas, likely regressions, and the smallest verification plan.' },
-  { label: 'Fix a failing test', prompt: 'Find the failing test in this project, explain the root cause, and make the smallest maintainable fix.' },
-  { label: 'Write project notes', prompt: 'Read the project context and write concise project notes that capture architecture, conventions, and important workflows.' },
-  { label: 'Plan a refactor', prompt: 'Plan a focused refactor for this project. Identify the boundary, risks, migration steps, and tests before editing code.' },
-]
+  { labelKey: 'quick.explain.label', promptKey: 'quick.explain.prompt' },
+  { labelKey: 'quick.risk.label', promptKey: 'quick.risk.prompt' },
+  { labelKey: 'quick.fixTest.label', promptKey: 'quick.fixTest.prompt' },
+  { labelKey: 'quick.notes.label', promptKey: 'quick.notes.prompt' },
+  { labelKey: 'quick.refactor.label', promptKey: 'quick.refactor.prompt' },
+] as const
+
+type NewChatTranslation = TFunction<'new-chat'>
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 
-function timeAgo(timestamp: number, now: number): string {
+function timeAgo(timestamp: number, now: number, t: NewChatTranslation): string {
   const seconds = Math.floor((now - timestamp) / 1000)
   if (seconds < 60) {
-    return '刚刚'
+    return t('relative.justNow')
   }
   const minutes = Math.floor(seconds / 60)
   if (minutes < 60) {
-    return `${minutes}分钟前`
+    return t('relative.minutesAgo', { count: minutes })
   }
   const hours = Math.floor(minutes / 60)
   if (hours < 24) {
-    return `${hours}小时前`
+    return t('relative.hoursAgo', { count: hours })
   }
   const days = Math.floor(hours / 24)
   if (days < 30) {
-    return `${days}天前`
+    return t('relative.daysAgo', { count: days })
   }
-  return `${Math.floor(days / 30)}个月前`
+  return t('relative.monthsAgo', { count: Math.floor(days / 30) })
 }
 
 function autoResize(el: HTMLTextAreaElement, minHeight = 120) {
@@ -98,6 +102,7 @@ function useRotatingPlaceholder(hints: string[], interval = 4000): string {
 /* ─── Owner Hook ──────────────────────────────────────────────────────── */
 
 function useNewChatPageOwner() {
+  const { t } = useTranslation('new-chat')
   const composerState = useComposerState({ context: 'new-chat' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
   const { workspaces, loading: workspacesLoading } = useWorkspaces()
@@ -122,7 +127,8 @@ function useNewChatPageOwner() {
   const { sessions, loading: sessionsLoading } = useSessions(effectiveWorkspaceId)
   const now = useNow()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const placeholder = useRotatingPlaceholder(PLACEHOLDER_HINTS)
+  const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
+  const placeholder = useRotatingPlaceholder(placeholderHints)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const attachmentController = useComposerAttachments({ supportsAttachments })
   const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
@@ -163,8 +169,8 @@ function useNewChatPageOwner() {
       return {
         key: 'workspace',
         icon: FolderIcon,
-        message: 'Add a project first so Cradle can bind the chat to a real workspace.',
-        actionLabel: addingWorkspace ? 'Adding...' : 'Add project',
+        message: t('readiness.workspace.message'),
+        actionLabel: addingWorkspace ? t('readiness.workspace.adding') : t('readiness.workspace.action'),
         disabled: addingWorkspace,
       }
     }
@@ -172,8 +178,8 @@ function useNewChatPageOwner() {
       return {
         key: 'agents',
         icon: SettingsIcon,
-        message: 'No CLI agent is available. Enable a local agent in settings to start.',
-        actionLabel: 'Open agents',
+        message: t('readiness.agent.message'),
+        actionLabel: t('readiness.agent.action'),
         disabled: false,
       }
     }
@@ -181,13 +187,13 @@ function useNewChatPageOwner() {
       return {
         key: 'providers',
         icon: SettingsIcon,
-        message: 'No provider target is available. Configure a provider target before sending the first message.',
-        actionLabel: 'Open providers',
+        message: t('readiness.provider.message'),
+        actionLabel: t('readiness.provider.action'),
         disabled: false,
       }
     }
     return null
-  }, [addingWorkspace, effectiveAgent, effectiveProfile, effectiveWorkspaceId, isReady, selection.runtimeKind])
+  }, [addingWorkspace, effectiveAgent, effectiveProfile, effectiveWorkspaceId, isReady, selection.runtimeKind, t])
 
   const openSettingsSection = useCallback((section: string) => {
     const tabStore = useCradleTabStore.getState()
@@ -324,6 +330,7 @@ function useNewChatPageOwner() {
     selectedWorkspace,
     sending,
     setSelectedWorkspaceId,
+    t,
     textareaRef,
     workspaces,
   }
@@ -343,6 +350,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     sending,
     setSelectedWorkspaceId,
     selectedWorkspace,
+    t,
     textareaRef,
     placeholder,
     workspaces,
@@ -425,14 +433,14 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
         <Menu>
           <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/35 hover:text-muted-foreground/60" />} data-testid="new-chat-workspace-selector">
             <FolderIcon className="size-3 shrink-0" />
-            <span className="max-w-24 truncate">{selectedWorkspace?.name ?? '项目'}</span>
+            <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.fallback')}</span>
           </MenuTrigger>
           <MenuPopup>
             <MenuGroup>
-              <MenuGroupLabel>Workspaces</MenuGroupLabel>
+              <MenuGroupLabel>{t('workspace.group')}</MenuGroupLabel>
               <MenuSeparator />
               {workspaces.length === 0
-                ? <MenuItem disabled>暂无工作区</MenuItem>
+                ? <MenuItem disabled>{t('workspace.empty')}</MenuItem>
                 : workspaces.map(workspace => (
                     <MenuItem
                       key={workspace.id}
@@ -458,7 +466,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
               }}
               className="ml-0.5"
               data-testid="new-chat-send-btn"
-              aria-label="Send message"
+              aria-label={t('send.tooltip')}
             >
               {sending
                 ? <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden="true" />
@@ -467,7 +475,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
           </TooltipTrigger>
           <TooltipContent side="top">
             <span className="inline-flex items-center gap-1.5">
-              发送
+              {t('send.tooltip')}
               <Kbd>⌘</Kbd>
               <Kbd>↩</Kbd>
             </span>
@@ -481,6 +489,8 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
 /* ─── Quick Actions ───────────────────────────────────────────────────── */
 
 function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+  const { t } = useTranslation('new-chat')
+
   if (owner.input.length > 0) {
     return null
   }
@@ -494,9 +504,9 @@ function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPag
     >
       {QUICK_ACTIONS.map((action, index) => (
         <m.button
-          key={action.label}
+          key={action.labelKey}
           type="button"
-          onClick={() => owner.handleQuickAction(action.prompt)}
+          onClick={() => owner.handleQuickAction(t(action.promptKey))}
           className={cn(
             'h-7 rounded-lg border border-border px-2.5',
             'select-none text-[12px] text-muted-foreground/60',
@@ -507,7 +517,7 @@ function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPag
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25 + index * 0.04, duration: 0.25 }}
         >
-          {action.label}
+          {t(action.labelKey)}
         </m.button>
       ))}
     </m.div>
@@ -551,6 +561,8 @@ function NewChatReadinessNotice({ owner }: { owner: ReturnType<typeof useNewChat
 /* ─── Recent Sessions ─────────────────────────────────────────────────── */
 
 function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+  const { t } = useTranslation('new-chat')
+
   if (owner.recentSessions.length === 0) {
     return null
   }
@@ -565,7 +577,7 @@ function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChat
       <div className="mx-auto max-w-160 px-6 py-4">
         <div className="mb-2.5 flex items-center gap-1.5">
           <ClockIcon className="size-3 text-muted-foreground/50" />
-          <span className="select-none text-[11px] text-muted-foreground/50">最近对话</span>
+          <span className="select-none text-[11px] text-muted-foreground/50">{t('recent.title')}</span>
         </div>
         <div className="grid grid-cols-3 gap-2">
           {owner.recentSessions.map((session, index) => (
@@ -585,11 +597,11 @@ function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChat
               <div className="flex w-full items-center gap-2">
                 <MessageSquareIcon className="size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70" />
                 <span className="flex-1 truncate text-[13px] text-foreground transition-colors group-hover:text-foreground">
-                  {session.title || 'Untitled'}
+                  {session.title || t('recent.untitled')}
                 </span>
               </div>
               <time className="text-[11px] text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70" suppressHydrationWarning>
-                {timeAgo(session.updatedAt, owner.now)}
+                {timeAgo(session.updatedAt, owner.now, t)}
               </time>
             </m.button>
           ))}

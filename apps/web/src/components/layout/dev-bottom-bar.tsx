@@ -1,10 +1,12 @@
 import { buildHash } from '@cradle/tabs-next'
 import { MonitorIcon, RefreshCwIcon } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 
 import { isElectron } from '~/lib/electron'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
 export function DevBottomBar() {
+  const { t } = useTranslation('chrome')
   const activeRouteHash = useCradleTabStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
     return activeTab ? buildHash(cradleRegistry, activeTab.type, activeTab.params) : '/'
@@ -22,8 +24,8 @@ export function DevBottomBar() {
       <div className="flex items-center gap-0.5">
         <button
           type="button"
-          title="Open DevTools window"
-          aria-label="Open DevTools"
+          title={t('dev.action.openDevtools.title')}
+          aria-label={t('dev.action.openDevtools')}
           onClick={() => {
             if (isElectron) {
               window.cradle?.ipc.invoke('window.openDevtool')
@@ -35,19 +37,19 @@ export function DevBottomBar() {
           className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
           <MonitorIcon className="inline-block size-3.5" aria-hidden="true" />
-          DevTools
+          {t('dev.action.openDevtools')}
         </button>
         <button
           type="button"
-          title="Hard reload (ignore cache)"
-          aria-label="Hard reload"
+          title={t('dev.action.hardReload.title')}
+          aria-label={t('dev.action.hardReload')}
           onClick={() => {
             window.location.reload()
           }}
           className="flex items-center gap-1 rounded px-2 py-0.5 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
         >
           <RefreshCwIcon className="inline-block size-3.5" aria-hidden="true" />
-          Hard Reload
+          {t('dev.action.hardReload')}
         </button>
       </div>
     </footer>

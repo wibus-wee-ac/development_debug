@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { getServerUrl } from '~/lib/electron'
 
@@ -24,6 +25,7 @@ function formatUptime(seconds: number): string {
 }
 
 export function HealthPanel() {
+  const { t } = useTranslation('devtool')
   const [health, setHealth] = useState<HealthData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -52,7 +54,7 @@ export function HealthPanel() {
   if (error) {
     return (
       <div className="flex h-full items-center justify-center p-4 text-xs text-muted-foreground/50">
-        Failed to fetch server health:
+        {t('health.fetchError')}
 {' '}
 {error}
       </div>
@@ -62,19 +64,19 @@ export function HealthPanel() {
   if (!health) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
-        Loading…
+        {t('status.loading')}
       </div>
     )
   }
 
   const rows: [string, string][] = [
-    ['Status', health.status],
-    ['Uptime', formatUptime(health.uptime)],
-    ['Heap Used', `${health.memory.heapUsed} MB`],
-    ['Heap Total', `${health.memory.heapTotal} MB`],
-    ['RSS', `${health.memory.rss} MB`],
-    ['External', `${health.memory.external} MB`],
-    ['Timestamp', new Date(health.timestamp).toLocaleTimeString('en-US', { hour12: false })],
+    [t('health.status'), health.status],
+    [t('health.uptime'), formatUptime(health.uptime)],
+    [t('health.heapUsed'), `${health.memory.heapUsed} MB`],
+    [t('health.heapTotal'), `${health.memory.heapTotal} MB`],
+    [t('health.rss'), `${health.memory.rss} MB`],
+    [t('health.external'), `${health.memory.external} MB`],
+    [t('health.timestamp'), new Date(health.timestamp).toLocaleTimeString('en-US', { hour12: false })],
   ]
 
   return (

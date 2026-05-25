@@ -1,5 +1,7 @@
 import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
+import type { TFunction } from 'i18next'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import {
@@ -25,21 +27,40 @@ import type { ModelCapabilities, ModelDescriptor, ProviderTarget } from '~/lib/t
 
 import { ALL_DISABLED_SENTINEL } from './provider-settings-utils'
 
-function formatTimeAgo(ts: number): string {
+type TimeAgoMessage =
+  | { key: 'models.time.justNow' }
+  | { key: 'models.time.minutesAgo', options: { minuteCount: number } }
+  | { key: 'models.time.hoursAgo', options: { hourCount: number } }
+  | { key: 'models.time.daysAgo', options: { dayCount: number } }
+
+function formatTimeAgo(ts: number): TimeAgoMessage {
   const seconds = Math.round((Date.now() - ts) / 1000)
   if (seconds < 60) {
-    return 'just now'
+    return { key: 'models.time.justNow' }
   }
   const minutes = Math.round(seconds / 60)
   if (minutes < 60) {
-    return `${minutes}m ago`
+    return { key: 'models.time.minutesAgo', options: { minuteCount: minutes } }
   }
   const hours = Math.round(minutes / 60)
   if (hours < 24) {
-    return `${hours}h ago`
+    return { key: 'models.time.hoursAgo', options: { hourCount: hours } }
   }
   const days = Math.round(hours / 24)
-  return `${days}d ago`
+  return { key: 'models.time.daysAgo', options: { dayCount: days } }
+}
+
+function renderTimeAgo(message: TimeAgoMessage, t: TFunction<'agentManagement'>): string {
+  switch (message.key) {
+    case 'models.time.justNow':
+      return t('models.time.justNow')
+    case 'models.time.minutesAgo':
+      return t('models.time.minutesAgo', message.options)
+    case 'models.time.hoursAgo':
+      return t('models.time.hoursAgo', message.options)
+    case 'models.time.daysAgo':
+      return t('models.time.daysAgo', message.options)
+  }
 }
 
 function occurrenceKey(id: string, counts: Map<string, number>): string {
@@ -262,7 +283,9 @@ function applyRegistryResult(
   }
 }
 
-function registryStatusLabel(model: ModelDescriptor): string {
+type RegistryStatus = 'exact' | 'fuzzy' | 'manual' | 'unmatched'
+
+function registryStatusLabel(model: ModelDescriptor): RegistryStatus {
   switch (model.capabilities.registryMatch) {
     case 'exact':
       return 'exact'
@@ -274,6 +297,13 @@ function registryStatusLabel(model: ModelDescriptor): string {
       return 'unmatched'
   }
 }
+
+const REGISTRY_STATUS_KEYS = {
+  exact: 'models.registry.status.exact',
+  fuzzy: 'models.registry.status.fuzzy',
+  manual: 'models.registry.status.manual',
+  unmatched: 'models.registry.status.unmatched'
+} as const
 
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
   const { data } = await postProvidersModelSearch({
@@ -302,6 +332,7 @@ export function ModelsPanel({
   onRefresh?: () => void
   cachedAt?: number | null
 }) {
+  const { t } = useTranslation('agentManagement')
   const [filter, setFilter] = useState('')
   const [mappingModel, setMappingModel] = useState<ModelDescriptor | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -462,9 +493,11 @@ export function ModelsPanel({
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[12.5px] font-medium text-foreground">Available models</p>
+          <p className="text-[12.5px] font-medium text-foreground">
+            {t('models.header.title')}
+          </p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Choose which models appear in the chat model picker for this provider.
+            {t('models.header.description')}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -476,7 +509,7 @@ export function ModelsPanel({
               onClick={onRefresh}
             >
               <RefreshCwIcon className="size-3" />
-              Refresh
+              {t('models.action.refresh')}
             </Button>
           )}
           {(isExplicitSelection || allDisabled) && (
@@ -486,7 +519,7 @@ export function ModelsPanel({
               className="text-[11px] text-muted-foreground"
               onClick={() => onChange([])}
             >
-              Show all
+              {t('models.action.showAll')}
             </Button>
           )}
           {!allDisabled && (
@@ -496,7 +529,7 @@ export function ModelsPanel({
               className="text-[11px] text-muted-foreground"
               onClick={() => onChange([ALL_DISABLED_SENTINEL])}
             >
-              Disable all
+              {t('models.action.disableAll')}
             </Button>
           )}
         </div>
@@ -508,7 +541,7 @@ export function ModelsPanel({
         <Input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter models…"
+          placeholder={t('models.search.placeholder')}
           className="h-8 pl-8 text-[12.5px]"
         />
       </div>
@@ -518,13 +551,15 @@ export function ModelsPanel({
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-[12px] text-muted-foreground">
             <Spinner className="size-3" />
-            Loading models…
+            {t('models.loading')}
           </div>
         ) : models.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-[12px] text-muted-foreground">No cached models for this provider.</p>
+            <p className="text-[12px] text-muted-foreground">
+              {t('models.empty.title')}
+            </p>
             <p className="mt-1 text-[11px] text-muted-foreground/70">
-              Click Fetch Models to refresh the provider inventory.
+              {t('models.empty.description')}
             </p>
             {onRefresh && (
               <Button
@@ -534,7 +569,7 @@ export function ModelsPanel({
                 onClick={onRefresh}
               >
                 <RefreshCwIcon className="size-3" />
-                Fetch Models
+                {t('models.action.fetchModels')}
               </Button>
             )}
           </div>
@@ -586,7 +621,7 @@ export function ModelsPanel({
                           registryStatus === 'unmatched' && 'text-muted-foreground'
                         )}
                       >
-                        {registryStatus}
+                        {t(REGISTRY_STATUS_KEYS[registryStatus])}
                       </Badge>
                       {m.capabilities.contextWindow != null && m.capabilities.contextWindow > 0 && (
                         <Badge
@@ -601,8 +636,8 @@ export function ModelsPanel({
                         size="icon-xs"
                         variant="ghost"
                         onClick={() => openMappingDialog(m)}
-                        aria-label={`Map ${m.id} to models.dev`}
-                        title="Map to models.dev"
+                        aria-label={t('models.mapping.mapAria', { modelId: m.id })}
+                        title={t('models.mapping.mapTitle')}
                         className="text-muted-foreground/60 hover:text-foreground"
                       >
                         <SparklesIcon className="size-3" aria-hidden="true" />
@@ -613,7 +648,9 @@ export function ModelsPanel({
               })}
               {visible.length === 0 && (
                 <li className="px-4 py-8 text-center text-[11.5px] text-muted-foreground">
-                  No models match <span className="font-mono text-foreground">{filter}</span>.
+                  {t('models.search.noMatches.prefix')}{' '}
+                  <span className="font-mono text-foreground">{filter}</span>
+                  {t('models.search.noMatches.suffix')}
                 </li>
               )}
             </ul>
@@ -627,9 +664,9 @@ export function ModelsPanel({
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Map to models.dev</DialogTitle>
+            <DialogTitle>{t('models.mapping.dialog.title')}</DialogTitle>
             <DialogDescription>
-              Select the registry entry that describes this provider model.
+              {t('models.mapping.dialog.description')}
             </DialogDescription>
           </DialogHeader>
 
@@ -649,7 +686,7 @@ export function ModelsPanel({
                 <Input
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Search models.dev..."
+                  placeholder={t('models.mapping.search.placeholder')}
                   className="h-8 pl-8 font-mono text-[12px]"
                 />
                 {searchPending && (
@@ -688,7 +725,9 @@ export function ModelsPanel({
                   </ul>
                 ) : (
                   <div className="px-4 py-8 text-center text-[12px] text-muted-foreground">
-                    {searchPending ? 'Searching...' : 'No models.dev entries found'}
+                    {searchPending
+                      ? t('models.mapping.searching')
+                      : t('models.mapping.emptyResults')}
                   </div>
                 )}
               </div>
@@ -697,7 +736,7 @@ export function ModelsPanel({
 
           <DialogFooter variant="bare">
             <Button size="sm" variant="outline" onClick={closeMappingDialog}>
-              Cancel
+              {t('models.action.cancel')}
             </Button>
             <Button
               size="sm"
@@ -709,7 +748,7 @@ export function ModelsPanel({
               }}
             >
               <SlidersHorizontalIcon className="size-3.5" />
-              Create entry
+              {t('models.mapping.createEntry')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -718,9 +757,9 @@ export function ModelsPanel({
       <Dialog open={manualOpen} onOpenChange={(open) => !open && setManualOpen(false)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Manual models.dev entry</DialogTitle>
+            <DialogTitle>{t('models.manual.title')}</DialogTitle>
             <DialogDescription>
-              Define the registry metadata that should describe this available model.
+              {t('models.manual.description')}
             </DialogDescription>
           </DialogHeader>
 
@@ -728,31 +767,31 @@ export function ModelsPanel({
             <Input
               value={manualDraft.id}
               onChange={(event) => setManualDraft({ ...manualDraft, id: event.target.value })}
-              placeholder="id"
+              placeholder={t('models.manual.field.id')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.name}
               onChange={(event) => setManualDraft({ ...manualDraft, name: event.target.value })}
-              placeholder="name"
+              placeholder={t('models.manual.field.name')}
               className="h-8 text-[12px]"
             />
             <Input
               value={manualDraft.context}
               onChange={(event) => setManualDraft({ ...manualDraft, context: event.target.value })}
-              placeholder="context window"
+              placeholder={t('models.manual.field.contextWindow')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.output}
               onChange={(event) => setManualDraft({ ...manualDraft, output: event.target.value })}
-              placeholder="max output tokens"
+              placeholder={t('models.manual.field.maxOutputTokens')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.family}
               onChange={(event) => setManualDraft({ ...manualDraft, family: event.target.value })}
-              placeholder="family"
+              placeholder={t('models.manual.field.family')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -760,7 +799,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, knowledge: event.target.value })
               }
-              placeholder="knowledge cutoff"
+              placeholder={t('models.manual.field.knowledgeCutoff')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -768,7 +807,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, releaseDate: event.target.value })
               }
-              placeholder="release date"
+              placeholder={t('models.manual.field.releaseDate')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -776,7 +815,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, costInput: event.target.value })
               }
-              placeholder="input cost"
+              placeholder={t('models.manual.field.inputCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -784,7 +823,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, costOutput: event.target.value })
               }
-              placeholder="output cost"
+              placeholder={t('models.manual.field.outputCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -792,7 +831,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, costCacheRead: event.target.value })
               }
-              placeholder="cache read cost"
+              placeholder={t('models.manual.field.cacheReadCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
@@ -800,7 +839,7 @@ export function ModelsPanel({
               onChange={(event) =>
                 setManualDraft({ ...manualDraft, costCacheWrite: event.target.value })
               }
-              placeholder="cache write cost"
+              placeholder={t('models.manual.field.cacheWriteCost')}
               className="h-8 font-mono text-[12px]"
             />
 
@@ -813,7 +852,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, inputText: !!checked })
                     }
                   />
-                  text input
+                  {t('models.manual.capability.textInput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -822,7 +861,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, inputImage: !!checked })
                     }
                   />
-                  image input
+                  {t('models.manual.capability.imageInput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -831,7 +870,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, outputText: !!checked })
                     }
                   />
-                  text output
+                  {t('models.manual.capability.textOutput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -840,7 +879,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, reasoning: !!checked })
                     }
                   />
-                  reasoning
+                  {t('models.manual.capability.reasoning')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -849,7 +888,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, toolCall: !!checked })
                     }
                   />
-                  tools
+                  {t('models.manual.capability.tools')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -858,7 +897,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, temperature: !!checked })
                     }
                   />
-                  temperature
+                  {t('models.manual.capability.temperature')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
@@ -867,7 +906,7 @@ export function ModelsPanel({
                       setManualDraft({ ...manualDraft, structuredOutput: !!checked })
                     }
                   />
-                  structured output
+                  {t('models.manual.capability.structuredOutput')}
                 </label>
               </div>
             </div>
@@ -875,7 +914,7 @@ export function ModelsPanel({
 
           <DialogFooter variant="bare">
             <Button size="sm" variant="outline" onClick={() => setManualOpen(false)}>
-              Back
+              {t('models.action.back')}
             </Button>
             <Button
               size="sm"
@@ -884,7 +923,7 @@ export function ModelsPanel({
               className="gap-1.5"
             >
               {savingMapping && <Spinner className="size-3.5" />}
-              Save mapping
+              {t('models.manual.saveMapping')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -894,15 +933,22 @@ export function ModelsPanel({
       <div className="flex items-center justify-between text-[11px] tabular-nums text-muted-foreground">
         <span>
           {allDisabled
-            ? 'All models hidden from chat'
+            ? t('models.summary.allHidden')
             : visibility.kind === 'all'
-              ? `All ${models.length || ''} models visible`.trim()
-              : `${enabledCount} of ${models.length} model${models.length === 1 ? '' : 's'} visible`}
+              ? t('models.summary.allVisible', { modelCount: models.length })
+              : t('models.summary.someVisible', { enabledCount, totalCount: models.length })}
         </span>
         {cachedAt && models.length > 0 && (
-          <span className="text-[10.5px] text-muted-foreground/60">
-            cached {formatTimeAgo(cachedAt)}
-          </span>
+          (() => {
+            const timeAgo = formatTimeAgo(cachedAt)
+            return (
+              <span className="text-[10.5px] text-muted-foreground/60">
+                {t('models.summary.cached', {
+                  timeAgo: renderTimeAgo(timeAgo, t),
+                })}
+              </span>
+            )
+          })()
         )}
       </div>
     </div>

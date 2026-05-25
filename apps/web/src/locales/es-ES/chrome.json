@@ -1,0 +1,18 @@
+{
+  "dev.action.hardReload": "Recarga completa",
+  "dev.action.hardReload.title": "Recarga completa (ignorar caché)",
+  "dev.action.openDevtools": "Abrir DevTools",
+  "dev.action.openDevtools.title": "Abrir ventana de DevTools",
+  "footer.action.askJarvis": "Preguntar a Jarvis",
+  "header.action.collapseSidebar": "Contraer barra lateral",
+  "header.action.expandSidebar": "Expandir barra lateral",
+  "header.action.toggleBottomPanel": "Alternar panel inferior",
+  "header.action.toggleBrowserPanel": "Alternar panel del navegador",
+  "header.action.toggleRightPanel": "Alternar panel derecho",
+  "header.tab.settings": "Configuración",
+  "rightAside.issue.empty": "No hay sesión seleccionada",
+  "rightAside.tab.await": "Feed",
+  "rightAside.tab.changes": "Cambios",
+  "rightAside.tab.files": "Archivos",
+  "rightAside.tab.issue": "Issue"
+}

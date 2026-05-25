@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'
 import { VList } from 'virtua'
 
@@ -19,6 +20,7 @@ interface GitPanelProps {
 }
 
 export function GitPanel({ workspaceId }: GitPanelProps) {
+  const { t } = useTranslation('git')
   const {
     data: status,
     isLoading: statusLoading,
@@ -77,7 +79,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
   if (!workspaceId) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-empty-workspace">
-        <p className="text-xs text-muted-foreground">请先选择 Workspace</p>
+        <p className="text-xs text-muted-foreground">{t('panel.emptyWorkspace')}</p>
       </div>
     )
   }
@@ -87,7 +89,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
       <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-error">
         <div className="flex flex-col items-center gap-2">
           <GitGraphIcon className="size-5 text-muted-foreground/30" />
-          <p className="text-xs text-muted-foreground">不是 Git 仓库或无权限</p>
+          <p className="text-xs text-muted-foreground">{t('panel.error')}</p>
         </div>
       </div>
     )
@@ -144,8 +146,8 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
         <Button
           variant="ghost"
           size="icon-xs"
-          aria-label="Fetch git updates"
-          title="Fetch all (--all --prune)"
+          aria-label={t('panel.fetch')}
+          title={t('panel.fetch.title')}
           onClick={() => { void handleFetch() }}
           disabled={fetching}
           className="text-muted-foreground hover:text-foreground"
@@ -165,7 +167,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
         : layoutCommits.length === 0
           ? (
             <div className="flex flex-1 items-center justify-center p-4" data-testid="git-commit-graph-empty">
-              <p className="text-xs text-muted-foreground">暂无 commit</p>
+              <p className="text-xs text-muted-foreground">{t('panel.emptyCommits')}</p>
             </div>
           )
           : (

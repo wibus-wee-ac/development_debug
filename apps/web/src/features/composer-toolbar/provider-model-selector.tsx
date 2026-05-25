@@ -1,8 +1,28 @@
+import { useTranslation } from 'react-i18next'
+
 import type { ModelDescriptor } from '~/lib/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
 import { ProviderModelPicker } from './provider-model-picker'
+import type { ThinkingOption } from './provider-model-menu'
 import type { ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
+
+type CommonKey = keyof typeof import('~/locales/default').default.common
+type ThinkingOptionKey = NonNullable<ThinkingEffort> | 'auto'
+
+const thinkingLabelKeys = {
+  auto: 'thinking.auto.label',
+  low: 'thinking.low.label',
+  medium: 'thinking.medium.label',
+  high: 'thinking.high.label',
+} satisfies Record<ThinkingOptionKey, CommonKey>
+
+const thinkingDescriptionKeys = {
+  auto: 'thinking.auto.description',
+  low: 'thinking.low.description',
+  medium: 'thinking.medium.description',
+  high: 'thinking.high.description',
+} satisfies Record<ThinkingOptionKey, CommonKey>
 
 interface ProviderModelSelectorProps {
   profiles: ProviderModelOption[]
@@ -33,9 +53,18 @@ export function ProviderModelSelector({
   onSelectModel,
   onSelectThinkingEffort,
 }: ProviderModelSelectorProps) {
+  const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map((option) => {
+    const key = option.value ?? 'auto'
+    return {
+      value: option.value,
+      label: t(thinkingLabelKeys[key]),
+      description: t(thinkingDescriptionKeys[key]),
+    }
+  })
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
-    selectSupportedThinkingValue(model, THINKING_EFFORTS, thinkingEffort, null)
+    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, null)
 
   return (
     <ProviderModelPicker
@@ -46,10 +75,10 @@ export function ProviderModelSelector({
       modelsByProfileId={modelsByProfileId}
       loadingProfileIds={loadingProfileIds}
       thinkingValue={thinkingEffort}
-      thinkingOptions={THINKING_EFFORTS}
+      thinkingOptions={thinkingOptions}
       isLoadingSelectedModels={isLoadingModels}
-      emptyProfilesLabel="No provider targets available"
-      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, THINKING_EFFORTS)}
+      emptyProfilesLabel={t('model.noProviderTargets')}
+      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
       onRequestProfileModels={requestProfileModels}
       onSelectProfile={(id) => {
         requestProfileModels(id)

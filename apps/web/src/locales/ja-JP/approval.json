@@ -1,0 +1,10 @@
+{
+  "action.allow": "許可",
+  "action.allowAlways": "常に許可",
+  "action.deny": "拒否",
+  "empty.description": "エージェントの承認リクエストがここに表示されます。",
+  "empty.title": "保留中の承認はありません",
+  "inbox.description": "保留中のエージェント権限リクエスト",
+  "inbox.title": "承認",
+  "request.prefix": "権限が必要:"
+}

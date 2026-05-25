@@ -4,6 +4,7 @@
 import { AlertTriangleIcon, ArrowLeftIcon, RefreshCcwIcon, RotateCwIcon } from 'lucide-react'
 import type { ErrorInfo, ReactNode } from 'react'
 import { Component } from 'react'
+import { Translation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 
@@ -73,48 +74,52 @@ function AppErrorFallback({
   onReload: () => void
 }) {
   return (
-    <div className="flex h-screen w-screen items-center justify-center bg-sidebar p-4 text-foreground">
-      <section
-        role="alert"
-        aria-live="assertive"
-        className="flex w-full max-w-[520px] flex-col gap-4 rounded-xl bg-background p-5 shadow-[var(--shadow-lg)]"
-      >
-        <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
-            <AlertTriangleIcon className="size-4" aria-hidden="true" />
-          </div>
-          <div className="min-w-0 space-y-1">
-            <h1 className="text-sm font-medium text-foreground">Cradle hit a rendering error</h1>
-            <p className="text-sm leading-6 text-muted-foreground">
-              The app shell caught this crash, so you can retry the render or reload the window.
-            </p>
-          </div>
-        </div>
+    <Translation ns="common">
+      {t => (
+        <div className="flex h-screen w-screen items-center justify-center bg-sidebar p-4 text-foreground">
+          <section
+            role="alert"
+            aria-live="assertive"
+            className="flex w-full max-w-[520px] flex-col gap-4 rounded-xl bg-background p-5 shadow-[var(--shadow-lg)]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive">
+                <AlertTriangleIcon className="size-4" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-sm font-medium text-foreground">{t('errorBoundary.title')}</h1>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {t('errorBoundary.description')}
+                </p>
+              </div>
+            </div>
 
-        {import.meta.env.DEV && (
-          <details className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer select-none text-foreground">Error details</summary>
-            <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
-              {error.stack ?? error.message}
-            </pre>
-          </details>
-        )}
+            {import.meta.env.DEV && (
+              <details className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                <summary className="cursor-pointer select-none text-foreground">{t('errorBoundary.details')}</summary>
+                <pre className="mt-2 max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-5">
+                  {error.stack ?? error.message}
+                </pre>
+              </details>
+            )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onBack}>
-            <ArrowLeftIcon className="size-3.5" aria-hidden="true" />
-            Back
-          </Button>
-          <Button type="button" variant="default" size="sm" onClick={onRetry}>
-            <RotateCwIcon className="size-3.5" aria-hidden="true" />
-            Retry
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={onReload}>
-            <RefreshCcwIcon className="size-3.5" aria-hidden="true" />
-            Reload
-          </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={onBack}>
+                <ArrowLeftIcon className="size-3.5" aria-hidden="true" />
+                {t('action.back')}
+              </Button>
+              <Button type="button" variant="default" size="sm" onClick={onRetry}>
+                <RotateCwIcon className="size-3.5" aria-hidden="true" />
+                {t('action.retry')}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={onReload}>
+                <RefreshCcwIcon className="size-3.5" aria-hidden="true" />
+                {t('action.reload')}
+              </Button>
+            </div>
+          </section>
         </div>
-      </section>
-    </div>
+      )}
+    </Translation>
   )
 }

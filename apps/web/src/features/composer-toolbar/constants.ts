@@ -4,18 +4,18 @@ import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'
 
 export const THINKING_EFFORTS: { value: ThinkingEffort, label: string, description: string }[] = [
-  { value: null, label: '自动', description: '根据任务复杂度自动调整' },
-  { value: 'low', label: '快速', description: '简单问题，快速响应' },
-  { value: 'medium', label: '平衡', description: '适中思考，兼顾速度与质量' },
-  { value: 'high', label: '深度', description: '复杂推理，深度思考' },
+  { value: null, label: '', description: '' },
+  { value: 'low', label: '', description: '' },
+  { value: 'medium', label: '', description: '' },
+  { value: 'high', label: '', description: '' },
 ]
 
-export const RUNTIME_KIND_OPTIONS: { value: RuntimeKind, label: string, description: string }[] = [
-  { value: 'standard', label: 'Standard', description: 'Direct API calls' },
-  { value: 'claude-agent', label: 'Claude Agent', description: 'Agentic tool-use loop' },
-  { value: 'codex', label: 'Codex', description: 'Code-focused autonomous' },
-  { value: 'cli-tui', label: 'CLI TUI', description: 'Agent-first terminal runtime' },
-]
+export const RUNTIME_KIND_OPTIONS = [
+  { value: 'standard' },
+  { value: 'claude-agent' },
+  { value: 'codex' },
+  { value: 'cli-tui' },
+] satisfies Array<{ value: RuntimeKind }>
 
 export type ThinkingCapabilityTier = 'none' | 'standard' | 'extended'
 

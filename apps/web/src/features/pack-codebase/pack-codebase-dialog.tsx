@@ -7,6 +7,7 @@ import {
   ZapIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { postWorkspacesByIdPack } from '~/api-gen'
 import { Button } from '~/components/ui/button'
@@ -24,6 +25,7 @@ import { cn } from '~/lib/cn'
 import { formatTokens, mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
 
 type PackStyle = 'xml' | 'markdown' | 'plain'
+type PackCodebaseKey = keyof typeof import('~/locales/default').default['pack-codebase']
 
 interface PackCodebaseDialogProps {
   workspaceId: string
@@ -34,10 +36,10 @@ interface PackCodebaseDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-const FORMAT_OPTIONS: { value: PackStyle, label: string, description: string }[] = [
-  { value: 'xml', label: 'XML', description: 'Claude 推荐' },
-  { value: 'markdown', label: 'Markdown', description: '通用' },
-  { value: 'plain', label: 'Plain', description: '纯文本' },
+const FORMAT_OPTIONS: { value: PackStyle, label: string, descriptionKey: PackCodebaseKey }[] = [
+  { value: 'xml', label: 'XML', descriptionKey: 'format.xml.description' },
+  { value: 'markdown', label: 'Markdown', descriptionKey: 'format.markdown.description' },
+  { value: 'plain', label: 'Plain', descriptionKey: 'format.plain.description' },
 ]
 
 const EMPTY_PATHS: string[] = []
@@ -125,6 +127,7 @@ function PackCodebaseDialogContent({
   workspaceName: string
   initialPaths: string[]
 }) {
+  const { t } = useTranslation('pack-codebase')
   const [state, dispatch] = useReducer(packCodebaseDialogReducer, initialPaths, createInitialPackCodebaseDialogState)
   const pathInputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -162,7 +165,7 @@ function PackCodebaseDialogContent({
       })
 
       if (!res.data) {
-        throw new Error('No response from server')
+        throw new Error(t('status.noResponse'))
       }
 
       await navigator.clipboard.writeText(res.data.content)
@@ -172,9 +175,9 @@ function PackCodebaseDialogContent({
       })
     }
     catch (err) {
-      dispatch({ type: 'pack/error', errorMsg: err instanceof Error ? err.message : '未知错误' })
+      dispatch({ type: 'pack/error', errorMsg: err instanceof Error ? err.message : t('error.fallback') })
     }
-  }, [state.compress, state.ignore, state.pathInput, state.removeComments, state.scopePaths, state.style, workspaceId])
+  }, [state.compress, state.ignore, state.pathInput, state.removeComments, state.scopePaths, state.style, t, workspaceId])
 
   return (
     <div className="space-y-5 py-1" data-testid="pack-codebase-dialog-content">
@@ -185,15 +188,15 @@ function PackCodebaseDialogContent({
         >
           <CheckIcon className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">已复制到剪贴板</p>
+            <p className="text-sm font-medium text-foreground">{t('status.copied')}</p>
             <p
               className="mt-0.5 text-xs text-muted-foreground"
               data-testid="pack-codebase-result-summary"
             >
-              {state.result.totalFiles}
-              {' 个文件 · '}
-              {formatTokens(state.result.totalTokens)}
-              {' tokens'}
+              {t('status.summary', {
+                files: t('status.fileCount', { count: state.result.totalFiles }),
+                tokens: formatTokens(state.result.totalTokens),
+              })}
             </p>
           </div>
         </div>
@@ -201,17 +204,18 @@ function PackCodebaseDialogContent({
 
       {state.status === 'error' && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
-          <p className="text-sm text-destructive">{state.errorMsg || '打包失败'}</p>
+          <p className="text-sm text-destructive">{state.errorMsg || t('error.packFailed')}</p>
         </div>
       )}
 
       <p className="text-xs text-muted-foreground">
-        工作区：
+        {t('workspace.label')}
+        {' '}
         <span className="font-medium text-foreground">{workspaceName}</span>
       </p>
 
       <div className="space-y-2">
-        <Label className="text-xs text-muted-foreground">输出格式</Label>
+        <Label className="text-xs text-muted-foreground">{t('format.label')}</Label>
         <div className="flex gap-1.5">
           {FORMAT_OPTIONS.map(opt => (
             <button
@@ -226,7 +230,7 @@ function PackCodebaseDialogContent({
               )}
             >
               <div className="font-medium">{opt.label}</div>
-              <div className="mt-0.5 text-[11px] leading-tight opacity-70">{opt.description}</div>
+              <div className="mt-0.5 text-[11px] leading-tight opacity-70">{t(opt.descriptionKey)}</div>
             </button>
           ))}
         </div>
@@ -237,9 +241,9 @@ function PackCodebaseDialogContent({
           <div className="space-y-0.5">
             <Label className="flex cursor-pointer items-center gap-1.5 text-sm" htmlFor="compress-toggle">
               <ZapIcon className="size-3 text-muted-foreground" />
-              智能压缩
+              {t('option.compress.label')}
             </Label>
-            <p className="text-xs text-muted-foreground">Tree-sitter 提取结构，减少约 70% tokens</p>
+            <p className="text-xs text-muted-foreground">{t('option.compress.description')}</p>
           </div>
           <Switch
             id="compress-toggle"
@@ -249,7 +253,7 @@ function PackCodebaseDialogContent({
           />
         </div>
         <div className="flex items-center justify-between">
-          <Label className="cursor-pointer text-sm" htmlFor="comments-toggle">移除注释</Label>
+          <Label className="cursor-pointer text-sm" htmlFor="comments-toggle">{t('option.removeComments.label')}</Label>
           <Switch
             id="comments-toggle"
             size="sm"
@@ -261,8 +265,8 @@ function PackCodebaseDialogContent({
 
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground" htmlFor="pack-scope-paths">
-          打包范围
-          <span className="ml-1 opacity-50">（空 = 整个工作区）</span>
+          {t('scope.label')}
+          <span className="ml-1 opacity-50">({t('scope.wholeWorkspace')})</span>
         </Label>
         <div
           role="group"
@@ -291,7 +295,7 @@ function PackCodebaseDialogContent({
                   dispatch({ type: 'remove-path', path })
                 }}
                 className="shrink-0 text-muted-foreground hover:text-foreground"
-                aria-label={`移除 ${path}`}
+                aria-label={t('path.aria.remove', { path })}
               >
                 <XIcon className="size-2.5" />
               </button>
@@ -304,21 +308,21 @@ function PackCodebaseDialogContent({
             onChange={e => dispatch({ type: 'set-path-input', pathInput: e.target.value })}
             onKeyDown={handlePathKeyDown}
             onBlur={() => addPath(state.pathInput)}
-            placeholder={state.scopePaths.length === 0 ? 'src/renderer, packages/ipc …' : ''}
+            placeholder={state.scopePaths.length === 0 ? t('scope.placeholder') : ''}
             rows={2}
             data-testid="pack-codebase-scope-input"
             className="min-h-8 min-w-24 flex-1 resize-none bg-transparent font-mono text-xs leading-relaxed outline-none placeholder:text-muted-foreground/40"
           />
         </div>
         <p className="text-[11px] text-muted-foreground/50">
-          每行或逗号分隔；从文件树右键"Pack & Copy"可自动填入
+          {t('scope.help')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <Label className="text-xs text-muted-foreground">排除 (glob)</Label>
+        <Label className="text-xs text-muted-foreground">{t('ignore.label')}</Label>
         <Input
-          placeholder="**/*.test.ts,docs/**"
+          placeholder={t('ignore.placeholder')}
           value={state.ignore}
           onChange={e => dispatch({ type: 'set-ignore', ignore: e.target.value })}
           data-testid="pack-codebase-ignore-input"
@@ -335,7 +339,7 @@ function PackCodebaseDialogContent({
                 onClick={() => dispatch({ type: 'reset-status' })}
                 data-testid="pack-codebase-reset-btn"
               >
-                重新配置
+                {t('action.reset')}
               </Button>
             )
           : (
@@ -349,13 +353,13 @@ function PackCodebaseDialogContent({
                   ? (
                       <>
                         <Loader2Icon className="size-3.5 animate-spin" />
-                        正在打包...
+                        {t('status.packing')}
                       </>
                     )
                   : (
                       <>
                         <ClipboardCopyIcon className="size-3.5" />
-                        打包并复制
+                        {t('action.packAndCopy')}
                       </>
                     )}
               </Button>
@@ -372,6 +376,7 @@ export function PackCodebaseDialog({
   open,
   onOpenChange,
 }: PackCodebaseDialogProps) {
+  const { t } = useTranslation('pack-codebase')
   const dialogSessionKey = open ? `${workspaceId}:${initialPaths.join(',')}` : `closed:${workspaceId}`
 
   return (
@@ -380,7 +385,7 @@ export function PackCodebaseDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <PackageIcon className="size-4 text-muted-foreground" />
-            复制代码库
+            {t('dialog.title')}
           </DialogTitle>
         </DialogHeader>
         <PackCodebaseDialogContent

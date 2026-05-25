@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next'
+
 import { cn } from '~/lib/cn'
 
 import { useObservabilityDevtoolStore } from './use-observability-events'
@@ -7,6 +9,7 @@ function formatTime(value: number): string {
 }
 
 export function ObservabilityEventsTable() {
+  const { t } = useTranslation('devtool')
   const entries = useObservabilityDevtoolStore(s => s.entries)
   const selectedIndex = useObservabilityDevtoolStore(s => s.selectedIndex)
   const selectIndex = useObservabilityDevtoolStore(s => s.selectIndex)
@@ -15,7 +18,7 @@ export function ObservabilityEventsTable() {
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
-        Loading…
+        {t('status.loading')}
       </div>
     )
   }
@@ -23,7 +26,7 @@ export function ObservabilityEventsTable() {
   if (entries.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-muted-foreground/50">
-        No observability events yet
+        {t('observability.empty')}
       </div>
     )
   }
@@ -33,13 +36,13 @@ export function ObservabilityEventsTable() {
       <table className="w-full text-left font-mono text-[11px]">
         <thead className="sticky top-0 bg-background">
           <tr className="border-b border-border text-muted-foreground">
-            <th className="px-3 py-1.5 font-normal">Kind</th>
-            <th className="px-3 py-1.5 font-normal">Time</th>
-            <th className="px-3 py-1.5 font-normal">Source</th>
-            <th className="px-3 py-1.5 font-normal">Code</th>
-            <th className="px-3 py-1.5 font-normal">Severity</th>
-            <th className="px-3 py-1.5 font-normal">Session</th>
-            <th className="px-3 py-1.5 font-normal">Run</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.kind')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.time')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.source')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.code')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.severity')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.session')}</th>
+            <th className="px-3 py-1.5 font-normal">{t('observability.run')}</th>
           </tr>
         </thead>
         <tbody>

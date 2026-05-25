@@ -5,6 +5,7 @@ import type { FileUIPart, UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
 import { z } from 'zod'
@@ -105,6 +106,8 @@ function ChatMessageListPane({
   onScrollToIndex: (index: number) => void
   onScrollTo: (offset: number) => void
 }) {
+  const { t } = useTranslation('chat')
+
   return (
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea
@@ -128,7 +131,7 @@ function ChatMessageListPane({
           {messages.length === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">
-                Send a message to start the conversation
+                {t('empty.startConversation')}
               </p>
             </div>
           )}
@@ -156,7 +159,7 @@ function ChatMessageListPane({
             >
               <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
               <span className="text-xs text-destructive/70">
-                {error ?? 'Failed to load messages. (Unknown error)'}
+                {error ?? t('error.loadMessages')}
               </span>
             </m.div>
           )}
@@ -174,7 +177,7 @@ function ChatMessageListPane({
                 className="size-3.5 animate-spin text-muted-foreground/50"
                 aria-hidden="true"
               />
-              <span className="text-xs text-muted-foreground">Thinking...</span>
+              <span className="text-xs text-muted-foreground">{t('status.thinking')}</span>
             </m.div>
           )}
 
@@ -199,6 +202,8 @@ function ChatAwaitBanner({
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
 }) {
+  const { t } = useTranslation('chat')
+
   if (!awaitSummary?.awaiting) {
     return null
   }
@@ -207,8 +212,7 @@ function ChatAwaitBanner({
     <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
-        {(awaitSummary.reason as string) ??
-          `Waiting for ${(awaitSummary.primarySource as string) ?? 'event'}...`}
+        {(awaitSummary.reason as string) ?? t('await.waitingFor', { source: (awaitSummary.primarySource as string) ?? t('await.source.event') })}
       </span>
       <button
         type="button"
@@ -216,7 +220,7 @@ function ChatAwaitBanner({
         className="ml-auto flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
       >
         <ExternalLinkIcon className="size-3" />
-        <span>查看</span>
+        <span>{t('await.action.view')}</span>
       </button>
     </div>
   )

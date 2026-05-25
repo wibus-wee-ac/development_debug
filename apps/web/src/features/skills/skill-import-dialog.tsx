@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { HalftoneArt } from '~/components/ui/canvas-art'
@@ -155,10 +156,12 @@ function StepDots({ current }: { current: DialogStep }) {
 }
 
 function RightPanelInput() {
+  const { t } = useTranslation('skills')
+
   return (
     <div className="flex h-full flex-col justify-end px-7 pb-8">
       <p className="text-[13px] leading-relaxed text-muted-foreground" style={{ textWrap: 'pretty' }}>
-        Install skills from any public git repository, GitHub shorthand, or local path.
+        {t('import.description')}
       </p>
     </div>
   )
@@ -188,6 +191,8 @@ function RightPanelSelect({
   selected: Set<string>
   scope: SkillScope
 }) {
+  const { t } = useTranslation('skills')
+
   return (
     <div className="flex h-full flex-col gap-5 px-7 py-8">
       <div>
@@ -195,12 +200,10 @@ function RightPanelSelect({
           <span className="text-[44px] font-bold leading-none tracking-tight text-foreground">
             {skills.length}
           </span>
-          <span className="text-[13px] text-muted-foreground/50">skills found</span>
+          <span className="text-[13px] text-muted-foreground/50">{t('import.skillsFound', { count: skills.length })}</span>
         </div>
         <p className="mt-1.5 text-[12px] text-muted-foreground/40">
-          {selected.size}
-          {' selected · '}
-          {scope}
+          {t('import.selectedSummary', { count: selected.size, scope })}
         </p>
       </div>
 
@@ -229,10 +232,7 @@ function RightPanelSelect({
         })}
         {skills.length > 9 && (
           <p className="px-2 text-[11px] text-muted-foreground/30">
-            +
-            {skills.length - 9}
-            {' '}
-            more
+            {t('import.more', { count: skills.length - 9 })}
           </p>
         )}
       </div>
@@ -241,6 +241,8 @@ function RightPanelSelect({
 }
 
 function RightPanelDone({ count }: { count: number }) {
+  const { t } = useTranslation('skills')
+
   return (
     <div className="flex h-full flex-col justify-center gap-2 px-8 py-10">
       <m.p
@@ -257,8 +259,7 @@ function RightPanelDone({ count }: { count: number }) {
         transition={{ delay: 0.15, duration: 0.35 }}
         className="text-[14px] text-muted-foreground/50"
       >
-        {count === 1 ? 'skill' : 'skills'}
-        {' installed'}
+        {t('import.installed', { count })}
       </m.p>
     </div>
   )
@@ -273,6 +274,7 @@ function InputForm({
   isFetching: boolean
   error: string | null
 }) {
+  const { t } = useTranslation('skills')
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -292,9 +294,9 @@ function InputForm({
   return (
     <div className="flex h-full flex-col gap-8 p-8">
       <div className="flex flex-col gap-1.5">
-        <h2 className="text-[18px] font-semibold tracking-tight text-foreground text-balance">Import Skills</h2>
+        <h2 className="text-[18px] font-semibold tracking-tight text-foreground text-balance">{t('import.title')}</h2>
         <p className="text-[13px] leading-relaxed text-muted-foreground/60 text-pretty">
-          Enter a source to discover and install skills into this scope.
+          {t('import.formDescription')}
         </p>
       </div>
 
@@ -313,7 +315,7 @@ function InputForm({
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-            placeholder="owner/repo  or  https://github.com/..."
+            placeholder={t('import.sourcePlaceholder')}
             className="flex-1 bg-transparent font-mono text-[13px] text-foreground outline-none placeholder:font-sans placeholder:text-muted-foreground/25"
             disabled={isFetching}
             spellCheck={false}
@@ -345,12 +347,12 @@ function InputForm({
           ? (
             <>
               <Spinner className="size-3.5" />
-              Fetching…
+              {t('import.fetching')}
             </>
           )
           : (
             <>
-              Fetch Skills
+              {t('import.fetchSkills')}
               <ChevronRightIcon className="size-4" />
             </>
           )}
@@ -360,11 +362,13 @@ function InputForm({
 }
 
 function FetchingBody({ source }: { source: string }) {
+  const { t } = useTranslation('skills')
+
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-8 py-12 text-center">
       <Spinner className="size-6 text-muted-foreground/40" />
       <div className="flex flex-col gap-1">
-        <span className="text-[14px] font-medium text-foreground">Fetching…</span>
+        <span className="text-[14px] font-medium text-foreground">{t('import.fetching')}</span>
         <span className="max-w-64 truncate text-[12px] text-muted-foreground/50">{source}</span>
       </div>
     </div>
@@ -386,10 +390,12 @@ function SelectBody({
   onInstall: () => void
   isInstalling: boolean
 }) {
+  const { t } = useTranslation('skills')
+
   if (result.skills.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 py-12 text-center">
-        <p className="text-[13px] text-muted-foreground/50">No skills found in this source.</p>
+        <p className="text-[13px] text-muted-foreground/50">{t('import.empty')}</p>
       </div>
     )
   }
@@ -400,19 +406,14 @@ function SelectBody({
     <div className="flex h-full flex-col">
       <div className="flex items-baseline justify-between px-8 pb-3 pt-7">
         <h2 className="text-[16px] font-semibold text-foreground text-balance">
-          {result.skills.length}
-          {' '}
-          skill
-          {result.skills.length !== 1 ? 's' : ''}
-          {' '}
-          found
+          {t('import.selectedHeading', { count: result.skills.length })}
         </h2>
         <button
           type="button"
           onClick={onToggleAll}
           className="text-[12px] text-muted-foreground/40 transition-colors hover:text-foreground"
         >
-          {allSelected ? 'Deselect all' : 'Select all'}
+          {allSelected ? t('import.deselectAll') : t('import.selectAll')}
         </button>
       </div>
 
@@ -472,17 +473,12 @@ function SelectBody({
             ? (
               <>
                 <Spinner className="size-3.5" />
-                Installing…
+                {t('import.installing')}
               </>
             )
             : (
               <>
-                Install
-                {' '}
-                {selected.size}
-                {' '}
-                skill
-                {selected.size !== 1 ? 's' : ''}
+                {t('import.install', { count: selected.size })}
               </>
             )}
         </Button>
@@ -498,28 +494,23 @@ function DoneBody({
   result: ImportResult
   onClose: () => void
 }) {
+  const { t } = useTranslation('skills')
+
   return (
     <div className="flex h-full flex-col items-center justify-center gap-7 px-8 py-12 text-center">
       <div className="flex flex-col gap-1.5">
         <span className="text-[17px] font-semibold text-foreground">
-          Done!
+          {t('import.done')}
         </span>
         <span className="text-[13px] text-muted-foreground/55">
-          {result.imported}
-          {' '}
-          skill
-          {result.imported !== 1 ? 's' : ''}
-          {' '}
-          installed successfully
+          {t('import.installed', { count: result.imported })}
         </span>
       </div>
 
       {result.errors.length > 0 && (
         <div className="w-full rounded-xl bg-destructive/6 px-4 py-3.5 text-left">
           <span className="mb-2 block text-[12px] font-medium text-destructive">
-            {result.errors.length}
-            {' '}
-            failed
+            {t('import.failed', { count: result.errors.length })}
           </span>
           {result.errors.map(e => (
             <div key={e.dir} className="border-t border-destructive/10 py-1.5">
@@ -531,7 +522,7 @@ function DoneBody({
       )}
 
       <Button onClick={onClose} variant="outline" className="h-10 w-full" data-testid="skill-import-done-btn">
-        Finish importing
+        {t('import.finish')}
       </Button>
     </div>
   )
@@ -550,6 +541,8 @@ export function SkillImportDialog({
   workspaceId?: string | null
   agentId?: string | null
 }) {
+  const { t: tCommon } = useTranslation('common')
+  const { t } = useTranslation('skills')
   const { fetchSource, importFromFetch, cancelFetch } = useSkillSourceImport({ workspaceId, agentId })
   const [state, dispatch] = useReducer(skillImportDialogReducer, initialSkillImportDialogState)
 
@@ -641,13 +634,13 @@ export function SkillImportDialog({
           <div className="relative flex w-[58%] flex-col overflow-hidden border-r border-foreground/6">
             <div className="flex shrink-0 items-center justify-between border-b border-foreground/6 px-8 py-4">
               <div className="flex items-center gap-3">
-                <span className="text-[13px] font-semibold text-foreground">Import Skills</span>
+                <span className="text-[13px] font-semibold text-foreground">{t('import.title')}</span>
                 <StepDots current={state.step} />
               </div>
               <button
                 type="button"
                 onClick={handleClose}
-                aria-label="Close"
+                aria-label={tCommon('action.close')}
                 className="flex size-7 items-center justify-center rounded-lg text-muted-foreground/30 transition-colors hover:bg-foreground/6 hover:text-foreground"
               >
                 <XIcon className="size-3.5" />

@@ -1,0 +1,10 @@
+{
+  "action.allow": "Permitir",
+  "action.allowAlways": "Permitir siempre",
+  "action.deny": "Denegar",
+  "empty.description": "Las solicitudes de aprobación de agentes aparecerán aquí.",
+  "empty.title": "No hay aprobaciones pendientes",
+  "inbox.description": "Solicitudes pendientes de permisos de agentes",
+  "inbox.title": "Aprobaciones",
+  "request.prefix": "Permiso requerido:"
+}

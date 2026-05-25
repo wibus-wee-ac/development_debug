@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
@@ -10,15 +11,28 @@ import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-prefere
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
-const JARVIS_THINKING_OPTIONS: Array<ThinkingOption<JarvisPreferences['thinkingLevel']>> = [
-  { value: 'minimal', label: 'Minimal', description: 'Lowest reasoning budget for direct tasks' },
-  { value: 'low', label: 'Low', description: 'Fast responses with light reasoning' },
-  { value: 'medium', label: 'Medium', description: 'Balanced reasoning for everyday work' },
-  { value: 'high', label: 'High', description: 'Deeper reasoning for complex work' },
-  { value: 'xhigh', label: 'Extra High', description: 'Maximum reasoning budget for hard tasks' },
-]
+const JARVIS_THINKING_LEVELS: Array<JarvisPreferences['thinkingLevel']> = ['minimal', 'low', 'medium', 'high', 'xhigh']
+
+type SettingsKey = keyof typeof import('~/locales/default').default.settings
+
+const jarvisThinkingLabelKeys = {
+  minimal: 'jarvis.thinking.minimal.label',
+  low: 'jarvis.thinking.low.label',
+  medium: 'jarvis.thinking.medium.label',
+  high: 'jarvis.thinking.high.label',
+  xhigh: 'jarvis.thinking.xhigh.label',
+} satisfies Record<JarvisPreferences['thinkingLevel'], SettingsKey>
+
+const jarvisThinkingDescriptionKeys = {
+  minimal: 'jarvis.thinking.minimal.description',
+  low: 'jarvis.thinking.low.description',
+  medium: 'jarvis.thinking.medium.description',
+  high: 'jarvis.thinking.high.description',
+  xhigh: 'jarvis.thinking.xhigh.description',
+} satisfies Record<JarvisPreferences['thinkingLevel'], SettingsKey>
 
 export function JarvisSettings() {
+  const { t } = useTranslation('settings')
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { profiles, isSuccess: profilesReady } = useAgentProfiles()
   const selectedProfile = useMemo(
@@ -34,8 +48,13 @@ export function JarvisSettings() {
   const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
   const selectedProfileModelsReady = !selectedProfile || !selectedProfile.enabled || successfulProfileIds.has(selectedProfile.id)
   const settingsJarvisReady = prefsReady && profilesReady && selectedProfileModelsReady
+  const thinkingOptions: Array<ThinkingOption<JarvisPreferences['thinkingLevel']>> = useMemo(() => JARVIS_THINKING_LEVELS.map(value => ({
+    value,
+    label: t(jarvisThinkingLabelKeys[value]),
+    description: t(jarvisThinkingDescriptionKeys[value]),
+  })), [t])
   const selectThinkingForModel = (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
-    selectSupportedThinkingValue(model, JARVIS_THINKING_OPTIONS, prefs?.thinkingLevel ?? 'medium', 'medium')
+    selectSupportedThinkingValue(model, thinkingOptions, prefs?.thinkingLevel ?? 'medium', 'medium')
 
   if (!prefs) {
     return null
@@ -48,12 +67,12 @@ export function JarvisSettings() {
       data-settings-jarvis-ready={settingsJarvisReady ? 'true' : 'false'}
     >
       <SettingsSectionHeader
-        title="Jarvis"
-        description="Configure the system assistant that has full awareness of your workspace."
+        title={t('jarvis.page.title')}
+        description={t('jarvis.page.description')}
       />
       <SettingsDivider />
 
-      <SettingsRow label="Model" description="Choose Jarvis provider profile, model, and thinking level">
+      <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>
         <ProviderModelPicker
           profiles={profiles}
           selectedProfileId={prefs.profileId}
@@ -62,14 +81,14 @@ export function JarvisSettings() {
           modelsByProfileId={modelsByProfileId}
           loadingProfileIds={loadingProfileIds}
           thinkingValue={prefs.thinkingLevel}
-          thinkingOptions={JARVIS_THINKING_OPTIONS}
-          emptyProfilesLabel="No agent profiles configured"
-          emptySelectionLabel="Select a model"
+          thinkingOptions={thinkingOptions}
+          emptyProfilesLabel={t('jarvis.model.emptyProfiles')}
+          emptySelectionLabel={t('jarvis.model.emptySelection')}
           menuSide="bottom"
           menuAlign="end"
           triggerTestId="jarvis-provider-model-selector"
           disabled={saving}
-          getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, JARVIS_THINKING_OPTIONS)}
+          getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
           onRequestProfileModels={requestProfileModels}
           onSelectProfile={(profileId) => {
             requestProfileModels(profileId)

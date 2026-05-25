@@ -1,0 +1,17 @@
+{
+  "action.close": "关闭",
+  "action.collapse": "收起",
+  "action.expand": "展开",
+  "action.send": "发送",
+  "action.stop": "停止",
+  "empty.noProfile.description": "前往 Settings → Jarvis，选择 provider profile 和 model。",
+  "empty.noProfile.title": "尚未配置 profile",
+  "empty.ready.description": "我可以感知你的工作区、活动标签页、聊天会话和当前布局。",
+  "empty.ready.title": "我可以帮你做什么？",
+  "error.createSessionFailed": "创建会话失败",
+  "error.sessionCreationFailed": "会话创建失败",
+  "input.aria": "Jarvis 消息",
+  "input.includeContext": "包含上下文",
+  "input.placeholder.ask": "询问 Jarvis...",
+  "input.placeholder.configureProfile": "请先在设置 → Jarvis 中配置 profile"
+}
