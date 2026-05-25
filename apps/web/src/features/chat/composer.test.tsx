@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '~/components/ui/tooltip'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { Composer } from './composer'
+import { Composer, type ComposerSlashCommandActionContext } from './composer'
 
 const aiMocks = vi.hoisted(() => ({
   convertFileListToFileUIParts: vi.fn(async (files: FileList | undefined): Promise<FileUIPart[]> => {
@@ -127,6 +127,76 @@ describe('composer attachments', () => {
     expect(screen.queryByTestId('chat-attachment-image-preview')).toBeNull()
     expect((screen.getByTestId('chat-send-btn') as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it('renders Cradle AppShot metadata as an AppShot card without filename heuristics', async () => {
+    const onSend = vi.fn()
+    const appshotPart: FileUIPart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'window.png',
+      url: 'data:image/png;base64,final',
+      providerMetadata: {
+        cradle: {
+          appshot: {
+            kind: 'cradle-appshot',
+            appName: 'Visual Studio Code',
+            windowTitle: 'Cradle',
+            bundleIdentifier: 'com.microsoft.VSCode',
+            imageName: 'window.png',
+            imageDataUrl: 'data:image/png;base64,final',
+            imagePath: '/tmp/window.png',
+            transitionSnapshotDataUrl: 'data:image/png;base64,transition',
+            transitionSnapshotHeight: 140,
+            appIconDataUrl: null,
+            axTree: '',
+          },
+        },
+      },
+    }
+
+    render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          supportsAttachments
+          appendExternalFileParts={[appshotPart]}
+          appendExternalFilePartsKey={1}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
+    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Visual Studio Code')
+    expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,transition')
+    expect(screen.queryByText('window.png')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('chat-send-btn'))
+
+    expect(onSend).toHaveBeenCalledWith('', [appshotPart])
+  })
+
+  it('renders pending AppShot slots with the composer identity height', async () => {
+    const onSend = vi.fn()
+    const { container } = render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          supportsAttachments
+          pendingAppshots={[{
+            requestId: 'request-title',
+            transitionSnapshotHeight: 160.5,
+            transitionSnapshotHeightResolved: true,
+            transitionSpringDampingFraction: null,
+            transitionSpringResponse: null,
+          }]}
+        />
+      </TooltipProvider>,
+    )
+
+    const pendingSlot = container.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
+    expect(pendingSlot).toBeTruthy()
+    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('190.5')
+  })
 })
 
 describe('composer slash commands', () => {
@@ -195,7 +265,9 @@ describe('composer slash commands', () => {
     fireEvent.change(textarea, { target: { value: '/' } })
     fireEvent.click(screen.getByRole('option', { name: '/goal Cradle' }))
 
-    expect(onSlashCommandAction).toHaveBeenCalledWith(cradleGoalCommand, {})
+    expect(onSlashCommandAction).toHaveBeenCalledWith(cradleGoalCommand, {}, {
+      readActionContext: expect.any(Function),
+    })
     expect(onSend).not.toHaveBeenCalled()
     expect(textarea.value).toBe('/')
     expect(screen.queryByRole('option', { name: '/goal Cradle' })).toBeNull()
@@ -280,18 +352,22 @@ describe('composer slash commands', () => {
     fireEvent.change(textarea, { target: { value: '/' } })
     fireEvent.click(screen.getByRole('option', { name: '/appshot Cradle' }))
 
-    expect(onSlashCommandAction).toHaveBeenCalledWith(cradleAppshotCommand, {
-      animationTarget: expect.objectContaining({
-        destinationCornerRadius: 0,
-        destinationFrame: expect.objectContaining({
-          x: 98,
-          y: 20,
-          width: 232,
-          height: 140,
+    expect(onSlashCommandAction).toHaveBeenCalledWith(
+      cradleAppshotCommand,
+      {
+        animationTarget: expect.objectContaining({
+          destinationCornerRadius: 0,
+          destinationFrame: expect.objectContaining({
+            x: 10,
+            y: 20,
+            width: 232,
+            height: 140,
+          }),
+          transitionSnapshotScale: 1,
         }),
-        transitionSnapshotScale: 1,
-      }),
-    })
+      },
+      { readActionContext: expect.any(Function) },
+    )
     expect(await screen.findByText('appshot.png')).toBeTruthy()
     expect(screen.getByTestId('chat-attachment-image-preview').getAttribute('src')).toBe('data:image/png;base64,test')
 
@@ -303,6 +379,358 @@ describe('composer slash commands', () => {
       filename: 'appshot.png',
       url: 'data:image/png;base64,test',
     }])
+  })
+
+  it('measures AppShot animation destination from the matching pending slot', () => {
+    const onSend = vi.fn()
+    const measuredContexts: ComposerSlashCommandActionContext[] = []
+    const cradleAppshotCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
+      argumentHint: '',
+      source: 'cradle',
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
+    }
+
+    render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          onSlashCommandAction={(_command, _context, tools) => {
+            const measuredContext = tools?.readActionContext({ pendingAppshotRequestId: 'request-1' })
+            if (measuredContext) {
+              measuredContexts.push(measuredContext)
+            }
+            return { insertText: '' }
+          }}
+          slashCommands={[cradleAppshotCommand]}
+          supportsAttachments
+          pendingAppshots={[{
+            requestId: 'request-1',
+            transitionSnapshotHeight: null,
+            transitionSnapshotHeightResolved: false,
+            transitionSpringDampingFraction: null,
+            transitionSpringResponse: null,
+          }]}
+        />
+      </TooltipProvider>,
+    )
+
+    const actionTarget = screen.getByTestId('chat-composer-action-target')
+    vi.spyOn(actionTarget, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 20,
+      top: 20,
+      left: 10,
+      bottom: 220,
+      right: 650,
+      width: 640,
+      height: 200,
+      toJSON: () => ({}),
+    } as DOMRect)
+    const attachmentsContainer = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-container]')
+    const attachmentsRow = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-row]')
+    const pendingSlot = actionTarget.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-1"]')
+    expect(attachmentsContainer).toBeTruthy()
+    expect(attachmentsRow).toBeTruthy()
+    expect(pendingSlot).toBeTruthy()
+    vi.spyOn(attachmentsContainer!, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 100,
+      top: 100,
+      left: 10,
+      bottom: 242,
+      right: 650,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(attachmentsRow!, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 100,
+      top: 100,
+      left: 10,
+      bottom: 242,
+      right: 650,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(pendingSlot!, 'getBoundingClientRect').mockReturnValue({
+      x: 321,
+      y: 100,
+      top: 100,
+      left: 321,
+      bottom: 100,
+      right: 321,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '/' } })
+    fireEvent.click(screen.getByRole('option', { name: '/appshot Cradle' }))
+
+    expect(measuredContexts).toHaveLength(1)
+    const context = measuredContexts[0]
+    expect(context.animationTarget?.destinationFrame).toEqual({
+      x: 321,
+      y: 72,
+      width: 232,
+      height: 140,
+    })
+  })
+
+  it('uses the title-aware AppShot height when correcting the capture destination', () => {
+    const onSend = vi.fn()
+    const measuredContexts: ComposerSlashCommandActionContext[] = []
+    const cradleAppshotCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
+      argumentHint: '',
+      source: 'cradle',
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
+    }
+
+    render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          onSlashCommandAction={(_command, _context, tools) => {
+            const measuredContext = tools?.readActionContext({
+              pendingAppshotRequestId: 'request-title',
+              transitionSnapshotHeight: 160.5,
+            })
+            if (measuredContext) {
+              measuredContexts.push(measuredContext)
+            }
+            return { insertText: '' }
+          }}
+          slashCommands={[cradleAppshotCommand]}
+          supportsAttachments
+          pendingAppshots={[{
+            requestId: 'request-title',
+            transitionSnapshotHeight: null,
+            transitionSnapshotHeightResolved: false,
+            transitionSpringDampingFraction: null,
+            transitionSpringResponse: null,
+          }]}
+        />
+      </TooltipProvider>,
+    )
+
+    const actionTarget = screen.getByTestId('chat-composer-action-target')
+    vi.spyOn(actionTarget, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 20,
+      top: 20,
+      left: 10,
+      bottom: 220,
+      right: 650,
+      width: 640,
+      height: 200,
+      toJSON: () => ({}),
+    } as DOMRect)
+    const attachmentsContainer = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-container]')
+    const attachmentsRow = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-row]')
+    const pendingSlot = actionTarget.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
+    expect(attachmentsContainer).toBeTruthy()
+    expect(attachmentsRow).toBeTruthy()
+    expect(pendingSlot).toBeTruthy()
+    vi.spyOn(attachmentsContainer!, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 100,
+      top: 100,
+      left: 10,
+      bottom: 242,
+      right: 650,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(attachmentsRow!, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 100,
+      top: 100,
+      left: 10,
+      bottom: 242,
+      right: 650,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(pendingSlot!, 'getBoundingClientRect').mockReturnValue({
+      x: 321,
+      y: 100,
+      top: 100,
+      left: 321,
+      bottom: 100,
+      right: 321,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '/' } })
+    fireEvent.click(screen.getByRole('option', { name: '/appshot Cradle' }))
+
+    expect(measuredContexts).toHaveLength(1)
+    expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
+      x: 321,
+      y: 51.5,
+      width: 232,
+      height: 140,
+    })
+  })
+
+  it('falls back to the Codex AppShot tray offsets when a pending slot has not been laid out', async () => {
+    const onSend = vi.fn()
+    const measuredContexts: ComposerSlashCommandActionContext[] = []
+    const appshotPart: FileUIPart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'window.png',
+      url: 'data:image/png;base64,final',
+      providerMetadata: {
+        cradle: {
+          appshot: {
+            kind: 'cradle-appshot',
+            appName: 'Visual Studio Code',
+            windowTitle: 'Cradle',
+            bundleIdentifier: 'com.microsoft.VSCode',
+            imageName: 'window.png',
+            imageDataUrl: 'data:image/png;base64,final',
+            imagePath: '/tmp/window.png',
+            transitionSnapshotDataUrl: 'data:image/png;base64,transition',
+            transitionSnapshotHeight: 140,
+            appIconDataUrl: null,
+            axTree: '',
+          },
+        },
+      },
+    }
+    const cradleAppshotCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
+      argumentHint: '',
+      source: 'cradle',
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
+    }
+
+    render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          onSlashCommandAction={(_command, _context, tools) => {
+            const measuredContext = tools?.readActionContext({ pendingAppshotRequestId: 'request-2' })
+            if (measuredContext) {
+              measuredContexts.push(measuredContext)
+            }
+            return { insertText: '' }
+          }}
+          slashCommands={[cradleAppshotCommand]}
+          supportsAttachments
+          appendExternalFileParts={[appshotPart]}
+          appendExternalFilePartsKey={1}
+          pendingAppshots={[
+            {
+              requestId: 'request-1',
+              transitionSnapshotHeight: null,
+              transitionSnapshotHeightResolved: false,
+              transitionSpringDampingFraction: null,
+              transitionSpringResponse: null,
+            },
+            {
+              requestId: 'request-2',
+              transitionSnapshotHeight: null,
+              transitionSnapshotHeightResolved: false,
+              transitionSpringDampingFraction: null,
+              transitionSpringResponse: null,
+            },
+          ]}
+        />
+      </TooltipProvider>,
+    )
+
+    fireEvent.change(screen.getByTestId('chat-file-input'), {
+      target: { files: [new File(['image'], 'diagram.png', { type: 'image/png' })] },
+    })
+
+    expect(await screen.findByText('diagram.png')).toBeTruthy()
+    expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
+
+    const actionTarget = screen.getByTestId('chat-composer-action-target')
+    vi.spyOn(actionTarget, 'getBoundingClientRect').mockReturnValue({
+      x: 10,
+      y: 20,
+      top: 20,
+      left: 10,
+      bottom: 260,
+      right: 650,
+      width: 640,
+      height: 240,
+      toJSON: () => ({}),
+    } as DOMRect)
+    const attachmentsContainer = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-container]')
+    const attachmentsRow = actionTarget.querySelector<HTMLElement>('[data-composer-attachments-row]')
+    const pendingSlot = actionTarget.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-2"]')
+    expect(attachmentsContainer).toBeTruthy()
+    expect(attachmentsRow).toBeTruthy()
+    expect(pendingSlot).toBeTruthy()
+    vi.spyOn(attachmentsContainer!, 'getBoundingClientRect').mockReturnValue({
+      x: 20,
+      y: 120,
+      top: 120,
+      left: 20,
+      bottom: 262,
+      right: 660,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(attachmentsRow!, 'getBoundingClientRect').mockReturnValue({
+      x: 20,
+      y: 120,
+      top: 120,
+      left: 20,
+      bottom: 262,
+      right: 660,
+      width: 640,
+      height: 142,
+      toJSON: () => ({}),
+    } as DOMRect)
+    Object.defineProperty(attachmentsRow!, 'scrollLeft', {
+      configurable: true,
+      value: 4,
+    })
+    vi.spyOn(pendingSlot!, 'getBoundingClientRect').mockReturnValue({
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      bottom: 0,
+      right: 0,
+      width: 0,
+      height: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '/' } })
+    fireEvent.click(screen.getByRole('option', { name: '/appshot Cradle' }))
+
+    expect(measuredContexts).toHaveLength(1)
+    expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
+      x: 584,
+      y: 92,
+      width: 232,
+      height: 140,
+    })
   })
 
   it('does not let delayed Cradle UI inserted text overwrite later user edits', async () => {

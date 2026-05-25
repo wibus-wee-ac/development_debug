@@ -1,6 +1,6 @@
 /*
- * Output: Manual Appshot parity evidence captured from Codex private Appshot and Cradle native Appshot.
- * Input: A running Codex Computer Use service, the frontmost macOS window, and the cradle-mac-bridge binary.
+ * Output: Manual Appshot parity evidence captured from Codex UI observation and Cradle native Appshot.
+ * Input: A frontmost macOS window, optional user-triggered Codex UI Appshot, and the cradle-mac-bridge binary.
  * Position: Desktop scripts own local evidence collection for macOS native runtime parity work.
  */
 
@@ -24,11 +24,14 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const desktopRoot = resolve(scriptDir, '..')
 const workspaceRoot = resolve(desktopRoot, '../..')
 const packageRoot = resolve(desktopRoot, 'native/macos/mac-bridge')
+const codexResearchResourceRoot = resolve(workspaceRoot, '../safe-research/codex-app-resources-20260525')
 const codexTmpRoot = resolve(tmpdir(), 'com.openai.sky.CUAService')
 const maxAssetBytes = 25 * 1024 * 1024
 const codexAppshotSoundCandidates = [
   '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav',
   '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/SharedSupport/CUALockScreenGuardian.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav',
+  resolve(codexResearchResourceRoot, 'Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav'),
+  resolve(codexResearchResourceRoot, 'Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/SharedSupport/CUALockScreenGuardian.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav'),
 ]
 const defaultAppshotAnimationDurationSeconds = 0.88
 
@@ -40,21 +43,17 @@ function parseArgs(argv) {
     extractFrames: false,
     frameRate: 30,
     analyzeVideo: false,
-    codexAppleEventTimeoutSeconds: 115,
-    codexSource: 'direct',
+    codexSource: 'observe',
     observeSeconds: 8,
     observePollIntervalMs: 250,
     alignmentConsecutiveFrameCount: 2,
     alignmentSsimThreshold: 0.985,
-    pollLimit: 32,
     recordingBackend: 'auto',
     recordVideo: false,
     recordingSeconds: 3,
     requireProvenParity: false,
     requestId: `cradle-appshot-parity-${Date.now()}`,
     soundEnabled: true,
-    transitionStyleInput: null,
-    transitionStyleSweepInput: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -73,14 +72,6 @@ function parseArgs(argv) {
     }
     else if (arg === '--destination-frame') {
       options.destinationFrame = parseRectArg(readRequiredArg(arg, next))
-      index += 1
-    }
-    else if (arg === '--poll-limit') {
-      options.pollLimit = Number.parseInt(readRequiredArg(arg, next), 10)
-      index += 1
-    }
-    else if (arg === '--codex-apple-event-timeout-seconds') {
-      options.codexAppleEventTimeoutSeconds = Number.parseInt(readRequiredArg(arg, next), 10)
       index += 1
     }
     else if (arg === '--codex-source') {
@@ -131,14 +122,6 @@ function parseArgs(argv) {
       options.requestId = readRequiredArg(arg, next)
       index += 1
     }
-    else if (arg === '--transition-style') {
-      options.transitionStyleInput = readRequiredArg(arg, next)
-      index += 1
-    }
-    else if (arg === '--transition-style-sweep') {
-      options.transitionStyleSweepInput = readRequiredArg(arg, next)
-      index += 1
-    }
     else if (arg === '--no-sound') {
       options.soundEnabled = false
     }
@@ -151,14 +134,8 @@ function parseArgs(argv) {
     }
   }
 
-  if (!Number.isInteger(options.pollLimit) || options.pollLimit <= 0) {
-    throw new Error('--poll-limit must be a positive integer.')
-  }
-  if (!Number.isInteger(options.codexAppleEventTimeoutSeconds) || options.codexAppleEventTimeoutSeconds <= 0) {
-    throw new Error('--codex-apple-event-timeout-seconds must be a positive integer.')
-  }
-  if (!['direct', 'observe', 'direct-and-observe'].includes(options.codexSource)) {
-    throw new Error('--codex-source must be direct, observe, or direct-and-observe.')
+  if (options.codexSource !== 'observe') {
+    throw new Error('--codex-source only supports observe. The direct Codex private Apple Event adapter has been removed from Mac Bridge.')
   }
   if (!Number.isFinite(options.observeSeconds) || options.observeSeconds <= 0) {
     throw new Error('--observe-seconds must be a positive number.')
@@ -200,11 +177,8 @@ function printUsage() {
     '  --output <dir>        Write the parity report into this directory.',
     '  --destination-frame <x,y,width,height>',
     '                        Override the synthetic composer destination frame.',
-    '  --request-id <id>     Use a deterministic Codex private request id.',
-    '  --poll-limit <count>  Maximum Codex private update polls. Default: 32.',
-    '  --codex-apple-event-timeout-seconds <seconds>',
-    '                        Timeout for each Codex private Apple Event. Default: 115.',
-    '  --codex-source <mode>  direct, observe, or direct-and-observe. Default: direct.',
+    '  --request-id <id>     Use a deterministic report request id.',
+    '  --codex-source <mode>  observe only. Default: observe.',
     '  --observe-seconds <seconds>',
     '                        Window for observing Codex temp assets. Default: 8.',
     '  --observe-poll-interval-ms <ms>',
@@ -223,125 +197,8 @@ function printUsage() {
     '  --extract-frames      Extract PNG frames from recorded videos with ffmpeg.',
     '  --analyze-video       Run ffmpeg SSIM/PSNR comparison between recorded videos.',
     '  --frame-rate <fps>    Frame extraction rate. Default: 30.',
-    '  --transition-style <json-or-file>',
-    '                        Override Cradle native Appshot transition style calibration.',
-    '  --transition-style-sweep <json-or-file>',
-    '                        Capture multiple Cradle native calibration variants for parity tuning.',
     '  --no-sound           Disable the Cradle native Appshot sound during capture.',
   ].join('\n'))
-}
-
-async function readJsonOrFileArg(value, name) {
-  const parsed = await readJsonValueOrFileArg(value, name)
-  if (!parsed) {
-    return null
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${name} must be a JSON object.`)
-  }
-  return parsed
-}
-
-async function readJsonValueOrFileArg(value, name) {
-  if (!value) {
-    return null
-  }
-  const trimmed = value.trim()
-  if (!trimmed) {
-    throw new Error(`${name} requires JSON or a JSON file path.`)
-  }
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    return parseJsonValue(trimmed, name)
-  }
-  const filePath = resolve(value)
-  const content = await readFile(filePath, 'utf8')
-  return parseJsonValue(content, name)
-}
-
-function parseJsonValue(content, name) {
-  let parsed
-  try {
-    parsed = JSON.parse(content)
-  }
-  catch (error) {
-    throw new Error(`${name} must be valid JSON: ${error instanceof Error ? error.message : String(error)}`)
-  }
-  return parsed
-}
-
-function parseJsonObject(content, name) {
-  const parsed = parseJsonValue(content, name)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${name} must be a JSON object.`)
-  }
-  return parsed
-}
-
-async function readTransitionStyleSweepArg(value) {
-  const raw = await readJsonValueOrFileArg(value, '--transition-style-sweep')
-  if (!raw) {
-    return []
-  }
-  const variants = Array.isArray(raw)
-    ? raw
-    : Array.isArray(raw.variants)
-      ? raw.variants
-      : Object.entries(raw).map(([id, transitionStyle]) => ({ id, transitionStyle }))
-  return variants.map((variant, index) => normalizeTransitionStyleSweepVariant(variant, index))
-}
-
-function normalizeTransitionStyleSweepVariant(raw, index) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error(`--transition-style-sweep variant ${index + 1} must be a JSON object.`)
-  }
-  const id = readSweepVariantId(raw, index)
-  const transitionStyle = readSweepVariantTransitionStyle(raw)
-  if (!transitionStyle || typeof transitionStyle !== 'object' || Array.isArray(transitionStyle)) {
-    throw new Error(`--transition-style-sweep variant ${id} must provide a transition style object.`)
-  }
-  return {
-    id,
-    transitionStyle,
-  }
-}
-
-function readSweepVariantTransitionStyle(raw) {
-  if (raw.transitionStyle) {
-    return raw.transitionStyle
-  }
-  if (raw.style) {
-    return raw.style
-  }
-  const { id: _id, name: _name, ...transitionStyle } = raw
-  return transitionStyle
-}
-
-function readSweepVariantId(raw, index) {
-  const rawId = typeof raw.id === 'string'
-    ? raw.id
-    : typeof raw.name === 'string'
-      ? raw.name
-      : `variant-${String(index + 1).padStart(2, '0')}`
-  const id = rawId.trim()
-  if (!id) {
-    return `variant-${String(index + 1).padStart(2, '0')}`
-  }
-  return id
-}
-
-function sanitizePathSegment(value) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    || 'variant'
-}
-
-function mergeTransitionStyle(base, override) {
-  return {
-    ...(base ?? {}),
-    ...override,
-  }
 }
 
 function parseRectArg(value) {
@@ -491,14 +348,6 @@ class BridgeClient {
       this.events.push(payload)
     }
   }
-}
-
-async function copyCodexAsset(rawPathOrUrl, reportDir, label) {
-  const sourcePath = readFilePath(rawPathOrUrl)
-  if (!sourcePath) {
-    return null
-  }
-  return copyCodexAssetPath(sourcePath, reportDir, label)
 }
 
 async function copyCodexAssetPath(sourcePath, reportDir, label) {
@@ -727,10 +576,14 @@ function summarizePresentationProbeSamples(samples) {
   const lastSnapshotFrame = snapshotFrames[snapshotFrames.length - 1] ?? null
   const changedSnapshotFrameCount = snapshotFrames.filter(frame => !areSameRect(frame, firstSnapshotFrame)).length
   const shadowFrameChangeCounts = {
+    shadow: countChangedRects(samples.map(sample => sample.shadowFrame).filter(Boolean)),
     destination: countChangedRects(samples.map(sample => sample.destinationShadowFrame).filter(Boolean)),
     key: countChangedRects(samples.map(sample => sample.keyShadowFrame).filter(Boolean)),
     ambient: countChangedRects(samples.map(sample => sample.ambientShadowFrame).filter(Boolean)),
   }
+  const whiteLayerEvidence = summarizeWhiteLayerEvidence(samples)
+  const nativeGeometryEvidence = summarizeNativePresentationGeometryEvidence(samples)
+  const snapshotContentEvidence = summarizeSnapshotContentEvidence(samples)
   const opacitySamples = samples.map(sample => ({
     transitionBackgroundOpacity: readFiniteProbeNumber(sample.transitionBackgroundOpacity),
     shutterOpacity: readFiniteProbeNumber(sample.shutterOpacity),
@@ -761,6 +614,9 @@ function summarizePresentationProbeSamples(samples) {
     lastImageHash: [...samples].reverse().find(sample => sample.imageEvidence?.sha256)?.imageEvidence?.sha256 ?? null,
     changedSnapshotFrameCount,
     shadowFrameChangeCounts,
+    whiteLayerEvidence,
+    nativeGeometryEvidence,
+    snapshotContentEvidence,
     changedOpacityKeys,
     motionDetected: hashes.size > 1
       || changedSnapshotFrameCount > 0
@@ -771,8 +627,116 @@ function summarizePresentationProbeSamples(samples) {
   }
 }
 
+function summarizeNativePresentationGeometryEvidence(samples) {
+  const first = samples[0] ?? null
+  const last = samples[samples.length - 1] ?? null
+  const expectedEndBounds = last?.expectedEndFrame
+    ? {
+        x: 0,
+        y: 0,
+        width: last.expectedEndFrame.width,
+        height: last.expectedEndFrame.height,
+      }
+    : null
+  return {
+    firstShutterMatchesSourceContentBounds: areSameRect(first?.shutterFrame, first?.expectedStartContentBounds),
+    firstShadowMatchesSourceContentFrame: areSameRect(first?.shadowFrame, first?.expectedStartContentFrame),
+    firstSnapshotImageMatchesCaptureFrame: areSameRect(first?.snapshotImageFrame, first?.expectedSnapshotImageStartFrame),
+    lastShutterMatchesDestinationBounds: areSameRect(last?.shutterFrame, expectedEndBounds),
+    lastSnapshotMatchesDestinationBounds: areSameRect(last?.snapshotFrame, expectedEndBounds),
+    lastShadowMatchesDestinationFrame: areSameRect(last?.shadowFrame, last?.expectedEndFrame),
+    firstShutterFrame: first?.shutterFrame ?? null,
+    firstExpectedStartContentBounds: first?.expectedStartContentBounds ?? null,
+    firstShadowFrame: first?.shadowFrame ?? null,
+    firstExpectedStartContentFrame: first?.expectedStartContentFrame ?? null,
+    firstSnapshotImageFrame: first?.snapshotImageFrame ?? null,
+    firstExpectedSnapshotImageStartFrame: first?.expectedSnapshotImageStartFrame ?? null,
+    lastShutterFrame: last?.shutterFrame ?? null,
+    lastSnapshotFrame: last?.snapshotFrame ?? null,
+    lastShadowFrame: last?.shadowFrame ?? null,
+    lastExpectedEndFrame: last?.expectedEndFrame ?? null,
+  }
+}
+
+function summarizeWhiteLayerEvidence(samples) {
+  const visibleSamples = samples.filter(sample =>
+    readFiniteProbeNumber(sample.coverOpacity) !== null
+    || readFiniteProbeNumber(sample.shutterOpacity) !== null,
+  )
+  const firstVisible = visibleSamples[0] ?? null
+  const coverOpacityValues = visibleSamples
+    .map(sample => readFiniteProbeNumber(sample.coverOpacity))
+    .filter(value => value !== null)
+  const shutterOpacityValues = visibleSamples
+    .map(sample => readFiniteProbeNumber(sample.shutterOpacity))
+    .filter(value => value !== null)
+  const coverCornerRadii = samples
+    .map(sample => readFiniteProbeNumber(sample.coverCornerRadius))
+    .filter(value => value !== null)
+  const shutterCornerRadii = samples
+    .map(sample => readFiniteProbeNumber(sample.shutterCornerRadius))
+    .filter(value => value !== null)
+  const maxCoverOpacity = maxProbeValue(coverOpacityValues)
+  const maxShutterOpacity = maxProbeValue(shutterOpacityValues)
+  return {
+    sampleCount: visibleSamples.length,
+    startsVisible: readFiniteProbeNumber(firstVisible?.coverOpacity) === 1
+      && readFiniteProbeNumber(firstVisible?.shutterOpacity) === 1,
+    fadesInVisible: (maxCoverOpacity ?? 0) >= 0.95 && (maxShutterOpacity ?? 0) >= 0.95,
+    coverOpacityChanges: valuesChange(coverOpacityValues),
+    shutterOpacityChanges: valuesChange(shutterOpacityValues),
+    maxCoverOpacity,
+    maxShutterOpacity,
+    coverIsWhite: samples.some(sample => isOpaqueWhiteColor(sample.coverBackgroundColor)),
+    shutterIsWhite: samples.some(sample => isOpaqueWhiteColor(sample.shutterBackgroundColor)),
+    coverHasRoundedCorners: coverCornerRadii.some(value => value > 0),
+    shutterHasRoundedCorners: shutterCornerRadii.some(value => value > 0),
+    firstCoverCornerRadius: coverCornerRadii[0] ?? null,
+    firstShutterCornerRadius: shutterCornerRadii[0] ?? null,
+  }
+}
+
+function summarizeSnapshotContentEvidence(samples) {
+  const scaleValues = samples
+    .map(sample => readFiniteProbeNumber(sample.snapshotImageContentsScale))
+    .filter(value => value !== null)
+  return {
+    hasContents: samples.some(sample => sample.snapshotImageHasContents === true),
+    contentsScale: scaleValues[0] ?? null,
+    backgroundIsWhite: samples.some(sample => isOpaqueWhiteColor(sample.snapshotBackgroundColor)),
+  }
+}
+
+function isOpaqueWhiteColor(value) {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  return ['red', 'green', 'blue', 'alpha'].every((key) => {
+    const channel = readFiniteProbeNumber(value[key])
+    if (channel === null) {
+      return false
+    }
+    return Math.abs(channel - 1) < 0.001
+  })
+}
+
 function readFiniteProbeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function maxProbeValue(values) {
+  if (values.length === 0) {
+    return null
+  }
+  return Math.max(...values)
+}
+
+function valuesChange(values) {
+  if (values.length <= 1) {
+    return false
+  }
+  const first = values[0]
+  return values.some(value => Math.abs(value - first) > 0.0001)
 }
 
 function areSameRect(left, right) {
@@ -880,6 +844,40 @@ function readParityStatus({
   }
   if (!cradleAppshotEvidence?.nativePresentationEvidence?.motionDetected) {
     missingEvidence.push('Cradle native AppShot presentation frames must prove that the native overlay moved during capture.')
+  }
+  const whiteLayerEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.whiteLayerEvidence
+  if (!whiteLayerEvidence?.startsVisible && !whiteLayerEvidence?.fadesInVisible) {
+    missingEvidence.push('Cradle native AppShot must show a visible white shutter layer during the shutter fade-in window.')
+  }
+  if (!whiteLayerEvidence?.coverOpacityChanges || !whiteLayerEvidence?.shutterOpacityChanges) {
+    missingEvidence.push('Cradle native AppShot white shutter opacity must animate for fade-in/fade-out parity.')
+  }
+  if (!whiteLayerEvidence?.coverIsWhite || !whiteLayerEvidence?.shutterIsWhite) {
+    missingEvidence.push('Cradle native AppShot white shutter layer must be opaque white.')
+  }
+  if (!whiteLayerEvidence?.coverHasRoundedCorners || !whiteLayerEvidence?.shutterHasRoundedCorners) {
+    missingEvidence.push('Cradle native AppShot white shutter layer must have rounded corners.')
+  }
+  const nativeGeometryEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.nativeGeometryEvidence
+  if (!nativeGeometryEvidence?.firstShutterMatchesSourceContentBounds) {
+    missingEvidence.push('Cradle native AppShot white shutter must start on the source window content bounds, including title bar and traffic lights but excluding capture shadow padding.')
+  }
+  if (!nativeGeometryEvidence?.firstShadowMatchesSourceContentFrame) {
+    missingEvidence.push('Cradle native AppShot shadow must start on the source window content frame.')
+  }
+  if (!nativeGeometryEvidence?.firstSnapshotImageMatchesCaptureFrame) {
+    missingEvidence.push('Cradle native AppShot snapshot image layer must start on the captured PNG frame so screenshot shadow padding stays inside the source-content container.')
+  }
+  if (!nativeGeometryEvidence?.lastShutterMatchesDestinationBounds || !nativeGeometryEvidence?.lastSnapshotMatchesDestinationBounds || !nativeGeometryEvidence?.lastShadowMatchesDestinationFrame) {
+    missingEvidence.push('Cradle native AppShot shutter, snapshot, and shadow must finish on the composer destination slot.')
+  }
+  const snapshotContentEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.snapshotContentEvidence
+  if (!snapshotContentEvidence?.hasContents) {
+    missingEvidence.push('Cradle native AppShot snapshot layer must contain the captured window image.')
+  }
+  const sourceFrameEvidence = cradleAppshotEvidence?.sourceFrameEvidence
+  if (!sourceFrameEvidence?.matchesCaptureImageSize) {
+    missingEvidence.push('Cradle native AppShot source frame must match the captured image point size.')
   }
   if (!cradleAppshotEvidence?.videoTransitionEvidence?.detected) {
     missingEvidence.push('Cradle native AppShot transition must be visible in the Cradle recording before recorder output can prove visual parity.')
@@ -1078,44 +1076,6 @@ function serializeError(error) {
   }
 }
 
-function readSerializedCodexTranscript(error) {
-  const raw = error?.details?.transcript
-  if (typeof raw !== 'string' || !raw.trim()) {
-    return null
-  }
-  try {
-    return JSON.parse(raw)
-  }
-  catch {
-    return {
-      status: 'invalid-transcript-json',
-      raw,
-    }
-  }
-}
-
-function readCodexTranscripts(start, updates, directError) {
-  return [
-    start?.cradleTranscript
-      ? { phase: 'startCapture', transcript: start.cradleTranscript }
-      : null,
-    ...updates
-      .filter(update => update.cradleTranscript)
-      .map((update, index) => ({
-        phase: 'nextCaptureUpdate',
-        index,
-        type: update.type,
-        transcript: update.cradleTranscript,
-      })),
-    directError
-      ? {
-          phase: 'directError',
-          transcript: readSerializedCodexTranscript(directError),
-        }
-      : null,
-  ].filter(entry => entry?.transcript)
-}
-
 function summarizeCodexImageComparisonEvidence(imageComparisons) {
   return {
     comparisonCount: imageComparisons.length,
@@ -1145,6 +1105,8 @@ function readCradleAppshotEvidence({ capture, recording, transitionFrameAlignmen
   return {
     captured: Boolean(capture?.filePath),
     captureBackend: capture?.captureBackend ?? null,
+    captureImageSize: capture?.captureImageSize ?? null,
+    sourceFrameEvidence: readCaptureSourceFrameEvidence(capture),
     recordingBackend: recording?.recordingBackend ?? null,
     recordingError: recording?.recordingError ?? null,
     triggerError: recording?.triggerError ?? null,
@@ -1156,12 +1118,49 @@ function readCradleAppshotEvidence({ capture, recording, transitionFrameAlignmen
       uniqueImageHashCount: presentationProbe?.summary?.uniqueImageHashCount ?? 0,
       changedSnapshotFrameCount: presentationProbe?.summary?.changedSnapshotFrameCount ?? 0,
       shadowFrameChangeCounts: presentationProbe?.summary?.shadowFrameChangeCounts ?? {
+        shadow: 0,
         destination: 0,
         key: 0,
         ambient: 0,
       },
+      whiteLayerEvidence: presentationProbe?.summary?.whiteLayerEvidence ?? null,
+      nativeGeometryEvidence: presentationProbe?.summary?.nativeGeometryEvidence ?? null,
+      snapshotContentEvidence: presentationProbe?.summary?.snapshotContentEvidence ?? null,
       changedOpacityKeys: presentationProbe?.summary?.changedOpacityKeys ?? [],
     },
+  }
+}
+
+function readCaptureSourceFrameEvidence(capture) {
+  const imageSize = capture?.captureImageSize
+  const geometry = capture?.appshot?.transitionGeometry
+  const sourceFrame = geometry?.sourceWindowFrame
+  const sourceScale = readPositiveFiniteNumber(geometry?.sourceDisplayMapping?.scaleFactor)
+    ?? readPositiveFiniteNumber(geometry?.displayMapping?.scaleFactor)
+    ?? readPositiveFiniteNumber(geometry?.displayScaleFactor)
+  if (!imageSize || !sourceFrame || !sourceScale) {
+    return {
+      available: false,
+      matchesCaptureImageSize: false,
+      capturePointSize: null,
+      sourceFrame: sourceFrame ?? null,
+      sourceScale: sourceScale ?? null,
+    }
+  }
+  const capturePointSize = {
+    width: imageSize.pixelWidth / sourceScale,
+    height: imageSize.pixelHeight / sourceScale,
+  }
+  const widthDelta = Math.abs(capturePointSize.width - sourceFrame.width)
+  const heightDelta = Math.abs(capturePointSize.height - sourceFrame.height)
+  return {
+    available: true,
+    matchesCaptureImageSize: widthDelta < 0.75 && heightDelta < 0.75,
+    capturePointSize,
+    sourceFrame,
+    sourceScale,
+    widthDelta,
+    heightDelta,
   }
 }
 
@@ -1354,7 +1353,7 @@ async function recordTransitionVideo(outputPath, seconds, trigger, recordingBack
   for (const backend of readRecordingBackendOrder(recordingBackend)) {
     const attempt = await recordTransitionVideoWithBackend(outputPath, seconds, trigger, backend, client, options)
     attempts.push(...attempt.recordingAttempts)
-    if (attempt.recordingError && !attempt.triggered) {
+    if (attempt.recordingError && (!attempt.triggered || options.retryAfterTriggeredRecordingFailure)) {
       continue
     }
     return {
@@ -1362,7 +1361,7 @@ async function recordTransitionVideo(outputPath, seconds, trigger, recordingBack
       recordingAttempts: attempts,
     }
   }
-  const recordingError = new Error('No requested screen recording backend could start before the Appshot trigger.')
+  const recordingError = new Error('No requested screen recording backend could produce Appshot transition video evidence.')
   recordingError.details = { recordingBackend, attempts }
   return {
     path: outputPath,
@@ -1460,10 +1459,9 @@ function readRecordingBackendOrder(recordingBackend) {
   return [recordingBackend]
 }
 
-function readCodexWindowRecordingTarget(service, animationTarget, seconds) {
+function readCodexWindowRecordingTarget(animationTarget, seconds) {
   return readWindowRecordingTarget({
     bundleIdentifier: 'com.openai.sky.CUAService',
-    processId: service?.processIdentifier,
     animationTarget,
     discoveryTimeoutSeconds: Math.max(seconds, 2),
   })
@@ -2421,7 +2419,10 @@ function createParityAnimationTarget(context, destinationFrameOverride) {
   const baseTarget = context.animationTarget
   const workArea = baseTarget.codexDisplay.workArea
   const scaleFactor = baseTarget.codexDisplay.scaleFactor
-  const destinationFrame = destinationFrameOverride ?? readDefaultComposerDestinationFrame(workArea, scaleFactor)
+  const geometryScale = baseTarget.coordinateSpace === 'pixels' || baseTarget.coordinateSpace === 'viewportPixels'
+    ? scaleFactor
+    : 1
+  const destinationFrame = destinationFrameOverride ?? readDefaultComposerDestinationFrame(workArea, geometryScale)
   return {
     ...baseTarget,
     destinationBackgroundColor: '#ffffff',
@@ -2441,46 +2442,6 @@ function readDefaultComposerDestinationFrame(workArea, scaleFactor) {
     width,
     height,
   }
-}
-
-async function collectCodexUpdates(client, requestId, serviceProcessIdentifier, pollLimit, reportDir, timeoutSeconds) {
-  const updates = []
-  const assets = []
-  for (let attempt = 0; attempt < pollLimit; attempt += 1) {
-    logStage('codex-update-begin', { attempt: attempt + 1, pollLimit, requestId })
-    const update = await client.request('mac.codexAppshot.nextCaptureUpdate', {
-      requestId,
-      serviceProcessIdentifier,
-      timeoutSeconds,
-    }, timeoutSeconds * 1000 + 5_000)
-    logStage('codex-update-end', { attempt: attempt + 1, type: update.type })
-    updates.push(update)
-    if (update.type === 'screenshot') {
-      const copied = await copyCodexAsset(
-        update.screenshotURL ?? update.screenshot?.url ?? null,
-        reportDir,
-        `codex-screenshot-${String(attempt + 1).padStart(2, '0')}`,
-      )
-      if (copied) {
-        assets.push({ updateIndex: attempt, kind: 'screenshot', ...copied })
-      }
-    }
-    if (update.type === 'completed') {
-      const copied = await copyCodexAsset(
-        update.transitionSnapshotURL ?? null,
-        reportDir,
-        'codex-transition-snapshot',
-      )
-      if (copied) {
-        assets.push({ updateIndex: attempt, kind: 'transitionSnapshot', ...copied })
-      }
-      break
-    }
-    if (update.type === 'failed') {
-      break
-    }
-  }
-  return { updates, assets }
 }
 
 function formatMarkdownReport(report) {
@@ -2621,6 +2582,8 @@ function formatMarkdownReport(report) {
     ? [
         `- Captured: ${report.cradle.appshotEvidence.captured}`,
         `- Capture backend: ${report.cradle.appshotEvidence.captureBackend ?? 'none'}`,
+        `- Capture image size: ${formatCaptureImageSize(report.cradle.appshotEvidence.captureImageSize)}`,
+        `- Source frame evidence: ${formatSourceFrameEvidence(report.cradle.appshotEvidence.sourceFrameEvidence)}`,
         `- Recording backend: ${report.cradle.appshotEvidence.recordingBackend ?? 'none'}`,
         `- Recording error: ${report.cradle.appshotEvidence.recordingError?.message ?? 'none'}`,
         `- Trigger error: ${report.cradle.appshotEvidence.triggerError?.message ?? 'none'}`,
@@ -2632,6 +2595,9 @@ function formatMarkdownReport(report) {
         `- Native presentation image hashes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.uniqueImageHashCount ?? 0}`,
         `- Native presentation geometry changes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.changedSnapshotFrameCount ?? 0}`,
         `- Native presentation shadow changes: ${formatShadowFrameChangeCounts(report.cradle.appshotEvidence.nativePresentationEvidence?.shadowFrameChangeCounts)}`,
+        `- Native white layer: ${formatWhiteLayerEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.whiteLayerEvidence)}`,
+        `- Native AppShot geometry: ${formatNativeGeometryEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.nativeGeometryEvidence)}`,
+        `- Native snapshot contents: ${formatSnapshotContentEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.snapshotContentEvidence)}`,
         `- Native presentation opacity changes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.changedOpacityKeys?.join(', ') || 'none'}`,
       ].join('\n')
     : '- Not evaluated'
@@ -2655,6 +2621,9 @@ function formatMarkdownReport(report) {
         `- Motion detected: ${report.cradle.presentationProbe.summary?.motionDetected ?? false}`,
         `- Snapshot frame changes: ${report.cradle.presentationProbe.summary?.changedSnapshotFrameCount ?? 0}`,
         `- Shadow frame changes: ${formatShadowFrameChangeCounts(report.cradle.presentationProbe.summary?.shadowFrameChangeCounts)}`,
+        `- White layer: ${formatWhiteLayerEvidence(report.cradle.presentationProbe.summary?.whiteLayerEvidence)}`,
+        `- AppShot geometry: ${formatNativeGeometryEvidence(report.cradle.presentationProbe.summary?.nativeGeometryEvidence)}`,
+        `- Snapshot contents: ${formatSnapshotContentEvidence(report.cradle.presentationProbe.summary?.snapshotContentEvidence)}`,
         `- Opacity changes: ${report.cradle.presentationProbe.summary?.changedOpacityKeys?.join(', ') || 'none'}`,
         `- First image hash: ${report.cradle.presentationProbe.summary?.firstImageHash?.slice(0, 16) ?? 'none'}`,
         `- Last image hash: ${report.cradle.presentationProbe.summary?.lastImageHash?.slice(0, 16) ?? 'none'}`,
@@ -2672,11 +2641,6 @@ function formatMarkdownReport(report) {
   const imageComparisons = report.imageComparisons.length > 0
     ? report.imageComparisons.map(formatImageComparison).join('\n')
     : '- No comparable Codex and Cradle image assets were available.'
-  const sweep = report.transitionStyleSweep.enabled
-    ? report.transitionStyleSweep.variants.length > 0
-      ? report.transitionStyleSweep.variants.map(formatSweepVariant).join('\n\n')
-      : '- No sweep variants were captured.'
-    : '- Disabled for this run'
   const frameComparison = report.frameComparison
     ? formatFrameComparison(report.frameComparison)
     : '- No paired Codex and Cradle frame inputs were available.'
@@ -2769,6 +2733,8 @@ ${codexAppshotEvidence}
 ## Cradle Native Capture
 
 - Capture backend: ${report.cradle.capture?.captureBackend ?? 'Unknown'}
+- Capture image size: ${formatCaptureImageSize(report.cradle.capture?.captureImageSize)}
+- Source frame evidence: ${formatSourceFrameEvidence(report.cradle.appshotEvidence?.sourceFrameEvidence)}
 - Captured image: ${report.cradle.capture?.filePath ? `\`${report.cradle.capture.filePath}\`` : 'None'}
 - Metadata: ${report.cradle.capture?.metadataPath ? `\`${report.cradle.capture.metadataPath}\`` : 'None'}
 - Applied calibration:
@@ -2823,10 +2789,6 @@ ${videoComparison}
 
 ${imageComparisons}
 
-## Transition Style Sweep
-
-${sweep}
-
 ## Frame Comparison
 
 Gate comparison:
@@ -2857,70 +2819,6 @@ Missing evidence before claiming 100% same:
 
 ${missingEvidence}
 `
-}
-
-function formatSweepVariant(variant) {
-  const formatRecording = recording => {
-    if (!recording) {
-      return 'missing'
-    }
-    const media = recording.media
-    const details = media
-      ? `${media.width ?? '?'}x${media.height ?? '?'}, ${media.durationSeconds ?? '?'}s, ${media.averageFrameRate ?? '?'} fps, codec=${media.codecName ?? 'unknown'}`
-      : 'unknown media'
-    const errors = [
-      recording.recordingError ? `recordingError=${recording.recordingError.message}` : null,
-      recording.triggerError ? `triggerError=${recording.triggerError.message}` : null,
-    ].filter(Boolean)
-    const backend = recording.recordingBackend ? `, backend=${recording.recordingBackend}` : ''
-    const attempts = Array.isArray(recording.recordingAttempts) && recording.recordingAttempts.length > 0
-      ? `, attempts=${recording.recordingAttempts.map(attempt => `${attempt.backend}:${attempt.status}`).join('|')}`
-      : ''
-    const errorSuffix = errors.length > 0 ? `, ${errors.join(', ')}` : ''
-    return `\`${recording.relativePath}\` (${recording.size} bytes, ${details}${backend}${attempts}${errorSuffix})`
-  }
-  const formatFrames = frames => frames
-    ? `\`${frames.relativePath}\` (${frames.frameCount} frames at ${frames.frameRate} fps)`
-    : 'missing'
-  const assets = variant.assets.length > 0
-    ? variant.assets
-        .map(asset => `  - ${asset.kind}: \`${asset.relativePath}\` (${asset.size} bytes, ${asset.image ? `${asset.image.width}x${asset.image.height} ${asset.image.format}` : 'unknown image'}, sha256=${asset.sha256?.slice(0, 16) ?? 'missing'}...)`)
-        .join('\n')
-    : '  - None'
-  const comparisons = variant.imageComparisons.length > 0
-    ? variant.imageComparisons.map(comparison => `  ${formatImageComparison(comparison)}`).join('\n')
-    : '  - No comparable Codex image assets were available.'
-  return [
-    `- ${variant.id}: captureBackend=${variant.capture?.captureBackend ?? 'missing'}`,
-    '  - Requested style:',
-    '',
-    '```json',
-    JSON.stringify(variant.transitionStyle, null, 2),
-    '```',
-    '',
-    '  - Resolved native style:',
-    '',
-    '```json',
-    JSON.stringify(variant.capture?.appshot?.transitionStyle ?? null, null, 2),
-    '```',
-    '',
-    '  - Assets:',
-    assets,
-    '  - Recording:',
-    `    - ${formatRecording(variant.recording)}`,
-    '  - Frames:',
-    `    - ${formatFrames(variant.frames)}`,
-    '  - Video comparison:',
-    variant.videoComparison
-      ? `    - SSIM=${variant.videoComparison.ssim?.all ?? 'missing'}, PSNR=${variant.videoComparison.psnr?.average ?? 'missing'}`
-      : '    - missing',
-    '  - Frame comparison:',
-    variant.frameComparison
-      ? formatFrameComparison(variant.frameComparison).split('\n').map(line => `    ${line}`).join('\n')
-      : '    - missing',
-    '  - Comparisons:',
-    comparisons,
-  ].join('\n')
 }
 
 function formatImageComparison(comparison) {
@@ -3011,9 +2909,81 @@ function formatShadowFrameChangeCounts(counts) {
     return 'none'
   }
   return [
+    `shadow=${counts.shadow ?? 0}`,
     `destination=${counts.destination ?? 0}`,
     `key=${counts.key ?? 0}`,
     `ambient=${counts.ambient ?? 0}`,
+  ].join(', ')
+}
+
+function formatCaptureImageSize(size) {
+  if (!size) {
+    return 'none'
+  }
+  return `${size.pixelWidth}x${size.pixelHeight}px`
+}
+
+function formatSourceFrameEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  if (!evidence.available) {
+    return `available=false, matches=false, scale=${evidence.sourceScale ?? 'none'}`
+  }
+  const captureSize = evidence.capturePointSize
+    ? `${formatMetricValue(evidence.capturePointSize.width)}x${formatMetricValue(evidence.capturePointSize.height)}pt`
+    : 'none'
+  const sourceFrame = evidence.sourceFrame
+    ? `${formatMetricValue(evidence.sourceFrame.width)}x${formatMetricValue(evidence.sourceFrame.height)}pt`
+    : 'none'
+  return [
+    `available=${evidence.available}`,
+    `matches=${evidence.matchesCaptureImageSize}`,
+    `capture=${captureSize}`,
+    `source=${sourceFrame}`,
+    `scale=${evidence.sourceScale ?? 'none'}`,
+    `delta=${formatMetricValue(evidence.widthDelta)}x${formatMetricValue(evidence.heightDelta)}`,
+  ].join(', ')
+}
+
+function formatWhiteLayerEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `startsVisible=${evidence.startsVisible}`,
+    `fadesInVisible=${evidence.fadesInVisible}`,
+    `opacityChanges=${evidence.coverOpacityChanges && evidence.shutterOpacityChanges}`,
+    `maxOpacity=${formatMetricValue(evidence.maxCoverOpacity)}/${formatMetricValue(evidence.maxShutterOpacity)}`,
+    `coverWhite=${evidence.coverIsWhite}`,
+    `shutterWhite=${evidence.shutterIsWhite}`,
+    `coverRadius=${evidence.firstCoverCornerRadius ?? 'none'}`,
+    `shutterRadius=${evidence.firstShutterCornerRadius ?? 'none'}`,
+  ].join(', ')
+}
+
+function formatNativeGeometryEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `startShutterOnContent=${evidence.firstShutterMatchesSourceContentBounds}`,
+    `startShadowOnContent=${evidence.firstShadowMatchesSourceContentFrame}`,
+    `startSnapshotImageOnCapture=${evidence.firstSnapshotImageMatchesCaptureFrame}`,
+    `endShutterOnSlot=${evidence.lastShutterMatchesDestinationBounds}`,
+    `endSnapshotOnSlot=${evidence.lastSnapshotMatchesDestinationBounds}`,
+    `endShadowOnSlot=${evidence.lastShadowMatchesDestinationFrame}`,
+  ].join(', ')
+}
+
+function formatSnapshotContentEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `hasContents=${evidence.hasContents}`,
+    `contentsScale=${evidence.contentsScale ?? 'none'}`,
+    `backgroundWhite=${evidence.backgroundIsWhite}`,
   ].join(', ')
 }
 
@@ -3032,8 +3002,6 @@ async function run() {
   if (process.platform !== 'darwin') {
     throw new Error('Appshot parity recording is only available on macOS.')
   }
-  const transitionStyle = await readJsonOrFileArg(options.transitionStyleInput, '--transition-style')
-  const transitionStyleSweep = await readTransitionStyleSweepArg(options.transitionStyleSweepInput)
 
   const binaryPath = await readExistingBridgeBinary(options.binaryPath)
   if (!await isExecutableFile(binaryPath)) {
@@ -3070,105 +3038,19 @@ async function run() {
       windowId: context.window?.windowId,
       appName: context.window?.appName,
     })
-    if (!context.bundleIdentifier) {
-      throw new Error('Frontmost app has no bundle identifier; Codex private Appshot cannot be started.')
-    }
-
-    logStage('codex-service-begin')
-    const service = await client.request('mac.codexAppshot.service')
-    logStage('codex-service-end', service)
-
     const recordingDir = resolve(outputDir, 'recordings')
     const animationTarget = createParityAnimationTarget(context, options.destinationFrame)
     const targetWindow = readCaptureTargetWindow(context)
-    const shouldRunDirect = options.codexSource === 'direct' || options.codexSource === 'direct-and-observe'
-    const shouldObserve = options.codexSource === 'observe' || options.codexSource === 'direct-and-observe'
+    const shouldObserve = true
     let codexBaseline = new Map()
     let codexObserveStartedAtMs = null
     let codexRecording = null
     let codexObserveWait = null
-    let start
+    const start = null
     let codex = { updates: [], assets: [] }
     const direct = {
-      status: shouldRunDirect ? 'pending' : 'skipped',
+      status: 'removed',
       error: null,
-    }
-    const startCodexCapture = async () => {
-      if (!service.running || !service.processIdentifier) {
-        throw new Error('Codex Computer Use service is not running. Start Codex Appshot once, then rerun this recorder.')
-      }
-      logStage('codex-start-begin', {
-        requestId: options.requestId,
-        serviceProcessIdentifier: service.processIdentifier,
-        timeoutSeconds: options.codexAppleEventTimeoutSeconds,
-      })
-      start = await client.request('mac.codexAppshot.startCapture', {
-        requestId: options.requestId,
-        bundleIdentifier: context.bundleIdentifier,
-        animationTarget,
-        timeoutSeconds: options.codexAppleEventTimeoutSeconds,
-        serviceProcessIdentifier: service.processIdentifier,
-      }, options.codexAppleEventTimeoutSeconds * 1000 + 5_000)
-      logStage('codex-start-end', start)
-    }
-
-    if (shouldRunDirect) {
-      if (options.recordVideo) {
-        const recording = await recordTransitionVideo(
-          resolve(recordingDir, 'codex-appshot.mov'),
-          options.recordingSeconds,
-          startCodexCapture,
-          options.recordingBackend,
-          client,
-          {
-            windowRecordingTarget: readCodexWindowRecordingTarget(service, animationTarget, options.recordingSeconds),
-          },
-        )
-        codexRecording = {
-          ...recording,
-          relativePath: relative(outputDir, recording.path),
-        }
-        if (recording.triggerError) {
-          direct.status = 'failed'
-          direct.error = recording.triggerError
-        }
-        else if (!recording.triggered && recording.recordingError) {
-          direct.status = 'skipped-recording-unavailable'
-          direct.error = recording.recordingError
-        }
-        else {
-          direct.status = 'succeeded'
-        }
-      }
-      else {
-        try {
-          await startCodexCapture()
-          direct.status = 'succeeded'
-        }
-        catch (error) {
-          direct.status = 'failed'
-          direct.error = serializeError(error)
-          logStage('codex-start-failed', direct.error)
-        }
-      }
-
-      if (direct.status === 'succeeded' && service.processIdentifier) {
-        try {
-          codex = await collectCodexUpdates(
-            client,
-            options.requestId,
-            service.processIdentifier,
-            options.pollLimit,
-            outputDir,
-            options.codexAppleEventTimeoutSeconds,
-          )
-        }
-        catch (error) {
-          direct.status = 'failed'
-          direct.error = serializeError(error)
-          logStage('codex-update-failed', direct.error)
-        }
-      }
     }
 
     if (shouldObserve) {
@@ -3198,7 +3080,7 @@ async function run() {
           options.recordingBackend,
           client,
           {
-            windowRecordingTarget: readCodexWindowRecordingTarget(service, animationTarget, options.observeSeconds),
+            windowRecordingTarget: readCodexWindowRecordingTarget(animationTarget, options.observeSeconds),
             postTriggerDelayMs: () => Math.max(
               0,
               options.observeSeconds * 1000 - (codexObserveWait?.waitedMs ?? options.observeSeconds * 1000),
@@ -3233,9 +3115,6 @@ async function run() {
     }
 
     const appliedCalibration = readAppliedCalibration(start)
-    if (transitionStyle) {
-      appliedCalibration.transitionStyle = transitionStyle
-    }
     let cradleCapture
     const startCradleCapture = async () => {
       logStage('cradle-native-capture-begin')
@@ -3263,6 +3142,7 @@ async function run() {
         client,
         {
           windowRecordingTarget: readCradleWindowRecordingTarget(bridge, animationTarget, options.recordingSeconds),
+          retryAfterTriggeredRecordingFailure: true,
         },
       )
       cradleRecording = {
@@ -3431,109 +3311,6 @@ async function run() {
       [...codex.assets, ...observedAssets],
       cradleAssets,
     )
-    const codexComparisonAssets = [...codex.assets, ...observedAssets]
-    const sweepVariants = []
-    for (const variant of transitionStyleSweep) {
-      const variantStyle = mergeTransitionStyle(transitionStyle, variant.transitionStyle)
-      const variantDir = resolve(artifactsDir, 'cradle-native-sweep', sanitizePathSegment(variant.id))
-      let capture
-      const startSweepCapture = async () => {
-        logStage('cradle-native-sweep-capture-begin', {
-          id: variant.id,
-          outputDir: variantDir,
-        })
-        capture = await client.request('mac.appshot.captureFrontmostWindow', {
-          outputDir: variantDir,
-          targetWindow,
-          animationTarget,
-          soundEnabled: false,
-          ...appliedCalibration,
-          transitionStyle: variantStyle,
-        }, 30_000)
-        logStage('cradle-native-sweep-capture-end', {
-          id: variant.id,
-          filePath: capture.filePath,
-          captureBackend: capture.captureBackend,
-        })
-      }
-      let recording = null
-      if (options.recordVideo) {
-        const recorded = await recordTransitionVideo(
-          resolve(recordingDir, `cradle-native-sweep-${sanitizePathSegment(variant.id)}.mov`),
-          options.recordingSeconds,
-          startSweepCapture,
-          options.recordingBackend,
-          client,
-          {
-            windowRecordingTarget: readCradleWindowRecordingTarget(bridge, animationTarget, options.recordingSeconds),
-          },
-        )
-        recording = {
-          ...recorded,
-          relativePath: relative(outputDir, recorded.path),
-        }
-        if (recorded.recordingError) {
-          logStage('cradle-native-sweep-recording-failed', {
-            id: variant.id,
-            error: recorded.recordingError,
-          })
-        }
-        if (!recorded.triggered && recorded.recordingError) {
-          await startSweepCapture()
-        }
-        if (recorded.triggerError) {
-          throw new Error(`Cradle native Appshot sweep trigger failed for ${variant.id}: ${JSON.stringify(recorded.triggerError)}`)
-        }
-      }
-      else {
-        await startSweepCapture()
-      }
-      const assets = [
-        { kind: 'capture', ...await copyCradleAsset(capture.filePath, outputDir, `cradle-sweep-${sanitizePathSegment(variant.id)}-capture`) },
-      ]
-      if (capture.appshot.transitionSnapshotPath) {
-        assets.push({
-          kind: 'transitionSnapshot',
-          ...await copyCradleAsset(
-            capture.appshot.transitionSnapshotPath,
-            outputDir,
-            `cradle-sweep-${sanitizePathSegment(variant.id)}-transition-snapshot`,
-          ),
-        })
-      }
-      let frames = null
-      const variantComparisonWindow = readRecordingComparisonWindow(codexRecording, recording)
-      if (options.extractFrames && hasUsableRecording(recording)) {
-        frames = await extractVideoFrames(
-          recording.path,
-          resolve(outputDir, 'frames', `cradle-sweep-${sanitizePathSegment(variant.id)}`),
-          options.frameRate,
-          variantComparisonWindow,
-        )
-        frames.relativePath = relative(outputDir, frames.directory)
-      }
-      let variantVideoComparison = null
-      if (options.analyzeVideo && hasUsableRecording(codexRecording) && hasUsableRecording(recording)) {
-        variantVideoComparison = await compareVideos(codexRecording.path, recording.path, variantComparisonWindow)
-      }
-      sweepVariants.push({
-        id: variant.id,
-        transitionStyle: variantStyle,
-        capture,
-        assets,
-        recording,
-        comparisonWindow: variantComparisonWindow,
-        frames,
-        videoComparison: variantVideoComparison,
-        frameComparison: await compareFrameInputs(
-          codexFrames,
-          frames,
-          resolve(outputDir, 'frames', `diff-sweep-${sanitizePathSegment(variant.id)}`),
-          outputDir,
-        ),
-        imageComparisons: await compareImageAssets(codexComparisonAssets, assets),
-      })
-    }
     const sound = await readAppshotSoundEvidence(outputDir, binaryPath)
     const targetLock = readTargetLockEvidence(context, targetWindow, cradleCapture)
     const codexAppshotEvidence = readCodexAppshotEvidence({
@@ -3622,10 +3399,6 @@ async function run() {
         result: videoComparison,
       },
       imageComparisons,
-      transitionStyleSweep: {
-        enabled: transitionStyleSweep.length > 0,
-        variants: sweepVariants,
-      },
       frameComparison,
       rawFrameComparison,
       alignedFrameComparison,

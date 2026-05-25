@@ -84,7 +84,7 @@ export function useComposerAttachments({
   }, [])
 
   const appendFileParts = useCallback((fileParts: FileUIPart[]) => {
-    setAttachments(current => [...current, ...fileParts])
+    setAttachments(current => [...fileParts, ...current])
   }, [])
 
   const appendSelectedFiles = useCallback(async (files: FileList) => {

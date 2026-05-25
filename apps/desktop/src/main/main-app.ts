@@ -5,7 +5,7 @@ import windowStateKeeper from 'electron-window-state'
 
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
-import { captureAppshotWithMacBridge, createNativeServices } from './native-services'
+import { createNativeServices } from './native-services'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
@@ -320,10 +320,13 @@ export async function startDesktopApp(): Promise<void> {
   macBridgeManager = new MacBridgeManager({
     moduleDir: __dirname,
   })
-  macBridgeManager.on('hotkeyTriggered', () => {
-    captureAppshotWithMacBridge({ sink: 'file', strategy: 'auto' }).catch((error) => {
-      console.error('[mac-bridge] hotkey appshot capture failed:', error)
-    })
+  macBridgeManager.on('hotkeyTriggered', event => {
+    console.log('[mac-bridge] forwarding Appshot hotkey to renderer:', event)
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      console.warn('[mac-bridge] Appshot hotkey ignored because the main window is not available.')
+      return
+    }
+    mainWindow.webContents.send('capture:appshot-hotkey', event)
   })
   createNativeServices({
     getWindowManager: () => windowManager,
@@ -340,9 +343,13 @@ export async function startDesktopApp(): Promise<void> {
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
       await macBridgeManager?.start()
-      await macBridgeManager?.configureInput({ trigger: 'bothCommand', enabled: true }).catch((error) => {
+      const inputConfiguration = await macBridgeManager?.configureInput({ trigger: 'bothCommand', enabled: true }).catch((error) => {
         console.warn('[mac-bridge] both-command hotkey unavailable:', error)
+        return null
       })
+      if (inputConfiguration) {
+        console.debug('[mac-bridge] both-command hotkey configured:', inputConfiguration)
+      }
     }
 
     await activateDesktopPlugins()

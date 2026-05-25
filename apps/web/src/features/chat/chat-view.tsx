@@ -5,6 +5,7 @@ import type { FileUIPart, UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import type { VirtualizerHandle } from 'virtua'
 import { Virtualizer } from 'virtua'
@@ -18,19 +19,21 @@ import { toastManager } from '~/components/ui/toast'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { cn } from '~/lib/cn'
-import { isElectron, nativeIpc, platform, type MacAppshotCaptureResponse } from '~/lib/electron'
+import { isElectron, nativeIpc, platform, type MacAppshotCaptureResponse, type MacAppshotHotkeyEvent } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
 import { SessionApprovalList } from '../approval/approval-card'
+import { createCradleAppshotFilePart } from './appshot-attachment'
 import { getChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
-import { Composer, type ComposerSlashCommandActionContext, type ComposerSlashCommandActionResult } from './composer'
+import { Composer, readComposerActionContext, type ComposerSlashCommandActionContext, type ComposerSlashCommandActionResult, type ComposerSlashCommandActionTools } from './composer'
 import { modelSupportsAttachments } from './composer-attachment-state'
+import type { PendingAppshotAttachment } from './composer-attachments'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, getFallbackRuntimeSlashCommands, mergeChatSlashCommands, withSlashCommandAvailability } from './chat-slash-commands'
 import type { MentionItem } from './mention-panel'
@@ -67,6 +70,12 @@ interface ChatScrollMetrics {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
+const APPSHOT_CAPTURE_ANIMATION_DURATION = 0.35
+const APPSHOT_TRANSITION_SPRING_RESPONSE = 0.35
+const APPSHOT_TRANSITION_SPRING_DAMPING_FRACTION = 0.73
+const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
+const APPSHOT_TITLED_SNAPSHOT_BASE_HEIGHT = 144
+const APPSHOT_TITLE_LINE_HEIGHT = 16.021484375
 const SessionBindingSchema = z
   .object({
     providerTargetId: z.string().nullable(),
@@ -80,24 +89,80 @@ function invertContinuationMode(mode: ChatContinuationMode): ChatContinuationMod
 }
 
 function readAppshotCaptureAsset(response: MacAppshotCaptureResponse) {
-  if (response.strategy === 'cradle-native') {
-    return response.asset
-  }
-  for (let index = response.updates.length - 1; index >= 0; index -= 1) {
-    const update = response.updates[index]
-    if (!update) {
-      continue
-    }
-    const asset = update.screenshotAsset ?? update.transitionSnapshotAsset
-    if (asset) {
-      return asset
-    }
-  }
-  return null
+  return response.asset
+}
+
+function readAppshotTransitionSnapshotAsset(response: MacAppshotCaptureResponse) {
+  return response.transitionSnapshotAsset
 }
 
 function readFileNameFromPath(path: string, fallback: string): string {
   return path.split(/[\\/]/).filter(Boolean).at(-1) ?? fallback
+}
+
+function createAppshotRequestId(): string {
+  return `cradle-appshot-${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
+function createPendingAppshot(requestId: string): PendingAppshotAttachment {
+  return {
+    requestId,
+    transitionSnapshotHeight: null,
+    transitionSnapshotHeightResolved: false,
+    transitionSpringDampingFraction: null,
+    transitionSpringResponse: null,
+  }
+}
+
+function readOptimisticAppshotTransitionMetrics(
+  context: ComposerSlashCommandActionContext,
+  transitionSnapshotHeight?: number | null,
+): Omit<PendingAppshotAttachment, 'requestId'> {
+  const scale = Math.max(context.animationTarget?.transitionSnapshotScale ?? window.devicePixelRatio ?? 1, 1)
+  const targetHeight = context.animationTarget?.destinationFrame.height
+  const fallbackTransitionSnapshotHeight = typeof targetHeight === 'number' && Number.isFinite(targetHeight) && targetHeight > 0
+    ? targetHeight / scale
+    : APPSHOT_ATTACHMENT_SLOT_HEIGHT
+  return {
+    transitionSnapshotHeight: transitionSnapshotHeight ?? fallbackTransitionSnapshotHeight,
+    transitionSnapshotHeightResolved: true,
+    transitionSpringDampingFraction: APPSHOT_TRANSITION_SPRING_DAMPING_FRACTION,
+    transitionSpringResponse: APPSHOT_TRANSITION_SPRING_RESPONSE,
+  }
+}
+
+function readCodexTransitionSnapshotHeight(windowInfo: MacAppshotHotkeyEvent['sourceWindow'] | null | undefined): number | null {
+  const title = windowInfo?.title?.trim() ?? ''
+  const appName = windowInfo?.appName?.trim() ?? ''
+  if (!title && !appName) {
+    return null
+  }
+  const scale = Math.max(window.devicePixelRatio || 1, 1)
+  return APPSHOT_TITLED_SNAPSHOT_BASE_HEIGHT + Math.ceil(APPSHOT_TITLE_LINE_HEIGHT * scale) / scale
+}
+
+function readPositiveMetric(value: number | null | undefined): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
+}
+
+function readAppshotTransitionMetrics(
+  response: MacAppshotCaptureResponse,
+  _transitionSnapshotScale: number | undefined,
+): Omit<PendingAppshotAttachment, 'requestId'> {
+  return {
+    transitionSnapshotHeight: readPositiveMetric(response.capture.appshot.transitionSnapshotHeight),
+    transitionSnapshotHeightResolved: true,
+    transitionSpringDampingFraction: readPositiveMetric(response.capture.appshot.transitionSpringDampingFraction),
+    transitionSpringResponse: readPositiveMetric(response.capture.appshot.transitionSpringResponse),
+  }
+}
+
+function readAppshotAnimationDuration(response: MacAppshotCaptureResponse): number {
+  return readPositiveMetric(response.capture.appshot.animationDuration) ?? APPSHOT_CAPTURE_ANIMATION_DURATION
+}
+
+function waitForAppshotAnimation(response: MacAppshotCaptureResponse): Promise<void> {
+  return new Promise(resolve => window.setTimeout(resolve, readAppshotAnimationDuration(response) * 1000))
 }
 
 function ChatMessageListPane({
@@ -269,7 +334,10 @@ function ChatComposerSection({
   droppedPath,
   sessionTokens,
   sessionContextWindow,
-  supportsAttachments
+  supportsAttachments,
+  appendExternalFileParts,
+  appendExternalFilePartsKey,
+  pendingAppshots
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
@@ -280,7 +348,7 @@ function ChatComposerSection({
     files: FileUIPart[],
     options?: { invertContinuationMode?: boolean }
   ) => void
-  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
+  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   onStop: () => void
   isStreaming: boolean
   disabled: boolean
@@ -293,6 +361,9 @@ function ChatComposerSection({
   sessionTokens: number
   sessionContextWindow: number | null
   supportsAttachments: boolean
+  appendExternalFileParts?: FileUIPart[]
+  appendExternalFilePartsKey?: number
+  pendingAppshots?: PendingAppshotAttachment[]
 }) {
   return (
     <div className="shrink-0 bg-background/80 px-4 py-3 backdrop-blur-sm">
@@ -318,6 +389,9 @@ function ChatComposerSection({
           contextBar={contextBar}
           appendText={droppedPath ? `${droppedPath.text}` : undefined}
           appendTextKey={droppedPath?.ts}
+          appendExternalFileParts={appendExternalFileParts}
+          appendExternalFilePartsKey={appendExternalFilePartsKey}
+          pendingAppshots={pendingAppshots}
           sessionTokens={sessionTokens}
           sessionContextWindow={sessionContextWindow}
         />
@@ -423,6 +497,11 @@ export function ChatView({
 
   /** Scroll metrics for the minimap */
   const [scrollMetrics, setScrollMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
+
+  /** External file parts injected from global hotkey (Cmd+Cmd appshot) */
+  const [externalAppshotFileParts, setExternalAppshotFileParts] = useState<FileUIPart[]>([])
+  const [externalAppshotFilePartsKey, setExternalAppshotFilePartsKey] = useState(0)
+  const [pendingAppshots, setPendingAppshots] = useState<PendingAppshotAttachment[]>([])
 
   const isStreaming = status === 'streaming'
 
@@ -585,9 +664,157 @@ export function ChatView({
             setSessionTokens(res.data.totalTokens)
           }
         })
-        .catch(() => {})
+      .catch(() => {})
     }
   }, [sessionId, status, messages.length])
+
+  const captureAppshotIntoComposer = useCallback(async ({
+    bundleIdentifier,
+    sourceWindow,
+    targetWindow,
+    tools,
+  }: {
+    bundleIdentifier?: string
+    sourceWindow?: MacAppshotHotkeyEvent['sourceWindow']
+    targetWindow?: MacAppshotHotkeyEvent['targetWindow']
+    tools?: ComposerSlashCommandActionTools
+  }) => {
+    if (!nativeIpc) {
+      throw new Error('Appshot capture requires the Electron desktop app.')
+    }
+
+    const requestId = createAppshotRequestId()
+    flushSync(() => {
+      setPendingAppshots(current => [createPendingAppshot(requestId), ...current])
+    })
+
+    const transitionSnapshotHeight = readCodexTransitionSnapshotHeight(sourceWindow)
+    const contextOptions = {
+      pendingAppshotRequestId: requestId,
+      transitionSnapshotHeight,
+    }
+    const context = tools?.readActionContext(contextOptions)
+      ?? readComposerActionContext(
+        document.querySelector<HTMLElement>('[data-composer-action-target]'),
+        contextOptions,
+      )
+    const transitionSnapshotScale = Math.max(context.animationTarget?.transitionSnapshotScale ?? window.devicePixelRatio ?? 1, 1)
+    const nativeTransitionSnapshotHeight = transitionSnapshotHeight == null
+      ? undefined
+      : transitionSnapshotHeight * transitionSnapshotScale
+    setPendingAppshots(current => current.map(pending => pending.requestId === requestId
+      ? {
+          requestId,
+          ...readOptimisticAppshotTransitionMetrics(context, transitionSnapshotHeight),
+        }
+      : pending))
+    console.debug('[appshot] capture starting:', {
+      requestId,
+      targetWindow,
+      sourceWindow,
+      bundleIdentifier,
+      transitionSnapshotHeight,
+      nativeTransitionSnapshotHeight,
+      animationTarget: context.animationTarget,
+    })
+
+    try {
+      const response = await nativeIpc.macCapture.captureAppshot({
+        sink: 'file',
+        strategy: 'cradle-native',
+        requestId,
+        animationTarget: context.animationTarget,
+        targetWindow,
+        transitionSnapshotHeight: nativeTransitionSnapshotHeight,
+      })
+      console.debug('[appshot] capture completed:', {
+        requestId,
+        strategy: response.strategy,
+        transitionGeometry: response.strategy === 'cradle-native'
+          ? response.capture.appshot.transitionGeometry
+          : null,
+      })
+
+      setPendingAppshots(current => current.map(pending => pending.requestId === requestId
+        ? {
+            requestId,
+            ...readAppshotTransitionMetrics(response, context.animationTarget?.transitionSnapshotScale),
+          }
+        : pending))
+
+      if (import.meta.env.DEV) {
+        toastManager.add({
+          type: 'info',
+          title: 'Appshot strategy',
+          description: response.strategy,
+        })
+      }
+
+      const asset = readAppshotCaptureAsset(response)
+      if (!asset) {
+        throw new Error('Appshot capture did not return an image asset.')
+      }
+      const transitionSnapshotAsset = readAppshotTransitionSnapshotAsset(response)
+      const transitionMetrics = readAppshotTransitionMetrics(response, context.animationTarget?.transitionSnapshotScale)
+      const captureWindow = response.strategy === 'cradle-native' ? response.capture.window : null
+      const filename = readFileNameFromPath(asset.path, 'appshot.png')
+
+      await waitForAppshotAnimation(response)
+      flushSync(() => {
+        setPendingAppshots(current => current.filter(pending => pending.requestId !== requestId))
+        setExternalAppshotFileParts([createCradleAppshotFilePart({
+          mediaType: asset.mimeType,
+          filename,
+          imageDataUrl: asset.dataURL,
+          imagePath: asset.path,
+          transitionSnapshotDataUrl: transitionSnapshotAsset?.dataURL ?? null,
+          transitionSnapshotHeight: transitionMetrics.transitionSnapshotHeight,
+          appName: captureWindow?.appName ?? null,
+          windowTitle: captureWindow?.title ?? null,
+          bundleIdentifier: captureWindow?.bundleId ?? bundleIdentifier ?? null,
+          appIconDataUrl: response.strategy === 'cradle-native'
+            ? captureWindow?.appIconDataUrl ?? null
+            : null,
+        })])
+        setExternalAppshotFilePartsKey(k => k + 1)
+      })
+    }
+    catch (error) {
+      setPendingAppshots(current => current.filter(pending => pending.requestId !== requestId))
+      throw error
+    }
+  }, [])
+
+  // Listen for Cmd+Cmd hotkey appshot from main process
+  useEffect(() => {
+    return window.cradle?.ipc.on('capture:appshot-hotkey', (payload) => {
+      console.debug('[appshot] hotkey event received:', payload)
+      if (!nativeIpc || !supportsAttachments) {
+        console.warn('[appshot] hotkey capture skipped:', {
+          hasNativeIpc: Boolean(nativeIpc),
+          supportsAttachments,
+        })
+        return
+      }
+      const event = payload as MacAppshotHotkeyEvent | undefined
+      void (async () => {
+        try {
+          await captureAppshotIntoComposer({
+            targetWindow: event?.targetWindow,
+            sourceWindow: event?.sourceWindow ?? event?.context?.window,
+            bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
+          })
+        }
+        catch (error) {
+          toastManager.add({
+            type: 'error',
+            title: 'Appshot capture failed',
+            description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
+          })
+        }
+      })()
+    }) ?? (() => {})
+  }, [captureAppshotIntoComposer, supportsAttachments])
 
   const handleSend = useCallback(
     (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => {
@@ -607,6 +834,7 @@ export function ChatView({
   const handleSlashCommandAction = useCallback(async (
     command: ChatComposerSlashCommand,
     context: ComposerSlashCommandActionContext,
+    tools?: ComposerSlashCommandActionTools,
   ): Promise<void | ComposerSlashCommandActionResult> => {
     if (command.action.kind !== 'uiAction' || command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
       return
@@ -629,31 +857,8 @@ export function ChatView({
     }
 
     try {
-      const response = await nativeIpc.macCapture.captureAppshot({
-        sink: 'file',
-        strategy: 'auto',
-        animationTarget: context.animationTarget,
-      })
-      if (import.meta.env.DEV) {
-        toastManager.add({
-          type: 'info',
-          title: 'Appshot strategy',
-          description: response.strategy,
-        })
-      }
-      const asset = readAppshotCaptureAsset(response)
-      if (!asset) {
-        throw new Error('Appshot capture did not return an image asset.')
-      }
-      return {
-        insertText: '',
-        fileParts: [{
-          type: 'file',
-          mediaType: asset.mimeType,
-          filename: readFileNameFromPath(asset.path, 'appshot.png'),
-          url: asset.dataURL,
-        }],
-      }
+      await captureAppshotIntoComposer({ tools })
+      return { insertText: '' }
     }
     catch (error) {
       toastManager.add({
@@ -662,7 +867,7 @@ export function ChatView({
         description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
       })
     }
-  }, [supportsAttachments])
+  }, [captureAppshotIntoComposer, supportsAttachments])
 
   const handleMinimapScrollToIndex = useCallback((index: number) => {
     const virt = virtualizerRef.current
@@ -736,6 +941,9 @@ export function ChatView({
         sessionTokens={sessionTokens}
         sessionContextWindow={sessionContextWindow}
         supportsAttachments={supportsAttachments}
+        appendExternalFileParts={externalAppshotFileParts}
+        appendExternalFilePartsKey={externalAppshotFilePartsKey}
+        pendingAppshots={pendingAppshots}
       />
     </div>
   )

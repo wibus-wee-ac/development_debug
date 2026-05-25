@@ -9,6 +9,11 @@ let leftCommandKeyCode: CGKeyCode = 0x37
 let rightCommandKeyCode: CGKeyCode = 0x36
 let leftCommandDeviceFlag: UInt64 = 0x00000008
 let rightCommandDeviceFlag: UInt64 = 0x00000010
+let cradleApplicationBundleIdentifiers: Set<String> = [
+    "com.cradle.app",
+    "com.github.Electron",
+]
+let frontmostWindowTracker = FrontmostWindowTracker(excludedBundleIdentifiers: cradleApplicationBundleIdentifiers)
 
 final class BridgeError: Error, @unchecked Sendable {
     let code: String
@@ -68,12 +73,109 @@ struct WindowCandidate {
     let processId: Int
     let title: String?
     let bounds: [String: Double]?
+    let frameEvidence: WindowFrameEvidence?
 }
 
 struct WindowTarget {
     let windowId: Int
     let processId: Int?
     let bundleId: String?
+}
+
+struct AccessibilityWindowSnapshot {
+    let title: String?
+    let frame: CGRect?
+}
+
+struct WindowFrameEvidence {
+    let coreGraphicsBounds: [String: Double]?
+    let accessibilityFrame: CGRect?
+}
+
+final class FrontmostWindowTracker: @unchecked Sendable {
+    private let lock = NSLock()
+    private let excludedBundleIdentifiers: Set<String>
+    private var lastWindow: WindowCandidate?
+    private var observer: NSObjectProtocol?
+
+    init(excludedBundleIdentifiers: Set<String>) {
+        self.excludedBundleIdentifiers = excludedBundleIdentifiers
+    }
+
+    @MainActor
+    func start() {
+        recordCurrentFrontmostApplication()
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+            self.record(application: application)
+        }
+    }
+
+    @MainActor
+    func stop() {
+        if let observer {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
+        observer = nil
+    }
+
+    func readLastWindow() -> WindowCandidate? {
+        lock.lock()
+        defer { lock.unlock() }
+        return lastWindow
+    }
+
+    func readLastWindowPayload() -> [String: Any]? {
+        guard let window = readLastWindow() else {
+            return nil
+        }
+        return serialize(window: window)
+    }
+
+    func readLastWindowTargetPayload() -> [String: Any]? {
+        guard let window = readLastWindow() else {
+            return nil
+        }
+        var target: [String: Any] = [
+            "windowId": window.windowId,
+            "processId": window.processId,
+        ]
+        if let bundleId = window.bundleId, !bundleId.isEmpty {
+            target["bundleId"] = bundleId
+        }
+        return target
+    }
+
+    private func recordCurrentFrontmostApplication() {
+        guard let application = NSWorkspace.shared.frontmostApplication else {
+            return
+        }
+        record(application: application)
+    }
+
+    private func record(application: NSRunningApplication) {
+        guard !isExcluded(application: application),
+              let window = try? readWindowForApplication(application) else {
+            return
+        }
+        lock.lock()
+        lastWindow = window
+        lock.unlock()
+    }
+
+    private func isExcluded(application: NSRunningApplication) -> Bool {
+        guard let bundleIdentifier = application.bundleIdentifier else {
+            return false
+        }
+        return excludedBundleIdentifiers.contains(bundleIdentifier)
+    }
 }
 
 final class InputMonitor: @unchecked Sendable {
@@ -233,10 +335,20 @@ final class InputMonitor: @unchecked Sendable {
         }
         firedForCurrentPress = true
         stateLock.unlock()
-        output.event(method: "event.mac.hotkeyTriggered", params: [
+        var params: [String: Any] = [
             "trigger": "bothCommand",
             "capturedAt": isoTimestamp(),
-        ])
+        ]
+        if let targetWindow = frontmostWindowTracker.readLastWindowTargetPayload() {
+            params["targetWindow"] = targetWindow
+        }
+        if let sourceWindow = frontmostWindowTracker.readLastWindowPayload() {
+            params["sourceWindow"] = sourceWindow
+            if let bundleIdentifier = sourceWindow["bundleId"] as? String, !bundleIdentifier.isEmpty {
+                params["bundleIdentifier"] = bundleIdentifier
+            }
+        }
+        output.event(method: "event.mac.hotkeyTriggered", params: params)
     }
 
     private func updateCommandState(event: CGEvent) -> [String: Any] {
@@ -319,7 +431,6 @@ final class BridgeRuntime: @unchecked Sendable {
     private let output = OutputWriter()
     private let feedbackPresenter = FeedbackIndicatorPresenter()
     private let appshotTransitionPresenter = AppshotTransitionPresenter()
-    private let codexAppshotPrivateAdapter = CodexAppshotPrivateAdapter()
     private let displayRecordingRegistry = DisplayRecordingRegistry()
     private lazy var inputMonitor = InputMonitor(output: output)
 
@@ -328,6 +439,7 @@ final class BridgeRuntime: @unchecked Sendable {
         let application = NSApplication.shared
         application.setActivationPolicy(.accessory)
         application.finishLaunching()
+        frontmostWindowTracker.start()
 
         DispatchQueue.global(qos: .userInitiated).async {
             self.readInputLoop()
@@ -339,6 +451,7 @@ final class BridgeRuntime: @unchecked Sendable {
         defer {
             try? inputMonitor.configure(enabled: false)
             Task { @MainActor in
+                frontmostWindowTracker.stop()
                 NSApplication.shared.terminate(nil)
             }
         }
@@ -426,12 +539,6 @@ final class BridgeRuntime: @unchecked Sendable {
             return try displayRecordingRegistry.startWindow(params: params)
         case "mac.recording.finishWindow":
             return try displayRecordingRegistry.finish(params: params)
-        case "mac.codexAppshot.service":
-            return codexAppshotPrivateAdapter.readService()
-        case "mac.codexAppshot.startCapture":
-            return try codexAppshotPrivateAdapter.startCapture(params: params)
-        case "mac.codexAppshot.nextCaptureUpdate":
-            return try codexAppshotPrivateAdapter.nextCaptureUpdate(params: params)
         default:
             throw BridgeError("unknown-method", "Unknown Mac Bridge method: \(method)")
         }
@@ -594,10 +701,25 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
     let filePath = (outputDir as NSString).appendingPathComponent("\(captureId).png")
     let metadataPath = (outputDir as NSString).appendingPathComponent("\(captureId).json")
     let captureResult = try captureWindowImage(window: window, filePath: filePath)
-
-    let transitionSnapshotPath = copyTransitionSnapshot(from: filePath, outputDir: outputDir, captureId: captureId)
-    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: window.bounds)
-    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let captureImageSize = readCaptureImageSize(filePath: filePath)
+    let target = AppshotTransitionTarget.from(
+        params: params,
+        fallbackWindowBounds: window.bounds,
+        captureImageSize: captureImageSize
+    )
+    let calibration = AppshotTransitionCalibration.from(
+        params: params,
+        target: target,
+        windowTitle: window.title,
+        appName: window.appName
+    )
+    let transitionSnapshotPath = renderTransitionSnapshot(
+        from: filePath,
+        outputDir: outputDir,
+        captureId: captureId,
+        target: target,
+        calibration: calibration
+    )
     let transition = appshotTransitionPresenter.present(
         screenshotPath: filePath,
         transitionSnapshotPath: transitionSnapshotPath,
@@ -614,6 +736,7 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
         "metadataPath": metadataPath,
         "capturedAt": capturedAt,
         "captureBackend": captureResult.backend,
+        "captureImageSize": captureImageSize?.serialize() ?? NSNull(),
         "window": serialize(window: window),
         "appshot": transition.serialize(),
     ]
@@ -650,11 +773,20 @@ func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPr
     }
 
     let fallbackWindowBounds = readProbeWindowBounds(raw: params["sourceWindow"])
-    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: fallbackWindowBounds)
-    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let target = AppshotTransitionTarget.from(
+        params: params,
+        fallbackWindowBounds: fallbackWindowBounds,
+        captureImageSize: readCaptureImageSize(filePath: screenshotPath)
+    )
     let sampleCount = max(readInteger(params["sampleCount"]) ?? 12, 1)
     let sampleIntervalSeconds = readPositiveProbeDouble(params["sampleIntervalSeconds"]) ?? 0.2
     let sourceWindow = params["sourceWindow"] as? [String: Any]
+    let calibration = AppshotTransitionCalibration.from(
+        params: params,
+        target: target,
+        windowTitle: sourceWindow?["title"] as? String,
+        appName: sourceWindow?["appName"] as? String
+    )
 
     return try appshotTransitionPresenter.probeVisibility(
         screenshotPath: screenshotPath,
@@ -682,11 +814,21 @@ func probeAppshotTransitionPresentation(params: [String: Any], appshotTransition
     }
 
     let fallbackWindowBounds = readProbeWindowBounds(raw: params["sourceWindow"])
-    let target = AppshotTransitionTarget.from(params: params, fallbackWindowBounds: fallbackWindowBounds)
-    let calibration = AppshotTransitionCalibration.from(params: params, target: target)
+    let target = AppshotTransitionTarget.from(
+        params: params,
+        fallbackWindowBounds: fallbackWindowBounds,
+        captureImageSize: readCaptureImageSize(filePath: screenshotPath)
+    )
     let sampleCount = max(readInteger(params["sampleCount"]) ?? 16, 1)
     let sampleIntervalSeconds = readPositiveProbeDouble(params["sampleIntervalSeconds"]) ?? 0.06
+    let renderImages = (params["renderImages"] as? Bool) ?? true
     let sourceWindow = params["sourceWindow"] as? [String: Any]
+    let calibration = AppshotTransitionCalibration.from(
+        params: params,
+        target: target,
+        windowTitle: sourceWindow?["title"] as? String,
+        appName: sourceWindow?["appName"] as? String
+    )
 
     return try appshotTransitionPresenter.probePresentation(
         screenshotPath: screenshotPath,
@@ -696,7 +838,8 @@ func probeAppshotTransitionPresentation(params: [String: Any], appshotTransition
         appTitle: sourceWindow?["appName"] as? String,
         bundleIdentifier: sourceWindow?["bundleId"] as? String,
         sampleCount: sampleCount,
-        sampleIntervalSeconds: sampleIntervalSeconds
+        sampleIntervalSeconds: sampleIntervalSeconds,
+        renderImages: renderImages
     )
 }
 
@@ -754,26 +897,197 @@ func readFrontmostWindow() throws -> WindowCandidate {
     guard let app = NSWorkspace.shared.frontmostApplication else {
         throw BridgeError("frontmost-app-unavailable", "No frontmost application is available.")
     }
+    if isCradleApplication(application: app) {
+        guard let lastWindow = frontmostWindowTracker.readLastWindow() else {
+            throw BridgeError("source-window-unavailable", "No previous non-Cradle source window is available for Appshot capture.")
+        }
+        return try readTargetWindow(target: WindowTarget(
+            windowId: lastWindow.windowId,
+            processId: lastWindow.processId,
+            bundleId: lastWindow.bundleId
+        ))
+    }
+    return try readWindowForApplication(app)
+}
+
+func readWindowForApplication(_ app: NSRunningApplication) throws -> WindowCandidate {
     let pid = Int(app.processIdentifier)
     let rawWindows = try readRawWindowInventory()
+    let accessibilityWindow = readAccessibilityWindowSnapshot(application: app)
 
     let frontmostCandidates = rawWindows.compactMap { raw -> WindowCandidate? in
         guard let ownerPid = readInteger(raw[kCGWindowOwnerPID as String]), ownerPid == pid else {
             return nil
         }
-        return readWindowCandidate(raw: raw, application: app)
+        return readWindowCandidate(raw: raw, application: app, accessibilityWindow: accessibilityWindow)
     }
-    if let selected = frontmostCandidates.first {
+    if let selected = selectWindowCandidate(candidates: frontmostCandidates, accessibilityWindow: accessibilityWindow) {
         return selected
     }
 
-    let fallbackCandidates = rawWindows.compactMap { raw -> WindowCandidate? in
-        readWindowCandidate(raw: raw, application: nil)
+    var details = [
+        "processId": String(pid),
+    ]
+    if let bundleId = app.bundleIdentifier {
+        details["bundleId"] = bundleId
     }
-    guard let selected = fallbackCandidates.first else {
-        throw BridgeError("frontmost-window-unavailable", "No capturable frontmost window was found.")
+    throw BridgeError("frontmost-window-unavailable", "No capturable frontmost window was found for the frontmost application.", details: details)
+}
+
+func isCradleApplication(application: NSRunningApplication) -> Bool {
+    guard let bundleIdentifier = application.bundleIdentifier else {
+        return false
     }
-    return selected
+    return cradleApplicationBundleIdentifiers.contains(bundleIdentifier)
+}
+
+func selectWindowCandidate(candidates: [WindowCandidate], accessibilityWindow: AccessibilityWindowSnapshot?) -> WindowCandidate? {
+    guard !candidates.isEmpty else {
+        return nil
+    }
+    guard let accessibilityWindow else {
+        return candidates.first
+    }
+
+    let ranked = candidates.enumerated().map { index, candidate in
+        (candidate: candidate, index: index, score: scoreWindowCandidate(candidate, accessibilityWindow: accessibilityWindow))
+    }.sorted { left, right in
+        if left.score == right.score {
+            return left.index < right.index
+        }
+        return left.score > right.score
+    }
+    return ranked.first?.candidate ?? candidates.first
+}
+
+func scoreWindowCandidate(_ candidate: WindowCandidate, accessibilityWindow: AccessibilityWindowSnapshot) -> Double {
+    var score = 0.0
+    if let candidateTitle = candidate.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+       let accessibilityTitle = accessibilityWindow.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !candidateTitle.isEmpty,
+       !accessibilityTitle.isEmpty {
+        if candidateTitle == accessibilityTitle {
+            score += 100
+        } else if candidateTitle.contains(accessibilityTitle) || accessibilityTitle.contains(candidateTitle) {
+            score += 40
+        }
+    }
+    if let candidateBounds = readCGRect(candidate.bounds),
+       let accessibilityFrame = accessibilityWindow.frame {
+        let widthDelta = abs(candidateBounds.width - accessibilityFrame.width)
+        let heightDelta = abs(candidateBounds.height - accessibilityFrame.height)
+        if widthDelta <= 8 && heightDelta <= 8 {
+            score += 30
+        }
+        let originDelta = hypot(candidateBounds.midX - accessibilityFrame.midX, candidateBounds.midY - accessibilityFrame.midY)
+        if originDelta <= 24 {
+            score += 40
+        } else if widthDelta <= 8 && heightDelta <= 8 {
+            score += 10
+        }
+    }
+    return score
+}
+
+func windowCandidateWithAccessibilityFrame(_ candidate: WindowCandidate, accessibilityWindow: AccessibilityWindowSnapshot?) -> WindowCandidate {
+    guard let accessibilityFrame = accessibilityWindow?.frame,
+          let coreGraphicsFrame = readCGRect(candidate.bounds),
+          isLikelySameWindow(coreGraphicsFrame, accessibilityFrame) else {
+        return candidate
+    }
+    return WindowCandidate(
+        windowId: candidate.windowId,
+        appName: candidate.appName,
+        bundleId: candidate.bundleId,
+        processId: candidate.processId,
+        title: candidate.title,
+        bounds: serialize(rect: accessibilityFrame),
+        frameEvidence: WindowFrameEvidence(
+            coreGraphicsBounds: candidate.bounds,
+            accessibilityFrame: accessibilityFrame
+        )
+    )
+}
+
+func isLikelySameWindow(_ lhs: CGRect, _ rhs: CGRect) -> Bool {
+    let sizeDelta = abs(lhs.width - rhs.width) + abs(lhs.height - rhs.height)
+    let centerDelta = hypot(lhs.midX - rhs.midX, lhs.midY - rhs.midY)
+    return sizeDelta <= 96 && centerDelta <= 96
+}
+
+func readAccessibilityWindowSnapshot(application: NSRunningApplication) -> AccessibilityWindowSnapshot? {
+    let applicationElement = AXUIElementCreateApplication(application.processIdentifier)
+    let windowElement = readAXWindowElement(applicationElement, attribute: kAXFocusedWindowAttribute)
+        ?? readAXWindowElement(applicationElement, attribute: kAXMainWindowAttribute)
+    guard let windowElement else {
+        return nil
+    }
+    return AccessibilityWindowSnapshot(
+        title: readAXString(windowElement, attribute: kAXTitleAttribute),
+        frame: readAXFrame(windowElement)
+    )
+}
+
+func readAXWindowElement(_ element: AXUIElement, attribute: String) -> AXUIElement? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    guard result == .success, let value, CFGetTypeID(value) == AXUIElementGetTypeID() else {
+        return nil
+    }
+    return (value as! AXUIElement)
+}
+
+func readAXString(_ element: AXUIElement, attribute: String) -> String? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    guard result == .success else {
+        return nil
+    }
+    return value as? String
+}
+
+func readAXFrame(_ element: AXUIElement) -> CGRect? {
+    guard let position = readAXCGPoint(element, attribute: kAXPositionAttribute),
+          let size = readAXCGSize(element, attribute: kAXSizeAttribute),
+          size.width > 0,
+          size.height > 0 else {
+        return nil
+    }
+    return CGRect(origin: position, size: size)
+}
+
+func readAXCGPoint(_ element: AXUIElement, attribute: String) -> CGPoint? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    guard result == .success, let value, CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgPoint else {
+        return nil
+    }
+    var point = CGPoint.zero
+    guard AXValueGetValue(axValue, .cgPoint, &point) else {
+        return nil
+    }
+    return point
+}
+
+func readAXCGSize(_ element: AXUIElement, attribute: String) -> CGSize? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+    guard result == .success, let value, CFGetTypeID(value) == AXValueGetTypeID() else {
+        return nil
+    }
+    let axValue = value as! AXValue
+    guard AXValueGetType(axValue) == .cgSize else {
+        return nil
+    }
+    var size = CGSize.zero
+    guard AXValueGetValue(axValue, .cgSize, &size) else {
+        return nil
+    }
+    return size
 }
 
 func readTargetWindow(target: WindowTarget) throws -> WindowCandidate {
@@ -804,7 +1118,9 @@ func readTargetWindow(target: WindowTarget) throws -> WindowCandidate {
         }
         throw BridgeError("target-window-unavailable", "The requested target window is no longer capturable.", details: details)
     }
-    return selected
+    let accessibilityWindow = NSRunningApplication(processIdentifier: pid_t(selected.processId))
+        .flatMap { readAccessibilityWindowSnapshot(application: $0) }
+    return windowCandidateWithAccessibilityFrame(selected, accessibilityWindow: accessibilityWindow)
 }
 
 func readRawWindowInventory() throws -> [[String: Any]] {
@@ -815,7 +1131,11 @@ func readRawWindowInventory() throws -> [[String: Any]] {
     return rawWindows
 }
 
-func readWindowCandidate(raw: [String: Any], application: NSRunningApplication?) -> WindowCandidate? {
+func readWindowCandidate(
+    raw: [String: Any],
+    application: NSRunningApplication?,
+    accessibilityWindow: AccessibilityWindowSnapshot? = nil
+) -> WindowCandidate? {
     guard let ownerPid = readInteger(raw[kCGWindowOwnerPID as String]),
           let layer = readInteger(raw[kCGWindowLayer as String]), layer == 0,
           let windowId = readInteger(raw[kCGWindowNumber as String])
@@ -827,14 +1147,19 @@ func readWindowCandidate(raw: [String: Any], application: NSRunningApplication?)
         return nil
     }
     let ownerApplication = application ?? NSRunningApplication(processIdentifier: pid_t(ownerPid))
-    return WindowCandidate(
+    let candidate = WindowCandidate(
         windowId: windowId,
         appName: ownerApplication?.localizedName ?? raw[kCGWindowOwnerName as String] as? String,
         bundleId: ownerApplication?.bundleIdentifier,
         processId: ownerPid,
         title: raw[kCGWindowName as String] as? String,
-        bounds: bounds
+        bounds: bounds,
+        frameEvidence: WindowFrameEvidence(
+            coreGraphicsBounds: bounds,
+            accessibilityFrame: nil
+        )
     )
+    return windowCandidateWithAccessibilityFrame(candidate, accessibilityWindow: accessibilityWindow)
 }
 
 func readInteger(_ raw: Any?) -> Int? {
@@ -857,6 +1182,19 @@ func readBounds(_ raw: Any?) -> [String: Double]? {
         "width": (raw["Width"] as? NSNumber)?.doubleValue ?? 0,
         "height": (raw["Height"] as? NSNumber)?.doubleValue ?? 0,
     ]
+}
+
+func readCGRect(_ raw: [String: Double]?) -> CGRect? {
+    guard let raw,
+          let x = raw["x"],
+          let y = raw["y"],
+          let width = raw["width"],
+          let height = raw["height"],
+          width > 0,
+          height > 0 else {
+        return nil
+    }
+    return CGRect(x: x, y: y, width: width, height: height)
 }
 
 func enforcePrivacyRules(window: WindowCandidate, params: [String: Any]) throws {
@@ -900,20 +1238,85 @@ func runScreenCapture(windowId: Int, filePath: String) throws {
 }
 
 func serialize(window: WindowCandidate) -> [String: Any] {
-    [
+    var payload: [String: Any] = [
         "windowId": window.windowId,
         "appName": window.appName ?? NSNull(),
         "bundleId": window.bundleId ?? NSNull(),
+        "appIconDataUrl": readApplicationIconDataURL(window: window) ?? NSNull(),
         "processId": window.processId,
         "title": window.title ?? NSNull(),
         "bounds": window.bounds ?? NSNull(),
     ]
+    if let frameEvidence = window.frameEvidence {
+        payload["frameEvidence"] = serialize(frameEvidence: frameEvidence)
+    }
+    return payload
+}
+
+func serialize(frameEvidence: WindowFrameEvidence) -> [String: Any] {
+    [
+        "coreGraphicsBounds": frameEvidence.coreGraphicsBounds ?? NSNull(),
+        "accessibilityFrame": frameEvidence.accessibilityFrame.map { serialize(rect: $0) } ?? NSNull(),
+    ]
+}
+
+func readApplicationIconDataURL(window: WindowCandidate) -> String? {
+    let application = NSRunningApplication(processIdentifier: pid_t(window.processId))
+        ?? window.bundleId.flatMap { bundleIdentifier in
+            NSRunningApplication
+                .runningApplications(withBundleIdentifier: bundleIdentifier)
+                .first(where: { !$0.isTerminated })
+    }
+    guard let icon = application?.icon,
+          let pngData = renderApplicationIconPNGData(icon: icon, size: 64)
+    else {
+        return nil
+    }
+    return "data:image/png;base64,\(pngData.base64EncodedString())"
+}
+
+func renderApplicationIconPNGData(icon: NSImage, size: CGFloat) -> Data? {
+    let pixelSize = max(Int(size), 1)
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: pixelSize,
+        pixelsHigh: pixelSize,
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bitmapFormat: [],
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        return nil
+    }
+    bitmap.size = NSSize(width: size, height: size)
+    guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        return nil
+    }
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    NSColor.clear.setFill()
+    NSRect(x: 0, y: 0, width: size, height: size).fill()
+    icon.draw(
+        in: NSRect(x: 0, y: 0, width: size, height: size),
+        from: .zero,
+        operation: .copy,
+        fraction: 1,
+        respectFlipped: false,
+        hints: [.interpolation: NSImageInterpolation.high]
+    )
+    NSGraphicsContext.restoreGraphicsState()
+    return bitmap.representation(using: .png, properties: [:])
 }
 
 func serialize(target: AppshotTransitionTarget) -> [String: Any] {
     [
+        "coordinateSpace": target.coordinateSpace,
         "codexDisplay": [
-            "id": displayIdentifier(for: target.displayFrame),
+            "id": target.displayMapping.displayId ?? displayIdentifier(for: target.displayFrame),
             "scaleFactor": Double(target.displayScaleFactor),
             "bounds": serialize(rect: target.displayFrame),
             "workArea": serialize(rect: target.displayWorkArea),

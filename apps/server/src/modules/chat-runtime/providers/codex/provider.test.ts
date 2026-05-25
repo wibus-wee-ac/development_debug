@@ -122,6 +122,12 @@ function createProvider(client: FakeCodexAppServerClient): CodexProvider {
   })
 }
 
+async function drainStream(stream: AsyncGenerator<UIMessageChunk, void, void>): Promise<void> {
+  for await (const _chunk of stream) {
+    // Drain stream.
+  }
+}
+
 describe('codexProvider app-server integration', () => {
   it('maps image attachments to Codex app-server user input', async () => {
     const client = new FakeCodexAppServerClient({})
@@ -345,6 +351,67 @@ describe('codexProvider app-server integration', () => {
     }).rejects.toThrow('Codex provider only supports text and image input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(client.requests).toEqual([])
+  })
+
+  it('includes app-server error notification details in thrown diagnostics', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Use an incompatible endpoint'),
+      workspaceId: 'workspace-1',
+    })
+
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'error',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        message: 'Upstream model request failed',
+        code: 'invalid_request',
+        details: {
+          model: 'mimo-v2.5-pro',
+          reason: 'endpoint does not support Codex app-server turn streaming',
+        },
+      },
+    })
+
+    await expect(drainPromise).rejects.toMatchObject({
+      name: 'CodexProviderError',
+      code: 'TURN_STREAM_FAILED',
+      message: expect.stringContaining('event_types=error:1'),
+      data: {
+        diagnostics: {
+          totalEvents: 1,
+          mappedEvents: 0,
+          eventTypeCounts: { error: 1 },
+          errorEvents: [
+            {
+              method: 'error',
+              params: expect.objectContaining({
+                message: 'Upstream model request failed',
+                code: 'invalid_request',
+              }),
+            },
+          ],
+        },
+        notification: {
+          method: 'error',
+          params: expect.objectContaining({
+            message: 'Upstream model request failed',
+            code: 'invalid_request',
+          }),
+        },
+      },
+    })
   })
 
   it('resumes existing app-server threads before starting the turn', async () => {

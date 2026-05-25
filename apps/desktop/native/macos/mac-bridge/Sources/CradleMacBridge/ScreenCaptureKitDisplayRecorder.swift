@@ -1033,10 +1033,10 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
 
     func finish() throws -> [String: Any] {
         stopped = true
-        discoveryTask?.cancel()
 
         let semaphore = DispatchSemaphore(value: 0)
         Task {
+            await discoveryTask?.value
             do {
                 try await finishAsync()
             } catch {

@@ -4,7 +4,7 @@
  * Position: Feature-owned tests for the shared chat/Jarvis message renderer.
  */
 
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -122,5 +122,97 @@ describe('message bubble', () => {
     expect(screen.getByTestId('chat-file-attachment-image').getAttribute('src')).toBe('data:image/png;base64,test')
     expect(screen.getByText('diagram.png')).toBeTruthy()
     expect(screen.getByText('image/png')).toBeTruthy()
+  })
+
+  it('renders Cradle AppShot file parts as thread AppShot cards', () => {
+    const messageWithAppshot: UIMessage = {
+      id: 'user-appshot',
+      role: 'user',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'window.png',
+          url: 'data:image/png;base64,final',
+          providerMetadata: {
+            cradle: {
+              appshot: {
+                kind: 'cradle-appshot',
+                appName: 'Visual Studio Code',
+                windowTitle: 'Cradle',
+                bundleIdentifier: 'com.microsoft.VSCode',
+                imageName: 'window.png',
+                imageDataUrl: 'data:image/png;base64,final',
+                imagePath: '/tmp/window.png',
+                transitionSnapshotDataUrl: 'data:image/png;base64,transition',
+                transitionSnapshotHeight: 140,
+                appIconDataUrl: null,
+                axTree: '',
+              },
+            },
+          },
+        },
+      ],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={messageWithAppshot} isStreaming={false} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByTestId('chat-appshot-card')).toBeTruthy()
+    expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,final')
+    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Visual Studio Code')
+    expect(screen.queryByText('Cradle')).toBeNull()
+    expect(screen.queryByTestId('chat-file-attachment')).toBeNull()
+  })
+
+  it('opens Cradle AppShot previews and toggles accessibility text', () => {
+    const messageWithAppshot: UIMessage = {
+      id: 'user-appshot-preview',
+      role: 'user',
+      parts: [
+        {
+          type: 'file',
+          mediaType: 'image/png',
+          filename: 'window.png',
+          url: 'data:image/png;base64,final',
+          providerMetadata: {
+            cradle: {
+              appshot: {
+                kind: 'cradle-appshot',
+                appName: 'Visual Studio Code',
+                windowTitle: 'Cradle',
+                bundleIdentifier: 'com.microsoft.VSCode',
+                imageName: 'window.png',
+                imageDataUrl: 'data:image/png;base64,final',
+                imagePath: '/tmp/window.png',
+                transitionSnapshotDataUrl: 'data:image/png;base64,transition',
+                transitionSnapshotHeight: 140,
+                appIconDataUrl: null,
+                axTree: 'Window: "Cradle", App: "Visual Studio Code"',
+              },
+            },
+          },
+        },
+      ],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={messageWithAppshot} isStreaming={false} />
+      </TooltipProvider>,
+    )
+
+    fireEvent.click(screen.getByTestId('chat-appshot-card'))
+
+    expect(screen.getByTestId('chat-appshot-preview-dialog')).toBeTruthy()
+    expect(screen.getByTestId('chat-appshot-preview-image').getAttribute('src')).toBe('data:image/png;base64,final')
+
+    fireEvent.click(screen.getByTestId('chat-appshot-preview-toggle'))
+
+    expect(screen.getByText('Window: "Cradle", App: "Visual Studio Code"')).toBeTruthy()
+    expect(screen.queryByTestId('chat-appshot-preview-image')).toBeNull()
   })
 })

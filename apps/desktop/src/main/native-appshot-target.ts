@@ -12,8 +12,11 @@ import type {
 export function createParityAppshotAnimationTarget(context: MacAppshotFrontmostContext): MacAppshotAnimationTarget {
   const workArea = context.animationTarget.codexDisplay.workArea
   const scaleFactor = context.animationTarget.codexDisplay.scaleFactor
-  const width = 232 * scaleFactor
-  const height = 140 * scaleFactor
+  const geometryScale = context.animationTarget.coordinateSpace === 'pixels' || context.animationTarget.coordinateSpace === 'viewportPixels'
+    ? scaleFactor
+    : 1
+  const width = 232 * geometryScale
+  const height = 140 * geometryScale
   return {
     ...context.animationTarget,
     destinationBackgroundColor: '#ffffff',

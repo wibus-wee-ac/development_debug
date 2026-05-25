@@ -79,6 +79,7 @@ export const MacInputConfigureRequestSchema = z.object({
 export const MacInputConfigureResultSchema = z.object({
   trigger: z.literal('bothCommand'),
   enabled: z.boolean(),
+  diagnostics: z.unknown().optional(),
 })
 
 export const MacCaptureWindowTargetSchema = z.object({
@@ -94,10 +95,26 @@ export const MacCaptureFrontmostWindowRequestSchema = z.object({
   privacySensitiveTitlePatterns: z.array(z.string()).optional(),
 })
 
+export const MacWindowFrameEvidenceSchema = z.object({
+  coreGraphicsBounds: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }).nullable(),
+  accessibilityFrame: z.object({
+    x: z.number(),
+    y: z.number(),
+    width: z.number(),
+    height: z.number(),
+  }).nullable(),
+})
+
 export const MacCapturedWindowSchema = z.object({
   windowId: z.number().int().nonnegative(),
   appName: z.string().nullable(),
   bundleId: z.string().nullable(),
+  appIconDataUrl: z.string().nullable().optional(),
   processId: z.number().int().nonnegative(),
   title: z.string().nullable(),
   bounds: z.object({
@@ -106,6 +123,7 @@ export const MacCapturedWindowSchema = z.object({
     width: z.number(),
     height: z.number(),
   }).nullable(),
+  frameEvidence: MacWindowFrameEvidenceSchema.optional(),
 })
 
 export const MacCaptureFrontmostWindowResultSchema = z.object({
@@ -117,6 +135,10 @@ export const MacCaptureFrontmostWindowResultSchema = z.object({
     'screencapture-fallback',
     'screencapture',
   ]).optional(),
+  captureImageSize: z.object({
+    pixelWidth: z.number().int().positive(),
+    pixelHeight: z.number().int().positive(),
+  }).nullable().optional(),
   screenCaptureKitError: z.unknown().optional().nullable(),
   window: MacCapturedWindowSchema,
 })
@@ -138,38 +160,13 @@ export const MacAppshotDisplaySchema = z.object({
 })
 
 export const MacAppshotAnimationTargetSchema = z.object({
+  coordinateSpace: z.enum(['viewportPixels', 'screenPoints', 'pixels']).optional(),
   codexDisplay: MacAppshotDisplaySchema,
   destinationBackgroundColor: MacAppshotColorSchema,
   destinationCornerRadius: z.number().nonnegative(),
   destinationFrame: MacAppshotRectSchema,
   destinationPrimaryTextColor: MacAppshotColorSchema,
   transitionSnapshotScale: z.number().positive().optional(),
-})
-
-export const MacAppshotTransitionStyleSchema = z.object({
-  transitionBackgroundOpacity: z.number().min(0).max(1).optional(),
-  shutterPeakOpacity: z.number().min(0).max(1).optional(),
-  shutterPeakProgress: z.number().min(0).max(1).optional(),
-  backgroundPeakProgress: z.number().min(0).max(1).optional(),
-  snapshotFadeInProgress: z.number().min(0).max(1).optional(),
-  appIconFadeStartProgress: z.number().min(0).max(1).optional(),
-  appIconVisibleProgress: z.number().min(0).max(1).optional(),
-  titleFadeStartProgress: z.number().min(0).max(1).optional(),
-  titleVisibleProgress: z.number().min(0).max(1).optional(),
-  completionDelay: z.number().nonnegative().optional(),
-  destinationShadowRadius: z.number().nonnegative().optional(),
-  destinationShadowYOffset: z.number().optional(),
-  destinationShadowOpacity: z.number().min(0).max(1).optional(),
-  keyShadowRadius: z.number().nonnegative().optional(),
-  keyShadowYOffset: z.number().optional(),
-  keyShadowOpacity: z.number().min(0).max(1).optional(),
-  ambientShadowRadius: z.number().nonnegative().optional(),
-  ambientShadowYOffset: z.number().optional(),
-  ambientShadowOpacity: z.number().min(0).max(1).optional(),
-  shadowFillOpacity: z.number().min(0).max(1).optional(),
-  accessoryIconSize: z.number().positive().optional(),
-  accessoryIconYOffset: z.number().optional(),
-  accessoryTitleYOffset: z.number().optional(),
 })
 
 export const MacAppshotCaptureFrontmostWindowRequestSchema = MacCaptureFrontmostWindowRequestSchema.extend({
@@ -179,7 +176,6 @@ export const MacAppshotCaptureFrontmostWindowRequestSchema = MacCaptureFrontmost
   transitionSnapshotHeight: z.number().positive().optional(),
   transitionSpringDampingFraction: z.number().positive().optional(),
   transitionSpringResponse: z.number().positive().optional(),
-  transitionStyle: MacAppshotTransitionStyleSchema.optional(),
 })
 
 export const MacAppshotFrontmostContextSchema = z.object({
@@ -196,7 +192,7 @@ export const MacAppshotCaptureFrontmostWindowResultSchema = MacCaptureFrontmostW
     transitionSnapshotHeight: z.number().positive().nullable(),
     transitionSpringDampingFraction: z.number().positive().nullable(),
     transitionSpringResponse: z.number().positive().nullable(),
-    transitionStyle: MacAppshotTransitionStyleSchema.required(),
+    transitionGeometry: z.record(z.string(), z.unknown()).optional(),
   }),
 })
 
@@ -209,10 +205,10 @@ export const MacAppshotProbeTransitionRequestSchema = z.object({
   soundEnabled: z.boolean().optional(),
   sampleCount: z.number().int().positive().optional(),
   sampleIntervalSeconds: z.number().positive().optional(),
+  renderImages: z.boolean().optional(),
   transitionSnapshotHeight: z.number().positive().optional(),
   transitionSpringDampingFraction: z.number().positive().optional(),
   transitionSpringResponse: z.number().positive().optional(),
-  transitionStyle: MacAppshotTransitionStyleSchema.optional(),
 })
 
 export const MacAppshotProbeSampleSchema = z.object({
@@ -229,78 +225,6 @@ export const MacAppshotProbeTransitionResultSchema = z.object({
   animationDuration: z.number().nonnegative(),
   samples: z.array(MacAppshotProbeSampleSchema),
 }).passthrough()
-
-export const MacCodexAppshotTranscriptSchema = z.object({
-  status: z.string(),
-  sentAt: z.string().optional(),
-  receivedAt: z.string().optional(),
-  failedAt: z.string().optional(),
-  target: z.unknown().optional(),
-  request: z.unknown().optional(),
-  reply: z.unknown().optional(),
-  error: z.unknown().optional(),
-}).passthrough()
-
-export const MacCodexAppshotStartRequestSchema = z.object({
-  requestId: z.string().min(1),
-  bundleIdentifier: z.string().min(1),
-  animationTarget: MacAppshotAnimationTargetSchema,
-  serviceProcessIdentifier: z.number().int().positive().optional(),
-  timeoutSeconds: z.number().int().positive().max(300).optional(),
-})
-
-export const MacCodexAppshotStartResultSchema = z.object({
-  animationDuration: z.number().nullable(),
-  transitionSnapshotHeight: z.number().positive().nullable(),
-  transitionSpringDampingFraction: z.number().nullable(),
-  transitionSpringResponse: z.number().nullable(),
-  cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-})
-
-export const MacCodexAppshotUpdateSchema = z.discriminatedUnion('type', [
-  z.object({
-    type: z.literal('metadata'),
-    app: z.object({
-      bundleIdentifier: z.string(),
-    }),
-    cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-  }),
-  z.object({
-    type: z.literal('axText'),
-    text: z.string(),
-    cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-  }),
-  z.object({
-    type: z.literal('screenshot'),
-    screenshotURL: z.string().nullable().optional(),
-    screenshot: z.object({
-      url: z.string(),
-      mimeType: z.string(),
-    }).nullable().optional(),
-    cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-  }),
-  z.object({
-    type: z.literal('completed'),
-    transitionSnapshotURL: z.string().nullable().optional(),
-    cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-  }),
-  z.object({
-    type: z.literal('failed'),
-    cradleTranscript: MacCodexAppshotTranscriptSchema.optional(),
-  }),
-])
-
-export const MacCodexAppshotNextUpdateRequestSchema = z.object({
-  requestId: z.string().min(1),
-  serviceProcessIdentifier: z.number().int().positive().optional(),
-  timeoutSeconds: z.number().int().positive().max(300).optional(),
-})
-
-export const MacCodexAppshotServiceResultSchema = z.object({
-  bundleIdentifier: z.literal('com.openai.sky.CUAService'),
-  processIdentifier: z.number().int().positive().nullable(),
-  running: z.boolean(),
-})
 
 export const MacDisplayRecordingBackendSchema = z.enum([
   'screen-capture-kit-display',
@@ -382,6 +306,10 @@ export const MacScreenCaptureKitDiagnosticsSchema = z.object({
 export const MacHotkeyTriggeredEventSchema = z.object({
   trigger: z.literal('bothCommand'),
   capturedAt: z.string(),
+  targetWindow: MacCaptureWindowTargetSchema.optional(),
+  sourceWindow: MacCapturedWindowSchema.optional(),
+  bundleIdentifier: z.string().nullable().optional(),
+  context: MacAppshotFrontmostContextSchema.optional(),
 })
 
 export type MacBridgeError = z.infer<typeof MacBridgeErrorSchema>
@@ -399,18 +327,11 @@ export type MacCaptureWindowTarget = z.infer<typeof MacCaptureWindowTargetSchema
 export type MacCaptureFrontmostWindowRequest = z.infer<typeof MacCaptureFrontmostWindowRequestSchema>
 export type MacCaptureFrontmostWindowResult = z.infer<typeof MacCaptureFrontmostWindowResultSchema>
 export type MacAppshotAnimationTarget = z.infer<typeof MacAppshotAnimationTargetSchema>
-export type MacAppshotTransitionStyle = z.infer<typeof MacAppshotTransitionStyleSchema>
 export type MacAppshotFrontmostContext = z.infer<typeof MacAppshotFrontmostContextSchema>
 export type MacAppshotCaptureFrontmostWindowRequest = z.infer<typeof MacAppshotCaptureFrontmostWindowRequestSchema>
 export type MacAppshotCaptureFrontmostWindowResult = z.infer<typeof MacAppshotCaptureFrontmostWindowResultSchema>
 export type MacAppshotProbeTransitionRequest = z.infer<typeof MacAppshotProbeTransitionRequestSchema>
 export type MacAppshotProbeTransitionResult = z.infer<typeof MacAppshotProbeTransitionResultSchema>
-export type MacCodexAppshotTranscript = z.infer<typeof MacCodexAppshotTranscriptSchema>
-export type MacCodexAppshotStartRequest = z.infer<typeof MacCodexAppshotStartRequestSchema>
-export type MacCodexAppshotStartResult = z.infer<typeof MacCodexAppshotStartResultSchema>
-export type MacCodexAppshotUpdate = z.infer<typeof MacCodexAppshotUpdateSchema>
-export type MacCodexAppshotNextUpdateRequest = z.infer<typeof MacCodexAppshotNextUpdateRequestSchema>
-export type MacCodexAppshotServiceResult = z.infer<typeof MacCodexAppshotServiceResultSchema>
 export type MacDisplayRecordingStartRequest = z.infer<typeof MacDisplayRecordingStartRequestSchema>
 export type MacWindowRecordingStartRequest = z.infer<typeof MacWindowRecordingStartRequestSchema>
 export type MacDisplayRecordingStartResult = z.infer<typeof MacDisplayRecordingStartResultSchema>

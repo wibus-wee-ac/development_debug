@@ -15,11 +15,6 @@ import {
   MacAppshotProbeTransitionRequestSchema,
   MacAppshotProbeTransitionResultSchema,
   MacCaptureFrontmostWindowResultSchema,
-  MacCodexAppshotNextUpdateRequestSchema,
-  MacCodexAppshotServiceResultSchema,
-  MacCodexAppshotStartRequestSchema,
-  MacCodexAppshotStartResultSchema,
-  MacCodexAppshotUpdateSchema,
   MacDisplayRecordingFinishRequestSchema,
   MacDisplayRecordingFinishResultSchema,
   MacDisplayRecordingStartRequestSchema,
@@ -35,11 +30,6 @@ import {
   type MacAppshotProbeTransitionResult,
   type MacCaptureFrontmostWindowRequest,
   type MacCaptureFrontmostWindowResult,
-  type MacCodexAppshotNextUpdateRequest,
-  type MacCodexAppshotServiceResult,
-  type MacCodexAppshotStartRequest,
-  type MacCodexAppshotStartResult,
-  type MacCodexAppshotUpdate,
   type MacDisplayRecordingFinishRequest,
   type MacDisplayRecordingFinishResult,
   type MacDisplayRecordingStartRequest,
@@ -386,23 +376,6 @@ export class MacBridgeManager {
     return MacDisplayRecordingFinishResultSchema.parse(result)
   }
 
-  async readCodexAppshotService(): Promise<MacCodexAppshotServiceResult> {
-    const result = await this.request<unknown>('mac.codexAppshot.service')
-    return MacCodexAppshotServiceResultSchema.parse(result)
-  }
-
-  async startCodexAppshotCapture(params: MacCodexAppshotStartRequest): Promise<MacCodexAppshotStartResult> {
-    const parsedParams = MacCodexAppshotStartRequestSchema.parse(params)
-    const result = await this.request<unknown>('mac.codexAppshot.startCapture', parsedParams, { timeoutMs: 120_000 })
-    return MacCodexAppshotStartResultSchema.parse(result)
-  }
-
-  async readCodexAppshotCaptureUpdate(params: MacCodexAppshotNextUpdateRequest): Promise<MacCodexAppshotUpdate> {
-    const parsedParams = MacCodexAppshotNextUpdateRequestSchema.parse(params)
-    const result = await this.request<unknown>('mac.codexAppshot.nextCaptureUpdate', parsedParams, { timeoutMs: 130_000 })
-    return MacCodexAppshotUpdateSchema.parse(result)
-  }
-
   on(eventName: MacBridgeEventName, handler: (event: MacHotkeyTriggeredEvent) => void): () => void {
     this.events.on(eventName, handler)
     return () => this.events.off(eventName, handler)
@@ -455,13 +428,24 @@ export class MacBridgeManager {
   }
 
   private handleEvent(method: string, params: unknown): void {
+    if (method.startsWith('event.mac.input')) {
+      const log = method === 'event.mac.inputMonitorSetupFailed' || method === 'event.mac.inputMonitorDisabled'
+        ? console.warn
+        : console.debug
+      log('[mac-bridge] input event:', method, params)
+      return
+    }
     if (method !== 'event.mac.hotkeyTriggered') {
+      console.debug('[mac-bridge] ignored event:', method, params)
       return
     }
     const event = MacHotkeyTriggeredEventSchema.safeParse(params)
     if (event.success) {
+      console.debug('[mac-bridge] hotkey triggered:', event.data)
       this.events.emit('hotkeyTriggered', event.data)
+      return
     }
+    console.warn('[mac-bridge] hotkey event payload rejected:', event.error, params)
   }
 
   private rejectAllPending(error: Error): void {

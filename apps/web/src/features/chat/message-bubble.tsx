@@ -15,6 +15,7 @@ import { useStreamdownStore } from '~/store/streamdown'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
+import { AppshotAttachmentCard, readCradleAppshotMetadata } from './appshot-attachment'
 import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
 import { describeToolCall } from './tool-ui-classifier'
@@ -27,6 +28,11 @@ const EMPTY_SUBAGENT_MESSAGES: UIMessage[] = []
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
   const isImage = part.mediaType.startsWith('image/')
+  const appshotMetadata = readCradleAppshotMetadata(part)
+
+  if (appshotMetadata) {
+    return <AppshotAttachmentCard variant="thread" metadata={appshotMetadata} />
+  }
 
   return (
     <div

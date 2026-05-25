@@ -161,10 +161,17 @@ export interface MacCaptureResponse {
     filePath: string
     metadataPath: string
     capturedAt: string
+    captureBackend?: 'screen-capture-kit' | 'screencapture-fallback' | 'screencapture'
+    captureImageSize?: {
+      pixelWidth: number
+      pixelHeight: number
+    } | null
+    screenCaptureKitError?: unknown
     window: {
       windowId: number
       appName: string | null
       bundleId: string | null
+      appIconDataUrl?: string | null
       processId: number
       title: string | null
       bounds: {
@@ -189,6 +196,7 @@ export interface MacCaptureWindowTarget {
 }
 
 export interface MacAppshotAnimationTarget {
+  coordinateSpace?: 'viewportPixels' | 'screenPoints' | 'pixels'
   codexDisplay: {
     id: number
     scaleFactor: number
@@ -217,30 +225,19 @@ export interface MacAppshotAnimationTarget {
   transitionSnapshotScale?: number
 }
 
-export interface MacAppshotTransitionStyle {
-  transitionBackgroundOpacity?: number
-  shutterPeakOpacity?: number
-  shutterPeakProgress?: number
-  backgroundPeakProgress?: number
-  snapshotFadeInProgress?: number
-  appIconFadeStartProgress?: number
-  appIconVisibleProgress?: number
-  titleFadeStartProgress?: number
-  titleVisibleProgress?: number
-  completionDelay?: number
-  shadowRadius?: number
-  shadowYOffset?: number
-  shadowOpacity?: number
-  shadowFillOpacity?: number
-  accessoryIconSize?: number
-  accessoryIconYOffset?: number
-  accessoryTitleYOffset?: number
-}
-
 export interface MacAppshotFrontmostContext {
   window: MacCaptureResponse['capture']['window']
   bundleIdentifier: string | null
   animationTarget: MacAppshotAnimationTarget
+}
+
+export interface MacAppshotHotkeyEvent {
+  trigger: 'bothCommand'
+  capturedAt: string
+  targetWindow?: MacCaptureWindowTarget
+  sourceWindow?: MacCaptureResponse['capture']['window']
+  bundleIdentifier?: string | null
+  context?: MacAppshotFrontmostContext
 }
 
 export interface MacAppshotImageAsset {
@@ -259,30 +256,15 @@ export interface MacCradleAppshotCaptureResponse {
       transitionSnapshotHeight: number | null
       transitionSpringDampingFraction: number | null
       transitionSpringResponse: number | null
-      transitionStyle: Required<MacAppshotTransitionStyle>
+      transitionGeometry?: Record<string, unknown>
     }
   }
   asset: MacAppshotImageAsset | null
+  transitionSnapshotAsset: MacAppshotImageAsset | null
   sink: MacCaptureResponse['sink']
 }
 
-export interface MacCodexAppshotCaptureResponse {
-  strategy: 'codex-private'
-  requestId: string
-  start: {
-    animationDuration: number | null
-    transitionSnapshotHeight: number | null
-    transitionSpringDampingFraction: number | null
-    transitionSpringResponse: number | null
-  }
-  updates: Array<{
-    type: 'metadata' | 'axText' | 'screenshot' | 'completed' | 'failed'
-    screenshotAsset?: MacAppshotImageAsset | null
-    transitionSnapshotAsset?: MacAppshotImageAsset | null
-  }>
-}
-
-export type MacAppshotCaptureResponse = MacCradleAppshotCaptureResponse | MacCodexAppshotCaptureResponse
+export type MacAppshotCaptureResponse = MacCradleAppshotCaptureResponse
 
 export interface MacCodexAppshotObservedAsset extends MacAppshotImageAsset {
   relativePath: string
@@ -301,7 +283,6 @@ export interface MacCodexAppshotObserveResponse {
 export interface MacAppshotParityProbeResponse {
   context: MacAppshotFrontmostContext
   animationTarget: MacAppshotAnimationTarget
-  codex: MacCodexAppshotCaptureResponse
   cradle: MacCradleAppshotCaptureResponse
   appliedCalibration: {
     animationDuration?: number
@@ -325,27 +306,23 @@ interface MacCaptureServiceMethods {
   }) => Promise<MacCaptureResponse>
   captureAppshot: (options?: {
     sink?: 'file' | 'clipboard' | 'cleanshot'
-    strategy?: 'auto' | 'cradle-native' | 'codex-private'
+    strategy?: 'cradle-native'
     targetWindow?: MacCaptureWindowTarget
     animationTarget?: MacAppshotAnimationTarget
     animationDuration?: number
     requestId?: string
-    bundleIdentifier?: string
     soundEnabled?: boolean
     transitionSnapshotHeight?: number
     transitionSpringDampingFraction?: number
     transitionSpringResponse?: number
-    transitionStyle?: MacAppshotTransitionStyle
     privacySensitiveAppBundleIds?: string[]
     privacySensitiveTitlePatterns?: string[]
   }) => Promise<MacAppshotCaptureResponse>
   captureAppshotParityProbe: (options?: {
     sink?: 'file' | 'clipboard' | 'cleanshot'
     targetWindow?: MacCaptureWindowTarget
-    requestId?: string
     soundEnabled?: boolean
     animationTarget?: MacAppshotAnimationTarget
-    transitionStyle?: MacAppshotTransitionStyle
     privacySensitiveAppBundleIds?: string[]
     privacySensitiveTitlePatterns?: string[]
   }) => Promise<MacAppshotParityProbeResponse>

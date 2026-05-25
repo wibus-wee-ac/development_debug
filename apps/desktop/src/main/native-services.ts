@@ -1,5 +1,5 @@
 import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
-import { app, dialog, shell } from 'electron'
+import { app, dialog, screen, shell } from 'electron'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative } from 'node:path'
 
@@ -8,11 +8,8 @@ import type {
   MacAppshotAnimationTarget,
   MacAppshotCaptureFrontmostWindowResult,
   MacAppshotFrontmostContext,
-  MacAppshotTransitionStyle,
   MacCaptureWindowTarget,
   MacCaptureFrontmostWindowResult,
-  MacCodexAppshotStartResult,
-  MacCodexAppshotUpdate,
   MacPermissionSettingsRequest,
   MacPermissionSettingsResult,
   MacPermissionsRequest,
@@ -22,7 +19,7 @@ import type {
 import type { MacScreenshotSinkId, MacScreenshotSinkResult } from './mac-screenshot-sinks'
 import { runMacScreenshotSink } from './mac-screenshot-sinks'
 import type { CodexAppshotObservedAsset, CodexAppshotObserveResult } from './native-appshot-codex-assets'
-import { observeCodexAppshotAssets, readCodexAppshotAsset as readCodexPrivateAppshotAsset } from './native-appshot-codex-assets'
+import { observeCodexAppshotAssets } from './native-appshot-codex-assets'
 import { createParityAppshotAnimationTarget } from './native-appshot-target'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
@@ -42,7 +39,6 @@ const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
   'one-time code',
 ]
 
-const AUTO_CODEX_PRIVATE_TIMEOUT_SECONDS = 3
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
 
 // ── Native File System Service ────────────────────────────────────────────────
@@ -132,6 +128,51 @@ function getUpdateManager(): DesktopUpdateManager | null {
 
 function getMacBridgeManager(): MacBridgeManager | null {
   return nativeServicesContext?.getMacBridgeManager() ?? null
+}
+
+function readScreenAppshotAnimationTarget(target: MacAppshotAnimationTarget | undefined): MacAppshotAnimationTarget | undefined {
+  if (!target || target.coordinateSpace !== 'viewportPixels') {
+    return target
+  }
+  const windowManager = getWindowManager()
+  const mainWindow = windowManager?.getMainWindow()
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return target
+  }
+  const scaleFactor = target.codexDisplay.scaleFactor
+  const windowBounds = mainWindow.getBounds()
+  const contentBounds = mainWindow.getContentBounds()
+  const frame = target.destinationFrame
+  const destinationFrame = {
+    x: contentBounds.x + frame.x / scaleFactor,
+    y: contentBounds.y + frame.y / scaleFactor,
+    width: frame.width / scaleFactor,
+    height: frame.height / scaleFactor,
+  }
+  const display = screen.getDisplayMatching(destinationFrame)
+  const convertedTarget = {
+    ...target,
+    coordinateSpace: 'screenPoints' as const,
+    codexDisplay: {
+      ...target.codexDisplay,
+      id: display.id,
+      scaleFactor: display.scaleFactor,
+      bounds: display.bounds,
+      workArea: display.workArea,
+    },
+    destinationFrame,
+    transitionSnapshotScale: target.transitionSnapshotScale ?? scaleFactor,
+  }
+  console.debug('[mac-capture] Appshot destination converted:', {
+    inputCoordinateSpace: target.coordinateSpace,
+    windowBounds,
+    contentBounds,
+    displays: screen.getAllDisplays(),
+    inputDestinationFrame: target.destinationFrame,
+    convertedDestinationFrame: convertedTarget.destinationFrame,
+    display: convertedTarget.codexDisplay,
+  })
+  return convertedTarget
 }
 
 class WindowService extends IpcService {
@@ -250,26 +291,17 @@ export interface MacCaptureResponse {
   sink: MacScreenshotSinkResult
 }
 
-export type MacAppshotStrategy = 'auto' | 'cradle-native' | 'codex-private'
+export type MacAppshotStrategy = 'cradle-native'
 
 export interface MacAppshotCaptureRequest extends MacCaptureRequest {
   strategy?: MacAppshotStrategy
   animationTarget?: MacAppshotAnimationTarget
   animationDuration?: number
   requestId?: string
-  bundleIdentifier?: string
   soundEnabled?: boolean
   transitionSnapshotHeight?: number
   transitionSpringDampingFraction?: number
   transitionSpringResponse?: number
-  transitionStyle?: MacAppshotTransitionStyle
-}
-
-export interface MacCodexAppshotCaptureResponse {
-  strategy: 'codex-private'
-  requestId: string
-  start: MacCodexAppshotStartResult
-  updates: MacCodexAppshotResolvedUpdate[]
 }
 
 export interface MacAppshotImageAsset {
@@ -282,23 +314,15 @@ export interface MacCradleAppshotCaptureResponse {
   strategy: 'cradle-native'
   capture: MacAppshotCaptureFrontmostWindowResult
   asset: MacAppshotImageAsset | null
+  transitionSnapshotAsset: MacAppshotImageAsset | null
   sink: MacScreenshotSinkResult
 }
 
-export type MacAppshotCaptureResponse = MacCodexAppshotCaptureResponse | MacCradleAppshotCaptureResponse
-
-export type MacCodexAppshotAsset = MacAppshotImageAsset
-
-export type MacCodexAppshotResolvedUpdate = MacCodexAppshotUpdate & {
-  screenshotAsset?: MacCodexAppshotAsset | null
-  transitionSnapshotAsset?: MacCodexAppshotAsset | null
-}
+export type MacAppshotCaptureResponse = MacCradleAppshotCaptureResponse
 
 export interface MacAppshotParityProbeRequest extends MacCaptureRequest {
-  requestId?: string
   soundEnabled?: boolean
   animationTarget?: MacAppshotAnimationTarget
-  transitionStyle?: MacAppshotTransitionStyle
 }
 
 export interface MacCodexAppshotObserveRequest {
@@ -311,14 +335,12 @@ export interface MacCodexAppshotObserveRequest {
 export interface MacAppshotParityProbeResponse {
   context: MacAppshotFrontmostContext
   animationTarget: MacAppshotAnimationTarget
-  codex: MacCodexAppshotCaptureResponse
   cradle: MacCradleAppshotCaptureResponse
   appliedCalibration: {
     animationDuration?: number
     transitionSnapshotHeight?: number
     transitionSpringDampingFraction?: number
     transitionSpringResponse?: number
-    transitionStyle?: MacAppshotTransitionStyle
   }
 }
 
@@ -452,43 +474,45 @@ export async function captureAppshotWithMacBridge(
     throw new Error('Mac Bridge manager is not initialized')
   }
 
-  const strategy = options.strategy ?? 'auto'
-  const context = await readAppshotContextForStrategy(manager, options, strategy)
+  const strategy = options.strategy ?? 'cradle-native'
+  if (strategy !== 'cradle-native') {
+    throw new Error(`Unsupported Appshot strategy: ${strategy}`)
+  }
+  const context = await readAppshotContext(manager, options)
   const captureOptions = context
     ? {
         ...options,
+        targetWindow: options.targetWindow ?? readCaptureTargetWindow(context),
         animationTarget: options.animationTarget ?? context.animationTarget,
-        bundleIdentifier: options.bundleIdentifier ?? context.bundleIdentifier ?? undefined,
       }
     : options
-  if (strategy === 'codex-private' || strategy === 'auto') {
-    const codexCapture = await tryCaptureWithCodexPrivateAdapter(captureOptions, strategy).catch((error: unknown) => {
-      if (strategy === 'codex-private') {
-        throw error
-      }
-      console.warn('[mac-capture] Codex private Appshot failed; falling back to Cradle native Appshot.', error)
-      return null
-    })
-    if (codexCapture || strategy === 'codex-private') {
-      if (!codexCapture) {
-        throw new Error('Codex private Appshot adapter is unavailable')
-      }
-      return codexCapture
-    }
-  }
+  const animationTarget = readScreenAppshotAnimationTarget(captureOptions.animationTarget)
+  console.debug('[mac-capture] Appshot capture starting:', {
+    strategy,
+    requestId: options.requestId,
+    hasContext: Boolean(context),
+    targetWindow: captureOptions.targetWindow,
+    animationTarget,
+  })
 
   const capture = await manager.captureAppshotFrontmostWindow({
     outputDir: readMacCaptureOutputDir(),
     targetWindow: captureOptions.targetWindow,
-    animationTarget: captureOptions.animationTarget,
+    animationTarget,
     animationDuration: captureOptions.animationDuration,
     soundEnabled: captureOptions.soundEnabled,
     transitionSnapshotHeight: captureOptions.transitionSnapshotHeight,
     transitionSpringDampingFraction: captureOptions.transitionSpringDampingFraction,
     transitionSpringResponse: captureOptions.transitionSpringResponse,
-    transitionStyle: captureOptions.transitionStyle,
     privacySensitiveAppBundleIds: readPrivacySensitiveAppBundleIds(captureOptions),
     privacySensitiveTitlePatterns: readPrivacySensitiveTitlePatterns(captureOptions),
+  })
+  console.debug('[mac-capture] Appshot capture completed:', {
+    strategy: 'cradle-native',
+    requestId: options.requestId,
+    filePath: capture.filePath,
+    window: capture.window,
+    transitionGeometry: capture.appshot.transitionGeometry,
   })
   const sink = await runMacScreenshotSink({
     sink: options.sink ?? 'file',
@@ -498,29 +522,25 @@ export async function captureAppshotWithMacBridge(
     strategy: 'cradle-native',
     capture,
     asset: await readCradleAppshotAsset(capture.filePath),
+    transitionSnapshotAsset: capture.appshot.transitionSnapshotPath
+      ? await readCradleAppshotAsset(capture.appshot.transitionSnapshotPath)
+      : null,
     sink,
   }
 }
 
-async function readAppshotContextForStrategy(
+async function readAppshotContext(
   manager: MacBridgeManager,
   options: MacAppshotCaptureRequest,
-  strategy: MacAppshotStrategy,
 ): Promise<MacAppshotFrontmostContext | null> {
-  if (strategy === 'cradle-native') {
-    return null
-  }
-  if (options.animationTarget && options.bundleIdentifier) {
+  if (options.animationTarget && options.targetWindow) {
     return null
   }
 
   try {
     return await manager.readAppshotFrontmostContext()
   }
-  catch (error) {
-    if (strategy === 'codex-private') {
-      throw error
-    }
+  catch {
     return null
   }
 }
@@ -534,48 +554,15 @@ export async function captureAppshotParityProbeWithMacBridge(
   }
 
   const context = await manager.readAppshotFrontmostContext()
-  if (!context.bundleIdentifier) {
-    throw new Error('Appshot parity probe requires a frontmost app bundle identifier')
-  }
   const animationTarget = options.animationTarget ?? createParityAppshotAnimationTarget(context)
   const targetWindow = readCaptureTargetWindow(context)
 
-  const codex = await tryCaptureWithCodexPrivateAdapter({
-    ...options,
-    strategy: 'codex-private',
-    animationTarget,
-    bundleIdentifier: context.bundleIdentifier,
-  }, 'codex-private')
-  if (!codex) {
-    throw new Error('Codex private Appshot adapter is unavailable')
-  }
-
   const appliedCalibration: MacAppshotParityProbeResponse['appliedCalibration'] = {}
-  const animationDuration = readPositiveNumber(codex.start.animationDuration)
-  const transitionSnapshotHeight = readPositiveNumber(codex.start.transitionSnapshotHeight)
-  const transitionSpringDampingFraction = readPositiveNumber(codex.start.transitionSpringDampingFraction)
-  const transitionSpringResponse = readPositiveNumber(codex.start.transitionSpringResponse)
-  if (animationDuration !== undefined) {
-    appliedCalibration.animationDuration = animationDuration
-  }
-  if (transitionSnapshotHeight !== undefined) {
-    appliedCalibration.transitionSnapshotHeight = transitionSnapshotHeight
-  }
-  if (transitionSpringDampingFraction !== undefined) {
-    appliedCalibration.transitionSpringDampingFraction = transitionSpringDampingFraction
-  }
-  if (transitionSpringResponse !== undefined) {
-    appliedCalibration.transitionSpringResponse = transitionSpringResponse
-  }
-  if (options.transitionStyle) {
-    appliedCalibration.transitionStyle = options.transitionStyle
-  }
   const cradle = await captureAppshotWithMacBridge({
     ...options,
     strategy: 'cradle-native',
     targetWindow,
     animationTarget,
-    bundleIdentifier: context.bundleIdentifier,
     animationDuration: appliedCalibration.animationDuration,
     transitionSnapshotHeight: appliedCalibration.transitionSnapshotHeight,
     transitionSpringDampingFraction: appliedCalibration.transitionSpringDampingFraction,
@@ -588,7 +575,6 @@ export async function captureAppshotParityProbeWithMacBridge(
   return {
     context,
     animationTarget,
-    codex,
     cradle,
     appliedCalibration,
   }
@@ -600,75 +586,6 @@ function readCaptureTargetWindow(context: MacAppshotFrontmostContext): MacCaptur
     processId: context.window.processId,
     bundleId: context.window.bundleId ?? undefined,
   }
-}
-
-async function tryCaptureWithCodexPrivateAdapter(
-  options: MacAppshotCaptureRequest,
-  strategy: MacAppshotStrategy,
-): Promise<MacCodexAppshotCaptureResponse | null> {
-  const manager = getMacBridgeManager()
-  if (!manager || !options.animationTarget || !options.bundleIdentifier) {
-    return null
-  }
-
-  const service = await manager.readCodexAppshotService().catch((error: unknown) => {
-    if (strategy === 'codex-private') {
-      throw error
-    }
-    return null
-  })
-  if (!service) {
-    return null
-  }
-  if (!service.running || !service.processIdentifier) {
-    return null
-  }
-
-  const requestId = options.requestId ?? `cradle-codex-appshot-${Date.now()}`
-  const timeoutSeconds = strategy === 'auto' ? AUTO_CODEX_PRIVATE_TIMEOUT_SECONDS : undefined
-  const start = await manager.startCodexAppshotCapture({
-    requestId,
-    bundleIdentifier: options.bundleIdentifier,
-    animationTarget: options.animationTarget,
-    serviceProcessIdentifier: service.processIdentifier,
-    ...(timeoutSeconds ? { timeoutSeconds } : {}),
-  })
-
-  const updates: MacCodexAppshotResolvedUpdate[] = []
-  for (let attempt = 0; attempt < 32; attempt += 1) {
-    const update = await manager.readCodexAppshotCaptureUpdate({
-      requestId,
-      serviceProcessIdentifier: service.processIdentifier,
-      ...(timeoutSeconds ? { timeoutSeconds } : {}),
-    })
-    updates.push(await resolveCodexAppshotUpdate(update))
-    if (update.type === 'completed' || update.type === 'failed') {
-      break
-    }
-  }
-
-  return {
-    strategy: 'codex-private',
-    requestId,
-    start,
-    updates,
-  }
-}
-
-async function resolveCodexAppshotUpdate(update: MacCodexAppshotUpdate): Promise<MacCodexAppshotResolvedUpdate> {
-  if (update.type === 'screenshot') {
-    return {
-      ...update,
-      screenshotAsset: await readCodexPrivateAppshotAsset(update.screenshotURL ?? update.screenshot?.url ?? null),
-    }
-  }
-  if (update.type === 'completed') {
-    return {
-      ...update,
-      transitionSnapshotAsset: await readCodexPrivateAppshotAsset(update.transitionSnapshotURL ?? null),
-    }
-  }
-  return update
 }
 
 export async function observeCodexAppshotAssetsWithDesktop(
@@ -717,13 +634,6 @@ async function readAppshotImageAsset(filePath: string, rootPath: string): Promis
   }
 }
 
-function readPositiveNumber(value: number | null | undefined): number | undefined {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    return undefined
-  }
-  return value
-}
-
 function readCodexObserveDurationMs(value: number | undefined): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return 8_000
@@ -738,7 +648,7 @@ function readCodexObservePollIntervalMs(value: number | undefined): number {
   return Math.min(Math.max(value, 100), 5_000)
 }
 
-function readCaptureMimeType(filePath: string): MacCodexAppshotAsset['mimeType'] | null {
+function readCaptureMimeType(filePath: string): MacAppshotImageAsset['mimeType'] | null {
   const extension = extname(filePath).toLowerCase()
   if (extension === '.png') {
     return 'image/png'

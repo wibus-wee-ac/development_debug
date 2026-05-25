@@ -1,7 +1,7 @@
 import type { FileUIPart } from 'ai'
 import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
@@ -14,6 +14,7 @@ import {
   ComposerAttachmentButton,
   ComposerAttachmentInput,
   ComposerAttachmentList,
+  type PendingAppshotAttachment,
 } from './composer-attachments'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type { MentionItem } from './mention-panel'
@@ -44,7 +45,7 @@ interface ComposerProps {
   placeholder?: string
   availableFiles?: MentionItem[]
   slashCommands?: ChatComposerSlashCommand[]
-  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext) => void | ComposerSlashCommandActionResult | Promise<void | ComposerSlashCommandActionResult>
+  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => void | ComposerSlashCommandActionResult | Promise<void | ComposerSlashCommandActionResult>
   className?: string
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
@@ -52,6 +53,11 @@ interface ComposerProps {
   appendText?: string
   /** Used together with appendText — increment this key to re-trigger the append when the same path is dropped again */
   appendTextKey?: number
+  /** File parts injected externally (used for Cmd+Cmd hotkey appshot) */
+  appendExternalFileParts?: FileUIPart[]
+  /** Used together with appendExternalFileParts — increment to trigger append */
+  appendExternalFilePartsKey?: number
+  pendingAppshots?: PendingAppshotAttachment[]
   sessionTokens?: number
   sessionContextWindow?: number | null
 }
@@ -59,6 +65,10 @@ interface ComposerProps {
 export interface ComposerSlashCommandActionResult {
   insertText?: string
   fileParts?: FileUIPart[]
+}
+
+export interface ComposerSlashCommandActionTools {
+  readActionContext: (options?: ComposerActionContextOptions) => ComposerSlashCommandActionContext
 }
 
 export interface ComposerSlashCommandRect {
@@ -76,6 +86,7 @@ export interface ComposerSlashCommandDisplay {
 }
 
 export interface ComposerSlashCommandAnimationTarget {
+  coordinateSpace?: 'viewportPixels'
   codexDisplay: ComposerSlashCommandDisplay
   destinationBackgroundColor: string
   destinationCornerRadius: number
@@ -88,13 +99,20 @@ export interface ComposerSlashCommandActionContext {
   animationTarget?: ComposerSlashCommandAnimationTarget
 }
 
+export interface ComposerActionContextOptions {
+  pendingAppshotRequestId?: string | null
+  transitionSnapshotHeight?: number | null
+}
+
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const FALLBACK_APPSHOT_BACKGROUND = '#ffffff'
 const FALLBACK_APPSHOT_TEXT = '#111111'
-const APPSHOT_ATTACHMENT_LEADING_OFFSET = 88
+const APPSHOT_IMAGE_ATTACHMENT_STEP = 88
 const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
+const APPSHOT_ATTACHMENT_IDENTITY_HEIGHT = 22
+const APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING = 8
 const APPSHOT_ATTACHMENT_SLOT_STEP = 240
 
 interface ComposerState {
@@ -224,17 +242,17 @@ function readCssHexColor(value: string, fallback: string): string {
   return `#${readHexPair(channels[0])}${readHexPair(channels[1])}${readHexPair(channels[2])}`
 }
 
-function readBrowserScreenRect(): { bounds: ComposerSlashCommandRect, workArea: ComposerSlashCommandRect } {
+function readBrowserScreenRect(scaleFactor: number): { bounds: ComposerSlashCommandRect, workArea: ComposerSlashCommandRect } {
   const browserScreen = window.screen as Screen & {
     availLeft?: number
     availTop?: number
   }
-  const originX = readFiniteNumber(browserScreen.availLeft) ?? 0
-  const originY = readFiniteNumber(browserScreen.availTop) ?? 0
-  const width = readPositiveNumber(browserScreen.width) ?? readPositiveNumber(window.innerWidth) ?? 1
-  const height = readPositiveNumber(browserScreen.height) ?? readPositiveNumber(window.innerHeight) ?? 1
-  const workAreaWidth = readPositiveNumber(browserScreen.availWidth) ?? width
-  const workAreaHeight = readPositiveNumber(browserScreen.availHeight) ?? height
+  const originX = (readFiniteNumber(browserScreen.availLeft) ?? 0) * scaleFactor
+  const originY = (readFiniteNumber(browserScreen.availTop) ?? 0) * scaleFactor
+  const width = (readPositiveNumber(browserScreen.width) ?? readPositiveNumber(window.innerWidth) ?? 1) * scaleFactor
+  const height = (readPositiveNumber(browserScreen.height) ?? readPositiveNumber(window.innerHeight) ?? 1) * scaleFactor
+  const workAreaWidth = (readPositiveNumber(browserScreen.availWidth) ?? width / scaleFactor) * scaleFactor
+  const workAreaHeight = (readPositiveNumber(browserScreen.availHeight) ?? height / scaleFactor) * scaleFactor
 
   return {
     bounds: { x: originX, y: originY, width, height },
@@ -242,29 +260,70 @@ function readBrowserScreenRect(): { bounds: ComposerSlashCommandRect, workArea: 
   }
 }
 
-function readAppshotDestinationFrame(targetElement: HTMLElement, scaleFactor: number): ComposerSlashCommandRect | null {
+function readAppshotDestinationFrame(
+  targetElement: HTMLElement,
+  scaleFactor: number,
+  options: ComposerActionContextOptions = {},
+): ComposerSlashCommandRect | null {
   const composerRect = targetElement.getBoundingClientRect()
+  const composerStyle = window.getComputedStyle(targetElement)
+  const attachmentsContainer = targetElement.querySelector<HTMLElement>('[data-composer-attachments-container]')
+  const containerRect = attachmentsContainer?.getBoundingClientRect() ?? composerRect
+  const containerStyle = attachmentsContainer ? window.getComputedStyle(attachmentsContainer) : composerStyle
   const attachmentsRow = targetElement.querySelector<HTMLElement>('[data-composer-attachments-row]')
-  const chips = Array.from(targetElement.querySelectorAll<HTMLElement>('[data-chat-attachment-chip]'))
-  const attachmentCount = chips.length
-  const lastChipRect = chips.at(-1)?.getBoundingClientRect() ?? null
+  const rawPendingRect = options.pendingAppshotRequestId
+    ? Array.from(targetElement.querySelectorAll<HTMLElement>('[data-pending-appshot-capture-request-id]'))
+        .find(element => element.dataset.pendingAppshotCaptureRequestId === options.pendingAppshotRequestId)
+        ?.getBoundingClientRect() ?? null
+    : null
+  const pendingRect = rawPendingRect && (
+    rawPendingRect.left !== 0
+    || rawPendingRect.top !== 0
+    || rawPendingRect.width > 0
+    || rawPendingRect.height > 0
+  )
+    ? rawPendingRect
+    : null
   const rowRect = attachmentsRow?.getBoundingClientRect() ?? null
   const scrollLeft = attachmentsRow?.scrollLeft ?? 0
-  const baseLeft = lastChipRect
-    ? lastChipRect.right + 8
-    : composerRect.left + APPSHOT_ATTACHMENT_LEADING_OFFSET * scaleFactor - scrollLeft * scaleFactor
-  const rowTop = rowRect?.top ?? composerRect.top
-  const nextSlotOffset = lastChipRect ? 0 : attachmentCount * APPSHOT_ATTACHMENT_SLOT_STEP * scaleFactor
+  const pendingIds = Array.from(targetElement.querySelectorAll<HTMLElement>('[data-pending-appshot-capture-request-id]'))
+    .map(element => element.dataset.pendingAppshotCaptureRequestId)
+    .filter((requestId): requestId is string => Boolean(requestId))
+  const pendingIndex = options.pendingAppshotRequestId
+    ? Math.max(0, pendingIds.indexOf(options.pendingAppshotRequestId))
+    : 0
+  const imageAttachmentCount = targetElement.querySelectorAll('[data-chat-image-attachment-chip]').length
+  const appshotContextCount = targetElement.querySelectorAll('[data-chat-appshot-card]').length
+  const paddingLeft = readFiniteNumber(Number.parseFloat(containerStyle.paddingLeft)) ?? 0
+  const paddingTop = readFiniteNumber(Number.parseFloat(containerStyle.paddingTop)) ?? 0
+  const fallbackLeft = containerRect.left
+    + paddingLeft
+    - scrollLeft
+    + imageAttachmentCount * APPSHOT_IMAGE_ATTACHMENT_STEP
+    + appshotContextCount * APPSHOT_ATTACHMENT_SLOT_STEP
+    + pendingIndex * APPSHOT_ATTACHMENT_SLOT_STEP
+  const rowTop = containerRect.top + paddingTop
+  const left = pendingRect?.left ?? fallbackLeft
+  const transitionSnapshotHeight = readPositiveNumber(options.transitionSnapshotHeight) ?? APPSHOT_ATTACHMENT_SLOT_HEIGHT
+  const renderedCardHeight = transitionSnapshotHeight
+    + APPSHOT_ATTACHMENT_IDENTITY_HEIGHT
+    + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
+  const upwardGrowthOffset = rowRect
+    ? Math.max(0, renderedCardHeight - rowRect.height)
+    : 0
 
   return {
-    x: window.screenX + baseLeft + nextSlotOffset,
-    y: window.screenY + rowTop,
+    x: left * scaleFactor,
+    y: (rowTop - upwardGrowthOffset) * scaleFactor,
     width: APPSHOT_ATTACHMENT_SLOT_WIDTH * scaleFactor,
     height: APPSHOT_ATTACHMENT_SLOT_HEIGHT * scaleFactor,
   }
 }
 
-function readComposerActionContext(targetElement: HTMLElement | null): ComposerSlashCommandActionContext {
+export function readComposerActionContext(
+  targetElement: HTMLElement | null,
+  options: ComposerActionContextOptions = {},
+): ComposerSlashCommandActionContext {
   if (!targetElement) {
     return {}
   }
@@ -275,14 +334,15 @@ function readComposerActionContext(targetElement: HTMLElement | null): ComposerS
   }
 
   const computed = window.getComputedStyle(targetElement)
-  const screenRect = readBrowserScreenRect()
   const scaleFactor = Math.max(window.devicePixelRatio || 1, 1)
-  const destinationFrame = readAppshotDestinationFrame(targetElement, scaleFactor)
+  const screenRect = readBrowserScreenRect(scaleFactor)
+  const destinationFrame = readAppshotDestinationFrame(targetElement, scaleFactor, options)
   if (!destinationFrame) {
     return {}
   }
   return {
     animationTarget: {
+      coordinateSpace: 'viewportPixels',
       codexDisplay: {
         id: 0,
         scaleFactor,
@@ -425,6 +485,9 @@ export function Composer({
   contextBar,
   appendText,
   appendTextKey,
+  appendExternalFileParts,
+  appendExternalFilePartsKey,
+  pendingAppshots = [],
   sessionTokens,
   sessionContextWindow,
 }: ComposerProps) {
@@ -567,7 +630,8 @@ export function Composer({
           return
         }
 
-        const result = await onSlashCommandAction(command, readComposerActionContext(actionTargetRef.current))
+        const readActionContext = (options?: ComposerActionContextOptions) => readComposerActionContext(actionTargetRef.current, options)
+        const result = await onSlashCommandAction(command, readActionContext(), { readActionContext })
         if (result?.fileParts?.length) {
           attachmentController.appendFileParts(result.fileParts)
         }
@@ -677,6 +741,15 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendTextKey])
 
+  // Append externally-injected file parts (e.g. from Cmd+Cmd appshot hotkey)
+  useLayoutEffect(() => {
+    if (!appendExternalFileParts || appendExternalFileParts.length === 0) {
+      return
+    }
+    attachmentController.appendFileParts(appendExternalFileParts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appendExternalFilePartsKey])
+
   // Close mention on blur after a short delay (to allow click selection)
   useEffect(() => {
     const el = textareaRef.current
@@ -731,6 +804,7 @@ export function Composer({
         ref={actionTargetRef}
         className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150"
         data-testid="chat-composer-action-target"
+        data-composer-action-target
       >
         <ComposerAttachmentInput
           fileInputRef={attachmentController.fileInputRef}
@@ -780,6 +854,7 @@ export function Composer({
         <ComposerAttachmentList
           attachments={attachmentController.attachments}
           onRemove={attachmentController.removeAttachment}
+          pendingAppshots={pendingAppshots}
         />
 
         {/* Action bar — subtle, blends with the card */}

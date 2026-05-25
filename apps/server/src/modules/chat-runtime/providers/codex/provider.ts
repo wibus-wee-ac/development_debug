@@ -68,6 +68,7 @@ interface CodexStreamDiagnostics {
   eventTypeCounts: Record<string, number>
   itemTypeCounts: Record<string, number>
   sampleEvents: Array<Record<string, unknown>>
+  errorEvents: Array<Record<string, unknown>>
 }
 
 interface ThreadResponse {
@@ -88,6 +89,13 @@ interface ItemNotificationParams {
   item?: { type?: string, id?: string }
 }
 
+interface CodexProviderErrorData {
+  details: null
+  runtimeKind: RuntimeKind
+  diagnostics: CodexStreamDiagnostics
+  notification?: Record<string, unknown>
+}
+
 type RuntimeMessageInput = UIMessage | string
 type MessagePart = UIMessage['parts'][number]
 type CodexUserInput = { type: 'text', text: string, text_elements: [] }
@@ -96,6 +104,10 @@ type CodexUserInput = { type: 'text', text: string, text_elements: [] }
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
 const MAX_EVENT_SAMPLES = 20
+const MAX_DIAGNOSTIC_STRING_LENGTH = 2_000
+const MAX_DIAGNOSTIC_ARRAY_ITEMS = 20
+const MAX_DIAGNOSTIC_OBJECT_KEYS = 40
+const MAX_DIAGNOSTIC_DEPTH = 4
 const LangfuseGenerationSpanSchema = z.object({
   otelSpan: z.object({
     setAttribute: z.function({
@@ -104,6 +116,18 @@ const LangfuseGenerationSpanSchema = z.object({
     }),
   }),
 }).passthrough()
+
+class CodexProviderError extends Error {
+  readonly code: string
+  readonly data: CodexProviderErrorData
+
+  constructor(code: string, message: string, data: CodexProviderErrorData) {
+    super(message)
+    this.name = 'CodexProviderError'
+    this.code = code
+    this.data = data
+  }
+}
 
 export class CodexProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -230,12 +254,12 @@ export class CodexProvider implements ChatRuntime {
         if (notification.method === 'turn/completed') {
           const turn = (notification.params as TurnNotificationParams | undefined)?.turn
           if (turn?.status === 'failed') {
-            throw new Error(formatCodexTurnFailure(turn.error?.message, diagnostics))
+            throw createCodexTurnFailureError(turn.error?.message, diagnostics, notification)
           }
           break
         }
         if (notification.method === 'error') {
-          throw new Error(formatCodexAppServerError(notification, diagnostics))
+          throw createCodexAppServerError(notification, diagnostics)
         }
       }
 
@@ -265,7 +289,7 @@ export class CodexProvider implements ChatRuntime {
           }),
           attrs: { runtimeKind: RUNTIME_KIND, diagnostics, model: effectiveModel, baseUrl: config.baseUrl },
         })
-        throw new Error(errorText)
+        throw createCodexEmptyStreamError(errorText, diagnostics)
       }
 
       if (generation) {
@@ -544,6 +568,7 @@ function createDiagnostics(): CodexStreamDiagnostics {
     eventTypeCounts: {},
     itemTypeCounts: {},
     sampleEvents: [],
+    errorEvents: [],
   }
 }
 
@@ -558,14 +583,34 @@ function collectCodexStreamDiagnostics(diagnostics: CodexStreamDiagnostics, noti
   if (diagnostics.sampleEvents.length < MAX_EVENT_SAMPLES) {
     diagnostics.sampleEvents.push(buildSampleEvent(notification))
   }
+  if (notification.method === 'error' && diagnostics.errorEvents.length < MAX_EVENT_SAMPLES) {
+    diagnostics.errorEvents.push(buildDiagnosticNotification(notification))
+  }
 }
 
 function buildSampleEvent(notification: CodexAppServerMessage): Record<string, unknown> {
   const item = (notification.params as ItemNotificationParams | undefined)?.item
+  const base = buildDiagnosticNotification(notification)
   if (!item) {
-    return { method: notification.method }
+    return base
   }
-  return { method: notification.method, itemType: item.type, itemId: item.id }
+  return { ...base, itemType: item.type, itemId: item.id }
+}
+
+function buildDiagnosticNotification(notification: CodexAppServerMessage): Record<string, unknown> {
+  const sample: Record<string, unknown> = {
+    method: notification.method,
+  }
+  if (notification.error) {
+    sample.error = sanitizeDiagnosticValue(notification.error)
+  }
+  if (notification.params !== undefined) {
+    sample.params = sanitizeDiagnosticValue(notification.params)
+  }
+  if (notification.result !== undefined) {
+    sample.result = sanitizeDiagnosticValue(notification.result)
+  }
+  return sample
 }
 
 function getThreadId(notification: CodexAppServerMessage): string | null {
@@ -594,15 +639,104 @@ function validateCodexStreamOutput(diagnostics: CodexStreamDiagnostics): { ok: b
   }
 }
 
-function formatCodexTurnFailure(message: string | undefined, diagnostics: CodexStreamDiagnostics): string {
-  return `Codex turn failed${message ? `: ${message}` : ''} (raw=${formatCodexDiagnostics(diagnostics)})`
+function createCodexTurnFailureError(
+  message: string | undefined,
+  diagnostics: CodexStreamDiagnostics,
+  notification: CodexAppServerMessage,
+): CodexProviderError {
+  const errorText = `Codex turn failed${message ? `: ${message}` : ''} (raw=${formatCodexDiagnostics(diagnostics)})`
+  return createCodexProviderError(errorText, diagnostics, notification)
 }
 
-function formatCodexAppServerError(notification: CodexAppServerMessage, diagnostics: CodexStreamDiagnostics): string {
+function createCodexAppServerError(notification: CodexAppServerMessage, diagnostics: CodexStreamDiagnostics): CodexProviderError {
   const message = (notification.params as { message?: string } | undefined)?.message ?? 'Codex app-server error'
-  return `${message} (raw=${formatCodexDiagnostics(diagnostics)})`
+  const errorText = `${message} (raw=${formatCodexDiagnostics(diagnostics)})`
+  return createCodexProviderError(errorText, diagnostics, notification)
+}
+
+function createCodexEmptyStreamError(errorText: string, diagnostics: CodexStreamDiagnostics): CodexProviderError {
+  return createCodexProviderError(errorText, diagnostics)
+}
+
+function createCodexProviderError(
+  message: string,
+  diagnostics: CodexStreamDiagnostics,
+  notification?: CodexAppServerMessage,
+): CodexProviderError {
+  return new CodexProviderError(OBSERVABILITY_CODES.turnStreamFailed, message, {
+    details: null,
+    runtimeKind: RUNTIME_KIND,
+    diagnostics,
+    ...(notification ? { notification: buildDiagnosticNotification(notification) } : {}),
+  })
 }
 
 function formatCodexDiagnostics(diagnostics: CodexStreamDiagnostics): string {
-  return `events_total=${diagnostics.totalEvents}, mapped_events=${diagnostics.mappedEvents}`
+  const eventTypes = formatCounts(diagnostics.eventTypeCounts)
+  const itemTypes = formatCounts(diagnostics.itemTypeCounts)
+  const samples = diagnostics.sampleEvents.length > 0
+    ? `, samples=${formatDiagnosticValue(diagnostics.sampleEvents)}`
+    : ''
+  const errors = diagnostics.errorEvents.length > 0
+    ? `, errors=${formatDiagnosticValue(diagnostics.errorEvents)}`
+    : ''
+  return `events_total=${diagnostics.totalEvents}, mapped_events=${diagnostics.mappedEvents}, event_types=${eventTypes}, item_types=${itemTypes}${samples}${errors}`
+}
+
+function formatCounts(counts: Record<string, number>): string {
+  const entries = Object.entries(counts).sort(([left], [right]) => left.localeCompare(right))
+  if (entries.length === 0) {
+    return '-'
+  }
+  return entries.map(([key, count]) => `${key}:${count}`).join(',')
+}
+
+function formatDiagnosticValue(value: unknown): string {
+  const text = JSON.stringify(sanitizeDiagnosticValue(value))
+  if (text.length <= MAX_DIAGNOSTIC_STRING_LENGTH) {
+    return text
+  }
+  return `${text.slice(0, MAX_DIAGNOSTIC_STRING_LENGTH)}...<truncated>`
+}
+
+function sanitizeDiagnosticValue(value: unknown, depth = 0): unknown {
+  if (value === null || value === undefined) {
+    return value
+  }
+  if (typeof value === 'string') {
+    return value.length <= MAX_DIAGNOSTIC_STRING_LENGTH
+      ? value
+      : `${value.slice(0, MAX_DIAGNOSTIC_STRING_LENGTH)}...<truncated>`
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return value
+  }
+  if (typeof value === 'bigint') {
+    return value.toString()
+  }
+  if (typeof value !== 'object') {
+    return String(value)
+  }
+  if (depth >= MAX_DIAGNOSTIC_DEPTH) {
+    return '[MaxDepth]'
+  }
+  if (Array.isArray(value)) {
+    const items = value
+      .slice(0, MAX_DIAGNOSTIC_ARRAY_ITEMS)
+      .map(item => sanitizeDiagnosticValue(item, depth + 1))
+    if (value.length > MAX_DIAGNOSTIC_ARRAY_ITEMS) {
+      items.push(`[${value.length - MAX_DIAGNOSTIC_ARRAY_ITEMS} more items]`)
+    }
+    return items
+  }
+
+  const output: Record<string, unknown> = {}
+  const entries = Object.entries(value as Record<string, unknown>)
+  for (const [key, item] of entries.slice(0, MAX_DIAGNOSTIC_OBJECT_KEYS)) {
+    output[key] = sanitizeDiagnosticValue(item, depth + 1)
+  }
+  if (entries.length > MAX_DIAGNOSTIC_OBJECT_KEYS) {
+    output.__truncatedKeys = entries.length - MAX_DIAGNOSTIC_OBJECT_KEYS
+  }
+  return output
 }

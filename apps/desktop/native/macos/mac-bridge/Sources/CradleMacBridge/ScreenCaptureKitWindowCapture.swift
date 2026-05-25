@@ -11,12 +11,27 @@ struct WindowCaptureResult {
     let screenCaptureKitError: [String: Any]?
 }
 
+struct CaptureImageSize {
+    let pixelWidth: Int
+    let pixelHeight: Int
+
+    func serialize() -> [String: Any] {
+        [
+            "pixelWidth": pixelWidth,
+            "pixelHeight": pixelHeight,
+        ]
+    }
+}
+
 func captureWindowImage(window: WindowCandidate, filePath: String) throws -> WindowCaptureResult {
     if #available(macOS 14.0, *) {
         do {
             try captureWindowWithScreenCaptureKit(window: window, filePath: filePath)
             return WindowCaptureResult(backend: "screen-capture-kit", screenCaptureKitError: nil)
         } catch {
+            if isMissingTargetWindowCaptureError(error) {
+                throw error
+            }
             try runScreenCapture(windowId: window.windowId, filePath: filePath)
             return WindowCaptureResult(
                 backend: "screencapture-fallback",
@@ -26,6 +41,27 @@ func captureWindowImage(window: WindowCandidate, filePath: String) throws -> Win
     }
     try runScreenCapture(windowId: window.windowId, filePath: filePath)
     return WindowCaptureResult(backend: "screencapture", screenCaptureKitError: nil)
+}
+
+func readCaptureImageSize(filePath: String) -> CaptureImageSize? {
+    let url = URL(fileURLWithPath: filePath)
+    guard let imageSource = CGImageSourceCreateWithURL(url as CFURL, nil),
+          let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any],
+          let pixelWidth = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+          let pixelHeight = properties[kCGImagePropertyPixelHeight] as? NSNumber,
+          pixelWidth.intValue > 0,
+          pixelHeight.intValue > 0
+    else {
+        return nil
+    }
+    return CaptureImageSize(pixelWidth: pixelWidth.intValue, pixelHeight: pixelHeight.intValue)
+}
+
+private func isMissingTargetWindowCaptureError(_ error: Error) -> Bool {
+    guard let bridgeError = error as? BridgeError else {
+        return false
+    }
+    return bridgeError.code == "screen-capture-kit-window-unavailable"
 }
 
 @available(macOS 14.0, *)

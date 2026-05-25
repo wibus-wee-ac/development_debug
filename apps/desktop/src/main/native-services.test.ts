@@ -41,10 +41,10 @@ describe('createParityAppshotAnimationTarget', () => {
     expect(target.codexDisplay).toEqual(context.animationTarget.codexDisplay)
     expect(target.destinationFrame).not.toEqual(context.animationTarget.destinationFrame)
     expect(target.destinationFrame).toEqual({
-      x: 488,
-      y: 559,
-      width: 464,
-      height: 280,
+      x: 604,
+      y: 699,
+      width: 232,
+      height: 140,
     })
     expect(target.destinationCornerRadius).toBe(0)
     expect(target.transitionSnapshotScale).toBe(2)

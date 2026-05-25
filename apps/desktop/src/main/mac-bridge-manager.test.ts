@@ -15,31 +15,6 @@ function createFakeBridgeScript(): string {
 import readline from 'node:readline'
 
 const rl = readline.createInterface({ input: process.stdin })
-const defaultTransitionStyle = {
-  transitionBackgroundOpacity: 0.08,
-  shutterPeakOpacity: 0.48,
-  shutterPeakProgress: 0.2,
-  backgroundPeakProgress: 0.22,
-  snapshotFadeInProgress: 0.18,
-  appIconFadeStartProgress: 0.18,
-  appIconVisibleProgress: 0.58,
-  titleFadeStartProgress: 0.28,
-  titleVisibleProgress: 0.6,
-  completionDelay: 0.08,
-  destinationShadowRadius: 18,
-  destinationShadowYOffset: -6,
-  destinationShadowOpacity: 0.16,
-  keyShadowRadius: 34,
-  keyShadowYOffset: -12,
-  keyShadowOpacity: 0.18,
-  ambientShadowRadius: 64,
-  ambientShadowYOffset: -22,
-  ambientShadowOpacity: 0.10,
-  shadowFillOpacity: 0.08,
-  accessoryIconSize: 24,
-  accessoryIconYOffset: 12,
-  accessoryTitleYOffset: -18
-}
 rl.on('line', (line) => {
   const request = JSON.parse(line)
   if (request.method === 'bridge.status') {
@@ -66,7 +41,41 @@ rl.on('line', (line) => {
       method: 'event.mac.hotkeyTriggered',
       params: {
         trigger: 'bothCommand',
-        capturedAt: '2026-05-22T15:56:22Z'
+        capturedAt: '2026-05-22T15:56:22Z',
+        targetWindow: {
+          windowId: 42,
+          processId: 123,
+          bundleId: 'com.apple.Safari'
+        },
+        bundleIdentifier: 'com.apple.Safari',
+        context: {
+          window: {
+            windowId: 42,
+            appName: 'Safari',
+            bundleId: 'com.apple.Safari',
+            processId: 123,
+            title: 'Example',
+            bounds: {
+              x: 10,
+              y: 20,
+              width: 800,
+              height: 600
+            }
+          },
+          bundleIdentifier: 'com.apple.Safari',
+          animationTarget: {
+            codexDisplay: {
+              id: 1,
+              scaleFactor: 2,
+              bounds: { x: 0, y: 0, width: 1440, height: 900 },
+              workArea: { x: 0, y: 0, width: 1440, height: 875 }
+            },
+            destinationBackgroundColor: '#ffffff',
+            destinationCornerRadius: 12,
+            destinationFrame: { x: 10, y: 20, width: 800, height: 600 },
+            destinationPrimaryTextColor: '#000000'
+          }
+        }
       }
     }) + '\\n')
     return
@@ -105,6 +114,10 @@ rl.on('line', (line) => {
         metadataPath: request.params.outputDir + '/appshot-1.json',
         capturedAt: '2026-05-22T15:56:23Z',
         captureBackend: 'screen-capture-kit',
+        captureImageSize: {
+          pixelWidth: 1600,
+          pixelHeight: 1200
+        },
         window: {
           windowId: targetWindow.windowId ?? 42,
           appName: 'Safari',
@@ -124,8 +137,7 @@ rl.on('line', (line) => {
           transitionSnapshotPath: request.params.outputDir + '/appshot-1-transition.png',
           transitionSnapshotHeight: 360,
           transitionSpringDampingFraction: 0.82,
-          transitionSpringResponse: 0.52,
-          transitionStyle: defaultTransitionStyle
+          transitionSpringResponse: 0.52
         }
       }
     }) + '\\n')
@@ -298,63 +310,6 @@ rl.on('line', (line) => {
     }) + '\\n')
     return
   }
-  if (request.method === 'mac.codexAppshot.service') {
-    process.stdout.write(JSON.stringify({
-      id: request.id,
-      result: {
-        bundleIdentifier: 'com.openai.sky.CUAService',
-        processIdentifier: 777,
-        running: true
-      }
-    }) + '\\n')
-    return
-  }
-  if (request.method === 'mac.codexAppshot.startCapture') {
-    process.stdout.write(JSON.stringify({
-      id: request.id,
-      result: {
-        animationDuration: 0.94,
-        transitionSnapshotHeight: 360,
-        transitionSpringDampingFraction: 0.82,
-        transitionSpringResponse: 0.52,
-        cradleTranscript: {
-          status: 'succeeded',
-          request: {
-            requestType: 'ComputerUseIPCAppStartCaptureRequest',
-            eventClass: 'SkCu',
-            eventIdentifier: 'SndR'
-          },
-          reply: {
-            directObjectDescriptorType: 'tdta',
-            responseSha256: 'abc123'
-          }
-        }
-      }
-    }) + '\\n')
-    return
-  }
-  if (request.method === 'mac.codexAppshot.nextCaptureUpdate') {
-    process.stdout.write(JSON.stringify({
-      id: request.id,
-      result: {
-        type: 'completed',
-        transitionSnapshotURL: null,
-        cradleTranscript: {
-          status: 'succeeded',
-          request: {
-            requestType: 'ComputerUseIPCAppNextCaptureUpdateRequest',
-            eventClass: 'SkCu',
-            eventIdentifier: 'SndR'
-          },
-          reply: {
-            directObjectDescriptorType: 'tdta',
-            responseSha256: 'def456'
-          }
-        }
-      }
-    }) + '\\n')
-    return
-  }
   process.stdout.write(JSON.stringify({
     id: request.id,
     error: {
@@ -466,6 +421,10 @@ describe('MacBridgeManager', () => {
     })).resolves.toMatchObject({
       filePath: '/tmp/cradle-appshot-test/appshot-1.png',
       captureBackend: 'screen-capture-kit',
+      captureImageSize: {
+        pixelWidth: 1600,
+        pixelHeight: 1200,
+      },
       window: {
         windowId: 42,
         processId: 123,
@@ -475,11 +434,6 @@ describe('MacBridgeManager', () => {
         strategy: 'cradle-native',
         animationDuration: 0.88,
       },
-    })
-    await expect(manager.readCodexAppshotService()).resolves.toEqual({
-      bundleIdentifier: 'com.openai.sky.CUAService',
-      processIdentifier: 777,
-      running: true,
     })
     await expect(manager.readAppshotFrontmostContext()).resolves.toMatchObject({
       bundleIdentifier: 'com.apple.Safari',
@@ -565,64 +519,24 @@ describe('MacBridgeManager', () => {
         snapshotImageOpacity: 1,
       }],
     })
-    await expect(manager.startCodexAppshotCapture({
-      requestId: 'request-1',
-      bundleIdentifier: 'com.apple.Safari',
-      serviceProcessIdentifier: 777,
-      animationTarget: {
-        codexDisplay: {
-          id: 1,
-          scaleFactor: 2,
-          bounds: { x: 0, y: 0, width: 1440, height: 900 },
-          workArea: { x: 0, y: 0, width: 1440, height: 875 },
-        },
-        destinationBackgroundColor: '#101014',
-        destinationCornerRadius: 14,
-        destinationFrame: { x: 100, y: 100, width: 420, height: 320 },
-        destinationPrimaryTextColor: '#ffffff',
-      },
-    })).resolves.toEqual({
-      animationDuration: 0.94,
-      transitionSnapshotHeight: 360,
-      transitionSpringDampingFraction: 0.82,
-      transitionSpringResponse: 0.52,
-      cradleTranscript: {
-        status: 'succeeded',
-        request: {
-          requestType: 'ComputerUseIPCAppStartCaptureRequest',
-          eventClass: 'SkCu',
-          eventIdentifier: 'SndR',
-        },
-        reply: {
-          directObjectDescriptorType: 'tdta',
-          responseSha256: 'abc123',
-        },
-      },
-    })
-    await expect(manager.readCodexAppshotCaptureUpdate({
-      requestId: 'request-1',
-      serviceProcessIdentifier: 777,
-    })).resolves.toEqual({
-      type: 'completed',
-      transitionSnapshotURL: null,
-      cradleTranscript: {
-        status: 'succeeded',
-        request: {
-          requestType: 'ComputerUseIPCAppNextCaptureUpdateRequest',
-          eventClass: 'SkCu',
-          eventIdentifier: 'SndR',
-        },
-        reply: {
-          directObjectDescriptorType: 'tdta',
-          responseSha256: 'def456',
-        },
-      },
-    })
-
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(events).toEqual([{
       trigger: 'bothCommand',
       capturedAt: '2026-05-22T15:56:22Z',
+      targetWindow: {
+        windowId: 42,
+        processId: 123,
+        bundleId: 'com.apple.Safari',
+      },
+      bundleIdentifier: 'com.apple.Safari',
+      context: expect.objectContaining({
+        bundleIdentifier: 'com.apple.Safari',
+        window: expect.objectContaining({
+          windowId: 42,
+          processId: 123,
+          bundleId: 'com.apple.Safari',
+        }),
+      }),
     }])
   })
 })

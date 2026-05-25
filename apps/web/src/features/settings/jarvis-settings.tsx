@@ -1,11 +1,12 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { listSelectableComposerProfiles } from '~/features/composer-toolbar/composer-profile-selection'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
-import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
+import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
@@ -34,20 +35,31 @@ const jarvisThinkingDescriptionKeys = {
 export function JarvisSettings() {
   const { t } = useTranslation('settings')
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
-  const { profiles, isSuccess: profilesReady } = useAgentProfiles()
-  const selectedProfile = useMemo(
+  const { providerOptions, isSuccess: providerTargetsReady } = useProviderTargets()
+  const profiles = useMemo(
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: 'jar-core' }),
+    [providerOptions],
+  )
+  const selectedProviderTarget = useMemo(
     () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
     [prefs?.profileId, profiles],
   )
   const initialModelProfileIds = useMemo(() => [prefs?.profileId ?? null], [prefs?.profileId])
-  const { modelsByProfileId, loadingProfileIds, successfulProfileIds, requestProfileModels } = useAgentModelMap(
+  const {
+    modelsByProviderTargetId: modelsByProfileId,
+    loadingProviderTargetIds: loadingProfileIds,
+    successfulProviderTargetIds: successfulProfileIds,
+    requestProviderTargetModels: requestProfileModels,
+  } = useProviderTargetModelMap(
     profiles,
     initialModelProfileIds,
   )
-  const selectedModels = selectedProfile ? modelsByProfileId[selectedProfile.id] ?? [] : []
+  const selectedModels = selectedProviderTarget ? modelsByProfileId[selectedProviderTarget.id] ?? [] : []
   const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
-  const selectedProfileModelsReady = !selectedProfile || !selectedProfile.enabled || successfulProfileIds.has(selectedProfile.id)
-  const settingsJarvisReady = prefsReady && profilesReady && selectedProfileModelsReady
+  const selectedProviderTargetModelsReady = !selectedProviderTarget
+    || !selectedProviderTarget.enabled
+    || successfulProfileIds.has(selectedProviderTarget.id)
+  const settingsJarvisReady = prefsReady && providerTargetsReady && selectedProviderTargetModelsReady
   const thinkingOptions: Array<ThinkingOption<JarvisPreferences['thinkingLevel']>> = useMemo(() => JARVIS_THINKING_LEVELS.map(value => ({
     value,
     label: t(jarvisThinkingLabelKeys[value]),
