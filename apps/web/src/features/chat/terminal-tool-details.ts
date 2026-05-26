@@ -35,14 +35,6 @@ export function readTerminalOutputSections(output: ToolPayload, errorText?: stri
   return sections
 }
 
-export function summarizeTerminalOutput(sections: TerminalOutputSection[]): string {
-  const lineCount = sections.reduce((total, section) => {
-    return total + section.text.split('\n').length
-  }, 0)
-  const labels = sections.map(section => section.label).join(' + ')
-  return `${labels} · ${formatCount(lineCount, 'line')}`
-}
-
 export function hasTerminalDetails(input: unknown, output: unknown, errorText?: string, argumentsText?: string): boolean {
   const inputPayload = readToolInputPayload(input, argumentsText)
   const outputPayload = ToolPayloadSchema.parse(output)
@@ -50,8 +42,4 @@ export function hasTerminalDetails(input: unknown, output: unknown, errorText?: 
     || inputPayload.timeout !== null
     || outputPayload.backgroundTaskId !== null
     || readTerminalOutputSections(outputPayload, errorText).length > 0
-}
-
-function formatCount(value: number, singular: string, plural = `${singular}s`): string {
-  return `${value} ${value === 1 ? singular : plural}`
 }

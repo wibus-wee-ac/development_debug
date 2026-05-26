@@ -2,7 +2,6 @@ import {
   BotIcon,
   CheckCircle2Icon,
   ChevronDownIcon,
-  ChevronRightIcon,
   CircleAlertIcon,
   ClockIcon,
   Code2Icon,
@@ -21,18 +20,16 @@ import {
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { Children, useEffect, useMemo, useRef, useState } from 'react'
-import type { Highlighter } from 'shiki'
+import { Children, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
-import { readTerminalOutputSections, summarizeTerminalOutput } from '../terminal-tool-details'
+import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
   describeToolCall,
@@ -83,45 +80,21 @@ const STATUS_LABELS: Record<ToolState, string> = {
 
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
-const TRAILING_NEWLINE_PATTERN = /\n$/
-const TERMINAL_HIGHLIGHT_MAX_CHARS = 12_000
-const TERMINAL_HIGHLIGHT_MAX_LINES = 240
 type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-)
+const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
+  z.string(),
+  z.number().finite(),
+  z.boolean(),
+  z.null(),
+  z.array(JsonValueSchema),
+  z.record(z.string(), JsonValueSchema),
+]))
 const DisplayValueTextSchema = z.union([
   z.string(),
   z.null().transform(() => ''),
   z.undefined().transform(() => ''),
   JsonValueSchema.transform(value => JSON.stringify(value, null, 2)),
 ])
-
-let bashHighlighterPromise: Promise<Highlighter> | null = null
-
-function getBashHighlighter(): Promise<Highlighter> {
-  bashHighlighterPromise ??= import('shiki').then(({ createHighlighter }) => {
-    return createHighlighter({
-      themes: ['github-dark', 'github-light'],
-      langs: ['bash', 'plaintext'],
-    })
-  })
-  return bashHighlighterPromise
-}
-
-function shouldHighlightTerminalOutput(text: string): boolean {
-  if (text.length > TERMINAL_HIGHLIGHT_MAX_CHARS) {
-    return false
-  }
-  return text.split('\n', TERMINAL_HIGHLIGHT_MAX_LINES + 1).length <= TERMINAL_HIGHLIGHT_MAX_LINES
-}
 
 function isRunning(state: ToolState): boolean {
   return state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
@@ -236,13 +209,11 @@ function RawValue({ value, className }: { value: unknown, className?: string }) 
 
 function NativeCodeBlock({
   text,
-  html,
   destructive = false,
   wrap = true,
   className,
 }: {
   text: string
-  html?: string
   destructive?: boolean
   wrap?: boolean
   className?: string
@@ -256,78 +227,17 @@ function NativeCodeBlock({
       )}
       onClick={event => event.stopPropagation()}
     >
-      {html
-        ? (
-            <div
-              data-wrap={wrap ? 'true' : 'false'}
-              className={cn(
-                'tool-call-code-highlight font-mono text-[11px] leading-relaxed',
-                destructive ? 'text-destructive/80' : 'text-muted-foreground',
-              )}
-              // Shiki returns escaped token markup generated from the plain terminal text.
-              // eslint-disable-next-line react-dom/no-dangerously-set-innerhtml
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          )
-        : (
-            <pre
-              className={cn(
-                CODE_TEXT_CLASS,
-                wrap ? 'whitespace-pre-wrap break-words' : 'min-w-max whitespace-pre',
-                'p-2.5',
-                destructive && 'text-destructive/80',
-              )}
-            >
-              {text}
-            </pre>
-          )}
+      <pre
+        className={cn(
+          CODE_TEXT_CLASS,
+          wrap ? 'whitespace-pre-wrap break-words' : 'min-w-max whitespace-pre',
+          'p-2.5',
+          destructive && 'text-destructive/80',
+        )}
+      >
+        {text}
+      </pre>
     </div>
-  )
-}
-
-function HighlightedTerminalOutput({ text, destructive }: { text: string, destructive: boolean }) {
-  const [html, setHtml] = useState('')
-  const lastTextRef = useRef('')
-  const highlightEnabled = shouldHighlightTerminalOutput(text)
-
-  useEffect(() => {
-    if (text === lastTextRef.current) {
-      return
-    }
-    lastTextRef.current = text
-    setHtml('')
-    if (!highlightEnabled) {
-      return
-    }
-
-    let cancelled = false
-    getBashHighlighter().then((highlighter) => {
-      if (cancelled) {
-        return
-      }
-      setHtml(highlighter.codeToHtml(text.replace(TRAILING_NEWLINE_PATTERN, ''), {
-        lang: 'bash',
-        themes: { dark: 'github-dark', light: 'github-light' },
-      }))
-    }, () => {
-      if (!cancelled) {
-        setHtml('')
-      }
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [highlightEnabled, text])
-
-  return (
-    <NativeCodeBlock
-      text={text}
-      html={html}
-      destructive={destructive}
-      wrap={false}
-      className="max-h-44"
-    />
   )
 }
 
@@ -371,7 +281,7 @@ export function TerminalExecutionDetails({
         </DetailSection>
       )}
       {sections.length > 0 && (
-        <DetailSection title={`Output · ${summarizeTerminalOutput(sections)}`}>
+        <DetailSection title="Output">
           <div className="grid gap-2">
             {sections.map(section => (
               <section key={section.label} className="grid gap-1">
@@ -384,30 +294,12 @@ export function TerminalExecutionDetails({
                     {section.label}
                   </div>
                 )}
-                <HighlightedTerminalOutput text={section.text} destructive={section.destructive} />
+                <NativeCodeBlock text={section.text} destructive={section.destructive} wrap={false} className="max-h-44" />
               </section>
             ))}
           </div>
         </DetailSection>
       )}
-    </div>
-  )
-}
-
-function TerminalCollapsedSummary({ output, errorText }: { output: ToolPayload, errorText?: string }) {
-  const sections = readTerminalOutputSections(output, errorText)
-  if (sections.length === 0) {
-    return null
-  }
-  const destructive = sections.some(section => section.destructive)
-
-  return (
-    <div className={cn(
-      'rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground',
-      destructive && 'bg-destructive/5 text-destructive/80',
-    )}
-    >
-      {summarizeTerminalOutput(sections)}
     </div>
   )
 }
@@ -459,7 +351,7 @@ function PathList({ paths, emptyText = 'No paths returned' }: { paths: string[],
 function ToolHero({ descriptor, state, input, output, errorText }: { descriptor: ToolUiDescriptor, state: ToolState, input: ToolPayload, output: ToolPayload, errorText?: string }) {
   switch (descriptor.kind) {
     case 'terminal':
-      return <TerminalSummary output={output} errorText={errorText} />
+      return <TerminalSummary errorText={errorText} />
     case 'file-read':
       return <FileReadSummary output={output} />
     case 'file-diff':
@@ -489,8 +381,15 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
   }
 }
 
-function TerminalSummary({ output, errorText }: { output: ToolPayload, errorText?: string }) {
-  return <TerminalCollapsedSummary output={output} errorText={errorText} />
+function TerminalSummary({ errorText }: { errorText?: string }) {
+  if (!errorText) {
+    return null
+  }
+  return (
+    <div className="rounded-md bg-destructive/5 px-2.5 py-2 text-xs text-destructive/80">
+      Command failed
+    </div>
+  )
 }
 
 function FileReadSummary({ output }: { output: ToolPayload }) {
@@ -802,7 +701,7 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
   switch (descriptor.kind) {
     case 'terminal':
-      return readTerminalOutputSections(output, errorText).length > 0
+      return !!errorText
     case 'file-read':
       return output.file !== null
     case 'file-diff':
@@ -914,7 +813,9 @@ export function ToolCallBlock({ toolName, toolCallId, state, argumentsText, inpu
               {descriptor.target && (
                 <Tooltip delayDuration={600}>
                   <TooltipTrigger asChild>
-                    <span className="cursor-default truncate font-mono">{basename(descriptor.target)}</span>
+                    <span className="cursor-default truncate font-mono">
+                      {descriptor.kind === 'terminal' ? descriptor.target : basename(descriptor.target)}
+                    </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="font-mono text-[11px]">{descriptor.target}</TooltipContent>
                 </Tooltip>
@@ -981,7 +882,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, argumentsText, inpu
       </div>
 
       {hasChildren && expanded && (
-        <div className={cn("ml-3 mt-0.5  overflow-y-auto space-y-0", !running && "max-h-80")}>{children}</div>
+        <div className={cn('ml-3 mt-0.5  overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
       )}
     </m.div>
   )

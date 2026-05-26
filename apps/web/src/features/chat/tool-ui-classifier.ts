@@ -62,6 +62,8 @@ const DOUBLE_UNDERSCORE_PATTERN = /__/g
 const UNDERSCORE_OR_DASH_PATTERN = /[_-]/g
 const LOWER_TO_UPPER_PATTERN = /([a-z])([A-Z])/g
 const WHITESPACE_PATTERN = /\s+/
+const JSON_WHITESPACE_PATTERN = /\s/
+const JSON_PRIMITIVE_PATTERN = /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i
 const LINE_BREAK_PATTERN = /\r?\n/
 
 const NullableStringSchema = z.string().nullable().optional().default(null)
@@ -446,7 +448,7 @@ function skipJsonSeparators(text: string, index: number): number {
 
 function skipJsonWhitespace(text: string, index: number): number {
   let nextIndex = index
-  while (/\s/.test(text[nextIndex] ?? '')) {
+  while (JSON_WHITESPACE_PATTERN.test(text[nextIndex] ?? '')) {
     nextIndex += 1
   }
   return nextIndex
@@ -541,7 +543,7 @@ function readJsonValue(text: string, start: number): { value: unknown, next: num
     return { value: undefined, next: tokenEnd, complete: false, read: false }
   }
 
-  if (token === 'true' || token === 'false' || token === 'null' || /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(token)) {
+  if (token === 'true' || token === 'false' || token === 'null' || JSON_PRIMITIVE_PATTERN.test(token)) {
     return {
       value: JSON.parse(token),
       next: tokenEnd,
@@ -762,7 +764,7 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
     case 'notebook-diff':
       return output.editMode ?? output.cellType
     case 'terminal':
-      return readTerminalSummary(output)
+      return null
     case 'search':
       return readSearchSummary(output)
     case 'web':
@@ -970,28 +972,6 @@ function readDiffSummary(input: ToolPayload, output: ToolPayload): string | null
   }
   return null
 }
-function readTerminalSummary(output: ToolPayload): string | null {
-  const backgroundTaskId = output.backgroundTaskId
-  if (backgroundTaskId) {
-    return `Background task ${backgroundTaskId}`
-  }
-  if (output.interrupted === true) {
-    return 'Interrupted'
-  }
-  const stdout = output.stdout
-  const stderr = output.stderr
-  if (stderr) {
-    return 'stderr available'
-  }
-  if (stdout) {
-    return 'stdout available'
-  }
-  if (output.noOutputExpected === true) {
-    return 'No output expected'
-  }
-  return null
-}
-
 function readSearchSummary(output: ToolPayload): string | null {
   const files = output.numFiles
   const matches = output.numMatches
