@@ -26,7 +26,7 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-selection-bar.tsx**: Floating bulk action bar for selected issues, currently supporting status and priority updates.
 - **kanban-sidebar-loader.ts**: Kanban sidebar 的共享 lazy loader 与 intent preload 入口，避免 workspace shell eager import Kanban 实现，并记录 sidebar lazy surface first-render start mark
 - **kanban-sidebar.tsx**: Workspace/status navigation for the Kanban feature, using app-level current-tab navigation for board entries; records the Kanban sidebar first-render gate after the boards query succeeds, and exposes stable create-board dialog anchors for e2e flows.
-- **kanban-toolbar.tsx**: View and filtering controls with named icon-only toolbar actions.
+- **kanban-toolbar.tsx**: View, filtering, status-management, and issue-creation controls with named icon-only toolbar actions.
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Kanban 内部复用的视觉与元数据 helper，包括 priority label、彩色 label metadata、父 issue affordance、图标和头像。
 - **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.

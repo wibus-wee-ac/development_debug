@@ -20,7 +20,11 @@ import type { MacScreenshotSinkId, MacScreenshotSinkResult } from './mac-screens
 import { runMacScreenshotSink } from './mac-screenshot-sinks'
 import type { CodexAppshotObservedAsset, CodexAppshotObserveResult } from './native-appshot-codex-assets'
 import { observeCodexAppshotAssets } from './native-appshot-codex-assets'
-import { createParityAppshotAnimationTarget } from './native-appshot-target'
+import {
+  createParityAppshotAnimationTarget,
+  readScreenPointAppshotAnimationTarget,
+  readScreenPointAppshotDestinationFrame,
+} from './native-appshot-target'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
 
@@ -142,29 +146,12 @@ function readScreenAppshotAnimationTarget(target: MacAppshotAnimationTarget | un
   const scaleFactor = target.codexDisplay.scaleFactor
   const windowBounds = mainWindow.getBounds()
   const contentBounds = mainWindow.getContentBounds()
-  const frame = target.destinationFrame
-  const destinationFrame = {
-    x: contentBounds.x + frame.x / scaleFactor,
-    y: contentBounds.y + frame.y / scaleFactor,
-    width: frame.width / scaleFactor,
-    height: frame.height / scaleFactor,
-  }
+  const destinationFrame = readScreenPointAppshotDestinationFrame(target, contentBounds)
   const display = screen.getDisplayMatching(destinationFrame)
-  const convertedTarget = {
-    ...target,
-    coordinateSpace: 'screenPoints' as const,
-    codexDisplay: {
-      ...target.codexDisplay,
-      id: display.id,
-      scaleFactor: display.scaleFactor,
-      bounds: display.bounds,
-      workArea: display.workArea,
-    },
-    destinationFrame,
-    transitionSnapshotScale: target.transitionSnapshotScale ?? scaleFactor,
-  }
+  const convertedTarget = readScreenPointAppshotAnimationTarget(target, contentBounds, display)
   console.debug('[mac-capture] Appshot destination converted:', {
     inputCoordinateSpace: target.coordinateSpace,
+    inputScaleFactor: scaleFactor,
     windowBounds,
     contentBounds,
     displays: screen.getAllDisplays(),

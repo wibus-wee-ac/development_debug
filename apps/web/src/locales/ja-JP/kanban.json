@@ -100,6 +100,7 @@
   "sort.updated": "更新日時",
   "selection.clearAria": "選択した Issue を解除",
   "selection.selected": "選択中",
+  "statusManager.aria": "ステータスを管理",
   "statusManager.add": "追加",
   "statusManager.addPlaceholder": "ステータスを追加...",
   "statusManager.title": "ステータス管理",

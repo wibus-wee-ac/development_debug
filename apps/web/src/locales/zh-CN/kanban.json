@@ -100,6 +100,7 @@
   "sort.updated": "更新时间",
   "selection.clearAria": "清除已选事项",
   "selection.selected": "已选",
+  "statusManager.aria": "管理状态",
   "statusManager.add": "添加",
   "statusManager.addPlaceholder": "添加状态...",
   "statusManager.title": "状态管理",

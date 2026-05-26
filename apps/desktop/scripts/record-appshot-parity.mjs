@@ -27,6 +27,93 @@ const packageRoot = resolve(desktopRoot, 'native/macos/mac-bridge')
 const codexResearchResourceRoot = resolve(workspaceRoot, '../safe-research/codex-app-resources-20260525')
 const codexTmpRoot = resolve(tmpdir(), 'com.openai.sky.CUAService')
 const maxAssetBytes = 25 * 1024 * 1024
+const codexComputerUseBinaryCandidates = [
+  '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService',
+  resolve(codexResearchResourceRoot, 'Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService'),
+]
+const codexFrontendAppshotBundleCandidates = [
+  resolve(codexResearchResourceRoot, 'app-asar-extracted/webview/assets/mention-metadata-syncer-D2rjZeDb.js'),
+]
+const codexFrontendAppshotOrchestrationBundleCandidates = [
+  resolve(codexResearchResourceRoot, 'app-asar-extracted/webview/assets/composer-D0cvMZjq.js'),
+]
+const cradleFrontendAppshotSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/appshot-attachment.tsx')
+const cradleComposerActionContextSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer-action-context.ts')
+const cradleComposerAttachmentsSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer-attachments.tsx')
+const codexBareModifierHotkeys = new Set(['DoubleCommand', 'DoubleOption', 'DoubleShift'])
+const codexNativeAppshotSymbols = [
+  'Appshot.AppshotCaptureTransitionOverlayWindow',
+  'AppshotCaptureTransition',
+  'AppshotCaptureTransitionOverlayWindow',
+  'NonanimatedGradientLayer',
+  'NonanimatedTextLayer',
+  'contentLayer',
+  'transitionBackgroundLayer',
+  'shadowLayer',
+  'containerLayer',
+  'shutterLayer',
+  'snapshotEffectsLayer',
+  'snapshotImageLayer',
+  'snapshotMaskLayer',
+  'snapshotMaskDebugLayer',
+  'appIconLayer',
+  'titleLayer',
+  'initialCornerRadius',
+  'accessoryFadeStartProgress',
+  'accessoryFadeDuration',
+  'snapshotImageSize',
+  'accessoryFadeStarted',
+  'appshotShutterFadeIn',
+  'appshotShutterFadeOut',
+  'appshotSnapshotFadeIn',
+  'appshotMagicMoveFadeDuration',
+  'appshotShadowCornerRadius',
+  'appshotScreenshotCornerRadius',
+  'appshotShadowRadius',
+  'appshotShadowYOffset',
+  'appshotShadowOpacity',
+  'appshotAppIconFadeIn',
+  'appshotTitleFadeIn',
+  'readyForMagicMove',
+  'magicMove',
+]
+const codexTransitionIvars = [
+  'sourceWindow',
+  'sourceFrame',
+  'targetFrame',
+  'targetCornerRadius',
+  'appIcon',
+  'titleText',
+  'titleColor',
+  'destinationBackgroundColor',
+  'overlayWindows',
+  'state',
+  'completionRequested',
+  'magicMoveWaiters',
+]
+const codexOverlayWindowIvars = [
+  'sourceFrame',
+  'targetFrame',
+  'targetCornerRadius',
+  'contentLayer',
+  'transitionBackgroundLayer',
+  'shadowLayer',
+  'containerLayer',
+  'shutterLayer',
+  'snapshotEffectsLayer',
+  'snapshotImageLayer',
+  'snapshotMaskLayer',
+  'snapshotMaskDebugLayer',
+  'appIconLayer',
+  'titleLayer',
+  'initialCornerRadius',
+  'accessoryFadeStartProgress',
+  'accessoryFadeDuration',
+  '_progress',
+  'snapshotImageSize',
+  'titleText',
+  'accessoryFadeStarted',
+]
 const codexAppshotSoundCandidates = [
   '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav',
   '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/SharedSupport/CUALockScreenGuardian.app/Contents/Resources/Package_Appshot.bundle/Contents/Resources/Appshot.wav',
@@ -43,7 +130,11 @@ function parseArgs(argv) {
     extractFrames: false,
     frameRate: 30,
     analyzeVideo: false,
+    autoTriggerCodexHotkey: false,
+    codexHotkey: 'auto',
+    codexHotkeyHoldMs: 120,
     codexSource: 'observe',
+    cradleOnly: false,
     observeSeconds: 8,
     observePollIntervalMs: 250,
     alignmentConsecutiveFrameCount: 2,
@@ -54,6 +145,8 @@ function parseArgs(argv) {
     requireProvenParity: false,
     requestId: `cradle-appshot-parity-${Date.now()}`,
     soundEnabled: true,
+    targetBundleId: null,
+    targetWindowId: null,
   }
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -74,9 +167,31 @@ function parseArgs(argv) {
       options.destinationFrame = parseRectArg(readRequiredArg(arg, next))
       index += 1
     }
+    else if (arg === '--target-bundle-id') {
+      options.targetBundleId = readRequiredArg(arg, next)
+      index += 1
+    }
+    else if (arg === '--target-window-id') {
+      options.targetWindowId = parsePositiveIntegerArg(arg, readRequiredArg(arg, next))
+      index += 1
+    }
     else if (arg === '--codex-source') {
       options.codexSource = readRequiredArg(arg, next)
       index += 1
+    }
+    else if (arg === '--auto-trigger-codex-hotkey') {
+      options.autoTriggerCodexHotkey = true
+    }
+    else if (arg === '--codex-hotkey') {
+      options.codexHotkey = readRequiredArg(arg, next)
+      index += 1
+    }
+    else if (arg === '--codex-hotkey-hold-ms') {
+      options.codexHotkeyHoldMs = Number.parseInt(readRequiredArg(arg, next), 10)
+      index += 1
+    }
+    else if (arg === '--cradle-only') {
+      options.cradleOnly = true
     }
     else if (arg === '--observe-seconds') {
       options.observeSeconds = Number.parseFloat(readRequiredArg(arg, next))
@@ -137,6 +252,12 @@ function parseArgs(argv) {
   if (options.codexSource !== 'observe') {
     throw new Error('--codex-source only supports observe. The direct Codex private Apple Event adapter has been removed from Mac Bridge.')
   }
+  if (!Number.isInteger(options.codexHotkeyHoldMs) || options.codexHotkeyHoldMs < 20 || options.codexHotkeyHoldMs > 1000) {
+    throw new Error('--codex-hotkey-hold-ms must be an integer between 20 and 1000.')
+  }
+  if (options.codexHotkey !== 'auto' && !codexBareModifierHotkeys.has(options.codexHotkey)) {
+    throw new Error('--codex-hotkey must be auto, DoubleCommand, DoubleOption, or DoubleShift.')
+  }
   if (!Number.isFinite(options.observeSeconds) || options.observeSeconds <= 0) {
     throw new Error('--observe-seconds must be a positive number.')
   }
@@ -177,8 +298,19 @@ function printUsage() {
     '  --output <dir>        Write the parity report into this directory.',
     '  --destination-frame <x,y,width,height>',
     '                        Override the synthetic composer destination frame.',
+    '  --target-window-id <id>',
+    '                        Capture a specific CoreGraphics window id instead of the frontmost window.',
+    '  --target-bundle-id <id>',
+    '                        Capture the largest visible window for a bundle id instead of the frontmost window.',
     '  --request-id <id>     Use a deterministic report request id.',
     '  --codex-source <mode>  observe only. Default: observe.',
+    '  --auto-trigger-codex-hotkey',
+    '                        In observe mode, post real synthetic bare modifier key events after the recorder starts.',
+    '  --codex-hotkey <key>',
+    '                        Bare modifier to post: auto, DoubleCommand, DoubleOption, or DoubleShift. Default: auto.',
+    '  --codex-hotkey-hold-ms <ms>',
+    '                        Hold duration for --auto-trigger-codex-hotkey. Default: 120.',
+    '  --cradle-only         Skip Codex observation and collect only Cradle native capture/probe evidence.',
     '  --observe-seconds <seconds>',
     '                        Window for observing Codex temp assets. Default: 8.',
     '  --observe-poll-interval-ms <ms>',
@@ -212,6 +344,14 @@ function parseRectArg(value) {
     width: parts[2],
     height: parts[3],
   }
+}
+
+function parsePositiveIntegerArg(name, value) {
+  const parsed = Number.parseInt(value, 10)
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer.`)
+  }
+  return parsed
 }
 
 function readDefaultOutputDir() {
@@ -575,15 +715,13 @@ function summarizePresentationProbeSamples(samples) {
   const firstSnapshotFrame = snapshotFrames[0] ?? null
   const lastSnapshotFrame = snapshotFrames[snapshotFrames.length - 1] ?? null
   const changedSnapshotFrameCount = snapshotFrames.filter(frame => !areSameRect(frame, firstSnapshotFrame)).length
-  const shadowFrameChangeCounts = {
-    shadow: countChangedRects(samples.map(sample => sample.shadowFrame).filter(Boolean)),
-    destination: countChangedRects(samples.map(sample => sample.destinationShadowFrame).filter(Boolean)),
-    key: countChangedRects(samples.map(sample => sample.keyShadowFrame).filter(Boolean)),
-    ambient: countChangedRects(samples.map(sample => sample.ambientShadowFrame).filter(Boolean)),
-  }
+  const appshotOverlayShadowFrameChangeCount = countChangedRects(samples.map(sample => sample.shadowFrame).filter(Boolean))
   const whiteLayerEvidence = summarizeWhiteLayerEvidence(samples)
+  const magicMoveFadeEvidence = summarizeMagicMoveFadeEvidence(samples)
   const nativeGeometryEvidence = summarizeNativePresentationGeometryEvidence(samples)
   const snapshotContentEvidence = summarizeSnapshotContentEvidence(samples)
+  const layerTypeEvidence = summarizeLayerTypeEvidence(samples)
+  const transitionOwnerEvidence = summarizeTransitionOwnerEvidence(samples)
   const opacitySamples = samples.map(sample => ({
     transitionBackgroundOpacity: readFiniteProbeNumber(sample.transitionBackgroundOpacity),
     shutterOpacity: readFiniteProbeNumber(sample.shutterOpacity),
@@ -613,18 +751,212 @@ function summarizePresentationProbeSamples(samples) {
     firstImageHash: samples.find(sample => sample.imageEvidence?.sha256)?.imageEvidence?.sha256 ?? null,
     lastImageHash: [...samples].reverse().find(sample => sample.imageEvidence?.sha256)?.imageEvidence?.sha256 ?? null,
     changedSnapshotFrameCount,
-    shadowFrameChangeCounts,
+    appshotOverlayShadowFrameChangeCount,
     whiteLayerEvidence,
+    magicMoveFadeEvidence,
     nativeGeometryEvidence,
     snapshotContentEvidence,
+    layerTypeEvidence,
+    transitionOwnerEvidence,
     changedOpacityKeys,
     motionDetected: hashes.size > 1
       || changedSnapshotFrameCount > 0
-      || Object.values(shadowFrameChangeCounts).some(count => count > 0)
+      || appshotOverlayShadowFrameChangeCount > 0
       || changedOpacityKeys.length > 0,
     firstSnapshotFrame,
     lastSnapshotFrame,
   }
+}
+
+function summarizeTransitionOwnerEvidence(samples) {
+  const ownerSamples = samples
+    .map(sample => ({
+      overlayWindowClass: typeof sample.overlayWindowClass === 'string' ? sample.overlayWindowClass : null,
+      hostViewClass: typeof sample.hostViewClass === 'string' ? sample.hostViewClass : null,
+      transitionControllerClass: typeof sample.transitionControllerClass === 'string' ? sample.transitionControllerClass : null,
+      transitionControllerOwner: typeof sample.transitionControllerOwner === 'string' ? sample.transitionControllerOwner : null,
+      transitionController: sample.transitionController && typeof sample.transitionController === 'object'
+        ? sample.transitionController
+        : null,
+      transitionLayerHost: typeof sample.transitionLayerHost === 'string' ? sample.transitionLayerHost : null,
+      transitionPhase: typeof sample.transitionPhase === 'string' ? sample.transitionPhase : null,
+      transitionPhaseHistory: Array.isArray(sample.transitionPhaseHistory)
+        ? sample.transitionPhaseHistory.filter(phase => typeof phase === 'string')
+        : [],
+      overlayProgress: readFiniteProbeNumber(sample.overlayProgress),
+      progressHostedByOverlayWindow: sample.progressHostedByOverlayWindow === true,
+      overlayAccessoryFadeStarted: sample.overlayAccessoryFadeStarted === true,
+      overlaySourceFrame: readProbeRect(sample.overlaySourceFrame),
+      overlayTargetFrame: readProbeRect(sample.overlayTargetFrame),
+      overlayTargetCornerRadius: readFiniteProbeNumber(sample.overlayTargetCornerRadius),
+      overlayInitialCornerRadius: readFiniteProbeNumber(sample.overlayInitialCornerRadius),
+      overlayAccessoryFadeStartProgress: readFiniteProbeNumber(sample.overlayAccessoryFadeStartProgress),
+      overlayAccessoryFadeDuration: readFiniteProbeNumber(sample.overlayAccessoryFadeDuration),
+      overlaySnapshotImageSize: readProbeRect(sample.overlaySnapshotImageSize),
+      overlayTitleText: typeof sample.overlayTitleText === 'string' ? sample.overlayTitleText : null,
+    }))
+    .filter(sample =>
+      sample.overlayWindowClass !== null
+      || sample.hostViewClass !== null
+      || sample.transitionControllerClass !== null
+      || sample.transitionControllerOwner !== null
+      || sample.transitionController !== null
+      || sample.transitionLayerHost !== null
+      || sample.transitionPhase !== null,
+    )
+  const phases = [
+    ...new Set(ownerSamples.flatMap(sample => [
+      ...sample.transitionPhaseHistory,
+      sample.transitionPhase,
+    ]).filter(Boolean)),
+  ]
+  const progressValues = ownerSamples.map(sample => sample.overlayProgress).filter(value => value !== null)
+  const overlaySourceFrame = ownerSamples.find(sample => sample.overlaySourceFrame)?.overlaySourceFrame ?? null
+  const overlayTargetFrame = ownerSamples.find(sample => sample.overlayTargetFrame)?.overlayTargetFrame ?? null
+  const overlaySnapshotImageSize = ownerSamples.find(sample => sample.overlaySnapshotImageSize)?.overlaySnapshotImageSize ?? null
+  const transitionController = ownerSamples.find(sample => sample.transitionController)?.transitionController ?? null
+  const transitionControllerClass = ownerSamples.find(sample => sample.transitionControllerClass)?.transitionControllerClass
+    ?? (typeof transitionController?.className === 'string' ? transitionController.className : null)
+  const controllerSourceFrame = readProbeRect(transitionController?.sourceFrame)
+  const controllerTargetFrame = readProbeRect(transitionController?.targetFrame)
+  const controllerTargetCornerRadius = readFiniteProbeNumber(transitionController?.targetCornerRadius)
+  const controllerTitleText = typeof transitionController?.titleText === 'string' ? transitionController.titleText : null
+  const controllerState = typeof transitionController?.state === 'string' ? transitionController.state : null
+  return {
+    available: ownerSamples.length > 0,
+    overlayWindowClass: ownerSamples.find(sample => sample.overlayWindowClass)?.overlayWindowClass ?? null,
+    hostViewClass: ownerSamples.find(sample => sample.hostViewClass)?.hostViewClass ?? null,
+    transitionControllerClass,
+    transitionControllerOwner: ownerSamples.find(sample => sample.transitionControllerOwner)?.transitionControllerOwner ?? null,
+    transitionLayerHost: ownerSamples.find(sample => sample.transitionLayerHost)?.transitionLayerHost ?? null,
+    controllerClassMatchesCodexVocabulary: transitionControllerClass === 'AppshotCaptureTransition',
+    controllerOwnsSourceWindow: transitionController?.sourceWindow !== undefined,
+    controllerOwnsSourceFrame: controllerSourceFrame !== null,
+    controllerOwnsTargetFrame: controllerTargetFrame !== null,
+    controllerOwnsTargetCornerRadius: controllerTargetCornerRadius !== null,
+    controllerOwnsAppIcon: typeof transitionController?.appIconAvailable === 'boolean',
+    controllerOwnsTitleText: controllerTitleText !== null,
+    controllerOwnsTitleColor: Boolean(transitionController?.titleColor && typeof transitionController.titleColor === 'object'),
+    controllerOwnsDestinationBackgroundColor: Boolean(transitionController?.destinationBackgroundColor && typeof transitionController.destinationBackgroundColor === 'object'),
+    controllerOwnsOverlayWindows: Number.isInteger(transitionController?.overlayWindowCount),
+    controllerOwnsState: controllerState !== null,
+    controllerOwnsCompletionRequested: typeof transitionController?.completionRequested === 'boolean',
+    controllerOwnsMagicMoveWaiters: Number.isInteger(transitionController?.magicMoveWaiterCount),
+    controllerSourceFrame,
+    controllerTargetFrame,
+    controllerTargetCornerRadius,
+    controllerTitleText,
+    controllerState,
+    layersHostedByOverlayWindow: ownerSamples.some(sample => sample.transitionLayerHost === 'overlayWindow'),
+    progressHostedByOverlayWindow: ownerSamples.some(sample => sample.progressHostedByOverlayWindow),
+    progressChanges: uniqueRoundedValueCount(progressValues) > 1,
+    minProgress: minProbeValue(progressValues),
+    maxProgress: maxProbeValue(progressValues),
+    accessoryFadeStarted: ownerSamples.some(sample => sample.overlayAccessoryFadeStarted),
+    overlaySourceFrame,
+    overlayTargetFrame,
+    overlayTargetCornerRadius: ownerSamples.find(sample => sample.overlayTargetCornerRadius !== null)?.overlayTargetCornerRadius ?? null,
+    overlayInitialCornerRadius: ownerSamples.find(sample => sample.overlayInitialCornerRadius !== null)?.overlayInitialCornerRadius ?? null,
+    overlayAccessoryFadeStartProgress: ownerSamples.find(sample => sample.overlayAccessoryFadeStartProgress !== null)?.overlayAccessoryFadeStartProgress ?? null,
+    overlayAccessoryFadeDuration: ownerSamples.find(sample => sample.overlayAccessoryFadeDuration !== null)?.overlayAccessoryFadeDuration ?? null,
+    overlaySnapshotImageSize,
+    overlayTitleText: ownerSamples.find(sample => sample.overlayTitleText !== null)?.overlayTitleText ?? null,
+    windowOwnsSourceFrame: overlaySourceFrame !== null,
+    windowOwnsTargetFrame: overlayTargetFrame !== null,
+    windowOwnsCornerRadii: ownerSamples.some(sample => sample.overlayTargetCornerRadius !== null && sample.overlayInitialCornerRadius !== null),
+    windowOwnsSnapshotImageSize: overlaySnapshotImageSize !== null && overlaySnapshotImageSize.width > 0 && overlaySnapshotImageSize.height > 0,
+    phases,
+    hasReadyForMagicMovePhase: phases.includes('readyForMagicMove'),
+    hasMagicMovePhase: phases.includes('magicMove'),
+  }
+}
+
+function summarizeMagicMoveFadeEvidence(samples) {
+  const fadeSamples = samples
+    .map(sample => ({
+      elapsedSeconds: readFiniteProbeNumber(sample.elapsedSeconds),
+      readyForMagicMoveProgress: readFiniteProbeNumber(sample.readyForMagicMoveProgress),
+      magicMoveFadeDuration: readFiniteProbeNumber(sample.magicMoveFadeDuration),
+      magicMoveFadeEndProgress: readFiniteProbeNumber(sample.magicMoveFadeEndProgress),
+      shutterOpacity: readFiniteProbeNumber(sample.shutterOpacity),
+      snapshotImageOpacity: readFiniteProbeNumber(sample.snapshotImageOpacity),
+    }))
+    .filter(sample => sample.shutterOpacity !== null && sample.snapshotImageOpacity !== null)
+  const shutterValues = fadeSamples.map(sample => sample.shutterOpacity)
+  const snapshotValues = fadeSamples.map(sample => sample.snapshotImageOpacity)
+  const overlapSamples = fadeSamples.filter(sample =>
+    sample.shutterOpacity > 0.05
+    && sample.shutterOpacity < 0.95
+    && sample.snapshotImageOpacity > 0.05
+    && sample.snapshotImageOpacity < 0.95,
+  )
+  return {
+    sampleCount: fadeSamples.length,
+    readyForMagicMoveProgress: fadeSamples.find(sample => sample.readyForMagicMoveProgress !== null)?.readyForMagicMoveProgress ?? null,
+    magicMoveFadeDuration: fadeSamples.find(sample => sample.magicMoveFadeDuration !== null)?.magicMoveFadeDuration ?? null,
+    magicMoveFadeEndProgress: fadeSamples.find(sample => sample.magicMoveFadeEndProgress !== null)?.magicMoveFadeEndProgress ?? null,
+    shutterFadesOut: valuesFallAfterPeak(shutterValues),
+    snapshotFadesIn: valuesRiseAfterLow(snapshotValues),
+    crossFadeObserved: overlapSamples.length > 0,
+    overlapSampleCount: overlapSamples.length,
+    firstOverlapElapsedSeconds: overlapSamples[0]?.elapsedSeconds ?? null,
+    maxShutterOpacity: maxProbeValue(shutterValues),
+    maxSnapshotImageOpacity: maxProbeValue(snapshotValues),
+  }
+}
+
+function summarizeLayerTypeEvidence(samples) {
+  const first = samples.find(sample => sample.layerTypes)?.layerTypes ?? null
+  const hierarchy = samples.find(sample => sample.layerHierarchy)?.layerHierarchy ?? null
+  const expectedContentOrder = [
+    'transitionBackgroundLayer',
+    'shadowLayer',
+    'containerLayer',
+    'appIconLayer',
+    'titleLayer',
+  ]
+  const expectedSnapshotEffectsOrder = [
+    'snapshotImageLayer',
+    'shutterLayer',
+    'snapshotMaskDebugLayer',
+  ]
+  if (!first) {
+    return {
+      available: false,
+      layerTypes: null,
+      layerHierarchy: hierarchy,
+      transitionBackgroundIsGradientLayer: false,
+      titleIsTextLayer: false,
+      snapshotMaskIsShapeLayer: false,
+      snapshotMaskDebugIsShapeLayer: false,
+      contentLayerOrderMatchesCodexVocabulary: false,
+      containerLayerContainsSnapshotEffects: false,
+      snapshotEffectsOrderMatchesCodexVocabulary: false,
+      snapshotEffectsMaskIsSnapshotMaskLayer: false,
+    }
+  }
+  return {
+    available: true,
+    layerTypes: first,
+    layerHierarchy: hierarchy,
+    transitionBackgroundIsGradientLayer: typeof first.transitionBackgroundLayer === 'string'
+      && first.transitionBackgroundLayer.includes('GradientLayer'),
+    titleIsTextLayer: typeof first.titleLayer === 'string'
+      && first.titleLayer.includes('TextLayer'),
+    snapshotMaskIsShapeLayer: first.snapshotMaskLayer === 'CAShapeLayer',
+    snapshotMaskDebugIsShapeLayer: first.snapshotMaskDebugLayer === 'CAShapeLayer',
+    contentLayerOrderMatchesCodexVocabulary: areEqualStringArrays(hierarchy?.contentLayerSublayers, expectedContentOrder),
+    containerLayerContainsSnapshotEffects: areEqualStringArrays(hierarchy?.containerLayerSublayers, ['snapshotEffectsLayer']),
+    snapshotEffectsOrderMatchesCodexVocabulary: areEqualStringArrays(hierarchy?.snapshotEffectsLayerSublayers, expectedSnapshotEffectsOrder),
+    snapshotEffectsMaskIsSnapshotMaskLayer: hierarchy?.snapshotEffectsLayerMask === 'snapshotMaskLayer',
+  }
+}
+
+function areEqualStringArrays(left, right) {
+  return Array.isArray(left)
+    && Array.isArray(right)
+    && left.length === right.length
+    && left.every((value, index) => value === right[index])
 }
 
 function summarizeNativePresentationGeometryEvidence(samples) {
@@ -638,13 +970,21 @@ function summarizeNativePresentationGeometryEvidence(samples) {
         height: last.expectedEndFrame.height,
       }
     : null
+  const expectedWebFinalImageFrame = readAspectFitRect({
+    sourceSize: last?.snapshotImageSize,
+    targetBounds: expectedEndBounds,
+    verticalAlignment: 'bottom',
+  })
   return {
     firstShutterMatchesSourceContentBounds: areSameRect(first?.shutterFrame, first?.expectedStartContentBounds),
     firstShadowMatchesSourceContentFrame: areSameRect(first?.shadowFrame, first?.expectedStartContentFrame),
     firstSnapshotImageMatchesCaptureFrame: areSameRect(first?.snapshotImageFrame, first?.expectedSnapshotImageStartFrame),
     lastShutterMatchesDestinationBounds: areSameRect(last?.shutterFrame, expectedEndBounds),
     lastSnapshotMatchesDestinationBounds: areSameRect(last?.snapshotFrame, expectedEndBounds),
+    lastSnapshotImageMatchesExpectedEndFrame: areSameRect(last?.snapshotImageFrame, last?.expectedSnapshotImageEndFrame),
+    lastSnapshotImageMatchesWebFinalImageFrame: areSameRect(last?.snapshotImageFrame, expectedWebFinalImageFrame),
     lastShadowMatchesDestinationFrame: areSameRect(last?.shadowFrame, last?.expectedEndFrame),
+    transitionSnapshotHeightDoesNotAffectNativeTarget: last?.transitionSnapshotHeightAffectsNativeTarget === false,
     firstShutterFrame: first?.shutterFrame ?? null,
     firstExpectedStartContentBounds: first?.expectedStartContentBounds ?? null,
     firstShadowFrame: first?.shadowFrame ?? null,
@@ -653,8 +993,13 @@ function summarizeNativePresentationGeometryEvidence(samples) {
     firstExpectedSnapshotImageStartFrame: first?.expectedSnapshotImageStartFrame ?? null,
     lastShutterFrame: last?.shutterFrame ?? null,
     lastSnapshotFrame: last?.snapshotFrame ?? null,
+    lastSnapshotImageFrame: last?.snapshotImageFrame ?? null,
+    lastExpectedSnapshotImageEndFrame: last?.expectedSnapshotImageEndFrame ?? null,
+    lastExpectedWebFinalImageFrame: expectedWebFinalImageFrame,
     lastShadowFrame: last?.shadowFrame ?? null,
     lastExpectedEndFrame: last?.expectedEndFrame ?? null,
+    transitionSnapshotHeight: last?.transitionSnapshotHeight ?? null,
+    transitionSnapshotHeightAffectsNativeTarget: last?.transitionSnapshotHeightAffectsNativeTarget ?? null,
   }
 }
 
@@ -724,11 +1069,36 @@ function readFiniteProbeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function readProbeRect(value) {
+  if (!value || typeof value !== 'object') {
+    return null
+  }
+  const x = readFiniteProbeNumber(value.x)
+  const y = readFiniteProbeNumber(value.y)
+  const width = readFiniteProbeNumber(value.width)
+  const height = readFiniteProbeNumber(value.height)
+  if (x === null || y === null || width === null || height === null) {
+    return null
+  }
+  return { x, y, width, height }
+}
+
 function maxProbeValue(values) {
   if (values.length === 0) {
     return null
   }
   return Math.max(...values)
+}
+
+function minProbeValue(values) {
+  if (values.length === 0) {
+    return null
+  }
+  return Math.min(...values)
+}
+
+function uniqueRoundedValueCount(values) {
+  return new Set(values.map(value => Math.round(value * 1000) / 1000)).size
 }
 
 function valuesChange(values) {
@@ -739,11 +1109,66 @@ function valuesChange(values) {
   return values.some(value => Math.abs(value - first) > 0.0001)
 }
 
+function valuesRiseAfterLow(values) {
+  if (values.length <= 1) {
+    return false
+  }
+  const low = Math.min(...values)
+  const lowIndex = values.findIndex(value => Math.abs(value - low) < 0.0001)
+  return values.slice(lowIndex + 1).some(value => value - low > 0.0001)
+}
+
+function valuesFallAfterPeak(values) {
+  if (values.length <= 1) {
+    return false
+  }
+  const peak = Math.max(...values)
+  const peakIndex = values.findIndex(value => Math.abs(value - peak) < 0.0001)
+  return values.slice(peakIndex + 1).some(value => peak - value > 0.0001)
+}
+
 function areSameRect(left, right) {
   if (!left || !right) {
     return false
   }
   return ['x', 'y', 'width', 'height'].every(key => Math.abs((left[key] ?? 0) - (right[key] ?? 0)) < 0.0001)
+}
+
+function readAspectFitRect({
+  sourceSize,
+  targetBounds,
+  verticalAlignment,
+}) {
+  if (!sourceSize || !targetBounds) {
+    return null
+  }
+  const sourceWidth = readPositiveFiniteNumber(sourceSize.width)
+  const sourceHeight = readPositiveFiniteNumber(sourceSize.height)
+  const targetX = readFiniteProbeNumber(targetBounds.x)
+  const targetY = readFiniteProbeNumber(targetBounds.y)
+  const targetWidth = readPositiveFiniteNumber(targetBounds.width)
+  const targetHeight = readPositiveFiniteNumber(targetBounds.height)
+  if (
+    sourceWidth === null
+    || sourceHeight === null
+    || targetX === null
+    || targetY === null
+    || targetWidth === null
+    || targetHeight === null
+  ) {
+    return null
+  }
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight)
+  const width = sourceWidth * scale
+  const height = sourceHeight * scale
+  return {
+    x: targetX + (targetWidth - width) / 2,
+    y: verticalAlignment === 'bottom'
+      ? targetY
+      : targetY + (targetHeight - height) / 2,
+    width,
+    height,
+  }
 }
 
 function countChangedRects(rects) {
@@ -814,6 +1239,243 @@ async function readFirstExistingFile(candidates) {
   return null
 }
 
+async function readCodexBundleEvidence() {
+  const binaryPath = await readFirstExistingFile(codexComputerUseBinaryCandidates)
+  const frontendBundlePath = await readFirstExistingFile(codexFrontendAppshotBundleCandidates)
+  const frontendOrchestrationBundlePath = await readFirstExistingFile(codexFrontendAppshotOrchestrationBundleCandidates)
+  const native = binaryPath
+    ? await readCodexNativeBundleEvidence(binaryPath)
+    : {
+        binaryPath: null,
+        available: false,
+        error: { message: 'Codex Computer Use binary was not found.' },
+      }
+  const frontend = frontendBundlePath
+    ? await readCodexFrontendBundleEvidence(frontendBundlePath)
+    : {
+        bundlePath: null,
+        available: false,
+        error: { message: 'Codex frontend AppShot bundle was not found.' },
+      }
+  const frontendOrchestration = frontendOrchestrationBundlePath
+    ? await readCodexFrontendOrchestrationEvidence(frontendOrchestrationBundlePath)
+    : {
+        bundlePath: null,
+        available: false,
+        error: { message: 'Codex frontend AppShot orchestration bundle was not found.' },
+      }
+  return {
+    native,
+    frontend,
+    frontendOrchestration,
+  }
+}
+
+async function readCradleFrontendAppshotEvidence() {
+  try {
+    const source = await readFile(cradleFrontendAppshotSourcePath, 'utf8')
+    const actionContextSource = await readFile(cradleComposerActionContextSourcePath, 'utf8')
+    const composerAttachmentsSource = await readFile(cradleComposerAttachmentsSourcePath, 'utf8')
+    const composerBranch = source.match(/variant === 'composer'[\s\S]*?\)\s*: \(/)?.[0] ?? ''
+    const threadBranch = source.match(/variant === 'thread'[\s\S]*?data-testid="chat-appshot-identity"/)?.[0] ?? ''
+    const imageFrame = source.match(/function AppshotImageFrame[\s\S]*?function readThreadImageHeight/)?.[0] ?? ''
+    const imageFrameAfterMaskedWrapper = source.match(/<\/div>\s*\{appIconDataUrl && \([\s\S]*?data-testid="chat-appshot-app-icon"/)?.[0] ?? ''
+    const patterns = {
+      sourceAvailable: true,
+      cardWidth232: /const APPSHOT_CARD_WIDTH = 232/.test(source),
+      composerUsesTransitionSnapshot: /const composerImageDataUrl = metadata\.transitionSnapshotDataUrl/.test(source),
+      composerRendersPlaceholderWithoutSnapshot: /data-testid="chat-appshot-placeholder"/.test(source),
+      composerSuppressesExtraIconOverlay: /<ComposerAppshotTransitionImage/.test(composerBranch),
+      finalCardUsesNormalDiv: /<div\s+className=\{cn\(/.test(source) && !/<m\.figure/.test(source) && !/layout=\{variant === 'composer'/.test(source),
+      composerHeightAddsEight: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(source),
+      composerImageUsesFixedTargetStyle: /style=\{\{ height: imageHeight, width: APPSHOT_CARD_WIDTH \}\}/.test(source),
+      threadUsesCaptureImage: /imageDataUrl=\{metadata\.imageDataUrl\}/.test(threadBranch),
+      threadVisualWidth256: /const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256/.test(source),
+      threadInlinePadding12: /const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12/.test(source),
+      threadIconOverlay: /appIconDataUrl=\{metadata\.appIconDataUrl\}/.test(threadBranch),
+      iconOverlayBottomCentered: /absolute bottom-0 left-1\/2 size-6 -translate-x-1\/2/.test(imageFrameAfterMaskedWrapper),
+      iconOverlayIsMaskSibling: imageFrameAfterMaskedWrapper.length > 0,
+      threadCaptionOnly: /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(source),
+      composerAnimationTargetWidth232: /const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232/.test(actionContextSource),
+      composerAnimationTargetHeight140: /const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140/.test(actionContextSource),
+      composerAnimationTargetCornerRadiusZero: /const APPSHOT_ANIMATION_TARGET_CORNER_RADIUS = 0/.test(actionContextSource),
+      composerTrayUsesHorizontalScroll: /className="w-full overflow-x-auto/.test(composerAttachmentsSource),
+      composerTrayHidesScrollbar: /\[-ms-overflow-style:none\] \[scrollbar-width:none\] \[&::-webkit-scrollbar\]:hidden/.test(composerAttachmentsSource),
+      composerTrayUsesMinWidthRail: /className="flex min-w-max items-end gap-2"/.test(composerAttachmentsSource),
+      composerTrayAvoidsWrapping: !/flex-wrap items-start/.test(composerAttachmentsSource) && !/overflow-y-auto/.test(composerAttachmentsSource),
+      composerPlaceholderSpringResponse035: /visualDuration: pending\.transitionSpringResponse \?\? 0\.35/.test(composerAttachmentsSource),
+      composerPlaceholderSpringDamping073: /bounce: 1 - \(pending\.transitionSpringDampingFraction \?\? 0\.73\)/.test(composerAttachmentsSource),
+    }
+    return {
+      sourcePath: cradleFrontendAppshotSourcePath,
+      actionContextSourcePath: cradleComposerActionContextSourcePath,
+      composerAttachmentsSourcePath: cradleComposerAttachmentsSourcePath,
+      available: true,
+      patterns,
+      allRequiredPatternsPresent: Object.values(patterns).every(Boolean),
+    }
+  }
+  catch (error) {
+    return {
+      sourcePath: cradleFrontendAppshotSourcePath,
+      available: false,
+      error: { message: error instanceof Error ? error.message : String(error) },
+      patterns: {
+        sourceAvailable: false,
+      },
+      allRequiredPatternsPresent: false,
+    }
+  }
+}
+
+async function readCodexNativeBundleEvidence(binaryPath) {
+  const stringsResult = await runProcessCapture('strings', ['-a', binaryPath])
+  const otoolResult = await runProcessCapture('otool', ['-ov', binaryPath])
+  const symbolPresence = Object.fromEntries(codexNativeAppshotSymbols.map(symbol => [
+    symbol,
+    stringsResult.stdout.includes(symbol) || otoolResult.stdout.includes(symbol),
+  ]))
+  const transitionIvars = readCodexClassIvars(otoolResult.stdout, '_TtC7Appshot24AppshotCaptureTransition')
+  const overlayWindowIvars = readCodexClassIvars(otoolResult.stdout, 'AppshotCaptureTransitionOverlayWindow')
+  const overlaySuperclass = readCodexClassSuperclass(otoolResult.stdout, 'AppshotCaptureTransitionOverlayWindow')
+  return {
+    binaryPath,
+    available: true,
+    commands: {
+      strings: readCommandSummary(stringsResult),
+      otool: readCommandSummary(otoolResult),
+    },
+    symbolPresence,
+    allRequiredSymbolsPresent: Object.values(symbolPresence).every(Boolean),
+    transitionIvars,
+    transitionIvarsMatch: areEqualStringArrays(transitionIvars, codexTransitionIvars),
+    overlayWindowSuperclass: overlaySuperclass,
+    overlayWindowIsNSWindow: overlaySuperclass === '_OBJC_CLASS_$_NSWindow',
+    overlayWindowIvars,
+    overlayWindowIvarsMatch: areEqualStringArrays(overlayWindowIvars, codexOverlayWindowIvars),
+  }
+}
+
+async function readCodexFrontendBundleEvidence(bundlePath) {
+  const source = await readFile(bundlePath, 'utf8')
+  const patterns = {
+    cardWidth232: /w-\[232px\]|width:232/.test(source),
+    threadVisualWidth256: /width:256/.test(source),
+    threadInlinePadding12: /paddingInline:12/.test(source),
+    threadImageMask: /maskImage:`linear-gradient\(to bottom/.test(source),
+    iconBottomOverlay: /absolute bottom-0 left-1\/2 size-6 -translate-x-1\/2/.test(source),
+    composerPendingHeightAddsEight: /function S\(e\)\{return\(e\?\?140\)\+8\}/.test(source),
+    composerUsesTransitionSnapshot: /hasTransitionSnapshot|transitionSnapshotSrc|transitionSnapshotHeight/.test(source),
+    finalCardUsesNormalDiv: /role:K,\"aria-label\":q,tabIndex:J,onKeyDown:Y/.test(source),
+  }
+  return {
+    bundlePath,
+    available: true,
+    patterns,
+    allRequiredPatternsPresent: Object.values(patterns).every(Boolean),
+  }
+}
+
+async function readCodexFrontendOrchestrationEvidence(bundlePath) {
+  const source = await readFile(bundlePath, 'utf8')
+  const patterns = {
+    pendingCaptureRequestId: /data-pending-appshot-capture-request-id/.test(source),
+    composerAnimationTargetWidth232: /width:232\*c/.test(source),
+    composerAnimationTargetHeight140: /height:140\*c/.test(source),
+    composerAnimationTargetCornerRadiusZero: /cornerRadius:0/.test(source),
+    composerAnimationTargetScale: /transitionSnapshotScale:c/.test(source),
+    composerImageAttachmentStep88: /r\*88\*c/.test(source),
+    composerAppshotSlotStep240: /240\*c/.test(source),
+    composerTrayUsesHorizontalScroll: /L=`hide-scrollbar w-full overflow-x-auto`/.test(source),
+    composerTrayUsesMinWidthRail: /re=`flex min-w-max items-end gap-2`/.test(source),
+    composerTrayDataRowOnScrollContainer: /className:L,"data-composer-attachments-row":te,children:se/.test(source),
+    composerPendingSlotShrinksHorizontally: /className:`relative flex-shrink-0 overflow-hidden rounded-2xl`/.test(source),
+    composerPlaceholderSpringResponse035: /visualDuration:t\?\?\.35/.test(source),
+    composerPlaceholderSpringDamping073: /bounce:1-\(e\?\?\.73\)/.test(source),
+  }
+  return {
+    bundlePath,
+    available: true,
+    patterns,
+    allRequiredPatternsPresent: Object.values(patterns).every(Boolean),
+  }
+}
+
+function readCodexClassIvars(otoolOutput, classNeedle) {
+  const classIndex = otoolOutput.indexOf(classNeedle)
+  if (classIndex < 0) {
+    return []
+  }
+  const nextClassIndex = otoolOutput.indexOf('\n000000', classIndex + classNeedle.length)
+  const section = otoolOutput.slice(classIndex, nextClassIndex < 0 ? otoolOutput.length : nextClassIndex)
+  return [...section.matchAll(/\n\s+name\s+0x[0-9a-f]+\s+([A-Za-z_][A-Za-z0-9_]*)/g)]
+    .map(match => match[1])
+    .filter(name => !name.startsWith('_Tt'))
+}
+
+function readCodexClassSuperclass(otoolOutput, classNeedle) {
+  const classIndex = otoolOutput.indexOf(classNeedle)
+  if (classIndex < 0) {
+    return null
+  }
+  const sectionStart = Math.max(0, otoolOutput.lastIndexOf('\n000000', classIndex))
+  const section = otoolOutput.slice(sectionStart, classIndex)
+  return section.match(/superclass\s+0x[0-9a-f]+\s+([^\n]+)/)?.[1]?.trim() ?? null
+}
+
+function readCommandSummary(result) {
+  return {
+    command: result.command,
+    args: result.args,
+    code: result.code,
+    signal: result.signal,
+    error: result.error,
+  }
+}
+
+async function readCodexBareModifierHotkey() {
+  const result = await runProcessCapture('ps', ['axww', '-o', 'command='])
+  if (result.error) {
+    return {
+      modifier: null,
+      detection: {
+        status: 'failed',
+        command: readCommandSummary(result),
+      },
+    }
+  }
+  const lines = result.stdout
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean)
+  const monitorLine = lines.find(line => line.includes('bare-modifier-monitor') && line.includes('--key'))
+  const modifier = monitorLine?.match(/(?:^|\s)--key\s+(DoubleCommand|DoubleOption|DoubleShift)(?:\s|$)/)?.[1] ?? null
+  return {
+    modifier,
+    detection: {
+      status: modifier ? 'detected' : 'not-found',
+      command: readCommandSummary(result),
+      processLine: monitorLine ?? null,
+    },
+  }
+}
+
+async function resolveCodexBareModifierHotkey(option) {
+  if (option !== 'auto') {
+    return {
+      requested: option,
+      resolved: option,
+      detection: null,
+    }
+  }
+  const detected = await readCodexBareModifierHotkey()
+  return {
+    requested: option,
+    resolved: detected.modifier ?? 'DoubleCommand',
+    detection: detected.detection,
+  }
+}
+
 function areSameAudioMetadata(left, right) {
   return left.codecName === right.codecName
     && left.sampleRate === right.sampleRate
@@ -823,6 +1485,8 @@ function areSameAudioMetadata(left, right) {
 }
 
 function readParityStatus({
+  codexBundleEvidence,
+  cradleFrontendEvidence,
   sound,
   imageComparisons,
   frameComparison,
@@ -833,6 +1497,27 @@ function readParityStatus({
   transitionFrameAlignment,
 }) {
   const missingEvidence = []
+  if (!codexBundleEvidence?.native?.available) {
+    missingEvidence.push('Codex Computer Use AppShot native bundle evidence must be available.')
+  }
+  if (!codexBundleEvidence?.native?.allRequiredSymbolsPresent) {
+    missingEvidence.push('Codex AppShot native symbols must be extracted from the Codex Computer Use bundle before Cradle can claim structural parity.')
+  }
+  if (!codexBundleEvidence?.native?.transitionIvarsMatch) {
+    missingEvidence.push('Codex AppshotCaptureTransition ivars must match the expected source, target, app icon, title, background, state, and magic-move waiter structure.')
+  }
+  if (!codexBundleEvidence?.native?.overlayWindowIsNSWindow || !codexBundleEvidence?.native?.overlayWindowIvarsMatch) {
+    missingEvidence.push('Codex AppshotCaptureTransitionOverlayWindow must be proven to be an NSWindow with the expected AppShot layer/progress ivars.')
+  }
+  if (!codexBundleEvidence?.frontend?.available || !codexBundleEvidence?.frontend?.allRequiredPatternsPresent) {
+    missingEvidence.push('Codex frontend AppShot visual bundle must prove the 232px card, 256px thread visual wrapper, icon overlay, and transition-snapshot composer semantics.')
+  }
+  if (!codexBundleEvidence?.frontendOrchestration?.available || !codexBundleEvidence?.frontendOrchestration?.allRequiredPatternsPresent) {
+    missingEvidence.push('Codex frontend AppShot orchestration bundle must prove the composer animation target geometry: 232x140, cornerRadius 0, scale, and slot offsets.')
+  }
+  if (!cradleFrontendEvidence?.available || !cradleFrontendEvidence?.allRequiredPatternsPresent) {
+    missingEvidence.push('Cradle frontend AppShot source must match Codex composer/thread semantics: composer transition snapshot only, thread capture image with icon overlay.')
+  }
   if (!codexAppshotEvidence?.occurred) {
     missingEvidence.push('Codex AppShot must be proven to have occurred during the Codex recording window.')
   }
@@ -858,6 +1543,10 @@ function readParityStatus({
   if (!whiteLayerEvidence?.coverHasRoundedCorners || !whiteLayerEvidence?.shutterHasRoundedCorners) {
     missingEvidence.push('Cradle native AppShot white shutter layer must have rounded corners.')
   }
+  const magicMoveFadeEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.magicMoveFadeEvidence
+  if (!magicMoveFadeEvidence?.shutterFadesOut || !magicMoveFadeEvidence?.snapshotFadesIn) {
+    missingEvidence.push('Cradle native AppShot must cross-fade from the white shutter to the captured snapshot during the magic move.')
+  }
   const nativeGeometryEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.nativeGeometryEvidence
   if (!nativeGeometryEvidence?.firstShutterMatchesSourceContentBounds) {
     missingEvidence.push('Cradle native AppShot white shutter must start on the source window content bounds, including title bar and traffic lights but excluding capture shadow padding.')
@@ -868,12 +1557,55 @@ function readParityStatus({
   if (!nativeGeometryEvidence?.firstSnapshotImageMatchesCaptureFrame) {
     missingEvidence.push('Cradle native AppShot snapshot image layer must start on the captured PNG frame so screenshot shadow padding stays inside the source-content container.')
   }
+  if (!nativeGeometryEvidence?.lastSnapshotImageMatchesExpectedEndFrame) {
+    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the expected object-contain frame so the native transition image matches the final AppShot card image size.')
+  }
+  if (!nativeGeometryEvidence?.lastSnapshotImageMatchesWebFinalImageFrame) {
+    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the independently computed web final image body frame.')
+  }
   if (!nativeGeometryEvidence?.lastShutterMatchesDestinationBounds || !nativeGeometryEvidence?.lastSnapshotMatchesDestinationBounds || !nativeGeometryEvidence?.lastShadowMatchesDestinationFrame) {
-    missingEvidence.push('Cradle native AppShot shutter, snapshot, and shadow must finish on the composer destination slot.')
+    missingEvidence.push('Cradle native AppShot shutter, snapshot container, and shadow must finish on the composer visual destination.')
+  }
+  if (!nativeGeometryEvidence?.transitionSnapshotHeightDoesNotAffectNativeTarget) {
+    missingEvidence.push('Cradle native AppShot transitionSnapshotHeight must not change the native 232x140 animation target; it only sizes the composer transition snapshot asset.')
+  }
+  const transitionSnapshotEvidence = cradleAppshotEvidence?.transitionSnapshotEvidence
+  if (!transitionSnapshotEvidence?.canvasMatchesTransitionSnapshot) {
+    missingEvidence.push('Cradle AppShot transition snapshot PNG canvas must match the renderer transitionSnapshotHeight and destination width.')
+  }
+  if (!transitionSnapshotEvidence?.targetBodyIsShorterThanCanvas) {
+    missingEvidence.push('Cradle AppShot transition snapshot must preserve the native 232x140 target body inside any titled snapshot canvas.')
   }
   const snapshotContentEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.snapshotContentEvidence
   if (!snapshotContentEvidence?.hasContents) {
     missingEvidence.push('Cradle native AppShot snapshot layer must contain the captured window image.')
+  }
+  const layerTypeEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.layerTypeEvidence
+  if (!layerTypeEvidence?.transitionBackgroundIsGradientLayer || !layerTypeEvidence?.titleIsTextLayer || !layerTypeEvidence?.snapshotMaskIsShapeLayer) {
+    missingEvidence.push('Cradle native AppShot layer tree must include Codex-aligned gradient background, text title, and shape mask layers.')
+  }
+  if (!layerTypeEvidence?.contentLayerOrderMatchesCodexVocabulary || !layerTypeEvidence?.containerLayerContainsSnapshotEffects || !layerTypeEvidence?.snapshotEffectsOrderMatchesCodexVocabulary || !layerTypeEvidence?.snapshotEffectsMaskIsSnapshotMaskLayer) {
+    missingEvidence.push('Cradle native AppShot layer hierarchy must preserve Codex-aligned content, snapshot, shutter, mask, app icon, and title ordering.')
+  }
+  const transitionOwnerEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.transitionOwnerEvidence
+  const controllerOwnsCodexTransitionState = transitionOwnerEvidence?.controllerClassMatchesCodexVocabulary
+    && transitionOwnerEvidence?.controllerOwnsSourceWindow
+    && transitionOwnerEvidence?.controllerOwnsSourceFrame
+    && transitionOwnerEvidence?.controllerOwnsTargetFrame
+    && transitionOwnerEvidence?.controllerOwnsTargetCornerRadius
+    && transitionOwnerEvidence?.controllerOwnsAppIcon
+    && transitionOwnerEvidence?.controllerOwnsTitleText
+    && transitionOwnerEvidence?.controllerOwnsTitleColor
+    && transitionOwnerEvidence?.controllerOwnsDestinationBackgroundColor
+    && transitionOwnerEvidence?.controllerOwnsOverlayWindows
+    && transitionOwnerEvidence?.controllerOwnsState
+    && transitionOwnerEvidence?.controllerOwnsCompletionRequested
+    && transitionOwnerEvidence?.controllerOwnsMagicMoveWaiters
+  if (!controllerOwnsCodexTransitionState || !transitionOwnerEvidence?.layersHostedByOverlayWindow || !transitionOwnerEvidence?.progressHostedByOverlayWindow) {
+    missingEvidence.push('Cradle native AppShot must expose a Codex-aligned AppshotCaptureTransition controller for source, target, identity, background, state, completion, and magic-move waiters while the overlay window hosts layers/progress.')
+  }
+  if (!transitionOwnerEvidence?.hasReadyForMagicMovePhase || !transitionOwnerEvidence?.hasMagicMovePhase) {
+    missingEvidence.push('Cradle native AppShot transition must expose the Codex-aligned readyForMagicMove and magicMove phases.')
   }
   const sourceFrameEvidence = cradleAppshotEvidence?.sourceFrameEvidence
   if (!sourceFrameEvidence?.matchesCaptureImageSize) {
@@ -1009,22 +1741,6 @@ function readJpegDimensions(data) {
   return null
 }
 
-function readFilePath(rawPathOrUrl) {
-  if (!rawPathOrUrl || typeof rawPathOrUrl !== 'string') {
-    return null
-  }
-  try {
-    const url = new URL(rawPathOrUrl)
-    if (url.protocol !== 'file:') {
-      return null
-    }
-    return fileURLToPath(url)
-  }
-  catch {
-    return isAbsolute(rawPathOrUrl) ? rawPathOrUrl : null
-  }
-}
-
 function readImageExtension(filePath) {
   const extension = extname(filePath).toLowerCase()
   if (extension === '.png' || extension === '.jpg' || extension === '.jpeg') {
@@ -1036,10 +1752,6 @@ function readImageExtension(filePath) {
 function isSupportedImagePath(filePath) {
   const extension = extname(filePath).toLowerCase()
   return extension === '.png' || extension === '.jpg' || extension === '.jpeg'
-}
-
-function readPositiveNumber(value) {
-  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined
 }
 
 function logStage(stage, details = {}) {
@@ -1101,12 +1813,24 @@ function readCodexVideoTransitionEvidence(transitionFrameAlignment) {
   return readVideoTransitionEvidence(transitionFrameAlignment?.codexStart)
 }
 
-function readCradleAppshotEvidence({ capture, recording, transitionFrameAlignment, presentationProbe }) {
+function readCradleAppshotEvidence({
+  animationTarget,
+  capture,
+  recording,
+  transitionFrameAlignment,
+  presentationProbe,
+  transitionSnapshotAsset,
+}) {
   return {
     captured: Boolean(capture?.filePath),
     captureBackend: capture?.captureBackend ?? null,
     captureImageSize: capture?.captureImageSize ?? null,
     sourceFrameEvidence: readCaptureSourceFrameEvidence(capture),
+    transitionSnapshotEvidence: readTransitionSnapshotEvidence({
+      animationTarget,
+      capture,
+      transitionSnapshotAsset,
+    }),
     recordingBackend: recording?.recordingBackend ?? null,
     recordingError: recording?.recordingError ?? null,
     triggerError: recording?.triggerError ?? null,
@@ -1117,17 +1841,57 @@ function readCradleAppshotEvidence({ capture, recording, transitionFrameAlignmen
       imageWrittenCount: presentationProbe?.summary?.imageWrittenCount ?? 0,
       uniqueImageHashCount: presentationProbe?.summary?.uniqueImageHashCount ?? 0,
       changedSnapshotFrameCount: presentationProbe?.summary?.changedSnapshotFrameCount ?? 0,
-      shadowFrameChangeCounts: presentationProbe?.summary?.shadowFrameChangeCounts ?? {
-        shadow: 0,
-        destination: 0,
-        key: 0,
-        ambient: 0,
-      },
+      appshotOverlayShadowFrameChangeCount: presentationProbe?.summary?.appshotOverlayShadowFrameChangeCount ?? 0,
       whiteLayerEvidence: presentationProbe?.summary?.whiteLayerEvidence ?? null,
+      magicMoveFadeEvidence: presentationProbe?.summary?.magicMoveFadeEvidence ?? null,
       nativeGeometryEvidence: presentationProbe?.summary?.nativeGeometryEvidence ?? null,
       snapshotContentEvidence: presentationProbe?.summary?.snapshotContentEvidence ?? null,
+      layerTypeEvidence: presentationProbe?.summary?.layerTypeEvidence ?? null,
+      transitionOwnerEvidence: presentationProbe?.summary?.transitionOwnerEvidence ?? null,
       changedOpacityKeys: presentationProbe?.summary?.changedOpacityKeys ?? [],
     },
+  }
+}
+
+function readTransitionSnapshotEvidence({ animationTarget, capture, transitionSnapshotAsset }) {
+  const image = transitionSnapshotAsset?.image ?? null
+  const destinationFrame = animationTarget?.destinationFrame ?? capture?.appshot?.transitionGeometry?.destinationFrame ?? null
+  const scale = readPositiveFiniteNumber(animationTarget?.transitionSnapshotScale)
+    ?? readPositiveFiniteNumber(animationTarget?.codexDisplay?.scaleFactor)
+    ?? readPositiveFiniteNumber(capture?.appshot?.transitionGeometry?.displayMapping?.scaleFactor)
+  const transitionSnapshotHeight = readPositiveFiniteNumber(capture?.appshot?.transitionSnapshotHeight)
+  const expectedCanvas = destinationFrame && scale && transitionSnapshotHeight
+    ? {
+        width: Math.ceil(destinationFrame.width * scale),
+        height: Math.ceil(transitionSnapshotHeight * scale),
+      }
+    : null
+  const expectedNativeTargetBody = destinationFrame && scale
+    ? {
+        width: Math.ceil(destinationFrame.width * scale),
+        height: Math.ceil(destinationFrame.height * scale),
+      }
+    : null
+  const canvasMatchesTransitionSnapshot = Boolean(
+    image
+      && expectedCanvas
+      && image.width === expectedCanvas.width
+      && image.height === expectedCanvas.height,
+  )
+  const targetBodyIsShorterThanCanvas = Boolean(
+    expectedCanvas
+      && expectedNativeTargetBody
+      && expectedNativeTargetBody.height <= expectedCanvas.height,
+  )
+  return {
+    available: Boolean(transitionSnapshotAsset),
+    image,
+    expectedCanvas,
+    expectedNativeTargetBody,
+    scale: scale ?? null,
+    transitionSnapshotHeight: transitionSnapshotHeight ?? null,
+    canvasMatchesTransitionSnapshot,
+    targetBodyIsShorterThanCanvas,
   }
 }
 
@@ -1975,9 +2739,7 @@ function readPresentationProbeFrameInput(presentationProbe, frameRate, reportDir
       image: sample.imageEvidence.image,
       presentationSampleIndex: sample.index,
       snapshotFrame: sample.snapshotFrame ?? null,
-      destinationShadowFrame: sample.destinationShadowFrame ?? null,
-      keyShadowFrame: sample.keyShadowFrame ?? null,
-      ambientShadowFrame: sample.ambientShadowFrame ?? null,
+      appshotOverlayShadowFrame: sample.shadowFrame ?? null,
     }))
   if (frames.length === 0) {
     return null
@@ -2028,30 +2790,6 @@ function parseFrameRate(value) {
     return null
   }
   return numerator / denominator
-}
-
-function readAppliedCalibration(start) {
-  const calibration = {}
-  if (!start) {
-    return calibration
-  }
-  const animationDuration = readPositiveNumber(start.animationDuration)
-  const transitionSnapshotHeight = readPositiveNumber(start.transitionSnapshotHeight)
-  const transitionSpringDampingFraction = readPositiveNumber(start.transitionSpringDampingFraction)
-  const transitionSpringResponse = readPositiveNumber(start.transitionSpringResponse)
-  if (animationDuration !== undefined) {
-    calibration.animationDuration = animationDuration
-  }
-  if (transitionSnapshotHeight !== undefined) {
-    calibration.transitionSnapshotHeight = transitionSnapshotHeight
-  }
-  if (transitionSpringDampingFraction !== undefined) {
-    calibration.transitionSpringDampingFraction = transitionSpringDampingFraction
-  }
-  if (transitionSpringResponse !== undefined) {
-    calibration.transitionSpringResponse = transitionSpringResponse
-  }
-  return calibration
 }
 
 function hasUsableRecording(recording) {
@@ -2433,6 +3171,47 @@ function createParityAnimationTarget(context, destinationFrameOverride) {
   }
 }
 
+async function readExplicitTargetWindow(client, options) {
+  if (options.targetWindowId !== null) {
+    const targetWindow = {
+      windowId: options.targetWindowId,
+      ...(options.targetBundleId ? { bundleId: options.targetBundleId } : {}),
+    }
+    const context = await client.request('mac.appshot.contextForWindow', { targetWindow })
+    return {
+      context,
+      targetWindow: readCaptureTargetWindow(context),
+      source: 'target-window-id',
+    }
+  }
+  if (!options.targetBundleId) {
+    return null
+  }
+
+  const inventory = await client.request('mac.appshot.windowInventory')
+  const candidates = (inventory.windows ?? [])
+    .filter(window => window.bundleId === options.targetBundleId)
+    .filter(window => readWindowArea(window) > 0)
+    .sort((left, right) => readWindowArea(right) - readWindowArea(left))
+  const selected = candidates[0]
+  if (!selected) {
+    throw new Error(`No visible AppShot target window found for bundle id: ${options.targetBundleId}`)
+  }
+  const targetWindow = readCaptureTargetWindow({ window: selected })
+  const context = await client.request('mac.appshot.contextForWindow', { targetWindow })
+  return {
+    context,
+    targetWindow: readCaptureTargetWindow(context),
+    source: 'target-bundle-id',
+  }
+}
+
+function readWindowArea(window) {
+  const width = readPositiveFiniteNumber(window?.bounds?.width)
+  const height = readPositiveFiniteNumber(window?.bounds?.height)
+  return width && height ? width * height : 0
+}
+
 function readDefaultComposerDestinationFrame(workArea, scaleFactor) {
   const width = 232 * scaleFactor
   const height = 140 * scaleFactor
@@ -2494,8 +3273,10 @@ function formatMarkdownReport(report) {
         `- Requested process id: ${report.targetLock.requested.processId}`,
         `- Captured window id: ${report.targetLock.capturedWindow?.windowId ?? 'none'}`,
         `- Captured process id: ${report.targetLock.capturedWindow?.processId ?? 'none'}`,
-      ].join('\n')
+    ].join('\n')
     : '- Not recorded'
+  const codexBundleEvidence = formatCodexBundleEvidence(report.codex.bundleEvidence)
+  const cradleFrontendEvidence = formatCradleFrontendEvidence(report.cradle.frontendEvidence)
   const screenCaptureKit = report.screenCaptureKit
     ? [
         `- Status: ${report.screenCaptureKit.status}`,
@@ -2542,25 +3323,6 @@ function formatMarkdownReport(report) {
         ].join('\n')
       : '- Missing comparison result'
     : '- Disabled for this run'
-  const directTranscripts = report.codex.direct.transcripts.length > 0
-    ? report.codex.direct.transcripts
-        .map((entry) => {
-          const label = [
-            entry.phase,
-            entry.index !== undefined ? `#${entry.index + 1}` : null,
-            entry.type ? `type=${entry.type}` : null,
-            entry.transcript?.status ? `status=${entry.transcript.status}` : null,
-          ].filter(Boolean).join(' ')
-          return [
-            `- ${label}`,
-            '',
-            '```json',
-            JSON.stringify(entry.transcript, null, 2),
-            '```',
-          ].join('\n')
-        })
-        .join('\n\n')
-    : '- None'
   const codexAppshotEvidence = report.codex.appshotEvidence
     ? [
         `- Occurred: ${report.codex.appshotEvidence.occurred}`,
@@ -2584,6 +3346,7 @@ function formatMarkdownReport(report) {
         `- Capture backend: ${report.cradle.appshotEvidence.captureBackend ?? 'none'}`,
         `- Capture image size: ${formatCaptureImageSize(report.cradle.appshotEvidence.captureImageSize)}`,
         `- Source frame evidence: ${formatSourceFrameEvidence(report.cradle.appshotEvidence.sourceFrameEvidence)}`,
+        `- Transition snapshot evidence: ${formatTransitionSnapshotEvidence(report.cradle.appshotEvidence.transitionSnapshotEvidence)}`,
         `- Recording backend: ${report.cradle.appshotEvidence.recordingBackend ?? 'none'}`,
         `- Recording error: ${report.cradle.appshotEvidence.recordingError?.message ?? 'none'}`,
         `- Trigger error: ${report.cradle.appshotEvidence.triggerError?.message ?? 'none'}`,
@@ -2594,10 +3357,13 @@ function formatMarkdownReport(report) {
         `- Native presentation samples: ${report.cradle.appshotEvidence.nativePresentationEvidence?.sampleCount ?? 0}`,
         `- Native presentation image hashes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.uniqueImageHashCount ?? 0}`,
         `- Native presentation geometry changes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.changedSnapshotFrameCount ?? 0}`,
-        `- Native presentation shadow changes: ${formatShadowFrameChangeCounts(report.cradle.appshotEvidence.nativePresentationEvidence?.shadowFrameChangeCounts)}`,
+        `- Native AppShot overlay shadow frame changes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.appshotOverlayShadowFrameChangeCount ?? 0}`,
         `- Native white layer: ${formatWhiteLayerEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.whiteLayerEvidence)}`,
+        `- Native magic-move fade: ${formatMagicMoveFadeEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.magicMoveFadeEvidence)}`,
         `- Native AppShot geometry: ${formatNativeGeometryEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.nativeGeometryEvidence)}`,
         `- Native snapshot contents: ${formatSnapshotContentEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.snapshotContentEvidence)}`,
+        `- Native layer types: ${formatLayerTypeEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.layerTypeEvidence)}`,
+        `- Native transition owner: ${formatTransitionOwnerEvidence(report.cradle.appshotEvidence.nativePresentationEvidence?.transitionOwnerEvidence)}`,
         `- Native presentation opacity changes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.changedOpacityKeys?.join(', ') || 'none'}`,
       ].join('\n')
     : '- Not evaluated'
@@ -2620,13 +3386,31 @@ function formatMarkdownReport(report) {
         `- Unique probe image hashes: ${report.cradle.presentationProbe.summary?.uniqueImageHashCount ?? 0}`,
         `- Motion detected: ${report.cradle.presentationProbe.summary?.motionDetected ?? false}`,
         `- Snapshot frame changes: ${report.cradle.presentationProbe.summary?.changedSnapshotFrameCount ?? 0}`,
-        `- Shadow frame changes: ${formatShadowFrameChangeCounts(report.cradle.presentationProbe.summary?.shadowFrameChangeCounts)}`,
+        `- AppShot overlay shadow frame changes: ${report.cradle.presentationProbe.summary?.appshotOverlayShadowFrameChangeCount ?? 0}`,
         `- White layer: ${formatWhiteLayerEvidence(report.cradle.presentationProbe.summary?.whiteLayerEvidence)}`,
+        `- Magic-move fade: ${formatMagicMoveFadeEvidence(report.cradle.presentationProbe.summary?.magicMoveFadeEvidence)}`,
         `- AppShot geometry: ${formatNativeGeometryEvidence(report.cradle.presentationProbe.summary?.nativeGeometryEvidence)}`,
         `- Snapshot contents: ${formatSnapshotContentEvidence(report.cradle.presentationProbe.summary?.snapshotContentEvidence)}`,
+        `- Layer types: ${formatLayerTypeEvidence(report.cradle.presentationProbe.summary?.layerTypeEvidence)}`,
+        `- Transition owner: ${formatTransitionOwnerEvidence(report.cradle.presentationProbe.summary?.transitionOwnerEvidence)}`,
         `- Opacity changes: ${report.cradle.presentationProbe.summary?.changedOpacityKeys?.join(', ') || 'none'}`,
         `- First image hash: ${report.cradle.presentationProbe.summary?.firstImageHash?.slice(0, 16) ?? 'none'}`,
         `- Last image hash: ${report.cradle.presentationProbe.summary?.lastImageHash?.slice(0, 16) ?? 'none'}`,
+      ].join('\n')
+    : '- Not evaluated'
+  const appshotPresentationFrameProbe = report.cradle.presentationFrameProbe
+    ? [
+        `- Panel window number: ${report.cradle.presentationFrameProbe.panelWindowNumber ?? 'none'}`,
+        `- Samples: ${report.cradle.presentationFrameProbe.summary?.sampleCount ?? 0}`,
+        `- Probe images written: ${report.cradle.presentationFrameProbe.summary?.imageWrittenCount ?? 0}`,
+        `- Unique probe image hashes: ${report.cradle.presentationFrameProbe.summary?.uniqueImageHashCount ?? 0}`,
+        `- Motion detected: ${report.cradle.presentationFrameProbe.summary?.motionDetected ?? false}`,
+        `- Snapshot frame changes: ${report.cradle.presentationFrameProbe.summary?.changedSnapshotFrameCount ?? 0}`,
+        `- White layer: ${formatWhiteLayerEvidence(report.cradle.presentationFrameProbe.summary?.whiteLayerEvidence)}`,
+        `- Magic-move fade: ${formatMagicMoveFadeEvidence(report.cradle.presentationFrameProbe.summary?.magicMoveFadeEvidence)}`,
+        `- Transition owner: ${formatTransitionOwnerEvidence(report.cradle.presentationFrameProbe.summary?.transitionOwnerEvidence)}`,
+        `- First image hash: ${report.cradle.presentationFrameProbe.summary?.firstImageHash?.slice(0, 16) ?? 'none'}`,
+        `- Last image hash: ${report.cradle.presentationFrameProbe.summary?.lastImageHash?.slice(0, 16) ?? 'none'}`,
       ].join('\n')
     : '- Not evaluated'
   const codexObserve = report.codex.observe
@@ -2690,29 +3474,20 @@ ${targetLock}
 
 ${screenCaptureKit}
 
-## Codex Private Capture
+## Codex Bundle Evidence
 
-- Service running: ${report.codex.service.running}
-- Service process id: ${report.codex.service.processIdentifier ?? 'None'}
+${codexBundleEvidence}
+
+## Cradle Frontend AppShot Evidence
+
+${cradleFrontendEvidence}
+
+## Codex UI Observation
+
 - Source mode: ${report.codex.source}
-- Direct Apple Event status: ${report.codex.direct.status}
-- Direct Apple Event error:
-
-\`\`\`json
-${JSON.stringify(report.codex.direct.error, null, 2)}
-\`\`\`
-
-### Direct Apple Event Transcripts
-
-${directTranscripts}
-
-- Start calibration:
-
-\`\`\`json
-${JSON.stringify(report.codex.start ?? null, null, 2)}
-\`\`\`
-
-- Updates: ${report.codex.updates.map(update => update.type).join(', ')}
+- Direct Apple Event adapter status: ${report.codex.direct.status}
+- Direct Apple Event adapter error: ${report.codex.direct.error?.message ?? 'none'}
+- Direct Appshot updates: ${report.codex.updates.map(update => update.type).join(', ') || 'none'}
 
 ### Codex Assets
 
@@ -2758,6 +3533,10 @@ ${appshotVisibilityProbe}
 ### AppShot Presentation Probe
 
 ${appshotPresentationProbe}
+
+### AppShot Presentation Frame Probe
+
+${appshotPresentationFrameProbe}
 
 ## Recordings
 
@@ -2904,18 +3683,6 @@ function formatSoundComparison(sound) {
   ].join('\n')
 }
 
-function formatShadowFrameChangeCounts(counts) {
-  if (!counts) {
-    return 'none'
-  }
-  return [
-    `shadow=${counts.shadow ?? 0}`,
-    `destination=${counts.destination ?? 0}`,
-    `key=${counts.key ?? 0}`,
-    `ambient=${counts.ambient ?? 0}`,
-  ].join(', ')
-}
-
 function formatCaptureImageSize(size) {
   if (!size) {
     return 'none'
@@ -2946,6 +3713,29 @@ function formatSourceFrameEvidence(evidence) {
   ].join(', ')
 }
 
+function formatTransitionSnapshotEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  const image = evidence.image
+    ? `${evidence.image.width}x${evidence.image.height}`
+    : 'none'
+  const expectedCanvas = evidence.expectedCanvas
+    ? `${evidence.expectedCanvas.width}x${evidence.expectedCanvas.height}`
+    : 'none'
+  const expectedNativeTargetBody = evidence.expectedNativeTargetBody
+    ? `${evidence.expectedNativeTargetBody.width}x${evidence.expectedNativeTargetBody.height}`
+    : 'none'
+  return [
+    `available=${evidence.available}`,
+    `image=${image}`,
+    `expectedCanvas=${expectedCanvas}`,
+    `targetBody=${expectedNativeTargetBody}`,
+    `canvasMatches=${evidence.canvasMatchesTransitionSnapshot}`,
+    `bodyWithinCanvas=${evidence.targetBodyIsShorterThanCanvas}`,
+  ].join(', ')
+}
+
 function formatWhiteLayerEvidence(evidence) {
   if (!evidence) {
     return 'none'
@@ -2962,6 +3752,21 @@ function formatWhiteLayerEvidence(evidence) {
   ].join(', ')
 }
 
+function formatMagicMoveFadeEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `shutterOut=${evidence.shutterFadesOut}`,
+    `snapshotIn=${evidence.snapshotFadesIn}`,
+    `crossFade=${evidence.crossFadeObserved}`,
+    `ready=${formatMetricValue(evidence.readyForMagicMoveProgress)}`,
+    `fadeDuration=${formatMetricValue(evidence.magicMoveFadeDuration)}`,
+    `fadeEnd=${formatMetricValue(evidence.magicMoveFadeEndProgress)}`,
+    `overlap=${evidence.overlapSampleCount ?? 0}`,
+  ].join(', ')
+}
+
 function formatNativeGeometryEvidence(evidence) {
   if (!evidence) {
     return 'none'
@@ -2972,7 +3777,10 @@ function formatNativeGeometryEvidence(evidence) {
     `startSnapshotImageOnCapture=${evidence.firstSnapshotImageMatchesCaptureFrame}`,
     `endShutterOnSlot=${evidence.lastShutterMatchesDestinationBounds}`,
     `endSnapshotOnSlot=${evidence.lastSnapshotMatchesDestinationBounds}`,
+    `endSnapshotImageOnContainFrame=${evidence.lastSnapshotImageMatchesExpectedEndFrame}`,
+    `endSnapshotImageOnWebBody=${evidence.lastSnapshotImageMatchesWebFinalImageFrame}`,
     `endShadowOnSlot=${evidence.lastShadowMatchesDestinationFrame}`,
+    `transitionSnapshotHeightDoesNotAffectNativeTarget=${evidence.transitionSnapshotHeightDoesNotAffectNativeTarget}`,
   ].join(', ')
 }
 
@@ -2985,6 +3793,114 @@ function formatSnapshotContentEvidence(evidence) {
     `contentsScale=${evidence.contentsScale ?? 'none'}`,
     `backgroundWhite=${evidence.backgroundIsWhite}`,
   ].join(', ')
+}
+
+function formatLayerTypeEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `available=${evidence.available}`,
+    `backgroundGradient=${evidence.transitionBackgroundIsGradientLayer}`,
+    `titleText=${evidence.titleIsTextLayer}`,
+    `maskShape=${evidence.snapshotMaskIsShapeLayer}`,
+    `debugMaskShape=${evidence.snapshotMaskDebugIsShapeLayer}`,
+    `contentOrder=${evidence.contentLayerOrderMatchesCodexVocabulary}`,
+    `containerOrder=${evidence.containerLayerContainsSnapshotEffects}`,
+    `snapshotOrder=${evidence.snapshotEffectsOrderMatchesCodexVocabulary}`,
+    `snapshotMask=${evidence.snapshotEffectsMaskIsSnapshotMaskLayer}`,
+  ].join(', ')
+}
+
+function formatTransitionOwnerEvidence(evidence) {
+  if (!evidence) {
+    return 'none'
+  }
+  return [
+    `available=${evidence.available}`,
+    `overlayWindow=${evidence.overlayWindowClass ?? 'none'}`,
+    `hostView=${evidence.hostViewClass ?? 'none'}`,
+    `controllerClass=${evidence.transitionControllerClass ?? 'none'}`,
+    `controllerOwner=${evidence.transitionControllerOwner ?? 'none'}`,
+    `layerHost=${evidence.transitionLayerHost ?? 'none'}`,
+    `controllerClassMatchesCodex=${evidence.controllerClassMatchesCodexVocabulary}`,
+    `controllerSourceWindow=${evidence.controllerOwnsSourceWindow}`,
+    `controllerSourceFrame=${evidence.controllerOwnsSourceFrame}`,
+    `controllerTargetFrame=${evidence.controllerOwnsTargetFrame}`,
+    `controllerTargetCornerRadius=${evidence.controllerOwnsTargetCornerRadius}`,
+    `controllerIdentity=${evidence.controllerOwnsAppIcon && evidence.controllerOwnsTitleText}`,
+    `controllerColors=${evidence.controllerOwnsTitleColor && evidence.controllerOwnsDestinationBackgroundColor}`,
+    `controllerState=${evidence.controllerOwnsState}`,
+    `controllerCompletion=${evidence.controllerOwnsCompletionRequested}`,
+    `controllerWaiters=${evidence.controllerOwnsMagicMoveWaiters}`,
+    `layersHostedByOverlayWindow=${evidence.layersHostedByOverlayWindow}`,
+    `progressHostedByOverlayWindow=${evidence.progressHostedByOverlayWindow}`,
+    `progressChanges=${evidence.progressChanges}`,
+    `progress=${formatMetricValue(evidence.minProgress)}..${formatMetricValue(evidence.maxProgress)}`,
+    `sourceFrame=${evidence.windowOwnsSourceFrame}`,
+    `targetFrame=${evidence.windowOwnsTargetFrame}`,
+    `cornerRadii=${evidence.windowOwnsCornerRadii}`,
+    `snapshotImageSize=${evidence.windowOwnsSnapshotImageSize}`,
+    `accessoryFadeStarted=${evidence.accessoryFadeStarted}`,
+    `readyPhase=${evidence.hasReadyForMagicMovePhase}`,
+    `magicMovePhase=${evidence.hasMagicMovePhase}`,
+    `phases=${Array.isArray(evidence.phases) ? evidence.phases.join('|') : 'none'}`,
+  ].join(', ')
+}
+
+function formatCodexBundleEvidence(evidence) {
+  if (!evidence) {
+    return '- Not evaluated'
+  }
+  const native = evidence.native
+  const frontend = evidence.frontend
+  const frontendOrchestration = evidence.frontendOrchestration
+  const missingSymbols = native?.symbolPresence
+    ? Object.entries(native.symbolPresence)
+        .filter(([, present]) => !present)
+        .map(([symbol]) => symbol)
+    : []
+  const missingFrontendPatterns = frontend?.patterns
+    ? Object.entries(frontend.patterns)
+        .filter(([, present]) => !present)
+        .map(([pattern]) => pattern)
+    : []
+  const missingFrontendOrchestrationPatterns = frontendOrchestration?.patterns
+    ? Object.entries(frontendOrchestration.patterns)
+        .filter(([, present]) => !present)
+        .map(([pattern]) => pattern)
+    : []
+  return [
+    `- Native binary: ${native?.binaryPath ? `\`${native.binaryPath}\`` : 'missing'}`,
+    `- Native symbols present: ${native?.allRequiredSymbolsPresent ?? false}${missingSymbols.length > 0 ? ` (missing: ${missingSymbols.join(', ')})` : ''}`,
+    `- Transition ivars match: ${native?.transitionIvarsMatch ?? false}`,
+    `- Transition ivars: ${(native?.transitionIvars ?? []).join(', ') || 'none'}`,
+    `- Overlay superclass: ${native?.overlayWindowSuperclass ?? 'unknown'}`,
+    `- Overlay NSWindow: ${native?.overlayWindowIsNSWindow ?? false}`,
+    `- Overlay ivars match: ${native?.overlayWindowIvarsMatch ?? false}`,
+    `- Overlay ivars: ${(native?.overlayWindowIvars ?? []).join(', ') || 'none'}`,
+    `- Frontend visual bundle: ${frontend?.bundlePath ? `\`${frontend.bundlePath}\`` : 'missing'}`,
+    `- Frontend visual patterns present: ${frontend?.allRequiredPatternsPresent ?? false}${missingFrontendPatterns.length > 0 ? ` (missing: ${missingFrontendPatterns.join(', ')})` : ''}`,
+    `- Frontend orchestration bundle: ${frontendOrchestration?.bundlePath ? `\`${frontendOrchestration.bundlePath}\`` : 'missing'}`,
+    `- Frontend orchestration patterns present: ${frontendOrchestration?.allRequiredPatternsPresent ?? false}${missingFrontendOrchestrationPatterns.length > 0 ? ` (missing: ${missingFrontendOrchestrationPatterns.join(', ')})` : ''}`,
+  ].join('\n')
+}
+
+function formatCradleFrontendEvidence(evidence) {
+  if (!evidence) {
+    return '- Not evaluated'
+  }
+  const missingPatterns = evidence.patterns
+    ? Object.entries(evidence.patterns)
+        .filter(([, present]) => !present)
+        .map(([pattern]) => pattern)
+    : []
+  return [
+    `- Source: ${evidence.sourcePath ? `\`${evidence.sourcePath}\`` : 'missing'}`,
+    `- Available: ${evidence.available ?? false}`,
+    `- Patterns present: ${evidence.allRequiredPatternsPresent ?? false}${missingPatterns.length > 0 ? ` (missing: ${missingPatterns.join(', ')})` : ''}`,
+    `- Error: ${evidence.error?.message ?? 'none'}`,
+  ].join('\n')
 }
 
 function formatMetricValue(value) {
@@ -3031,21 +3947,33 @@ async function run() {
       applicationCount: screenCaptureKit.applicationCount,
       error: screenCaptureKit.error?.message,
     })
-    logStage('frontmost-context-begin')
-    const context = await client.request('mac.appshot.frontmostContext')
-    logStage('frontmost-context-end', {
+    const explicitTarget = await readExplicitTargetWindow(client, options)
+    if (explicitTarget) {
+      logStage('target-context-end', {
+        source: explicitTarget.source,
+        bundleIdentifier: explicitTarget.context.bundleIdentifier,
+        windowId: explicitTarget.context.window?.windowId,
+        appName: explicitTarget.context.window?.appName,
+      })
+    }
+    else {
+      logStage('frontmost-context-begin')
+    }
+    const context = explicitTarget?.context ?? await client.request('mac.appshot.frontmostContext')
+    logStage(explicitTarget ? 'selected-context-end' : 'frontmost-context-end', {
       bundleIdentifier: context.bundleIdentifier,
       windowId: context.window?.windowId,
       appName: context.window?.appName,
     })
     const recordingDir = resolve(outputDir, 'recordings')
     const animationTarget = createParityAnimationTarget(context, options.destinationFrame)
-    const targetWindow = readCaptureTargetWindow(context)
-    const shouldObserve = true
+    const targetWindow = explicitTarget?.targetWindow ?? readCaptureTargetWindow(context)
+    const shouldObserve = !options.cradleOnly
     let codexBaseline = new Map()
     let codexObserveStartedAtMs = null
     let codexRecording = null
     let codexObserveWait = null
+    let codexHotkey = null
     const start = null
     let codex = { updates: [], assets: [] }
     const direct = {
@@ -3059,17 +3987,34 @@ async function run() {
       logStage('codex-observe-begin', {
         seconds: options.observeSeconds,
         baselineCount: codexBaseline.size,
+        autoTriggerCodexHotkey: options.autoTriggerCodexHotkey,
+        codexHotkey: options.codexHotkey,
       })
       const observeCodexAppshot = async () => {
-        if (options.codexSource === 'observe') {
-          console.log('Trigger Codex AppShot from the Codex UI now; Cradle will observe Codex temp assets and video.')
-        }
-        codexObserveWait = await waitForObservedCodexAssets({
+        const waitForAssets = waitForObservedCodexAssets({
           baseline: codexBaseline,
           startedAtMs: codexObserveStartedAtMs,
           timeoutMs: options.observeSeconds * 1000,
           pollIntervalMs: options.observePollIntervalMs,
         })
+        if (options.autoTriggerCodexHotkey) {
+          codexHotkey = await resolveCodexBareModifierHotkey(options.codexHotkey)
+          logStage('codex-observe-synthetic-hotkey-begin', {
+            requestedModifier: codexHotkey.requested,
+            resolvedModifier: codexHotkey.resolved,
+            holdMilliseconds: options.codexHotkeyHoldMs,
+            detectionStatus: codexHotkey.detection?.status ?? 'explicit',
+          })
+          const hotkey = await client.request('mac.input.syntheticBareModifier', {
+            modifier: codexHotkey.resolved,
+            holdMilliseconds: options.codexHotkeyHoldMs,
+          }, 5_000)
+          logStage('codex-observe-synthetic-hotkey-end', hotkey)
+        }
+        else if (options.codexSource === 'observe') {
+          console.log('Trigger Codex AppShot from the Codex UI now; Cradle will observe Codex temp assets and video.')
+        }
+        codexObserveWait = await waitForAssets
         logStage('codex-observe-wait-end', codexObserveWait)
       }
       if (options.recordVideo) {
@@ -3114,7 +4059,7 @@ async function run() {
       logStage('codex-observe-end', { observedAssetCount: observedAssets.length })
     }
 
-    const appliedCalibration = readAppliedCalibration(start)
+    const appliedCalibration = {}
     let cradleCapture
     const startCradleCapture = async () => {
       logStage('cradle-native-capture-begin')
@@ -3163,6 +4108,16 @@ async function run() {
       await startCradleCapture()
     }
 
+    const nativeProbeAnimationDuration = readPositiveFiniteNumber(cradleCapture?.appshot?.animationDuration)
+      ?? readPositiveFiniteNumber(appliedCalibration.animationDuration)
+      ?? defaultAppshotAnimationDurationSeconds
+    const nativeProbeSampleCount = Math.max(
+      Math.ceil(options.frameRate * nativeProbeAnimationDuration) + 4,
+      16,
+    )
+    const nativeFrameProbeSampleCount = 8
+    const nativeFrameProbeSampleIntervalSeconds = nativeProbeAnimationDuration / Math.max(nativeFrameProbeSampleCount - 1, 1)
+
     logStage('cradle-visibility-probe-begin')
     let cradleVisibilityProbe = null
     try {
@@ -3174,7 +4129,7 @@ async function run() {
         soundEnabled: false,
         sampleCount: 14,
         sampleIntervalSeconds: 0.12,
-        animationDuration: Math.max(readPositiveFiniteNumber(appliedCalibration.animationDuration) ?? defaultAppshotAnimationDurationSeconds, 1.8),
+        animationDuration: nativeProbeAnimationDuration,
         ...appliedCalibration,
       }, 30_000)
       cradleVisibilityProbe = await readAppshotVisibilityProbeEvidence(rawVisibilityProbe, outputDir)
@@ -3197,9 +4152,10 @@ async function run() {
         sourceWindow: cradleCapture.window,
         animationTarget,
         soundEnabled: false,
-        sampleCount: Math.max(Math.ceil(options.frameRate * Math.max(readPositiveFiniteNumber(appliedCalibration.animationDuration) ?? defaultAppshotAnimationDurationSeconds, 1.8)), 16),
+        sampleCount: nativeProbeSampleCount,
         sampleIntervalSeconds: 1 / options.frameRate,
-        animationDuration: Math.max(readPositiveFiniteNumber(appliedCalibration.animationDuration) ?? defaultAppshotAnimationDurationSeconds, 1.8),
+        renderImages: false,
+        animationDuration: nativeProbeAnimationDuration,
         ...appliedCalibration,
       }, 30_000)
       cradlePresentationProbe = await readAppshotPresentationProbeEvidence(rawPresentationProbe, outputDir)
@@ -3211,6 +4167,32 @@ async function run() {
         summary: null,
       }
       logStage('cradle-presentation-probe-failed', cradlePresentationProbe.error)
+    }
+
+    logStage('cradle-presentation-frame-probe-begin')
+    let cradlePresentationFrameProbe = null
+    try {
+      const rawPresentationFrameProbe = await client.request('mac.appshot.probeTransitionPresentation', {
+        outputDir: resolve(artifactsDir, 'cradle-native-presentation-frame-probe'),
+        screenshotPath: cradleCapture.filePath,
+        sourceWindow: cradleCapture.window,
+        animationTarget,
+        soundEnabled: false,
+        sampleCount: nativeFrameProbeSampleCount,
+        sampleIntervalSeconds: nativeFrameProbeSampleIntervalSeconds,
+        renderImages: true,
+        animationDuration: nativeProbeAnimationDuration,
+        ...appliedCalibration,
+      }, 30_000)
+      cradlePresentationFrameProbe = await readAppshotPresentationProbeEvidence(rawPresentationFrameProbe, outputDir)
+      logStage('cradle-presentation-frame-probe-end', cradlePresentationFrameProbe?.summary ?? {})
+    }
+    catch (error) {
+      cradlePresentationFrameProbe = {
+        error: serializeError(error),
+        summary: null,
+      }
+      logStage('cradle-presentation-frame-probe-failed', cradlePresentationFrameProbe.error)
     }
 
     let codexFrames = null
@@ -3287,8 +4269,8 @@ async function run() {
     )
     const frameComparison = alignedFrameComparison
     const cradlePresentationFrames = readPresentationProbeFrameInput(
-      cradlePresentationProbe,
-      options.frameRate,
+      cradlePresentationFrameProbe,
+      1 / nativeFrameProbeSampleIntervalSeconds,
       outputDir,
     )
     const presentationFrameComparison = await compareFrameInputs(
@@ -3301,16 +4283,20 @@ async function run() {
     const cradleAssets = [
       { kind: 'capture', ...await copyCradleAsset(cradleCapture.filePath, outputDir, 'cradle-capture') },
     ]
+    let cradleTransitionSnapshotAsset = null
     if (cradleCapture.appshot.transitionSnapshotPath) {
-      cradleAssets.push({
+      cradleTransitionSnapshotAsset = {
         kind: 'transitionSnapshot',
         ...await copyCradleAsset(cradleCapture.appshot.transitionSnapshotPath, outputDir, 'cradle-transition-snapshot'),
-      })
+      }
+      cradleAssets.push(cradleTransitionSnapshotAsset)
     }
     const imageComparisons = await compareImageAssets(
       [...codex.assets, ...observedAssets],
       cradleAssets,
     )
+    const codexBundleEvidence = await readCodexBundleEvidence()
+    const cradleFrontendEvidence = await readCradleFrontendAppshotEvidence()
     const sound = await readAppshotSoundEvidence(outputDir, binaryPath)
     const targetLock = readTargetLockEvidence(context, targetWindow, cradleCapture)
     const codexAppshotEvidence = readCodexAppshotEvidence({
@@ -3324,12 +4310,16 @@ async function run() {
       transitionFrameAlignment,
     })
     const cradleAppshotEvidence = readCradleAppshotEvidence({
+      animationTarget,
       capture: cradleCapture,
       recording: cradleRecording,
       transitionFrameAlignment,
       presentationProbe: cradlePresentationProbe,
+      transitionSnapshotAsset: cradleTransitionSnapshotAsset,
     })
     const parityStatus = readParityStatus({
+      codexBundleEvidence,
+      cradleFrontendEvidence,
       sound,
       imageComparisons,
       frameComparison,
@@ -3353,20 +4343,25 @@ async function run() {
       animationTarget,
       codex: {
         source: options.codexSource,
-        service,
         direct: {
           ...direct,
-          transcripts: readCodexTranscripts(start, codex.updates, direct.error),
+          transcripts: [],
         },
         start,
         updates: codex.updates,
         assets: codex.assets,
         observedAssets,
+        bundleEvidence: codexBundleEvidence,
         appshotEvidence: codexAppshotEvidence,
         observe: shouldObserve
           ? {
               seconds: options.observeSeconds,
               pollIntervalMs: options.observePollIntervalMs,
+              autoTriggerCodexHotkey: options.autoTriggerCodexHotkey,
+              codexHotkey: options.codexHotkey,
+              resolvedCodexHotkey: codexHotkey?.resolved ?? null,
+              codexHotkeyDetection: codexHotkey?.detection ?? null,
+              codexHotkeyHoldMs: options.codexHotkeyHoldMs,
               wait: codexObserveWait,
             }
           : null,
@@ -3409,6 +4404,8 @@ async function run() {
         appshotEvidence: cradleAppshotEvidence,
         visibilityProbe: cradleVisibilityProbe,
         presentationProbe: cradlePresentationProbe,
+        presentationFrameProbe: cradlePresentationFrameProbe,
+        frontendEvidence: cradleFrontendEvidence,
       },
       parityStatus,
     }

@@ -72,12 +72,17 @@ function createPendingQuery() {
 }
 
 async function readPromptText(callIndex: number): Promise<string> {
+  const content = await readPromptContent(callIndex)
+  return String(content)
+}
+
+async function readPromptContent(callIndex: number): Promise<unknown> {
   const call = sdkMocks.query.mock.calls[callIndex]?.[0] as { prompt?: AsyncIterable<{ message: { content: unknown } }> } | undefined
   const prompt = call?.prompt
   expect(prompt).toBeDefined()
   const result = await prompt![Symbol.asyncIterator]().next()
   expect(result.done).toBe(false)
-  return String(result.value.message.content)
+  return result.value.message.content
 }
 
 function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
@@ -427,7 +432,118 @@ describe('claudeAgentProvider MCP integration', () => {
     ])
   })
 
-  it('rejects file attachments because Claude Agent SDK prompts are text-only', async () => {
+  it('projects image file attachments into Claude Agent SDK image content blocks', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-image-input',
+        message: {
+          content: [{ type: 'text', text: 'I can see it.' }],
+        },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: {
+        id: 'user-with-image',
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Read this image' },
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'diagram.png',
+            url: 'data:image/png;base64,test',
+          },
+        ],
+      },
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'I can see it.' }),
+    ]))
+    await expect(readPromptContent(0)).resolves.toEqual([
+      { type: 'text', text: 'Read this image' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: 'test',
+        },
+      },
+    ])
+  })
+
+  it('interrupts an active query and appends steered image content blocks', async () => {
+    const activeQuery = createPendingQuery()
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-claude-agent-test',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Initial task'),
+      workspaceId: 'workspace-1',
+    })
+    const pendingNext = stream.next()
+
+    await vi.waitFor(() => {
+      expect(sdkMocks.query).toHaveBeenCalledOnce()
+    })
+
+    await expect(readPromptText(0)).resolves.toBe('Initial task')
+    await provider.steerTurn({
+      runtimeSession,
+      profile: createProfile(),
+      message: {
+        id: 'steer-with-image',
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Use this screenshot instead' },
+          {
+            type: 'file',
+            mediaType: 'image/jpeg',
+            filename: 'screen.jpg',
+            url: 'data:image/jpeg;base64,screen-data',
+          },
+        ],
+      },
+    })
+
+    expect(activeQuery.interrupt).toHaveBeenCalledOnce()
+    await expect(readPromptContent(0)).resolves.toEqual([
+      { type: 'text', text: 'Use this screenshot instead' },
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/jpeg',
+          data: 'screen-data',
+        },
+      },
+    ])
+
+    activeQuery.close()
+    await pendingNext
+  })
+
+  it('rejects non-image file attachments at the provider boundary', async () => {
     const provider = new ClaudeAgentProvider({
       readSecret: () => 'sk-ant-test',
     })
@@ -444,9 +560,9 @@ describe('claudeAgentProvider MCP integration', () => {
             { type: 'text', text: 'Read this image' },
             {
               type: 'file',
-              mediaType: 'image/png',
-              filename: 'diagram.png',
-              url: 'data:image/png;base64,test',
+              mediaType: 'application/pdf',
+              filename: 'brief.pdf',
+              url: 'data:application/pdf;base64,test',
             },
           ],
         },
@@ -454,7 +570,7 @@ describe('claudeAgentProvider MCP integration', () => {
       })) {
         // Drain stream to force prompt projection.
       }
-    }).rejects.toThrow('Claude Agent provider only supports text input; unsupported parts: file (diagram.png)')
+    }).rejects.toThrow('Claude Agent provider only supports text and image input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(sdkMocks.query).not.toHaveBeenCalled()
   })

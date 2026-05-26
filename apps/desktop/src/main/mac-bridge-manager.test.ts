@@ -80,6 +80,31 @@ rl.on('line', (line) => {
     }) + '\\n')
     return
   }
+  if (request.method === 'mac.input.syntheticBothCommand') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        trigger: 'bothCommand',
+        holdMilliseconds: request.params.holdMilliseconds ?? 120,
+        postedEventCount: 4,
+        postedAt: '2026-05-22T15:56:22Z'
+      }
+    }) + '\\n')
+    return
+  }
+  if (request.method === 'mac.input.syntheticBareModifier') {
+    process.stdout.write(JSON.stringify({
+      id: request.id,
+      result: {
+        trigger: request.params.modifier,
+        modifier: request.params.modifier,
+        holdMilliseconds: request.params.holdMilliseconds ?? 120,
+        postedEventCount: 4,
+        postedAt: '2026-05-22T15:56:22Z'
+      }
+    }) + '\\n')
+    return
+  }
   if (request.method === 'mac.permissions.request') {
     process.stdout.write(JSON.stringify({
       id: request.id,
@@ -392,6 +417,22 @@ describe('MacBridgeManager', () => {
     await expect(manager.configureInput({ trigger: 'bothCommand', enabled: true })).resolves.toEqual({
       trigger: 'bothCommand',
       enabled: true,
+    })
+    await expect(manager.synthesizeBothCommandHotkey({ holdMilliseconds: 140 })).resolves.toEqual({
+      trigger: 'bothCommand',
+      holdMilliseconds: 140,
+      postedEventCount: 4,
+      postedAt: '2026-05-22T15:56:22Z',
+    })
+    await expect(manager.synthesizeBareModifierHotkey({
+      modifier: 'DoubleOption',
+      holdMilliseconds: 140,
+    })).resolves.toEqual({
+      trigger: 'DoubleOption',
+      modifier: 'DoubleOption',
+      holdMilliseconds: 140,
+      postedEventCount: 4,
+      postedAt: '2026-05-22T15:56:22Z',
     })
     await expect(manager.requestPermissions({
       permissions: ['accessibility', 'inputMonitoring'],

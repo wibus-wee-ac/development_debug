@@ -7,8 +7,16 @@ import Foundation
 let bridgeVersion = "0.1.0"
 let leftCommandKeyCode: CGKeyCode = 0x37
 let rightCommandKeyCode: CGKeyCode = 0x36
+let leftOptionKeyCode: CGKeyCode = 0x3A
+let rightOptionKeyCode: CGKeyCode = 0x3D
+let leftShiftKeyCode: CGKeyCode = 0x38
+let rightShiftKeyCode: CGKeyCode = 0x3C
 let leftCommandDeviceFlag: UInt64 = 0x00000008
 let rightCommandDeviceFlag: UInt64 = 0x00000010
+let leftOptionDeviceFlag: UInt64 = 0x00000020
+let rightOptionDeviceFlag: UInt64 = 0x00000040
+let leftShiftDeviceFlag: UInt64 = 0x00000002
+let rightShiftDeviceFlag: UInt64 = 0x00000004
 let cradleApplicationBundleIdentifiers: Set<String> = [
     "com.cradle.app",
     "com.github.Electron",
@@ -519,10 +527,18 @@ final class BridgeRuntime: @unchecked Sendable {
                 "timeoutSeconds": timeoutSeconds,
                 "diagnostics": inputMonitor.diagnostics(),
             ]
+        case "mac.input.syntheticBothCommand":
+            return try synthesizeBothCommandHotkey(params: params)
+        case "mac.input.syntheticBareModifier":
+            return try synthesizeBareModifierHotkey(params: params)
         case "mac.capture.frontmostWindow":
             return try captureFrontmostWindow(params: params, feedbackPresenter: feedbackPresenter)
+        case "mac.appshot.windowInventory":
+            return try readAppshotWindowInventory()
         case "mac.appshot.frontmostContext":
             return try readAppshotFrontmostContext()
+        case "mac.appshot.contextForWindow":
+            return try readAppshotContextForWindow(params: params)
         case "mac.appshot.captureFrontmostWindow":
             return try captureAppshotFrontmostWindow(params: params, appshotTransitionPresenter: appshotTransitionPresenter)
         case "mac.appshot.probeTransitionVisibility":
@@ -637,6 +653,150 @@ func permissionSettingsURLString(target: String) -> String {
     }
 }
 
+enum SyntheticBareModifierTrigger: String {
+    case doubleCommand = "DoubleCommand"
+    case doubleOption = "DoubleOption"
+    case doubleShift = "DoubleShift"
+
+    var leftKeyCode: CGKeyCode {
+        switch self {
+        case .doubleCommand:
+            return leftCommandKeyCode
+        case .doubleOption:
+            return leftOptionKeyCode
+        case .doubleShift:
+            return leftShiftKeyCode
+        }
+    }
+
+    var rightKeyCode: CGKeyCode {
+        switch self {
+        case .doubleCommand:
+            return rightCommandKeyCode
+        case .doubleOption:
+            return rightOptionKeyCode
+        case .doubleShift:
+            return rightShiftKeyCode
+        }
+    }
+
+    var leftDeviceFlag: UInt64 {
+        switch self {
+        case .doubleCommand:
+            return leftCommandDeviceFlag
+        case .doubleOption:
+            return leftOptionDeviceFlag
+        case .doubleShift:
+            return leftShiftDeviceFlag
+        }
+    }
+
+    var rightDeviceFlag: UInt64 {
+        switch self {
+        case .doubleCommand:
+            return rightCommandDeviceFlag
+        case .doubleOption:
+            return rightOptionDeviceFlag
+        case .doubleShift:
+            return rightShiftDeviceFlag
+        }
+    }
+
+    var modifierFlag: CGEventFlags {
+        switch self {
+        case .doubleCommand:
+            return .maskCommand
+        case .doubleOption:
+            return .maskAlternate
+        case .doubleShift:
+            return .maskShift
+        }
+    }
+}
+
+func synthesizeBothCommandHotkey(params: [String: Any]) throws -> [String: Any] {
+    let result = try postSyntheticBareModifier(
+        trigger: .doubleCommand,
+        holdMilliseconds: readSyntheticHoldMilliseconds(
+            params: params,
+            method: "mac.input.syntheticBothCommand"
+        )
+    )
+    return [
+        "trigger": "bothCommand",
+        "holdMilliseconds": result.holdMilliseconds,
+        "postedEventCount": result.postedEventCount,
+        "postedAt": result.postedAt,
+    ]
+}
+
+func synthesizeBareModifierHotkey(params: [String: Any]) throws -> [String: Any] {
+    let rawTrigger = params["modifier"] as? String ?? SyntheticBareModifierTrigger.doubleCommand.rawValue
+    guard let trigger = SyntheticBareModifierTrigger(rawValue: rawTrigger) else {
+        throw BridgeError("invalid-params", "mac.input.syntheticBareModifier requires modifier DoubleCommand, DoubleOption, or DoubleShift.")
+    }
+    let result = try postSyntheticBareModifier(
+        trigger: trigger,
+        holdMilliseconds: readSyntheticHoldMilliseconds(
+            params: params,
+            method: "mac.input.syntheticBareModifier"
+        )
+    )
+    return [
+        "trigger": trigger.rawValue,
+        "modifier": trigger.rawValue,
+        "holdMilliseconds": result.holdMilliseconds,
+        "postedEventCount": result.postedEventCount,
+        "postedAt": result.postedAt,
+    ]
+}
+
+func readSyntheticHoldMilliseconds(params: [String: Any], method: String) throws -> Double {
+    let holdMilliseconds = (params["holdMilliseconds"] as? NSNumber)?.doubleValue ?? 120
+    guard holdMilliseconds >= 20, holdMilliseconds <= 1_000 else {
+        throw BridgeError("invalid-params", "\(method) requires holdMilliseconds between 20 and 1000.")
+    }
+    return holdMilliseconds
+}
+
+func postSyntheticBareModifier(
+    trigger: SyntheticBareModifierTrigger,
+    holdMilliseconds: Double
+) throws -> (holdMilliseconds: Double, postedEventCount: Int, postedAt: String) {
+    let source = CGEventSource(stateID: .hidSystemState)
+    let leftFlag = trigger.leftDeviceFlag
+    let rightFlag = trigger.rightDeviceFlag
+    let modifierFlag = trigger.modifierFlag.rawValue
+    let events: [(keyCode: CGKeyCode, keyDown: Bool, flags: UInt64, delayMilliseconds: Double)] = [
+        (trigger.leftKeyCode, true, leftFlag | modifierFlag, 0),
+        (trigger.rightKeyCode, true, leftFlag | rightFlag | modifierFlag, 35),
+        (trigger.rightKeyCode, false, leftFlag | modifierFlag, holdMilliseconds),
+        (trigger.leftKeyCode, false, 0, 35),
+    ]
+
+    for eventSpec in events {
+        if eventSpec.delayMilliseconds > 0 {
+            Thread.sleep(forTimeInterval: eventSpec.delayMilliseconds / 1_000)
+        }
+        guard let event = CGEvent(
+            keyboardEventSource: source,
+            virtualKey: eventSpec.keyCode,
+            keyDown: eventSpec.keyDown
+        ) else {
+            throw BridgeError("synthetic-input-unavailable", "Mac Bridge could not create a synthetic bare modifier event.")
+        }
+        event.flags = CGEventFlags(rawValue: eventSpec.flags)
+        event.setIntegerValueField(.keyboardEventKeycode, value: Int64(eventSpec.keyCode))
+        event.post(tap: .cghidEventTap)
+    }
+
+    return (
+        holdMilliseconds: holdMilliseconds,
+        postedEventCount: events.count,
+        postedAt: isoTimestamp()
+    )
+}
+
 func captureFrontmostWindow(params: [String: Any], feedbackPresenter: FeedbackIndicatorPresenter) throws -> [String: Any] {
     guard let outputDir = params["outputDir"] as? String, !outputDir.isEmpty else {
         throw BridgeError("invalid-params", "mac.capture.frontmostWindow requires outputDir.")
@@ -713,16 +873,10 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
         windowTitle: window.title,
         appName: window.appName
     )
-    let transitionSnapshotPath = renderTransitionSnapshot(
-        from: filePath,
-        outputDir: outputDir,
-        captureId: captureId,
-        target: target,
-        calibration: calibration
-    )
     let transition = appshotTransitionPresenter.present(
         screenshotPath: filePath,
-        transitionSnapshotPath: transitionSnapshotPath,
+        transitionSnapshotPath: nil,
+        sourceWindow: window,
         target: target,
         calibration: calibration,
         appTitle: window.appName,
@@ -751,12 +905,48 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
 
 func readAppshotFrontmostContext() throws -> [String: Any] {
     let window = try readFrontmostWindow()
+    return readAppshotContext(window: window)
+}
+
+func readAppshotContextForWindow(params: [String: Any]) throws -> [String: Any] {
+    guard let target = try readWindowTarget(raw: params["targetWindow"]) else {
+        throw BridgeError("invalid-params", "mac.appshot.contextForWindow requires targetWindow.")
+    }
+    let window = try readTargetWindow(target: target)
+    return readAppshotContext(window: window)
+}
+
+func readAppshotContext(window: WindowCandidate) -> [String: Any] {
     let target = AppshotTransitionTarget.from(params: [:], fallbackWindowBounds: window.bounds)
     return [
         "window": serialize(window: window),
         "bundleIdentifier": window.bundleId ?? NSNull(),
         "animationTarget": serialize(target: target),
     ]
+}
+
+func readAppshotWindowInventory() throws -> [String: Any] {
+    let windows = try readRawWindowInventory().compactMap { raw in
+        readWindowCandidate(raw: raw, application: nil)
+    }
+    return [
+        "windows": windows.map(serializeWindowInventoryItem),
+    ]
+}
+
+func serializeWindowInventoryItem(window: WindowCandidate) -> [String: Any] {
+    var payload: [String: Any] = [
+        "windowId": window.windowId,
+        "appName": window.appName ?? NSNull(),
+        "bundleId": window.bundleId ?? NSNull(),
+        "processId": window.processId,
+        "title": window.title ?? NSNull(),
+        "bounds": window.bounds ?? NSNull(),
+    ]
+    if let frameEvidence = window.frameEvidence {
+        payload["frameEvidence"] = serialize(frameEvidence: frameEvidence)
+    }
+    return payload
 }
 
 func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPresenter: AppshotTransitionPresenter) throws -> [String: Any] {

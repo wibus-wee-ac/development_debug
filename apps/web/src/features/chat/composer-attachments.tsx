@@ -13,10 +13,10 @@ import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
-import { AppshotAttachmentCard, readCradleAppshotMetadata } from './appshot-attachment'
+import { AppshotAttachmentCard } from './appshot-attachment'
+import { readCradleAppshotMetadata } from './appshot-attachment-model'
 
 const APPSHOT_FALLBACK_HEIGHT = 140
-const APPSHOT_IDENTITY_HEIGHT = 22
 const APPSHOT_COMPOSER_VERTICAL_PADDING = 8
 
 interface ComposerAttachmentInputProps {
@@ -118,63 +118,65 @@ export function ComposerAttachmentList({
       data-composer-attachments-container
     >
       <div
-        className="flex max-h-[184px] flex-wrap items-start gap-1.5 overflow-x-hidden overflow-y-auto"
+        className="w-full overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         data-composer-attachments-row
       >
-        {pendingAppshots.map(pending => (
-          <PendingAppshotSlot key={pending.requestId} pending={pending} />
-        ))}
-        {attachments.map((attachment, index) => {
-          const label = attachment.filename ?? attachment.mediaType
-          const isImage = attachment.mediaType.startsWith('image/')
-          const appshotMetadata = readCradleAppshotMetadata(attachment)
-          if (appshotMetadata) {
+        <div className="flex min-w-max items-end gap-2">
+          {pendingAppshots.map(pending => (
+            <PendingAppshotSlot key={pending.requestId} pending={pending} />
+          ))}
+          {attachments.map((attachment, index) => {
+            const label = attachment.filename ?? attachment.mediaType
+            const isImage = attachment.mediaType.startsWith('image/')
+            const appshotMetadata = readCradleAppshotMetadata(attachment)
+            if (appshotMetadata) {
+              return (
+                <AppshotAttachmentCard
+                  key={`${attachment.url}-${attachment.filename ?? attachment.mediaType}`}
+                  variant="composer"
+                  metadata={appshotMetadata}
+                  onRemove={() => onRemove(index)}
+                />
+              )
+            }
             return (
-              <AppshotAttachmentCard
+              <m.div
+                layout
                 key={`${attachment.url}-${attachment.filename ?? attachment.mediaType}`}
-                variant="composer"
-                metadata={appshotMetadata}
-                onRemove={() => onRemove(index)}
-              />
-            )
-          }
-          return (
-            <m.div
-              layout
-              key={`${attachment.url}-${attachment.filename ?? attachment.mediaType}`}
-              className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
-              data-chat-attachment-chip
-              data-chat-image-attachment-chip={isImage ? true : undefined}
-              data-testid="chat-attachment-chip"
-              initial={{ opacity: 0, scale: 0.98, y: 4 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
-            >
-              {isImage
-                ? (
-                    <img
-                      src={attachment.url}
-                      alt={label}
-                      className="size-10 shrink-0 rounded-[4px] object-cover shadow-[inset_0_0_0_1px_rgba(0,0,0,0.10)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
-                      data-testid="chat-attachment-image-preview"
-                    />
-                  )
-                : <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />}
-              <span className="min-w-0 truncate">{label}</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="-mr-1 size-5"
-                onClick={() => onRemove(index)}
-                aria-label={`Remove ${label}`}
-                data-testid="chat-remove-attachment-btn"
+                className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
+                data-chat-attachment-chip
+                data-chat-image-attachment-chip={isImage ? true : undefined}
+                data-testid="chat-attachment-chip"
+                initial={{ opacity: 0, scale: 0.98, y: 4 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
               >
-                <XIcon className="size-3" aria-hidden="true" />
-              </Button>
-            </m.div>
-          )
-        })}
+                {isImage
+                  ? (
+                      <img
+                        src={attachment.url}
+                        alt={label}
+                        className="size-10 shrink-0 rounded-[4px] object-cover shadow-[inset_0_0_0_1px_rgba(0,0,0,0.10)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
+                        data-testid="chat-attachment-image-preview"
+                      />
+                    )
+                  : <FileIcon className="size-3.5 shrink-0" aria-hidden="true" />}
+                <span className="min-w-0 truncate">{label}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  className="-mr-1 size-5"
+                  onClick={() => onRemove(index)}
+                  aria-label={`Remove ${label}`}
+                  data-testid="chat-remove-attachment-btn"
+                >
+                  <XIcon className="size-3" aria-hidden="true" />
+                </Button>
+              </m.div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -184,7 +186,7 @@ function PendingAppshotSlot({ pending }: { pending: PendingAppshotAttachment }) 
   const height = pending.transitionSnapshotHeightResolved
     ? Math.max(
         APPSHOT_COMPOSER_VERTICAL_PADDING,
-        (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT) + APPSHOT_IDENTITY_HEIGHT + APPSHOT_COMPOSER_VERTICAL_PADDING,
+        (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT) + APPSHOT_COMPOSER_VERTICAL_PADDING,
       )
     : 0
   const transition = {

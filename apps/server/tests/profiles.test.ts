@@ -590,6 +590,10 @@ describe('profiles capability', () => {
           id: 'claude-sonnet-4-20250514',
           label: 'Claude Sonnet 4',
           providerKind: 'anthropic',
+          capabilities: expect.objectContaining({
+            inputModalities: ['text', 'image'],
+            outputModalities: ['text'],
+          }),
         }),
       ])
       const providerFetchCount = fetchSpy.mock.calls.filter(

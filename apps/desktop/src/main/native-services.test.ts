@@ -4,7 +4,11 @@
 import { describe, expect, it } from 'vitest'
 
 import type { MacAppshotFrontmostContext } from './mac-bridge-protocol'
-import { createParityAppshotAnimationTarget } from './native-appshot-target'
+import {
+  createParityAppshotAnimationTarget,
+  readScreenPointAppshotAnimationTarget,
+  readScreenPointAppshotDestinationFrame,
+} from './native-appshot-target'
 
 function frontmostContext(): MacAppshotFrontmostContext {
   return {
@@ -48,5 +52,55 @@ describe('createParityAppshotAnimationTarget', () => {
     })
     expect(target.destinationCornerRadius).toBe(0)
     expect(target.transitionSnapshotScale).toBe(2)
+  })
+})
+
+describe('readScreenPointAppshotAnimationTarget', () => {
+  it('converts renderer viewport pixels into screen points relative to the Electron content bounds', () => {
+    const target = {
+      coordinateSpace: 'viewportPixels' as const,
+      codexDisplay: {
+        id: 0,
+        scaleFactor: 2,
+        bounds: { x: 0, y: 0, width: 3024, height: 1964 },
+        workArea: { x: 0, y: 0, width: 3024, height: 1880 },
+      },
+      destinationBackgroundColor: '#ffffff',
+      destinationCornerRadius: 12,
+      destinationFrame: { x: 618, y: 144, width: 512, height: 280 },
+      destinationPrimaryTextColor: '#111111',
+      transitionSnapshotScale: 2,
+    }
+    const contentBounds = { x: 401, y: 88, width: 1512, height: 894 }
+    const display = {
+      id: 1,
+      scaleFactor: 2,
+      bounds: { x: 401, y: 0, width: 1512, height: 982 },
+      workArea: { x: 401, y: 44, width: 1512, height: 938 },
+    }
+
+    expect(readScreenPointAppshotDestinationFrame(target, contentBounds)).toEqual({
+      x: 710,
+      y: 160,
+      width: 256,
+      height: 140,
+    })
+    expect(readScreenPointAppshotAnimationTarget(target, contentBounds, display)).toEqual({
+      ...target,
+      coordinateSpace: 'screenPoints',
+      codexDisplay: {
+        ...target.codexDisplay,
+        id: 1,
+        scaleFactor: 2,
+        bounds: { x: 401, y: 0, width: 1512, height: 982 },
+        workArea: { x: 401, y: 44, width: 1512, height: 938 },
+      },
+      destinationFrame: {
+        x: 710,
+        y: 160,
+        width: 256,
+        height: 140,
+      },
+    })
   })
 })

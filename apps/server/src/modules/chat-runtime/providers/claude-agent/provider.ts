@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { CanUseTool, Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
@@ -25,7 +25,6 @@ import type {
   StreamTurnInput,
 } from '../../runtime-provider-types'
 import { recordChatStreamTrace } from '../../stream-trace'
-import { projectTextOnlyInput } from '../../ui-message-input'
 import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
 import type { ClaudeAgentChunkMapperState } from './mapper'
 import { mapClaudeAgentMessageToChunks } from './mapper'
@@ -41,6 +40,18 @@ type ActiveClaudeQuery = {
   abortController: AbortController
   inputStream: ClaudeAgentInputStream
 }
+type RuntimeMessageInput = UIMessage | string
+type MessagePart = UIMessage['parts'][number]
+type ClaudeAgentUserContent = SDKUserMessage['message']['content']
+type AnthropicImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
+type ClaudeAgentContentBlock =
+  | { type: 'text', text: string }
+  | {
+    type: 'image'
+    source:
+      | { type: 'base64', media_type: AnthropicImageMediaType, data: string }
+      | { type: 'url', url: string }
+  }
 const LangfuseGenerationSpanSchema = z.object({
   otelSpan: z.object({
     setAttribute: z.function({
@@ -125,7 +136,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
     const abortController = new AbortController()
-    const userPrompt = projectTextOnlyInput(input.message, 'Claude Agent provider')
+    const userContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
+    const userPromptText = describeClaudeAgentUserContent(userContent)
     const textItemId = randomUUID()
     const config = ClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
     const effectiveModel = input.modelId ?? config.model
@@ -136,7 +148,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       attachPermissionHandler: true,
     })
 
-    const inputStream = new ClaudeAgentInputStream(userPrompt)
+    const inputStream = new ClaudeAgentInputStream(userContent)
     const activeQuery = query({ prompt: inputStream, options: queryOptions })
     const sessionId = input.runtimeSession.chatSessionId
     const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
@@ -160,8 +172,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
       generation = startObservation('claude-agent-generation', {
         model: effectiveModel,
         input: input.systemPrompt
-          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: userPrompt }]
-          : [{ role: 'user', content: userPrompt }],
+          ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: userPromptText }]
+          : [{ role: 'user', content: userPromptText }],
       }, { asType: 'generation' }) as LangfuseGeneration
       // Set trace-level attributes for session grouping
       const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
@@ -268,9 +280,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
       throw new Error('Claude Agent query is not active')
     }
 
-    const text = projectTextOnlyInput(input.message, 'Claude Agent steer')
+    const userContent = projectClaudeAgentInput(input.message, 'Claude Agent steer')
     await entry.query.interrupt()
-    entry.inputStream.push(text)
+    entry.inputStream.push(userContent)
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
@@ -293,14 +305,14 @@ class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
   private readonly waiters: Array<() => void> = []
   private closed = false
 
-  constructor(initialText: string) {
-    this.push(initialText)
+  constructor(initialContent: ClaudeAgentUserContent) {
+    this.push(initialContent)
   }
 
-  push(text: string): void {
+  push(content: ClaudeAgentUserContent): void {
     this.messages.push({
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content },
       parent_tool_use_id: null,
       priority: 'now',
     })
@@ -338,6 +350,144 @@ class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
       this.wakeNextWaiter()
     }
   }
+}
+
+function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: string): ClaudeAgentUserContent {
+  if (typeof message === 'string') {
+    const text = message.trim()
+    if (!text) {
+      throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+    }
+    return text
+  }
+
+  const blocks: ClaudeAgentContentBlock[] = []
+  const unsupportedParts: string[] = []
+  for (const part of message.parts) {
+    if (part.type === 'text') {
+      const text = part.text.trim()
+      if (text) {
+        blocks.push({ type: 'text', text })
+      }
+      continue
+    }
+    if (part.type === 'file') {
+      if (part.mediaType.startsWith('image/')) {
+        blocks.push(toClaudeAgentImageBlock(part, runtimeLabel))
+      }
+      else {
+        unsupportedParts.push(describeUnsupportedFilePart(part))
+      }
+      continue
+    }
+    unsupportedParts.push(part.type)
+  }
+
+  if (unsupportedParts.length > 0) {
+    throw new Error(`${runtimeLabel} only supports text and image input; unsupported parts: ${unsupportedParts.join(', ')}`)
+  }
+  if (blocks.length === 0) {
+    throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+  }
+  if (blocks.length === 1 && blocks[0]?.type === 'text') {
+    return blocks[0].text
+  }
+  return blocks
+}
+
+function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, runtimeLabel: string): ClaudeAgentContentBlock {
+  const mediaType = toAnthropicImageMediaType(part.mediaType)
+  if (!mediaType) {
+    throw new Error(`${runtimeLabel} only supports jpeg, png, gif, and webp image input; unsupported file: ${describeUnsupportedFilePart(part)}`)
+  }
+
+  const dataUrl = parseDataUrl(part.url)
+  if (dataUrl) {
+    if (dataUrl.mediaType && dataUrl.mediaType !== mediaType) {
+      throw new Error(`${runtimeLabel} image media type mismatch for ${describeFilePart(part)}: declared ${mediaType}, url ${dataUrl.mediaType}`)
+    }
+    return {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: mediaType,
+        data: dataUrl.data,
+      },
+    }
+  }
+
+  if (isHttpUrl(part.url)) {
+    return {
+      type: 'image',
+      source: {
+        type: 'url',
+        url: part.url,
+      },
+    }
+  }
+
+  throw new Error(`${runtimeLabel} image input requires a data URL or http(s) URL; unsupported file: ${describeUnsupportedFilePart(part)}`)
+}
+
+function toAnthropicImageMediaType(mediaType: string): AnthropicImageMediaType | null {
+  switch (mediaType) {
+    case 'image/jpeg':
+    case 'image/png':
+    case 'image/gif':
+    case 'image/webp':
+      return mediaType
+    default:
+      return null
+  }
+}
+
+function parseDataUrl(url: string): { mediaType: string | null, data: string } | null {
+  const match = /^data:([^;,]+)?(?:;[^,]*)?;base64,(.*)$/i.exec(url)
+  if (!match) {
+    return null
+  }
+  return {
+    mediaType: match[1]?.toLowerCase() ?? null,
+    data: match[2] ?? '',
+  }
+}
+
+function isHttpUrl(url: string): boolean {
+  return url.startsWith('https://') || url.startsWith('http://')
+}
+
+function describeUnsupportedFilePart(part: Extract<MessagePart, { type: 'file' }>): string {
+  return `${describeFilePart(part)} (${part.mediaType})`
+}
+
+function describeFilePart(part: Extract<MessagePart, { type: 'file' }>): string {
+  const filename = part.filename ? ` (${part.filename})` : ''
+  return `file${filename}`
+}
+
+function describeClaudeAgentUserContent(content: ClaudeAgentUserContent): string {
+  if (typeof content === 'string') {
+    return content
+  }
+  const text = content
+    .filter((block): block is Extract<ClaudeAgentContentBlock, { type: 'text' }> => isClaudeTextBlock(block))
+    .map(block => block.text)
+    .join('\n')
+    .trim()
+  const imageCount = content.filter(isClaudeImageBlock).length
+  if (imageCount === 0) {
+    return text
+  }
+  const suffix = `[${imageCount} image${imageCount === 1 ? '' : 's'}]`
+  return text ? `${text}\n${suffix}` : suffix
+}
+
+function isClaudeTextBlock(block: unknown): block is Extract<ClaudeAgentContentBlock, { type: 'text' }> {
+  return Boolean(block) && typeof block === 'object' && (block as { type?: unknown }).type === 'text'
+}
+
+function isClaudeImageBlock(block: unknown): block is Extract<ClaudeAgentContentBlock, { type: 'image' }> {
+  return Boolean(block) && typeof block === 'object' && (block as { type?: unknown }).type === 'image'
 }
 
 function buildClaudeQueryOptions(input: {

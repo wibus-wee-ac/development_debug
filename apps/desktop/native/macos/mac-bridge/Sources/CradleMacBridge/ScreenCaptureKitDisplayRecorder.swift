@@ -521,27 +521,36 @@ private final class ScreenCaptureKitDisplayRecorder: NSObject, SCStreamOutput, D
                 }
             }
         }
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                guard let writer = self.writer else {
-                    continuation.resume(returning: ())
-                    return
-                }
-                if writer.status == .writing {
-                    self.input?.markAsFinished()
-                    writer.finishWriting {
-                        if let error = writer.error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume(returning: ())
-                        }
-                    }
-                } else if writer.status == .failed, let error = writer.error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
+        try finishWriter()
+    }
+
+    private func finishWriter() throws {
+        final class FinishBox: @unchecked Sendable {
+            var error: Error?
+        }
+        let box = FinishBox()
+        let semaphore = DispatchSemaphore(value: 0)
+        queue.async {
+            guard let writer = self.writer else {
+                semaphore.signal()
+                return
             }
+            if writer.status == .writing {
+                self.input?.markAsFinished()
+                writer.finishWriting {
+                    box.error = writer.error
+                    semaphore.signal()
+                }
+            } else {
+                box.error = writer.error
+                semaphore.signal()
+            }
+        }
+        if semaphore.wait(timeout: .now() + .seconds(8)) == .timedOut {
+            throw BridgeError("screen-recording-writer-finish-timeout", "ScreenCaptureKit display recording writer finish timed out.")
+        }
+        if let error = box.error {
+            throw error
         }
     }
 
@@ -1033,10 +1042,10 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
 
     func finish() throws -> [String: Any] {
         stopped = true
+        discoveryTask?.cancel()
 
         let semaphore = DispatchSemaphore(value: 0)
         Task {
-            await discoveryTask?.value
             do {
                 try await finishAsync()
             } catch {
@@ -1160,27 +1169,36 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
                 }
             }
         }
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                guard let writer = self.writer else {
-                    continuation.resume(returning: ())
-                    return
-                }
-                if writer.status == .writing {
-                    self.input?.markAsFinished()
-                    writer.finishWriting {
-                        if let error = writer.error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume(returning: ())
-                        }
-                    }
-                } else if writer.status == .failed, let error = writer.error {
-                    continuation.resume(throwing: error)
-                } else {
-                    continuation.resume(returning: ())
-                }
+        try finishWriter()
+    }
+
+    private func finishWriter() throws {
+        final class FinishBox: @unchecked Sendable {
+            var error: Error?
+        }
+        let box = FinishBox()
+        let semaphore = DispatchSemaphore(value: 0)
+        queue.async {
+            guard let writer = self.writer else {
+                semaphore.signal()
+                return
             }
+            if writer.status == .writing {
+                self.input?.markAsFinished()
+                writer.finishWriting {
+                    box.error = writer.error
+                    semaphore.signal()
+                }
+            } else {
+                box.error = writer.error
+                semaphore.signal()
+            }
+        }
+        if semaphore.wait(timeout: .now() + .seconds(8)) == .timedOut {
+            throw BridgeError("screen-window-recording-writer-finish-timeout", "ScreenCaptureKit window recording writer finish timed out.")
+        }
+        if let error = box.error {
+            throw error
         }
     }
 

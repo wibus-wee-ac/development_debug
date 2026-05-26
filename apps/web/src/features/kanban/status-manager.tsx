@@ -15,12 +15,12 @@ import { useCreateStatus, useDeleteStatus, useReorderStatuses, useStatuses, useU
 import type { StatusCategory } from './use-view-config'
 
 interface StatusManagerProps {
-  boardId: string
+  workspaceId: string
 }
 
-export function StatusManager({ boardId }: StatusManagerProps) {
+export function StatusManager({ workspaceId }: StatusManagerProps) {
   const { t } = useTranslation('kanban')
-  const statuses = useStatuses(boardId)
+  const statuses = useStatuses(workspaceId)
   const createStatus = useCreateStatus()
   const updateStatus = useUpdateStatus()
   const deleteStatus = useDeleteStatus()
@@ -38,18 +38,18 @@ export function StatusManager({ boardId }: StatusManagerProps) {
       return
     }
     createStatus.mutate(
-      { workspaceId: boardId, name },
+      { workspaceId, name },
       { onSuccess: () => setNewName('') },
     )
-  }, [newName, boardId, createStatus])
+  }, [newName, workspaceId, createStatus])
 
   const handleDelete = useCallback((statusId: string) => {
-    deleteStatus.mutate({ id: statusId, workspaceId: boardId })
-  }, [boardId, deleteStatus])
+    deleteStatus.mutate({ id: statusId, workspaceId })
+  }, [workspaceId, deleteStatus])
 
   const handleRename = useCallback((statusId: string, name: string) => {
-    updateStatus.mutate({ id: statusId, workspaceId: boardId, patch: { name } })
-  }, [boardId, updateStatus])
+    updateStatus.mutate({ id: statusId, workspaceId, patch: { name } })
+  }, [workspaceId, updateStatus])
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
@@ -63,8 +63,8 @@ export function StatusManager({ boardId }: StatusManagerProps) {
       return
     }
     const reordered = arrayMove(items, oldIdx, newIdx)
-    reorderStatuses.mutate({ workspaceId: boardId, orderedIds: reordered.map(s => s.id) })
-  }, [statuses.data, boardId, reorderStatuses])
+    reorderStatuses.mutate({ workspaceId, orderedIds: reordered.map(s => s.id) })
+  }, [statuses.data, workspaceId, reorderStatuses])
 
   const statusIds = (statuses.data ?? []).map(s => s.id)
 

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { db } from '../../infra'
 import type { ProviderTarget } from '../provider-targets/service'
 import { providerTargetCacheId } from '../provider-targets/service'
+import { projectProviderModelListCapabilities } from './model-capabilities'
 import type { ModelDescriptor } from './types'
 
 const STALE_THRESHOLD_S = 60 * 60 * 24 // 24 hours
@@ -54,7 +55,7 @@ export function getCachedModels(profileId: string): CachedModelsResult | null {
   if (!row) {
     return null
   }
-  const models = CachedModelsJsonSchema.parse(row.modelsJson)
+  const models = projectProviderModelListCapabilities(CachedModelsJsonSchema.parse(row.modelsJson))
   return { models, fetchedAt: row.fetchedAt, cached: true }
 }
 
@@ -67,20 +68,21 @@ export function getCachedModelsForTarget(target: ProviderTarget): CachedModelsRe
   if (!row) {
     return getCachedModels(providerTargetCacheId(target))
   }
-  const models = CachedModelsJsonSchema.parse(row.modelsJson)
+  const models = projectProviderModelListCapabilities(CachedModelsJsonSchema.parse(row.modelsJson))
   return { models, fetchedAt: row.fetchedAt, cached: true }
 }
 
 export function setCachedModels(profileId: string, models: ModelDescriptor[]): void {
   const now = Math.floor(Date.now() / 1000)
+  const projectedModels = projectProviderModelListCapabilities(models)
   db().insert(providerModelCache).values({
     providerTargetId: profileId,
-    modelsJson: JSON.stringify(models),
+    modelsJson: JSON.stringify(projectedModels),
     fetchedAt: now,
   }).onConflictDoUpdate({
     target: providerModelCache.providerTargetId,
     set: {
-      modelsJson: JSON.stringify(models),
+      modelsJson: JSON.stringify(projectedModels),
       fetchedAt: now,
     },
   }).run()
@@ -88,14 +90,15 @@ export function setCachedModels(profileId: string, models: ModelDescriptor[]): v
 
 export function setCachedModelsForTarget(target: ProviderTarget, models: ModelDescriptor[]): void {
   const now = Math.floor(Date.now() / 1000)
+  const projectedModels = projectProviderModelListCapabilities(models)
   db().insert(providerTargetModelCache).values({
     providerTargetId: providerTargetCacheId(target),
-    modelsJson: JSON.stringify(models),
+    modelsJson: JSON.stringify(projectedModels),
     fetchedAt: now,
   }).onConflictDoUpdate({
     target: providerTargetModelCache.providerTargetId,
     set: {
-      modelsJson: JSON.stringify(models),
+      modelsJson: JSON.stringify(projectedModels),
       fetchedAt: now,
     },
   }).run()

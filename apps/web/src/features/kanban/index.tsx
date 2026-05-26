@@ -451,6 +451,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
       ) : (
         <>
           <KanbanToolbar
+            workspaceId={workspaceId}
             config={config}
             setConfig={setConfig}
             filter={filter}

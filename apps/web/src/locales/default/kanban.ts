@@ -105,6 +105,7 @@ export default {
   'display.dueDate': 'Due date',
   'display.createdAt': 'Created at',
   'display.showEmptyGroups': 'Show empty groups',
+  'statusManager.aria': 'Manage statuses',
   'statusManager.title': 'Status management',
   'statusManager.addPlaceholder': 'Add status...',
   'statusManager.add': 'Add',

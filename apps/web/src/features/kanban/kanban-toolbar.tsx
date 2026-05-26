@@ -1,4 +1,5 @@
 import {
+  CircleDotIcon,
   ColumnsIcon,
   FilterIcon,
   GroupIcon,
@@ -22,6 +23,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { cn } from '~/lib/cn'
 
+import { StatusManager } from './status-manager'
 import type { FilterState, ViewConfig } from './use-view-config'
 
 const priorityLabelKeys = {
@@ -33,6 +35,7 @@ const priorityLabelKeys = {
 } as const
 
 interface ToolbarProps {
+  workspaceId: string
   config: ViewConfig
   setConfig: (patch: Partial<ViewConfig>) => void
   filter: FilterState
@@ -66,6 +69,7 @@ function ToolbarPill({ children, active, className, ...props }: {
 }
 
 export function KanbanToolbar({
+  workspaceId,
   config,
   setConfig,
   filter,
@@ -96,6 +100,8 @@ export function KanbanToolbar({
         <SortDropdown config={config} setConfig={setConfig} />
 
         <DisplayPopover config={config} setConfig={setConfig} />
+
+        <StatusManagerPopover workspaceId={workspaceId} />
 
         {onCreateIssue && (
           <ToolbarPill onClick={onCreateIssue} data-testid="kanban-create-issue-btn" aria-label={t('issue.createAria')}>
@@ -129,6 +135,23 @@ export function KanbanToolbar({
         </div>
       </div>
     </div>
+  )
+}
+
+function StatusManagerPopover({ workspaceId }: { workspaceId: string }) {
+  const { t } = useTranslation('kanban')
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <ToolbarPill data-testid="kanban-status-manager-btn" aria-label={t('statusManager.aria')}>
+          <CircleDotIcon className="size-3.5" aria-hidden="true" />
+        </ToolbarPill>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-0">
+        <StatusManager workspaceId={workspaceId} />
+      </PopoverContent>
+    </Popover>
   )
 }
 

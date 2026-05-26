@@ -146,7 +146,7 @@ describe('message bubble', () => {
                 imagePath: '/tmp/window.png',
                 transitionSnapshotDataUrl: 'data:image/png;base64,transition',
                 transitionSnapshotHeight: 140,
-                appIconDataUrl: null,
+                appIconDataUrl: 'data:image/png;base64,icon',
                 axTree: '',
               },
             },
@@ -163,8 +163,10 @@ describe('message bubble', () => {
 
     expect(screen.getByTestId('chat-appshot-card')).toBeTruthy()
     expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,final')
-    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Visual Studio Code')
-    expect(screen.queryByText('Cradle')).toBeNull()
+    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
+    expect(screen.getByTestId('chat-appshot-identity').querySelector('img')).toBeNull()
+    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
+    expect(screen.getByTestId('chat-appshot-app-icon').parentElement).not.toBe(screen.getByTestId('chat-appshot-image').parentElement)
     expect(screen.queryByTestId('chat-file-attachment')).toBeNull()
   })
 

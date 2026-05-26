@@ -11,7 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '~/components/ui/tooltip'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { Composer, type ComposerSlashCommandActionContext } from './composer'
+import { Composer } from './composer'
+import type { ComposerSlashCommandActionContext } from './composer-action-context'
 
 const aiMocks = vi.hoisted(() => ({
   convertFileListToFileUIParts: vi.fn(async (files: FileList | undefined): Promise<FileUIPart[]> => {
@@ -147,7 +148,7 @@ describe('composer attachments', () => {
             imagePath: '/tmp/window.png',
             transitionSnapshotDataUrl: 'data:image/png;base64,transition',
             transitionSnapshotHeight: 140,
-            appIconDataUrl: null,
+            appIconDataUrl: 'data:image/png;base64,icon',
             axTree: '',
           },
         },
@@ -166,7 +167,8 @@ describe('composer attachments', () => {
     )
 
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
-    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Visual Studio Code')
+    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
+    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
     expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,transition')
     expect(screen.queryByText('window.png')).toBeNull()
 
@@ -175,7 +177,110 @@ describe('composer attachments', () => {
     expect(onSend).toHaveBeenCalledWith('', [appshotPart])
   })
 
-  it('renders pending AppShot slots with the composer identity height', async () => {
+  it('prepends newly injected AppShot parts before existing attachments', async () => {
+    const onSend = vi.fn()
+    const existingPart: FileUIPart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'existing.png',
+      url: 'data:image/png;base64,existing',
+    }
+    const appshotPart: FileUIPart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'window.png',
+      url: 'data:image/png;base64,final',
+      providerMetadata: {
+        cradle: {
+          appshot: {
+            kind: 'cradle-appshot',
+            appName: 'Visual Studio Code',
+            windowTitle: 'Cradle',
+            bundleIdentifier: 'com.microsoft.VSCode',
+            imageName: 'window.png',
+            imageDataUrl: 'data:image/png;base64,final',
+            imagePath: '/tmp/window.png',
+            transitionSnapshotDataUrl: 'data:image/png;base64,transition',
+            transitionSnapshotHeight: 140,
+            appIconDataUrl: 'data:image/png;base64,icon',
+            axTree: '',
+          },
+        },
+      },
+    }
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          supportsAttachments
+          appendExternalFileParts={[existingPart]}
+          appendExternalFilePartsKey={1}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByText('existing.png')).toBeTruthy()
+
+    rerender(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          supportsAttachments
+          appendExternalFileParts={[appshotPart]}
+          appendExternalFilePartsKey={2}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('chat-send-btn'))
+
+    expect(onSend).toHaveBeenCalledWith('', [appshotPart, existingPart])
+  })
+
+  it('renders the final composer AppShot image without a transition snapshot', async () => {
+    const onSend = vi.fn()
+    const appshotPart: FileUIPart = {
+      type: 'file',
+      mediaType: 'image/png',
+      filename: 'window.png',
+      url: 'data:image/png;base64,final',
+      providerMetadata: {
+        cradle: {
+          appshot: {
+            kind: 'cradle-appshot',
+            appName: 'Visual Studio Code',
+            windowTitle: 'Cradle',
+            bundleIdentifier: 'com.microsoft.VSCode',
+            imageName: 'window.png',
+            imageDataUrl: 'data:image/png;base64,final',
+            imagePath: '/tmp/window.png',
+            transitionSnapshotDataUrl: null,
+            transitionSnapshotHeight: 140,
+            appIconDataUrl: 'data:image/png;base64,icon',
+            axTree: '',
+          },
+        },
+      },
+    }
+
+    render(
+      <TooltipProvider>
+        <Composer
+          onSend={onSend}
+          supportsAttachments
+          appendExternalFileParts={[appshotPart]}
+          appendExternalFilePartsKey={1}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
+    expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,final')
+  })
+
+  it('renders pending AppShot slots with the composer snapshot height', async () => {
     const onSend = vi.fn()
     const { container } = render(
       <TooltipProvider>
@@ -195,7 +300,7 @@ describe('composer attachments', () => {
 
     const pendingSlot = container.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
     expect(pendingSlot).toBeTruthy()
-    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('190.5')
+    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('168.5')
   })
 })
 
@@ -477,7 +582,7 @@ describe('composer slash commands', () => {
     const context = measuredContexts[0]
     expect(context.animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 72,
+      y: 94,
       width: 232,
       height: 140,
     })
@@ -581,7 +686,7 @@ describe('composer slash commands', () => {
     expect(measuredContexts).toHaveLength(1)
     expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 51.5,
+      y: 73.5,
       width: 232,
       height: 140,
     })
@@ -727,7 +832,7 @@ describe('composer slash commands', () => {
     expect(measuredContexts).toHaveLength(1)
     expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
       x: 584,
-      y: 92,
+      y: 114,
       width: 232,
       height: 140,
     })

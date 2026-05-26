@@ -4,6 +4,7 @@ import {
   normalizeBaseUrl,
   OpenAICompatibleConfigJsonSchema,
 } from './provider-base'
+import { readProviderDefaultModelCapabilities } from './model-capabilities'
 import type { ModelDescriptor, ProviderHealthCheckResult, ProviderKind, ProviderRequest } from './types'
 
 export interface ProviderMetadataProvider {
@@ -163,7 +164,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
         id: item.id,
         label: item.display_name ?? item.id,
         providerKind: 'anthropic' as const,
-        capabilities: {},
+        capabilities: readProviderDefaultModelCapabilities('anthropic'),
       }))
     }
     catch (error) {

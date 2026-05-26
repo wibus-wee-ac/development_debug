@@ -82,6 +82,36 @@ export const MacInputConfigureResultSchema = z.object({
   diagnostics: z.unknown().optional(),
 })
 
+export const MacInputSyntheticBothCommandRequestSchema = z.object({
+  holdMilliseconds: z.number().min(20).max(1000).optional(),
+})
+
+export const MacInputSyntheticBothCommandResultSchema = z.object({
+  trigger: z.literal('bothCommand'),
+  holdMilliseconds: z.number().min(20).max(1000),
+  postedEventCount: z.number().int().nonnegative(),
+  postedAt: z.string(),
+})
+
+export const MacInputBareModifierSchema = z.enum([
+  'DoubleCommand',
+  'DoubleOption',
+  'DoubleShift',
+])
+
+export const MacInputSyntheticBareModifierRequestSchema = z.object({
+  modifier: MacInputBareModifierSchema,
+  holdMilliseconds: z.number().min(20).max(1000).optional(),
+})
+
+export const MacInputSyntheticBareModifierResultSchema = z.object({
+  trigger: MacInputBareModifierSchema,
+  modifier: MacInputBareModifierSchema.optional(),
+  holdMilliseconds: z.number().min(20).max(1000),
+  postedEventCount: z.number().int().nonnegative(),
+  postedAt: z.string(),
+})
+
 export const MacCaptureWindowTargetSchema = z.object({
   windowId: z.number().int().nonnegative(),
   processId: z.number().int().nonnegative().optional(),
@@ -323,6 +353,11 @@ export type MacPermissionSettingsRequest = z.infer<typeof MacPermissionSettingsR
 export type MacPermissionSettingsResult = z.infer<typeof MacPermissionSettingsResultSchema>
 export type MacInputConfigureRequest = z.infer<typeof MacInputConfigureRequestSchema>
 export type MacInputConfigureResult = z.infer<typeof MacInputConfigureResultSchema>
+export type MacInputSyntheticBothCommandRequest = z.infer<typeof MacInputSyntheticBothCommandRequestSchema>
+export type MacInputSyntheticBothCommandResult = z.infer<typeof MacInputSyntheticBothCommandResultSchema>
+export type MacInputBareModifier = z.infer<typeof MacInputBareModifierSchema>
+export type MacInputSyntheticBareModifierRequest = z.infer<typeof MacInputSyntheticBareModifierRequestSchema>
+export type MacInputSyntheticBareModifierResult = z.infer<typeof MacInputSyntheticBareModifierResultSchema>
 export type MacCaptureWindowTarget = z.infer<typeof MacCaptureWindowTargetSchema>
 export type MacCaptureFrontmostWindowRequest = z.infer<typeof MacCaptureFrontmostWindowRequestSchema>
 export type MacCaptureFrontmostWindowResult = z.infer<typeof MacCaptureFrontmostWindowResultSchema>

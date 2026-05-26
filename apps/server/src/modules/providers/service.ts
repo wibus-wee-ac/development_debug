@@ -7,6 +7,7 @@ import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
+import { projectProviderModelListCapabilities } from './model-capabilities'
 import { enrichModelsFromRegistryMappings } from './model-info-registry'
 import {
   ModelRegistryMappingsJsonSchema,
@@ -198,7 +199,7 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
         .modelRegistryMappings
   models = await enrichModelsFromRegistryMappings(models, mappings)
 
-  return models
+  return projectProviderModelListCapabilities(models)
 }
 
 // ── audit persistence (merged from store) ──

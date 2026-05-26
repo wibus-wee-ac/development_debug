@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { chooseMountedTabIds } from '../components/tab-renderer'
+import { chooseMountedTabIds } from '../renderer-policy'
 import type { TabContextState, TabInstance } from '../types'
 
 function tab(id: string, pinned = false): TabInstance {

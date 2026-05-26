@@ -1,11 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 
 
-import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
 import { useTabsContext } from '../context'
 import { recordRendererCommit, recordRendererDuration, setMountedIdsSource, setRenderPolicySource } from '../debug'
+import { chooseMountedTabIds, DEFAULT_TAB_RENDER_POLICY } from '../renderer-policy'
 import { selectCurrentLocation } from '../store'
 import type { TabContextState, TabInstance, TabRenderPolicy, TabRouteDefinition } from '../types'
 
@@ -14,12 +15,6 @@ export interface TabRendererProps {
   wrapper?: React.ComponentType<{ children: React.ReactNode }>
   className?: string
   policy?: TabRenderPolicy
-}
-
-const DEFAULT_POLICY: TabRenderPolicy = {
-  strategy: 'activity-pool',
-  maxMountedTabs: 5,
-  keepPinnedMounted: true,
 }
 
 const SCROLL_VIEW_STATE_KEY = 'tabs-next:scroll-positions'
@@ -41,63 +36,7 @@ const ScrollPositionsSchema = z.union([
   z.undefined().transform(() => []),
 ])
 
-export function chooseMountedTabIds(
-  tabs: TabInstance[],
-  contexts: TabContextState[],
-  activeTabId: string | null,
-  policy: TabRenderPolicy = DEFAULT_POLICY,
-): string[] {
-  if (!activeTabId) {
-    return []
-  }
-
-  if (policy.strategy === 'single') {
-    return tabs.some(tab => tab.id === activeTabId) ? [activeTabId] : []
-  }
-
-  const maxMountedTabs = Math.max(1, policy.maxMountedTabs ?? 5)
-  const contextById = new Map(contexts.map(context => [context.id, context]))
-  const mounted = new Set<string>([activeTabId])
-
-  if (policy.keepPinnedMounted !== false) {
-    for (const tab of tabs) {
-      const context = contextById.get(tab.id)
-      if (tab.pinned || context?.keepAlive === 'always') {
-        mounted.add(tab.id)
-      }
-    }
-  }
-
-  const candidates: Array<{ tab: TabInstance, context: TabContextState | undefined }> = []
-  for (const tab of tabs) {
-    if (mounted.has(tab.id)) {
-      continue
-    }
-    const context = contextById.get(tab.id)
-    if (context?.keepAlive === 'discardable') {
-      continue
-    }
-    candidates.push({ tab, context })
-  }
-  candidates.sort((a, b) => (b.context?.lastActiveAt ?? 0) - (a.context?.lastActiveAt ?? 0))
-
-  for (const candidate of candidates) {
-    if (mounted.size >= maxMountedTabs) {
-      break
-    }
-    mounted.add(candidate.tab.id)
-  }
-
-  const mountedIds: string[] = []
-  for (const tab of tabs) {
-    if (mounted.has(tab.id)) {
-      mountedIds.push(tab.id)
-    }
-  }
-  return mountedIds
-}
-
-export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DEFAULT_POLICY }: TabRendererProps) {
+export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DEFAULT_TAB_RENDER_POLICY }: TabRendererProps) {
   'use no memo'
   const { store, registry } = useTabsContext()
   const tabs = store(s => s.tabs)
@@ -138,6 +77,7 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DE
 
         const content = (
           <RetainedTabFrame
+            key={tab.id}
             tab={tab}
             context={context}
             visible={tab.id === activeTabId}
@@ -157,11 +97,7 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DE
           return <div key={tab.id}>{content}</div>
         }
 
-        return (
-          <Activity key={tab.id} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
-            {content}
-          </Activity>
-        )
+        return content
       })}
     </div>
   )
@@ -219,6 +155,8 @@ function RetainedTabFrame({
     <div
       ref={rootRef}
       className="w-full"
+      hidden={!visible}
+      aria-hidden={visible ? undefined : 'true'}
       data-testid={`tab-content-${tab.id}`}
       data-tab-visible={visible ? 'true' : 'false'}
     >

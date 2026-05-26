@@ -40,8 +40,6 @@ struct AppshotTransitionCalibration {
         let animationDuration = readPositiveDouble(params["animationDuration"]) ?? AppshotTransitionTiming.animationDuration
         let transitionSnapshotHeight = readPositiveDouble(params["transitionSnapshotHeight"]).map { $0 / Double(target.transitionSnapshotScale) }
             ?? AppshotTransitionCalibration.defaultTransitionSnapshotHeight(
-                windowTitle: windowTitle,
-                appName: appName,
                 scale: target.transitionSnapshotScale
             )
         let springResponse = readPositiveDouble(params["transitionSpringResponse"]) ?? AppshotTransitionTiming.placeholderSpringResponse
@@ -54,20 +52,13 @@ struct AppshotTransitionCalibration {
         )
     }
 
-    private static func defaultTransitionSnapshotHeight(windowTitle: String?, appName: String?, scale: CGFloat) -> Double {
-        let title = windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let name = appName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if title.isEmpty && name.isEmpty {
-            return AppshotLayerMetrics.transitionSnapshotBaseHeight
-        }
-        let resolvedScale = max(Double(scale), 1)
-        return AppshotLayerMetrics.titledTransitionSnapshotBaseHeight
-            + ceil(AppshotLayerMetrics.titleLineHeight * resolvedScale) / resolvedScale
+    private static func defaultTransitionSnapshotHeight(scale _: CGFloat) -> Double {
+        AppshotLayerMetrics.transitionSnapshotBaseHeight
     }
 }
 
 enum AppshotTransitionTiming {
-    static let animationDuration: TimeInterval = 0.35
+    static let animationDuration: TimeInterval = 0.88
     static let completionDelay: TimeInterval = 0
     static let placeholderSpringResponse = 0.35
     static let placeholderSpringDampingFraction = 0.73
@@ -75,14 +66,24 @@ enum AppshotTransitionTiming {
     static let backgroundFadeOut: NSNumber = 0.82
     static let shutterFadeIn: NSNumber = 0.06
     static let shutterHold: NSNumber = 0.16
-    static let shutterFadeOutStart: NSNumber = 0.72
+    static let readyForMagicMove: NSNumber = shutterHold
+    static let readyForMagicMoveWait: TimeInterval = 1.0 / 90.0
+    static let shutterFadeOutStart: NSNumber = 0.16
     static let shutterFadeOut: NSNumber = 1
-    static let snapshotFadeIn: NSNumber = 0.72
-    static let shadowFadeIn: NSNumber = 0.18
+    static let snapshotFadeIn: NSNumber = 0.82
+    static let magicMoveFadeDuration: TimeInterval = 0.10
+    static let shadowFadeIn: NSNumber = 0.32
     static let appIconFadeIn: NSNumber = 0.68
-    static let titleFadeIn: NSNumber = 0.72
+    static let accessoryFadeStartProgress: NSNumber = appIconFadeIn
+    static let accessoryFadeDuration: TimeInterval = 0.12
     static func magicMoveTimingFunction() -> CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.16, 0, 0.3, 1)
+    }
+
+    static func magicMoveFadeEndProgress(duration: TimeInterval) -> NSNumber {
+        let total = max(duration, 0.001)
+        let start = snapshotFadeIn.doubleValue
+        return NSNumber(value: min(1, start + magicMoveFadeDuration / total))
     }
 }
 
@@ -91,17 +92,13 @@ enum AppshotLayerMetrics {
     static let shutterOpacity: Float = 1.0
     static let overlayPadding: CGFloat = 96
     static let transitionSnapshotBaseHeight: Double = 140
-    static let titledTransitionSnapshotBaseHeight: Double = 144
-    static let titleLineHeight: Double = 16.021484375
-    static let shadowOpacity: Float = 0.22
+    static let shadowOpacity: Float = 0.3
     static let shadowCornerRadius: CGFloat = 12
     static let screenshotCornerRadius: CGFloat = 12
-    static let shadowRadius: CGFloat = 18
-    static let shadowYOffset: CGFloat = -8
+    static let shadowRadius: CGFloat = 20
+    static let shadowYOffset: CGFloat = -10
     static let appIconSize: CGFloat = 24
     static let appIconBottomInset: CGFloat = 0
-    static let titleHeight: CGFloat = 18
-    static let titleBottomInset: CGFloat = 8
 }
 
 struct AppshotTransitionTarget {
@@ -129,7 +126,10 @@ struct AppshotTransitionTarget {
            let rawDisplay = rawTarget["codexDisplay"] as? [String: Any] {
             let scaleFactor = (rawDisplay["scaleFactor"] as? NSNumber)?.doubleValue ?? Double(NSScreen.main?.backingScaleFactor ?? 2)
             let coordinateSpace = rawTarget["coordinateSpace"] as? String ?? "screenPoints"
-            let geometryScale = coordinateSpace == "pixels" ? CGFloat(max(scaleFactor, 1)) : 1
+            let geometryScale = AppshotTransitionTarget.geometryScale(
+                coordinateSpace: coordinateSpace,
+                scaleFactor: CGFloat(scaleFactor)
+            )
             let transitionSnapshotScale = readPositiveDouble(rawTarget["transitionSnapshotScale"]) ?? scaleFactor
             let destinationFrame = readScaledRect(rawDestinationFrame, scale: geometryScale) ?? fallbackDestinationFrame(fallbackWindowBounds)
             let displayBounds = readScaledRect(rawDisplay["bounds"] as? [String: Any], scale: geometryScale) ?? fallbackDisplayFrame(containing: destinationFrame)
@@ -142,7 +142,7 @@ struct AppshotTransitionTarget {
                 destinationFrame: destinationFrame,
                 destinationBackgroundColor: readColor(rawTarget["destinationBackgroundColor"] as? String) ?? NSColor.windowBackgroundColor,
                 destinationPrimaryTextColor: readColor(rawTarget["destinationPrimaryTextColor"] as? String) ?? NSColor.labelColor,
-                destinationCornerRadius: CGFloat((rawTarget["destinationCornerRadius"] as? NSNumber)?.doubleValue ?? 12),
+                destinationCornerRadius: CGFloat((rawTarget["destinationCornerRadius"] as? NSNumber)?.doubleValue ?? 0),
                 transitionSnapshotScale: CGFloat(transitionSnapshotScale),
                 displayFrame: displayBounds,
                 displayWorkArea: displayWorkArea,
@@ -160,7 +160,7 @@ struct AppshotTransitionTarget {
             destinationFrame: destinationFrame,
             destinationBackgroundColor: NSColor.windowBackgroundColor,
             destinationPrimaryTextColor: NSColor.labelColor,
-            destinationCornerRadius: 12,
+            destinationCornerRadius: 0,
             transitionSnapshotScale: NSScreen.main?.backingScaleFactor ?? 2,
             displayFrame: displayFrame,
             displayWorkArea: displayFrame,
@@ -295,6 +295,15 @@ struct AppshotTransitionTarget {
         )
     }
 
+    private static func geometryScale(coordinateSpace: String, scaleFactor: CGFloat) -> CGFloat {
+        switch coordinateSpace {
+        case "pixels", "viewportPixels":
+            return max(scaleFactor, 1)
+        default:
+            return 1
+        }
+    }
+
     private static func fallbackDestinationFrame(_ bounds: [String: Double]?) -> CGRect {
         if let bounds,
            let x = bounds["x"],
@@ -425,6 +434,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     func present(
         screenshotPath: String,
         transitionSnapshotPath: String?,
+        sourceWindow: WindowCandidate?,
         target: AppshotTransitionTarget,
         calibration: AppshotTransitionCalibration,
         appTitle: String?,
@@ -434,6 +444,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
         Task { @MainActor in
             self.presentOnMain(
                 screenshotPath: screenshotPath,
+                sourceWindow: sourceWindow,
                 target: target,
                 calibration: calibration,
                 appTitle: appTitle,
@@ -455,6 +466,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     @MainActor
     private func presentOnMain(
         screenshotPath: String,
+        sourceWindow: WindowCandidate?,
         target: AppshotTransitionTarget,
         calibration: AppshotTransitionCalibration,
         appTitle: String?,
@@ -466,30 +478,36 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             application.setActivationPolicy(.accessory)
         }
 
-        let panels = target.overlayPanelFrames.map { panelFrame -> (panel: AppshotTransitionOverlayWindow, view: AppshotTransitionView) in
-            let panel = AppshotTransitionOverlayWindow(frame: panelFrame)
-            let view = AppshotTransitionView(
+        let transitionController = makeTransitionController(
+            sourceWindow: sourceWindow,
+            target: target,
+            appTitle: appTitle,
+            bundleIdentifier: bundleIdentifier
+        )
+        let panels = target.overlayPanelFrames.map { panelFrame in
+            let panel = AppshotTransitionOverlayWindow(
+                frame: panelFrame,
                 screenshotPath: screenshotPath,
+                transitionController: transitionController,
                 target: target,
-                viewportFrame: panelFrame,
                 transitionSnapshotHeight: calibration.transitionSnapshotHeight,
                 appTitle: appTitle,
                 bundleIdentifier: bundleIdentifier
             )
-            panel.contentView = view
             panel.setFrame(panelFrame, display: true)
             panel.orderFrontRegardless()
-            view.layoutSubtreeIfNeeded()
-            return (panel, view)
+            panel.layoutTransitionIfNeeded()
+            return panel
         }
-        logTransitionPresentation(panels: panels.map(\.panel), target: target)
+        transitionController.attach(overlayWindows: panels)
+        logTransitionPresentation(panels: panels, target: target)
         if soundEnabled {
             playAppshotSound()
         }
-        for entry in panels {
-            entry.view.play(duration: calibration.animationDuration) {
+        for panel in panels {
+            panel.play(duration: calibration.animationDuration) {
                 Task { @MainActor in
-                    entry.panel.orderOut(nil)
+                    panel.orderOut(nil)
                 }
             }
         }
@@ -524,7 +542,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     }
 
     @MainActor
-    private func logTransitionPresentation(panels: [NSPanel], target: AppshotTransitionTarget) {
+    private func logTransitionPresentation(panels: [NSWindow], target: AppshotTransitionTarget) {
         guard let data = try? JSONSerialization.data(withJSONObject: [
             "panels": panels.map { panel in
                 [
@@ -542,6 +560,25 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             return
         }
         FileHandle.standardError.write(Data("[appshot-transition] \(payload)\n".utf8))
+    }
+
+    @MainActor
+    private func makeTransitionController(
+        sourceWindow: WindowCandidate?,
+        target: AppshotTransitionTarget,
+        appTitle: String?,
+        bundleIdentifier: String?
+    ) -> AppshotCaptureTransition {
+        AppshotCaptureTransition(
+            sourceWindow: sourceWindow,
+            sourceFrame: target.appKitSourceWindowFrame,
+            targetFrame: target.appKitDestinationFrame,
+            targetCornerRadius: max(target.destinationCornerRadius, 0),
+            appIcon: readApplicationIconImage(bundleIdentifier: bundleIdentifier),
+            titleText: appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+            titleColor: target.destinationPrimaryTextColor,
+            destinationBackgroundColor: target.destinationBackgroundColor
+        )
     }
 
     func probeVisibility(
@@ -659,20 +696,26 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     ) async throws -> [String: Any] {
         try FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
 
-        let panel = AppshotTransitionOverlayWindow(frame: target.overlayFrame)
-        let view = AppshotTransitionView(
-            screenshotPath: screenshotPath,
+        let transitionController = makeTransitionController(
+            sourceWindow: nil,
             target: target,
-            viewportFrame: target.overlayFrame,
+            appTitle: appTitle,
+            bundleIdentifier: bundleIdentifier
+        )
+        let panel = AppshotTransitionOverlayWindow(
+            frame: target.overlayFrame,
+            screenshotPath: screenshotPath,
+            transitionController: transitionController,
+            target: target,
             transitionSnapshotHeight: calibration.transitionSnapshotHeight,
             appTitle: appTitle,
             bundleIdentifier: bundleIdentifier
         )
-        panel.contentView = view
+        transitionController.attach(overlayWindows: [panel])
         panel.orderFrontRegardless()
-        view.layoutSubtreeIfNeeded()
+        panel.layoutTransitionIfNeeded()
 
-        view.play(duration: calibration.animationDuration) {}
+        panel.play(duration: calibration.animationDuration) {}
 
         let panelWindowNumber = panel.windowNumber
         var samples: [[String: Any]] = []
@@ -729,20 +772,26 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     ) async throws -> [String: Any] {
         try FileManager.default.createDirectory(atPath: outputDir, withIntermediateDirectories: true)
 
-        let panel = AppshotTransitionOverlayWindow(frame: target.overlayFrame)
-        let view = AppshotTransitionView(
-            screenshotPath: screenshotPath,
+        let transitionController = makeTransitionController(
+            sourceWindow: nil,
             target: target,
-            viewportFrame: target.overlayFrame,
+            appTitle: appTitle,
+            bundleIdentifier: bundleIdentifier
+        )
+        let panel = AppshotTransitionOverlayWindow(
+            frame: target.overlayFrame,
+            screenshotPath: screenshotPath,
+            transitionController: transitionController,
+            target: target,
             transitionSnapshotHeight: calibration.transitionSnapshotHeight,
             appTitle: appTitle,
             bundleIdentifier: bundleIdentifier
         )
-        panel.contentView = view
+        transitionController.attach(overlayWindows: [panel])
         panel.orderFrontRegardless()
-        view.layoutSubtreeIfNeeded()
+        panel.layoutTransitionIfNeeded()
 
-        view.play(duration: calibration.animationDuration) {}
+        panel.play(duration: calibration.animationDuration) {}
 
         var samples: [[String: Any]] = []
         let startedAt = CFAbsoluteTimeGetCurrent()
@@ -750,7 +799,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             if index > 0 {
                 try await Task.sleep(nanoseconds: UInt64(max(sampleIntervalSeconds, 0.01) * 1_000_000_000))
             }
-            samples.append(try view.readPresentationProbeSample(
+            samples.append(try panel.readPresentationProbeSample(
                 outputDir: outputDir,
                 index: index,
                 startedAt: startedAt,
@@ -777,30 +826,29 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
         imageCaptureEnabled: Bool,
         imageCaptureTimeoutSeconds: Double
     ) async throws -> ProbeSamplePayload {
-        try await withCheckedThrowingContinuation { continuation in
-            let completion = ProbeSampleCompletion(continuation: continuation)
-            DispatchQueue.global(qos: .userInitiated).async {
-                do {
-                    completion.resolve(ProbeSamplePayload(value: try readVisibilityProbeSampleSync(
-                        outputDir: outputDir,
-                        index: index,
-                        target: target,
-                        panelWindowNumber: panelWindowNumber,
-                        imageCaptureEnabled: imageCaptureEnabled
-                    )))
-                } catch {
-                    completion.reject(error)
-                }
-            }
-            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(Int(imageCaptureTimeoutSeconds * 1000))) {
-                completion.resolve(ProbeSamplePayload(value: readVisibilityProbeTimeoutSample(
+        let startedAt = Date()
+        return try await Task.detached(priority: .userInitiated) {
+            do {
+                return ProbeSamplePayload(value: try readVisibilityProbeSampleSync(
                     outputDir: outputDir,
                     index: index,
                     target: target,
-                    panelWindowNumber: panelWindowNumber
-                )))
+                    panelWindowNumber: panelWindowNumber,
+                    imageCaptureEnabled: imageCaptureEnabled
+                ))
+            } catch {
+                let elapsedSeconds = Date().timeIntervalSince(startedAt)
+                if elapsedSeconds >= imageCaptureTimeoutSeconds {
+                    return ProbeSamplePayload(value: readVisibilityProbeTimeoutSample(
+                        outputDir: outputDir,
+                        index: index,
+                        target: target,
+                        panelWindowNumber: panelWindowNumber
+                    ))
+                }
+                throw error
             }
-        }
+        }.value
     }
 }
 
@@ -815,38 +863,6 @@ private func serializeAppshotRect(_ rect: CGRect) -> [String: Double] {
         "width": Double(rect.size.width),
         "height": Double(rect.size.height),
     ]
-}
-
-private final class ProbeSampleCompletion: @unchecked Sendable {
-    private let lock = NSLock()
-    private var resolved = false
-    private let continuation: CheckedContinuation<ProbeSamplePayload, Error>
-
-    init(continuation: CheckedContinuation<ProbeSamplePayload, Error>) {
-        self.continuation = continuation
-    }
-
-    func resolve(_ value: ProbeSamplePayload) {
-        lock.lock()
-        if resolved {
-            lock.unlock()
-            return
-        }
-        resolved = true
-        lock.unlock()
-        continuation.resume(returning: value)
-    }
-
-    func reject(_ error: Error) {
-        lock.lock()
-        if resolved {
-            lock.unlock()
-            return
-        }
-        resolved = true
-        lock.unlock()
-        continuation.resume(throwing: error)
-    }
 }
 
 private func readVisibilityProbeSampleSync(
@@ -936,11 +952,209 @@ private func writeProbePNGImage(_ image: CGImage, filePath: String) throws {
     }
 }
 
-final class AppshotTransitionOverlayWindow: NSPanel {
-    init(frame: CGRect) {
+private struct AppshotTransitionLayerRefs {
+    let contentLayer: AppshotNonanimatedLayer
+    let transitionBackgroundLayer: AppshotNonanimatedGradientLayer
+    let shadowLayer: AppshotNonanimatedLayer
+    let containerLayer: AppshotNonanimatedLayer
+    let shutterLayer: AppshotNonanimatedLayer
+    let snapshotEffectsLayer: AppshotNonanimatedLayer
+    let snapshotImageLayer: AppshotNonanimatedLayer
+    let snapshotMaskLayer: CAShapeLayer
+    let snapshotMaskDebugLayer: CAShapeLayer
+    let appIconLayer: AppshotNonanimatedLayer
+    let titleLayer: AppshotNonanimatedTextLayer
+}
+
+private enum AppshotCaptureTransitionState: String {
+    case idle
+    case shutter
+    case readyForMagicMove
+    case magicMove
+    case finished
+}
+
+final class AppshotCaptureTransition: @unchecked Sendable {
+    let sourceWindow: WindowCandidate?
+    let sourceFrame: CGRect
+    let targetFrame: CGRect
+    let targetCornerRadius: CGFloat
+    let appIcon: NSImage?
+    let titleText: String
+    let titleColor: NSColor
+    let destinationBackgroundColor: NSColor
+    private(set) var overlayWindows: [AppshotTransitionOverlayWindow] = []
+    private var state: AppshotCaptureTransitionState = .idle
+    private(set) var completionRequested = false
+    private var magicMoveWaiters: [@MainActor @Sendable () -> Void] = []
+
+    init(
+        sourceWindow: WindowCandidate?,
+        sourceFrame: CGRect,
+        targetFrame: CGRect,
+        targetCornerRadius: CGFloat,
+        appIcon: NSImage?,
+        titleText: String,
+        titleColor: NSColor,
+        destinationBackgroundColor: NSColor
+    ) {
+        self.sourceWindow = sourceWindow
+        self.sourceFrame = sourceFrame
+        self.targetFrame = targetFrame
+        self.targetCornerRadius = targetCornerRadius
+        self.appIcon = appIcon
+        self.titleText = titleText
+        self.titleColor = titleColor
+        self.destinationBackgroundColor = destinationBackgroundColor
+    }
+
+    @MainActor
+    func attach(overlayWindows: [AppshotTransitionOverlayWindow]) {
+        self.overlayWindows = overlayWindows
+    }
+
+    @MainActor
+    fileprivate func updateState(_ state: AppshotCaptureTransitionState) {
+        self.state = state
+        if state == .magicMove {
+            let waiters = magicMoveWaiters
+            magicMoveWaiters = []
+            for waiter in waiters {
+                waiter()
+            }
+        }
+    }
+
+    @MainActor
+    func waitForMagicMove(_ waiter: @escaping @MainActor @Sendable () -> Void) {
+        if state == .magicMove || state == .finished {
+            waiter()
+            return
+        }
+        magicMoveWaiters.append(waiter)
+    }
+
+    @MainActor
+    func requestCompletion() {
+        completionRequested = true
+    }
+
+    @MainActor
+    func serializeForProbe() -> [String: Any] {
+        [
+            "className": String(describing: type(of: self)),
+            "sourceWindow": sourceWindow.map { window -> [String: Any] in
+                [
+                    "windowId": window.windowId,
+                    "processId": window.processId,
+                    "bundleId": window.bundleId ?? NSNull(),
+                    "title": window.title ?? NSNull(),
+                ]
+            } ?? NSNull(),
+            "sourceFrame": serialize(rect: sourceFrame),
+            "targetFrame": serialize(rect: targetFrame),
+            "targetCornerRadius": Double(targetCornerRadius),
+            "appIconAvailable": appIcon != nil,
+            "titleText": titleText,
+            "titleColor": serializeCGColorForProbe(titleColor.cgColor),
+            "destinationBackgroundColor": serializeCGColorForProbe(destinationBackgroundColor.cgColor),
+            "overlayWindowCount": overlayWindows.count,
+            "state": state.rawValue,
+            "completionRequested": completionRequested,
+            "magicMoveWaiterCount": magicMoveWaiters.count,
+        ]
+    }
+}
+
+final class AppshotTransitionOverlayWindow: NSWindow {
+    private let transitionController: AppshotCaptureTransition
+    private let transitionView: AppshotTransitionView
+    private let sourceFrame: CGRect
+    private let targetFrame: CGRect
+    private let targetCornerRadius: CGFloat
+    private let contentLayer: AppshotNonanimatedLayer
+    private let transitionBackgroundLayer: AppshotNonanimatedGradientLayer
+    private let shadowLayer: AppshotNonanimatedLayer
+    private let containerLayer: AppshotNonanimatedLayer
+    private let shutterLayer: AppshotNonanimatedLayer
+    private let snapshotEffectsLayer: AppshotNonanimatedLayer
+    private let snapshotImageLayer: AppshotNonanimatedLayer
+    private let snapshotMaskLayer: CAShapeLayer
+    private let snapshotMaskDebugLayer: CAShapeLayer
+    private let appIconLayer: AppshotNonanimatedLayer
+    private let titleLayer: AppshotNonanimatedTextLayer
+    private let initialCornerRadius: CGFloat
+    private let accessoryFadeStartProgress: CGFloat
+    private let accessoryFadeDuration: TimeInterval
+    private var snapshotImageSize = CGSize.zero
+    private let titleText: String
+    private var progress: CGFloat = 0
+    private var accessoryFadeStarted = false
+
+    fileprivate init(
+        frame: CGRect,
+        screenshotPath: String,
+        transitionController: AppshotCaptureTransition,
+        target: AppshotTransitionTarget,
+        transitionSnapshotHeight: Double?,
+        appTitle: String?,
+        bundleIdentifier: String?
+    ) {
+        let contentLayer = AppshotNonanimatedLayer()
+        let transitionBackgroundLayer = AppshotNonanimatedGradientLayer()
+        let shadowLayer = AppshotNonanimatedLayer()
+        let containerLayer = AppshotNonanimatedLayer()
+        let shutterLayer = AppshotNonanimatedLayer()
+        let snapshotEffectsLayer = AppshotNonanimatedLayer()
+        let snapshotImageLayer = AppshotNonanimatedLayer()
+        let snapshotMaskLayer = CAShapeLayer()
+        let snapshotMaskDebugLayer = CAShapeLayer()
+        let appIconLayer = AppshotNonanimatedLayer()
+        let titleLayer = AppshotNonanimatedTextLayer()
+        self.transitionController = transitionController
+        sourceFrame = AppshotTransitionOverlayWindow.readSourceFrame(target: target, viewportFrame: frame)
+        targetFrame = AppshotTransitionOverlayWindow.readTargetFrame(target: target, viewportFrame: frame)
+        targetCornerRadius = max(target.destinationCornerRadius, 0)
+        self.contentLayer = contentLayer
+        self.transitionBackgroundLayer = transitionBackgroundLayer
+        self.shadowLayer = shadowLayer
+        self.containerLayer = containerLayer
+        self.shutterLayer = shutterLayer
+        self.snapshotEffectsLayer = snapshotEffectsLayer
+        self.snapshotImageLayer = snapshotImageLayer
+        self.snapshotMaskLayer = snapshotMaskLayer
+        self.snapshotMaskDebugLayer = snapshotMaskDebugLayer
+        self.appIconLayer = appIconLayer
+        self.titleLayer = titleLayer
+        initialCornerRadius = AppshotLayerMetrics.screenshotCornerRadius
+        accessoryFadeStartProgress = CGFloat(AppshotTransitionTiming.accessoryFadeStartProgress.doubleValue)
+        accessoryFadeDuration = AppshotTransitionTiming.accessoryFadeDuration
+        titleText = appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        transitionView = AppshotTransitionView(
+            screenshotPath: screenshotPath,
+            transitionController: transitionController,
+            target: target,
+            viewportFrame: frame,
+            transitionSnapshotHeight: transitionSnapshotHeight,
+            appTitle: appTitle,
+            bundleIdentifier: bundleIdentifier,
+            layers: AppshotTransitionLayerRefs(
+                contentLayer: contentLayer,
+                transitionBackgroundLayer: transitionBackgroundLayer,
+                shadowLayer: shadowLayer,
+                containerLayer: containerLayer,
+                shutterLayer: shutterLayer,
+                snapshotEffectsLayer: snapshotEffectsLayer,
+                snapshotImageLayer: snapshotImageLayer,
+                snapshotMaskLayer: snapshotMaskLayer,
+                snapshotMaskDebugLayer: snapshotMaskDebugLayer,
+                appIconLayer: appIconLayer,
+                titleLayer: titleLayer
+            )
+        )
         super.init(
             contentRect: frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: [.borderless],
             backing: .buffered,
             defer: false
         )
@@ -951,44 +1165,166 @@ final class AppshotTransitionOverlayWindow: NSPanel {
         ignoresMouseEvents = true
         hidesOnDeactivate = false
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        contentView = transitionView
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    func layoutTransitionIfNeeded() {
+        transitionView.layoutSubtreeIfNeeded()
+    }
+
+    func play(duration: TimeInterval, completion: @escaping @Sendable () -> Void) {
+        transitionView.play(duration: duration, completion: completion)
+    }
+
+    func updateProgress(_ progress: CGFloat, accessoryFadeStarted: Bool) {
+        self.progress = max(0, min(progress, 1))
+        self.accessoryFadeStarted = accessoryFadeStarted
+    }
+
+    func updateSnapshotImageSize(_ snapshotImageSize: CGSize) {
+        self.snapshotImageSize = snapshotImageSize
+    }
+
+    func readPresentationProbeSample(
+        outputDir: String,
+        index: Int,
+        startedAt: CFAbsoluteTime,
+        renderImage: Bool
+    ) throws -> [String: Any] {
+        var sample = try transitionView.readPresentationProbeSample(
+            outputDir: outputDir,
+            index: index,
+            startedAt: startedAt,
+            renderImage: renderImage
+        )
+        sample["overlayWindowClass"] = String(describing: type(of: self))
+        sample["transitionControllerClass"] = String(describing: type(of: transitionController))
+        sample["transitionControllerOwner"] = "AppshotCaptureTransition"
+        sample["transitionLayerHost"] = "overlayWindow"
+        sample["transitionController"] = transitionController.serializeForProbe()
+        sample["hostViewClass"] = String(describing: type(of: transitionView))
+        sample["overlayProgress"] = Double(progress)
+        sample["overlayAccessoryFadeStarted"] = accessoryFadeStarted
+        sample["progressHostedByOverlayWindow"] = true
+        sample["overlaySourceFrame"] = serialize(rect: sourceFrame)
+        sample["overlayTargetFrame"] = serialize(rect: targetFrame)
+        sample["overlayTargetCornerRadius"] = Double(targetCornerRadius)
+        sample["overlayInitialCornerRadius"] = Double(initialCornerRadius)
+        sample["overlayAccessoryFadeStartProgress"] = Double(accessoryFadeStartProgress)
+        sample["overlayAccessoryFadeDuration"] = accessoryFadeDuration
+        sample["overlaySnapshotImageSize"] = serialize(rect: CGRect(origin: .zero, size: snapshotImageSize))
+        sample["overlayTitleText"] = titleText
+        return sample
+    }
+
+    private static func readSourceFrame(target: AppshotTransitionTarget, viewportFrame: CGRect) -> CGRect {
+        let source = target.appKitSourceWindowFrame
+        return CGRect(
+            x: source.minX - viewportFrame.minX,
+            y: source.minY - viewportFrame.minY,
+            width: source.width,
+            height: source.height
+        )
+    }
+
+    private static func readTargetFrame(target: AppshotTransitionTarget, viewportFrame: CGRect) -> CGRect {
+        let destination = target.appKitDestinationFrame
+        return CGRect(
+            x: destination.minX - viewportFrame.minX,
+            y: destination.minY - viewportFrame.minY,
+            width: destination.width,
+            height: destination.height
+        )
+    }
+}
+
+private final class AppshotNoImplicitAction: NSObject, CAAction, @unchecked Sendable {
+    static let shared = AppshotNoImplicitAction()
+
+    func run(forKey event: String, object anObject: Any, arguments dict: [AnyHashable: Any]?) {}
+}
+
+private final class AppshotNonanimatedLayer: CALayer {
+    override func action(forKey event: String) -> CAAction? {
+        AppshotNoImplicitAction.shared
+    }
+}
+
+private final class AppshotNonanimatedTextLayer: CATextLayer {
+    override func action(forKey event: String) -> CAAction? {
+        AppshotNoImplicitAction.shared
+    }
+}
+
+private final class AppshotNonanimatedGradientLayer: CAGradientLayer {
+    override func action(forKey event: String) -> CAAction? {
+        AppshotNoImplicitAction.shared
+    }
+}
+
+private enum AppshotVerticalAlignment {
+    case center
+    case bottom
 }
 
 final class AppshotTransitionView: NSView {
+    private weak var overlayWindow: AppshotTransitionOverlayWindow?
+    private let transitionController: AppshotCaptureTransition
     private let target: AppshotTransitionTarget
     private let viewportFrame: CGRect
     private let transitionSnapshotHeight: CGFloat?
     private let appTitle: String?
     private let bundleIdentifier: String?
-    private let contentLayer = CALayer()
-    private let transitionBackgroundLayer = CALayer()
-    private let shadowLayer = CALayer()
-    private let containerLayer = CALayer()
-    private let shutterLayer = CALayer()
-    private let snapshotEffectsLayer = CALayer()
-    private let snapshotImageLayer = CALayer()
-    private let snapshotMaskLayer = CAShapeLayer()
-    private let snapshotMaskDebugLayer = CAShapeLayer()
-    private let appIconLayer = CALayer()
-    private let titleLayer = CATextLayer()
+    private let contentLayer: AppshotNonanimatedLayer
+    private let transitionBackgroundLayer: AppshotNonanimatedGradientLayer
+    private let shadowLayer: AppshotNonanimatedLayer
+    private let containerLayer: AppshotNonanimatedLayer
+    private let shutterLayer: AppshotNonanimatedLayer
+    private let snapshotEffectsLayer: AppshotNonanimatedLayer
+    private let snapshotImageLayer: AppshotNonanimatedLayer
+    private let snapshotMaskLayer: CAShapeLayer
+    private let snapshotMaskDebugLayer: CAShapeLayer
+    private let appIconLayer: AppshotNonanimatedLayer
+    private let titleLayer: AppshotNonanimatedTextLayer
+    private var snapshotImageSize = CGSize.zero
     private var didStartTransition = false
+    private var activeAnimationDuration = AppshotTransitionTiming.animationDuration
+    private var activeTransitionPhase = "idle"
+    private var activeTransitionPhaseHistory: [String] = ["idle"]
+    private var progress: CGFloat = 0
+    private var accessoryFadeStarted = false
+    private var activeProgressTask: Task<Void, Never>?
 
-    init(
+    fileprivate init(
         screenshotPath: String,
+        transitionController: AppshotCaptureTransition,
         target: AppshotTransitionTarget,
         viewportFrame: CGRect,
         transitionSnapshotHeight: Double?,
         appTitle: String?,
-        bundleIdentifier: String?
+        bundleIdentifier: String?,
+        layers: AppshotTransitionLayerRefs
     ) {
+        self.transitionController = transitionController
         self.target = target
         self.viewportFrame = viewportFrame
         self.transitionSnapshotHeight = transitionSnapshotHeight.map { CGFloat($0) }
         self.appTitle = appTitle
         self.bundleIdentifier = bundleIdentifier
+        contentLayer = layers.contentLayer
+        transitionBackgroundLayer = layers.transitionBackgroundLayer
+        shadowLayer = layers.shadowLayer
+        containerLayer = layers.containerLayer
+        shutterLayer = layers.shutterLayer
+        snapshotEffectsLayer = layers.snapshotEffectsLayer
+        snapshotImageLayer = layers.snapshotImageLayer
+        snapshotMaskLayer = layers.snapshotMaskLayer
+        snapshotMaskDebugLayer = layers.snapshotMaskDebugLayer
+        appIconLayer = layers.appIconLayer
+        titleLayer = layers.titleLayer
         super.init(frame: CGRect(origin: .zero, size: viewportFrame.size))
         wantsLayer = true
         configureLayers(screenshotPath: screenshotPath)
@@ -998,10 +1334,21 @@ final class AppshotTransitionView: NSView {
         nil
     }
 
+    deinit {
+        activeProgressTask?.cancel()
+    }
+
     func play(duration: TimeInterval, completion: @escaping @Sendable () -> Void) {
+        activeProgressTask?.cancel()
+        activeProgressTask = nil
+        overlayWindow = window as? AppshotTransitionOverlayWindow
+        overlayWindow?.updateSnapshotImageSize(snapshotImageSize)
+        activeAnimationDuration = duration
+        progress = 0
+        accessoryFadeStarted = false
+        overlayWindow?.updateProgress(progress, accessoryFadeStarted: accessoryFadeStarted)
+        activeTransitionPhaseHistory = []
         let startFrame = readStartFrame()
-        let startCaptureFrame = readStartCaptureFrame()
-        let startSnapshotImageFrame = snapshotImageStartFrame(startFrame: startFrame, captureFrame: startCaptureFrame)
         let endFrame = readEndFrame()
         let startBounds = CGRect(origin: .zero, size: startFrame.size)
         let endBounds = CGRect(origin: .zero, size: endFrame.size)
@@ -1009,12 +1356,13 @@ final class AppshotTransitionView: NSView {
         let targetCornerRadius = readTargetCornerRadius()
 
         didStartTransition = true
+        setTransitionPhase("shutter")
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         applyFrame(startFrame, to: shadowLayer)
         applyFrame(startFrame, to: containerLayer)
         applyFrame(startBounds, to: snapshotEffectsLayer)
-        applyFrame(startSnapshotImageFrame, to: snapshotImageLayer)
+        applyFrame(startBounds, to: snapshotImageLayer)
         applyFrame(startBounds, to: snapshotMaskLayer)
         applyFrame(startBounds, to: snapshotMaskDebugLayer)
         applyFrame(startBounds, to: shutterLayer)
@@ -1034,23 +1382,69 @@ final class AppshotTransitionView: NSView {
 
         layer?.displayIfNeeded()
         DispatchQueue.main.async {
-            self.runMagicMoveTransition(
+            self.readyForMagicMove(
                 startFrame: startFrame,
-                startSnapshotImageFrame: startSnapshotImageFrame,
                 endFrame: endFrame,
                 startBounds: startBounds,
                 endBounds: endBounds,
                 initialCornerRadius: initialCornerRadius,
                 targetCornerRadius: targetCornerRadius,
-                duration: duration,
+                totalDuration: duration,
                 completion: completion
             )
         }
     }
 
-    private func runMagicMoveTransition(
+    private func readyForMagicMove(
         startFrame: CGRect,
-        startSnapshotImageFrame: CGRect,
+        endFrame: CGRect,
+        startBounds: CGRect,
+        endBounds: CGRect,
+        initialCornerRadius: CGFloat,
+        targetCornerRadius: CGFloat,
+        totalDuration: TimeInterval,
+        completion: @escaping @Sendable () -> Void
+    ) {
+        let readyDuration = max(totalDuration * AppshotTransitionTiming.readyForMagicMove.doubleValue, 0.001)
+        let fadeInProgress = min(
+            1,
+            AppshotTransitionTiming.shutterFadeIn.doubleValue / max(AppshotTransitionTiming.readyForMagicMove.doubleValue, 0.001)
+        )
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            self.setTransitionPhase("readyForMagicMove")
+            let waitDuration = min(
+                AppshotTransitionTiming.readyForMagicMoveWait,
+                max(totalDuration - readyDuration, 0)
+            )
+            DispatchQueue.main.asyncAfter(deadline: .now() + waitDuration) {
+                self.magicMove(
+                    startFrame: startFrame,
+                    endFrame: endFrame,
+                    startBounds: startBounds,
+                    endBounds: endBounds,
+                    initialCornerRadius: initialCornerRadius,
+                    targetCornerRadius: targetCornerRadius,
+                    duration: max(totalDuration - readyDuration - waitDuration, 0.001),
+                    completion: completion
+                )
+            }
+        }
+        CATransaction.setDisableActions(true)
+        animateOpacity(
+            layer: shutterLayer,
+            values: [0, AppshotLayerMetrics.shutterOpacity, AppshotLayerMetrics.shutterOpacity],
+            keyTimes: [0, NSNumber(value: fadeInProgress), 1],
+            duration: readyDuration,
+            key: "appshotShutterFadeIn.readyForMagicMove"
+        )
+        shutterLayer.opacity = AppshotLayerMetrics.shutterOpacity
+        CATransaction.commit()
+    }
+
+    private func magicMove(
+        startFrame: CGRect,
         endFrame: CGRect,
         startBounds: CGRect,
         endBounds: CGRect,
@@ -1059,118 +1453,222 @@ final class AppshotTransitionView: NSView {
         duration: TimeInterval,
         completion: @escaping @Sendable () -> Void
     ) {
-        let finalMaskPath = CGPath(
-            roundedRect: endBounds,
-            cornerWidth: targetCornerRadius,
-            cornerHeight: targetCornerRadius,
-            transform: nil
-        )
+        let magicMoveStart = CACurrentMediaTime()
+        activeProgressTask?.cancel()
+        let timingFunction = AppshotTransitionTiming.magicMoveTimingFunction()
+        let shutterFadeStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.snapshotFadeIn).doubleValue
+        let fadeProgressDuration = AppshotTransitionTiming.magicMoveFadeDuration / max(duration, 0.001)
+        let shutterFadeEnd = min(1, shutterFadeStart + fadeProgressDuration)
+        let snapshotFadeStart = shutterFadeStart
+        let snapshotFadeEnd = shutterFadeEnd
+        let shadowStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.shadowFadeIn).doubleValue
+        let accessoryFadeProgressDuration = AppshotTransitionTiming.accessoryFadeDuration / max(duration, 0.001)
+        let appIconStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.accessoryFadeStartProgress).doubleValue
+        let startAccessoryFrame = accessoryFrame(in: startFrame)
+        let endAccessoryFrame = accessoryFrame(in: endFrame)
 
+        setTransitionPhase("magicMove")
         CATransaction.begin()
-        CATransaction.setCompletionBlock {
-            DispatchQueue.main.asyncAfter(deadline: .now() + AppshotTransitionTiming.completionDelay, execute: completion)
-        }
         CATransaction.setDisableActions(true)
-        CATransaction.setAnimationDuration(duration)
-        CATransaction.setAnimationTimingFunction(AppshotTransitionTiming.magicMoveTimingFunction())
-
-        animateFrameAfterHold(layer: containerLayer, from: startFrame, to: endFrame, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "magicMove")
-        animateFrameAfterHold(layer: shadowLayer, from: startFrame, to: endFrame, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "appshotShadowMagicMove")
-        animateFrameAfterHold(layer: snapshotEffectsLayer, from: startBounds, to: endBounds, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "snapshotEffectsLayer")
-        animateFrameAfterHold(layer: snapshotImageLayer, from: startSnapshotImageFrame, to: endBounds, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "snapshotImageLayer")
-        animateFrameAfterHold(layer: shutterLayer, from: startBounds, to: endBounds, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "appshotShutterMagicMove")
-        animateAccessoryFrame(from: startFrame, to: endFrame, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration)
-        animateCornerRadiusAfterHold(layer: snapshotEffectsLayer, from: initialCornerRadius, to: targetCornerRadius, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "appshotSnapshotCornerRadius")
-        animateCornerRadiusAfterHold(layer: shutterLayer, from: initialCornerRadius, to: targetCornerRadius, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration, key: "appshotShutterCornerRadius")
-        animateShadowPath(from: startFrame, to: endFrame, initialRadius: initialCornerRadius, targetRadius: targetCornerRadius, holdUntil: AppshotTransitionTiming.shutterHold, duration: duration)
-        animateOpacity(
-            layer: transitionBackgroundLayer,
-            values: [0, AppshotLayerMetrics.transitionBackgroundOpacity, AppshotLayerMetrics.transitionBackgroundOpacity, 0],
-            keyTimes: [0, AppshotTransitionTiming.backgroundFadeIn, AppshotTransitionTiming.backgroundFadeOut, 1],
-            duration: duration,
-            key: "appshotBackgroundFade"
-        )
-        animateOpacity(
-            layer: shutterLayer,
-            values: [0, AppshotLayerMetrics.shutterOpacity, AppshotLayerMetrics.shutterOpacity, 0],
-            keyTimes: [0, AppshotTransitionTiming.shutterFadeIn, AppshotTransitionTiming.shutterFadeOutStart, AppshotTransitionTiming.shutterFadeOut],
-            duration: duration,
-            key: "appshotShutterFadeInOut"
-        )
-        animateDelayedOpacity(
-            layer: shadowLayer,
-            from: 0,
-            to: AppshotLayerMetrics.shadowOpacity,
-            startProgress: AppshotTransitionTiming.shadowFadeIn,
-            duration: duration,
-            key: "appshotShadowFadeIn"
-        )
-        animateDelayedOpacity(
-            layer: snapshotImageLayer,
-            from: 0,
-            to: 1,
-            startProgress: AppshotTransitionTiming.snapshotFadeIn,
-            duration: duration,
-            key: "appshotSnapshotFadeIn"
-        )
-        animateDelayedOpacity(
-            layer: appIconLayer,
-            from: 0,
-            to: appIconLayer.contents == nil ? 0 : 1,
-            startProgress: AppshotTransitionTiming.appIconFadeIn,
-            duration: duration,
-            key: "appshotAppIconFadeIn"
-        )
-        animateDelayedOpacity(
-            layer: titleLayer,
-            from: 0,
-            to: readTitleText().isEmpty ? 0 : 1,
-            startProgress: AppshotTransitionTiming.titleFadeIn,
-            duration: duration,
-            key: "appshotTitleFadeIn"
-        )
-
-        let initialMaskPath = CGPath(
-            roundedRect: startBounds,
-            cornerWidth: initialCornerRadius,
-            cornerHeight: initialCornerRadius,
-            transform: nil
-        )
-        let maskPathAnimation = CAKeyframeAnimation(keyPath: "path")
-        maskPathAnimation.keyTimes = [0, AppshotTransitionTiming.shutterHold, 1]
-        maskPathAnimation.values = [initialMaskPath, initialMaskPath, finalMaskPath]
-        maskPathAnimation.duration = duration
-        maskPathAnimation.timingFunctions = [
-            CAMediaTimingFunction(name: .linear),
-            AppshotTransitionTiming.magicMoveTimingFunction(),
-        ]
-        snapshotMaskLayer.path = finalMaskPath
-        snapshotMaskLayer.add(maskPathAnimation, forKey: "appshotSnapshotMask")
-
         applyFrame(endFrame, to: shadowLayer)
         applyFrame(endFrame, to: containerLayer)
         applyFrame(endBounds, to: snapshotEffectsLayer)
         applyFrame(endBounds, to: snapshotImageLayer)
+        applyFrame(endBounds, to: shutterLayer)
         applyFrame(endBounds, to: snapshotMaskLayer)
         applyFrame(endBounds, to: snapshotMaskDebugLayer)
-        applyFrame(endBounds, to: shutterLayer)
         updateShadowPath(for: endFrame, radius: targetCornerRadius)
         updateSnapshotMaskPath(for: endBounds, radius: targetCornerRadius)
-        layoutAccessoryLayers(in: endFrame)
-        shutterLayer.cornerRadius = targetCornerRadius
+        appIconLayer.frame = endAccessoryFrame
         snapshotEffectsLayer.cornerRadius = targetCornerRadius
+        shutterLayer.cornerRadius = targetCornerRadius
         shutterLayer.opacity = 0
         snapshotImageLayer.opacity = 1
-        shadowLayer.opacity = AppshotLayerMetrics.shadowOpacity
+        shadowLayer.opacity = 1
         appIconLayer.opacity = appIconLayer.contents == nil ? 0 : 1
-        titleLayer.opacity = readTitleText().isEmpty ? 0 : 1
+
+        animateFrame(
+            layer: shadowLayer,
+            from: startFrame,
+            to: endFrame,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotShadowMagicMove"
+        )
+        animateFrame(
+            layer: containerLayer,
+            from: startFrame,
+            to: endFrame,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotContainerMagicMove"
+        )
+        animateFrame(
+            layer: snapshotEffectsLayer,
+            from: startBounds,
+            to: endBounds,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotSnapshotEffectsMagicMove"
+        )
+        animateFrame(
+            layer: snapshotImageLayer,
+            from: startBounds,
+            to: endBounds,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotSnapshotImageMagicMove"
+        )
+        animateFrame(
+            layer: shutterLayer,
+            from: startBounds,
+            to: endBounds,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotShutterMagicMove"
+        )
+        animateFrame(
+            layer: snapshotMaskLayer,
+            from: startBounds,
+            to: endBounds,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotSnapshotMaskMagicMove"
+        )
+        animateFrame(
+            layer: snapshotMaskDebugLayer,
+            from: startBounds,
+            to: endBounds,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotSnapshotMaskDebugMagicMove"
+        )
+        animateCornerRadius(
+            layer: snapshotEffectsLayer,
+            from: initialCornerRadius,
+            to: targetCornerRadius,
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "appshotSnapshotCornerRadius"
+        )
+        animateCornerRadius(
+            layer: shutterLayer,
+            from: initialCornerRadius,
+            to: targetCornerRadius,
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "appshotShutterCornerRadius"
+        )
+        animateShadowPath(
+            fromFrame: startFrame,
+            toFrame: endFrame,
+            fromRadius: initialCornerRadius,
+            toRadius: targetCornerRadius,
+            duration: duration,
+            timingFunction: timingFunction
+        )
+        animateMaskPath(
+            layer: snapshotMaskLayer,
+            fromBounds: startBounds,
+            toBounds: endBounds,
+            fromRadius: initialCornerRadius,
+            toRadius: targetCornerRadius,
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "appshotSnapshotMaskPath"
+        )
+        animateMaskPath(
+            layer: snapshotMaskDebugLayer,
+            fromBounds: startBounds,
+            toBounds: endBounds,
+            fromRadius: initialCornerRadius,
+            toRadius: targetCornerRadius,
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "appshotSnapshotMaskDebugPath"
+        )
+        animateOpacityKeyframes(
+            layer: shutterLayer,
+            values: [AppshotLayerMetrics.shutterOpacity, AppshotLayerMetrics.shutterOpacity, 0, 0],
+            keyTimes: [0, NSNumber(value: shutterFadeStart), NSNumber(value: shutterFadeEnd), 1],
+            duration: duration,
+            key: "appshotShutterFadeOut"
+        )
+        animateOpacityKeyframes(
+            layer: snapshotImageLayer,
+            values: [0, 0, 1, 1],
+            keyTimes: [0, NSNumber(value: snapshotFadeStart), NSNumber(value: snapshotFadeEnd), 1],
+            duration: duration,
+            key: "appshotSnapshotFadeIn"
+        )
+        animateOpacityKeyframes(
+            layer: shadowLayer,
+            values: [0, 0, 1],
+            keyTimes: [0, NSNumber(value: shadowStart), 1],
+            duration: duration,
+            key: "appshotShadowFadeIn"
+        )
+        animateFrame(
+            layer: appIconLayer,
+            from: startAccessoryFrame,
+            to: endAccessoryFrame,
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotAppIconMagicMove"
+        )
+        animateAccessoryOpacity(
+            layer: appIconLayer,
+            start: appIconStart,
+            fadeDuration: accessoryFadeProgressDuration,
+            duration: duration,
+            hasContent: appIconLayer.contents != nil,
+            key: "appshotAppIconFadeIn"
+        )
         CATransaction.commit()
+
+        activeProgressTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                let elapsed = max(CACurrentMediaTime() - magicMoveStart, 0)
+                let linearProgress = min(max(elapsed / max(duration, 0.001), 0), 1)
+                let easedProgress = self.easedMagicMoveProgress(linearProgress)
+                let accessoryStarted = linearProgress >= appIconStart
+                self.accessoryFadeStarted = self.accessoryFadeStarted || accessoryStarted
+                self.overlayWindow?.updateProgress(
+                    CGFloat(easedProgress),
+                    accessoryFadeStarted: self.accessoryFadeStarted
+                )
+                if linearProgress < 1 {
+                    try? await Task.sleep(nanoseconds: 8_333_333)
+                    continue
+                }
+                self.activeProgressTask = nil
+                self.progress = 1
+                self.setTransitionPhase("finished")
+                self.overlayWindow?.updateProgress(1, accessoryFadeStarted: self.accessoryFadeStarted)
+                self.transitionController.requestCompletion()
+                DispatchQueue.main.asyncAfter(deadline: .now() + AppshotTransitionTiming.completionDelay, execute: completion)
+                return
+            }
+        }
     }
 
     private func configureLayers(screenshotPath: String) {
         guard let rootLayer = layer else { return }
         rootLayer.masksToBounds = false
         rootLayer.backgroundColor = NSColor.clear.cgColor
+
+        contentLayer.name = "contentLayer"
+        transitionBackgroundLayer.name = "transitionBackgroundLayer"
+        shadowLayer.name = "shadowLayer"
+        containerLayer.name = "containerLayer"
+        shutterLayer.name = "shutterLayer"
+        snapshotEffectsLayer.name = "snapshotEffectsLayer"
+        snapshotImageLayer.name = "snapshotImageLayer"
+        snapshotMaskLayer.name = "snapshotMaskLayer"
+        snapshotMaskDebugLayer.name = "snapshotMaskDebugLayer"
+        appIconLayer.name = "appIconLayer"
+        titleLayer.name = "titleLayer"
 
         contentLayer.frame = bounds
         contentLayer.masksToBounds = false
@@ -1203,7 +1701,8 @@ final class AppshotTransitionView: NSView {
         if let image = NSImage(contentsOfFile: screenshotPath) {
             var proposedRect = CGRect(origin: .zero, size: image.size)
             snapshotImageLayer.contents = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil)
-            snapshotImageLayer.contentsGravity = .resizeAspectFill
+            snapshotImageSize = proposedRect.size
+            snapshotImageLayer.contentsGravity = .resizeAspect
             snapshotImageLayer.contentsScale = target.displayScaleFactor
             snapshotImageLayer.magnificationFilter = .linear
             snapshotImageLayer.minificationFilter = .trilinear
@@ -1238,14 +1737,7 @@ final class AppshotTransitionView: NSView {
         appIconLayer.opacity = 0
         contentLayer.addSublayer(appIconLayer)
 
-        titleLayer.string = readTitleText()
-        titleLayer.foregroundColor = target.destinationPrimaryTextColor.cgColor
-        titleLayer.fontSize = 13
-        titleLayer.alignmentMode = .center
-        titleLayer.truncationMode = .end
-        titleLayer.contentsScale = target.displayScaleFactor
         titleLayer.opacity = 0
-        contentLayer.addSublayer(titleLayer)
     }
 
     override func layout() {
@@ -1284,22 +1776,207 @@ final class AppshotTransitionView: NSView {
     }
 
     private func readEndFrame() -> CGRect {
-        let height = transitionSnapshotHeight.flatMap { value -> CGFloat? in
-            guard value.isFinite, value > 0 else { return nil }
-            return value
-        } ?? target.destinationFrame.height
-        let destination = target.appKitDestinationFrame(height: height)
+        let destination = target.appKitDestinationFrame
         return CGRect(
             x: destination.minX - viewportFrame.minX,
             y: destination.minY - viewportFrame.minY,
             width: destination.width,
-            height: height
+            height: destination.height
         )
     }
 
     private func applyFrame(_ frame: CGRect, to layer: CALayer) {
         layer.bounds = CGRect(origin: .zero, size: frame.size)
         layer.position = CGPoint(x: frame.midX, y: frame.midY)
+    }
+
+    private func setTransitionPhase(_ phase: String) {
+        activeTransitionPhase = phase
+        if activeTransitionPhaseHistory.last != phase {
+            activeTransitionPhaseHistory.append(phase)
+        }
+        if let state = AppshotCaptureTransitionState(rawValue: phase) {
+            transitionController.updateState(state)
+        }
+    }
+
+    private func animateFrame(
+        layer: CALayer,
+        from startFrame: CGRect,
+        to endFrame: CGRect,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction,
+        keyPrefix: String
+    ) {
+        animateBasic(
+            layer: layer,
+            keyPath: "bounds",
+            from: NSValue(rect: CGRect(origin: .zero, size: startFrame.size)),
+            to: NSValue(rect: CGRect(origin: .zero, size: endFrame.size)),
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "\(keyPrefix).bounds"
+        )
+        animateBasic(
+            layer: layer,
+            keyPath: "position",
+            from: NSValue(point: CGPoint(x: startFrame.midX, y: startFrame.midY)),
+            to: NSValue(point: CGPoint(x: endFrame.midX, y: endFrame.midY)),
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "\(keyPrefix).position"
+        )
+    }
+
+    private func animateCornerRadius(
+        layer: CALayer,
+        from startRadius: CGFloat,
+        to endRadius: CGFloat,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction,
+        key: String
+    ) {
+        animateBasic(
+            layer: layer,
+            keyPath: "cornerRadius",
+            from: NSNumber(value: Double(startRadius)),
+            to: NSNumber(value: Double(endRadius)),
+            duration: duration,
+            timingFunction: timingFunction,
+            key: key
+        )
+    }
+
+    private func animateShadowPath(
+        fromFrame startFrame: CGRect,
+        toFrame endFrame: CGRect,
+        fromRadius startRadius: CGFloat,
+        toRadius endRadius: CGFloat,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction
+    ) {
+        animateBasic(
+            layer: shadowLayer,
+            keyPath: "shadowPath",
+            from: CGPath(
+                roundedRect: CGRect(origin: .zero, size: startFrame.size),
+                cornerWidth: startRadius,
+                cornerHeight: startRadius,
+                transform: nil
+            ),
+            to: CGPath(
+                roundedRect: CGRect(origin: .zero, size: endFrame.size),
+                cornerWidth: endRadius,
+                cornerHeight: endRadius,
+                transform: nil
+            ),
+            duration: duration,
+            timingFunction: timingFunction,
+            key: "appshotShadowPath"
+        )
+    }
+
+    private func animateMaskPath(
+        layer: CAShapeLayer,
+        fromBounds startBounds: CGRect,
+        toBounds endBounds: CGRect,
+        fromRadius startRadius: CGFloat,
+        toRadius endRadius: CGFloat,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction,
+        key: String
+    ) {
+        animateBasic(
+            layer: layer,
+            keyPath: "path",
+            from: CGPath(
+                roundedRect: startBounds,
+                cornerWidth: startRadius,
+                cornerHeight: startRadius,
+                transform: nil
+            ),
+            to: CGPath(
+                roundedRect: endBounds,
+                cornerWidth: endRadius,
+                cornerHeight: endRadius,
+                transform: nil
+            ),
+            duration: duration,
+            timingFunction: timingFunction,
+            key: key
+        )
+    }
+
+    private func animateOpacityBasic(
+        layer: CALayer,
+        from startOpacity: Float,
+        to endOpacity: Float,
+        duration: TimeInterval,
+        key: String
+    ) {
+        animateBasic(
+            layer: layer,
+            keyPath: "opacity",
+            from: NSNumber(value: startOpacity),
+            to: NSNumber(value: endOpacity),
+            duration: max(duration, 0.001),
+            timingFunction: CAMediaTimingFunction(name: .easeInEaseOut),
+            key: key
+        )
+    }
+
+    private func animateOpacityKeyframes(
+        layer: CALayer,
+        values: [Float],
+        keyTimes: [NSNumber],
+        duration: TimeInterval,
+        key: String
+    ) {
+        let animation = CAKeyframeAnimation(keyPath: "opacity")
+        animation.values = values
+        animation.keyTimes = keyTimes
+        animation.duration = max(duration, 0.001)
+        animation.calculationMode = .linear
+        animation.timingFunctions = values.dropFirst().map { _ in CAMediaTimingFunction(name: .easeInEaseOut) }
+        layer.add(animation, forKey: key)
+    }
+
+    private func animateAccessoryOpacity(
+        layer: CALayer,
+        start: Double,
+        fadeDuration: Double,
+        duration: TimeInterval,
+        hasContent: Bool,
+        key: String
+    ) {
+        guard hasContent else {
+            return
+        }
+        let end = min(1, start + max(fadeDuration, 0.001))
+        animateOpacityKeyframes(
+            layer: layer,
+            values: [0, 0, 1, 1],
+            keyTimes: [0, NSNumber(value: start), NSNumber(value: end), 1],
+            duration: duration,
+            key: key
+        )
+    }
+
+    private func animateBasic(
+        layer: CALayer,
+        keyPath: String,
+        from startValue: Any,
+        to endValue: Any,
+        duration: TimeInterval,
+        timingFunction: CAMediaTimingFunction,
+        key: String
+    ) {
+        let animation = CABasicAnimation(keyPath: keyPath)
+        animation.fromValue = startValue
+        animation.toValue = endValue
+        animation.duration = max(duration, 0.001)
+        animation.timingFunction = timingFunction
+        layer.add(animation, forKey: key)
     }
 
     private func snapshotImageStartFrame(startFrame: CGRect, captureFrame: CGRect) -> CGRect {
@@ -1358,146 +2035,10 @@ final class AppshotTransitionView: NSView {
     }
 
     private func layoutAccessoryLayers(in frame: CGRect) {
-        let iconSize = AppshotLayerMetrics.appIconSize
-        appIconLayer.frame = CGRect(
-            x: frame.midX - iconSize / 2,
-            y: frame.minY + AppshotLayerMetrics.appIconBottomInset,
-            width: iconSize,
-            height: iconSize
-        )
-        titleLayer.frame = CGRect(
-            x: frame.minX + 8,
-            y: frame.minY + iconSize + AppshotLayerMetrics.titleBottomInset,
-            width: max(frame.width - 16, 0),
-            height: AppshotLayerMetrics.titleHeight
-        )
+        appIconLayer.frame = accessoryFrame(in: frame)
     }
 
-    private func readTitleText() -> String {
-        appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
-    private func animateFrameAfterHold(
-        layer: CALayer,
-        from: CGRect,
-        to: CGRect,
-        holdUntil: NSNumber,
-        duration: TimeInterval,
-        key: String
-    ) {
-        animateValueAfterHold(
-            layer: layer,
-            keyPath: "position",
-            values: [
-                CGPoint(x: from.midX, y: from.midY),
-                CGPoint(x: from.midX, y: from.midY),
-                CGPoint(x: to.midX, y: to.midY),
-            ],
-            holdUntil: holdUntil,
-            duration: duration,
-            key: "\(key).position"
-        )
-        animateValueAfterHold(
-            layer: layer,
-            keyPath: "bounds",
-            values: [
-                CGRect(origin: .zero, size: from.size),
-                CGRect(origin: .zero, size: from.size),
-                CGRect(origin: .zero, size: to.size),
-            ],
-            holdUntil: holdUntil,
-            duration: duration,
-            key: "\(key).bounds"
-        )
-    }
-
-    private func animateValueAfterHold(layer: CALayer, keyPath: String, values: [Any], holdUntil: NSNumber, duration: TimeInterval, key: String) {
-        let animation = CAKeyframeAnimation(keyPath: keyPath)
-        animation.values = values
-        animation.keyTimes = [0, holdUntil, 1]
-        animation.duration = duration
-        animation.timingFunctions = [
-            CAMediaTimingFunction(name: .linear),
-            AppshotTransitionTiming.magicMoveTimingFunction(),
-        ]
-        layer.add(animation, forKey: key)
-    }
-
-    private func animateShadowPath(
-        from: CGRect,
-        to: CGRect,
-        initialRadius: CGFloat,
-        targetRadius: CGFloat,
-        holdUntil: NSNumber,
-        duration: TimeInterval
-    ) {
-        let initialPath = CGPath(
-            roundedRect: CGRect(origin: .zero, size: from.size),
-            cornerWidth: initialRadius,
-            cornerHeight: initialRadius,
-            transform: nil
-        )
-        let targetPath = CGPath(
-            roundedRect: CGRect(origin: .zero, size: to.size),
-            cornerWidth: targetRadius,
-            cornerHeight: targetRadius,
-            transform: nil
-        )
-        let animation = CAKeyframeAnimation(keyPath: "shadowPath")
-        animation.values = [initialPath, initialPath, targetPath]
-        animation.keyTimes = [0, holdUntil, 1]
-        animation.duration = duration
-        animation.timingFunctions = [
-            CAMediaTimingFunction(name: .linear),
-            AppshotTransitionTiming.magicMoveTimingFunction(),
-        ]
-        shadowLayer.add(animation, forKey: "appshotShadowPath")
-    }
-
-    private func animateCornerRadiusAfterHold(
-        layer: CALayer,
-        from: CGFloat,
-        to: CGFloat,
-        holdUntil: NSNumber,
-        duration: TimeInterval,
-        key: String
-    ) {
-        animateValueAfterHold(
-            layer: layer,
-            keyPath: "cornerRadius",
-            values: [from, from, to],
-            holdUntil: holdUntil,
-            duration: duration,
-            key: key
-        )
-        layer.cornerRadius = to
-    }
-
-    private func animateAccessoryFrame(from: CGRect, to: CGRect, holdUntil: NSNumber, duration: TimeInterval) {
-        let fromIconFrame = accessoryIconFrame(in: from)
-        let toIconFrame = accessoryIconFrame(in: to)
-        animateFrameAfterHold(
-            layer: appIconLayer,
-            from: fromIconFrame,
-            to: toIconFrame,
-            holdUntil: holdUntil,
-            duration: duration,
-            key: "appshotAppIconMagicMove"
-        )
-
-        let fromTitleFrame = accessoryTitleFrame(in: from)
-        let toTitleFrame = accessoryTitleFrame(in: to)
-        animateFrameAfterHold(
-            layer: titleLayer,
-            from: fromTitleFrame,
-            to: toTitleFrame,
-            holdUntil: holdUntil,
-            duration: duration,
-            key: "appshotTitleMagicMove"
-        )
-    }
-
-    private func accessoryIconFrame(in frame: CGRect) -> CGRect {
+    private func accessoryFrame(in frame: CGRect) -> CGRect {
         let iconSize = AppshotLayerMetrics.appIconSize
         return CGRect(
             x: frame.midX - iconSize / 2,
@@ -1507,35 +2048,45 @@ final class AppshotTransitionView: NSView {
         )
     }
 
-    private func accessoryTitleFrame(in frame: CGRect) -> CGRect {
-        let iconSize = AppshotLayerMetrics.appIconSize
-        return CGRect(
-            x: frame.minX + 8,
-            y: frame.minY + iconSize + AppshotLayerMetrics.titleBottomInset,
-            width: max(frame.width - 16, 0),
-            height: AppshotLayerMetrics.titleHeight
-        )
+    private func normalizedMagicProgress(globalProgress: NSNumber) -> NSNumber {
+        let ready = AppshotTransitionTiming.readyForMagicMove.doubleValue
+        let progress = (globalProgress.doubleValue - ready) / max(1 - ready, 0.001)
+        return NSNumber(value: min(1, max(0, progress)))
     }
 
-    private func animateDelayedOpacity(
-        layer: CALayer,
-        from: Float,
-        to: Float,
-        startProgress: NSNumber,
-        duration: TimeInterval,
-        key: String
-    ) {
-        let start = max(0, min(startProgress.doubleValue, 0.99))
-        let beginTime = layer.convertTime(CACurrentMediaTime(), from: nil) + duration * start
-        let animation = CABasicAnimation(keyPath: "opacity")
-        animation.fromValue = from
-        animation.toValue = to
-        animation.beginTime = beginTime
-        animation.duration = max(duration * (1 - start), 0.001)
-        animation.fillMode = .backwards
-        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-        layer.opacity = to
-        layer.add(animation, forKey: key)
+    private func easedMagicMoveProgress(_ progress: Double) -> Double {
+        cubicBezierY(forX: progress, x1: 0.16, y1: 0, x2: 0.3, y2: 1)
+    }
+
+    private func cubicBezierY(forX x: Double, x1: Double, y1: Double, x2: Double, y2: Double) -> Double {
+        let targetX = clampedUnit(x)
+        var low = 0.0
+        var high = 1.0
+        var t = targetX
+        for _ in 0..<12 {
+            let currentX = cubicBezierValue(t: t, p1: x1, p2: x2)
+            if abs(currentX - targetX) < 0.0005 {
+                break
+            }
+            if currentX < targetX {
+                low = t
+            } else {
+                high = t
+            }
+            t = (low + high) / 2
+        }
+        return clampedUnit(cubicBezierValue(t: t, p1: y1, p2: y2))
+    }
+
+    private func cubicBezierValue(t: Double, p1: Double, p2: Double) -> Double {
+        let inverse = 1 - t
+        return 3 * inverse * inverse * t * p1
+            + 3 * inverse * t * t * p2
+            + t * t * t
+    }
+
+    private func clampedUnit(_ value: Double) -> Double {
+        min(max(value, 0), 1)
     }
 
     private func animateOpacity(layer: CALayer, values: [Float], keyTimes: [NSNumber], duration: TimeInterval, key: String) {
@@ -1569,6 +2120,8 @@ final class AppshotTransitionView: NSView {
             "elapsedSeconds": CFAbsoluteTimeGetCurrent() - startedAt,
             "imagePath": imageStatus == "written" ? imagePath : NSNull(),
             "imageStatus": imageStatus,
+            "transitionPhase": activeTransitionPhase,
+            "transitionPhaseHistory": activeTransitionPhaseHistory,
             "transitionBackgroundOpacity": Double(readPresentationOpacity(transitionBackgroundLayer)),
             "shutterOpacity": Double(readPresentationOpacity(shutterLayer)),
             "coverOpacity": Double(readPresentationOpacity(shutterLayer)),
@@ -1583,11 +2136,38 @@ final class AppshotTransitionView: NSView {
             "screenshotCornerRadius": Double(AppshotLayerMetrics.screenshotCornerRadius),
             "initialCornerRadius": Double(readInitialCornerRadius()),
             "targetCornerRadius": Double(readTargetCornerRadius()),
+            "readyForMagicMoveProgress": AppshotTransitionTiming.readyForMagicMove.doubleValue,
+            "magicMoveFadeDuration": AppshotTransitionTiming.magicMoveFadeDuration,
+            "magicMoveFadeEndProgress": AppshotTransitionTiming.magicMoveFadeEndProgress(
+                duration: activeAnimationDuration
+            ).doubleValue,
+            "accessoryFadeStartProgress": AppshotTransitionTiming.accessoryFadeStartProgress.doubleValue,
+            "accessoryFadeDuration": AppshotTransitionTiming.accessoryFadeDuration,
             "coverBackgroundColor": serializeColor(shutterLayer.backgroundColor),
             "shutterBackgroundColor": serializeColor(shutterLayer.backgroundColor),
             "snapshotBackgroundColor": serializeColor(snapshotEffectsLayer.backgroundColor),
             "snapshotImageHasContents": snapshotImageLayer.contents != nil,
             "snapshotImageContentsScale": Double(snapshotImageLayer.contentsScale),
+            "snapshotImageSize": serialize(rect: CGRect(origin: .zero, size: snapshotImageSize)),
+            "layerTypes": [
+                "transitionBackgroundLayer": String(describing: type(of: transitionBackgroundLayer)),
+                "shadowLayer": String(describing: type(of: shadowLayer)),
+                "containerLayer": String(describing: type(of: containerLayer)),
+                "shutterLayer": String(describing: type(of: shutterLayer)),
+                "snapshotEffectsLayer": String(describing: type(of: snapshotEffectsLayer)),
+                "snapshotImageLayer": String(describing: type(of: snapshotImageLayer)),
+                "snapshotMaskLayer": String(describing: type(of: snapshotMaskLayer)),
+                "snapshotMaskDebugLayer": String(describing: type(of: snapshotMaskDebugLayer)),
+                "appIconLayer": String(describing: type(of: appIconLayer)),
+                "titleLayer": String(describing: type(of: titleLayer)),
+            ],
+            "layerHierarchy": [
+                "rootSublayers": readLayerNames(layer?.sublayers),
+                "contentLayerSublayers": readLayerNames(contentLayer.sublayers),
+                "containerLayerSublayers": readLayerNames(containerLayer.sublayers),
+                "snapshotEffectsLayerSublayers": readLayerNames(snapshotEffectsLayer.sublayers),
+                "snapshotEffectsLayerMask": readLayerName(snapshotEffectsLayer.mask),
+            ],
             "expectedStartFrame": serialize(rect: readStartFrame()),
             "expectedStartCaptureFrame": serialize(rect: readStartCaptureFrame()),
             "expectedStartContentFrame": serialize(rect: readStartFrame()),
@@ -1599,7 +2179,10 @@ final class AppshotTransitionView: NSView {
                 startFrame: readStartFrame(),
                 captureFrame: readStartCaptureFrame()
             )),
+            "expectedSnapshotImageEndFrame": serialize(rect: CGRect(origin: .zero, size: readEndFrame().size)),
             "expectedEndFrame": serialize(rect: readEndFrame()),
+            "transitionSnapshotHeight": transitionSnapshotHeight.map(Double.init) ?? NSNull(),
+            "transitionSnapshotHeightAffectsNativeTarget": false,
             "containerFrame": serialize(rect: readPresentationFrame(containerLayer)),
             "shutterFrame": serialize(rect: readPresentationFrame(shutterLayer)),
             "coverFrame": serialize(rect: readPresentationFrame(shutterLayer)),
@@ -1654,6 +2237,19 @@ final class AppshotTransitionView: NSView {
         (layer.presentation() ?? layer).cornerRadius
     }
 
+    private func readLayerNames(_ layers: [CALayer]?) -> [String] {
+        layers?.map { layer in
+            layer.name ?? String(describing: type(of: layer))
+        } ?? []
+    }
+
+    private func readLayerName(_ layer: CALayer?) -> Any {
+        guard let layer else {
+            return NSNull()
+        }
+        return layer.name ?? String(describing: type(of: layer))
+    }
+
     private func serializeColor(_ color: CGColor?) -> Any {
         guard let color else {
             return NSNull()
@@ -1671,77 +2267,30 @@ final class AppshotTransitionView: NSView {
     }
 }
 
-func renderTransitionSnapshot(
-    from filePath: String,
-    outputDir: String,
-    captureId: String,
-    target: AppshotTransitionTarget,
-    calibration: AppshotTransitionCalibration
-) -> String? {
-    let snapshotPath = (outputDir as NSString).appendingPathComponent("\(captureId)-transition.png")
-    do {
-        if FileManager.default.fileExists(atPath: snapshotPath) {
-            try FileManager.default.removeItem(atPath: snapshotPath)
-        }
-        guard let sourceImage = readPNGImage(filePath: filePath) else {
-            return nil
-        }
-        let scale = max(target.transitionSnapshotScale, 1)
-        let snapshotWidth = max(Int(ceil(target.destinationFrame.width * scale)), 1)
-        let snapshotHeight = max(Int(ceil(CGFloat(calibration.transitionSnapshotHeight ?? Double(target.destinationFrame.height)) * scale)), 1)
-        guard let context = CGContext(
-            data: nil,
-            width: snapshotWidth,
-            height: snapshotHeight,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: CGColorSpaceCreateDeviceRGB(),
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return nil
-        }
-        context.interpolationQuality = .high
-        context.setFillColor(target.destinationBackgroundColor.cgColor)
-        context.fill(CGRect(x: 0, y: 0, width: snapshotWidth, height: snapshotHeight))
-        context.draw(sourceImage, in: aspectFillRect(
-            sourceSize: CGSize(width: sourceImage.width, height: sourceImage.height),
-            targetSize: CGSize(width: snapshotWidth, height: snapshotHeight)
-        ))
-        guard let snapshotImage = context.makeImage() else {
-            return nil
-        }
-        try writeProbePNGImage(snapshotImage, filePath: snapshotPath)
-        return snapshotPath
-    } catch {
-        return nil
-    }
-}
-
-private func readPNGImage(filePath: String) -> CGImage? {
-    let url = URL(fileURLWithPath: filePath)
-    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-        return nil
-    }
-    return CGImageSourceCreateImageAtIndex(source, 0, nil)
-}
-
-private func aspectFillRect(sourceSize: CGSize, targetSize: CGSize) -> CGRect {
+private func aspectFitRect(
+    sourceSize: CGSize,
+    targetBounds: CGRect,
+    verticalAlignment: AppshotVerticalAlignment
+) -> CGRect {
     guard sourceSize.width > 0,
           sourceSize.height > 0,
-          targetSize.width > 0,
-          targetSize.height > 0
+          targetBounds.width > 0,
+          targetBounds.height > 0
     else {
-        return CGRect(origin: .zero, size: targetSize)
+        return targetBounds
     }
-    let scale = max(targetSize.width / sourceSize.width, targetSize.height / sourceSize.height)
+    let scale = min(targetBounds.width / sourceSize.width, targetBounds.height / sourceSize.height)
     let width = sourceSize.width * scale
     let height = sourceSize.height * scale
-    return CGRect(
-        x: (targetSize.width - width) / 2,
-        y: (targetSize.height - height) / 2,
-        width: width,
-        height: height
-    )
+    let x = targetBounds.midX - width / 2
+    let y: CGFloat
+    switch verticalAlignment {
+    case .center:
+        y = targetBounds.midY - height / 2
+    case .bottom:
+        y = targetBounds.minY
+    }
+    return CGRect(x: x, y: y, width: width, height: height)
 }
 
 private func readApplicationIconImage(bundleIdentifier: String?) -> NSImage? {
@@ -1760,6 +2309,21 @@ private func readApplicationIconImage(bundleIdentifier: String?) -> NSImage? {
         return nil
     }
     return NSWorkspace.shared.icon(forFile: appURL.path)
+}
+
+private func serializeCGColorForProbe(_ color: CGColor?) -> Any {
+    guard let color else {
+        return NSNull()
+    }
+    guard let components = color.components else {
+        return [
+            "componentCount": color.numberOfComponents,
+        ]
+    }
+    return [
+        "componentCount": color.numberOfComponents,
+        "components": components.map(Double.init),
+    ]
 }
 
 private func readColor(_ value: String?) -> NSColor? {

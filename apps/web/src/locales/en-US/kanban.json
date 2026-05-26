@@ -92,6 +92,7 @@
   "property.status": "Status",
   "selection.clearAria": "Clear selected issues",
   "selection.selected": "selected",
+  "statusManager.aria": "Manage statuses",
   "sort.aria": "Sort issues",
   "sort.asc": "Ascending ↑",
   "sort.created": "Created",

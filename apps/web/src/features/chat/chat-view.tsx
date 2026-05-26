@@ -19,23 +19,26 @@ import { toastManager } from '~/components/ui/toast'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { cn } from '~/lib/cn'
-import { isElectron, nativeIpc, platform, type MacAppshotCaptureResponse, type MacAppshotHotkeyEvent } from '~/lib/electron'
+import type { MacAppshotCaptureResponse, MacAppshotHotkeyEvent } from '~/lib/electron'
+import { isElectron, nativeIpc, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
 import { SessionApprovalList } from '../approval/approval-card'
-import { createCradleAppshotFilePart } from './appshot-attachment'
+import { createCradleAppshotFilePart } from './appshot-attachment-model'
 import { getChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatMinimapHandle } from './chat-minimap'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
-import { Composer, readComposerActionContext, type ComposerSlashCommandActionContext, type ComposerSlashCommandActionResult, type ComposerSlashCommandActionTools } from './composer'
-import { modelSupportsAttachments } from './composer-attachment-state'
-import type { PendingAppshotAttachment } from './composer-attachments'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, getFallbackRuntimeSlashCommands, mergeChatSlashCommands, withSlashCommandAvailability } from './chat-slash-commands'
+import { Composer } from './composer'
+import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
+import { readComposerActionContext } from './composer-action-context'
+import { modelSupportsAttachments } from './composer-attachment-state'
+import type { PendingAppshotAttachment } from './composer-attachments'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
 import type { ChatContinuationMode, ChatQueueItem } from './use-chat-session'
@@ -70,12 +73,11 @@ interface ChatScrollMetrics {
 
 const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
-const APPSHOT_CAPTURE_ANIMATION_DURATION = 0.35
+const APPSHOT_CAPTURE_ANIMATION_DURATION = 0.88
 const APPSHOT_TRANSITION_SPRING_RESPONSE = 0.35
 const APPSHOT_TRANSITION_SPRING_DAMPING_FRACTION = 0.73
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
-const APPSHOT_TITLED_SNAPSHOT_BASE_HEIGHT = 144
-const APPSHOT_TITLE_LINE_HEIGHT = 16.021484375
+const PATH_SEGMENT_RE = /[\\/]/
 const SessionBindingSchema = z
   .object({
     providerTargetId: z.string().nullable(),
@@ -92,12 +94,8 @@ function readAppshotCaptureAsset(response: MacAppshotCaptureResponse) {
   return response.asset
 }
 
-function readAppshotTransitionSnapshotAsset(response: MacAppshotCaptureResponse) {
-  return response.transitionSnapshotAsset
-}
-
 function readFileNameFromPath(path: string, fallback: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? fallback
+  return path.split(PATH_SEGMENT_RE).filter(Boolean).at(-1) ?? fallback
 }
 
 function createAppshotRequestId(): string {
@@ -129,16 +127,6 @@ function readOptimisticAppshotTransitionMetrics(
     transitionSpringDampingFraction: APPSHOT_TRANSITION_SPRING_DAMPING_FRACTION,
     transitionSpringResponse: APPSHOT_TRANSITION_SPRING_RESPONSE,
   }
-}
-
-function readCodexTransitionSnapshotHeight(windowInfo: MacAppshotHotkeyEvent['sourceWindow'] | null | undefined): number | null {
-  const title = windowInfo?.title?.trim() ?? ''
-  const appName = windowInfo?.appName?.trim() ?? ''
-  if (!title && !appName) {
-    return null
-  }
-  const scale = Math.max(window.devicePixelRatio || 1, 1)
-  return APPSHOT_TITLED_SNAPSHOT_BASE_HEIGHT + Math.ceil(APPSHOT_TITLE_LINE_HEIGHT * scale) / scale
 }
 
 function readPositiveMetric(value: number | null | undefined): number | null {
@@ -179,7 +167,7 @@ function ChatMessageListPane({
   scrollMetrics,
   minimapRef,
   onScrollToIndex,
-  onScrollTo
+  onScrollTo,
 }: {
   messages: ReturnType<typeof useChatSession>['messages']
   status: ReturnType<typeof useChatSession>['status']
@@ -233,7 +221,7 @@ function ChatMessageListPane({
             keepMounted={keepMountedIndices}
             onScroll={onVirtualScroll}
           >
-            {messages.map((message) => (
+            {messages.map(message => (
               <MessageBubbleWithStreamState key={message.id} message={message} />
             ))}
           </Virtualizer>
@@ -288,7 +276,7 @@ function ChatMessageListPane({
 }
 
 function ChatAwaitBanner({
-  awaitSummary
+  awaitSummary,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
 }) {
@@ -337,7 +325,7 @@ function ChatComposerSection({
   supportsAttachments,
   appendExternalFileParts,
   appendExternalFilePartsKey,
-  pendingAppshots
+  pendingAppshots,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
@@ -346,7 +334,7 @@ function ChatComposerSection({
   onSend: (
     text: string,
     files: FileUIPart[],
-    options?: { invertContinuationMode?: boolean }
+    options?: { invertContinuationMode?: boolean },
   ) => void
   onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   onStop: () => void
@@ -357,7 +345,7 @@ function ChatComposerSection({
   slashCommands: ChatComposerSlashCommand[]
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
-  droppedPath: { text: string; ts: number } | null
+  droppedPath: { text: string, ts: number } | null
   sessionTokens: number
   sessionContextWindow: number | null
   supportsAttachments: boolean
@@ -407,7 +395,7 @@ export function ChatView({
   composerContextBar,
   sendOverridesRef,
   composerModel,
-  placeholder
+  placeholder,
 }: ChatViewProps) {
   const {
     messages,
@@ -418,7 +406,7 @@ export function ChatView({
     isReady,
     queueItems,
     cancelQueueItem,
-    reorderQueueItems
+    reorderQueueItems,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const { data: chatPreferences } = useChatPreferencesQuery()
@@ -427,17 +415,17 @@ export function ChatView({
     queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 60_000,
-    retry: false
+    retry: false,
   })
   const isAwaiting = awaitSummary?.awaiting ?? false
-  const [droppedPath, setDroppedPath] = useState<{ text: string; ts: number } | null>(null)
+  const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [sessionTokens, setSessionTokens] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const { data: sessionBinding } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     enabled: !!sessionId,
     staleTime: 60_000,
-    select: (data) => (data ? SessionBindingSchema.parse(data) : null)
+    select: data => (data ? SessionBindingSchema.parse(data) : null),
   })
   const boundProviderTarget = useMemo(() => {
     return sessionBinding?.providerTargetId ? { id: sessionBinding.providerTargetId } : null
@@ -450,7 +438,7 @@ export function ChatView({
     if (!sessionBinding?.modelId) {
       return null
     }
-    return sessionModels.find((candidate) => candidate.id === sessionBinding.modelId) ?? null
+    return sessionModels.find(candidate => candidate.id === sessionBinding.modelId) ?? null
   }, [composerModel, sessionBinding?.modelId, sessionModels])
   const sessionContextWindow = useMemo(() => {
     const contextWindow = currentSessionModel?.capabilities.contextWindow
@@ -506,7 +494,7 @@ export function ChatView({
   const isStreaming = status === 'streaming'
 
   // Keep the streaming message mounted to prevent re-animation on scroll recycle
-  const generatingIds = useChatStore((s) => s.generatingMessageIds)
+  const generatingIds = useChatStore(s => s.generatingMessageIds)
   const keepMountedIndices = useMemo(() => {
     if (generatingIds.size === 0) {
       return undefined
@@ -521,9 +509,9 @@ export function ChatView({
   }, [generatingIds, messages])
 
   const lastMsg = messages.at(-1)
-  const assistantHasVisibleText =
-    lastMsg?.role === 'assistant' &&
-    lastMsg.parts.some((p) => p.type === 'text' && (p as { text: string }).text.trim().length > 0)
+  const assistantHasVisibleText
+    = lastMsg?.role === 'assistant'
+      && lastMsg.parts.some(p => p.type === 'text' && (p as { text: string }).text.trim().length > 0)
   const showThinking = isStreaming && !assistantHasVisibleText
 
   const scrollToBottom = useCallback(() => {
@@ -543,7 +531,7 @@ export function ChatView({
     return {
       offset: vp.scrollTop,
       scrollHeight: vp.scrollHeight,
-      viewportHeight: vp.offsetHeight
+      viewportHeight: vp.offsetHeight,
     }
   }, [])
 
@@ -629,9 +617,9 @@ export function ChatView({
         const viewportHeight = vp.offsetHeight
 
         if (
-          scrollTop !== lastScrollTop ||
-          scrollHeight !== lastScrollHeight ||
-          viewportHeight !== lastViewportHeight
+          scrollTop !== lastScrollTop
+          || scrollHeight !== lastScrollHeight
+          || viewportHeight !== lastViewportHeight
         ) {
           lastScrollTop = scrollTop
           lastScrollHeight = scrollHeight
@@ -670,12 +658,10 @@ export function ChatView({
 
   const captureAppshotIntoComposer = useCallback(async ({
     bundleIdentifier,
-    sourceWindow,
     targetWindow,
     tools,
   }: {
     bundleIdentifier?: string
-    sourceWindow?: MacAppshotHotkeyEvent['sourceWindow']
     targetWindow?: MacAppshotHotkeyEvent['targetWindow']
     tools?: ComposerSlashCommandActionTools
   }) => {
@@ -684,11 +670,13 @@ export function ChatView({
     }
 
     const requestId = createAppshotRequestId()
+    // The native transition needs the pending slot in the DOM before measuring destination geometry.
+    // eslint-disable-next-line react-dom/no-flush-sync
     flushSync(() => {
       setPendingAppshots(current => [createPendingAppshot(requestId), ...current])
     })
 
-    const transitionSnapshotHeight = readCodexTransitionSnapshotHeight(sourceWindow)
+    const transitionSnapshotHeight = APPSHOT_ATTACHMENT_SLOT_HEIGHT
     const contextOptions = {
       pendingAppshotRequestId: requestId,
       transitionSnapshotHeight,
@@ -708,16 +696,6 @@ export function ChatView({
           ...readOptimisticAppshotTransitionMetrics(context, transitionSnapshotHeight),
         }
       : pending))
-    console.debug('[appshot] capture starting:', {
-      requestId,
-      targetWindow,
-      sourceWindow,
-      bundleIdentifier,
-      transitionSnapshotHeight,
-      nativeTransitionSnapshotHeight,
-      animationTarget: context.animationTarget,
-    })
-
     try {
       const response = await nativeIpc.macCapture.captureAppshot({
         sink: 'file',
@@ -726,13 +704,6 @@ export function ChatView({
         animationTarget: context.animationTarget,
         targetWindow,
         transitionSnapshotHeight: nativeTransitionSnapshotHeight,
-      })
-      console.debug('[appshot] capture completed:', {
-        requestId,
-        strategy: response.strategy,
-        transitionGeometry: response.strategy === 'cradle-native'
-          ? response.capture.appshot.transitionGeometry
-          : null,
       })
 
       setPendingAppshots(current => current.map(pending => pending.requestId === requestId
@@ -754,12 +725,14 @@ export function ChatView({
       if (!asset) {
         throw new Error('Appshot capture did not return an image asset.')
       }
-      const transitionSnapshotAsset = readAppshotTransitionSnapshotAsset(response)
       const transitionMetrics = readAppshotTransitionMetrics(response, context.animationTarget?.transitionSnapshotScale)
-      const captureWindow = response.strategy === 'cradle-native' ? response.capture.window : null
+      const captureWindow = response.capture.window
       const filename = readFileNameFromPath(asset.path, 'appshot.png')
+      const transitionSnapshotAsset = response.transitionSnapshotAsset
 
       await waitForAppshotAnimation(response)
+      // Keep placeholder removal and final card insertion in the same frame to avoid a visible gap.
+      // eslint-disable-next-line react-dom/no-flush-sync
       flushSync(() => {
         setPendingAppshots(current => current.filter(pending => pending.requestId !== requestId))
         setExternalAppshotFileParts([createCradleAppshotFilePart({
@@ -772,9 +745,7 @@ export function ChatView({
           appName: captureWindow?.appName ?? null,
           windowTitle: captureWindow?.title ?? null,
           bundleIdentifier: captureWindow?.bundleId ?? bundleIdentifier ?? null,
-          appIconDataUrl: response.strategy === 'cradle-native'
-            ? captureWindow?.appIconDataUrl ?? null
-            : null,
+          appIconDataUrl: captureWindow?.appIconDataUrl ?? null,
         })])
         setExternalAppshotFilePartsKey(k => k + 1)
       })
@@ -788,7 +759,6 @@ export function ChatView({
   // Listen for Cmd+Cmd hotkey appshot from main process
   useEffect(() => {
     return window.cradle?.ipc.on('capture:appshot-hotkey', (payload) => {
-      console.debug('[appshot] hotkey event received:', payload)
       if (!nativeIpc || !supportsAttachments) {
         console.warn('[appshot] hotkey capture skipped:', {
           hasNativeIpc: Boolean(nativeIpc),
@@ -801,7 +771,6 @@ export function ChatView({
         try {
           await captureAppshotIntoComposer({
             targetWindow: event?.targetWindow,
-            sourceWindow: event?.sourceWindow ?? event?.context?.window,
             bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
           })
         }
@@ -828,7 +797,7 @@ export function ChatView({
         : defaultContinuationMode
       sendMessage(text, { ...overrides, continuationMode }, files)
     },
-    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef]
+    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef],
   )
 
   const handleSlashCommandAction = useCallback(async (
@@ -900,7 +869,7 @@ export function ChatView({
           setDroppedPath({ text: path, ts: Date.now() })
         }
       }}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={e => e.preventDefault()}
     >
       <ChatMessageListPane
         messages={messages}
@@ -925,8 +894,8 @@ export function ChatView({
       <ChatComposerSection
         awaitSummary={awaitSummary}
         queueItems={queueItems}
-        onCancelQueueItem={(queueItemId) => void cancelQueueItem(queueItemId)}
-        onReorderQueueItems={(queueItemIds) => void reorderQueueItems(queueItemIds)}
+        onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+        onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
         onSend={handleSend}
         onSlashCommandAction={handleSlashCommandAction}
         onStop={stop}

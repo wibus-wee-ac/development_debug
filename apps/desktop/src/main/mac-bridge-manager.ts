@@ -21,6 +21,10 @@ import {
   MacDisplayRecordingStartResultSchema,
   MacWindowRecordingStartRequestSchema,
   MacScreenCaptureKitDiagnosticsSchema,
+  MacInputSyntheticBareModifierRequestSchema,
+  MacInputSyntheticBareModifierResultSchema,
+  MacInputSyntheticBothCommandRequestSchema,
+  MacInputSyntheticBothCommandResultSchema,
   type MacBridgeRuntimeStatus,
   type MacBridgeStatus,
   type MacAppshotCaptureFrontmostWindowRequest,
@@ -38,6 +42,10 @@ import {
   type MacHotkeyTriggeredEvent,
   type MacInputConfigureRequest,
   type MacInputConfigureResult,
+  type MacInputSyntheticBareModifierRequest,
+  type MacInputSyntheticBareModifierResult,
+  type MacInputSyntheticBothCommandRequest,
+  type MacInputSyntheticBothCommandResult,
   MacPermissionSettingsResultSchema,
   type MacPermissionSettingsRequest,
   type MacPermissionSettingsResult,
@@ -312,6 +320,22 @@ export class MacBridgeManager {
   async configureInput(params: MacInputConfigureRequest): Promise<MacInputConfigureResult> {
     const result = await this.request<unknown>('mac.input.configure', params)
     return MacInputConfigureResultSchema.parse(result)
+  }
+
+  async synthesizeBothCommandHotkey(
+    params: MacInputSyntheticBothCommandRequest = {},
+  ): Promise<MacInputSyntheticBothCommandResult> {
+    const parsedParams = MacInputSyntheticBothCommandRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.input.syntheticBothCommand', parsedParams, { timeoutMs: 5_000 })
+    return MacInputSyntheticBothCommandResultSchema.parse(result)
+  }
+
+  async synthesizeBareModifierHotkey(
+    params: MacInputSyntheticBareModifierRequest,
+  ): Promise<MacInputSyntheticBareModifierResult> {
+    const parsedParams = MacInputSyntheticBareModifierRequestSchema.parse(params)
+    const result = await this.request<unknown>('mac.input.syntheticBareModifier', parsedParams, { timeoutMs: 5_000 })
+    return MacInputSyntheticBareModifierResultSchema.parse(result)
   }
 
   async captureFrontmostWindow(params: MacCaptureFrontmostWindowRequest): Promise<MacCaptureFrontmostWindowResult> {

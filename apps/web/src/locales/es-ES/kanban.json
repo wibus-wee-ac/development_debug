@@ -100,6 +100,7 @@
   "sort.updated": "Actualizado",
   "selection.clearAria": "Limpiar issues seleccionados",
   "selection.selected": "seleccionados",
+  "statusManager.aria": "Gestionar estados",
   "statusManager.add": "Agregar",
   "statusManager.addPlaceholder": "Agregar estado...",
   "statusManager.title": "Gestión de estados",

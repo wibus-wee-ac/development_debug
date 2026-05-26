@@ -12,14 +12,15 @@ import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useStreamdownStore } from '~/store/streamdown'
 
+import { AppshotAttachmentCard } from './appshot-attachment'
+import { readCradleAppshotMetadata } from './appshot-attachment-model'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
-import { AppshotAttachmentCard, readCradleAppshotMetadata } from './appshot-attachment'
 import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
-import { describeToolCall } from './tool-ui-classifier'
 import type { ChatToolEntity } from './chat-tool-entities'
+import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
