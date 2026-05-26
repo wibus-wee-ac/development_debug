@@ -32,7 +32,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **codex-session-capture.test.ts**: Codex CLI JSONL metadata capture rules for cli-tui resume bindings.
 - **chronicle.test.ts**: Chronicle DB-backed snapshot/accessibility/memory ingest, source deduplication, snapshot frame serving, local model resource status, memory search, audio evidence contracts, Slack ingest, activity pipeline tick progression, and summarize error event persistence.
 - **chronicle-daemon-manager.test.ts**: Chronicle Rust daemon launch argument construction for opt-in microphone segment capture.
-- **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy.
+- **agent.test.ts**: agent identity capability CRUD + filters + avatar URL policy + local Claude/Codex import idempotence.
 - **workflow-rules.test.ts**: workflow-rules HTTP CRUD + filesystem ownership.
 - **profiles.test.ts**: profile CRUD, secret masking, provider metadata endpoints, and Available Model registry mapping persistence.
 - **external-provider-sources.test.ts**: host-owned external provider source refresh, record/profile projection, secret storage, missing-record handling, Cradle-owned provider enabled state, and source error persistence.

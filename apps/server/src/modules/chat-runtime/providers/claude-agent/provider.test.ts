@@ -37,6 +37,7 @@ function createAsyncQuery(
     },
     close: vi.fn(),
     interrupt: vi.fn(),
+    setModel: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue(commands),
   }
 }
@@ -67,7 +68,22 @@ function createPendingQuery() {
       resolveNext?.()
     }),
     interrupt: vi.fn().mockResolvedValue(undefined),
+    setModel: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue([]),
+  }
+}
+
+function createModelSwitchQuery(items: unknown[]) {
+  let releaseSetModel: (() => void) | null = null
+  const query = createAsyncQuery(items)
+  query.setModel = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
+    releaseSetModel = resolve
+  }))
+  return {
+    query,
+    releaseSetModel: () => {
+      releaseSetModel?.()
+    },
   }
 }
 
@@ -115,6 +131,18 @@ function createRuntimeSession(): RuntimeSession {
       workspacePath: '/tmp/cradle-workspace',
       models: { currentModelId: null },
     }),
+  }
+}
+
+function createResumedRuntimeSession(overrides: Partial<RuntimeSession> = {}): RuntimeSession {
+  return {
+    ...createRuntimeSession(),
+    providerSessionId: 'claude-session-1',
+    providerStateSnapshot: JSON.stringify({
+      workspacePath: '/tmp/cradle-workspace',
+      models: { currentModelId: 'claude-sonnet-4-20250514' },
+    }),
+    ...overrides,
   }
 }
 
@@ -257,6 +285,137 @@ describe('claudeAgentProvider MCP integration', () => {
       }),
     }))
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
+  })
+
+  it('resumes the existing Claude Agent session and applies the requested model before sending the next prompt', async () => {
+    const { query: activeQuery, releaseSetModel } = createModelSwitchQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-2',
+        message: {
+          content: [{ type: 'text', text: 'Context preserved' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-2',
+        usage: { input_tokens: 3, output_tokens: 2 },
+      },
+    ])
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createResumedRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-claude-agent-model-switch',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue with the same context'),
+      modelId: 'claude-opus-4-20250514',
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunk = stream.next()
+    await vi.waitFor(() => {
+      expect(sdkMocks.query).toHaveBeenCalledOnce()
+      expect(activeQuery.setModel).toHaveBeenCalledWith('claude-opus-4-20250514')
+    })
+
+    const call = sdkMocks.query.mock.calls[0]?.[0] as {
+      options?: { model?: string, resume?: string }
+      prompt?: AsyncIterable<{ message: { content: unknown } }>
+    } | undefined
+    expect(call?.options).toEqual(expect.objectContaining({
+      resume: 'claude-session-1',
+    }))
+    expect(call?.options).not.toHaveProperty('model')
+
+    let promptDelivered = false
+    const promptNext = call!.prompt![Symbol.asyncIterator]().next().then((result) => {
+      promptDelivered = true
+      return result
+    })
+    await Promise.resolve()
+    expect(promptDelivered).toBe(false)
+
+    releaseSetModel()
+    await expect(promptNext).resolves.toEqual(expect.objectContaining({
+      done: false,
+      value: expect.objectContaining({
+        message: { role: 'user', content: 'Continue with the same context' },
+      }),
+    }))
+    await expect(firstChunk).resolves.toEqual(expect.objectContaining({
+      done: false,
+      value: expect.objectContaining({ type: 'text-start' }),
+    }))
+
+    const remainingChunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      remainingChunks.push(chunk)
+    }
+
+    expect(remainingChunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'Context preserved' }),
+    ]))
+    expect(runtimeSession.providerSessionId).toBe('claude-session-2')
+  })
+
+  it('includes Cradle chat history when a provider-target switch starts a new Claude Agent SDK session', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-new-target',
+        message: {
+          content: [{ type: 'text', text: 'You said hello earlier.' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-new-target',
+        usage: { input_tokens: 10, output_tokens: 4 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-target-switch',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('What did I say earlier?'),
+      history: [
+        createUserMessage('Hello earlier'),
+        {
+          id: 'assistant-earlier',
+          role: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'Internal chain should not be replayed' },
+            { type: 'text', text: 'Hi, I remember that.' },
+          ],
+        },
+      ],
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'You said hello earlier.' }),
+    ]))
+    await expect(readPromptText(0)).resolves.toBe([
+      'Previous messages in this Cradle chat session:',
+      'User: Hello earlier',
+      '',
+      'Assistant: Hi, I remember that.',
+      '',
+      'Current user message:',
+      'What did I say earlier?',
+    ].join('\n'))
   })
 
   it('interrupts an active streaming-input query and appends steer text', async () => {

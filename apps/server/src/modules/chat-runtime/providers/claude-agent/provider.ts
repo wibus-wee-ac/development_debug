@@ -136,7 +136,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const { query } = await import('@anthropic-ai/claude-agent-sdk')
 
     const abortController = new AbortController()
-    const userContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
+    const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
+    const userContent = buildClaudeAgentTurnContent({
+      userContent: projectedUserContent,
+      history: input.runtimeSession.providerSessionId ? undefined : input.history,
+    })
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const textItemId = randomUUID()
     const config = ClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
@@ -148,7 +152,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       attachPermissionHandler: true,
     })
 
-    const inputStream = new ClaudeAgentInputStream(userContent)
+    const inputStream = new ClaudeAgentInputStream()
     const activeQuery = query({ prompt: inputStream, options: queryOptions })
     const sessionId = input.runtimeSession.chatSessionId
     const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
@@ -183,6 +187,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
     let outputTextCollector = ''
 
     try {
+      if (input.runtimeSession.providerSessionId && input.modelId) {
+        await activeQuery.setModel(input.modelId)
+      }
+      inputStream.push(userContent)
+
       for await (const message of activeQuery) {
         if (abortController.signal.aborted) {
           break
@@ -225,7 +234,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
           yield chunk
         }
 
-        if (result.sessionId && !input.runtimeSession.providerSessionId) {
+        if (result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId) {
           input.runtimeSession.providerSessionId = result.sessionId
         }
 
@@ -305,8 +314,10 @@ class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
   private readonly waiters: Array<() => void> = []
   private closed = false
 
-  constructor(initialContent: ClaudeAgentUserContent) {
-    this.push(initialContent)
+  constructor(initialContent?: ClaudeAgentUserContent) {
+    if (initialContent !== undefined) {
+      this.push(initialContent)
+    }
   }
 
   push(content: ClaudeAgentUserContent): void {
@@ -393,6 +404,57 @@ function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: str
     return blocks[0].text
   }
   return blocks
+}
+
+function buildClaudeAgentTurnContent(input: {
+  userContent: ClaudeAgentUserContent
+  history?: UIMessage[]
+}): ClaudeAgentUserContent {
+  const historyText = formatClaudeAgentHistory(input.history)
+  if (!historyText) {
+    return input.userContent
+  }
+
+  const prefix = [
+    'Previous messages in this Cradle chat session:',
+    historyText,
+    '',
+    'Current user message:',
+  ].join('\n')
+
+  if (typeof input.userContent === 'string') {
+    return `${prefix}\n${input.userContent}`
+  }
+
+  return [
+    { type: 'text', text: prefix },
+    ...input.userContent,
+  ]
+}
+
+function formatClaudeAgentHistory(history: UIMessage[] | undefined): string | null {
+  const entries = history
+    ?.map(formatClaudeAgentHistoryMessage)
+    .filter((entry): entry is string => Boolean(entry))
+    ?? []
+  return entries.length > 0 ? entries.join('\n\n') : null
+}
+
+function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
+  const textParts = message.parts
+    .flatMap((part) => {
+      if (part.type === 'text') {
+        return part.text.trim()
+      }
+      return []
+    })
+    .filter(Boolean)
+  if (textParts.length === 0) {
+    return null
+  }
+
+  const role = message.role === 'assistant' ? 'Assistant' : message.role === 'user' ? 'User' : 'System'
+  return `${role}: ${textParts.join('\n')}`
 }
 
 function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, runtimeLabel: string): ClaudeAgentContentBlock {
@@ -507,7 +569,6 @@ function buildClaudeQueryOptions(input: {
   const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.input.runtimeSession.providerStateSnapshot)
   const queryOptions: Options = {
     abortController: input.abortController,
-    model: effectiveModel,
     cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
     permissionMode: config.permissionMode,
     allowDangerouslySkipPermissions: config.permissionMode === 'bypassPermissions'
@@ -533,6 +594,9 @@ function buildClaudeQueryOptions(input: {
   }
   if (input.input.runtimeSession.providerSessionId) {
     queryOptions.resume = input.input.runtimeSession.providerSessionId
+  }
+  else if (effectiveModel) {
+    queryOptions.model = effectiveModel
   }
 
   const registeredServers = getRegisteredMcpServers()

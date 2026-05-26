@@ -10,7 +10,7 @@ import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { runtimeBuildPackages, serverRuntimePackages } from '../runtime-packages.mjs'
+import { serverRuntimePackages } from '../runtime-packages.mjs'
 
 const require = createRequire(import.meta.url)
 
@@ -30,10 +30,7 @@ writeFileSync(
       name: '@cradle/server-runtime',
       private: true,
       type: 'module',
-      dependencies,
-      pnpm: {
-        onlyBuiltDependencies: runtimeBuildPackages
-      }
+      dependencies
     },
     null,
     2
@@ -47,9 +44,7 @@ const result = spawnSync(
   [
     'install',
     '--prod',
-    '--ignore-workspace',
     '--no-lockfile',
-    '--offline',
     '--dir',
     distRoot,
     '--package-import-method',
@@ -57,10 +52,6 @@ const result = spawnSync(
     '--config.node-linker=hoisted'
   ],
   {
-    env: {
-      ...process.env,
-      CI: process.env.CI ?? 'true'
-    },
     stdio: 'inherit'
   }
 )

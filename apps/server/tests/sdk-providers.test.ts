@@ -148,7 +148,7 @@ async function createProfileAndSession(app: ElysiaApp, input: {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       name: input.profileId,
-      providerKind: 'openai-compatible',
+      providerKind: input.providerKind === 'claude-agent' ? 'anthropic' : 'openai-compatible',
       enabled: true,
       config: input.config,
       credentialRef: credential.id,
@@ -163,7 +163,7 @@ async function createProfileAndSession(app: ElysiaApp, input: {
       id: input.sessionId,
       workspaceId: input.workspaceId,
       title: `${input.providerKind} session`,
-      agentProfileId: input.profileId,
+      providerTargetId: input.profileId,
       runtimeKind: input.providerKind,
     }),
   }))
@@ -363,7 +363,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
           name: 'Claude Alias Agent',
           avatarStyle: 'bottts-neutral',
           avatarSeed: 'alias-seed',
-          agentProfileId: 'profile-agent-settings',
+          providerTargetId: 'profile-agent-settings',
           modelId: 'claude-sonnet-4-20250514',
           runtimeKind: 'claude-agent',
           configJson: JSON.stringify({

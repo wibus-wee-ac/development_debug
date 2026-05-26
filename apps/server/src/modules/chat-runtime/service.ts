@@ -834,6 +834,10 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
     })
   }
 
+  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
+    abortPersistedStreamingSession(sessionId)
+  }
+
   const rows = db()
     .select()
     .from(messages)

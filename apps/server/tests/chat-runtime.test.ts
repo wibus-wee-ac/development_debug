@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendSessionBindings, chatSessionQueueItems, messages, workspaces } from '@cradle/db'
+import { backendRuns, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -744,7 +744,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('cancels persisted streaming state when the in-memory active run is missing', async () => {
+  it('repairs persisted streaming state when message snapshots find no active run', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -766,11 +766,38 @@ describe('chat runtime capability', () => {
         name: 'Workspace Chat Orphan',
         path: workspaceRoot,
       }).run()
+      db().insert(providerTargets).values({
+        id: 'provider-target-chat-orphan',
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Chat Runtime Provider',
+        enabled: true,
+        iconSlug: null,
+        connectionConfigJson: JSON.stringify({ baseUrl: 'https://example.com/v1' }),
+        credentialRef: null,
+        enabledModelsJson: JSON.stringify(['gpt-4o-mini']),
+        customModelsJson: JSON.stringify([]),
+        modelRegistryMappingsJson: JSON.stringify([]),
+        sourceKey: null,
+        externalRecordId: null,
+        sourceFingerprint: null,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
 
-      await createProfileAndSession(app, 'workspace-chat-orphan', {
-        profileId: 'profile-chat-orphan',
-        sessionId: 'session-chat-orphan',
-      })
+      db().insert(sessions).values({
+        id: 'session-chat-orphan',
+        workspaceId: 'workspace-chat-orphan',
+        title: 'Chat Runtime Session',
+        providerTargetId: 'provider-target-chat-orphan',
+        runtimeKind: 'standard',
+        agentId: null,
+        configJson: '{}',
+        linkedIssueId: null,
+        pinned: 0,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
 
       db().insert(messages).values({
         id: 'message-orphan-assistant',
@@ -794,7 +821,7 @@ describe('chat runtime capability', () => {
       db().insert(backendSessionBindings).values({
         id: 'binding-chat-orphan',
         chatSessionId: 'session-chat-orphan',
-        agentProfileId: 'profile-chat-orphan',
+        providerTargetId: 'provider-target-chat-orphan',
         runtimeKind: 'standard',
         backendSessionId: null,
         backendStateSnapshot: null,
@@ -830,12 +857,6 @@ describe('chat runtime capability', () => {
         createdAt: 1700000000,
         updatedAt: 1700000000,
       }).run()
-
-      const cancelRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-orphan/cancel', {
-        method: 'POST',
-      }))
-      expect(cancelRes.status).toBe(200)
-      expect(await cancelRes.json()).toEqual({ ok: true })
 
       const rows = await getChatMessages(app, 'session-chat-orphan')
       expect(rows[0]).toEqual(expect.objectContaining({ role: 'assistant', status: 'aborted' }))
