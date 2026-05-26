@@ -289,7 +289,7 @@ describe('composer attachments', () => {
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
     expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
     expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,transition')
-    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
+    expect(screen.queryByTestId('chat-appshot-app-icon')).toBeNull()
     expect(screen.queryByText('window.png')).toBeNull()
 
     fireEvent.click(screen.getByTestId('chat-send-btn'))
@@ -398,7 +398,7 @@ describe('composer attachments', () => {
 
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
     expect(screen.getByTestId('chat-appshot-empty-snapshot')).toBeTruthy()
-    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
+    expect(screen.queryByTestId('chat-appshot-app-icon')).toBeNull()
     expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
     expect(screen.queryByTestId('chat-appshot-image')).toBeNull()
   })
@@ -423,7 +423,7 @@ describe('composer attachments', () => {
 
     const pendingSlot = container.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
     expect(pendingSlot).toBeTruthy()
-    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('186.5')
+    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('168.5')
   })
 })
 
@@ -705,13 +705,13 @@ describe('composer slash commands', () => {
     const context = measuredContexts[0]
     expect(context.animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 94,
+      y: 100,
       width: 232,
       height: 140,
     })
   })
 
-  it('uses the title-aware AppShot height when correcting the capture destination', () => {
+  it('uses the composer transition snapshot height when correcting the capture destination', () => {
     const onSend = vi.fn()
     const measuredContexts: ComposerSlashCommandActionContext[] = []
     const cradleAppshotCommand: ChatComposerSlashCommand = {
@@ -809,7 +809,7 @@ describe('composer slash commands', () => {
     expect(measuredContexts).toHaveLength(1)
     expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 73.5,
+      y: 100,
       width: 232,
       height: 140,
     })

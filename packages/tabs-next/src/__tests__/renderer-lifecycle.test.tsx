@@ -1,6 +1,6 @@
-// Output: Guards tabs-next renderer retention from tearing down inactive tab effects.
-// Input: TabRenderer with activity-pool policy and tab store activation changes.
-// Position: Runtime lifecycle regression coverage for retained tab frames.
+// Output: Guards tabs-next Activity rendering from dropping inactive tab DOM frames.
+// Input: TabRenderer with React Activity frames and tab store activation changes.
+// Position: Runtime lifecycle regression coverage for Activity-backed tab frames.
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from '@testing-library/react'
@@ -37,7 +37,7 @@ describe('TabRenderer lifecycle retention', () => {
     cleanup()
   })
 
-  it('keeps retained activity-pool tabs mounted when switching active tabs', () => {
+  it('keeps Activity tab frames in the DOM while hidden effects clean up', () => {
     const events: string[] = []
     const registry = {
       home: defineTab({
@@ -58,19 +58,19 @@ describe('TabRenderer lifecycle retention', () => {
 
     render(
       <TabsProvider store={store} registry={registry}>
-        <TabRenderer policy={{ strategy: 'activity-pool', maxMountedTabs: 5, keepPinnedMounted: true }} />
+        <TabRenderer />
       </TabsProvider>,
     )
 
-    expect(countEvent(events, 'home:layout-mount')).toBe(1)
+    expect(countEvent(events, 'home:layout-mount')).toBe(0)
     expect(countEvent(events, 'chat:layout-mount')).toBe(1)
-    expect(countEvent(events, 'home:effect-mount')).toBe(1)
+    expect(countEvent(events, 'home:effect-mount')).toBe(0)
     expect(countEvent(events, 'chat:effect-mount')).toBe(1)
     expect(events.some(event => event.endsWith(':layout-cleanup') || event.endsWith(':effect-cleanup'))).toBe(false)
     expect(screen.getByTestId(`tab-content-${homeId}`).className).toBe('w-full')
     expect(screen.getByTestId(`tab-content-${chatId}`).className).toBe('w-full')
-    expect(screen.getByTestId(`tab-content-${homeId}`).hidden).toBe(true)
-    expect(screen.getByTestId(`tab-content-${chatId}`).hidden).toBe(false)
+    expect(screen.getByTestId(`tab-content-${homeId}`).getAttribute('data-tab-visible')).toBe('false')
+    expect(screen.getByTestId(`tab-content-${chatId}`).getAttribute('data-tab-visible')).toBe('true')
 
     act(() => {
       store.getState().setActiveTab(homeId)
@@ -80,9 +80,12 @@ describe('TabRenderer lifecycle retention', () => {
     expect(countEvent(events, 'chat:layout-mount')).toBe(1)
     expect(countEvent(events, 'home:effect-mount')).toBe(1)
     expect(countEvent(events, 'chat:effect-mount')).toBe(1)
-    expect(events.some(event => event.endsWith(':layout-cleanup') || event.endsWith(':effect-cleanup'))).toBe(false)
-    expect(screen.getByTestId(`tab-content-${homeId}`).hidden).toBe(false)
-    expect(screen.getByTestId(`tab-content-${chatId}`).hidden).toBe(true)
+    expect(countEvent(events, 'home:layout-cleanup')).toBe(0)
+    expect(countEvent(events, 'chat:layout-cleanup')).toBe(1)
+    expect(countEvent(events, 'home:effect-cleanup')).toBe(0)
+    expect(countEvent(events, 'chat:effect-cleanup')).toBe(1)
+    expect(screen.getByTestId(`tab-content-${homeId}`).getAttribute('data-tab-visible')).toBe('true')
+    expect(screen.getByTestId(`tab-content-${chatId}`).getAttribute('data-tab-visible')).toBe('false')
 
     cleanup()
 
@@ -92,7 +95,7 @@ describe('TabRenderer lifecycle retention', () => {
     expect(countEvent(events, 'chat:effect-cleanup')).toBe(1)
   })
 
-  it('keeps default non-pinned retained tabs mounted across repeated switches', () => {
+  it('keeps default non-pinned tab frames retained across repeated switches', () => {
     const events: string[] = []
     const registry = {
       workspace: defineTab({
@@ -112,29 +115,34 @@ describe('TabRenderer lifecycle retention', () => {
 
     render(
       <TabsProvider store={store} registry={registry}>
-        <TabRenderer policy={{ strategy: 'activity-pool', maxMountedTabs: 5, keepPinnedMounted: true }} />
+        <TabRenderer />
       </TabsProvider>,
     )
 
-    expectMountedOnce(events, 'workspace')
-    expectMountedOnce(events, 'chat')
+    expectEffectCounts(events, 'workspace', { mounts: 0, cleanups: 0 })
+    expectEffectCounts(events, 'chat', { mounts: 1, cleanups: 0 })
     expectNoCleanup(events)
 
     act(() => {
       store.getState().setActiveTab(workspaceId)
     })
+    expectEffectCounts(events, 'workspace', { mounts: 1, cleanups: 0 })
+    expectEffectCounts(events, 'chat', { mounts: 1, cleanups: 1 })
+
     act(() => {
       store.getState().setActiveTab(chatId)
     })
+    expectEffectCounts(events, 'workspace', { mounts: 1, cleanups: 1 })
+    expectEffectCounts(events, 'chat', { mounts: 2, cleanups: 1 })
+
     act(() => {
       store.getState().setActiveTab(workspaceId)
     })
 
-    expectMountedOnce(events, 'workspace')
-    expectMountedOnce(events, 'chat')
-    expectNoCleanup(events)
-    expect(screen.getByTestId(`tab-content-${workspaceId}`).hidden).toBe(false)
-    expect(screen.getByTestId(`tab-content-${chatId}`).hidden).toBe(true)
+    expectEffectCounts(events, 'workspace', { mounts: 2, cleanups: 1 })
+    expectEffectCounts(events, 'chat', { mounts: 2, cleanups: 2 })
+    expect(screen.getByTestId(`tab-content-${workspaceId}`).getAttribute('data-tab-visible')).toBe('true')
+    expect(screen.getByTestId(`tab-content-${chatId}`).getAttribute('data-tab-visible')).toBe('false')
   })
 })
 
@@ -142,9 +150,15 @@ function countEvent(events: string[], target: string): number {
   return events.filter(event => event === target).length
 }
 
-function expectMountedOnce(events: string[], label: string): void {
-  expect(countEvent(events, `${label}:layout-mount`)).toBe(1)
-  expect(countEvent(events, `${label}:effect-mount`)).toBe(1)
+function expectEffectCounts(
+  events: string[],
+  label: string,
+  counts: { mounts: number, cleanups: number },
+): void {
+  expect(countEvent(events, `${label}:layout-mount`)).toBe(counts.mounts)
+  expect(countEvent(events, `${label}:effect-mount`)).toBe(counts.mounts)
+  expect(countEvent(events, `${label}:layout-cleanup`)).toBe(counts.cleanups)
+  expect(countEvent(events, `${label}:effect-cleanup`)).toBe(counts.cleanups)
 }
 
 function expectNoCleanup(events: string[]): void {

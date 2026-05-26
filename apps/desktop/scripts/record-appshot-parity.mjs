@@ -915,9 +915,12 @@ function summarizeLayerTypeEvidence(samples) {
     'appIconLayer',
     'titleLayer',
   ]
+  const expectedContainerOrder = [
+    'snapshotEffectsLayer',
+    'shutterLayer',
+  ]
   const expectedSnapshotEffectsOrder = [
     'snapshotImageLayer',
-    'shutterLayer',
     'snapshotMaskDebugLayer',
   ]
   if (!first) {
@@ -946,7 +949,7 @@ function summarizeLayerTypeEvidence(samples) {
     snapshotMaskIsShapeLayer: first.snapshotMaskLayer === 'CAShapeLayer',
     snapshotMaskDebugIsShapeLayer: first.snapshotMaskDebugLayer === 'CAShapeLayer',
     contentLayerOrderMatchesCodexVocabulary: areEqualStringArrays(hierarchy?.contentLayerSublayers, expectedContentOrder),
-    containerLayerContainsSnapshotEffects: areEqualStringArrays(hierarchy?.containerLayerSublayers, ['snapshotEffectsLayer']),
+    containerLayerContainsSnapshotEffects: areEqualStringArrays(hierarchy?.containerLayerSublayers, expectedContainerOrder),
     snapshotEffectsOrderMatchesCodexVocabulary: areEqualStringArrays(hierarchy?.snapshotEffectsLayerSublayers, expectedSnapshotEffectsOrder),
     snapshotEffectsMaskIsSnapshotMaskLayer: hierarchy?.snapshotEffectsLayerMask === 'snapshotMaskLayer',
   }
@@ -1279,12 +1282,13 @@ async function readCradleFrontendAppshotEvidence() {
     const patterns = {
       sourceAvailable: true,
       cardWidth232: /const APPSHOT_CARD_WIDTH = 232/.test(source),
-      composerUsesTransitionSnapshot: /metadata\.transitionSnapshotDataUrl \?\? metadata\.imageDataUrl/.test(composerBranch),
+      composerUsesTransitionSnapshot: /imageDataUrl=\{metadata\.transitionSnapshotDataUrl\}/.test(composerBranch),
       composerRendersPlaceholderWithoutSnapshot: /data-testid="chat-appshot-empty-snapshot"/.test(source),
-      composerShowsIconAndTitle: /<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(composerTransitionImage)
-        && /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(composerTransitionImage),
+      composerShowsTransitionSnapshotOnly: !/<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(composerTransitionImage)
+        && !/className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(composerTransitionImage),
       finalCardUsesMotionWithHandoffSuppressedInitial: /<m\.div/.test(source) && /initial=\{variant === 'composer' \? false : \{ opacity: 0, y: 4 \}\}/.test(source),
-      composerHeightAddsTitleAwarePadding: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING \+ APPSHOT_TITLE_HEIGHT/.test(source),
+      composerHeightAddsSnapshotPadding: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(source)
+        && !/APPSHOT_TITLE_HEIGHT/.test(source),
       composerImageUsesFixedTargetStyle: /style=\{\{ height: imageHeight, width: APPSHOT_CARD_WIDTH \}\}/.test(source),
       threadUsesCaptureImage: /imageDataUrl=\{metadata\.imageDataUrl\}/.test(threadBranch),
       threadVisualWidth256: /const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256/.test(source),
@@ -2198,7 +2202,10 @@ async function recordTransitionVideoWithBackend(outputPath, seconds, trigger, ba
     attempt.error = serializeError(recordingResult.error)
     return readFailedRecording(outputPath, backend, attempt, triggerError, true)
   }
-  const metadata = await stat(outputPath)
+  const metadata = await readRecordingOutputMetadata(outputPath, attempt)
+  if (!metadata) {
+    return readFailedRecording(outputPath, backend, attempt, triggerError, true)
+  }
   const media = await readVideoEvidence(outputPath)
   attempt.status = 'succeeded'
   return {
@@ -2301,7 +2308,10 @@ async function recordTransitionVideoWithMacBridge(outputPath, seconds, trigger, 
     return readFailedRecording(outputPath, attempt.backend, attempt, triggerError, true)
   }
 
-  const metadata = await stat(outputPath)
+  const metadata = await readRecordingOutputMetadata(outputPath, attempt)
+  if (!metadata) {
+    return readFailedRecording(outputPath, attempt.backend, attempt, triggerError, true)
+  }
   const media = await readVideoEvidence(outputPath)
   attempt.status = 'succeeded'
   attempt.input = {
@@ -2448,6 +2458,23 @@ function readRecordingFinished(recording, backend, readStderr) {
       })
     })
   })
+}
+
+async function readRecordingOutputMetadata(outputPath, attempt) {
+  try {
+    const metadata = await stat(outputPath)
+    if (metadata.size > 0) {
+      return metadata
+    }
+    attempt.status = 'failed-after-trigger'
+    attempt.error = serializeError(new Error(`Recording backend did not write video data to ${outputPath}.`))
+    return null
+  }
+  catch (error) {
+    attempt.status = 'failed-after-trigger'
+    attempt.error = serializeError(error)
+    return null
+  }
 }
 
 function readFailedRecording(outputPath, backend, attempt, triggerError, triggered) {

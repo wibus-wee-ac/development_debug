@@ -72,6 +72,41 @@ describe('browser panel shortcuts', () => {
     expect(useBrowserPanelStore.getState().tabs).toHaveLength(0)
   })
 
+  it('stores session source metadata when creating a browser tab', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com', {
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+
+    expect(useBrowserPanelStore.getState().tabs.find(tab => tab.id === tabId)).toMatchObject({
+      kind: 'browser',
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+  })
+
+  it('preserves session source metadata when fulfilling a requested browser tab', () => {
+    useBrowserPanelStore.getState().requestTab('https://example.com', {
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+    const requestedTab = useBrowserPanelStore.getState().requestedTab
+
+    expect(requestedTab).toMatchObject({
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+
+    useBrowserPanelStore.getState().fulfillRequestedTab(requestedTab!.id)
+
+    expect(useBrowserPanelStore.getState().tabs.at(-1)).toMatchObject({
+      kind: 'browser',
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+    expect(useBrowserPanelStore.getState().requestedTab).toBeNull()
+  })
+
   it('does not consume shortcuts when the browser panel is closed', () => {
     useBrowserPanelStore.getState().createTab('https://example.com')
     const event = commandKeyEvent('w')

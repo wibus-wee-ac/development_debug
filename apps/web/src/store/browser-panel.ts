@@ -3,6 +3,8 @@ import { create } from 'zustand'
 export interface BrowserWebTab {
   kind: 'browser'
   id: string
+  sessionId: string | null
+  sessionTitle: string | null
   url: string
   title: string
   loading: boolean
@@ -49,14 +51,14 @@ interface BrowserPanelTabShortcutInput {
 interface BrowserPanelState {
   tabs: BrowserPanelTab[]
   activeTabId: string | null
-  requestedTab: { id: number, url?: string } | null
+  requestedTab: { id: number, url?: string, sessionId?: string | null, sessionTitle?: string | null } | null
   scrollToFilePath: { path: string, tabId: string, nonce: number } | null
-  createTab: (url?: string) => string
+  createTab: (url?: string, source?: BrowserTabSource) => string
   openWorkspaceFileTab: (input: { workspaceId: string, path: string, view: BrowserWorkspaceFileTab['view'] }) => string
   openWorkspaceDiffTab: (input: { workspaceId: string, paths?: string[], title?: string }) => string
   requestScrollToFilePath: (input: { path: string, tabId: string }) => void
   clearScrollToFilePath: () => void
-  requestTab: (url?: string) => void
+  requestTab: (url?: string, source?: BrowserTabSource) => void
   fulfillRequestedTab: (id: number) => void
   closeTab: (id: string) => void
   setActiveTab: (id: string) => void
@@ -64,10 +66,25 @@ interface BrowserPanelState {
   navigateTo: (id: string, url: string) => void
 }
 
-function createBrowserTab(url?: string): BrowserWebTab {
+export interface BrowserTabSource {
+  sessionId?: string | null
+  sessionTitle?: string | null
+}
+
+function normalizeBrowserTabSource(source?: BrowserTabSource): Required<BrowserTabSource> {
+  return {
+    sessionId: source?.sessionId ?? null,
+    sessionTitle: source?.sessionTitle ?? null,
+  }
+}
+
+function createBrowserTab(url?: string, source?: BrowserTabSource): BrowserWebTab {
+  const normalizedSource = normalizeBrowserTabSource(source)
   return {
     kind: 'browser',
     id: `bt-${tabCounter++}`,
+    sessionId: normalizedSource.sessionId,
+    sessionTitle: normalizedSource.sessionTitle,
     url: url ?? 'about:blank',
     title: '',
     loading: false,
@@ -87,8 +104,8 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
   requestedTab: null,
   scrollToFilePath: null,
 
-  createTab: (url) => {
-    const tab = createBrowserTab(url)
+  createTab: (url, source) => {
+    const tab = createBrowserTab(url, source)
     set(s => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
@@ -177,8 +194,8 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
     set({ scrollToFilePath: null })
   },
 
-  requestTab: (url) => {
-    set({ requestedTab: { id: Date.now(), url } })
+  requestTab: (url, source) => {
+    set({ requestedTab: { id: Date.now(), url, ...normalizeBrowserTabSource(source) } })
   },
 
   fulfillRequestedTab: (id) => {
@@ -186,7 +203,10 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
       if (s.requestedTab?.id !== id) {
         return s
       }
-      const tab = createBrowserTab(s.requestedTab.url)
+      const tab = createBrowserTab(s.requestedTab.url, {
+        sessionId: s.requestedTab.sessionId,
+        sessionTitle: s.requestedTab.sessionTitle,
+      })
       return {
         tabs: [...s.tabs, tab],
         activeTabId: tab.id,

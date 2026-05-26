@@ -1,4 +1,4 @@
-import type { TabContextState, TabInstance, TabRenderPolicy } from './types'
+import type { TabContextState, TabInstance } from './types'
 
 export const DEBUG_CHANNEL_NAME = 'cradle:tabs-next-debug'
 export const DEBUG_COMMAND_CHANNEL_NAME = 'cradle:tabs-next-debug:commands'
@@ -15,9 +15,8 @@ interface DebugStoreState {
 export interface DebugSnapshot {
   tabCount: number
   contextCount: number
-  mountedTabIds: string[]
+  activityTabIds: string[]
   activeTabId: string | null
-  renderPolicy: TabRenderPolicy | null
   tabs: Array<{ id: string, type: string, pinned: boolean, label: string }>
   contexts: Array<{ id: string, historyLen: number, index: number, keepAlive: string, viewStateKeys: string[] }>
 }
@@ -66,8 +65,7 @@ export const metrics = {
   rendererDurationRecent: 0,
 }
 
-let mountedIdsRef: () => string[] = () => []
-let renderPolicyRef: () => TabRenderPolicy | null = () => null
+let activityIdsRef: () => string[] = () => []
 let stateRef: (() => DebugState) | null = null
 let publishChannel: BroadcastChannel | null = null
 let commandChannel: BroadcastChannel | null = null
@@ -76,13 +74,8 @@ let lastStorageWriteAt = 0
 
 const listeners = new Set<(state: DebugState) => void>()
 
-export function setMountedIdsSource(fn: () => string[]) {
-  mountedIdsRef = fn
-  notifyDebugStateChanged()
-}
-
-export function setRenderPolicySource(fn: () => TabRenderPolicy | null) {
-  renderPolicyRef = fn
+export function setActivityIdsSource(fn: () => string[]) {
+  activityIdsRef = fn
   notifyDebugStateChanged()
 }
 
@@ -207,9 +200,8 @@ export function installDebug(getState: () => DebugStoreState) {
     return {
       tabCount: s.tabs.length,
       contextCount: s.contexts.length,
-      mountedTabIds: mountedIdsRef(),
+      activityTabIds: activityIdsRef(),
       activeTabId: s.activeTabId,
-      renderPolicy: renderPolicyRef(),
       tabs: s.tabs.map(t => ({ id: t.id, type: t.type, pinned: t.pinned, label: t.label })),
       contexts: s.contexts.map(c => ({
         id: c.id,

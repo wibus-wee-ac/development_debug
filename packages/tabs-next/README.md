@@ -11,10 +11,8 @@
 - `createTabStore(registry)` owns runtime tab contexts and exposes a compatibility surface for the current Cradle app.
 - Persisted store sync keeps same-key tab stores in different renderer windows aligned through `BroadcastChannel` plus `storage` event fallback.
 - `createUrlSync({ store, registry })` projects the active tab context into browser history and restores tab-local history on `popstate`.
-- `<TabRenderer>` renders active contexts through a render policy:
-  - `single`: only the active tab is mounted.
-  - `activity-pool`: active tab plus recent retained tabs stay mounted in DOM-hidden frames. Pinned tabs and `keepAlive: 'always'` tabs may exceed `maxMountedTabs`; the limit only constrains default retained tabs.
-  - Route loaders are isolated behind a reducer-managed boundary so async loader transitions stay tied to the route params that triggered them.
+- `<TabRenderer>` renders every valid tab context inside React 19 `<Activity>` boundaries. Tab switches set inactive tabs to Activity `hidden` mode and restore the active tab to `visible` mode without a package-owned mounted pool.
+- Route loaders are isolated behind a reducer-managed boundary so async loader transitions stay tied to the route params that triggered them.
 - `<TabBar>` exposes a single `TabBarCustomization` surface for chrome slots: close icon, new-tab icon, per-tab icon, and optional tooltip wrapper.
 - `<Link>` preserves anchor semantics while routing primary activation through the active tab and modifier or middle-click activation through a new tab.
 - `defineTab()` is kept as a migration helper. Long term, route owners should provide route metadata/capabilities directly.
@@ -36,9 +34,8 @@ The package does not own business data, route semantics, or domain state. Those 
 ## Files
 
 - **src/index.ts**: Public package exports.
-- **src/types.ts**: Runtime contracts for locations, contexts, route definitions, render policy, and persistence.
+- **src/types.ts**: Runtime contracts for locations, contexts, route definitions, and persistence.
 - **src/route-definition.ts**: `defineTab()` migration helper plus route-title/location utilities.
-- **src/renderer-policy.ts**: Pure mounted-tab selection policy shared by the renderer and tests.
 - **src/store.ts**: Zustand runtime store for tab contexts, history, restore validation, and compatibility actions.
 - **src/persisted-store-sync.ts**: Key-scoped cross-window synchronization helper for persisted Zustand slices.
 - **src/url-sync.ts**: Hash-mode browser history projection and `popstate` restore coordination.
@@ -46,14 +43,13 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/provider.tsx**: Provider component for store and registry injection.
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
 - **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params and new-tab activation gestures.
-- **src/components/tab-renderer.tsx**: Policy-driven renderer with DOM-hidden retained frames and reducer-managed loader state.
+- **src/components/tab-renderer.tsx**: React Activity renderer with retained tab frames and reducer-managed loader state.
 - **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, tear-off hooks, per-tab presentation, and shared chrome customization slots.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
 - **src/debug.ts**: Debug channel, storage keys, metrics, and snapshot utilities.
 - **src/cn.ts**: Package-local class name merge helper.
 - **src/__tests__/store.test.ts**: Store lifecycle and history tests.
-- **src/__tests__/renderer-policy.test.ts**: Render policy tests.
-- **src/__tests__/renderer-lifecycle.test.tsx**: Renderer retention lifecycle tests.
+- **src/__tests__/renderer-lifecycle.test.tsx**: React Activity renderer lifecycle tests.
 - **src/__tests__/tab-link.test.tsx**: Link href and tab navigation gesture tests.
 - **src/__tests__/use-tab-navigation.test.tsx**: Hook tests for current-tab and new-tab navigation helpers.
 - **src/__tests__/url-sync.test.ts**: Browser history and `popstate` URL sync tests.

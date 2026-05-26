@@ -13,7 +13,6 @@ export { useTabNavigation } from './hooks/use-tab-navigation'
 export { TabsProvider } from './provider'
 export type { PersistedStoreSyncHandle, PersistedStoreSyncOptions } from './persisted-store-sync'
 export { installPersistedStoreSync } from './persisted-store-sync'
-export { chooseMountedTabIds, DEFAULT_TAB_RENDER_POLICY } from './renderer-policy'
 export { createTabLocation, defineTab } from './route-definition'
 export type { TabStoreState } from './store'
 export { createTabStore, selectCurrentLocation } from './store'
@@ -29,7 +28,6 @@ export type {
   TabLocation,
   TabParams,
   TabRegistry,
-  TabRenderPolicy,
   TabRouteCapabilities,
   TabRouteDefinition,
 } from './types'

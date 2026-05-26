@@ -26,7 +26,6 @@ const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256
 const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12
 const APPSHOT_FALLBACK_HEIGHT = 140
 const APPSHOT_COMPOSER_VERTICAL_PADDING = 8
-const APPSHOT_TITLE_HEIGHT = 18
 
 export function AppshotAttachmentCard({
   variant,
@@ -40,7 +39,7 @@ export function AppshotAttachmentCard({
   const threadImageHeight = readThreadImageHeight(threadImageSize)
   const renderedComposerHeight = Math.max(
     APPSHOT_COMPOSER_VERTICAL_PADDING,
-    snapshotHeight + APPSHOT_COMPOSER_VERTICAL_PADDING + APPSHOT_TITLE_HEIGHT,
+    snapshotHeight + APPSHOT_COMPOSER_VERTICAL_PADDING,
   )
   const hasAccessibilityText = accessibilityText.length > 0
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -88,10 +87,8 @@ export function AppshotAttachmentCard({
           ? (
               <ComposerAppshotTransitionImage
                 alt={title}
-                appIconDataUrl={metadata.appIconDataUrl}
                 imageDataUrl={metadata.transitionSnapshotDataUrl}
                 imageHeight={snapshotHeight}
-                title={title}
               />
             )
           : (
@@ -175,47 +172,37 @@ export function AppshotAttachmentCard({
 
 function ComposerAppshotTransitionImage({
   alt,
-  appIconDataUrl,
   imageDataUrl,
   imageHeight,
-  title,
 }: {
   alt: string
-  appIconDataUrl: string | null
   imageDataUrl: string | null
   imageHeight: number
-  title: string
 }) {
   return (
-    <div className="flex w-full flex-col items-center">
-      <div
-        className="relative flex w-full items-center justify-center"
-        style={{ height: imageHeight }}
-      >
-        {imageDataUrl
-          ? (
-              <img
-                src={imageDataUrl}
-                alt={alt}
-                className="object-contain"
-                style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
-                draggable={false}
-                data-testid="chat-appshot-image"
-              />
-            )
-          : (
-              <span
-                aria-hidden="true"
-                className="block"
-                style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
-                data-testid="chat-appshot-empty-snapshot"
-              />
-            )}
-        <AppshotAppIcon appIconDataUrl={appIconDataUrl} />
-      </div>
-      <div className="mt-1 w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
-        {title}
-      </div>
+    <div
+      className="relative flex w-full items-center justify-center"
+      style={{ height: imageHeight }}
+    >
+      {imageDataUrl
+        ? (
+            <img
+              src={imageDataUrl}
+              alt={alt}
+              className="object-contain"
+              style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
+              draggable={false}
+              data-testid="chat-appshot-image"
+            />
+          )
+        : (
+            <span
+              aria-hidden="true"
+              className="block"
+              style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
+              data-testid="chat-appshot-empty-snapshot"
+            />
+          )}
     </div>
   )
 }

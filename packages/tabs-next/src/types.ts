@@ -94,12 +94,6 @@ export interface RestoreTabsInput {
   activeTabId: string | null
 }
 
-export interface TabRenderPolicy {
-  strategy: 'single' | 'activity-pool'
-  maxMountedTabs?: number
-  keepPinnedMounted?: boolean
-}
-
 export interface PersistedTabsNextState {
   version: 1
   tabs: TabInstance[]

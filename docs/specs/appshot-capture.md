@@ -76,7 +76,7 @@ Codex Appshot 不是一个单层截图 API。解包证据显示它至少分成�
 - pending Appshot capture 自己也参与后续 slot 定位；renderer 会优先复用带 `data-pending-appshot-capture-request-id` 的 placeholder rect。
 - white shutter / cover 的 source 阶段圆角是 `12`，必须覆盖目标 application window，包括 title bar 和 traffic-light 区域；target 阶段按 renderer 传入的 composer slot `cornerRadius: 0` 收束。
 - `backgroundColor` 和 `primaryTextColor` 通过临时 DOM 节点从 composer 当前主题计算。
-- 当 attachment tray 向上增长时，renderer 会用 app/window title 估算卡片高度，并从 y 坐标里扣除额外增长高度。
+- 当 attachment tray 向上增长时，renderer 会用 transition snapshot 高度加 8px composer padding 估算卡片高度，并从 y 坐标里扣除额外增长高度。Codex composer variant 不把 app icon/title 计入这个目标高度。
 
 这部分是 renderer-owned geometry。Cradle 的 composer/slash command 应复刻这一层的目标计算，但不能把 frontmost window bounds 当作 destination，否则会掩盖 source-to-destination transition 的几何问题。
 
@@ -145,8 +145,8 @@ Cradle native presenter 当前按这些符号语义复刻为：
 - `AppshotCaptureTransitionOverlayWindow` 持有 transition controller、layer refs、等价于 `_progress` 的 progress state，以及 `accessoryFadeStarted` state；`magicMove` 期间 frame、bounds、radius、mask path、shutter opacity、snapshot opacity、shadow opacity、app icon opacity 和 title opacity 都从同一个 progress value 计算。
 - `appshotMagicMoveFadeDuration` 映射为 magic move 起点之后的 shutter/snapshot cross-fade：白色 shutter fade out，同时 captured snapshot fade in。
 - `snapshotImageLayer` 终点使用 object-contain frame；native 终点图片尺寸必须匹配 final web AppShot card 的真实 capture PNG 视觉尺寸。
-- `transitionSnapshotPath` 的 PNG 画布高度可以是 titled height，但 capture image body 必须只绘制进 native magic-move target 的 `232 x 140` 区域；额外高度只能承载 app identity，不能让截图本体因为 title height 重新 aspect-fit。
-- `appIconLayer` 和 `titleLayer` 是 accessory fade，不参与白底 cover；final web card 不使用 white transition snapshot 作为最终图片。
+- `transitionSnapshotPath` 的 PNG 画布高度对应 composer transition snapshot slot，高度为 `transitionSnapshotHeight`；app identity 不属于 composer transition snapshot。
+- `appIconLayer` 和 `titleLayer` 是 native overlay accessory fade，不参与白底 cover；Codex composer final DOM 不再绘制第二套 app icon/title，thread card 才显示最终截图、app icon 和 title。
 
 `app-asar-extracted/webview/assets/appshot-window-BfJPMFJq.js` 只是 Appshot 图标 SVG，不是 Appshot overlay window 的实现。不要把这个文件当成动效入口。
 

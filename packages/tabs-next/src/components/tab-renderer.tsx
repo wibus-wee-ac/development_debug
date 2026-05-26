@@ -1,20 +1,16 @@
 /* eslint-disable react-refresh/only-export-components */
-
-
-import { Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
+import { Activity, Profiler, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
 import { useTabsContext } from '../context'
-import { recordRendererCommit, recordRendererDuration, setMountedIdsSource, setRenderPolicySource } from '../debug'
-import { chooseMountedTabIds, DEFAULT_TAB_RENDER_POLICY } from '../renderer-policy'
+import { recordRendererCommit, recordRendererDuration, setActivityIdsSource } from '../debug'
 import { selectCurrentLocation } from '../store'
-import type { TabContextState, TabInstance, TabRenderPolicy, TabRouteDefinition } from '../types'
+import type { TabContextState, TabInstance, TabRouteDefinition } from '../types'
 
 export interface TabRendererProps {
   fallback?: React.ReactNode
   wrapper?: React.ComponentType<{ children: React.ReactNode }>
   className?: string
-  policy?: TabRenderPolicy
 }
 
 const SCROLL_VIEW_STATE_KEY = 'tabs-next:scroll-positions'
@@ -36,24 +32,27 @@ const ScrollPositionsSchema = z.union([
   z.undefined().transform(() => []),
 ])
 
-export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DEFAULT_TAB_RENDER_POLICY }: TabRendererProps) {
+export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRendererProps) {
   'use no memo'
   const { store, registry } = useTabsContext()
   const tabs = store(s => s.tabs)
   const contexts = store(s => s.contexts)
   const activeTabId = store(s => s.activeTabId)
-  const mountedIds = chooseMountedTabIds(tabs, contexts, activeTabId, policy)
   const contextById = new Map(contexts.map(context => [context.id, context]))
-  const tabById = new Map(tabs.map(tab => [tab.id, tab]))
+  const activityIds = tabs
+    .filter((tab) => {
+      const context = contextById.get(tab.id)
+      const location = context ? selectCurrentLocation(context) : null
+      return !!(context && location && registry[location.routeId])
+    })
+    .map(tab => tab.id)
   const saveScrollPositions = useCallback((tabId: string, positions: ScrollPosition[]) => {
     store.getState().updateTabViewState(tabId, SCROLL_VIEW_STATE_KEY, positions)
   }, [store])
 
-  // Report mounted IDs and render policy to debug bridge on every commit
   useLayoutEffect(() => {
     recordRendererCommit()
-    setMountedIdsSource(() => mountedIds)
-    setRenderPolicySource(() => policy)
+    setActivityIdsSource(() => activityIds)
   })
 
   const handleProfilerRender: React.ComponentProps<typeof Profiler>['onRender'] = (
@@ -66,38 +65,32 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DE
 
   const content = (
     <div className={className ?? 'flex-1 flex overflow-hidden'} data-testid="tab-content-renderer">
-      {mountedIds.map((tabId) => {
-        const tab = tabById.get(tabId)
-        const context = contextById.get(tabId)
+      {tabs.map((tab) => {
+        const context = contextById.get(tab.id)
         const location = context ? selectCurrentLocation(context) : null
         const route = location ? registry[location.routeId] : undefined
-        if (!tab || !context || !location || !route) {
+        if (!context || !location || !route) {
           return null
         }
 
-        const content = (
-          <RetainedTabFrame
-            key={tab.id}
-            tab={tab}
-            context={context}
-            visible={tab.id === activeTabId}
-            onSaveScrollPositions={saveScrollPositions}
-          >
-            {Wrapper
-              ? (
-                <Wrapper>
-                  <TabRouteContent tab={tab} route={route} fallback={fallback} />
-                </Wrapper>
-              )
-              : <TabRouteContent tab={tab} route={route} fallback={fallback} />}
-          </RetainedTabFrame>
+        return (
+          <Activity key={tab.id} name={`tab:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
+            <ActivityTabFrame
+              tab={tab}
+              context={context}
+              visible={tab.id === activeTabId}
+              onSaveScrollPositions={saveScrollPositions}
+            >
+              {Wrapper
+                ? (
+                  <Wrapper>
+                    <TabRouteContent tab={tab} route={route} fallback={fallback} />
+                  </Wrapper>
+                )
+                : <TabRouteContent tab={tab} route={route} fallback={fallback} />}
+            </ActivityTabFrame>
+          </Activity>
         )
-
-        if (policy.strategy === 'single') {
-          return <div key={tab.id}>{content}</div>
-        }
-
-        return content
       })}
     </div>
   )
@@ -113,7 +106,7 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className, policy = DE
   )
 }
 
-function RetainedTabFrame({
+function ActivityTabFrame({
   tab,
   context,
   visible,
@@ -155,7 +148,6 @@ function RetainedTabFrame({
     <div
       ref={rootRef}
       className="w-full"
-      hidden={!visible}
       aria-hidden={visible ? undefined : 'true'}
       data-testid={`tab-content-${tab.id}`}
       data-tab-visible={visible ? 'true' : 'false'}

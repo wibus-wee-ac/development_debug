@@ -1220,6 +1220,17 @@ export async function streamResponse(input: {
   }
 }
 
+export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
+  assertRunnableSession(sessionId)
+
+  const runId = activeRunIdsBySession.get(sessionId)
+  if (!runId) {
+    return openIdleRunStream()
+  }
+
+  return openRunEventStream(runId, { replayBufferedEvents: false })
+}
+
 export async function abortRun(runId: string): Promise<void> {
   const active = activeRuns.get(runId)
   if (!active) {
@@ -1301,6 +1312,13 @@ export async function abortAllRuns(): Promise<void> {
 }
 
 export function openRunStream(runId: string): ReadableStream<Uint8Array> {
+  return openRunEventStream(runId, { replayBufferedEvents: true })
+}
+
+function openRunEventStream(
+  runId: string,
+  options: { replayBufferedEvents: boolean }
+): ReadableStream<Uint8Array> {
   const run = getRun(runId)
   if (!run) {
     throw new AppError({
@@ -1313,10 +1331,9 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
   const active = activeRuns.get(runId)
 
   const encoder = new TextEncoder()
+  let unsubscribe = () => {}
   return new ReadableStream<Uint8Array>({
     start: (controller) => {
-      let unsubscribe = () => {}
-
       const writeEvent = (event: ChatStreamEvent, terminal: boolean) => {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
         if (terminal) {
@@ -1325,15 +1342,17 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
         }
       }
 
-      for (const event of active?.eventBuffer ?? []) {
-        const terminal = isTerminalStreamEvent(event)
-        writeEvent(event, terminal)
-        if (terminal) {
-          return
+      if (options.replayBufferedEvents) {
+        for (const event of active?.eventBuffer ?? []) {
+          const terminal = isTerminalStreamEvent(event)
+          writeEvent(event, terminal)
+          if (terminal) {
+            return
+          }
         }
       }
 
-      if (run.status !== 'streaming') {
+      if (run.status !== 'streaming' || !active) {
         controller.close()
         return
       }
@@ -1353,6 +1372,17 @@ export function openRunStream(runId: string): ReadableStream<Uint8Array> {
           runSubscribers.delete(runId)
         }
       }
+    },
+    cancel: () => {
+      unsubscribe()
+    }
+  })
+}
+
+function openIdleRunStream(): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      controller.close()
     }
   })
 }

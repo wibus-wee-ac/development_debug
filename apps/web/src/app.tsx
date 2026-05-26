@@ -1,9 +1,8 @@
 import './styles.css'
 
-import type { TabRenderPolicy } from '@cradle/tabs-next'
 import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
 import { domAnimation, LazyMotion } from 'motion/react'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo } from 'react'
 
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
@@ -24,16 +23,6 @@ import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { installTearoffSessionRestore } from '~/tabs/tearoff-tabs'
-
-const PERSONAL_WORKSPACE_TAB_POLICY: TabRenderPolicy = {
-  strategy: 'activity-pool',
-  maxMountedTabs: 15,
-  keepPinnedMounted: true,
-}
-
-const TEAROFF_TAB_POLICY: TabRenderPolicy = {
-  strategy: 'single',
-}
 
 function getActiveLayoutSlotId(tab: { type: string, params: Record<string, string | undefined> } | undefined): string | null {
   if (!tab) {
@@ -115,6 +104,10 @@ function MainAppRuntime() {
   const tabs = useCradleTabStore(s => s.tabs)
   const activeTab = tabs.find(t => t.id === activeTabId)
   const activeSlotId = getActiveLayoutSlotId(activeTab)
+  const validSlotIds = useMemo(
+    () => tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null),
+    [tabs],
+  )
   const settingsTabExists = settingsTabId !== null && tabs.some(tab => tab.id === settingsTabId)
 
   // Settings overlay is visible when the settings tab is the currently active tab
@@ -174,7 +167,7 @@ function MainAppRuntime() {
 
   return (
     <AppEnvironmentProviders>
-      <LayoutSlotsProvider activeSlotId={activeSlotId}>
+      <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
         <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
           <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
             <AppSidebar />
@@ -190,7 +183,6 @@ function MainAppRuntime() {
                   <TabRenderer
                     fallback={null}
                     className="h-full flex overflow-hidden w-full"
-                    policy={PERSONAL_WORKSPACE_TAB_POLICY}
                   />
                 </div>
                 {isSettingsVisible && (
@@ -264,8 +256,13 @@ function TearoffAppRuntime() {
   'use no memo'
 
   const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const activeTab = useCradleTabStore(s => s.tabs.find(tab => tab.id === activeTabId))
+  const tabs = useCradleTabStore(s => s.tabs)
+  const activeTab = tabs.find(tab => tab.id === activeTabId)
   const activeSlotId = getActiveLayoutSlotId(activeTab)
+  const validSlotIds = useMemo(
+    () => tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null),
+    [tabs],
+  )
 
   useThemeClass()
 
@@ -287,15 +284,13 @@ function TearoffAppRuntime() {
 
   return (
     <AppEnvironmentProviders>
-      <LayoutSlotsProvider activeSlotId={activeSlotId}>
+      <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
         <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
           <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
             <AppLayout showFooter={false}>
-              {/* Single-policy TabRenderer adds one key wrapper; let the retained tab frame own layout. */}
               <TabRenderer
                 fallback={null}
                 className="h-full flex overflow-hidden w-full [&>div]:contents"
-                policy={TEAROFF_TAB_POLICY}
               />
             </AppLayout>
           </div>

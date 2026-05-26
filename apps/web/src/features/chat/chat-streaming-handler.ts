@@ -28,11 +28,18 @@ export class ChatStreamingHandler {
   private requestStartedAtMs: number
   private pendingToolEntityPatches: QueuedToolEntityPatch[] = []
   private toolEntityPatchFlushFrame: number | null = null
+  private mode: 'local' | 'passive'
 
-  constructor(sessionId: string, messageId: string, requestStartedAtMs = performance.now()) {
+  constructor(
+    sessionId: string,
+    messageId: string,
+    requestStartedAtMs = performance.now(),
+    options: { mode?: 'local' | 'passive' } = {},
+  ) {
     this.sessionId = sessionId
     this.messageId = messageId
     this.requestStartedAtMs = requestStartedAtMs
+    this.mode = options.mode ?? 'local'
   }
 
   /**
@@ -41,6 +48,15 @@ export class ChatStreamingHandler {
   start(controller: AbortController): void {
     const store = useChatStore.getState()
     store.beginRunDisplayMeta(this.messageId, this.requestStartedAtMs)
+    if (this.mode === 'passive') {
+      store.setPassiveStreamingMessage(this.sessionId, this.messageId, true)
+      store.setSessionMeta(this.sessionId, {
+        passiveStatus: 'streaming',
+        locallyDriving: false,
+        localDriverMessageId: undefined,
+      })
+      return
+    }
     store.startGeneration(this.sessionId, this.messageId, controller)
   }
 
@@ -170,10 +186,17 @@ export class ChatStreamingHandler {
       store.appendMessage(this.sessionId, message)
     }
     if (this.activeMessageId === null) {
-      const controller = store.activeAbortControllers.get(this.messageId) ?? new AbortController()
-      store.moveRunDisplayMeta(this.messageId, messageId)
-      store.startGeneration(this.sessionId, messageId, controller)
-      store.finishGeneration(this.messageId)
+      if (this.mode === 'passive') {
+        store.moveRunDisplayMeta(this.messageId, messageId)
+        store.setPassiveStreamingMessage(this.sessionId, this.messageId, false)
+        store.setPassiveStreamingMessage(this.sessionId, messageId, true)
+      }
+      else {
+        const controller = store.activeAbortControllers.get(this.messageId) ?? new AbortController()
+        store.moveRunDisplayMeta(this.messageId, messageId)
+        store.startGeneration(this.sessionId, messageId, controller)
+        store.finishGeneration(this.messageId)
+      }
     }
     this.activeMessageId = messageId
   }

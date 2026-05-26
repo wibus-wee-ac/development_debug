@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useMemo, useState } from 'react'
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 export interface LayoutSlots {
   aside?: ReactNode
@@ -32,8 +32,18 @@ export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
   activate: () => { },
 })
 
-export function LayoutSlotsProvider({ children, activeSlotId }: { children: ReactNode, activeSlotId?: string | null }) {
+export function LayoutSlotsProvider({
+  children,
+  activeSlotId,
+  validSlotIds,
+}: {
+  children: ReactNode
+  activeSlotId?: string | null
+  validSlotIds?: readonly string[]
+}) {
   const [state, setState] = useState<RegistrationState>({ map: {}, activeId: null })
+  const previousSlotsRef = useRef<LayoutSlots>({})
+  const validSlotKey = validSlotIds?.join('\n') ?? null
 
   const register = useCallback((id: string, newSlots: LayoutSlots) => {
     setState((prev) => {
@@ -74,6 +84,35 @@ export function LayoutSlotsProvider({ children, activeSlotId }: { children: Reac
     })
   }, [])
 
+  useEffect(() => {
+    if (validSlotKey === null) {
+      return
+    }
+    const validSlotSet = new Set(validSlotKey.split('\n').filter(Boolean))
+
+    setState((prev) => {
+      let changed = false
+      const nextMap: Record<string, LayoutSlots> = {}
+      for (const [id, slots] of Object.entries(prev.map)) {
+        if (validSlotSet.has(id)) {
+          nextMap[id] = slots
+        } else {
+          changed = true
+        }
+      }
+
+      const nextActiveId = prev.activeId && validSlotSet.has(prev.activeId) ? prev.activeId : null
+      if (!changed && nextActiveId === prev.activeId) {
+        return prev
+      }
+
+      return {
+        map: nextMap,
+        activeId: nextActiveId,
+      }
+    })
+  }, [validSlotKey])
+
   const slots = useMemo(() => {
     if (activeSlotId === undefined) {
       return (state.activeId && state.map[state.activeId]) || {}
@@ -83,8 +122,14 @@ export function LayoutSlotsProvider({ children, activeSlotId }: { children: Reac
       return {}
     }
 
-    return state.map[activeSlotId] ?? {}
+    return state.map[activeSlotId] ?? previousSlotsRef.current
   }, [activeSlotId, state.activeId, state.map])
+
+  useEffect(() => {
+    if (slots !== previousSlotsRef.current) {
+      previousSlotsRef.current = slots
+    }
+  }, [slots])
 
   return (
     <LayoutSlotsContext.Provider value={{ slots, register, unregister, activate }}>

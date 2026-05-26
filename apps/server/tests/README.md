@@ -12,7 +12,6 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **exception-filter.test.ts**: AppError normalization.
 - **database.test.ts**: database lifecycle migrations.
 - **health.test.ts**: health endpoint response.
-- **server-events.test.ts**: server status SSE connection, event delivery, headers, and disconnect cleanup.
 - **approval.test.ts**: in-memory pending approval registry create/list/respond flows、structured errors、session-scoped allow policy，以及 Cradle 层 `allowAll` approval mode 的一次性 allow 语义。
 - **workspace.test.ts**: workspace capability CRUD + file IO，包含 non-Cradle-owned workspace write confirmation 与 owner-boundary response metadata。
 - **session.test.ts**: session capability CRUD + messages + markdown export.

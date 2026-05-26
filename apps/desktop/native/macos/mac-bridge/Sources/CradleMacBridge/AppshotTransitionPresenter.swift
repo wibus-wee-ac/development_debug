@@ -79,7 +79,7 @@ enum AppshotTransitionTiming {
     static let appIconFadeIn: NSNumber = 0.68
     static let accessoryFadeStartProgress: NSNumber = appIconFadeIn
     static let accessoryFadeDuration: TimeInterval = 0.12
-    static let accessoryFadeOutStartProgress: NSNumber = 0.94
+    static let accessoryFadeOutStartProgress: NSNumber = 0.80
     static func magicMoveTimingFunction() -> CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.16, 0, 0.3, 1)
     }
@@ -587,7 +587,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             sourceWindow: sourceWindow,
             sourceFrame: target.appKitSourceWindowFrame,
             targetFrame: target.appKitDestinationFrame,
-            targetCornerRadius: AppshotLayerMetrics.screenshotCornerRadius,
+            targetCornerRadius: max(target.destinationCornerRadius, 0),
             appIcon: readApplicationIconImage(bundleIdentifier: bundleIdentifier),
             titleText: appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             titleColor: target.destinationPrimaryTextColor,
@@ -1131,7 +1131,7 @@ final class AppshotTransitionOverlayWindow: NSWindow {
         self.transitionController = transitionController
         sourceFrame = AppshotTransitionOverlayWindow.readSourceFrame(target: target, viewportFrame: frame)
         targetFrame = AppshotTransitionOverlayWindow.readTargetFrame(target: target, viewportFrame: frame)
-        targetCornerRadius = AppshotLayerMetrics.screenshotCornerRadius
+        targetCornerRadius = max(target.destinationCornerRadius, 0)
         self.contentLayer = contentLayer
         self.transitionBackgroundLayer = transitionBackgroundLayer
         self.shadowLayer = shadowLayer
@@ -1772,7 +1772,7 @@ final class AppshotTransitionView: NSView {
         shutterLayer.masksToBounds = true
         shutterLayer.cornerRadius = AppshotLayerMetrics.screenshotCornerRadius
         shutterLayer.cornerCurve = .circular
-        snapshotEffectsLayer.addSublayer(shutterLayer)
+        containerLayer.addSublayer(shutterLayer)
 
         snapshotMaskLayer.fillColor = NSColor.black.cgColor
         snapshotEffectsLayer.mask = snapshotMaskLayer
@@ -1819,6 +1819,7 @@ final class AppshotTransitionView: NSView {
             applyFrame(snapshotEffectsLayer.bounds, to: snapshotImageLayer)
             applyFrame(snapshotEffectsLayer.bounds, to: snapshotMaskLayer)
             applyFrame(snapshotEffectsLayer.bounds, to: snapshotMaskDebugLayer)
+            applyFrame(containerLayer.bounds, to: shutterLayer)
         }
         CATransaction.commit()
     }
@@ -2082,7 +2083,7 @@ final class AppshotTransitionView: NSView {
     }
 
     private func readTargetCornerRadius() -> CGFloat {
-        AppshotLayerMetrics.screenshotCornerRadius
+        max(target.destinationCornerRadius, 0)
     }
 
     private func updateShadowPath(for frame: CGRect, radius: CGFloat) {
@@ -2266,7 +2267,7 @@ final class AppshotTransitionView: NSView {
             "expectedSnapshotImageEndFrame": serialize(rect: CGRect(origin: .zero, size: readEndFrame().size)),
             "expectedEndFrame": serialize(rect: readEndFrame()),
             "transitionSnapshotHeight": transitionSnapshotHeight.map(Double.init) ?? NSNull(),
-            "transitionSnapshotHeightAffectsNativeTarget": true,
+            "transitionSnapshotHeightAffectsNativeTarget": false,
             "containerFrame": serialize(rect: readPresentationFrame(containerLayer)),
             "shutterFrame": serialize(rect: readPresentationFrame(shutterLayer)),
             "coverFrame": serialize(rect: readPresentationFrame(shutterLayer)),

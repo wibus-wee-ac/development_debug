@@ -23,6 +23,9 @@ describe('openapi capability', () => {
       const response = await app.handle(new Request('http://localhost/openapi.json'))
       expect(response.status).toBe(200)
 
+      const serverEventsResponse = await app.handle(new Request('http://localhost/server/events'))
+      expect(serverEventsResponse.status).toBe(404)
+
       const document = (await response.json()) as {
         openapi: string
         info: { title: string }
@@ -54,6 +57,7 @@ describe('openapi capability', () => {
       expect(document.paths['/sessions/{id}']?.patch).toBeTruthy()
       expect(document.paths['/sessions/{id}/title']).toBeUndefined()
       expect(document.paths['/sessions/{id}/toggle-pin']).toBeUndefined()
+      expect(document.paths['/server/events']).toBeUndefined()
       expect(document.paths['/chat/sessions/{sessionId}/response']?.post).toBeTruthy()
       expect(
         document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.content?.[

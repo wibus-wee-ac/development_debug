@@ -20,6 +20,7 @@ import {
   listChatSessionQueue,
   reorderChatSessionQueue,
   startChatResponse,
+  subscribeChatSessionStream,
 } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildEventStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
@@ -127,7 +128,6 @@ function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
 // ── Hook ────────────────────────────────────────────────────
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
-const PASSIVE_STREAM_REFETCH_MS = 500
 const UIMessageSchema: z.ZodType<UIMessage> = z.object({
   id: z.string(),
   role: z.enum(['system', 'user', 'assistant']),
@@ -152,6 +152,12 @@ export function useChatSession(chatSessionId: string | null) {
 
   // Active handler ref (for the currently streaming response)
   const handlerRef = useRef<ChatStreamingHandler | null>(null)
+  const passiveStreamRef = useRef<{
+    sessionId: string
+    messageId: string
+    controller: AbortController
+    handler: ChatStreamingHandler
+  } | null>(null)
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Selectors (fine-grained subscriptions) ──
@@ -206,15 +212,6 @@ export function useChatSession(chatSessionId: string | null) {
     queryKey: generatedSnapshotRowsOptions.queryKey,
     queryFn: generatedSnapshotRowsOptions.queryFn,
     enabled: !!chatSessionId,
-    refetchInterval: () => {
-      if (!chatSessionId) {
-        return false
-      }
-      const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
-      return meta?.passiveStatus === 'streaming' && !meta.locallyDriving
-        ? PASSIVE_STREAM_REFETCH_MS
-        : false
-    },
     select: data => ChatMessageSnapshotRowsSchema.parse(data),
   })
 
@@ -284,8 +281,104 @@ export function useChatSession(chatSessionId: string | null) {
         clearTimeout(snapshotTimerRef.current)
         snapshotTimerRef.current = null
       }
+      if (passiveStreamRef.current) {
+        passiveStreamRef.current.controller.abort()
+        passiveStreamRef.current.handler.dispose()
+        passiveStreamRef.current = null
+      }
     }
   }, [chatSessionId])
+
+  // ── Passive observer: join active run stream after snapshot hydration ──
+
+  useEffect(() => {
+    if (!chatSessionId || !snapshotRowsQuery.data) {
+      return
+    }
+
+    const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
+    if (meta?.locallyDriving) {
+      return
+    }
+
+    const streamingMessageId = projectStreamingMainAssistantMessageIds(snapshotRowsQuery.data)[0]
+    if (!streamingMessageId) {
+      if (passiveStreamRef.current?.sessionId === chatSessionId) {
+        passiveStreamRef.current.controller.abort()
+        passiveStreamRef.current.handler.dispose()
+        passiveStreamRef.current = null
+      }
+      return
+    }
+
+    const current = passiveStreamRef.current
+    if (current?.sessionId === chatSessionId && current.messageId === streamingMessageId) {
+      return
+    }
+    if (current) {
+      current.controller.abort()
+      current.handler.dispose()
+      passiveStreamRef.current = null
+    }
+
+    const controller = new AbortController()
+    const handler = new ChatStreamingHandler(
+      chatSessionId,
+      streamingMessageId,
+      performance.now(),
+      { mode: 'passive' },
+    )
+    handler.start(controller)
+    passiveStreamRef.current = {
+      sessionId: chatSessionId,
+      messageId: streamingMessageId,
+      controller,
+      handler,
+    }
+
+    void (async () => {
+      try {
+        const res = await subscribeChatSessionStream({
+          sessionId: chatSessionId,
+          signal: controller.signal,
+        })
+        if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          throw new Error(`Failed to subscribe chat session stream: ${res.status} ${body}`)
+        }
+
+        const stream = buildEventStreamFromResponse(res, chatSessionId)
+        const reader = stream.getReader()
+
+        const pump = async (): Promise<void> => {
+          const { done, value } = await reader.read()
+          if (done) {
+            return
+          }
+          handler.handleEvent(value)
+          await pump()
+        }
+
+        await pump()
+        handler.finish()
+      }
+      catch (err) {
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          handler.fail(err instanceof Error ? err.message : 'Stream failed')
+        }
+      }
+      finally {
+        handler.dispose()
+        if (passiveStreamRef.current?.controller === controller) {
+          passiveStreamRef.current = null
+        }
+        scheduleSnapshotRefresh(0)
+        void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+      }
+    })()
+
+    return undefined
+  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, snapshotRowsQuery.data])
 
   // ── Passive observer: SSE run events ──
 
@@ -332,7 +425,6 @@ export function useChatSession(chatSessionId: string | null) {
           break
         default:
           useChatStore.getState().setPassiveStatus(chatSessionId, 'streaming')
-          scheduleSnapshotRefresh()
           void queryClient.invalidateQueries({ queryKey: queueQueryKey })
           break
       }

@@ -10,12 +10,13 @@ import {
   RefreshCwIcon,
   XIcon
 } from 'lucide-react'
-import { createElement, useCallback, useEffect, useRef, useState } from 'react'
+import { Activity, createElement, useCallback, useEffect, useRef, useState } from 'react'
 
 import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
+import type { BrowserPanelTab } from '~/store/browser-panel'
 import { handleBrowserPanelTabShortcut, useBrowserPanelStore } from '~/store/browser-panel'
 
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
@@ -53,18 +54,16 @@ const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
 
 interface ElectronWebviewProps {
   url: string
-  active: boolean
   webviewRef: (el: WebviewElement | null) => void
 }
 
-function ElectronWebview({ url, active, webviewRef }: ElectronWebviewProps) {
+function ElectronWebview({ url, webviewRef }: ElectronWebviewProps) {
   return createElement('webview', {
     ref: webviewRef,
     src: url,
     partition: WEBVIEW_PARTITION,
     webpreferences: WEBVIEW_PREFERENCES,
     className: 'absolute inset-0 w-full h-full',
-    style: { display: active ? 'flex' : 'none' }
   } as React.HTMLAttributes<HTMLElement> & {
     ref: (el: WebviewElement | null) => void
     src: string
@@ -73,7 +72,29 @@ function ElectronWebview({ url, active, webviewRef }: ElectronWebviewProps) {
   })
 }
 
-export function BrowserPanel() {
+interface BrowserPanelProps {
+  activeSessionId?: string | null
+  activeSessionTitle?: string | null
+}
+
+function getTabFallbackTitle(tab: BrowserPanelTab): string {
+  if (tab.kind === 'browser') {
+    return tab.url
+  }
+  if (tab.kind === 'workspace-diff') {
+    return 'diff'
+  }
+  return 'workspace file'
+}
+
+function getSourceSessionTitle(tab: BrowserPanelTab): string | null {
+  if (tab.kind !== 'browser' || !tab.sessionId) {
+    return null
+  }
+  return tab.sessionTitle || `Session ${tab.sessionId.slice(0, 8)}`
+}
+
+export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null }: BrowserPanelProps) {
   const tabs = useBrowserPanelStore(state => state.tabs)
   const activeTabId = useBrowserPanelStore(state => state.activeTabId)
   const requestedTab = useBrowserPanelStore(state => state.requestedTab)
@@ -89,7 +110,6 @@ export function BrowserPanel() {
   const activeWorkspaceFileTab = activeTab?.kind === 'workspace-file' ? activeTab : null
   const activeWorkspaceDiffTab = activeTab?.kind === 'workspace-diff' ? activeTab : null
   const browserTabCount = tabs.filter((tab) => tab.kind === 'browser').length
-  const nonBrowserTabs = tabs.filter((tab) => tab.kind !== 'browser')
   const [urlInput, setUrlInput] = useState('')
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
 
@@ -228,8 +248,8 @@ export function BrowserPanel() {
     if (browserTabCount >= MAX_TABS) {
       return
     }
-    createTab('about:blank')
-  }, [browserTabCount, createTab])
+    createTab('about:blank', { sessionId: activeSessionId, sessionTitle: activeSessionTitle })
+  }, [activeSessionId, activeSessionTitle, browserTabCount, createTab])
 
   // Empty state
   if (tabs.length === 0) {
@@ -265,7 +285,12 @@ export function BrowserPanel() {
     >
       {/* Tab bar */}
       <div className="flex items-center gap-0.5 px-2 py-1 shrink-0 border-b border-border/30 bg-card">
-        {tabs.map((tab) => (
+        {tabs.map((tab) => {
+          const sourceSessionTitle = getSourceSessionTitle(tab)
+          const isForeignBrowserTab = tab.kind === 'browser'
+            && !!tab.sessionId
+            && tab.sessionId !== activeSessionId
+          return (
           <div
             key={tab.id}
             className={cn(
@@ -308,17 +333,27 @@ export function BrowserPanel() {
               <span className="truncate">
                 {tab.title || (tab.kind === 'browser' ? tab.url : 'Workspace file')}
               </span>
+              {isForeignBrowserTab && sourceSessionTitle && (
+                <span
+                  className="ml-0.5 flex size-3 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[8px] font-semibold leading-none text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300"
+                  title={`From ${sourceSessionTitle}`}
+                  aria-label={`From ${sourceSessionTitle}`}
+                >
+                  S
+                </span>
+              )}
             </button>
             <button
               type="button"
               onClick={() => closeTab(tab.id)}
-              aria-label={`Close ${tab.title || (tab.kind === 'browser' ? tab.url : tab.kind === 'workspace-diff' ? 'diff' : 'workspace file')}`}
+              aria-label={`Close ${tab.title || getTabFallbackTitle(tab)}`}
               className="mr-0.5 flex size-6 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
             >
               <XIcon className="size-2.5" />
             </button>
           </div>
-        ))}
+          )
+        })}
         {isElectron && (
           <button
             type="button"
@@ -457,51 +492,43 @@ export function BrowserPanel() {
         {tabs.map((tab) => {
           if (tab.kind === 'browser') {
             return (
-              <ElectronWebview
-                key={tab.id}
-                url={tab.url}
-                active={tab.id === activeTabId}
-                webviewRef={webviewRef(tab.id)}
-              />
+              <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
+                <ElectronWebview
+                  url={tab.url}
+                  webviewRef={webviewRef(tab.id)}
+                />
+              </Activity>
             )
           }
           if (tab.kind === 'workspace-diff') {
             return (
-              <div
-                key={tab.id}
-                className={cn(
-                  'absolute inset-0 min-h-0 flex flex-col',
-                  tab.id === activeTabId ? 'flex' : 'hidden'
-                )}
-              >
-                <WorkspaceDiffViewer tabId={tab.id} workspaceId={tab.workspaceId} paths={tab.paths} />
-              </div>
+              <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
+                <div className="absolute inset-0 min-h-0 flex flex-col">
+                  <WorkspaceDiffViewer tabId={tab.id} workspaceId={tab.workspaceId} paths={tab.paths} />
+                </div>
+              </Activity>
             )
           }
           return (
-            <div
-              key={tab.id}
-              className={cn(
-                'absolute inset-0 min-h-0',
-                tab.id === activeTabId ? 'block' : 'hidden'
-              )}
-            >
-              {tab.view === 'editor' ? (
-                <WorkspaceFileEditor workspaceId={tab.workspaceId} path={tab.path} />
-              ) : (
-                <WorkspaceFilePreview
-                  workspaceId={tab.workspaceId}
-                  path={tab.path}
-                  onOpenEditor={() =>
-                    openWorkspaceFileTab({
-                      workspaceId: tab.workspaceId,
-                      path: tab.path,
-                      view: 'editor'
-                    })
-                  }
-                />
-              )}
-            </div>
+            <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
+              <div className="absolute inset-0 min-h-0">
+                {tab.view === 'editor' ? (
+                  <WorkspaceFileEditor workspaceId={tab.workspaceId} path={tab.path} />
+                ) : (
+                  <WorkspaceFilePreview
+                    workspaceId={tab.workspaceId}
+                    path={tab.path}
+                    onOpenEditor={() =>
+                      openWorkspaceFileTab({
+                        workspaceId: tab.workspaceId,
+                        path: tab.path,
+                        view: 'editor'
+                      })
+                    }
+                  />
+                )}
+              </div>
+            </Activity>
           )
         })}
       </div>

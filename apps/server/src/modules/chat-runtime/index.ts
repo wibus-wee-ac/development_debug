@@ -47,6 +47,35 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.responseBody,
   })
+  // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
+  .get('/sessions/:sessionId/stream', ({ params }) => {
+    const stream = ChatRuntime.openSessionRunStream(params.sessionId)
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      },
+    })
+  }, {
+    detail: {
+      summary: 'Subscribe to the active chat run stream for an existing session',
+      responses: {
+        200: {
+          description: 'Server-sent event stream for the currently active chat run. The stream starts at subscription time and does not replay deltas already covered by the message snapshot endpoint.',
+          content: {
+            'text/event-stream': {
+              schema: {
+                type: 'string',
+              },
+              example: 'data: {"type":"message_delta","data":{"messageId":"msg_main","deltas":[{"seq":7,"type":"text_append","partIndex":0,"partType":"text","text":" world"}]}}\n\ndata: {"type":"run_completed","data":{"messageId":"msg_main"}}\n\n',
+            },
+          },
+        },
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+  })
   // GET /chat/sessions/:sessionId/queue → durable continuation queue
   .get('/sessions/:sessionId/queue', ({ params }) => {
     return { items: ChatRuntime.listSessionQueueItems(params.sessionId) }

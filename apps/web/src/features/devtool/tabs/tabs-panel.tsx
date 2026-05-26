@@ -1,26 +1,10 @@
-import type { DebugMetrics, DebugSnapshot, TabRenderPolicy } from '@cradle/tabs-next'
+import type { DebugMetrics, DebugSnapshot } from '@cradle/tabs-next'
 import { useEffect } from 'react'
-
-import { cn } from '~/lib/cn'
 
 import { startTabsDebugSync, useTabsDebugStore } from './use-tabs-debug-store'
 
 function formatNumber(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
-}
-
-function formatPolicy(policy: TabRenderPolicy | null): string {
-  if (!policy) {
-    return '-'
-  }
-
-  if (policy.strategy === 'single') {
-    return 'single'
-  }
-
-  const maxMountedTabs = policy.maxMountedTabs ?? 5
-  const pinned = policy.keepPinnedMounted === false ? 'unpinned' : 'pinned'
-  return `activity-pool / max ${maxMountedTabs} / ${pinned}`
 }
 
 function formatTimestamp(value: number | null): string {
@@ -71,8 +55,7 @@ function SnapshotSummary({
     ['Active Tab', snapshot.activeTabId ?? '-'],
     ['Tabs', String(snapshot.tabCount)],
     ['Contexts', String(snapshot.contextCount)],
-    ['Mounted', String(snapshot.mountedTabIds.length)],
-    ['Policy', formatPolicy(snapshot.renderPolicy)],
+    ['Activities', String(snapshot.activityTabIds.length)],
   ]
 
   return (
@@ -90,7 +73,7 @@ function SnapshotSummary({
 }
 
 function TabsTable({ snapshot }: { snapshot: DebugSnapshot }) {
-  const mountedIds = new Set(snapshot.mountedTabIds)
+  const activityIds = new Set(snapshot.activityTabIds)
 
   return (
     <div className="overflow-auto">
@@ -100,7 +83,7 @@ function TabsTable({ snapshot }: { snapshot: DebugSnapshot }) {
             <th className="py-1.5 pr-3 font-normal">ID</th>
             <th className="py-1.5 pr-3 font-normal">Type</th>
             <th className="py-1.5 pr-3 font-normal">Label</th>
-            <th className="py-1.5 pr-3 font-normal">Mounted</th>
+            <th className="py-1.5 pr-3 font-normal">Activity</th>
             <th className="py-1.5 pr-3 font-normal">Active</th>
             <th className="py-1.5 font-normal">Pinned</th>
           </tr>
@@ -111,10 +94,10 @@ function TabsTable({ snapshot }: { snapshot: DebugSnapshot }) {
               <td className="py-1.5 pr-3 text-muted-foreground">{tab.id}</td>
               <td className="py-1.5 pr-3">{tab.type}</td>
               <td className="max-w-[320px] truncate py-1.5 pr-3">{tab.label}</td>
-              <td className={cn('py-1.5 pr-3', mountedIds.has(tab.id) ? 'text-foreground' : 'text-muted-foreground/60')}>
-                {mountedIds.has(tab.id) ? 'yes' : 'no'}
+              <td className={activityIds.has(tab.id) ? 'py-1.5 pr-3 text-foreground' : 'py-1.5 pr-3 text-muted-foreground/60'}>
+                {activityIds.has(tab.id) ? 'yes' : 'no'}
               </td>
-              <td className={cn('py-1.5 pr-3', snapshot.activeTabId === tab.id ? 'text-foreground' : 'text-muted-foreground/60')}>
+              <td className={snapshot.activeTabId === tab.id ? 'py-1.5 pr-3 text-foreground' : 'py-1.5 pr-3 text-muted-foreground/60'}>
                 {snapshot.activeTabId === tab.id ? 'yes' : 'no'}
               </td>
               <td className="py-1.5 text-muted-foreground">{tab.pinned ? 'yes' : 'no'}</td>

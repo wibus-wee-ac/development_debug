@@ -18,13 +18,8 @@ interface TabsDebugStore {
 const DebugSnapshotSchema = z.object({
   tabCount: z.number(),
   contextCount: z.number(),
-  mountedTabIds: z.array(z.string()),
+  activityTabIds: z.array(z.string()),
   activeTabId: z.string().nullable(),
-  renderPolicy: z.object({
-    strategy: z.enum(['single', 'activity-pool']),
-    maxMountedTabs: z.number().optional(),
-    keepPinnedMounted: z.boolean().optional(),
-  }).nullable(),
   tabs: z.array(z.object({
     id: z.string(),
     type: z.string(),

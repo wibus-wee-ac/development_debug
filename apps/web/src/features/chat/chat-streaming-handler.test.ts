@@ -179,4 +179,43 @@ describe('chat streaming handler tool entity projection', () => {
     expect(serverMeta?.firstEventAtMs).toEqual(expect.any(Number))
     expect(serverMeta?.firstContentAtMs).toEqual(expect.any(Number))
   })
+
+  it('applies passive stream deltas without taking local driver ownership', () => {
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Hello' }],
+    }])
+
+    const handler = new ChatStreamingHandler('session-1', 'assistant-1', 100, { mode: 'passive' })
+    handler.start(new AbortController())
+
+    handler.handleEvent({
+      type: 'message_delta',
+      data: {
+        messageId: 'assistant-1',
+        deltas: [
+          {
+            seq: 1,
+            type: 'text_append',
+            partIndex: 0,
+            partType: 'text',
+            text: ' world',
+          },
+        ],
+      },
+    })
+
+    const state = useChatStore.getState()
+    expect(chatSelectors.message('session-1', 'assistant-1')(state)?.parts[0]).toEqual({
+      type: 'text',
+      text: 'Hello world',
+    })
+    expect(state.generatingMessageIds.has('assistant-1')).toBe(false)
+    expect(state.passiveStreamingMessageIds.has('assistant-1')).toBe(true)
+    expect(state.sessionMetaMap.get('session-1')).toMatchObject({
+      locallyDriving: false,
+      passiveStatus: 'streaming',
+    })
+  })
 })

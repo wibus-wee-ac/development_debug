@@ -65,6 +65,16 @@ export async function startChatResponse(args: {
   })
 }
 
+export async function subscribeChatSessionStream(args: {
+  sessionId: string
+  signal?: AbortSignal
+}): Promise<Response> {
+  return fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/stream`, {
+    method: 'GET',
+    signal: args.signal,
+  })
+}
+
 export async function listChatSessionQueue(sessionId: string): Promise<ChatQueueListResponse> {
   const res = await fetch(`${SERVER_BASE}/chat/sessions/${sessionId}/queue`)
 
