@@ -171,6 +171,29 @@ function detectFreeToken(text: string): string | null {
   )
 }
 
+// ── base64 detection ──
+
+const BASE64_RE = /^[A-Za-z0-9+/=_-]+$/
+
+// Common API key prefixes — keys starting with these are already plaintext
+const KNOWN_KEY_PREFIXES = ['sk-', 'sk-ant-', 'tp-', 'ak-', 'key-', 'api-']
+
+function tryDecodeBase64(token: string): string {
+  const lower = token.toLowerCase()
+  if (KNOWN_KEY_PREFIXES.some((p) => lower.startsWith(p))) return token
+  if (!BASE64_RE.test(token) || token.length < 16) return token
+  // standardise URL-safe base64 to standard base64
+  const standardised = token.replace(/-/g, '+').replace(/_/g, '/')
+  try {
+    const decoded = Buffer.from(standardised, 'base64').toString('utf8')
+    // decoded must be printable text with no null bytes or control chars
+    if (!decoded || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(decoded)) return token
+    return decoded.trim()
+  } catch {
+    return token
+  }
+}
+
 // ── main ──
 
 export function parseProviderConfig(text: string): ParseResult {
@@ -185,41 +208,41 @@ export function parseProviderConfig(text: string): ParseResult {
 
   const providers: ParsedProvider[] = []
   const seen = new Set<string>()
-  const consumedUrls = new Set<string>()
 
   function addProvider(kind: ProviderKind, name: string, baseUrl: string, apiKey: string) {
     if (!baseUrl) return
-    // dedupe by URL only (one provider per unique URL)
-    if (consumedUrls.has(baseUrl)) return
-    consumedUrls.add(baseUrl)
+    // dedupe by (baseUrl + apiKey) — same URL with different key is allowed
+    const dedupeKey = `${baseUrl}\0${apiKey}`
+    if (seen.has(dedupeKey)) return
+    seen.add(dedupeKey)
     providers.push({ providerKind: kind, name, apiKey, baseUrl })
   }
 
-  // 1. Export groups (most reliable)
+  // 1. Export groups (most reliable) — decode base64 keys
   for (const [kind, group] of exportGroups) {
     if (group.baseUrl && group.apiKey) {
-      addProvider(kind, hostnameFromUrl(group.baseUrl), group.baseUrl, group.apiKey)
+      addProvider(kind, hostnameFromUrl(group.baseUrl), group.baseUrl, tryDecodeBase64(group.apiKey))
     }
   }
 
   // 2. Export token + remaining URLs of matching kind
   for (const [kind, group] of exportGroups) {
     if (!group.apiKey) continue
+    const decodedKey = tryDecodeBase64(group.apiKey)
     for (const u of urls) {
-      if (consumedUrls.has(u.url)) continue
       const urlKind = u.kind === 'unknown' ? kind : u.kind
       if (urlKind === kind) {
-        addProvider(kind, hostnameFromUrl(u.url), u.url, group.apiKey)
+        addProvider(kind, hostnameFromUrl(u.url), u.url, decodedKey)
       }
     }
   }
 
   // 3. Freetext token + remaining URLs
-  const bestToken =
+  const rawToken =
     [...exportGroups.values()].find((g) => g.apiKey)?.apiKey ?? freeToken
+  const bestToken = rawToken ? tryDecodeBase64(rawToken) : null
 
   for (const u of urls) {
-    if (consumedUrls.has(u.url)) continue
     const kind = u.kind === 'unknown' ? 'openai-compatible' : u.kind
     addProvider(kind as ProviderKind, hostnameFromUrl(u.url), u.url, bestToken ?? '')
   }

@@ -48,7 +48,7 @@ export function ImportProviderDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { createProfile } = useAgentProfiles()
+  const { createProfile, profiles } = useAgentProfiles()
   const [text, setText] = useState('')
   const [importing, setImporting] = useState(false)
   const [enabledSet, setEnabledSet] = useState<Set<number>>(new Set())
@@ -62,13 +62,32 @@ export function ImportProviderDialog({
     return parseProviderConfig(text)
   }, [text])
 
+  // Deduplicate provider names: append " (2)", " (3)" etc for same-name entries
+  const resolvedNames = useMemo(() => {
+    const parsed = parseResult?.providers ?? []
+    const counts = new Map<string, number>()
+    const allExisting = new Set(profiles.map((p) => p.name.toLowerCase()))
+    return parsed.map((p) => {
+      let base = p.name
+      let candidate = base
+      let n = 1
+      while (allExisting.has(candidate.toLowerCase()) || counts.has(candidate.toLowerCase())) {
+        n++
+        candidate = `${base} (${n})`
+      }
+      allExisting.add(candidate.toLowerCase())
+      counts.set(candidate.toLowerCase(), n)
+      return candidate
+    })
+  }, [parseResult, profiles])
+
   useEffect(() => {
     if (!parseResult) return
     if (parseResult.token !== prevTokenRef.current) {
       prevTokenRef.current = parseResult.token
-      setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
       setKinds(parseResult.providers.map((p) => p.providerKind))
       setManualUrl('')
+      setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
     }
   }, [parseResult])
 
@@ -105,11 +124,12 @@ export function ImportProviderDialog({
         if (!enabledSet.has(i) && providers.length > 1) continue
         const p = providers[i]
 
-        const profileId = buildProfileId(p.name, `imported-${Date.now()}-${i}`)
+        const name = resolvedNames[i] ?? p.name
+        const profileId = buildProfileId(name, `imported-${Date.now()}-${i}`)
         await createProfile.mutateAsync({
           id: profileId,
           body: {
-            name: p.name,
+            name,
             providerKind: finalKinds[i] ?? p.providerKind,
             enabled: true,
             config: { baseUrl: p.baseUrl },
@@ -125,7 +145,7 @@ export function ImportProviderDialog({
     } finally {
       setImporting(false)
     }
-  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange])
+  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames])
 
   const handleClose = useCallback(() => {
     if (importing) return
@@ -191,6 +211,7 @@ export function ImportProviderDialog({
                       <ProviderCard
                         key={i}
                         provider={p}
+                        resolvedName={resolvedNames[i] ?? p.name}
                         kind={kinds[i] ?? p.providerKind}
                         enabled={enabledSet.has(i)}
                         onToggle={() => {
@@ -271,12 +292,14 @@ export function ImportProviderDialog({
 
 function ProviderCard({
   provider,
+  resolvedName,
   kind,
   enabled,
   onToggle,
   onKindChange,
 }: {
   provider: ParsedProvider
+  resolvedName: string
   kind: ProviderKind
   enabled: boolean
   onToggle: () => void
@@ -314,7 +337,7 @@ function ProviderCard({
             </SelectContent>
           </Select>
           <span className="truncate text-[13px] font-medium text-foreground">
-            {provider.name}
+            {resolvedName}
           </span>
         </div>
         <div className="flex flex-col gap-0.5">
