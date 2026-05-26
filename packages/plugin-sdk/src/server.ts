@@ -44,7 +44,7 @@ export type ServerPluginRouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE
 export interface ServerPluginRouteContext<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>,
+  TQuery extends Record<string, unknown> = Record<string, unknown>
 > {
   body: TBody
   params: TParams
@@ -59,15 +59,13 @@ export interface ServerPluginRouteContext<
 export type ServerPluginRouteHandler<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>,
-> = (
-  context: ServerPluginRouteContext<TBody, TParams, TQuery>
-) => unknown | Promise<unknown>
+  TQuery extends Record<string, unknown> = Record<string, unknown>
+> = (context: ServerPluginRouteContext<TBody, TParams, TQuery>) => unknown | Promise<unknown>
 
 export interface ServerPluginRouteRegistration<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>,
+  TQuery extends Record<string, unknown> = Record<string, unknown>
 > {
   method: ServerPluginRouteMethod
   /** Path below /api/plugins/{routeSegment}; must start with '/'. */
@@ -179,7 +177,6 @@ export interface ExternalProviderRecordMetadata {
   baseUrl?: string
   model?: string
   apiFormat?: string
-  health?: 'healthy' | 'unhealthy' | 'unknown'
   sourceUpdatedAt?: string
   rawFingerprintHint?: string
 }
@@ -217,7 +214,9 @@ export interface ServerPluginChatHooks {
   onAfterResponse(handler: AfterResponseHandler): Disposable
 }
 
-export type BeforeQueryHandler = (ctx: QueryHookContext) => QueryHookContext | Promise<QueryHookContext>
+export type BeforeQueryHandler = (
+  ctx: QueryHookContext
+) => QueryHookContext | Promise<QueryHookContext>
 
 export interface QueryHookContext {
   /** Messages to send to the agent */

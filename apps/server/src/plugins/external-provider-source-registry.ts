@@ -13,7 +13,7 @@ export interface RegisteredExternalProviderSource {
 
 const sources = new Map<string, RegisteredExternalProviderSource>()
 
-function sourceKey(owner: string, sourceId: string): string {
+export function deriveExternalProviderSourceKey(owner: string, sourceId: string): string {
   const hash = createHash('sha256').update(`${owner}\0${sourceId}`).digest('hex').slice(0, 24)
   return `external_source_${hash}`
 }
@@ -27,7 +27,7 @@ export function registerExternalProviderSource(owner: string, source: ExternalPr
     throw new Error(`External provider source ${id} label is required`)
   }
 
-  const key = sourceKey(owner, id)
+  const key = deriveExternalProviderSourceKey(owner, id)
   if (sources.has(key)) {
     throw new Error(`External provider source already registered: ${owner}:${id}`)
   }

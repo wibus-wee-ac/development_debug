@@ -5,7 +5,11 @@ import {
   externalProviderSources,
   providerTargets
 } from '@cradle/db'
-import type { ExternalProviderWarning } from '@cradle/plugin-sdk/server'
+import type {
+  ExternalProviderSource,
+  ExternalProviderSourceReadContext,
+  ExternalProviderWarning
+} from '@cradle/plugin-sdk/server'
 import { and, eq, inArray } from 'drizzle-orm'
 import stringify from 'safe-stable-stringify'
 import { z } from 'zod'
@@ -13,6 +17,7 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import {
+  deriveExternalProviderSourceKey,
   getExternalProviderSource,
   listExternalProviderSources as listRegisteredExternalProviderSources
 } from '../../plugins/external-provider-source-registry'
@@ -74,6 +79,12 @@ export interface ExternalProviderRefreshResult {
   recordsProjected: number
   recordsMissing: number
   message?: string
+}
+
+interface RefreshSourceInput {
+  owner: string
+  source: ExternalProviderSource
+  sharedConfig?: ReadonlyMap<string, string>
 }
 
 type Tx = ReturnType<typeof db>
@@ -519,32 +530,26 @@ export function updateExternalRuntimeTargetEnabled(
   return updated ? toRuntimeTargetView(updated) : null
 }
 
-export async function refreshExternalProviderSource(
-  sourceKey: string
+async function refreshSourceSnapshot(
+  sourceKey: string,
+  owner: string,
+  registeredSource: z.infer<typeof RegisteredExternalProviderSourceSchema>,
+  source: ExternalProviderSource,
+  sharedConfig: ReadonlyMap<string, string>
 ): Promise<ExternalProviderRefreshResult> {
-  const registered = getExternalProviderSource(sourceKey)
-  if (!registered) {
-    throw new AppError({
-      code: 'external_source_not_found',
-      status: 404,
-      message: 'External provider source not found',
-      details: { sourceKey }
-    })
-  }
-  const registeredSource = RegisteredExternalProviderSourceSchema.parse(registered.source)
-
   try {
+    const readContext: ExternalProviderSourceReadContext = {
+      signal: new AbortController().signal,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {}
+      },
+      sharedConfig
+    }
     const snapshot = ExternalProviderSnapshotSchema.parse(
-      await registered.source.readSnapshot({
-        signal: new AbortController().signal,
-        logger: {
-          info() {},
-          warn() {},
-          error() {},
-          debug() {}
-        },
-        sharedConfig: new Map()
-      })
+      await source.readSnapshot(readContext)
     )
 
     const status = sourceStatusFromWarnings(snapshot.warnings)
@@ -555,7 +560,7 @@ export async function refreshExternalProviderSource(
       syncSourceRow(
         tx,
         sourceKey,
-        registered.owner,
+        owner,
         registeredSource.id,
         registeredSource.label,
         registeredSource.description,
@@ -617,7 +622,7 @@ export async function refreshExternalProviderSource(
       .insert(externalProviderSources)
       .values({
         id: sourceKey,
-        pluginName: registered.owner,
+        pluginName: owner,
         sourceId: registeredSource.id,
         label: registeredSource.label,
         description: registeredSource.description,
@@ -653,6 +658,42 @@ export async function refreshExternalProviderSource(
       message
     }
   }
+}
+
+export async function refreshDirectExternalProviderSource(
+  input: RefreshSourceInput
+): Promise<ExternalProviderRefreshResult> {
+  const registeredSource = RegisteredExternalProviderSourceSchema.parse(input.source)
+  return refreshSourceSnapshot(
+    deriveExternalProviderSourceKey(input.owner, registeredSource.id),
+    input.owner,
+    registeredSource,
+    input.source,
+    input.sharedConfig ?? new Map()
+  )
+}
+
+export async function refreshExternalProviderSource(
+  sourceKey: string
+): Promise<ExternalProviderRefreshResult> {
+  const registered = getExternalProviderSource(sourceKey)
+  if (!registered) {
+    throw new AppError({
+      code: 'external_source_not_found',
+      status: 404,
+      message: 'External provider source not found',
+      details: { sourceKey }
+    })
+  }
+  const registeredSource = RegisteredExternalProviderSourceSchema.parse(registered.source)
+
+  return refreshSourceSnapshot(
+    sourceKey,
+    registered.owner,
+    registeredSource,
+    registered.source,
+    new Map()
+  )
 }
 
 export async function refreshAllExternalProviderSources(): Promise<

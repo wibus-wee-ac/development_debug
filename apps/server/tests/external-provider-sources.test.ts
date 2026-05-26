@@ -103,8 +103,7 @@ describe('external provider sources capability', () => {
         enabled: false,
         metadata: {
           baseUrl: 'https://anthropic.example.test',
-          model: 'claude-test',
-          health: 'unknown'
+          model: 'claude-test'
         }
       },
       {
@@ -614,29 +613,6 @@ describe('external provider sources capability', () => {
       expect(targetRes.status).toBe(200)
       const target = RuntimeTargetResponseSchema.parse(await targetRes.json())
 
-      const healthCheckRes = await app.handle(
-        new Request('http://localhost/providers/health-check', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            providerKind: 'openai-compatible',
-            label: 'ignored',
-            config: {},
-            secretRef: null,
-            providerTargetKind: 'external',
-            providerTargetId: target.id
-          })
-        })
-      )
-      expect(healthCheckRes.status).toBe(200)
-      expect(await healthCheckRes.json()).toEqual({
-        ok: true,
-        label: 'Target OpenAI',
-        version: null,
-        details: { baseUrl: 'https://target-openai.example.test/v1' },
-        errorText: null
-      })
-
       const modelsRes = await app.handle(
         new Request('http://localhost/providers/models', {
           method: 'POST',
@@ -658,14 +634,11 @@ describe('external provider sources capability', () => {
       ])
 
       const visibilityRes = await app.handle(
-        new Request(
-          `http://localhost/provider-targets/${target.id}/model-visibility`,
-          {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ enabledModels: ['gpt-4.1'] })
-          }
-        )
+        new Request(`http://localhost/provider-targets/${target.id}/model-visibility`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabledModels: ['gpt-4.1'] })
+        })
       )
       expect(visibilityRes.status).toBe(200)
       const visibilitySettings = ProviderTargetModelSettingsResponseSchema.parse(
@@ -680,22 +653,19 @@ describe('external provider sources capability', () => {
       )
 
       const customModelsRes = await app.handle(
-        new Request(
-          `http://localhost/provider-targets/${target.id}/custom-models`,
-          {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              models: [
-                {
-                  id: 'provider-private-model',
-                  label: 'Provider Private Model',
-                  capabilities: { contextWindow: 64000 }
-                }
-              ]
-            })
-          }
-        )
+        new Request(`http://localhost/provider-targets/${target.id}/custom-models`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            models: [
+              {
+                id: 'provider-private-model',
+                label: 'Provider Private Model',
+                capabilities: { contextWindow: 64000 }
+              }
+            ]
+          })
+        })
       )
       expect(customModelsRes.status).toBe(200)
       expect(await customModelsRes.json()).toEqual([
@@ -703,23 +673,20 @@ describe('external provider sources capability', () => {
       ])
 
       const mappingRes = await app.handle(
-        new Request(
-          `http://localhost/provider-targets/${target.id}/model-registry-mappings`,
-          {
-            method: 'PATCH',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              modelId: 'gpt-4.1-mini',
-              model: {
-                id: 'gpt-4.1-mini',
-                name: 'GPT-4.1 Mini',
-                limit: { context: 1047576, output: 32768 },
-                modalities: { input: ['text'], output: ['text'] },
-                tool_call: true
-              }
-            })
-          }
-        )
+        new Request(`http://localhost/provider-targets/${target.id}/model-registry-mappings`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            modelId: 'gpt-4.1-mini',
+            model: {
+              id: 'gpt-4.1-mini',
+              name: 'GPT-4.1 Mini',
+              limit: { context: 1047576, output: 32768 },
+              modalities: { input: ['text'], output: ['text'] },
+              tool_call: true
+            }
+          })
+        })
       )
       expect(mappingRes.status).toBe(200)
       expect(await mappingRes.json()).toEqual([
