@@ -41,9 +41,9 @@ const spec = {
       "type": "json"
     },
     {
-      "name": "agentProfileId",
+      "name": "providerTargetId",
       "required": false,
-      "target": "body.agentProfileId",
+      "target": "body.providerTargetId",
       "type": "string"
     },
     {

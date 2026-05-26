@@ -6,17 +6,16 @@ export const providerTargetKinds = ['manual', 'external'] as const
 
 export type ProviderTargetKind = (typeof providerTargetKinds)[number]
 
-export const runtimeKinds = ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'] as const
+export const runtimeKinds = [
+  'standard',
+  'claude-agent',
+  'codex',
+  'jar-core',
+  'acp-chat',
+  'cli-tui'
+] as const
 
 export type RuntimeKind = (typeof runtimeKinds)[number]
-
-export interface ProviderHealthCheckResult {
-  ok: boolean
-  label: string
-  version: string | null
-  details: Record<string, unknown>
-  errorText: string | null
-}
 
 export interface ProviderRequest {
   providerKind: ProviderKind

@@ -35,18 +35,6 @@ const spec = {
       "type": "string"
     },
     {
-      "name": "agentProfileId",
-      "required": false,
-      "target": "body.agentProfileId",
-      "type": "string"
-    },
-    {
-      "name": "providerTargetKind",
-      "required": false,
-      "target": "body.providerTargetKind",
-      "type": "string"
-    },
-    {
       "name": "providerTargetId",
       "required": false,
       "target": "body.providerTargetId",

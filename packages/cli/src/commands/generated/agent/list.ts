@@ -17,22 +17,6 @@ const spec = {
       "type": "string"
     },
     {
-      "name": "agentProfileId",
-      "required": false,
-      "target": "query.agentProfileId",
-      "type": "string"
-    },
-    {
-      "name": "providerTargetKind",
-      "required": false,
-      "target": "query.providerTargetKind",
-      "type": "string",
-      "values": [
-        "manual-profile",
-        "external-record"
-      ]
-    },
-    {
       "name": "providerTargetId",
       "required": false,
       "target": "query.providerTargetId",

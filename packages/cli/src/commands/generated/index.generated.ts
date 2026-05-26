@@ -134,7 +134,6 @@ import { register as registerProfileDelete } from './profile/delete'
 import { register as registerProfileGet } from './profile/get'
 import { register as registerProfileList } from './profile/list'
 import { register as registerProfileSet } from './profile/set'
-import { register as registerProviderHealthCheck } from './provider/health-check'
 import { register as registerProviderModels } from './provider/models'
 import { register as registerSearchChronicle } from './search/chronicle'
 import { register as registerSearchThreads } from './search/threads'
@@ -331,7 +330,6 @@ export function registerGeneratedCommands(program: Command): void {
   registerProfileGet(program)
   registerProfileList(program)
   registerProfileSet(program)
-  registerProviderHealthCheck(program)
   registerProviderModels(program)
   registerSearchChronicle(program)
   registerSearchThreads(program)

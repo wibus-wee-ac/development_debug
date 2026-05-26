@@ -1,6 +1,4 @@
-import { randomUUID } from 'node:crypto'
-
-import { backendCapabilitySnapshots, runtimeAuditLog } from '@cradle/db'
+import { runtimeAuditLog } from '@cradle/db'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -14,12 +12,7 @@ import {
   ProfileConfigWithModelRegistryJsonSchema
 } from './model-registry-mappings'
 import { getProviderCatalog } from './provider-catalog'
-import type {
-  ModelDescriptor,
-  ProviderHealthCheckResult,
-  ProviderKind,
-  ProviderRequest
-} from './types'
+import type { ModelDescriptor, ProviderKind, ProviderRequest } from './types'
 
 // ── provider body parsing ──
 
@@ -119,37 +112,6 @@ function resolveEffectiveProviderRequest(input: ProviderRequest) {
   }
 }
 
-// ── health check ──
-
-export async function healthCheck(input: ProviderRequest): Promise<ProviderHealthCheckResult> {
-  const effective = resolveEffectiveProviderRequest(input)
-  const provider = requireProvider(effective.request.providerKind)
-  try {
-    const result = await provider.checkHealth(effective.request, {
-      readSecret: (secretRef) => Secrets.readSecret(secretRef)
-    })
-    recordHealthCheck({
-      profileId: effective.request.profileId,
-      providerTargetKind: effective.resolved?.kind ?? null,
-      providerTargetId: effective.target?.id ?? null,
-      providerKind: effective.request.providerKind,
-      subject: effective.request.label,
-      ok: result.ok,
-      errorText: result.errorText
-    })
-    recordCapabilitySnapshot({
-      profileId: effective.request.profileId,
-      providerTargetKind: effective.resolved?.kind ?? null,
-      providerTargetId: effective.target?.id ?? null,
-      providerKind: effective.request.providerKind,
-      capabilitiesJson: JSON.stringify(result.details)
-    })
-    return result
-  } catch (error) {
-    throw mapOperationalError(error)
-  }
-}
-
 // ── list models ──
 
 export async function listModels(input: ProviderRequest): Promise<ModelDescriptor[]> {
@@ -204,32 +166,6 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
 
 // ── audit persistence (merged from store) ──
 
-function recordHealthCheck(input: {
-  profileId?: string | null
-  providerTargetKind?: 'manual' | 'external' | null
-  providerTargetId?: string | null
-  providerKind: ProviderKind
-  subject: string
-  ok: boolean
-  errorText: string | null
-}): void {
-  const auditInput = RuntimeAuditProfileInputSchema.parse(input)
-  try {
-    db()
-      .insert(runtimeAuditLog)
-      .values({
-        providerTargetId: auditInput.providerTargetId,
-        providerKind: input.providerKind,
-        action: 'healthCheck',
-        subject: input.subject,
-        details: JSON.stringify({ ok: input.ok, errorText: input.errorText })
-      })
-      .run()
-  } catch {
-    // FK violation possible if profile was deleted mid-request
-  }
-}
-
 function recordModelList(input: {
   profileId?: string | null
   providerTargetKind?: 'manual' | 'external' | null
@@ -247,29 +183,6 @@ function recordModelList(input: {
       action: 'listModels',
       subject: input.subject,
       details: JSON.stringify({ count: input.count })
-    })
-    .run()
-}
-
-function recordCapabilitySnapshot(input: {
-  profileId?: string | null
-  providerTargetKind?: 'manual' | 'external' | null
-  providerTargetId?: string | null
-  providerKind: ProviderKind
-  capabilitiesJson: string
-}): void {
-  if (!input.providerTargetId) {
-    return
-  }
-  db()
-    .insert(backendCapabilitySnapshots)
-    .values({
-      id: randomUUID(),
-      providerTargetId: input.providerTargetId ?? null,
-      runtimeKind: 'standard',
-      source: 'health_check',
-      capabilitiesJson: input.capabilitiesJson,
-      recordedAt: Math.floor(Date.now() / 1000)
     })
     .run()
 }

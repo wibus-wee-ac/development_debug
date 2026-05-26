@@ -55,11 +55,26 @@ describe('openapi capability', () => {
       expect(document.paths['/sessions/{id}/title']).toBeUndefined()
       expect(document.paths['/sessions/{id}/toggle-pin']).toBeUndefined()
       expect(document.paths['/chat/sessions/{sessionId}/response']?.post).toBeTruthy()
-      expect(document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.content?.['text/event-stream']).toBeTruthy()
-      expect(document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.description).toContain('message_delta')
-      expect(String(document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.content?.['text/event-stream']?.example ?? '')).toContain('text_append')
+      expect(
+        document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.content?.[
+          'text/event-stream'
+        ]
+      ).toBeTruthy()
+      expect(
+        document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.description
+      ).toContain('message_delta')
+      expect(
+        String(
+          document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']
+            ?.content?.['text/event-stream']?.example ?? ''
+        )
+      ).toContain('text_append')
       expect(document.paths['/chat/sessions/{sessionId}/messages']?.get).toBeTruthy()
-      expect(document.paths['/chat/sessions/{sessionId}/messages']?.get?.responses?.['200']?.content?.['application/json']?.schema).toBeTruthy()
+      expect(
+        document.paths['/chat/sessions/{sessionId}/messages']?.get?.responses?.['200']?.content?.[
+          'application/json'
+        ]?.schema
+      ).toBeTruthy()
       expect(document.paths['/chat/sessions/{sessionId}/cancel']?.post).toBeTruthy()
       expect(document.paths['/chat/runs/{runId}']).toBeUndefined()
       expect(document.paths['/kanban/issues/{id}/move']).toBeUndefined()
@@ -76,7 +91,7 @@ describe('openapi capability', () => {
       expect(document.paths['/issue-agent/issues/{issueId}/delegation']).toBeUndefined()
       expect(document.paths['/issue-agent-sessions/{agentSessionId}/activities']).toBeTruthy()
       expect(document.paths['/providers/models']?.post?.requestBody).toBeTruthy()
-      expect(document.paths['/providers/health-check']?.post?.requestBody).toBeTruthy()
+      expect(document.paths['/providers/health-check']).toBeUndefined()
       expect(document.components?.schemas).toBeTruthy()
 
       const aliasResponse = await app.handle(new Request('http://localhost/docs/openapi.json'))
@@ -88,14 +103,12 @@ describe('openapi capability', () => {
       expect(docsResponse.headers.get('content-type')).toContain('text/html')
       const html = await docsResponse.text()
       expect(html).toContain('api-reference')
-    }
- finally {
+    } finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      }
- else {
+      } else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }

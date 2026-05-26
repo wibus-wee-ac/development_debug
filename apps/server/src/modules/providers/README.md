@@ -4,9 +4,8 @@
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 - `providers.module.ts` — wires provider-owned HTTP endpoints and services.
-- `providers.controller.ts` — exposes body-based `/providers/health-check` and `/providers/models` endpoints with Zod-inferred typed config payloads.
-- `providers.service.ts` — resolves provider metadata requests, runs health checks, reads secrets, and maps provider errors.
-- `providers.store.ts` — writes runtime audit rows and capability snapshots.
+- `providers.controller.ts` — exposes body-based `/providers/models` endpoints with Zod-inferred typed config payloads.
+- `providers.service.ts` — resolves provider metadata requests, reads secrets, and maps provider errors.
 - `provider-catalog.ts` — registers provider metadata implementations by kind, including provider-specific auth and default base URL handling.
 - `model-capabilities.ts` — projects provider-owned default model capability metadata, including Anthropic text+image input defaults used by Composer attachment gating.
 - `provider-base.ts` — shared Zod-backed config parsing and API-key helpers, including Claude Agent SDK-owned alias configuration from effective runtime `config.claudeAgent`.

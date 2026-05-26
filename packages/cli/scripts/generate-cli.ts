@@ -70,7 +70,7 @@ const moduleDescriptions: Record<string, string> = {
   'observability': 'Inspect local observability events, incidents, and exports.',
   'preferences': 'Read and update server preferences.',
   'profile': 'Manage agent profiles.',
-  'provider': 'Inspect provider health and model availability.',
+  'provider': 'Inspect provider model availability.',
   'search': 'Search Cradle data.',
   'secret': 'Manage secret metadata.',
   'session': 'Manage chat sessions and session links.',
