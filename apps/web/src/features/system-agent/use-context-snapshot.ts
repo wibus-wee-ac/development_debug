@@ -14,7 +14,10 @@ import { useCradleTabStore } from '~/tabs/registry'
 import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
+import type { ContextEnvelope } from './context-items'
 import type { SystemAgentContext } from './context-schema'
+import { jarvisContextRegistry } from './context-registry'
+import { projectLegacyContextItems } from './legacy-context-items'
 
 const MAX_RECENT_MESSAGES = 5
 const CONTENT_PREVIEW_LENGTH = 120
@@ -90,5 +93,19 @@ export function collectContextSnapshot(): SystemAgentContext {
     },
     activeProfileId: newChatState.lastAgentProfileId,
     unreadSessionIds: [...activityState.unread],
+  }
+}
+
+export function collectContextEnvelope(): ContextEnvelope {
+  const envelope = jarvisContextRegistry.collectEnvelope()
+  const legacySnapshot = collectContextSnapshot()
+  const legacyItems = projectLegacyContextItems(legacySnapshot, envelope.capturedAt)
+
+  return {
+    ...envelope,
+    items: [
+      ...legacyItems,
+      ...envelope.items,
+    ],
   }
 }

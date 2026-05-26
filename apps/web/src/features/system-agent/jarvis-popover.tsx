@@ -3,6 +3,7 @@ import {
   MaximizeIcon,
   MinimizeIcon,
   MousePointer2Icon,
+  PaperclipIcon,
   SquareIcon,
   XIcon,
 } from 'lucide-react'
@@ -20,9 +21,16 @@ import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
 
 import { projectJarvisMessageForDisplay } from './display-context'
-import { formatContextForAgent } from './format-context'
+import {
+  addCurrentTextSelectionAttachment,
+  clearExplicitContextAttachments,
+  installExplicitContextProvider,
+  removeExplicitContextAttachment,
+  useExplicitContextAttachments,
+} from './explicit-context'
+import { formatContextEnvelopeForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
-import { collectContextSnapshot } from './use-context-snapshot'
+import { collectContextEnvelope } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
 
 const FALLBACK_EXPANDED_BOUNDS = { top: 44, left: 268, width: 800, height: 600 }
@@ -50,6 +58,7 @@ export function JarvisPopover({
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const includeContextSwitchId = React.useId()
+  const explicitAttachments = useExplicitContextAttachments()
 
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
   const setJarvisExpanded = useJarvisUiStore(s => s.setExpanded)
@@ -64,6 +73,10 @@ export function JarvisPopover({
 
   const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
+
+  React.useEffect(() => {
+    installExplicitContextProvider()
+  }, [])
 
   const {
     messages,
@@ -144,8 +157,12 @@ export function JarvisPopover({
       textareaRef.current.style.height = 'auto'
     }
 
-    const contextBlock = includeContext
-      ? formatContextForAgent(collectContextSnapshot())
+    const envelope = collectContextEnvelope()
+    const contextItems = includeContext
+      ? envelope.items
+      : envelope.items.filter(item => item.id.startsWith('explicit:'))
+    const contextBlock = contextItems.length > 0
+      ? formatContextEnvelopeForAgent({ ...envelope, items: contextItems })
       : ''
     const fullText = contextBlock ? `${contextBlock}\n\n${text}` : text
 
@@ -174,6 +191,7 @@ export function JarvisPopover({
         addSession({ id: sessionId, title: text.slice(0, 40), createdAt: Date.now() })
         setActiveSessionId(sessionId)
         setPendingInitialText(fullText)
+        clearExplicitContextAttachments()
         return
       }
       catch (e) {
@@ -186,6 +204,7 @@ export function JarvisPopover({
     }
 
     await sendMessage(fullText)
+    clearExplicitContextAttachments()
   }, [
     input,
     isStreaming,
@@ -196,7 +215,18 @@ export function JarvisPopover({
     addSession,
     setActiveSessionId,
     includeContext,
+    t,
   ])
+
+  const handleAttachSelection = React.useCallback(() => {
+    const attachment = addCurrentTextSelectionAttachment()
+    if (!attachment) {
+      setSendError(t('error.noTextSelection'))
+    }
+    else {
+      setSendError(null)
+    }
+  }, [t])
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) {
@@ -436,6 +466,29 @@ export function JarvisPopover({
               disabled={!prefs?.profileId}
               className="block w-full resize-none bg-transparent px-3.5 pt-3 pb-1.5 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none min-h-9 max-h-30 rounded-t-xl disabled:opacity-50"
             />
+            {explicitAttachments.length > 0 && (
+              <div className="flex min-w-0 flex-wrap gap-1.5 border-t border-border/60 px-2.5 py-2">
+                {explicitAttachments.map(attachment => (
+                  <div
+                    key={attachment.id}
+                    className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-md border border-border bg-muted/40 px-2 text-[11px] text-muted-foreground"
+                  >
+                    <PaperclipIcon className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{attachment.title}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      className="-mr-1 size-4 rounded-sm text-muted-foreground/70 hover:text-foreground"
+                      onClick={() => removeExplicitContextAttachment(attachment.id)}
+                      aria-label={t('action.removeContext')}
+                    >
+                      <XIcon className="size-2.5" aria-hidden="true" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
             <div className="flex items-center justify-between gap-3 px-2.5 pb-2">
               <div className="flex min-w-0 items-center gap-2">
                 <Switch
@@ -452,7 +505,19 @@ export function JarvisPopover({
                   {t('input.includeContext')}
                 </label>
               </div>
-              {sendButton}
+              <div className="flex shrink-0 items-center gap-1">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  disabled={!prefs?.profileId}
+                  onClick={handleAttachSelection}
+                  aria-label={t('action.attachSelection')}
+                >
+                  <PaperclipIcon />
+                </Button>
+                {sendButton}
+              </div>
             </div>
           </div>
         </div>

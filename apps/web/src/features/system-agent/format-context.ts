@@ -1,4 +1,6 @@
+import type { ContextEnvelope } from './context-items'
 import type { SystemAgentContext } from './context-schema'
+import { assembleContextForPrompt } from './context-assembler'
 
 const RE_CONTEXT_TAG = /<\/?cradle_context>/gi
 const RE_WHITESPACE = /\s+/g
@@ -107,4 +109,8 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
   }
 
   return `<cradle_context>\n${lines.join('\n')}\n</cradle_context>`
+}
+
+export function formatContextEnvelopeForAgent(envelope: ContextEnvelope): string {
+  return assembleContextForPrompt(envelope).promptBlock
 }

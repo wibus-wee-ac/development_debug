@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus, Workspace } from '~/lib/types'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
 import { KanbanBoard } from './kanban-board'
+import type { KanbanContextIssue } from './kanban-context'
+import {
+  clearKanbanAttentionSnapshot,
+  installKanbanContextProvider,
+  updateKanbanAttentionSnapshot,
+} from './kanban-context'
 import { KanbanList } from './kanban-list'
 import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
@@ -26,7 +33,59 @@ interface KanbanViewProps {
   onOpenMilestone?: (id: string) => void
 }
 
+function readIssueLabel(issue: KanbanIssue, workspaces: Workspace[]): string {
+  return formatIssueId(issue, workspaces)
+}
+
+function toContextIssue(issue: KanbanIssue | null | undefined, workspaces: Workspace[]): KanbanContextIssue | null {
+  if (!issue) {
+    return null
+  }
+
+  return {
+    id: issue.id,
+    label: readIssueLabel(issue, workspaces),
+    title: issue.title,
+  }
+}
+
+function summarizeKanbanFilter(filter: FilterState, statuses: KanbanStatus[], milestones: KanbanMilestone[]): string | null {
+  const parts: string[] = []
+
+  if (filter.statusIds?.length) {
+    const statusNames = filter.statusIds.map((statusId) => {
+      const status = statuses.find(candidate => candidate.id === statusId)
+      return status?.name ?? statusId
+    })
+    parts.push(`statuses: ${statusNames.join(', ')}`)
+  }
+
+  if (filter.priorities?.length) {
+    parts.push(`priorities: ${filter.priorities.join(', ')}`)
+  }
+
+  if (filter.labels?.length) {
+    parts.push(`labels: ${filter.labels.join(', ')}`)
+  }
+
+  if (filter.milestoneId) {
+    const milestone = milestones.find(candidate => candidate.id === filter.milestoneId)
+    parts.push(`milestone: ${milestone?.title ?? filter.milestoneId}`)
+  }
+
+  if (filter.isDelegated === true) {
+    parts.push('delegated issues only')
+  }
+
+  if (filter.isDelegated === false) {
+    parts.push('non-delegated issues only')
+  }
+
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
 export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, initialMilestoneId, onSelectIssue, onOpenMilestone }: KanbanViewProps) {
+  const boardId = _boardId
   const { config, setConfig, filter, setFilter, resetFilter } = useViewConfig(workspaceId)
   const { workspaces } = useWorkspaces()
   const [searchQuery, setSearchQuery] = useState('')
@@ -41,7 +100,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
   const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null)
   const spaceDownTimeRef = useRef<number>(0)
   const peekWasOpenRef = useRef(false)
-  const visibleIssuesRef = useRef<typeof allIssues>([])
+  const visibleIssuesRef = useRef<KanbanIssue[]>([])
   // Refs for keyboard handler (avoid stale closures + listener re-registration)
   const peekIssueIdRef = useRef<string | null>(null)
   const focusedIndexRef = useRef<number>(-1)
@@ -181,6 +240,67 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     () => visibleIssues.filter(issue => selectedIssueIds.has(issue.id)),
     [visibleIssues, selectedIssueIds],
   )
+
+  const focusedIssueId = useMemo(() => {
+    if (focusedIndex >= 0 && focusedIndex < visibleIssues.length) {
+      return visibleIssues[focusedIndex].id
+    }
+    return null
+  }, [focusedIndex, visibleIssues])
+
+  const issuesById = useMemo(() => {
+    return new Map(allIssues.map(issue => [issue.id, issue]))
+  }, [allIssues])
+
+  const kanbanFilterSummary = useMemo(
+    () => summarizeKanbanFilter(filter, statuses, milestones),
+    [filter, statuses, milestones],
+  )
+
+  useEffect(() => {
+    installKanbanContextProvider()
+  }, [])
+
+  useEffect(() => {
+    updateKanbanAttentionSnapshot({
+      boardId,
+      workspaceId,
+      layout: config.layout,
+      visibleIssueCount: visibleIssues.length,
+      selectedIssueIds: [...selectedIssueIds],
+      selectedIssues: selectedIssues
+        .map(issue => toContextIssue(issue, workspaces))
+        .filter((issue): issue is KanbanContextIssue => Boolean(issue)),
+      openIssue: toContextIssue(selectedIssueId ? issuesById.get(selectedIssueId) : null, workspaces),
+      peekIssue: toContextIssue(peekIssueId ? issuesById.get(peekIssueId) : null, workspaces),
+      focusedIssue: toContextIssue(focusedIssueId ? issuesById.get(focusedIssueId) : null, workspaces),
+      hoveredIssue: toContextIssue(hoveredIssueId ? issuesById.get(hoveredIssueId) : null, workspaces),
+      searchQuery: searchQuery.trim(),
+      filterSummary: kanbanFilterSummary,
+      updatedAt: Date.now(),
+    })
+  }, [
+    boardId,
+    config.layout,
+    focusedIssueId,
+    hoveredIssueId,
+    issuesById,
+    kanbanFilterSummary,
+    peekIssueId,
+    searchQuery,
+    selectedIssueId,
+    selectedIssueIds,
+    selectedIssues,
+    visibleIssues.length,
+    workspaceId,
+    workspaces,
+  ])
+
+  useEffect(() => {
+    return () => {
+      clearKanbanAttentionSnapshot(boardId)
+    }
+  }, [boardId])
 
   const clearSelectedIssues = useCallback(() => {
     setSelectedIssueIds(new Set())
@@ -416,13 +536,6 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
       window.removeEventListener('keyup', handleKeyUp)
     }
   }, [clearSelectedIssues, extendSelectionToIssue, selectAllVisibleIssues, toggleIssueSelected])
-
-  const focusedIssueId = useMemo(() => {
-    if (focusedIndex >= 0 && focusedIndex < visibleIssues.length) {
-      return visibleIssues[focusedIndex].id
-    }
-    return null
-  }, [focusedIndex, visibleIssues])
 
   // Follow hover when peek is active
   useEffect(() => {
