@@ -2,7 +2,8 @@ import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 
 import tailwindcss from '@tailwindcss/vite'
-import { devtools } from '@tanstack/devtools-vite'
+import { DevTools } from '@vitejs/devtools'
+// import { devtools } from '@tanstack/devtools-vite'
 import viteReact from '@vitejs/plugin-react'
 import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import { defineConfig, type Plugin } from 'vite'
@@ -88,8 +89,10 @@ export default defineConfig({
   define: {
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
   },
+  devtools: {
+    enabled: true,
+  },
   plugins: [
-    devtools(),
     tailwindcss(),
     viteReact({
       babel: {

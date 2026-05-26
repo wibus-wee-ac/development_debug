@@ -17,6 +17,7 @@ function resetChatStore(): void {
     toolEntitiesMap: new Map(),
     subagentMessagesMap: new Map(),
     generatingMessageIds: new Set(),
+    passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
     runDisplayMetaMap: new Map(),
     errorMap: new Map(),
@@ -78,5 +79,37 @@ describe('chat store tool entity normalization', () => {
       output: '1\tHello',
       errorText: undefined,
     })
+  })
+
+  it('tracks passive streaming only for messages in the hydrated session', () => {
+    const message: UIMessage = {
+      id: 'assistant-streaming',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Working' }],
+    }
+
+    useChatStore.getState().setMessages('session-1', [message])
+    useChatStore.getState().setPassiveStreamingMessageIds('session-1', [
+      'assistant-streaming',
+      'assistant-other-session',
+    ])
+
+    const state = useChatStore.getState()
+    expect(chatSelectors.isStreamingMessage('assistant-streaming')(state)).toBe(true)
+    expect(chatSelectors.isStreamingMessage('assistant-other-session')(state)).toBe(false)
+  })
+
+  it('clears passive streaming ids when messages leave the session snapshot', () => {
+    const message: UIMessage = {
+      id: 'assistant-streaming',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Working' }],
+    }
+
+    useChatStore.getState().setMessages('session-1', [message])
+    useChatStore.getState().setPassiveStreamingMessageIds('session-1', ['assistant-streaming'])
+    useChatStore.getState().setMessages('session-1', [])
+
+    expect(chatSelectors.isStreamingMessage('assistant-streaming')(useChatStore.getState())).toBe(false)
   })
 })

@@ -104,6 +104,15 @@ export function projectMainMessagesFromSnapshotRows(rows: ChatSessionMessageRow[
   })
 }
 
+function projectStreamingMainAssistantMessageIds(rows: ChatSessionMessageRow[]): string[] {
+  return rows.flatMap((row) => {
+    if (row.role !== 'assistant' || row.status !== 'streaming' || row.parentToolCallId) {
+      return []
+    }
+    return [row.messageId]
+  })
+}
+
 function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
   if (rows.some(row => row.status === 'streaming')) {
     return 'streaming'
@@ -246,8 +255,10 @@ export function useChatSession(chatSessionId: string | null) {
     }
 
     const projected = projectMainMessagesFromSnapshotRows(snapshotRowsQuery.data)
+    const passiveStreamingMessageIds = projectStreamingMainAssistantMessageIds(snapshotRowsQuery.data)
     const passiveStatus = derivePassiveStatus(snapshotRowsQuery.data)
     useChatStore.getState().setMessages(chatSessionId, projected)
+    useChatStore.getState().setPassiveStreamingMessageIds(chatSessionId, passiveStreamingMessageIds)
     useChatStore.getState().setSessionMeta(chatSessionId, {
       cancelling: meta?.cancelling && passiveStatus === 'streaming',
       passiveStatus,
@@ -293,6 +304,7 @@ export function useChatSession(chatSessionId: string | null) {
           // Let the in-band stream handler capture the error with its message
           return
         }
+        useChatStore.getState().setPassiveStreamingMessage(chatSessionId, data.messageId, false)
         useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
         useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
         scheduleSnapshotRefresh(0)
@@ -312,6 +324,7 @@ export function useChatSession(chatSessionId: string | null) {
       switch (data.event.type) {
         case 'run.completed':
         case 'run.aborted':
+          useChatStore.getState().setPassiveStreamingMessage(chatSessionId, data.messageId, false)
           useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
           useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
           scheduleSnapshotRefresh(0)

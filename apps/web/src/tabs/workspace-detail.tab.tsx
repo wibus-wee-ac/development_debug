@@ -22,26 +22,26 @@ function WorkspaceDetailLayoutSlots({
 }) {
   const hasWorkspace = !!workspacePath
   const panel = useMemo(
-    () => hasWorkspace
-      ? (
-        <Suspense fallback={null}>
+    () => (
+      <Suspense fallback={null}>
+        {hasWorkspace ? (
           <BottomTerminalPanel
             ownerId={`workspace:${workspaceId}`}
             cwd={workspacePath!}
           />
-        </Suspense>
-      )
-      : undefined,
+        ) : null}
+      </Suspense>
+    ),
     [hasWorkspace, workspaceId, workspacePath],
   )
 
   useRegisterLayoutSlots(`workspace-detail:${workspaceId}`, useMemo(() => ({
-    asideWorkspaceId: hasWorkspace ? workspaceId : null,
-    hasAside: hasWorkspace,
-    hasBrowserPanel: hasWorkspace,
-    hasPanel: hasWorkspace,
+    asideWorkspaceId: workspaceId,
+    hasAside: true,
+    hasBrowserPanel: true,
+    hasPanel: true,
     panel,
-  }), [hasWorkspace, panel, workspaceId]))
+  }), [panel, workspaceId]))
 
   return null
 }

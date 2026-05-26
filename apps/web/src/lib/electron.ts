@@ -254,6 +254,10 @@ export interface MacCradleAppshotCaptureResponse {
       animationDuration: number
       transitionSnapshotPath: string | null
       transitionSnapshotHeight: number | null
+      transitionSnapshotImageSize?: {
+        pixelWidth: number
+        pixelHeight: number
+      } | null
       transitionSpringDampingFraction: number | null
       transitionSpringResponse: number | null
       transitionGeometry?: Record<string, unknown>

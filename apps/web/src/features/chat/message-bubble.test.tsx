@@ -4,7 +4,7 @@
  * Position: Feature-owned tests for the shared chat/Jarvis message renderer.
  */
 
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,6 +17,12 @@ vi.mock('@cradle/streamdown', () => ({
   Streamdown: ({ content }: { content: string }) => <div>{content}</div>,
 }))
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string) => key === 'status.thinking' ? 'Thinking...' : key,
+  }),
+}))
+
 afterEach(() => {
   cleanup()
   useChatStore.setState(state => ({
@@ -26,11 +32,13 @@ afterEach(() => {
     toolEntitiesMap: new Map(),
     subagentMessagesMap: new Map(),
     generatingMessageIds: new Set(),
+    passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
     runDisplayMetaMap: new Map(),
     errorMap: new Map(),
     sessionMetaMap: new Map(),
   }))
+  vi.useRealTimers()
 })
 
 const messageWithToolCall: UIMessage = {
@@ -168,6 +176,102 @@ describe('message bubble', () => {
     expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
     expect(screen.getByTestId('chat-appshot-app-icon').parentElement).not.toBe(screen.getByTestId('chat-appshot-image').parentElement)
     expect(screen.queryByTestId('chat-file-attachment')).toBeNull()
+  })
+
+  it('shows Thinking after streamed text becomes idle', () => {
+    vi.useFakeTimers()
+    const streamingMessage: UIMessage = {
+      id: 'assistant-streaming',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Let me look at the chat tab.' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={streamingMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+
+    expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
+  })
+
+  it('hides Thinking while streamed text is still growing', () => {
+    vi.useFakeTimers()
+    const firstMessage: UIMessage = {
+      id: 'assistant-streaming-growth',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Let me look' }],
+    }
+    const nextMessage: UIMessage = {
+      ...firstMessage,
+      parts: [{ type: 'text', text: 'Let me look at the chat tab.' }],
+    }
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <MessageBubble message={firstMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+
+    rerender(
+      <TooltipProvider>
+        <MessageBubble message={nextMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+
+    expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
+  })
+
+  it('does not show Thinking after the assistant bubble stops streaming', () => {
+    const completedMessage: UIMessage = {
+      id: 'assistant-completed',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Done.' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={completedMessage} isStreaming={false} />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+  })
+
+  it('does not show Thinking on streaming user bubbles', () => {
+    const userMessage: UIMessage = {
+      id: 'user-streaming',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Hello' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={userMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
   })
 
   it('opens Cradle AppShot previews and toggles accessibility text', () => {

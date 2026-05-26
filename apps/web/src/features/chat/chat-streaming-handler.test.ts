@@ -4,7 +4,7 @@
  * Position: Feature-owned tests for the SSE-to-store projection layer.
  */
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { chatSelectors, useChatStore } from '~/store/chat'
 
@@ -19,6 +19,7 @@ function resetChatStore(): void {
     toolEntitiesMap: new Map(),
     subagentMessagesMap: new Map(),
     generatingMessageIds: new Set(),
+    passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
     runDisplayMetaMap: new Map(),
     errorMap: new Map(),
@@ -26,12 +27,17 @@ function resetChatStore(): void {
   }))
 }
 
+async function flushToolEntityPatches(): Promise<void> {
+  await new Promise(resolve => requestAnimationFrame(resolve))
+}
+
 describe('chat streaming handler tool entity projection', () => {
   beforeEach(() => {
     resetChatStore()
+    vi.useRealTimers()
   })
 
-  it('creates a tool entity on part_add and patches it before final output arrives', () => {
+  it('creates a tool entity on part_add and patches it before final output arrives', async () => {
     const handler = new ChatStreamingHandler('session-1', 'local-assistant-1')
     handler.start(new AbortController())
 
@@ -56,6 +62,7 @@ describe('chat streaming handler tool entity projection', () => {
     }
 
     handler.handleEvent(partAddEvent)
+    await flushToolEntityPatches()
 
     const stateAfterPartAdd = useChatStore.getState()
     expect(chatSelectors.toolCallIds('assistant-1')(stateAfterPartAdd)).toEqual(['tool-write-1'])
@@ -88,6 +95,7 @@ describe('chat streaming handler tool entity projection', () => {
     }
 
     handler.handleEvent(argumentsEvent)
+    await flushToolEntityPatches()
 
     const stateAfterArguments = useChatStore.getState()
     expect(chatSelectors.toolEntity('tool-write-1')(stateAfterArguments)).toMatchObject({
@@ -115,6 +123,7 @@ describe('chat streaming handler tool entity projection', () => {
     }
 
     handler.handleEvent(outputEvent)
+    await flushToolEntityPatches()
 
     const stateAfterOutput = useChatStore.getState()
     expect(chatSelectors.toolEntity('tool-write-1')(stateAfterOutput)).toMatchObject({

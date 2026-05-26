@@ -1,4 +1,3 @@
-import { Fzf } from 'fzf'
 import { CommandIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
@@ -6,7 +5,7 @@ import { cn } from '~/lib/cn'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { getSlashCommandSourceLabel, hasDuplicateSlashCommandName } from './chat-slash-commands'
-import { isSlashCommandAvailable } from './slash-command-input'
+import { getSlashCommandPanelItems, isSlashCommandAvailable } from './slash-command-input'
 
 interface SlashCommandPanelProps {
   commands: ChatComposerSlashCommand[]
@@ -19,34 +18,15 @@ interface SlashCommandPanelProps {
 }
 
 const MAX_RESULTS = 24
+const UNSAFE_OPTION_ID_CHAR_RE = /[^\w-]/g
 
 function formatCommandSubtitle(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
   const aliases = command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `/${alias}`).join(', ')}` : ''
   return [command.description, command.availability?.enabled === false ? command.availability.reason : '', aliases].filter(Boolean).join(' · ')
 }
 
-export function formatSlashCommandSearchText(command: ChatComposerSlashCommand): string {
-  return [
-    command.name,
-    command.description,
-    command.argumentHint,
-    ...(command.aliases ?? []),
-    getSlashCommandSourceLabel(command),
-  ].join(' ')
-}
-
-export function getSlashCommandPanelItems(commands: ChatComposerSlashCommand[], query: string): ChatComposerSlashCommand[] {
-  if (!query) {
-    return commands.slice(0, MAX_RESULTS)
-  }
-  return new Fzf(commands, {
-    selector: formatSlashCommandSearchText,
-    limit: MAX_RESULTS,
-  }).find(query).map(result => result.item)
-}
-
-export function formatSlashCommandOptionId(command: ChatComposerSlashCommand, index: number): string {
-  return `chat-slash-command-${formatCommandKey(command, index).replace(/[^a-zA-Z0-9_-]/g, '-')}`
+function formatSlashCommandOptionId(command: ChatComposerSlashCommand, index: number): string {
+  return `chat-slash-command-${formatCommandKey(command, index).replace(UNSAFE_OPTION_ID_CHAR_RE, '-')}`
 }
 
 function formatCommandKey(command: ChatComposerSlashCommand, index: number): string {
@@ -69,20 +49,9 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   const previousQueryRef = useRef(query)
 
-  const fzfIndex = useMemo(
-    () => new Fzf(commands, {
-      selector: formatSlashCommandSearchText,
-      limit: MAX_RESULTS,
-    }),
-    [commands],
-  )
-
   const results = useMemo(() => {
-    if (!query) {
-      return commands.slice(0, MAX_RESULTS).map(item => ({ item }))
-    }
-    return fzfIndex.find(query).map(result => ({ item: result.item }))
-  }, [commands, fzfIndex, query])
+    return getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item }))
+  }, [commands, query])
 
   // eslint-disable-next-line react-hooks/refs -- intentional: sync ref read during render for perf
   const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
@@ -114,7 +83,7 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
       e.preventDefault()
       setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
     }
-    else if (e.key === 'Enter' && results[effectiveActiveIndex] && isSlashCommandAvailable(results[effectiveActiveIndex].item)) {
+    else if ((e.key === 'Enter' || e.key === 'Tab') && results[effectiveActiveIndex] && isSlashCommandAvailable(results[effectiveActiveIndex].item)) {
       e.preventDefault()
       onSelect(results[effectiveActiveIndex].item)
     }

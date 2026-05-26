@@ -51,6 +51,7 @@ interface ChatState {
 
   // --- Streaming State ---
   generatingMessageIds: Set<string>
+  passiveStreamingMessageIds: Set<string>
   activeAbortControllers: Map<string, AbortController>
   runDisplayMetaMap: Map<string, ChatRunDisplayMeta>
 
@@ -83,6 +84,8 @@ interface ChatState {
   finishGeneration: (messageId: string) => void
   failGeneration: (messageId: string, error: string) => void
   stopGeneration: (messageId: string, sessionId: string) => void
+  setPassiveStreamingMessageIds: (sessionId: string, messageIds: string[]) => void
+  setPassiveStreamingMessage: (sessionId: string, messageId: string, streaming: boolean) => void
   beginRunDisplayMeta: (messageId: string, requestStartedAtMs: number) => void
   setRunDisplayId: (messageId: string, runId: string) => void
   moveRunDisplayMeta: (fromMessageId: string, toMessageId: string) => void
@@ -145,6 +148,7 @@ export const useChatStore = create<ChatState>()(
       toolEntitiesMap: new Map(),
       subagentMessagesMap: new Map(),
       generatingMessageIds: new Set(),
+      passiveStreamingMessageIds: new Set(),
       activeAbortControllers: new Map(),
       runDisplayMetaMap: new Map(),
       errorMap: new Map(),
@@ -167,15 +171,26 @@ export const useChatStore = create<ChatState>()(
           const nextSessionMessageIds = new Set(projectedMessages.map(message => message.id))
           const sessionMessageIdsChanged = currentSessionMessageIds.size !== nextSessionMessageIds.size
             || [...currentSessionMessageIds].some(id => !nextSessionMessageIds.has(id))
+          const removedMessageIds = sessionMessageIdsChanged
+            ? [...currentSessionMessageIds].filter(id => !nextSessionMessageIds.has(id))
+            : []
           const toolState = withToolEntitiesForMessages(
             state.toolCallIdsByMessageId,
             state.toolEntitiesMap,
             projectedMessages,
             normalizedMessages.flatMap(item => item.toolEntities),
-            sessionMessageIdsChanged ? [...currentSessionMessageIds].filter(id => !nextSessionMessageIds.has(id)) : [],
+            removedMessageIds,
           )
+          const nextPassiveStreamingMessageIds = removedMessageIds.length > 0
+            ? new Set([...state.passiveStreamingMessageIds].filter(id => !removedMessageIds.includes(id)))
+            : state.passiveStreamingMessageIds
 
-          if (currentMessages === nextMessages && toolState.toolCallIdsByMessageId === state.toolCallIdsByMessageId && toolState.toolEntitiesMap === state.toolEntitiesMap) {
+          if (
+            currentMessages === nextMessages
+            && toolState.toolCallIdsByMessageId === state.toolCallIdsByMessageId
+            && toolState.toolEntitiesMap === state.toolEntitiesMap
+            && nextPassiveStreamingMessageIds === state.passiveStreamingMessageIds
+          ) {
             return state
           }
 
@@ -185,6 +200,7 @@ export const useChatStore = create<ChatState>()(
             messagesMap: next,
             toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
             toolEntitiesMap: toolState.toolEntitiesMap,
+            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
           }
         })
       },
@@ -379,6 +395,8 @@ export const useChatStore = create<ChatState>()(
         set((state) => {
           const nextGen = new Set(state.generatingMessageIds)
           nextGen.add(messageId)
+          const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
+          nextPassiveStreamingMessageIds.delete(messageId)
           const nextCtrl = new Map(state.activeAbortControllers)
           nextCtrl.set(messageId, controller)
           const nextMeta = new Map(state.sessionMetaMap)
@@ -390,6 +408,7 @@ export const useChatStore = create<ChatState>()(
           })
           return {
             generatingMessageIds: nextGen,
+            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
             activeAbortControllers: nextCtrl,
             sessionMetaMap: nextMeta,
           }
@@ -400,6 +419,8 @@ export const useChatStore = create<ChatState>()(
         set((state) => {
           const nextGen = new Set(state.generatingMessageIds)
           nextGen.delete(messageId)
+          const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
+          nextPassiveStreamingMessageIds.delete(messageId)
           const nextCtrl = new Map(state.activeAbortControllers)
           nextCtrl.delete(messageId)
           const nextMeta = new Map(state.sessionMetaMap)
@@ -420,6 +441,7 @@ export const useChatStore = create<ChatState>()(
           }
           return {
             generatingMessageIds: nextGen,
+            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
             activeAbortControllers: nextCtrl,
             sessionMetaMap: nextMeta,
             runDisplayMetaMap: nextRunMeta,
@@ -432,6 +454,8 @@ export const useChatStore = create<ChatState>()(
         // Finish generation and record error atomically
         const nextGen = new Set(state.generatingMessageIds)
         nextGen.delete(messageId)
+        const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
+        nextPassiveStreamingMessageIds.delete(messageId)
         const nextCtrl = new Map(state.activeAbortControllers)
         nextCtrl.delete(messageId)
         const nextErr = new Map(state.errorMap)
@@ -454,6 +478,7 @@ export const useChatStore = create<ChatState>()(
         }
         set({
           generatingMessageIds: nextGen,
+          passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
           activeAbortControllers: nextCtrl,
           errorMap: nextErr,
           runDisplayMetaMap: nextRunMeta,
@@ -473,6 +498,42 @@ export const useChatStore = create<ChatState>()(
           locallyDriving: false,
           localDriverMessageId: undefined,
           passiveStatus: 'idle',
+        })
+      },
+
+      setPassiveStreamingMessageIds: (sessionId, messageIds) => {
+        set((state) => {
+          const sessionMessageIds = new Set((state.messagesMap.get(sessionId) ?? []).map(message => message.id))
+          const nextPassive = new Set(state.passiveStreamingMessageIds)
+          for (const messageId of sessionMessageIds) {
+            nextPassive.delete(messageId)
+          }
+          for (const messageId of messageIds) {
+            if (sessionMessageIds.has(messageId) && !state.generatingMessageIds.has(messageId)) {
+              nextPassive.add(messageId)
+            }
+          }
+          if (areSetsEqual(nextPassive, state.passiveStreamingMessageIds)) {
+            return state
+          }
+          return { passiveStreamingMessageIds: nextPassive }
+        })
+      },
+
+      setPassiveStreamingMessage: (sessionId, messageId, streaming) => {
+        set((state) => {
+          const sessionMessageIds = new Set((state.messagesMap.get(sessionId) ?? []).map(message => message.id))
+          const nextPassive = new Set(state.passiveStreamingMessageIds)
+          if (streaming && sessionMessageIds.has(messageId) && !state.generatingMessageIds.has(messageId)) {
+            nextPassive.add(messageId)
+          }
+          else {
+            nextPassive.delete(messageId)
+          }
+          if (areSetsEqual(nextPassive, state.passiveStreamingMessageIds)) {
+            return state
+          }
+          return { passiveStreamingMessageIds: nextPassive }
         })
       },
 
@@ -604,6 +665,9 @@ export const useChatStore = create<ChatState>()(
             toolCallIdsByMessageId: nextToolCallIdsByMessageId,
             toolEntitiesMap: nextToolEntitiesMap,
             runDisplayMetaMap: nextRunDisplayMetaMap,
+            passiveStreamingMessageIds: new Set(
+              [...state.passiveStreamingMessageIds].filter(id => !removedMessages.some(message => message.id === id)),
+            ),
           }
         })
       },
@@ -686,6 +750,10 @@ export const chatSelectors = {
   /** Is a specific message actively generating? */
   isGenerating: (messageId: string) => (s: ChatState) =>
     s.generatingMessageIds.has(messageId),
+
+  /** Is a specific message actively streaming in this renderer or through passive snapshot recovery? */
+  isStreamingMessage: (messageId: string) => (s: ChatState) =>
+    s.generatingMessageIds.has(messageId) || s.passiveStreamingMessageIds.has(messageId),
 
   /** Is any message generating across all sessions? */
   isAnyGenerating: (s: ChatState) =>
@@ -944,6 +1012,21 @@ function arraysEqual(left: string[], right: string[]): boolean {
   }
   for (let i = 0; i < left.length; i++) {
     if (left[i] !== right[i]) {
+      return false
+    }
+  }
+  return true
+}
+
+function areSetsEqual<T>(left: Set<T>, right: Set<T>): boolean {
+  if (left === right) {
+    return true
+  }
+  if (left.size !== right.size) {
+    return false
+  }
+  for (const value of left) {
+    if (!right.has(value)) {
       return false
     }
   }

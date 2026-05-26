@@ -2,43 +2,30 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import type { TFunction } from 'i18next'
 import {
-  ArrowUpIcon,
   ClockIcon,
   FolderIcon,
-  LoaderCircleIcon,
   MessageSquareIcon,
   SettingsIcon,
 } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { m } from 'motion/react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { postSessions } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
-import { Kbd } from '~/components/ui/kbd'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
-import type { ChatComposerSlashCommand } from '~/features/chat/chat-slash-commands'
-import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import { modelSupportsAttachments, useComposerAttachments } from '~/features/chat/composer-attachment-state'
-import {
-  ComposerAttachmentButton,
-  ComposerAttachmentInput,
-  ComposerAttachmentList,
-} from '~/features/chat/composer-attachments'
-import { getSlashCommandPanelItems, SlashCommandPanel } from '~/features/chat/slash-command-panel'
-import {
-  getActiveSlashCommand,
-  readSlashTriggerState,
-  replaceSlashTrigger,
-} from '~/features/chat/slash-command-input'
+import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
+import { Composer } from '~/features/chat/composer'
+import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
+import type { MentionItem } from '~/features/chat/mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces } from '~/features/workspace/use-workspace'
+import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -86,12 +73,6 @@ function timeAgo(timestamp: number, now: number, t: NewChatTranslation): string 
   return t('relative.monthsAgo', { count: Math.floor(days / 30) })
 }
 
-function autoResize(el: HTMLTextAreaElement, minHeight = 120) {
-  el.style.height = '0'
-  const height = Math.max(el.scrollHeight, minHeight)
-  el.style.height = `${height}px`
-}
-
 /* ─── Animated Placeholder ────────────────────────────────────────────── */
 
 function useRotatingPlaceholder(hints: string[], interval = 4000): string {
@@ -120,13 +101,11 @@ function useNewChatPageOwner() {
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const queryClient = useQueryClient()
 
-  const [input, setInput] = useState('')
+  const [draft, setDraft] = useState('')
+  const [quickActionText, setQuickActionText] = useState<string | undefined>(undefined)
+  const [quickActionKey, setQuickActionKey] = useState(0)
   const [sending, setSending] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
-  const [slashActive, setSlashActive] = useState(false)
-  const [slashQuery, setSlashQuery] = useState('')
-  const [selectedSlashCommand, setSelectedSlashCommand] = useState<ChatComposerSlashCommand | null>(null)
-  const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
 
   const effectiveWorkspaceId = useMemo(() => {
     if (selectedWorkspaceId && workspaces.some(w => w.id === selectedWorkspaceId)) {
@@ -137,22 +116,19 @@ function useNewChatPageOwner() {
 
   const selectedWorkspace = workspaces.find(w => w.id === effectiveWorkspaceId) ?? null
   const { sessions, loading: sessionsLoading } = useSessions(effectiveWorkspaceId)
+  const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
   const now = useNow()
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
   const placeholder = useRotatingPlaceholder(placeholderHints)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
-  const attachmentController = useComposerAttachments({ supportsAttachments })
   const slashCommands = useMemo(
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
     [selection.runtimeKind],
   )
-  const slashPanelItems = useMemo(
-    () => getSlashCommandPanelItems(slashCommands, slashQuery),
-    [slashCommands, slashQuery],
+  const availableFiles: MentionItem[] = useMemo(
+    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
+    [workspaceFiles],
   )
-  const slashPanelHasResults = slashActive && slashPanelItems.length > 0
-  const slashStartRef = useRef<number>(-1)
   const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
@@ -175,13 +151,9 @@ function useNewChatPageOwner() {
     return top
   }, [sessions])
 
-  useEffect(() => {
-    textareaRef.current?.focus()
-  }, [])
-
-  const canSend = selection.runtimeKind === 'cli-tui'
-    ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
-    : !!effectiveProfile && !!effectiveWorkspaceId && (input.trim().length > 0 || attachmentController.hasAttachments) && !sending
+  const sendDisabled = selection.runtimeKind === 'cli-tui'
+    ? !effectiveAgent || !effectiveWorkspaceId || sending
+    : !effectiveProfile || !effectiveWorkspaceId || sending
 
   const readinessNotice = useMemo(() => {
     if (!isReady) {
@@ -240,151 +212,94 @@ function useNewChatPageOwner() {
     openSettingsSection(readinessNotice.key)
   }, [addFromPicker, openSettingsSection, readinessNotice])
 
-  const handleSend = useCallback(async () => {
-    if (!canSend || !effectiveWorkspaceId || !selectedWorkspace) {
-      return
+  const handleSend = useCallback(async (text: string, files: FileUIPart[]) => {
+    const trimmedText = text.trim()
+    const hasDraft = trimmedText.length > 0 || files.length > 0
+    const canSubmit = selection.runtimeKind === 'cli-tui'
+      ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
+      : !!effectiveProfile && !!effectiveWorkspaceId && hasDraft && !sending
+
+    if (!canSubmit || !effectiveWorkspaceId || !selectedWorkspace) {
+      return false
     }
 
-    const files: FileUIPart[] = attachmentController.attachments
     setSending(true)
     try {
       if (selection.runtimeKind === 'cli-tui') {
         if (!effectiveAgent) {
-          return
+          return false
         }
         const { data: sessionData } = await postSessions({
           body: {
             workspaceId: effectiveWorkspaceId,
-            title: input.trim().slice(0, 80) || effectiveAgent.name,
+            title: trimmedText.slice(0, 80) || effectiveAgent.name,
             agentId: effectiveAgent.id,
           },
         })
         const session = sessionData as { id: string } | null
         if (!session?.id) {
-          return
+          return false
         }
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
         void openTab('chat', { sessionId: session.id })
-        return
+        return true
       }
 
       if (!effectiveProfile) {
-        return
+        return false
       }
       const { data: sessionData } = await postSessions({
         body: {
           workspaceId: effectiveWorkspaceId,
-          title: input.trim().slice(0, 80) || effectiveProfile.name,
+          title: trimmedText.slice(0, 80) || effectiveProfile.name,
           providerTargetId: effectiveProfile.id,
           runtimeKind: selection.runtimeKind,
         },
       })
       const session = sessionData as { id: string } | null
       if (!session?.id) {
-        return
+        return false
       }
       void startChatResponse({
         sessionId: session.id,
         body: {
-          text: input.trim(),
+          text: trimmedText,
           files,
           modelId: effectiveModel?.id ?? undefined,
           thinkingEffort: selection.thinkingEffort ?? undefined,
         },
       })
-      attachmentController.clearAttachments()
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
       void openTab('chat', { sessionId: session.id })
+      return true
     }
     catch (err) {
       console.error('[NewChatPage] send failed:', err)
+      return false
     }
     finally {
       setSending(false)
     }
-  }, [attachmentController, canSend, effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, input, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, openTab])
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault()
-      void handleSend()
-    }
-  }, [handleSend])
+  }, [effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, sending, openTab])
 
   const handleQuickAction = useCallback((prompt: string) => {
-    setInput(prompt)
-    setSlashActive(false)
-    setSlashQuery('')
-    setSelectedSlashCommand(null)
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        autoResize(el)
-      }
-    })
+    setQuickActionText(prompt)
+    setQuickActionKey(key => key + 1)
   }, [])
 
   const handleResumeSession = useCallback((sessionId: string) => {
     void openTab('chat', { sessionId })
   }, [openTab])
 
-  const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
-    const cursor = e.target.selectionStart ?? value.length
-    const slashTrigger = readSlashTriggerState(value, cursor, slashCommands, selectedSlashCommand)
-    setInput(value)
-    autoResize(e.target)
-    if (slashTrigger) {
-      slashStartRef.current = slashTrigger.start
-      setSlashActive(true)
-      setSlashQuery(slashTrigger.query)
-      setSelectedSlashCommand(slashTrigger.selectedCommand)
-      return
-    }
-    slashStartRef.current = -1
-    setSlashActive(false)
-    setSlashQuery('')
-    setSelectedSlashCommand(getActiveSlashCommand(value, selectedSlashCommand, slashCommands))
-  }, [selectedSlashCommand, slashCommands])
-
-  const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
-    if (command.action.kind !== 'insertText') {
-      return
-    }
-    const cursor = textareaRef.current?.selectionStart ?? input.length
-    const start = slashStartRef.current >= 0 ? slashStartRef.current : 0
-    const next = replaceSlashTrigger(input, cursor, start, command.action.text)
-    slashStartRef.current = -1
-    setInput(next.value)
-    setSlashActive(false)
-    setSlashQuery('')
-    setSelectedSlashCommand(command)
-
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        el.setSelectionRange(next.cursor, next.cursor)
-        autoResize(el)
-      }
-    })
-  }, [input])
-
   return {
-    activeSlashOptionId,
-    canSend,
-    attachmentController,
+    availableFiles,
     composerState,
+    draft,
     effectiveWorkspaceId,
-    handleInput,
-    handleKeyDown,
     handleQuickAction,
     handleReadinessAction,
     handleResumeSession,
     handleSend,
-    handleSlashCommandSelect,
-    input,
     isReady,
     now,
     openTab,
@@ -392,16 +307,15 @@ function useNewChatPageOwner() {
     recentSessions,
     readinessNotice,
     selectedWorkspace,
+    sendDisabled,
+    setDraft,
     sending,
     setSelectedWorkspaceId,
-    setSlashActive,
-    setActiveSlashOptionId,
     t,
-    textareaRef,
-    slashActive,
+    quickActionKey,
+    quickActionText,
     slashCommands,
-    slashPanelHasResults,
-    slashQuery,
+    supportsAttachments,
     workspaces,
   }
 }
@@ -410,169 +324,104 @@ function useNewChatPageOwner() {
 
 function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const {
-    attachmentController,
-    canSend,
+    availableFiles,
     composerState,
-    handleInput,
-    handleKeyDown,
     handleSend,
-    input,
-    activeSlashOptionId,
+    quickActionKey,
+    quickActionText,
+    sendDisabled,
     sending,
     setSelectedWorkspaceId,
-    setSlashActive,
-    setActiveSlashOptionId,
+    setDraft,
     selectedWorkspace,
-    handleSlashCommandSelect,
+    supportsAttachments,
     t,
-    textareaRef,
     placeholder,
-    slashActive,
     slashCommands,
-    slashPanelHasResults,
-    slashQuery,
     workspaces,
   } = owner
 
+  const workspaceSelector = (
+    <Menu>
+      <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/35 hover:text-muted-foreground/60" />} data-testid="new-chat-workspace-selector">
+        <FolderIcon className="size-3 shrink-0" />
+        <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.fallback')}</span>
+      </MenuTrigger>
+      <MenuPopup>
+        <MenuGroup>
+          <MenuGroupLabel>{t('workspace.group')}</MenuGroupLabel>
+          <MenuSeparator />
+          {workspaces.length === 0
+            ? <MenuItem disabled>{t('workspace.empty')}</MenuItem>
+            : workspaces.map(workspace => (
+                <MenuItem
+                  key={workspace.id}
+                  onClick={() => setSelectedWorkspaceId(workspace.id)}
+                  data-testid={`new-chat-workspace-option-${workspace.id}`}
+                >
+                  <FolderIcon className="size-3" />
+                  <span className="flex-1">{workspace.name}</span>
+                </MenuItem>
+              ))}
+        </MenuGroup>
+      </MenuPopup>
+    </Menu>
+  )
+
   return (
-    <div
-      className={cn(
-        'relative overflow-hidden rounded-2xl',
-        'border border-border/60 bg-muted/30',
-        'ring-1 ring-inset ring-white/[0.02] dark:ring-white/[0.04]',
-        'transition-[border-color,box-shadow] duration-200',
-        'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
-      )}
-    >
-      <SlashCommandPanel
-        commands={slashCommands}
-        listboxId="new-chat-slash-command-listbox"
-        onActiveOptionIdChange={setActiveSlashOptionId}
-        query={slashQuery}
-        onSelect={handleSlashCommandSelect}
-        onClose={() => setSlashActive(false)}
-        visible={slashActive}
-      />
-      <div className="relative bg-background">
-        <ComposerAttachmentInput
-          fileInputRef={attachmentController.fileInputRef}
-          onFilesSelected={attachmentController.handleFilesSelected}
-          supportsAttachments={attachmentController.supportsAttachments}
-          testId="new-chat-file-input"
-        />
-        <textarea
-          ref={textareaRef}
-          value={input}
-          onChange={handleInput}
-          onKeyDown={handleKeyDown}
-          onPaste={attachmentController.handlePaste}
-          disabled={sending}
-          data-testid="new-chat-textarea"
-          aria-label="New chat message"
-          aria-controls={slashPanelHasResults ? 'new-chat-slash-command-listbox' : undefined}
-          aria-expanded={slashActive}
-          aria-activedescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
-          rows={5}
-          className={cn(
-            'block w-full resize-none bg-transparent outline-none',
-            'px-5 pt-5 pb-3 text-[15px] leading-[1.75] tracking-[-0.01em]',
-            'text-foreground',
-            'disabled:opacity-30',
-            'placeholder:text-transparent',
-          )}
-          style={{ minHeight: 120, maxHeight: 320 }}
-        />
-
-        {input.length === 0 && !sending && (
-          <div className="pointer-events-none absolute inset-0 px-5 pt-5">
-            <AnimatePresence mode="wait">
-              <m.span
-                key={placeholder}
-                className="text-[15px] leading-[1.75] tracking-[-0.01em] text-muted-foreground/30"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0, transition: { duration: 0.15, ease: [0.0, 0.0, 0.2, 1] } }}
-                exit={{ opacity: 0, y: -4, transition: { duration: 0.1, ease: [0.4, 0.0, 1.0, 1.0] } }}
-              >
-                {placeholder}
-              </m.span>
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
-
-      <ComposerAttachmentList
-        attachments={attachmentController.attachments}
-        onRemove={attachmentController.removeAttachment}
-        className="border-border/60 px-3 py-2"
-      />
-
-      <div className="flex items-center gap-1 border-t border-border/60 px-2.5 py-2">
-        <ComposerToolbar context="new-chat" state={composerState} />
-
-        <ComposerAttachmentButton
-          disabled={sending}
-          className="text-muted-foreground/30"
-          iconClassName="size-3"
-          onPickFiles={attachmentController.pickFiles}
-          supportsAttachments={attachmentController.supportsAttachments}
-          testId="new-chat-attach-btn"
-        />
-
-        <div className="flex-1" />
-
-        <Menu>
-          <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/35 hover:text-muted-foreground/60" />} data-testid="new-chat-workspace-selector">
-            <FolderIcon className="size-3 shrink-0" />
-            <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.fallback')}</span>
-          </MenuTrigger>
-          <MenuPopup>
-            <MenuGroup>
-              <MenuGroupLabel>{t('workspace.group')}</MenuGroupLabel>
-              <MenuSeparator />
-              {workspaces.length === 0
-                ? <MenuItem disabled>{t('workspace.empty')}</MenuItem>
-                : workspaces.map(workspace => (
-                    <MenuItem
-                      key={workspace.id}
-                      onClick={() => setSelectedWorkspaceId(workspace.id)}
-                      data-testid={`new-chat-workspace-option-${workspace.id}`}
-                    >
-                      <FolderIcon className="size-3" />
-                      <span className="flex-1">{workspace.name}</span>
-                    </MenuItem>
-                  ))}
-            </MenuGroup>
-          </MenuPopup>
-        </Menu>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="default"
-              size="icon-xs"
-              disabled={!canSend}
-              onClick={() => {
-                void handleSend()
-              }}
-              className="ml-0.5"
-              data-testid="new-chat-send-btn"
-              aria-label={t('send.tooltip')}
-            >
-              {sending
-                ? <LoaderCircleIcon className="size-3.5 animate-spin" aria-hidden="true" />
-                : <ArrowUpIcon className="size-3.5" aria-hidden="true" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="top">
-            <span className="inline-flex items-center gap-1.5">
-              {t('send.tooltip')}
-              <Kbd>⌘</Kbd>
-              <Kbd>↩</Kbd>
-            </span>
-          </TooltipContent>
-        </Tooltip>
-      </div>
-    </div>
+    <Composer
+      send={{
+        submit: handleSend,
+        isSending: sending,
+        sendDisabled,
+        allowEmptySend: composerState.selection.runtimeKind === 'cli-tui',
+      }}
+      commands={{
+        commands: slashCommands,
+      }}
+      attachments={{
+        supportsAttachments,
+      }}
+      slots={{
+        toolbar: <ComposerToolbar context="new-chat" state={composerState} />,
+        contextBar: workspaceSelector,
+      }}
+      externalSignals={{
+        replaceText: quickActionText,
+        replaceTextKey: quickActionKey,
+      }}
+      view={{
+        placeholder,
+        availableFiles,
+        onDraftChange: setDraft,
+        className: 'relative',
+        cardClassName: cn(
+          'overflow-hidden rounded-2xl',
+          'border-border/60 bg-background shadow-none',
+          'ring-1 ring-inset ring-white/[0.02] dark:ring-white/[0.04]',
+          'transition-[border-color,box-shadow] duration-200',
+          'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
+        ),
+        textareaRows: 5,
+        textareaClassName: 'px-5 pt-5 pb-3 text-[15px] leading-[1.75] placeholder:text-muted-foreground/30 min-h-30 max-h-80 rounded-t-2xl disabled:opacity-30',
+        attachmentListClassName: 'border-border/60 px-3 py-2',
+        actionBarClassName: 'border-t border-border/60 px-2.5 py-2',
+        attachButtonClassName: 'text-muted-foreground/30',
+        attachIconClassName: 'size-3',
+        sendButtonClassName: 'ml-0.5',
+      }}
+      accessibility={{
+        textareaAriaLabel: 'New chat message',
+        sendButtonAriaLabel: t('send.tooltip'),
+      }}
+      testIds={{
+        actionTarget: 'new-chat-composer-action-target',
+        textarea: 'new-chat-textarea',
+        fileInput: 'new-chat-file-input',
+        attachButton: 'new-chat-attach-btn',
+        sendButton: 'new-chat-send-btn',
+      }}
+    />
   )
 }
 
@@ -581,7 +430,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
 function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const { t } = useTranslation('new-chat')
 
-  if (owner.input.length > 0) {
+  if (owner.draft.length > 0) {
     return null
   }
 
@@ -650,7 +499,7 @@ function NewChatReadinessNotice({ owner }: { owner: ReturnType<typeof useNewChat
 
 /* ─── Recent Sessions ─────────────────────────────────────────────────── */
 
-function _NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const { t } = useTranslation('new-chat')
 
   if (owner.recentSessions.length === 0) {

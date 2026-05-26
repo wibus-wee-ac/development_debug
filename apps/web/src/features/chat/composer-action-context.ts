@@ -57,6 +57,7 @@ const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
 const APPSHOT_ANIMATION_TARGET_CORNER_RADIUS = 0
 const APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING = 8
+const APPSHOT_ATTACHMENT_TITLE_HEIGHT = 18
 const APPSHOT_ATTACHMENT_SLOT_STEP = 240
 
 function readFiniteNumber(value: unknown): number | null {
@@ -162,6 +163,7 @@ function readAppshotDestinationFrame(
   const transitionSnapshotHeight = readPositiveNumber(options.transitionSnapshotHeight) ?? APPSHOT_ATTACHMENT_SLOT_HEIGHT
   const renderedCardHeight = transitionSnapshotHeight
     + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
+    + APPSHOT_ATTACHMENT_TITLE_HEIGHT
   const upwardGrowthOffset = rowRect
     ? Math.max(0, renderedCardHeight - rowRect.height)
     : 0

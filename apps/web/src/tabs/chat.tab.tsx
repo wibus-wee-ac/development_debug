@@ -9,11 +9,13 @@ import { z } from 'zod'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
+import type { MentionItem } from '~/features/chat'
 import { loadChatView } from '~/features/chat/chat-view-loader'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
 import { WorkspaceSchema } from '~/features/workspace/use-workspace'
+import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { RuntimeKind } from '~/lib/types'
 
 const ChatView = lazy(loadChatView)
@@ -51,21 +53,21 @@ function ChatTabLayoutSlots({
   const panel = useMemo(
     () => hasWorkspace
       ? (
-        <Suspense fallback={null}>
-          <BottomTerminalPanel
-            ownerId={`chat:${sessionId}`}
-            cwd={workspacePath!}
-          />
-        </Suspense>
-      )
+          <Suspense fallback={null}>
+            <BottomTerminalPanel
+              ownerId={`chat:${sessionId}`}
+              cwd={workspacePath!}
+            />
+          </Suspense>
+        )
       : undefined,
     [hasWorkspace, workspacePath, sessionId],
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({
-    asideSessionId: hasWorkspace ? sessionId : null,
+    asideSessionId: sessionId,
     asideWorkspaceId: hasWorkspace ? workspaceId : null,
-    hasAside: hasWorkspace,
+    hasAside: true,
     hasBrowserPanel: hasWorkspace,
     hasPanel: hasWorkspace,
     panel,
@@ -78,16 +80,23 @@ export function ChatRuntimeView({
   sessionId,
   sessionProviderTargetId,
   runtimeKind,
+  workspaceId,
 }: {
   sessionId: string
   sessionProviderTargetId: string | null
   runtimeKind: RuntimeKind | undefined
+  workspaceId: string | null
 }) {
   const composerState = useComposerState({
     context: 'chat',
     boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundRuntimeKind: runtimeKind,
   })
+  const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
+  const availableFiles: MentionItem[] = useMemo(
+    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
+    [workspaceFiles],
+  )
 
   // Ref to communicate per-message overrides to ChatView's internal sendMessage
   const sendOverridesRef = useRef({
@@ -116,6 +125,7 @@ export function ChatRuntimeView({
       <ChatView
         key={sessionId}
         sessionId={sessionId}
+        availableFiles={availableFiles}
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}
         composerModel={composerState.effectiveModel}
@@ -212,6 +222,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
         sessionId={sessionId}
         sessionProviderTargetId={sessionProviderTargetId}
         runtimeKind={session?.runtimeKind}
+        workspaceId={workspaceId}
       />
     </>
   )

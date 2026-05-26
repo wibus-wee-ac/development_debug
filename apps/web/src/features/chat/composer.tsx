@@ -1,5 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { SendHorizonalIcon, SquareIcon } from 'lucide-react'
+import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
@@ -29,12 +29,13 @@ import { MentionPanel } from './mention-panel'
 import {
   CHAT_SLASH_COMMAND_LISTBOX_ID,
   getActiveSlashCommand,
+  getSlashCommandPanelItems,
   getSlashCommandPrefix,
   getVisibleSlashCommands,
   readSlashTriggerState,
   replaceSlashTrigger,
 } from './slash-command-input'
-import { getSlashCommandPanelItems, SlashCommandPanel } from './slash-command-panel'
+import { SlashCommandPanel } from './slash-command-panel'
 
 /** Shrinks the textarea to content height, capped at 240 px. */
 function autoResize(el: HTMLTextAreaElement) {
@@ -43,30 +44,94 @@ function autoResize(el: HTMLTextAreaElement) {
   el.style.height = `${h}px`
 }
 
-interface ComposerProps {
-  onSend: (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => void
-  onStop?: () => void
+export type ComposerSendHandler = (
+  text: string,
+  files: FileUIPart[],
+  options?: { invertContinuationMode?: boolean },
+) => void | boolean | Promise<void | boolean>
+
+export interface ComposerSendController {
+  submit: ComposerSendHandler
+  stop?: () => void
   isStreaming?: boolean
+  isSending?: boolean
   disabled?: boolean
+  sendDisabled?: boolean
+  allowEmptySend?: boolean
+}
+
+export interface ComposerCommandController {
+  commands?: ChatComposerSlashCommand[]
+  runAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => void | ComposerSlashCommandActionResult | Promise<void | ComposerSlashCommandActionResult>
+}
+
+export interface ComposerAttachmentIntegration {
   supportsAttachments?: boolean
-  placeholder?: string
-  availableFiles?: MentionItem[]
-  slashCommands?: ChatComposerSlashCommand[]
-  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => void | ComposerSlashCommandActionResult | Promise<void | ComposerSlashCommandActionResult>
-  className?: string
+  /** File parts injected externally, for example from native Appshot capture. */
+  appendFileParts?: FileUIPart[]
+  /** Used together with appendFileParts to re-trigger the append. */
+  appendFilePartsKey?: number
+  pendingAppshots?: PendingAppshotAttachment[]
+  onActionTargetElementChange?: (element: HTMLDivElement | null) => void
+}
+
+export interface ComposerSlots {
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
-  /** When this value changes, append it to the composer input (used for DnD drop from outside) */
+}
+
+export interface ComposerExternalSignals {
+  /** Replaces the current draft when the key changes, used by quick actions. */
+  replaceText?: string
+  replaceTextKey?: number
+  /** Appends text to the composer input when the key changes, used by parent DnD. */
   appendText?: string
-  /** Used together with appendText — increment this key to re-trigger the append when the same path is dropped again */
   appendTextKey?: number
-  /** File parts injected externally (used for Cmd+Cmd hotkey appshot) */
-  appendExternalFileParts?: FileUIPart[]
-  /** Used together with appendExternalFileParts — increment to trigger append */
-  appendExternalFilePartsKey?: number
-  pendingAppshots?: PendingAppshotAttachment[]
+}
+
+export interface ComposerViewOptions {
+  placeholder?: string
+  availableFiles?: MentionItem[]
+  className?: string
+  cardClassName?: string
+  textareaClassName?: string
+  textareaRows?: number
+  attachmentListClassName?: string
+  actionBarClassName?: string
+  toolbarClassName?: string
+  actionsClassName?: string
+  attachButtonClassName?: string
+  attachIconClassName?: string
+  sendButtonClassName?: string
+  onDraftChange?: (value: string) => void
+  onFocusChange?: (focused: boolean) => void
   sessionTokens?: number
   sessionContextWindow?: number | null
+}
+
+export interface ComposerTestIds {
+  actionTarget?: string
+  textarea?: string
+  fileInput?: string
+  attachButton?: string
+  sendButton?: string
+  stopButton?: string
+}
+
+export interface ComposerAccessibilityOptions {
+  textareaAriaLabel?: string
+  sendButtonAriaLabel?: string
+}
+
+export interface ComposerProps {
+  send: ComposerSendController
+  commands?: ComposerCommandController
+  attachments?: ComposerAttachmentIntegration
+  slots?: ComposerSlots
+  externalSignals?: ComposerExternalSignals
+  view?: ComposerViewOptions
+  testIds?: ComposerTestIds
+  accessibility?: ComposerAccessibilityOptions
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -91,6 +156,7 @@ type ComposerAction
     | { type: 'slash/selected', inputValue: string, command: ChatComposerSlashCommand | null }
     | { type: 'pickers/closed' }
     | { type: 'external/appended', text: string }
+    | { type: 'external/replaced', text: string }
     | { type: 'drop/inserted', inputValue: string }
 
 const INITIAL_COMPOSER_STATE: ComposerState = {
@@ -141,6 +207,16 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
       return {
         ...state,
         inputValue: state.inputValue ? `${state.inputValue} ${action.text}` : action.text,
+        mentionActive: false,
+        mentionQuery: '',
+        slashActive: false,
+        slashQuery: '',
+        selectedSlashCommand: null,
+      }
+    case 'external/replaced':
+      return {
+        ...state,
+        inputValue: action.text,
         mentionActive: false,
         mentionQuery: '',
         slashActive: false,
@@ -217,34 +293,56 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
 }
 
 function ComposerActions({
+  actionsClassName,
+  attachButtonClassName,
+  attachIconClassName,
   contextBar,
   disabled,
   hasDraft,
+  isSending,
   isStreaming,
   onSend,
   onStop,
+  sendDisabled,
+  attachButtonTestId,
+  sendButtonClassName,
+  sendButtonTestId,
+  stopButtonTestId,
   attachmentController,
   sessionTokens,
   sessionContextWindow,
+  sendButtonAriaLabel,
 }: {
+  actionsClassName?: string
+  attachButtonClassName?: string
+  attachIconClassName?: string
   contextBar?: React.ReactNode
   disabled?: boolean
   hasDraft: boolean
+  isSending?: boolean
   isStreaming?: boolean
   onSend: () => void
   onStop?: () => void
+  sendDisabled?: boolean
+  attachButtonTestId: string
+  sendButtonClassName?: string
+  sendButtonTestId: string
+  stopButtonTestId: string
   attachmentController: ComposerAttachmentController
   sessionTokens?: number
   sessionContextWindow?: number | null
+  sendButtonAriaLabel?: string
 }) {
   return (
-    <div className="flex items-center gap-1">
+    <div className={cn('flex items-center gap-1', actionsClassName)}>
       {contextBar}
       <ComposerAttachmentButton
         disabled={disabled}
+        className={attachButtonClassName}
+        iconClassName={attachIconClassName}
         onPickFiles={attachmentController.pickFiles}
         supportsAttachments={attachmentController.supportsAttachments}
-        testId="chat-attach-btn"
+        testId={attachButtonTestId}
       />
       {sessionTokens != null && sessionTokens > 0 && (
         <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
@@ -255,7 +353,7 @@ function ComposerActions({
           size="icon-xs"
           onClick={onStop}
           aria-label="Stop generation"
-          data-testid="chat-stop-btn"
+          data-testid={stopButtonTestId}
         >
           <SquareIcon className="size-3" aria-hidden="true" />
         </Button>
@@ -263,43 +361,83 @@ function ComposerActions({
       <Button
         variant="default"
         size="icon-xs"
-        disabled={disabled || !hasDraft}
+        disabled={disabled || sendDisabled || !hasDraft}
         onClick={() => onSend()}
-        aria-label={isStreaming ? 'Send continuation' : 'Send message'}
-        data-testid="chat-send-btn"
+        aria-label={sendButtonAriaLabel ?? (isStreaming ? 'Send continuation' : 'Send message')}
+        className={sendButtonClassName}
+        data-testid={sendButtonTestId}
       >
-        <SendHorizonalIcon aria-hidden="true" />
+        {isSending
+          ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+          : <SendHorizonalIcon aria-hidden="true" />}
       </Button>
     </div>
   )
 }
 
 export function Composer({
-  onSend,
-  onStop,
-  isStreaming,
-  disabled,
-  supportsAttachments,
-  placeholder = '输入消息...',
-  availableFiles = EMPTY_FILES,
-  slashCommands = EMPTY_SLASH_COMMANDS,
-  onSlashCommandAction,
-  className,
-  toolbar,
-  contextBar,
-  appendText,
-  appendTextKey,
-  appendExternalFileParts,
-  appendExternalFilePartsKey,
-  pendingAppshots = [],
-  sessionTokens,
-  sessionContextWindow,
+  send,
+  commands,
+  attachments,
+  slots,
+  externalSignals,
+  view,
+  testIds,
+  accessibility,
 }: ComposerProps) {
+  const {
+    submit,
+    isStreaming,
+    isSending,
+    disabled,
+    sendDisabled,
+    allowEmptySend,
+  } = send
+  const slashCommands = commands?.commands ?? EMPTY_SLASH_COMMANDS
+  const onSlashCommandAction = commands?.runAction
+  const supportsAttachments = attachments?.supportsAttachments
+  const appendExternalFileParts = attachments?.appendFileParts
+  const appendExternalFilePartsKey = attachments?.appendFilePartsKey
+  const pendingAppshots = attachments?.pendingAppshots ?? []
+  const onActionTargetElementChange = attachments?.onActionTargetElementChange
+  const toolbar = slots?.toolbar
+  const contextBar = slots?.contextBar
+  const replaceText = externalSignals?.replaceText
+  const replaceTextKey = externalSignals?.replaceTextKey
+  const appendText = externalSignals?.appendText
+  const appendTextKey = externalSignals?.appendTextKey
+  const {
+    placeholder = 'Message...',
+    availableFiles = EMPTY_FILES,
+    className,
+    cardClassName,
+    textareaClassName,
+    textareaRows = 2,
+    attachmentListClassName,
+    actionBarClassName,
+    toolbarClassName,
+    actionsClassName,
+    attachButtonClassName,
+    attachIconClassName,
+    sendButtonClassName,
+    onDraftChange,
+    onFocusChange,
+    sessionTokens,
+    sessionContextWindow,
+  } = view ?? {}
+  const {
+    textareaAriaLabel = 'Message',
+    sendButtonAriaLabel,
+  } = accessibility ?? {}
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
   const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const attachmentController = useComposerAttachments({ supportsAttachments })
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const actionTargetRef = useRef<HTMLDivElement>(null)
+  const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
+    actionTargetRef.current = element
+    onActionTargetElementChange?.(element)
+  }, [onActionTargetElementChange])
   const visibleSlashCommands = useMemo(
     () => getVisibleSlashCommands(slashCommands, Boolean(onSlashCommandAction)),
     [onSlashCommandAction, slashCommands],
@@ -318,6 +456,14 @@ export function Composer({
   const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue.replace(LEADING_HORIZONTAL_WHITESPACE_RE, '') === slashCommandPrefix
     ? activeSlashCommand.argumentHint
     : ''
+  const actionTargetTestId = testIds?.actionTarget ?? 'chat-composer-action-target'
+  const textareaTestId = testIds?.textarea ?? 'chat-composer-textarea'
+  const fileInputTestId = testIds?.fileInput ?? 'chat-file-input'
+  const attachButtonTestId = testIds?.attachButton ?? 'chat-attach-btn'
+  const sendButtonTestId = testIds?.sendButton ?? 'chat-send-btn'
+  const stopButtonTestId = testIds?.stopButton ?? 'chat-stop-btn'
+  const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || Boolean(allowEmptySend)
+  const effectiveDisabled = disabled || isSending
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const value = e.target.value
@@ -487,24 +633,30 @@ export function Composer({
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()
-    if (!text && attachmentController.attachments.length === 0) {
+    if (disabled || isSending || sendDisabled) {
       return
     }
-    if (options) {
-      onSend(text, attachmentController.attachments, options)
+    if (!allowEmptySend && !text && attachmentController.attachments.length === 0) {
+      return
     }
-    else {
-      onSend(text, attachmentController.attachments)
-    }
-    attachmentController.clearAttachments()
-    dispatch({ type: 'input/cleared' })
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.style.height = 'auto'
+
+    void (async () => {
+      const result = options
+        ? await submit(text, attachmentController.attachments, options)
+        : await submit(text, attachmentController.attachments)
+      if (result === false) {
+        return
       }
-    })
-  }, [attachmentController, onSend, state.inputValue])
+      attachmentController.clearAttachments()
+      dispatch({ type: 'input/cleared' })
+      requestAnimationFrame(() => {
+        const el = textareaRef.current
+        if (el) {
+          el.style.height = 'auto'
+        }
+      })
+    })()
+  }, [allowEmptySend, attachmentController, disabled, isSending, sendDisabled, state.inputValue, submit])
 
   const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     attachmentController.handlePaste(event)
@@ -516,9 +668,9 @@ export function Composer({
       return
     }
 
-    // If a picker is active, let it handle Enter/Escape/arrows.
+    // If a picker is active, let it handle Enter/Escape/arrows/Tab.
     if (state.mentionActive || (state.slashActive && slashPanelHasResults)) {
-      if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+      if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.key)) {
         return
       }
     }
@@ -545,6 +697,19 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendTextKey])
 
+  useEffect(() => {
+    if (typeof replaceText !== 'string') {
+      return
+    }
+    dispatch({ type: 'external/replaced', text: replaceText })
+    textareaRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaceTextKey])
+
+  useEffect(() => {
+    onDraftChange?.(state.inputValue)
+  }, [onDraftChange, state.inputValue])
+
   // Append externally-injected file parts (e.g. from Cmd+Cmd appshot hotkey)
   useLayoutEffect(() => {
     if (!appendExternalFileParts || appendExternalFileParts.length === 0) {
@@ -562,6 +727,7 @@ export function Composer({
     }
     let timer: ReturnType<typeof setTimeout> | null = null
     const handleBlur = () => {
+      onFocusChange?.(false)
       timer = setTimeout(() => {
         dispatch({ type: 'pickers/closed' })
       }, 150)
@@ -571,6 +737,7 @@ export function Composer({
         clearTimeout(timer)
         timer = null
       }
+      onFocusChange?.(true)
     }
     el.addEventListener('blur', handleBlur)
     el.addEventListener('focus', handleFocus)
@@ -581,7 +748,7 @@ export function Composer({
         clearTimeout(timer)
       }
     }
-  }, [])
+  }, [onFocusChange])
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -605,16 +772,19 @@ export function Composer({
 
       {/* Input card — modern clean style, no border-t separator */}
       <div
-        ref={actionTargetRef}
-        className="rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150"
-        data-testid="chat-composer-action-target"
+        ref={setActionTargetElement}
+        className={cn(
+          'rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
+          cardClassName,
+        )}
+        data-testid={actionTargetTestId}
         data-composer-action-target
       >
         <ComposerAttachmentInput
           fileInputRef={attachmentController.fileInputRef}
           onFilesSelected={attachmentController.handleFilesSelected}
           supportsAttachments={attachmentController.supportsAttachments}
-          testId="chat-file-input"
+          testId={fileInputTestId}
         />
         {/* Textarea */}
         <div className="relative">
@@ -644,14 +814,17 @@ export function Composer({
             }}
             onDragOver={e => e.preventDefault()}
             placeholder={placeholder}
-            disabled={disabled}
-            aria-label="Message"
+            disabled={effectiveDisabled}
+            aria-label={textareaAriaLabel}
             aria-controls={slashPanelHasResults ? CHAT_SLASH_COMMAND_LISTBOX_ID : undefined}
             aria-expanded={state.slashActive}
             aria-activedescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
-            data-testid="chat-composer-textarea"
-            rows={2}
-            className="relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50"
+            data-testid={textareaTestId}
+            rows={textareaRows}
+            className={cn(
+              'relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50',
+              textareaClassName,
+            )}
           />
         </div>
 
@@ -659,25 +832,36 @@ export function Composer({
           attachments={attachmentController.attachments}
           onRemove={attachmentController.removeAttachment}
           pendingAppshots={pendingAppshots}
+          className={attachmentListClassName}
         />
 
         {/* Action bar — subtle, blends with the card */}
-        <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <div className={cn('flex items-center justify-between gap-2 px-3 py-2', actionBarClassName)}>
           {/* Left: custom toolbar from parent */}
-          <div className="flex items-center gap-1">
+          <div className={cn('flex items-center gap-1', toolbarClassName)}>
             {toolbar}
           </div>
 
           <ComposerActions
+            actionsClassName={actionsClassName}
+            attachButtonClassName={attachButtonClassName}
+            attachIconClassName={attachIconClassName}
             sessionTokens={sessionTokens}
             sessionContextWindow={sessionContextWindow}
             contextBar={contextBar}
-            disabled={disabled}
-            hasDraft={Boolean(state.inputValue.trim()) || attachmentController.hasAttachments}
+            disabled={effectiveDisabled}
+            hasDraft={hasDraft}
+            isSending={isSending}
             isStreaming={isStreaming}
             attachmentController={attachmentController}
             onSend={handleSend}
-            onStop={onStop}
+            onStop={send.stop}
+            sendDisabled={sendDisabled}
+            attachButtonTestId={attachButtonTestId}
+            sendButtonAriaLabel={sendButtonAriaLabel}
+            sendButtonClassName={sendButtonClassName}
+            sendButtonTestId={sendButtonTestId}
+            stopButtonTestId={stopButtonTestId}
           />
         </div>
       </div>

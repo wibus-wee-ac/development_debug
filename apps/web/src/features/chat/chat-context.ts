@@ -1,0 +1,122 @@
+// Output: Chat-owned semantic attention context provider for Jarvis.
+// Input: ChatView viewport, message, and composer focus state.
+// Position: Chat owns chat-session attention semantics; system-agent only aggregates provider output.
+
+import type { ContextItem } from '~/features/system-agent/context-items'
+import { estimateContextTokens } from '~/features/system-agent/context-items'
+import type { ContextProvider } from '~/features/system-agent/context-registry'
+import { jarvisContextRegistry } from '~/features/system-agent/context-registry'
+
+export interface ChatAttentionSnapshot {
+  sessionId: string
+  messageCount: number
+  firstVisibleIndex: number | null
+  lastVisibleIndex: number | null
+  scrollRatio: number
+  isAtBottom: boolean
+  focusedArea: 'composer' | 'message-list' | null
+  updatedAt: number
+}
+
+const snapshotsBySessionId = new Map<string, ChatAttentionSnapshot>()
+let providerInstalled = false
+
+function clampRatio(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0
+  }
+  return Math.max(0, Math.min(1, value))
+}
+
+function createChatContextItem(snapshot: ChatAttentionSnapshot, now: number): ContextItem {
+  const visibleRange = snapshot.firstVisibleIndex !== null && snapshot.lastVisibleIndex !== null
+    ? `visible messages: ${snapshot.firstVisibleIndex + 1}-${snapshot.lastVisibleIndex + 1} of ${snapshot.messageCount}`
+    : `messages: ${snapshot.messageCount}`
+  const scrollSummary = snapshot.isAtBottom
+    ? 'User is near the latest messages.'
+    : 'User manually scrolled away from the latest messages.'
+  const focusSummary = snapshot.focusedArea
+    ? `Focused area: ${snapshot.focusedArea}.`
+    : 'No focused chat sub-area is known.'
+  const summary = `${scrollSummary} ${focusSummary}`
+  const content = `${visibleRange}; scroll progress: ${Math.round(snapshot.scrollRatio * 100)}%`
+
+  return {
+    id: `chat:attention:${snapshot.sessionId}`,
+    kind: 'attention',
+    owner: 'chat',
+    title: 'Chat attention',
+    summary,
+    content,
+    references: [{
+      kind: 'chat-session',
+      id: snapshot.sessionId,
+      label: snapshot.sessionId,
+    }],
+    priority: snapshot.isAtBottom ? 65 : 90,
+    freshness: now - snapshot.updatedAt <= 5_000 ? 'live' : 'recent',
+    sensitivity: 'private',
+    tokenEstimate: estimateContextTokens(`${summary}\n${content}`),
+    createdAt: now,
+  }
+}
+
+export function updateChatAttentionSnapshot(
+  sessionId: string | null,
+  patch: Partial<Omit<ChatAttentionSnapshot, 'sessionId'>>,
+): void {
+  if (!sessionId) {
+    return
+  }
+
+  const current = snapshotsBySessionId.get(sessionId)
+  snapshotsBySessionId.set(sessionId, {
+    sessionId,
+    messageCount: patch.messageCount ?? current?.messageCount ?? 0,
+    firstVisibleIndex: patch.firstVisibleIndex ?? current?.firstVisibleIndex ?? null,
+    lastVisibleIndex: patch.lastVisibleIndex ?? current?.lastVisibleIndex ?? null,
+    scrollRatio: clampRatio(patch.scrollRatio ?? current?.scrollRatio ?? 0),
+    isAtBottom: patch.isAtBottom ?? current?.isAtBottom ?? true,
+    focusedArea: patch.focusedArea ?? current?.focusedArea ?? null,
+    updatedAt: patch.updatedAt ?? Date.now(),
+  })
+}
+
+export function clearChatAttentionSnapshot(sessionId: string | null): void {
+  if (!sessionId) {
+    return
+  }
+  snapshotsBySessionId.delete(sessionId)
+}
+
+export function createChatContextProvider(): ContextProvider {
+  return {
+    owner: 'chat',
+    readContext(input) {
+      if (input.activeTabType !== 'chat') {
+        return []
+      }
+
+      const sessionId = input.activeTabParams.sessionId
+      if (!sessionId) {
+        return []
+      }
+
+      const snapshot = snapshotsBySessionId.get(sessionId)
+      if (!snapshot) {
+        return []
+      }
+
+      return [createChatContextItem(snapshot, input.now)]
+    },
+  }
+}
+
+export function installChatContextProvider(): void {
+  if (providerInstalled) {
+    return
+  }
+
+  jarvisContextRegistry.registerProvider(createChatContextProvider())
+  providerInstalled = true
+}

@@ -3,7 +3,7 @@ import './styles.css'
 import type { TabRenderPolicy } from '@cradle/tabs-next'
 import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
 import { domAnimation, LazyMotion } from 'motion/react'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
@@ -13,6 +13,7 @@ import { TooltipProvider } from '~/components/ui/tooltip'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
+import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
@@ -115,13 +116,12 @@ function MainAppRuntime() {
   const activeTab = tabs.find(t => t.id === activeTabId)
   const activeSlotId = getActiveLayoutSlotId(activeTab)
   const settingsTabExists = settingsTabId !== null && tabs.some(tab => tab.id === settingsTabId)
-  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
 
   // Settings overlay is visible when the settings tab is the currently active tab
   const isSettingsVisible = settingsTabExists && settingsTabId === activeTabId
 
   const openGlobalSearch = useCallback(() => {
-    setGlobalSearchOpen(true)
+    useGlobalSearchStore.getState().openSearch()
   }, [])
 
   useThemeClass()
@@ -212,7 +212,7 @@ function MainAppRuntime() {
                     <SettingsContent section={settingsSection} />
                   </div>
                 )}
-                <GlobalSearchDialog open={globalSearchOpen} onOpenChange={setGlobalSearchOpen} />
+                <GlobalCommandPaletteHost />
               </div>
             </AppLayout>
           </div>
@@ -220,6 +220,44 @@ function MainAppRuntime() {
       </LayoutSlotsProvider>
     </AppEnvironmentProviders>
   )
+}
+
+function GlobalCommandPaletteHost() {
+  'use no memo'
+
+  const open = useGlobalSearchStore(s => s.open)
+  const initialQuery = useGlobalSearchStore(s => s.initialQuery)
+  const setOpen = useGlobalSearchStore(s => s.setOpen)
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.defaultPrevented || event.isComposing) {
+        return
+      }
+
+      const isMod = event.metaKey || event.ctrlKey
+      if (!isMod || event.altKey) {
+        return
+      }
+
+      const key = event.key.toLowerCase()
+      if (key === 'k') {
+        event.preventDefault()
+        useGlobalSearchStore.getState().openPalette('>')
+        return
+      }
+
+      if (key === 'p') {
+        event.preventDefault()
+        useGlobalSearchStore.getState().openPalette(event.shiftKey ? '>' : '')
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [])
+
+  return <GlobalSearchDialog open={open} initialQuery={initialQuery} onOpenChange={setOpen} />
 }
 
 function TearoffAppRuntime() {

@@ -4,10 +4,15 @@
  * Position: Chat feature owns slash command interaction semantics shared by chat launch surfaces.
  */
 
-import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import { Fzf } from 'fzf'
 
-export const RE_SIMPLE_SLASH_COMMAND = /^[ \t]*\/[^/\r\n\s]*$/
+import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import { getSlashCommandSourceLabel } from './chat-slash-commands'
+
+export const RE_SIMPLE_SLASH_COMMAND = /^[ \t]*\/[^/\s]*$/
 export const CHAT_SLASH_COMMAND_LISTBOX_ID = 'chat-slash-command-listbox'
+const MAX_SLASH_COMMAND_RESULTS = 24
+const LEADING_INLINE_WHITESPACE_RE = /^[ \t]+/
 
 export interface SlashTriggerState {
   start: number
@@ -24,7 +29,7 @@ export function getSlashCommandPrefix(command: ChatComposerSlashCommand): string
 }
 
 export function getActiveSlashCommand(inputValue: string, selectedCommand: ChatComposerSlashCommand | null, commands: ChatComposerSlashCommand[]): ChatComposerSlashCommand | null {
-  const inputWithoutLeadingInlineWhitespace = inputValue.replace(/^[ \t]+/, '')
+  const inputWithoutLeadingInlineWhitespace = inputValue.replace(LEADING_INLINE_WHITESPACE_RE, '')
   if (selectedCommand && inputWithoutLeadingInlineWhitespace.startsWith(getSlashCommandPrefix(selectedCommand))) {
     return selectedCommand
   }
@@ -44,6 +49,26 @@ export function replaceSlashTrigger(inputValue: string, cursor: number, start: n
 
 export function getVisibleSlashCommands(commands: ChatComposerSlashCommand[], hasUiActionHandler: boolean): ChatComposerSlashCommand[] {
   return commands.filter(command => command.action.kind !== 'uiAction' || hasUiActionHandler)
+}
+
+export function formatSlashCommandSearchText(command: ChatComposerSlashCommand): string {
+  return [
+    command.name,
+    command.description,
+    command.argumentHint,
+    ...(command.aliases ?? []),
+    getSlashCommandSourceLabel(command),
+  ].join(' ')
+}
+
+export function getSlashCommandPanelItems(commands: ChatComposerSlashCommand[], query: string): ChatComposerSlashCommand[] {
+  if (!query) {
+    return commands.slice(0, MAX_SLASH_COMMAND_RESULTS)
+  }
+  return new Fzf(commands, {
+    selector: formatSlashCommandSearchText,
+    limit: MAX_SLASH_COMMAND_RESULTS,
+  }).find(query).map(result => result.item)
 }
 
 export function readSlashTriggerState(inputValue: string, cursor: number, commands: ChatComposerSlashCommand[], selectedCommand: ChatComposerSlashCommand | null): SlashTriggerState | null {

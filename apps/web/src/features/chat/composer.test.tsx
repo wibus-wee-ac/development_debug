@@ -11,8 +11,128 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '~/components/ui/tooltip'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { Composer } from './composer'
+import { Composer as ComposerPrimitive } from './composer'
+import type { ComposerProps } from './composer'
 import type { ComposerSlashCommandActionContext } from './composer-action-context'
+
+type ComposerSendController = ComposerProps['send']
+type ComposerCommandController = NonNullable<ComposerProps['commands']>
+type ComposerAttachmentIntegration = NonNullable<ComposerProps['attachments']>
+type ComposerExternalSignals = NonNullable<ComposerProps['externalSignals']>
+type ComposerSlots = NonNullable<ComposerProps['slots']>
+type ComposerViewOptions = NonNullable<ComposerProps['view']>
+type ComposerAccessibilityOptions = NonNullable<ComposerProps['accessibility']>
+
+interface LegacyComposerProps {
+  onSend: ComposerSendController['submit']
+  onStop?: ComposerSendController['stop']
+  isStreaming?: ComposerSendController['isStreaming']
+  isSending?: ComposerSendController['isSending']
+  disabled?: ComposerSendController['disabled']
+  sendDisabled?: ComposerSendController['sendDisabled']
+  allowEmptySend?: ComposerSendController['allowEmptySend']
+  slashCommands?: ComposerCommandController['commands']
+  onSlashCommandAction?: ComposerCommandController['runAction']
+  supportsAttachments?: ComposerAttachmentIntegration['supportsAttachments']
+  appendExternalFileParts?: ComposerAttachmentIntegration['appendFileParts']
+  appendExternalFilePartsKey?: ComposerAttachmentIntegration['appendFilePartsKey']
+  pendingAppshots?: ComposerAttachmentIntegration['pendingAppshots']
+  onActionTargetElementChange?: ComposerAttachmentIntegration['onActionTargetElementChange']
+  toolbar?: ComposerSlots['toolbar']
+  contextBar?: ComposerSlots['contextBar']
+  replaceText?: ComposerExternalSignals['replaceText']
+  replaceTextKey?: ComposerExternalSignals['replaceTextKey']
+  appendText?: ComposerExternalSignals['appendText']
+  appendTextKey?: ComposerExternalSignals['appendTextKey']
+  placeholder?: ComposerViewOptions['placeholder']
+  availableFiles?: ComposerViewOptions['availableFiles']
+  className?: ComposerViewOptions['className']
+  cardClassName?: ComposerViewOptions['cardClassName']
+  textareaClassName?: ComposerViewOptions['textareaClassName']
+  textareaRows?: ComposerViewOptions['textareaRows']
+  attachmentListClassName?: ComposerViewOptions['attachmentListClassName']
+  actionBarClassName?: ComposerViewOptions['actionBarClassName']
+  toolbarClassName?: ComposerViewOptions['toolbarClassName']
+  actionsClassName?: ComposerViewOptions['actionsClassName']
+  attachButtonClassName?: ComposerViewOptions['attachButtonClassName']
+  attachIconClassName?: ComposerViewOptions['attachIconClassName']
+  sendButtonClassName?: ComposerViewOptions['sendButtonClassName']
+  onDraftChange?: ComposerViewOptions['onDraftChange']
+  onFocusChange?: ComposerViewOptions['onFocusChange']
+  sessionTokens?: ComposerViewOptions['sessionTokens']
+  sessionContextWindow?: ComposerViewOptions['sessionContextWindow']
+  testIds?: ComposerProps['testIds']
+  textareaAriaLabel?: ComposerAccessibilityOptions['textareaAriaLabel']
+  sendButtonAriaLabel?: ComposerAccessibilityOptions['sendButtonAriaLabel']
+}
+
+function Composer({
+  onSend,
+  onStop,
+  isStreaming,
+  isSending,
+  disabled,
+  sendDisabled,
+  allowEmptySend,
+  slashCommands,
+  onSlashCommandAction,
+  supportsAttachments,
+  appendExternalFileParts,
+  appendExternalFilePartsKey,
+  pendingAppshots,
+  onActionTargetElementChange,
+  toolbar,
+  contextBar,
+  replaceText,
+  replaceTextKey,
+  appendText,
+  appendTextKey,
+  textareaAriaLabel,
+  sendButtonAriaLabel,
+  testIds,
+  ...view
+}: LegacyComposerProps) {
+  return (
+    <ComposerPrimitive
+      send={{
+        submit: onSend,
+        stop: onStop,
+        isStreaming,
+        isSending,
+        disabled,
+        sendDisabled,
+        allowEmptySend,
+      }}
+      commands={{
+        commands: slashCommands,
+        runAction: onSlashCommandAction,
+      }}
+      attachments={{
+        supportsAttachments,
+        appendFileParts: appendExternalFileParts,
+        appendFilePartsKey: appendExternalFilePartsKey,
+        pendingAppshots,
+        onActionTargetElementChange,
+      }}
+      slots={{
+        toolbar,
+        contextBar,
+      }}
+      externalSignals={{
+        replaceText,
+        replaceTextKey,
+        appendText,
+        appendTextKey,
+      }}
+      view={view}
+      testIds={testIds}
+      accessibility={{
+        textareaAriaLabel,
+        sendButtonAriaLabel,
+      }}
+    />
+  )
+}
 
 const aiMocks = vi.hoisted(() => ({
   convertFileListToFileUIParts: vi.fn(async (files: FileList | undefined): Promise<FileUIPart[]> => {
@@ -168,8 +288,8 @@ describe('composer attachments', () => {
 
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
     expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
-    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
     expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,transition')
+    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
     expect(screen.queryByText('window.png')).toBeNull()
 
     fireEvent.click(screen.getByTestId('chat-send-btn'))
@@ -239,7 +359,7 @@ describe('composer attachments', () => {
     expect(onSend).toHaveBeenCalledWith('', [appshotPart, existingPart])
   })
 
-  it('renders the final composer AppShot image without a transition snapshot', async () => {
+  it('renders a composer AppShot placeholder without a transition snapshot', async () => {
     const onSend = vi.fn()
     const appshotPart: FileUIPart = {
       type: 'file',
@@ -277,7 +397,10 @@ describe('composer attachments', () => {
     )
 
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
-    expect(screen.getByTestId('chat-appshot-image').getAttribute('src')).toBe('data:image/png;base64,final')
+    expect(screen.getByTestId('chat-appshot-empty-snapshot')).toBeTruthy()
+    expect(screen.getByTestId('chat-appshot-app-icon').getAttribute('src')).toBe('data:image/png;base64,icon')
+    expect(screen.getByTestId('chat-appshot-identity').textContent).toContain('Cradle')
+    expect(screen.queryByTestId('chat-appshot-image')).toBeNull()
   })
 
   it('renders pending AppShot slots with the composer snapshot height', async () => {
@@ -300,7 +423,7 @@ describe('composer attachments', () => {
 
     const pendingSlot = container.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
     expect(pendingSlot).toBeTruthy()
-    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('168.5')
+    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('186.5')
   })
 })
 

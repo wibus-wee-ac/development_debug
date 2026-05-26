@@ -3,6 +3,7 @@ import type { UIMessage } from 'ai'
 import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
 import { Badge } from '~/components/ui/badge'
@@ -25,6 +26,7 @@ import { describeToolCall } from './tool-ui-classifier'
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
 const EMPTY_SUBAGENT_MESSAGES: UIMessage[] = []
+const THINKING_IDLE_DELAY_MS = 900
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
@@ -136,6 +138,29 @@ function formatDuration(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 
+function ThinkingPlaceholder() {
+  const { t } = useTranslation('chat')
+
+  return (
+    <div
+      data-testid="message-bubble-thinking-placeholder"
+      className="mt-3 flex h-6 w-full items-center overflow-hidden text-xs text-muted-foreground/70"
+      aria-live="polite"
+    >
+      <span
+        className={cn(
+          'inline-flex items-center font-medium',
+          '[mask-image:linear-gradient(90deg,rgba(0,0,0,0.4)_0%,black_36%,black_64%,rgba(0,0,0,0.4)_100%)] [mask-size:220%_100%]',
+          '[-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0.4)_0%,black_36%,black_64%,rgba(0,0,0,0.4)_100%)] [-webkit-mask-size:220%_100%]',
+          'animate-[shimmer_2.8s_linear_infinite]',
+        )}
+      >
+        {t('status.thinking')}
+      </span>
+    </div>
+  )
+}
+
 /* ─── Subagent part render ──────────────────────────────────────── */
 
 function renderSubagentItem(
@@ -212,6 +237,7 @@ interface MessageBubbleProps {
   message: UIMessage
   isStreaming: boolean
   executionDetailsDefaultOpen?: boolean
+  presentation?: 'thread' | 'export'
 }
 
 function ToolCallBlockFromStore({
@@ -283,13 +309,15 @@ function GroupedToolCallBlockFromStore({
   return <GroupedToolCallBlock items={tools} uiKind={uiKind} />
 }
 
-function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread' }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
+  const isExportPresentation = presentation === 'export'
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const subagentMap = useChatStore(s => s.subagentMessagesMap.get(message.id))
+  const [streamTextIdle, setStreamTextIdle] = useState(false)
 
   const isFirstAppearance = !seenMessageIds.has(message.id)
   if (isFirstAppearance) {
@@ -301,6 +329,20 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       .flatMap(p => p.type === 'text' ? [(p as { text: string }).text] : [])
       .join('\n')
   }, [message.parts])
+
+  useEffect(() => {
+    if (!isAssistant || !isStreaming) {
+      setStreamTextIdle(false)
+      return
+    }
+
+    setStreamTextIdle(false)
+    const timer = window.setTimeout(() => {
+      setStreamTextIdle(true)
+    }, THINKING_IDLE_DELAY_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [isAssistant, isStreaming, plainText])
 
   const groupedItems = useMemo(
     () => groupMessageParts({
@@ -427,6 +469,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       return groupedItems.map(renderItem)
     }
 
+    if (isExportPresentation) {
+      return executionPhaseSplit.finalItems.map(renderItem)
+    }
+
     return (
       <>
         <ExecutionPhaseFold defaultOpen={executionDetailsDefaultOpen}>
@@ -439,7 +485,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
   return (
     <m.div
-      initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
+      initial={!isExportPresentation && isFirstAppearance ? { opacity: 0, y: 8 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={BUBBLE_TRANSITION}
       data-testid={`message-bubble-${message.role}`}
@@ -467,12 +513,13 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
           )}
         >
           {renderContent()}
+          {isAssistant && isStreaming && streamTextIdle && <ThinkingPlaceholder />}
         </div>
 
         {isAssistant && <RunDebugCaption messageId={message.id} />}
 
         {/* Action bar — appears on hover for all messages */}
-        {!isStreaming && plainText.length > 0 && (
+        {!isExportPresentation && !isStreaming && plainText.length > 0 && (
           <div className={cn(
             'mt-1 flex items-center gap-0.5 opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-150',
             isUser && 'justify-end',
@@ -502,5 +549,6 @@ export const MessageBubble = memo(
   (prevProps, nextProps) =>
     prevProps.message === nextProps.message
     && prevProps.isStreaming === nextProps.isStreaming
-    && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen,
+    && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
+    && prevProps.presentation === nextProps.presentation,
 )

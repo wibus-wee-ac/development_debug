@@ -26,6 +26,7 @@ const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256
 const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12
 const APPSHOT_FALLBACK_HEIGHT = 140
 const APPSHOT_COMPOSER_VERTICAL_PADDING = 8
+const APPSHOT_TITLE_HEIGHT = 18
 
 export function AppshotAttachmentCard({
   variant,
@@ -39,7 +40,7 @@ export function AppshotAttachmentCard({
   const threadImageHeight = readThreadImageHeight(threadImageSize)
   const renderedComposerHeight = Math.max(
     APPSHOT_COMPOSER_VERTICAL_PADDING,
-    snapshotHeight + APPSHOT_COMPOSER_VERTICAL_PADDING,
+    snapshotHeight + APPSHOT_COMPOSER_VERTICAL_PADDING + APPSHOT_TITLE_HEIGHT,
   )
   const hasAccessibilityText = accessibilityText.length > 0
   const [previewOpen, setPreviewOpen] = useState(false)
@@ -74,7 +75,7 @@ export function AppshotAttachmentCard({
         role="button"
         tabIndex={0}
         aria-label={title}
-        initial={{ opacity: 0, y: 4 }}
+        initial={variant === 'composer' ? false : { opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
         onClick={openPreview}
@@ -88,8 +89,9 @@ export function AppshotAttachmentCard({
               <ComposerAppshotTransitionImage
                 alt={title}
                 appIconDataUrl={metadata.appIconDataUrl}
-                imageDataUrl={metadata.transitionSnapshotDataUrl ?? metadata.imageDataUrl}
+                imageDataUrl={metadata.transitionSnapshotDataUrl}
                 imageHeight={snapshotHeight}
+                title={title}
               />
             )
           : (
@@ -176,21 +178,45 @@ function ComposerAppshotTransitionImage({
   appIconDataUrl,
   imageDataUrl,
   imageHeight,
+  title,
 }: {
   alt: string
   appIconDataUrl: string | null
-  imageDataUrl: string
+  imageDataUrl: string | null
   imageHeight: number
+  title: string
 }) {
   return (
-    <AppshotImageFrame
-      alt={alt}
-      appIconDataUrl={appIconDataUrl}
-      imageDataUrl={imageDataUrl}
-      imageHeight={imageHeight}
-      slotWidth={APPSHOT_CARD_WIDTH}
-      visualWidth={APPSHOT_CARD_WIDTH}
-    />
+    <div className="flex w-full flex-col items-center">
+      <div
+        className="relative flex w-full items-center justify-center"
+        style={{ height: imageHeight }}
+      >
+        {imageDataUrl
+          ? (
+              <img
+                src={imageDataUrl}
+                alt={alt}
+                className="object-contain"
+                style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
+                draggable={false}
+                data-testid="chat-appshot-image"
+              />
+            )
+          : (
+              <span
+                aria-hidden="true"
+                className="block"
+                style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
+                data-testid="chat-appshot-empty-snapshot"
+              />
+            )}
+        <AppshotAppIcon appIconDataUrl={appIconDataUrl} />
+      </div>
+      <div className="mt-1 w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
+        {title}
+      </div>
+    </div>
   )
 }
 
@@ -252,28 +278,33 @@ function AppshotImageFrame({
           data-testid="chat-appshot-image"
         />
       </div>
-      {appIconDataUrl && (
-        <span className="absolute bottom-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center">
-          <img
-            src={appIconDataUrl}
-            alt=""
-            aria-hidden="true"
-            className="size-6 object-contain"
-            draggable={false}
-            data-testid="chat-appshot-app-icon"
-          />
-        </span>
-      )}
-      {!appIconDataUrl && (
-        <span
-          className="absolute bottom-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center text-muted-foreground"
-          aria-hidden="true"
-          data-testid="chat-appshot-app-icon"
-        >
-          <AppWindowIcon className="size-4" />
-        </span>
-      )}
+      <AppshotAppIcon appIconDataUrl={appIconDataUrl} />
     </div>
+  )
+}
+
+function AppshotAppIcon({ appIconDataUrl }: { appIconDataUrl: string | null }) {
+  if (appIconDataUrl) {
+    return (
+      <img
+        src={appIconDataUrl}
+        alt=""
+        aria-hidden="true"
+        className="absolute bottom-0 left-1/2 size-6 -translate-x-1/2 object-contain"
+        draggable={false}
+        data-testid="chat-appshot-app-icon"
+      />
+    )
+  }
+
+  return (
+    <span
+      className="absolute bottom-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-[6px] bg-background/95 text-muted-foreground shadow-sm"
+      aria-hidden="true"
+      data-testid="chat-appshot-app-icon"
+    >
+      <AppWindowIcon className="size-4" />
+    </span>
   )
 }
 
