@@ -187,8 +187,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
     let outputTextCollector = ''
 
     try {
-      if (input.runtimeSession.providerSessionId && input.modelId) {
-        await activeQuery.setModel(input.modelId)
+      // Always pin the model on resumed sessions. input.modelId may be undefined
+      // when the frontend relies on the snapshot's currentModelId, but we still
+      // need to call setModel so the SDK doesn't fall back to env vars.
+      if (input.runtimeSession.providerSessionId && effectiveModel) {
+        await activeQuery.setModel(effectiveModel)
       }
       inputStream.push(userContent)
 
@@ -595,7 +598,10 @@ function buildClaudeQueryOptions(input: {
   if (input.input.runtimeSession.providerSessionId) {
     queryOptions.resume = input.input.runtimeSession.providerSessionId
   }
-  else if (effectiveModel) {
+  // Always set the model — even for resumed sessions. Without this, the SDK
+  // subprocess falls back to ANTHROPIC_MODEL from the environment, silently
+  // using a different model than the provider target resolved.
+  if (effectiveModel) {
     queryOptions.model = effectiveModel
   }
 
@@ -604,14 +610,32 @@ function buildClaudeQueryOptions(input: {
     queryOptions.mcpServers = { ...queryOptions.mcpServers, ...registeredServers }
   }
 
-  queryOptions.env = {
-    ...process.env,
-    ANTHROPIC_API_KEY: apiKey,
-    CRADLE_CHAT_SESSION_ID: input.input.runtimeSession.chatSessionId,
-    CRADLE_WORKSPACE_ID: input.input.workspaceId ?? undefined,
-    ...(config.baseUrl ? { ANTHROPIC_BASE_URL: config.baseUrl } : {}),
-    ...buildClaudeAgentModelEnv(config.claudeAgent),
+  // Prevent the SDK subprocess from reading ~/.claude/settings.json or
+  // .claude/settings.json which could inject ANTHROPIC_MODEL or alias overrides
+  // that conflict with the provider target Cradle resolved.
+  queryOptions.settingSources = []
+
+  // Forward the full host environment so Agent bash commands have the user's
+  // shell setup (PATH, NVM_DIR, GOPATH, JAVA_HOME, etc.), but explicitly
+  // strip model-related vars that would silently override the provider target.
+  const env: Record<string, string | undefined> = { ...process.env }
+  for (const key of [
+    'ANTHROPIC_MODEL',
+    'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+    'ANTHROPIC_DEFAULT_SONNET_MODEL',
+    'ANTHROPIC_DEFAULT_OPUS_MODEL',
+    'CLAUDE_CODE_SUBAGENT_MODEL',
+  ]) {
+    delete env[key]
   }
+  env.ANTHROPIC_API_KEY = apiKey
+  if (config.baseUrl) {
+    env.ANTHROPIC_BASE_URL = config.baseUrl
+  }
+  env.CRADLE_CHAT_SESSION_ID = input.input.runtimeSession.chatSessionId
+  env.CRADLE_WORKSPACE_ID = input.input.workspaceId ?? undefined
+  Object.assign(env, buildClaudeAgentModelEnv(config.claudeAgent))
+  queryOptions.env = env
 
   if (input.attachPermissionHandler && config.permissionMode !== 'bypassPermissions') {
     queryOptions.canUseTool = buildCanUseTool(input.input.runtimeSession.chatSessionId, input.abortController.signal)
