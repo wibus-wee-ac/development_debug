@@ -4,7 +4,11 @@
 
 import type { AgentProfile } from '~/lib/types'
 
-import type { ExternalProviderRecordView, ExternalProviderSourceView, ProviderListEntry } from './provider-settings-utils'
+import type {
+  ExternalProviderRecordView,
+  ExternalProviderSourceView,
+  ProviderListEntry,
+} from './provider-settings-utils'
 import {
   createExternalProviderListEntry,
   createManualProviderListEntry,
@@ -19,7 +23,7 @@ export interface ProviderListGroup {
 
 const MANUAL_GROUP_ID = 'manual'
 const MANUAL_GROUP_LABEL = 'Manual providers'
-const UNKNOWN_EXTERNAL_SOURCE_LABEL = 'External source'
+const UNKNOWN_EXTERNAL_SOURCE_LABEL = 'Connected app'
 
 function compareProviderProfiles(a: AgentProfile, b: AgentProfile): number {
   if (a.enabled !== b.enabled) {
@@ -66,7 +70,10 @@ const EXTERNAL_STATUS_ORDER: Record<ExternalProviderRecordView['status'], number
   missing: 4,
 }
 
-function compareExternalRecords(a: ExternalProviderRecordView, b: ExternalProviderRecordView): number {
+function compareExternalRecords(
+  a: ExternalProviderRecordView,
+  b: ExternalProviderRecordView,
+): number {
   const aIsActive = a.status === 'active' && a.runtimeTargetEnabled
   const bIsActive = b.status === 'active' && b.runtimeTargetEnabled
   if (aIsActive !== bIsActive) {
@@ -110,7 +117,7 @@ function externalGroupDescriptor(
   return {
     id: `external-plugin:${source.pluginName}`,
     kind: 'external-plugin',
-    label: `External sources / ${source.pluginName}`,
+    label: `Connected apps / ${source.pluginName}`,
   }
 }
 

@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
-import { postProvidersHealthCheck, postSecrets } from '~/api-gen/sdk.gen'
+import { postSecrets } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Separator } from '~/components/ui/separator'
@@ -174,27 +174,8 @@ function PresetSetupForm({
         }
       })
 
-      try {
-        const { data: hcResult } = await postProvidersHealthCheck({
-          body: {
-            providerKind: preset.providerKind,
-            label: currentValues.name,
-            config,
-            secretRef: credentialRef,
-            profileId
-          }
-        })
-        const hc = hcResult as { ok: boolean; errorText?: string } | null
-        if (hc?.ok) {
-          setStatus({ ok: true, text: 'Connected' })
-          setTimeout(onComplete, 600, profileId)
-        } else {
-          setStatus({ ok: false, text: hc?.errorText ?? 'Verification failed' })
-        }
-      } catch {
-        setStatus({ ok: true, text: 'Saved (verification skipped)' })
-        setTimeout(onComplete, 500, profileId)
-      }
+      setStatus({ ok: true, text: 'Saved' })
+      setTimeout(onComplete, 500, profileId)
     } catch (err) {
       setStatus({ ok: false, text: 'Failed to save provider' })
       console.error('[ProviderSetup]', err)
@@ -320,7 +301,7 @@ function PresetSetupForm({
           disabled={busy || !canSubmit}
         >
           {busy ? <Spinner className="size-3" /> : <CheckIcon />}
-          {busy ? 'Connecting…' : 'Connect provider'}
+          {busy ? 'Saving...' : 'Save provider'}
         </Button>
         <Button size="sm" variant="ghost" onClick={onBack}>
           Back

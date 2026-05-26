@@ -1,11 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  CheckIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CircleDashedIcon,
-  Trash2Icon
-} from 'lucide-react'
+import { CheckIcon, CircleAlertIcon, Trash2Icon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import {
@@ -24,7 +18,6 @@ import { z } from 'zod'
 import { getProvidersTargetsByProviderTargetIdModelsCacheOptions } from '~/api-gen/@tanstack/react-query.gen'
 import {
   patchProfilesByIdIcon,
-  postProvidersHealthCheck,
   postProvidersModels,
   postSecrets,
   putProfilesById
@@ -76,7 +69,6 @@ import {
   updateProviderTargetCustomModels
 } from './provider-target-model-settings'
 
-type HealthStatus = 'unknown' | 'verifying' | 'connected' | 'failed'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
 
@@ -93,7 +85,6 @@ interface ProfileDetailUiState {
   availableModels: ModelDescriptor[]
   modelsLoading: boolean
   modelsCachedAt: number | null
-  health: HealthStatus
   saveState: SaveState
   confirmRemove: boolean
 }
@@ -108,7 +99,6 @@ type ProfileDetailUiAction =
   | { type: 'models/loaded'; models: ModelDescriptor[]; cachedAt?: number | null }
   | { type: 'models/failed' }
   | { type: 'models/update-one'; model: ModelDescriptor }
-  | { type: 'health/set'; status: HealthStatus }
   | { type: 'save/set'; state: SaveState }
   | { type: 'remove/set'; open: boolean }
 
@@ -116,7 +106,6 @@ const INITIAL_UI_STATE: ProfileDetailUiState = {
   availableModels: [],
   modelsLoading: false,
   modelsCachedAt: null,
-  health: 'unknown',
   saveState: 'idle',
   confirmRemove: false
 }
@@ -170,8 +159,6 @@ function profileDetailUiReducer(
           model.id === action.model.id ? action.model : model
         )
       }
-    case 'health/set':
-      return { ...state, health: action.status }
     case 'save/set':
       return { ...state, saveState: action.state }
     case 'remove/set':
@@ -276,13 +263,11 @@ export function ProfileDetailPanel({
     useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
-  const { availableModels, modelsLoading, modelsCachedAt, health, saveState, confirmRemove } =
-    uiState
+  const { availableModels, modelsLoading, modelsCachedAt, saveState, confirmRemove } = uiState
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const modelsRequestRef = useRef(0)
-  const healthRequestRef = useRef(0)
   const saveRequestRef = useRef(0)
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
 
@@ -334,7 +319,6 @@ export function ProfileDetailPanel({
     clearAutoSaveTimer()
     clearSavedClearTimer()
     modelsRequestRef.current += 1
-    healthRequestRef.current += 1
     saveRequestRef.current += 1
     const initialValues = getProfileFormValues(profile)
     savedSignatureRef.current = createProfileSignature(initialValues)
@@ -352,11 +336,12 @@ export function ProfileDetailPanel({
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
 
-    queryClient.fetchQuery(
-      getProvidersTargetsByProviderTargetIdModelsCacheOptions({
-        path: { providerTargetId: profile.id }
-      })
-    )
+    queryClient
+      .fetchQuery(
+        getProvidersTargetsByProviderTargetIdModelsCacheOptions({
+          path: { providerTargetId: profile.id }
+        })
+      )
       .then((rawCache) => {
         const cache = ProviderModelsCacheSchema.parse(rawCache)
         if (requestId !== modelsRequestRef.current) {
@@ -401,40 +386,6 @@ export function ProfileDetailPanel({
         dispatch({ type: 'models/failed' })
       })
   }, [queryClient])
-
-  // Health check on load + when key fields change
-  const runHealthCheck = useCallback(async () => {
-    const requestId = ++healthRequestRef.current
-    dispatch({ type: 'health/set', status: 'verifying' })
-
-    try {
-      const { data } = await postProvidersHealthCheck({
-        body: createProviderRequestBody()
-      })
-
-      if (requestId !== healthRequestRef.current) {
-        return
-      }
-
-      const hc = data as { ok: boolean } | null
-      dispatch({ type: 'health/set', status: hc?.ok ? 'connected' : 'failed' })
-    } catch {
-      if (requestId !== healthRequestRef.current) {
-        return
-      }
-
-      dispatch({ type: 'health/set', status: 'failed' })
-    }
-  }, [createProviderRequestBody])
-
-  useEffect(() => {
-    if (!profile.enabled) {
-      healthRequestRef.current += 1
-      dispatch({ type: 'health/set', status: 'unknown' })
-      return
-    }
-    void runHealthCheck()
-  }, [profile.enabled, runHealthCheck])
 
   const saveProfile = useEffectEvent(async () => {
     const currentValues = form.getValues()
@@ -562,9 +513,7 @@ export function ProfileDetailPanel({
             </button>
           </IconPicker>
         }
-        health={health}
         saveState={saveState}
-        onRefreshHealth={() => void runHealthCheck()}
         onToggle={onToggle}
         onOpenRemove={() => dispatch({ type: 'remove/set', open: true })}
       />
@@ -621,18 +570,14 @@ function ProfileDetailHeader({
   profile,
   kindLabel,
   icon,
-  health,
   saveState,
-  onRefreshHealth,
   onToggle,
   onOpenRemove
 }: {
   profile: AgentProfile
   kindLabel: string
   icon: ReactNode
-  health: HealthStatus
   saveState: SaveState
-  onRefreshHealth: () => void
   onToggle: (enabled: boolean) => void
   onOpenRemove: () => void
 }) {
@@ -648,7 +593,6 @@ function ProfileDetailHeader({
           <Badge variant="secondary" className="font-normal text-muted-foreground">
             {kindLabel}
           </Badge>
-          <HealthBadge status={health} onRefresh={onRefreshHealth} disabled={!profile.enabled} />
         </div>
         <p className="mt-1 truncate text-[11.5px] text-muted-foreground/80">{profile.id}</p>
       </div>
@@ -893,116 +837,6 @@ function RemoveProfileDialog({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-  )
-}
-
-// ─── Health badge ─────────────────────────────────────────────────────────────
-
-function HealthPill({
-  tone,
-  label,
-  icon,
-  onRefresh,
-  disabled
-}: {
-  tone: 'active' | 'muted' | 'warning' | 'destructive'
-  label: string
-  icon: ReactNode
-  onRefresh: () => void
-  disabled: boolean
-}) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={disabled}
-          className={cn(
-            'group/health inline-flex h-5 items-center gap-1 rounded-full px-2 text-[11px] font-medium transition-colors',
-            tone === 'active' &&
-              'bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400',
-            tone === 'muted' && 'bg-muted/60 text-muted-foreground ring-1 ring-foreground/4',
-            tone === 'warning' &&
-              'bg-amber-500/10 text-amber-600 ring-1 ring-amber-500/15 dark:text-amber-400',
-            tone === 'destructive' &&
-              'bg-destructive/10 text-destructive ring-1 ring-destructive/15',
-            'disabled:opacity-60 disabled:cursor-not-allowed',
-            !disabled && 'hover:brightness-105 cursor-pointer'
-          )}
-        >
-          {icon}
-          {label}
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        {disabled ? 'Enable provider to verify connection' : 'Click to verify connection'}
-      </TooltipContent>
-    </Tooltip>
-  )
-}
-
-function HealthBadge({
-  status,
-  onRefresh,
-  disabled
-}: {
-  status: HealthStatus
-  onRefresh: () => void
-  disabled: boolean
-}) {
-  if (disabled) {
-    return (
-      <HealthPill
-        tone="muted"
-        label="Disabled"
-        icon={<CircleDashedIcon className="size-3" />}
-        onRefresh={onRefresh}
-        disabled={disabled}
-      />
-    )
-  }
-  if (status === 'verifying') {
-    return (
-      <HealthPill
-        tone="muted"
-        label="Verifying"
-        icon={<Spinner className="size-3" />}
-        onRefresh={onRefresh}
-        disabled={disabled}
-      />
-    )
-  }
-  if (status === 'connected') {
-    return (
-      <HealthPill
-        tone="active"
-        label="Connected"
-        icon={<CircleCheckIcon className="size-3" />}
-        onRefresh={onRefresh}
-        disabled={disabled}
-      />
-    )
-  }
-  if (status === 'failed') {
-    return (
-      <HealthPill
-        tone="destructive"
-        label="Disconnected"
-        icon={<CircleAlertIcon className="size-3" />}
-        onRefresh={onRefresh}
-        disabled={disabled}
-      />
-    )
-  }
-  return (
-    <HealthPill
-      tone="muted"
-      label="Idle"
-      icon={<CircleDashedIcon className="size-3" />}
-      onRefresh={onRefresh}
-      disabled={disabled}
-    />
   )
 }
 

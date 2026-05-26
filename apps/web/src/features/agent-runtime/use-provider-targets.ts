@@ -2,8 +2,8 @@
 // Input: Generated provider-targets React Query options.
 // Position: Agent Runtime owns renderer access to provider target records.
 
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 
 import { getProviderTargetsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetProviderTargetsResponse } from '~/api-gen/types.gen'

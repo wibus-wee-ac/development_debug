@@ -7,7 +7,10 @@ import { describe, expect, it } from 'vitest'
 import type { AgentProfile } from '~/lib/types'
 
 import { collectProviderListGroups, sortProviderProfilesByStatus } from './provider-list-groups'
-import type { ExternalProviderRecordView, ExternalProviderSourceView } from './provider-settings-utils'
+import type {
+  ExternalProviderRecordView,
+  ExternalProviderSourceView,
+} from './provider-settings-utils'
 
 function profile(input: Pick<AgentProfile, 'id' | 'name' | 'enabled'>): AgentProfile {
   return {
@@ -65,9 +68,7 @@ describe('provider-list-groups', () => {
 
   it('groups external records by source plugin owner rather than source label', () => {
     const groups = collectProviderListGroups(
-      [
-        profile({ id: 'manual', name: 'OpenAI', enabled: true }),
-      ],
+      [profile({ id: 'manual', name: 'OpenAI', enabled: true })],
       [
         externalRecord({
           id: 'record-1',
@@ -90,15 +91,17 @@ describe('provider-list-groups', () => {
       ],
     )
 
-    expect(groups.map(group => ({ id: group.id, entries: group.entries.map(item => item.id) })))
-      .toEqual([
-        { id: 'manual', entries: ['manual:manual'] },
-        {
-          id: 'external-plugin:cc-switch',
-          entries: ['external:record-2', 'external:record-1'],
-        },
-      ])
+    expect(
+      groups.map(group => ({ id: group.id, entries: group.entries.map(item => item.id) })),
+    ).toEqual([
+      { id: 'manual', entries: ['manual:manual'] },
+      {
+        id: 'external-plugin:cc-switch',
+        entries: ['external:record-2', 'external:record-1'],
+      },
+    ])
     expect(groups[0]?.label).toBe('Manual providers')
+    expect(groups[1]?.label).toBe('Connected apps / cc-switch')
   })
 
   it('sorts enabled active external records before disabled active records', () => {

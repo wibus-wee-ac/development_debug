@@ -1,3 +1,4 @@
+import type { TFunction } from 'i18next'
 import {
   ActivityIcon,
   BrainIcon,
@@ -18,7 +19,6 @@ import {
   TriangleAlertIcon,
   UserRoundIcon,
 } from 'lucide-react'
-import type { TFunction } from 'i18next'
 import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -70,8 +70,8 @@ import {
   useChronicleDreamRuns,
   useChronicleKnowledgeCard,
   useChronicleKnowledgeCards,
-  useChronicleMemory,
   useChronicleMemories,
+  useChronicleMemory,
   useChronicleMemorySearch,
   useChronicleMessageSources,
   useChronicleModelResourceActions,
@@ -85,6 +85,7 @@ import {
 } from './use-chronicle.ts'
 
 const MEMORY_SEARCH_LIMIT = 50
+const PRIVACY_RULE_LINE_SPLIT_RE = /\r?\n/
 type ChronicleTranslate = TFunction<'chronicle'>
 
 const AccessibilityTreeNodeSchema = z.object({
@@ -961,22 +962,22 @@ function ChronicleControlPanel({
           reason={saving ? t('common.status.savingSettings') : null}
         >
           <ProviderModelPicker
-            profiles={profiles}
-            selectedProfileId={selectedProfileId}
+            providerTargets={profiles}
+            selectedProviderTargetId={selectedProfileId}
             selectedModelId={selectedModelId}
             selectedModel={selectedModel}
-            modelsByProfileId={modelsByProfileId}
-            loadingProfileIds={loadingProfileIds}
+            modelsByProviderTargetId={modelsByProfileId}
+            loadingProviderTargetIds={loadingProfileIds}
             thinkingValue={null}
             thinkingOptions={[]}
-            emptyProfilesLabel={t('control.model.emptyProfiles')}
+            emptyProviderTargetsLabel={t('control.model.emptyProfiles')}
             emptySelectionLabel={t('control.model.emptySelection')}
             menuSide="bottom"
             menuAlign="end"
             triggerTestId="chronicle-provider-model-selector"
             disabled={saving}
-            onRequestProfileModels={requestProfileModels}
-            onSelectProfile={(profileId) => {
+            onRequestProviderTargetModels={requestProfileModels}
+            onSelectProviderTarget={(profileId) => {
               requestProfileModels(profileId)
               const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
               if (!nextModel) {
@@ -1380,8 +1381,8 @@ export function PrivacyRulesPanel({
   const closedEyesMode = config?.closedEyesMode ?? 'auto'
   const hasChanges = config
     ? !stringListsEqual(nextAppBundleIds, config.privacySensitiveAppBundleIds)
-      || !stringListsEqual(nextTitlePatterns, config.privacySensitiveTitlePatterns)
-      || !stringListsEqual(nextUrlPatterns, config.privacySensitiveUrlPatterns)
+    || !stringListsEqual(nextTitlePatterns, config.privacySensitiveTitlePatterns)
+    || !stringListsEqual(nextUrlPatterns, config.privacySensitiveUrlPatterns)
     : false
 
   return (
@@ -1544,7 +1545,7 @@ function formatPrivacyRuleLines(values: string[]): string {
 function parsePrivacyRuleLines(value: string): string[] {
   const rules: string[] = []
   const seen = new Set<string>()
-  for (const line of value.split(/\r?\n/)) {
+  for (const line of value.split(PRIVACY_RULE_LINE_SPLIT_RE)) {
     const rule = line.trim()
     if (!rule || seen.has(rule)) {
       continue
@@ -1869,10 +1870,10 @@ function ResourceItem({
                       setMessage(updated?.message ?? t('resources.verified'))
                     })
                   }}
-                >
+              >
                   <RefreshCwIcon className="size-3" />
                   {t('common.action.verify')}
-                </Button>
+              </Button>
             </div>
           )}
           {message && <p className="mt-1 text-[11px] text-muted-foreground">{message}</p>}
@@ -2498,7 +2499,7 @@ function KnowledgeCardList({
             'rounded-lg bg-background p-3 shadow-sm transition-[box-shadow,background-color]',
             focusTarget?.type === 'knowledge' && focusTarget.id === card.id
               ? 'bg-primary/5 shadow-lg ring-2 ring-primary/40'
-              : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]'
+              : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]',
           )}
           data-testid={`chronicle-knowledge-card-${card.id}`}
         >
@@ -2966,7 +2967,7 @@ function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }
         'rounded-lg bg-background p-3 shadow-sm transition-[box-shadow,background-color]',
         focused
           ? 'bg-primary/5 shadow-lg ring-2 ring-primary/40'
-          : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]'
+          : 'shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]',
       )}
       data-testid={`chronicle-memory-card-${entry.id}`}
     >

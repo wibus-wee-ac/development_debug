@@ -20,15 +20,20 @@ import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
-import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema, type ClaudeAgentConfig } from '~/features/agent-runtime/agent-config-schema'
-import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
+import type { ClaudeAgentConfig } from '~/features/agent-runtime/agent-config-schema'
+import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema } from '~/features/agent-runtime/agent-config-schema'
+import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import type { ProviderTargetOption } from '~/features/agent-runtime/use-provider-targets'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
+import type { ModelsByProviderTargetId, ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
+import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
-import { CurrentProviderModelList, type ModelsByProfileId, type ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { Agent, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { buildAvatarUrl } from './avatar-url'
@@ -45,17 +50,17 @@ const _ClaudeCodeIcon = PROVIDER_ICONS['claude-cli']!
 // eslint-disable-next-line dot-notation
 const CodexIcon = PROVIDER_ICONS['codex']!
 
-type RuntimeOptionLabelKey =
-  | 'detail.runtime.standard.label'
-  | 'detail.runtime.claudeAgent.label'
-  | 'detail.runtime.codex.label'
-  | 'detail.runtime.cliTui.label'
+type RuntimeOptionLabelKey
+  = | 'detail.runtime.standard.label'
+    | 'detail.runtime.claudeAgent.label'
+    | 'detail.runtime.codex.label'
+    | 'detail.runtime.cliTui.label'
 
-type RuntimeOptionDescriptionKey =
-  | 'detail.runtime.standard.description'
-  | 'detail.runtime.claudeAgent.description'
-  | 'detail.runtime.codex.description'
-  | 'detail.runtime.cliTui.description'
+type RuntimeOptionDescriptionKey
+  = | 'detail.runtime.standard.description'
+    | 'detail.runtime.claudeAgent.description'
+    | 'detail.runtime.codex.description'
+    | 'detail.runtime.cliTui.description'
 
 const RUNTIME_OPTIONS: { value: RuntimeKind, labelKey: RuntimeOptionLabelKey, descriptionKey: RuntimeOptionDescriptionKey, icon: React.ReactNode }[] = [
   {
@@ -143,10 +148,10 @@ interface ClaudeAgentModelAliases {
 }
 
 type ClaudeAgentModelField = 'claudeAgentHaikuModel' | 'claudeAgentSonnetModel' | 'claudeAgentOpusModel'
-type ClaudeAgentAliasNameKey =
-  | 'detail.claudeAgent.alias.haiku.name'
-  | 'detail.claudeAgent.alias.sonnet.name'
-  | 'detail.claudeAgent.alias.opus.name'
+type ClaudeAgentAliasNameKey
+  = | 'detail.claudeAgent.alias.haiku.name'
+    | 'detail.claudeAgent.alias.sonnet.name'
+    | 'detail.claudeAgent.alias.opus.name'
 
 const CLAUDE_AGENT_ALIAS_LABELS: Record<ClaudeAgentModelField, ClaudeAgentAliasNameKey> = {
   claudeAgentHaikuModel: 'detail.claudeAgent.alias.haiku.name',
@@ -154,12 +159,12 @@ const CLAUDE_AGENT_ALIAS_LABELS: Record<ClaudeAgentModelField, ClaudeAgentAliasN
   claudeAgentOpusModel: 'detail.claudeAgent.alias.opus.name',
 }
 
-type AgentCreateDisabledReason =
-  | 'detail.create.disabled.nameRequired'
-  | 'detail.create.disabled.cliExecutableRequired'
-  | 'detail.create.disabled.providerRequired'
-  | 'detail.create.disabled.creating'
-  | 'detail.create.disabled.noChanges'
+type AgentCreateDisabledReason
+  = | 'detail.create.disabled.nameRequired'
+    | 'detail.create.disabled.cliExecutableRequired'
+    | 'detail.create.disabled.providerRequired'
+    | 'detail.create.disabled.creating'
+    | 'detail.create.disabled.noChanges'
 
 interface AgentDetailUiState {
   avatarSpinKey: number
@@ -212,7 +217,7 @@ function parseEnvText(env?: Record<string, string>): string {
   return Object.entries(env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
 }
 
-export function parseCliEnvText(text: string): CliEnvParseResult {
+function parseCliEnvText(text: string): CliEnvParseResult {
   const entries: Array<readonly [string, string]> = []
   const invalidLineNumbers: number[] = []
 
@@ -244,7 +249,7 @@ function stringifyEnvText(text: string): Record<string, string> | undefined {
   return parseCliEnvText(text).env
 }
 
-export function getAgentCreateDisabledReason(input: {
+function getAgentCreateDisabledReason(input: {
   draft: Pick<AgentDetailDraft, 'name' | 'runtimeKind' | 'providerTargetId' | 'cliTuiExecutable'>
   isDirty: boolean
   createSaving: boolean
@@ -285,7 +290,7 @@ function inferCliPreset(launch: CliTuiLaunchConfig | null): string {
 
 function trimToValue(value: string): string | undefined {
   const trimmed = value.trim()
-  return trimmed ? trimmed : undefined
+  return trimmed || undefined
 }
 
 function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
@@ -331,7 +336,7 @@ function writeClaudeAgentConfig(config: Record<string, unknown>, input: {
   delete config.claudeAgent
 }
 
-export function stringifyConfigJson(input: {
+function stringifyConfigJson(input: {
   systemPrompt: string
   claudeAgentHaikuModel: string
   claudeAgentSonnetModel: string
@@ -367,19 +372,39 @@ export function stringifyConfigJson(input: {
   return JSON.stringify(config)
 }
 
-function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: AgentProfile[]): AgentDetailFormValues {
+function listSelectableProviderTargets(
+  providerTargets: ProviderTargetOption[],
+  runtimeKind: RuntimeKind,
+): ProviderTargetOption[] {
+  return providerTargets.filter(target =>
+    target.enabled && runtimeSupportsProviderKind(runtimeKind, target.providerKind))
+}
+
+function defaultProviderTargetId(
+  agent: Agent | undefined,
+  providerTargets: ProviderTargetOption[],
+  runtimeKind: RuntimeKind,
+): string | null {
+  if (agent?.providerTargetId) {
+    return agent.providerTargetId
+  }
+  return listSelectableProviderTargets(providerTargets, runtimeKind)[0]?.id ?? null
+}
+
+function getAgentDetailFormValues(agent: Agent | undefined, providerTargets: ProviderTargetOption[]): AgentDetailFormValues {
   const initialConfig = AgentRuntimeConfigJsonSchema.parse(agent?.configJson)
   const cliTuiPreset = inferCliPreset(initialConfig.cliTui)
   const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === cliTuiPreset)?.executable ?? ''
+  const runtimeKind = (agent?.runtimeKind as RuntimeKind) ?? 'standard'
   return {
     name: agent?.name ?? '',
     description: agent?.description ?? '',
     avatarStyle: agent?.avatarStyle ?? AVATAR_STYLES[0].id,
     avatarSeed: agent?.avatarSeed ?? generateSeed(),
-    providerTargetId: agent?.providerTargetId ?? enabledProfiles[0]?.id ?? null,
+    providerTargetId: defaultProviderTargetId(agent, providerTargets, runtimeKind),
     modelId: agent?.modelId ?? null,
     thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
-    runtimeKind: (agent?.runtimeKind as RuntimeKind) ?? 'standard',
+    runtimeKind,
     systemPrompt: initialConfig.systemPrompt,
     claudeAgentHaikuModel: initialConfig.claudeAgent.modelAliases.haiku,
     claudeAgentSonnetModel: initialConfig.claudeAgent.modelAliases.sonnet,
@@ -394,13 +419,13 @@ function getAgentDetailFormValues(agent: Agent | undefined, enabledProfiles: Age
 // ── Provider / Model Picker ───────────────────────────────────────────────────
 
 function AgentProviderModelPicker({
-  profiles,
-  profileId,
+  providerTargets,
+  providerTargetId,
   modelId,
   thinkingEffort,
 }: {
-  profiles: AgentProfile[]
-  profileId: string | null
+  providerTargets: ProviderTargetOption[]
+  providerTargetId: string | null
   modelId: string | null
   thinkingEffort: ThinkingEffort
 }) {
@@ -414,11 +439,18 @@ function AgentProviderModelPicker({
       description: t(thinkingDescriptionKeys[value]),
     }
   }), [t])
-  const initialModelProfileIds = useMemo(() => [profileId], [profileId])
-  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(profiles, initialModelProfileIds)
-  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const initialModelProviderTargetIds = useMemo(() => [providerTargetId], [providerTargetId])
+  const {
+    modelsByProviderTargetId,
+    loadingProviderTargetIds,
+    requestProviderTargetModels,
+  } = useProviderTargetModelMap(providerTargets, initialModelProviderTargetIds)
+  const models = useMemo(
+    () => providerTargetId ? modelsByProviderTargetId[providerTargetId] ?? [] : [],
+    [modelsByProviderTargetId, providerTargetId],
+  )
   const selectedModel = models.find(model => model.id === modelId) ?? null
-  const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
+  const isLoadingModels = providerTargetId ? loadingProviderTargetIds.has(providerTargetId) : false
 
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
     selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'auto')
@@ -429,42 +461,42 @@ function AgentProviderModelPicker({
   })
 
   useEffect(() => {
-    if (!profileId || modelId !== null || models.length === 0) {
+    if (!providerTargetId || modelId !== null || models.length === 0) {
       return
     }
     applyDefaultModel(models[0]!)
-  }, [profileId, modelId, models])
+  }, [providerTargetId, modelId, models])
 
   return (
     <ProviderModelPicker
-      profiles={profiles}
-      selectedProfileId={profileId}
+      providerTargets={providerTargets}
+      selectedProviderTargetId={providerTargetId}
       selectedModelId={modelId}
       selectedModel={selectedModel}
-      modelsByProfileId={modelsByProfileId}
-      loadingProfileIds={loadingProfileIds}
+      modelsByProviderTargetId={modelsByProviderTargetId}
+      loadingProviderTargetIds={loadingProviderTargetIds}
       thinkingValue={thinkingEffort}
       thinkingOptions={thinkingOptions}
       isLoadingSelectedModels={isLoadingModels}
-      emptyProfilesLabel={t('detail.providerModel.emptyProfiles')}
+      emptyProviderTargetsLabel={t('detail.providerModel.emptyProviderTargets')}
       emptySelectionLabel={t('detail.providerModel.emptySelection')}
       menuSide="bottom"
       menuAlign="end"
       triggerTestId="agent-provider-model-selector"
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
-      onRequestProfileModels={requestProfileModels}
-      onSelectProfile={(nextProfileId) => {
-        requestProfileModels(nextProfileId)
-        const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
-        form.setValue('providerTargetId', nextProfileId, { shouldDirty: true })
+      onRequestProviderTargetModels={requestProviderTargetModels}
+      onSelectProviderTarget={(nextProviderTargetId) => {
+        requestProviderTargetModels(nextProviderTargetId)
+        const nextModel = (modelsByProviderTargetId[nextProviderTargetId] ?? [])[0] ?? null
+        form.setValue('providerTargetId', nextProviderTargetId, { shouldDirty: true })
         form.setValue('modelId', nextModel?.id ?? null, { shouldDirty: true })
         form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
       }}
-      onSelectModel={(nextModelId, nextProfileId) => {
+      onSelectModel={(nextModelId, nextProviderTargetId) => {
         const nextModel = nextModelId
-          ? (modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null
+          ? (modelsByProviderTargetId[nextProviderTargetId] ?? []).find(model => model.id === nextModelId) ?? null
           : null
-        form.setValue('providerTargetId', nextProfileId, { shouldDirty: true })
+        form.setValue('providerTargetId', nextProviderTargetId, { shouldDirty: true })
         form.setValue('modelId', nextModelId, { shouldDirty: true })
         form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
       }}
@@ -476,31 +508,31 @@ function AgentProviderModelPicker({
 function ClaudeAgentAliasModelPicker({
   field,
   mainModelId,
-  pickerProfiles,
-  profileId,
-  modelsByProfileId,
-  loadingProfileIds,
+  pickerProviderTargets,
+  providerTargetId,
+  modelsByProviderTargetId,
+  loadingProviderTargetIds,
   testId,
 }: {
   field: ClaudeAgentModelField
   mainModelId: string | null
-  pickerProfiles: AgentProfile[]
-  profileId: string | null
-  modelsByProfileId: ModelsByProfileId
-  loadingProfileIds: Set<string>
+  pickerProviderTargets: ProviderTargetOption[]
+  providerTargetId: string | null
+  modelsByProviderTargetId: ModelsByProviderTargetId
+  loadingProviderTargetIds: Set<string>
   testId: string
 }) {
   const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
   const value = useWatch({ control: form.control, name: field }) ?? ''
-  const models = profileId ? modelsByProfileId[profileId] ?? [] : []
+  const models = providerTargetId ? modelsByProviderTargetId[providerTargetId] ?? [] : []
   const selectedModel = models.find(model => model.id === value) ?? null
   const mainModel = models.find(model => model.id === mainModelId) ?? null
-  const isLoadingModels = profileId ? loadingProfileIds.has(profileId) : false
+  const isLoadingModels = providerTargetId ? loadingProviderTargetIds.has(providerTargetId) : false
   const mainModelLabel = mainModel?.label ?? mainModelId ?? t('detail.claudeAgent.mainModel')
   const label = selectedModel?.label ?? (value || mainModelLabel)
   const aliasLabel = t(CLAUDE_AGENT_ALIAS_LABELS[field])
-  const reusedMainModelRow = !value && mainModelId && pickerProfiles.length > 0
+  const reusedMainModelRow = !value && mainModelId && pickerProviderTargets.length > 0
     ? (
         <MenuItem disabled className="items-start">
           <span className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
@@ -528,10 +560,10 @@ function ClaudeAgentAliasModelPicker({
           )}
         </MenuTrigger>
         <MenuPopup side="bottom" align="end">
-          {pickerProfiles.length === 0 && (
+          {pickerProviderTargets.length === 0 && (
             <MenuItem disabled>{t('detail.claudeAgent.selectProviderFirst')}</MenuItem>
           )}
-          {pickerProfiles.length > 0 && (
+          {pickerProviderTargets.length > 0 && (
             <CurrentProviderModelList
               models={models}
               selectedModelId={value || null}
@@ -562,19 +594,27 @@ function ClaudeAgentAliasModelPicker({
 }
 
 function ClaudeAgentSdkSettings({
-  profiles,
-  profileId,
+  providerTargets,
+  providerTargetId,
   mainModelId,
 }: {
-  profiles: AgentProfile[]
-  profileId: string | null
+  providerTargets: ProviderTargetOption[]
+  providerTargetId: string | null
   mainModelId: string | null
 }) {
   const { t } = useTranslation('agentManagement')
-  const selectedProfile = profileId ? profiles.find(profile => profile.id === profileId) ?? null : null
-  const pickerProfiles = useMemo(() => selectedProfile ? [selectedProfile] : [], [selectedProfile])
-  const initialModelProfileIds = useMemo(() => [profileId], [profileId])
-  const { modelsByProfileId, loadingProfileIds } = useAgentModelMap(pickerProfiles, initialModelProfileIds)
+  const selectedProviderTarget = providerTargetId
+    ? providerTargets.find(target => target.id === providerTargetId) ?? null
+    : null
+  const pickerProviderTargets = useMemo(
+    () => selectedProviderTarget ? [selectedProviderTarget] : [],
+    [selectedProviderTarget],
+  )
+  const initialModelProviderTargetIds = useMemo(() => [providerTargetId], [providerTargetId])
+  const { modelsByProviderTargetId, loadingProviderTargetIds } = useProviderTargetModelMap(
+    pickerProviderTargets,
+    initialModelProviderTargetIds,
+  )
 
   return (
     <>
@@ -592,10 +632,10 @@ function ClaudeAgentSdkSettings({
         <SettingsRow label={t('detail.claudeAgent.alias.haiku.label')} description={t('detail.claudeAgent.alias.haiku.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentHaikuModel"
-            pickerProfiles={pickerProfiles}
-            profileId={profileId}
-            modelsByProfileId={modelsByProfileId}
-            loadingProfileIds={loadingProfileIds}
+            pickerProviderTargets={pickerProviderTargets}
+            providerTargetId={providerTargetId}
+            modelsByProviderTargetId={modelsByProviderTargetId}
+            loadingProviderTargetIds={loadingProviderTargetIds}
             mainModelId={mainModelId}
             testId="agent-claude-haiku-model"
           />
@@ -605,10 +645,10 @@ function ClaudeAgentSdkSettings({
         <SettingsRow label={t('detail.claudeAgent.alias.sonnet.label')} description={t('detail.claudeAgent.alias.sonnet.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentSonnetModel"
-            pickerProfiles={pickerProfiles}
-            profileId={profileId}
-            modelsByProfileId={modelsByProfileId}
-            loadingProfileIds={loadingProfileIds}
+            pickerProviderTargets={pickerProviderTargets}
+            providerTargetId={providerTargetId}
+            modelsByProviderTargetId={modelsByProviderTargetId}
+            loadingProviderTargetIds={loadingProviderTargetIds}
             mainModelId={mainModelId}
             testId="agent-claude-sonnet-model"
           />
@@ -618,10 +658,10 @@ function ClaudeAgentSdkSettings({
         <SettingsRow label={t('detail.claudeAgent.alias.opus.label')} description={t('detail.claudeAgent.alias.opus.description')}>
           <ClaudeAgentAliasModelPicker
             field="claudeAgentOpusModel"
-            pickerProfiles={pickerProfiles}
-            profileId={profileId}
-            modelsByProfileId={modelsByProfileId}
-            loadingProfileIds={loadingProfileIds}
+            pickerProviderTargets={pickerProviderTargets}
+            providerTargetId={providerTargetId}
+            modelsByProviderTargetId={modelsByProviderTargetId}
+            loadingProviderTargetIds={loadingProviderTargetIds}
             mainModelId={mainModelId}
             testId="agent-claude-opus-model"
           />
@@ -757,13 +797,13 @@ function AgentDetailHeader({
 
 function AgentIdentitySection({
   draft,
-  enabledProfiles,
+  selectableProviderTargets,
   avatarUrl,
   avatarSpinKey,
   onShuffleAvatar,
 }: {
   draft: AgentDetailDraft
-  enabledProfiles: AgentProfile[]
+  selectableProviderTargets: ProviderTargetOption[]
   avatarUrl: string
   avatarSpinKey: number
   onShuffleAvatar: () => void
@@ -975,8 +1015,8 @@ function AgentIdentitySection({
               <SettingsDivider />
               <SettingsRow label={t('detail.model.label')} description={t('detail.model.description')}>
                 <AgentProviderModelPicker
-                  profiles={enabledProfiles}
-                  profileId={draft.providerTargetId}
+                  providerTargets={selectableProviderTargets}
+                  providerTargetId={draft.providerTargetId}
                   modelId={draft.modelId}
                   thinkingEffort={draft.thinkingEffort}
                 />
@@ -984,8 +1024,8 @@ function AgentIdentitySection({
 
               {draft.runtimeKind === 'claude-agent' && (
                 <ClaudeAgentSdkSettings
-                  profiles={enabledProfiles}
-                  profileId={draft.providerTargetId}
+                  providerTargets={selectableProviderTargets}
+                  providerTargetId={draft.providerTargetId}
                   mainModelId={draft.modelId}
                 />
               )}
@@ -1075,25 +1115,23 @@ function AgentSkillsSection({ agentId }: { agentId: string }) {
 
 function useAgentDetailOwner({
   agent,
-  profiles,
   onCreated,
   onDeleted,
 }: {
   agent?: Agent
-  profiles: AgentProfile[]
   onCreated?: (agentId: string) => void
   onDeleted?: () => void
 }) {
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
+  const { providerOptions } = useProviderTargets()
   const persistedConfig = useMemo(() => AgentRuntimeConfigJsonSchema.parse(agent?.configJson), [agent?.configJson])
   const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, claudeAgent: _claudeAgent, ...baseConfig } = persistedConfig
-  const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
   const form = useForm<AgentDetailFormValues>({
-    defaultValues: getAgentDetailFormValues(agent, enabledProfiles),
+    defaultValues: getAgentDetailFormValues(agent, providerOptions),
   })
   const watchedValues = useWatch({ control: form.control }) as Partial<AgentDetailFormValues>
-  const draft: AgentDetailDraft = {
+  const draft: AgentDetailDraft = useMemo(() => ({
     name: watchedValues.name ?? '',
     description: watchedValues.description ?? '',
     avatarStyle: watchedValues.avatarStyle ?? AVATAR_STYLES[0].id,
@@ -1110,19 +1148,36 @@ function useAgentDetailOwner({
     cliTuiExecutable: watchedValues.cliTuiExecutable ?? '',
     cliTuiArguments: watchedValues.cliTuiArguments ?? '',
     cliTuiEnvText: watchedValues.cliTuiEnvText ?? '',
-  }
+  }), [
+    watchedValues.avatarSeed,
+    watchedValues.avatarStyle,
+    watchedValues.claudeAgentHaikuModel,
+    watchedValues.claudeAgentOpusModel,
+    watchedValues.claudeAgentSonnetModel,
+    watchedValues.cliTuiArguments,
+    watchedValues.cliTuiEnvText,
+    watchedValues.cliTuiExecutable,
+    watchedValues.cliTuiPreset,
+    watchedValues.description,
+    watchedValues.modelId,
+    watchedValues.name,
+    watchedValues.providerTargetId,
+    watchedValues.runtimeKind,
+    watchedValues.systemPrompt,
+    watchedValues.thinkingEffort,
+  ])
   const [uiState, dispatch] = useReducer(agentDetailUiReducer, INITIAL_AGENT_DETAIL_UI_STATE)
   const { avatarSpinKey, saveState, createSaving, saveError } = uiState
 
-  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const savedClearTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const clearTimers = useCallback(() => {
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current)
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
     }
-    if (savedClearTimer.current) {
-      clearTimeout(savedClearTimer.current)
+    if (savedClearTimerRef.current) {
+      clearTimeout(savedClearTimerRef.current)
     }
   }, [])
 
@@ -1134,22 +1189,46 @@ function useAgentDetailOwner({
 
   useEffect(() => {
     clearTimers()
-    form.reset(getAgentDetailFormValues(agent, enabledProfiles))
+    form.reset(getAgentDetailFormValues(agent, providerOptions))
     dispatch({ type: 'reset' })
-  }, [form, agent, clearTimers])
+  }, [form, agent, clearTimers, providerOptions])
+
+  const selectableProviderTargets = useMemo(
+    () => listSelectableProviderTargets(providerOptions, draft.runtimeKind),
+    [providerOptions, draft.runtimeKind],
+  )
 
   useEffect(() => {
-    if (agent || !enabledProfiles[0]) {
+    if (agent || !selectableProviderTargets[0]) {
       return
     }
     if (form.getValues('runtimeKind') === 'cli-tui') {
       return
     }
-    if (form.getValues('providerTargetId') !== null) {
+    const currentProviderTargetId = form.getValues('providerTargetId')
+    if (
+      currentProviderTargetId
+      && selectableProviderTargets.some(target => target.id === currentProviderTargetId)
+    ) {
       return
     }
-    form.setValue('providerTargetId', enabledProfiles[0].id, { shouldDirty: false })
-  }, [agent, enabledProfiles, form])
+    form.setValue('providerTargetId', selectableProviderTargets[0].id, { shouldDirty: false })
+  }, [agent, selectableProviderTargets, form])
+
+  useEffect(() => {
+    if (draft.runtimeKind === 'cli-tui') {
+      return
+    }
+    if (!draft.providerTargetId) {
+      return
+    }
+    if (selectableProviderTargets.some(target => target.id === draft.providerTargetId)) {
+      return
+    }
+    form.setValue('providerTargetId', selectableProviderTargets[0]?.id ?? null, { shouldDirty: true })
+    form.setValue('modelId', null, { shouldDirty: true })
+    form.setValue('thinkingEffort', 'auto', { shouldDirty: true })
+  }, [draft.providerTargetId, draft.runtimeKind, form, selectableProviderTargets])
 
   const isDirty = form.formState.isDirty
   const createDisabledReason = getAgentCreateDisabledReason({ draft, isDirty, createSaving })
@@ -1160,8 +1239,8 @@ function useAgentDetailOwner({
     }
 
     const currentValues = form.getValues()
-    const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
-    if (!currentValues.name.trim() || (requiresProfile && !currentValues.providerTargetId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
+    const requiresProviderTarget = currentValues.runtimeKind !== 'cli-tui'
+    if (!currentValues.name.trim() || (requiresProviderTarget && !currentValues.providerTargetId) || (!requiresProviderTarget && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -1203,10 +1282,10 @@ function useAgentDetailOwner({
       })
       dispatch({ type: 'save/state', state: 'saved' })
       form.reset(normalizedValues)
-      if (savedClearTimer.current) {
-        clearTimeout(savedClearTimer.current)
+      if (savedClearTimerRef.current) {
+        clearTimeout(savedClearTimerRef.current)
       }
-      savedClearTimer.current = setTimeout(() => {
+      savedClearTimerRef.current = setTimeout(() => {
         dispatch({ type: 'save/state', state: 'idle' })
       }, 2000)
     }
@@ -1222,24 +1301,24 @@ function useAgentDetailOwner({
     }
 
     dispatch({ type: 'save/state', state: 'pending' })
-    if (autoSaveTimer.current) {
-      clearTimeout(autoSaveTimer.current)
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current)
     }
-    autoSaveTimer.current = setTimeout(() => {
+    autoSaveTimerRef.current = setTimeout(() => {
       void saveDraft()
     }, 1400)
 
     return () => {
-      if (autoSaveTimer.current) {
-        clearTimeout(autoSaveTimer.current)
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
       }
     }
   }, [isCreate, isDirty, saveState, draftSignature])
 
   const handleCreate = useCallback(async () => {
     const currentValues = form.getValues()
-    const requiresProfile = currentValues.runtimeKind !== 'cli-tui'
-    if (!currentValues.name.trim() || (requiresProfile && !currentValues.providerTargetId) || (!requiresProfile && !currentValues.cliTuiExecutable.trim())) {
+    const requiresProviderTarget = currentValues.runtimeKind !== 'cli-tui'
+    if (!currentValues.name.trim() || (requiresProviderTarget && !currentValues.providerTargetId) || (!requiresProviderTarget && !currentValues.cliTuiExecutable.trim())) {
       return
     }
 
@@ -1302,7 +1381,7 @@ function useAgentDetailOwner({
     isCreate,
     form,
     draft,
-    enabledProfiles,
+    selectableProviderTargets,
     avatarSpinKey,
     avatarUrl: buildAvatarUrl(draft.avatarStyle, draft.avatarSeed),
     saveState,
@@ -1320,18 +1399,16 @@ function useAgentDetailOwner({
 
 export function AgentDetailPage({
   agent,
-  profiles,
   onBack,
   onCreated,
   onDeleted,
 }: {
   agent?: Agent
-  profiles: AgentProfile[]
   onBack?: () => void
   onCreated?: (agentId: string) => void
   onDeleted?: () => void
 }) {
-  const owner = useAgentDetailOwner({ agent, profiles, onCreated, onDeleted })
+  const owner = useAgentDetailOwner({ agent, onCreated, onDeleted })
 
   return (
     <FormProvider {...owner.form}>
@@ -1346,7 +1423,7 @@ export function AgentDetailPage({
 
         <AgentIdentitySection
           draft={owner.draft}
-          enabledProfiles={owner.enabledProfiles}
+          selectableProviderTargets={owner.selectableProviderTargets}
           avatarUrl={owner.avatarUrl}
           avatarSpinKey={owner.avatarSpinKey}
           onShuffleAvatar={owner.shuffleAvatar}

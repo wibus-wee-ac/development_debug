@@ -5,6 +5,7 @@ import { cn } from '~/lib/cn'
 
 interface SettingsRowProps {
   label: string
+  labelAccessory?: React.ReactNode
   description?: string
   info?: string
   children: React.ReactNode
@@ -15,6 +16,7 @@ interface SettingsRowProps {
 
 export function SettingsRow({
   label,
+  labelAccessory,
   description,
   info,
   children,
@@ -27,6 +29,7 @@ export function SettingsRow({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="text-[13px] font-medium text-foreground">{label}</span>
+          {labelAccessory}
           {info && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -43,7 +46,7 @@ export function SettingsRow({
         )}
       </div>
 
-      <div className={cn('shrink-0', vertical ? 'w-full' : undefined)}>
+      <div className={cn('shrink-0 max-w-[50%]', vertical ? 'w-full' : undefined)}>
         {children}
       </div>
     </>

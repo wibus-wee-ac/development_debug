@@ -1,12 +1,13 @@
 import { BrainIcon, CheckIcon, HammerIcon, ScanEyeIcon } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
-
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
+
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 import type { ProviderModelOption } from './types'
 
@@ -16,37 +17,37 @@ export interface ThinkingOption<TThinking extends string | null> {
   description: string
 }
 
-export type ModelsByProfileId = Record<string, ModelDescriptor[]>
+export type ModelsByProviderTargetId = Record<string, ModelDescriptor[]>
 
 interface ProviderModelMenuProps<TThinking extends string | null> {
-  profiles: ProviderModelOption[]
-  selectedProfileId: string | null
+  providerTargets: ProviderModelOption[]
+  selectedProviderTargetId: string | null
   selectedModelId: string | null
-  modelsByProfileId: ModelsByProfileId
-  loadingProfileIds: Set<string>
+  modelsByProviderTargetId: ModelsByProviderTargetId
+  loadingProviderTargetIds: Set<string>
   thinkingValue: TThinking
   thinkingOptions: Array<ThinkingOption<TThinking>>
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
-  emptyProfilesLabel?: string
-  isProfileSelectionDisabled?: boolean
-  onRequestProfileModels?: (id: string) => void
-  onSelectProfile: (id: string) => void
-  onSelectModel: (id: string | null, profileId: string) => void
+  emptyProviderTargetsLabel?: string
+  isProviderTargetSelectionDisabled?: boolean
+  onRequestProviderTargetModels?: (id: string) => void
+  onSelectProviderTarget: (id: string) => void
+  onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
 }
 
-interface ProviderGroupProps<TThinking extends string | null> {
-  profile: ProviderModelOption
+interface ProviderTargetGroupProps<TThinking extends string | null> {
+  providerTarget: ProviderModelOption
   isActive: boolean
   models: ModelDescriptor[]
   selectedModelId: string | null
   thinkingValue: TThinking
   getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   isLoadingModels: boolean
-  isProfileSelectionDisabled: boolean
-  onRequestProfileModels?: (id: string) => void
-  onSelectProfile: (id: string) => void
-  onSelectModel: (id: string | null, profileId: string) => void
+  isProviderTargetSelectionDisabled: boolean
+  onRequestProviderTargetModels?: (id: string) => void
+  onSelectProviderTarget: (id: string) => void
+  onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
 }
 
@@ -161,38 +162,38 @@ export function CurrentProviderModelList<TThinking extends string | null>({
   )
 }
 
-function ProviderGroup<TThinking extends string | null>({
-  profile,
+function ProviderTargetGroup<TThinking extends string | null>({
+  providerTarget,
   isActive,
   models,
   selectedModelId,
   thinkingValue,
   getThinkingOptionsForModel,
   isLoadingModels,
-  isProfileSelectionDisabled,
-  onRequestProfileModels,
-  onSelectProfile,
+  isProviderTargetSelectionDisabled,
+  onRequestProviderTargetModels,
+  onSelectProviderTarget,
   onSelectModel,
   onSelectThinking,
-}: ProviderGroupProps<TThinking>) {
-  const preset = presetForProviderKind(profile.providerKind)
+}: ProviderTargetGroupProps<TThinking>) {
+  const preset = presetForProviderKind(providerTarget.providerKind)
 
   return (
-    <MenuSub onOpenChange={open => open && onRequestProfileModels?.(profile.id)}>
+    <MenuSub onOpenChange={open => open && onRequestProviderTargetModels?.(providerTarget.id)}>
       <MenuSubTrigger
         onClick={() => {
-          onRequestProfileModels?.(profile.id)
-          if (!isProfileSelectionDisabled) {
-            onSelectProfile(profile.id)
+          onRequestProviderTargetModels?.(providerTarget.id)
+          if (!isProviderTargetSelectionDisabled) {
+            onSelectProviderTarget(providerTarget.id)
           }
         }}
-        onFocus={() => onRequestProfileModels?.(profile.id)}
-        onPointerEnter={() => onRequestProfileModels?.(profile.id)}
+        onFocus={() => onRequestProviderTargetModels?.(providerTarget.id)}
+        onPointerEnter={() => onRequestProviderTargetModels?.(providerTarget.id)}
         className={cn(isActive && 'font-medium')}
       >
         <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
-        <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
-        <span>{profile.name}</span>
+        <ProviderIcon iconSlug={providerTarget.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
+        <span>{providerTarget.name}</span>
       </MenuSubTrigger>
       <MenuSubPopup>
         <CurrentProviderModelList
@@ -201,7 +202,7 @@ function ProviderGroup<TThinking extends string | null>({
           thinkingValue={thinkingValue}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
           isLoadingModels={isLoadingModels}
-          onSelectModel={modelId => onSelectModel(modelId, profile.id)}
+          onSelectModel={modelId => onSelectModel(modelId, providerTarget.id)}
           onSelectThinking={onSelectThinking}
         />
       </MenuSubPopup>
@@ -307,18 +308,18 @@ function ModelSubmenu<TThinking extends string | null>({
 }
 
 export function ProviderModelMenu<TThinking extends string | null>({
-  profiles,
-  selectedProfileId,
+  providerTargets,
+  selectedProviderTargetId,
   selectedModelId,
-  modelsByProfileId,
-  loadingProfileIds,
+  modelsByProviderTargetId,
+  loadingProviderTargetIds,
   thinkingValue,
   thinkingOptions,
   getThinkingOptionsForModel,
-  emptyProfilesLabel,
-  isProfileSelectionDisabled = false,
-  onRequestProfileModels,
-  onSelectProfile,
+  emptyProviderTargetsLabel,
+  isProviderTargetSelectionDisabled = false,
+  onRequestProviderTargetModels,
+  onSelectProviderTarget,
   onSelectModel,
   onSelectThinking,
 }: ProviderModelMenuProps<TThinking>) {
@@ -327,25 +328,25 @@ export function ProviderModelMenu<TThinking extends string | null>({
 
   return (
     <>
-      {profiles.map(profile => (
-        <ProviderGroup
-          key={profile.id}
-          profile={profile}
-          isActive={profile.id === selectedProfileId}
-          models={modelsByProfileId[profile.id] ?? []}
-          selectedModelId={profile.id === selectedProfileId ? selectedModelId : null}
+      {providerTargets.map(providerTarget => (
+        <ProviderTargetGroup
+          key={providerTarget.id}
+          providerTarget={providerTarget}
+          isActive={providerTarget.id === selectedProviderTargetId}
+          models={modelsByProviderTargetId[providerTarget.id] ?? []}
+          selectedModelId={providerTarget.id === selectedProviderTargetId ? selectedModelId : null}
           thinkingValue={thinkingValue}
           getThinkingOptionsForModel={resolveThinkingOptions}
-          isLoadingModels={loadingProfileIds.has(profile.id)}
-          isProfileSelectionDisabled={isProfileSelectionDisabled}
-          onRequestProfileModels={onRequestProfileModels}
-          onSelectProfile={onSelectProfile}
+          isLoadingModels={loadingProviderTargetIds.has(providerTarget.id)}
+          isProviderTargetSelectionDisabled={isProviderTargetSelectionDisabled}
+          onRequestProviderTargetModels={onRequestProviderTargetModels}
+          onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}
           onSelectThinking={onSelectThinking}
         />
       ))}
-      {profiles.length === 0 && (
-        <MenuItem disabled>{emptyProfilesLabel ?? t('model.noProviderTargets')}</MenuItem>
+      {providerTargets.length === 0 && (
+        <MenuItem disabled>{emptyProviderTargetsLabel ?? t('model.noProviderTargets')}</MenuItem>
       )}
     </>
   )

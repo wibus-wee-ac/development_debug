@@ -2,6 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
+  DownloadIcon,
   PlusIcon,
   RefreshCwIcon,
   SearchIcon,
@@ -10,7 +11,7 @@ import {
   SquareCheckIcon,
   SquareIcon,
   Trash2Icon,
-  XIcon
+  XIcon,
 } from 'lucide-react'
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -18,7 +19,7 @@ import { useTranslation } from 'react-i18next'
 import {
   getExternalProviderSourcesOptions,
   getExternalProviderSourcesRecordsOptions,
-  postExternalProviderSourcesRefreshMutation
+  postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -29,7 +30,7 @@ import {
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
-  EmptyTitle
+  EmptyTitle,
 } from '~/components/ui/empty'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
@@ -43,6 +44,7 @@ import type { AgentProfile } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
+import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { ProviderIcon } from './provider-icons'
 import { collectProviderListGroups } from './provider-list-groups'
@@ -50,13 +52,13 @@ import type {
   DraftProvider,
   ExternalProviderRecordView,
   ExternalProviderSourceView,
-  ProviderListEntry
+  ProviderListEntry,
 } from './provider-settings-utils'
 import {
   presetForProfile,
   presetForProviderKind,
   PROVIDER_KIND_LABELS,
-  providerListEntryId
+  providerListEntryId,
 } from './provider-settings-utils'
 import {
   applyVisibleRangeSelection,
@@ -65,21 +67,24 @@ import {
   removeVisibleSelection,
   selectedIdFromSet,
   selectedRecords,
-  visibleRecordsAreSelected
+  visibleRecordsAreSelected,
 } from './settings-multi-selection'
 import { useSettingsSelectionShortcuts } from './settings-selection-shortcuts'
 
-type ExternalRecordStatusLabelKey =
-  | 'runtime.provider.status.error'
-  | 'runtime.provider.status.missing'
-  | 'runtime.provider.status.stale'
-  | 'runtime.provider.status.unsupported'
+type ExternalRecordStatusLabelKey
+  = | 'runtime.provider.status.error'
+    | 'runtime.provider.status.missing'
+    | 'runtime.provider.status.stale'
+    | 'runtime.provider.status.unsupported'
 
-const EXTERNAL_RECORD_STATUS_LABEL_KEYS: Record<Exclude<ExternalProviderRecordView['status'], 'active'>, ExternalRecordStatusLabelKey> = {
+const EXTERNAL_RECORD_STATUS_LABEL_KEYS: Record<
+  Exclude<ExternalProviderRecordView['status'], 'active'>,
+  ExternalRecordStatusLabelKey
+> = {
   error: 'runtime.provider.status.error',
   missing: 'runtime.provider.status.missing',
   stale: 'runtime.provider.status.stale',
-  unsupported: 'runtime.provider.status.unsupported'
+  unsupported: 'runtime.provider.status.unsupported',
 }
 
 function parseProfileConfigForUpdate(configJson: string): Record<string, unknown> {
@@ -96,18 +101,18 @@ function defaultGroupOpen(groupKind: 'external-plugin' | 'external-source' | 'ma
 
 async function updateExternalRuntimeTargetEnabled(
   record: ExternalProviderRecordView,
-  enabled: boolean
+  enabled: boolean,
 ): Promise<void> {
   const response = await fetch(
     `${getServerUrl()}/external-provider-sources/${encodeURIComponent(record.sourceKey)}/records/${encodeURIComponent(record.externalId)}/runtime-target`,
     {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    }
+      body: JSON.stringify({ enabled }),
+    },
   )
   if (!response.ok) {
-    throw new Error('Failed to update external runtime target')
+    throw new Error('Failed to update connected provider')
   }
 }
 
@@ -117,7 +122,7 @@ const ProviderRow = memo(
     active,
     selected,
     onOpenEntry,
-    onSelectEntry
+    onSelectEntry,
   }: {
     entry: ProviderListEntry
     active: boolean
@@ -127,15 +132,15 @@ const ProviderRow = memo(
   }) => {
     const { t } = useTranslation('agentManagement')
     const checkboxShiftKeyRef = useRef(false)
-    const providerKind =
-      entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
-    const preset =
-      entry.kind === 'manual'
+    const providerKind
+      = entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
+    const preset
+      = entry.kind === 'manual'
         ? presetForProfile(entry.profile)
         : presetForProviderKind(providerKind)
     const title = entry.kind === 'manual' ? entry.profile.name : entry.record.name
-    const subtitle =
-      entry.kind === 'manual'
+    const subtitle
+      = entry.kind === 'manual'
         ? (() => {
             const cfg = ProfileConfigJsonSchema.parse(entry.profile.configJson)
             return cfg.model
@@ -143,8 +148,8 @@ const ProviderRow = memo(
               : PROVIDER_KIND_LABELS[entry.profile.providerKind]
           })()
         : `${PROVIDER_KIND_LABELS[entry.record.providerKind]} · ${entry.record.app}`
-    const statusLabel =
-      entry.kind === 'manual'
+    const statusLabel
+      = entry.kind === 'manual'
         ? entry.profile.enabled
           ? null
           : t('runtime.provider.status.off')
@@ -153,8 +158,8 @@ const ProviderRow = memo(
           : entry.record.status === 'active'
             ? null
             : t(EXTERNAL_RECORD_STATUS_LABEL_KEYS[entry.record.status])
-    const testId =
-      entry.kind === 'manual'
+    const testId
+      = entry.kind === 'manual'
         ? `agent-profile-row-${entry.profile.id}`
         : `external-provider-record-row-${entry.record.id}`
 
@@ -168,10 +173,10 @@ const ProviderRow = memo(
             ? 'bg-foreground/[0.045] text-foreground'
             : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
           entry.kind === 'manual' && !entry.profile.enabled && !active && 'opacity-60',
-          entry.kind === 'external' &&
-            (!entry.record.runtimeTargetEnabled || entry.record.status !== 'active') &&
-            !active &&
-            'opacity-70'
+          entry.kind === 'external'
+          && (!entry.record.runtimeTargetEnabled || entry.record.status !== 'active')
+          && !active
+          && 'opacity-70',
         )}
       >
         <Checkbox
@@ -187,7 +192,7 @@ const ProviderRow = memo(
         <button
           type="button"
           className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden text-left outline-none"
-          onClick={(event) => onOpenEntry(entry.id, event.shiftKey)}
+          onClick={event => onOpenEntry(entry.id, event.shiftKey)}
         >
           <ProviderIcon
             iconSlug={entry.kind === 'manual' ? entry.profile.iconSlug : null}
@@ -199,7 +204,7 @@ const ProviderRow = memo(
               <span
                 className={cn(
                   'block min-w-0 truncate text-[12.5px] leading-tight',
-                  active ? 'font-medium text-foreground' : 'text-foreground/90'
+                  active ? 'font-medium text-foreground' : 'text-foreground/90',
                 )}
               >
                 {title}
@@ -219,13 +224,13 @@ const ProviderRow = memo(
               'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform,width] duration-150',
               active
                 ? 'w-3 opacity-100 translate-x-0'
-                : 'w-0 opacity-0 -translate-x-1 group-hover/sidebar-row:w-3 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0'
+                : 'w-0 opacity-0 -translate-x-1 group-hover/sidebar-row:w-3 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
             )}
           />
         </button>
       </div>
     )
-  }
+  },
 )
 ProviderRow.displayName = 'ProviderRow'
 
@@ -236,32 +241,33 @@ export function AgentRuntimeSettings() {
     isSuccess: profilesReady,
     refetch,
     updateProfile,
-    removeProfile
+    removeProfile,
   } = useAgentProfiles()
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const selectionAnchorIdRef = useRef<string | null>(null)
   const [draft, setDraft] = useState<DraftProvider | null>(null)
+  const [importOpen, setImportOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const deferredFilter = useDeferredValue(filter)
   const [batchBusy, setBatchBusy] = useState(false)
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Map<string, boolean>>(
-    () => new Map()
+    () => new Map(),
   )
   const {
     data: externalSources = [],
     isSuccess: externalSourcesReady,
-    refetch: refetchExternalSources
+    refetch: refetchExternalSources,
   } = useQuery({
     ...getExternalProviderSourcesOptions(),
-    retry: false
+    retry: false,
   })
   const {
     data: externalRecords = [],
     isSuccess: externalRecordsReady,
-    refetch: refetchExternalRecords
+    refetch: refetchExternalRecords,
   } = useQuery({
     ...getExternalProviderSourcesRecordsOptions(),
-    retry: false
+    retry: false,
   })
   const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
 
@@ -271,20 +277,20 @@ export function AgentRuntimeSettings() {
       await Promise.all([refetch(), refetchExternalSources(), refetchExternalRecords()])
 
       const results = Array.isArray(data) ? data : [data]
-      const errors = results.filter((r) => r.status === 'error')
-      const ok = results.filter((r) => r.status !== 'error')
+      const errors = results.filter(r => r.status === 'error')
+      const ok = results.filter(r => r.status !== 'error')
 
       if (errors.length > 0) {
         toastManager.add({
           type: 'error',
           title: t('runtime.toast.syncFailed', { sourceCount: errors.length }),
-          description: errors.map((e) => e.message ?? e.sourceKey).join(', ') || undefined
+          description: errors.map(e => e.message ?? e.sourceKey).join(', ') || undefined,
         })
       }
       if (ok.length > 0) {
         toastManager.add({
           type: 'success',
-          title: t('runtime.toast.sourcesRefreshed', { sourceCount: ok.length })
+          title: t('runtime.toast.sourcesRefreshed', { sourceCount: ok.length }),
         })
       }
     },
@@ -293,17 +299,17 @@ export function AgentRuntimeSettings() {
         type: 'error',
         title: t('runtime.toast.refreshFailed'),
         description:
-          error instanceof Error ? error.message : t('runtime.toast.externalSourcesRefreshFailed')
+          error instanceof Error ? error.message : t('runtime.toast.externalSourcesRefreshFailed'),
       })
-    }
+    },
   })
 
   const externalSourcesById = useMemo(
     () =>
       new Map(
-        (externalSources as ExternalProviderSourceView[]).map((source) => [source.id, source])
+        (externalSources as ExternalProviderSourceView[]).map(source => [source.id, source]),
       ),
-    [externalSources]
+    [externalSources],
   )
 
   const providerGroups = useMemo(
@@ -311,9 +317,9 @@ export function AgentRuntimeSettings() {
       collectProviderListGroups(
         profiles,
         externalRecords as unknown as ExternalProviderRecordView[],
-        externalSources as ExternalProviderSourceView[]
+        externalSources as ExternalProviderSourceView[],
       ),
-    [profiles, externalRecords, externalSources]
+    [profiles, externalRecords, externalSources],
   )
   const visibleProfileGroups = useMemo(() => {
     if (!deferredFilter.trim()) {
@@ -321,69 +327,63 @@ export function AgentRuntimeSettings() {
     }
     const q = deferredFilter.trim().toLowerCase()
     return providerGroups
-      .map((group) => ({
+      .map(group => ({
         ...group,
         entries: group.entries.filter((entry) => {
-          const source =
-            entry.kind === 'external'
-              ? externalSourcesById.get(entry.record.sourceKey)
-              : null
+          const source
+            = entry.kind === 'external' ? externalSourcesById.get(entry.record.sourceKey) : null
           const label = entry.kind === 'manual' ? entry.profile.name : entry.record.name
-          const kindLabel =
-            PROVIDER_KIND_LABELS[
-              entry.kind === 'manual'
-                ? entry.profile.providerKind
-                : entry.record.providerKind
+          const kindLabel
+            = PROVIDER_KIND_LABELS[
+              entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
             ] ?? ''
           const sourceLabel = source?.label ?? ''
           const app = entry.kind === 'external' ? entry.record.app : ''
           const externalId = entry.kind === 'external' ? entry.record.externalId : ''
           return (
-            group.label.toLowerCase().includes(q) ||
-            label.toLowerCase().includes(q) ||
-            kindLabel.toLowerCase().includes(q) ||
-            sourceLabel.toLowerCase().includes(q) ||
-            app.toLowerCase().includes(q) ||
-            externalId.toLowerCase().includes(q)
+            group.label.toLowerCase().includes(q)
+            || label.toLowerCase().includes(q)
+            || kindLabel.toLowerCase().includes(q)
+            || sourceLabel.toLowerCase().includes(q)
+            || app.toLowerCase().includes(q)
+            || externalId.toLowerCase().includes(q)
           )
-        })
+        }),
       }))
-      .filter((group) => group.entries.length > 0)
+      .filter(group => group.entries.length > 0)
   }, [externalSourcesById, providerGroups, deferredFilter])
   const providerEntries = useMemo(
-    () => providerGroups.flatMap((group) => group.entries),
-    [providerGroups]
+    () => providerGroups.flatMap(group => group.entries),
+    [providerGroups],
   )
   const visibleEntries = useMemo(
-    () => visibleProfileGroups.flatMap((group) => group.entries),
-    [visibleProfileGroups]
+    () => visibleProfileGroups.flatMap(group => group.entries),
+    [visibleProfileGroups],
   )
 
   const selectedEntryId = selectedIdFromSet(selectedIds)
   const selectedEntry = selectedEntryId
-    ? (providerEntries.find((entry) => entry.id === selectedEntryId) ?? null)
+    ? (providerEntries.find(entry => entry.id === selectedEntryId) ?? null)
     : null
   const selectedEntries = useMemo(
     () => selectedRecords(providerEntries, selectedIds),
-    [providerEntries, selectedIds]
+    [providerEntries, selectedIds],
   )
   const selectedProfiles = useMemo(
-    () =>
-      selectedEntries.flatMap((entry) => (entry.kind === 'manual' ? [entry.profile] : [])),
-    [selectedEntries]
+    () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
+    [selectedEntries],
   )
   const selectedExternalRecords = useMemo(
-    () =>
-      selectedEntries.flatMap((entry) => (entry.kind === 'external' ? [entry.record] : [])),
-    [selectedEntries]
+    () => selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : [])),
+    [selectedEntries],
   )
   const toggleableSelectedProfiles = selectedProfiles
   const toggleableSelectedExternalRecords = selectedExternalRecords.filter(
-    (record) => record.status !== 'missing' && record.status !== 'unsupported'
+    record => record.status !== 'missing' && record.status !== 'unsupported',
   )
   const removableSelectedProfiles = selectedProfiles
-  const toggleableSelectedCount =
-    toggleableSelectedProfiles.length + toggleableSelectedExternalRecords.length
+  const toggleableSelectedCount
+    = toggleableSelectedProfiles.length + toggleableSelectedExternalRecords.length
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleEntries, selectedIds)
   const hasFilter = deferredFilter.trim().length > 0
@@ -400,7 +400,7 @@ export function AgentRuntimeSettings() {
         : group.label
       return t('runtime.group.externalPlugin', { pluginName })
     },
-    [t]
+    [t],
   )
 
   const toggleGroupCollapsed = useCallback((groupId: string, open: boolean) => {
@@ -415,8 +415,8 @@ export function AgentRuntimeSettings() {
     if (isDraftSelected) {
       return
     }
-    const available = new Set(providerEntries.map((entry) => entry.id))
-    setSelectedIds((prev) => pruneSelectedIds(prev, available))
+    const available = new Set(providerEntries.map(entry => entry.id))
+    setSelectedIds(prev => pruneSelectedIds(prev, available))
     if (selectionAnchorIdRef.current && !available.has(selectionAnchorIdRef.current)) {
       selectionAnchorIdRef.current = null
     }
@@ -445,7 +445,7 @@ export function AgentRuntimeSettings() {
         selectionAnchorIdRef.current = nextId
       })
     },
-    [refetch, refetchExternalRecords]
+    [refetch, refetchExternalRecords],
   )
 
   const handleRemoveProfile = useCallback(
@@ -460,7 +460,7 @@ export function AgentRuntimeSettings() {
         selectionAnchorIdRef.current = null
       }
     },
-    [removeProfile]
+    [removeProfile],
   )
 
   const handleToggleProfile = useCallback(
@@ -472,24 +472,23 @@ export function AgentRuntimeSettings() {
           providerKind: profile.providerKind,
           enabled,
           config: parseProfileConfigForUpdate(profile.configJson),
-          credentialRef: profile.credentialRef ?? null
-        }
+          credentialRef: profile.credentialRef ?? null,
+        },
       })
     },
-    [updateProfile]
+    [updateProfile],
   )
 
   const toggleVisibleSelected = useCallback(() => {
-    setSelectedIds((prev) =>
+    setSelectedIds(prev =>
       allVisibleSelected
         ? removeVisibleSelection(prev, visibleEntries)
-        : mergeVisibleSelection(prev, visibleEntries)
-    )
+        : mergeVisibleSelection(prev, visibleEntries))
   }, [allVisibleSelected, visibleEntries])
 
   const selectVisibleProfiles = useCallback(() => {
     setDraft(null)
-    setSelectedIds((prev) => mergeVisibleSelection(prev, visibleEntries))
+    setSelectedIds(prev => mergeVisibleSelection(prev, visibleEntries))
     selectionAnchorIdRef.current = visibleEntries.at(-1)?.id ?? null
   }, [visibleEntries])
 
@@ -509,7 +508,7 @@ export function AgentRuntimeSettings() {
             visibleEntries,
             selectionAnchorIdRef.current,
             entryId,
-            selected
+            selected,
           )
         }
 
@@ -517,14 +516,15 @@ export function AgentRuntimeSettings() {
         next.delete(draft?.id ?? '')
         if (selected) {
           next.add(entryId)
-        } else {
+        }
+ else {
           next.delete(entryId)
         }
         return next
       })
       selectionAnchorIdRef.current = entryId
     },
-    [draft?.id, visibleEntries]
+    [draft?.id, visibleEntries],
   )
 
   const openEntry = useCallback(
@@ -538,7 +538,7 @@ export function AgentRuntimeSettings() {
       selectionAnchorIdRef.current = entryId
       setDraft(null)
     },
-    [selectEntry]
+    [selectEntry],
   )
 
   const handleBatchToggle = useCallback(
@@ -549,17 +549,17 @@ export function AgentRuntimeSettings() {
       setBatchBusy(true)
       try {
         await Promise.all([
-          ...toggleableSelectedProfiles.map((profile) => handleToggleProfile(profile, enabled)),
-          ...toggleableSelectedExternalRecords.map((record) =>
-            updateExternalRuntimeTargetEnabled(record, enabled)
-          )
+          ...toggleableSelectedProfiles.map(profile => handleToggleProfile(profile, enabled)),
+          ...toggleableSelectedExternalRecords.map(record =>
+            updateExternalRuntimeTargetEnabled(record, enabled)),
         ])
         if (toggleableSelectedExternalRecords.length > 0) {
           await refetchExternalRecords()
         }
         setSelectedIds(new Set())
         selectionAnchorIdRef.current = null
-      } finally {
+      }
+ finally {
         setBatchBusy(false)
       }
     },
@@ -568,8 +568,8 @@ export function AgentRuntimeSettings() {
       toggleableSelectedExternalRecords,
       toggleableSelectedCount,
       handleToggleProfile,
-      refetchExternalRecords
-    ]
+      refetchExternalRecords,
+    ],
   )
 
   const handleBatchRemove = useCallback(async () => {
@@ -579,11 +579,12 @@ export function AgentRuntimeSettings() {
     setBatchBusy(true)
     try {
       await Promise.all(
-        removableSelectedProfiles.map((profile) => removeProfile.mutateAsync(profile.id))
+        removableSelectedProfiles.map(profile => removeProfile.mutateAsync(profile.id)),
       )
       setSelectedIds(new Set())
       selectionAnchorIdRef.current = null
-    } finally {
+    }
+ finally {
       setBatchBusy(false)
     }
   }, [removeProfile, removableSelectedProfiles])
@@ -597,7 +598,7 @@ export function AgentRuntimeSettings() {
     onClearSelection: clearSelection,
     onDeleteSelection: () => {
       void handleBatchRemove()
-    }
+    },
   })
 
   return (
@@ -619,13 +620,17 @@ export function AgentRuntimeSettings() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => refreshExternalSources.mutate()}
+            onClick={() => refreshExternalSources.mutate({})}
             disabled={refreshExternalSources.isPending}
           >
             <RefreshCwIcon
               className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
             />
             {t('runtime.action.refreshSources')}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+            <DownloadIcon />
+            {t('runtime.action.import')}
           </Button>
           <Button data-testid="add-provider-btn" size="sm" onClick={startDraft} disabled={!!draft}>
             <PlusIcon />
@@ -644,9 +649,11 @@ export function AgentRuntimeSettings() {
               onClick={toggleVisibleSelected}
               className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-foreground/[0.035]"
             >
-              {allVisibleSelected ? (
+              {allVisibleSelected
+? (
                 <SquareCheckIcon className="size-3.5" />
-              ) : (
+              )
+: (
                 <SquareIcon className="size-3.5" />
               )}
               <span>{t('runtime.selection.selected', { selectedCount: selectedIds.size })}</span>
@@ -699,7 +706,7 @@ export function AgentRuntimeSettings() {
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              onChange={e => setFilter(e.target.value)}
               placeholder={t('runtime.search.placeholder')}
               className="h-8 pl-8 pr-2 text-[12.5px]"
             />
@@ -714,7 +721,7 @@ export function AgentRuntimeSettings() {
                     'transition-[background-color] duration-150',
                     isDraftSelected
                       ? 'bg-foreground/[0.045] text-foreground'
-                      : 'opacity-90 hover:bg-foreground/[0.035]'
+                      : 'opacity-90 hover:bg-foreground/[0.035]',
                   )}
                 >
                   <button
@@ -761,18 +768,18 @@ export function AgentRuntimeSettings() {
               )}
 
               {visibleProfileGroups.map((group) => {
-                const selectedInGroup =
-                  !!selectedEntryId && group.entries.some((entry) => entry.id === selectedEntryId)
-                const isOpen =
-                  hasFilter ||
-                  selectedInGroup ||
-                  groupOpenOverrides.get(group.id) ||
-                  (!groupOpenOverrides.has(group.id) && defaultGroupOpen(group.kind))
+                const selectedInGroup
+                  = !!selectedEntryId && group.entries.some(entry => entry.id === selectedEntryId)
+                const isOpen
+                  = hasFilter
+                    || selectedInGroup
+                    || groupOpenOverrides.get(group.id)
+                    || (!groupOpenOverrides.has(group.id) && defaultGroupOpen(group.kind))
                 return (
                   <Collapsible
                     key={group.id}
                     open={isOpen}
-                    onOpenChange={(open) => toggleGroupCollapsed(group.id, open)}
+                    onOpenChange={open => toggleGroupCollapsed(group.id, open)}
                     className="flex min-w-0 flex-col gap-0.5"
                   >
                     <CollapsibleTrigger asChild>
@@ -781,14 +788,14 @@ export function AgentRuntimeSettings() {
                         className={cn(
                           'flex min-w-0 items-center justify-between gap-2 rounded-md px-2 pb-0.5 pt-2 h-6 text-[10.5px] font-medium text-muted-foreground/60 outline-none',
                           'transition-colors hover:bg-foreground/[0.03] hover:text-foreground/80',
-                          'pt-0'
+                          'pt-0',
                         )}
                       >
                         <span className="flex min-w-0 items-center gap-1.5">
                           <ChevronDownIcon
                             className={cn(
                               'size-3 shrink-0 text-muted-foreground/45 transition-transform duration-200',
-                              !isOpen && '-rotate-90'
+                              !isOpen && '-rotate-90',
                             )}
                             aria-hidden
                           />
@@ -798,7 +805,7 @@ export function AgentRuntimeSettings() {
                       </button>
                     </CollapsibleTrigger>
                     <CollapsibleContent className="flex min-w-0 flex-col gap-0.5">
-                      {group.entries.map((entry) => (
+                      {group.entries.map(entry => (
                         <ProviderRow
                           key={entry.id}
                           entry={entry}
@@ -834,28 +841,30 @@ export function AgentRuntimeSettings() {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col overflow-y-auto py-4 pl-6 pr-2">
-          {isDraftSelected && draft ? (
+          {isDraftSelected && draft
+? (
             <div className="min-w-0 flex-1">
               <DraftSetupPanel
                 draft={draft}
-                onSelectPreset={(presetId) =>
-                  setDraft((prev) => (prev ? { ...prev, presetId } : prev))
-                }
+                onSelectPreset={presetId =>
+                  setDraft(prev => (prev ? { ...prev, presetId } : prev))}
                 onComplete={handleDraftComplete}
                 onCancel={cancelDraft}
               />
             </div>
-          ) : selectedEntries.length > 1 ? (
+          )
+: selectedEntries.length > 1
+? (
             <div className="flex flex-1 items-center justify-center">
               <Empty className="border-none">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
                     <ServerIcon />
                   </EmptyMedia>
-                  <EmptyTitle>{t('runtime.multiSelected.title', { selectedCount: selectedEntries.length })}</EmptyTitle>
-                  <EmptyDescription>
-                    {t('runtime.multiSelected.description')}
-                  </EmptyDescription>
+                  <EmptyTitle>
+                    {t('runtime.multiSelected.title', { selectedCount: selectedEntries.length })}
+                  </EmptyTitle>
+                  <EmptyDescription>{t('runtime.multiSelected.description')}</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" variant="outline" onClick={clearSelection}>
@@ -865,19 +874,23 @@ export function AgentRuntimeSettings() {
                 </EmptyContent>
               </Empty>
             </div>
-          ) : selectedEntry?.kind === 'manual' ? (
+          )
+: selectedEntry?.kind === 'manual'
+? (
             <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
               <ProfileDetailPanel
                 profile={selectedEntry.profile}
                 onRemove={() => void handleRemoveProfile(selectedEntry.profile.id)}
-                onToggle={(enabled) => void handleToggleProfile(selectedEntry.profile, enabled)}
+                onToggle={enabled => void handleToggleProfile(selectedEntry.profile, enabled)}
                 onSaved={() => {
                   void refetch()
                   refetchExternalRecords()
                 }}
               />
             </div>
-          ) : selectedEntry?.kind === 'external' ? (
+          )
+: selectedEntry?.kind === 'external'
+? (
             <div key={selectedEntry.record.id} className="min-w-0 flex-1">
               <ExternalProviderRecordDetailPanel
                 record={selectedEntry.record}
@@ -887,7 +900,8 @@ export function AgentRuntimeSettings() {
                 }}
               />
             </div>
-          ) : (
+          )
+: (
             <div className="flex flex-1 items-center justify-center">
               <Empty className="border-none">
                 <EmptyHeader>
@@ -895,9 +909,7 @@ export function AgentRuntimeSettings() {
                     <ServerIcon />
                   </EmptyMedia>
                   <EmptyTitle>{t('runtime.noSelection.title')}</EmptyTitle>
-                  <EmptyDescription>
-                    {t('runtime.noSelection.description')}
-                  </EmptyDescription>
+                  <EmptyDescription>{t('runtime.noSelection.description')}</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" variant="outline" onClick={startDraft}>
@@ -910,6 +922,8 @@ export function AgentRuntimeSettings() {
           )}
         </section>
       </div>
+
+      <ImportProviderDialog open={importOpen} onOpenChange={setImportOpen} />
     </div>
   )
 }

@@ -86,23 +86,23 @@ export function JarvisSettings() {
 
       <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>
         <ProviderModelPicker
-          profiles={profiles}
-          selectedProfileId={prefs.profileId}
+          providerTargets={profiles}
+          selectedProviderTargetId={prefs.profileId}
           selectedModelId={prefs.model ?? null}
           selectedModel={selectedModel}
-          modelsByProfileId={modelsByProfileId}
-          loadingProfileIds={loadingProfileIds}
+          modelsByProviderTargetId={modelsByProfileId}
+          loadingProviderTargetIds={loadingProfileIds}
           thinkingValue={prefs.thinkingLevel}
           thinkingOptions={thinkingOptions}
-          emptyProfilesLabel={t('jarvis.model.emptyProfiles')}
+          emptyProviderTargetsLabel={t('jarvis.model.emptyProfiles')}
           emptySelectionLabel={t('jarvis.model.emptySelection')}
           menuSide="bottom"
           menuAlign="end"
           triggerTestId="jarvis-provider-model-selector"
           disabled={saving}
           getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
-          onRequestProfileModels={requestProfileModels}
-          onSelectProfile={(profileId) => {
+          onRequestProviderTargetModels={requestProfileModels}
+          onSelectProviderTarget={(profileId) => {
             requestProfileModels(profileId)
             const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
             if (!nextModel) {

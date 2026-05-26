@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { PROVIDER_ICONS } from '~/features/agent-management/provider-icons'
+import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/features/agent-management/provider-icons'
 import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 
@@ -12,38 +12,57 @@ import { RUNTIME_KIND_OPTIONS } from './constants'
 type CommonKey = keyof typeof import('~/locales/default').default.common
 type RuntimeOptionKind = (typeof RUNTIME_KIND_OPTIONS)[number]['value']
 
-const RUNTIME_ICON_KEYS: Record<RuntimeKind, string> = {
-  'standard': 'custom',
-  'claude-agent': 'claude-agent',
-  'codex': 'codex',
-  'cli-tui': 'claude-cli',
-  'jar-core': 'anthropic',
-  'acp-chat': 'custom',
-}
-
 const runtimeLabelKeys = {
-  standard: 'runtime.standard.label',
+  'standard': 'runtime.standard.label',
   'claude-agent': 'runtime.claudeAgent.label',
-  codex: 'runtime.codex.label',
+  'codex': 'runtime.codex.label',
   'cli-tui': 'runtime.cliTui.label',
 } satisfies Record<RuntimeOptionKind, CommonKey>
 
 const runtimeDescriptionKeys = {
-  standard: 'runtime.standard.description',
+  'standard': 'runtime.standard.description',
   'claude-agent': 'runtime.claudeAgent.description',
-  codex: 'runtime.codex.description',
+  'codex': 'runtime.codex.description',
   'cli-tui': 'runtime.cliTui.description',
 } satisfies Record<RuntimeOptionKind, CommonKey>
+
+const runtimeFallbackLabels: Record<RuntimeKind, string> = {
+  'standard': 'Standard',
+  'claude-agent': 'Claude Agent',
+  'codex': 'Codex',
+  'cli-tui': 'CLI TUI',
+  'jar-core': 'Jar Core',
+  'acp-chat': 'ACP Chat',
+}
 
 interface RuntimeSelectorProps {
   value: RuntimeKind
   onChange: (kind: RuntimeKind) => void
+  readOnly?: boolean
 }
 
-export function RuntimeSelector({ value, onChange }: RuntimeSelectorProps) {
+export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorProps) {
   const { t } = useTranslation('common')
   const current = RUNTIME_KIND_OPTIONS.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS[0]
   const Icon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[value]] ?? PROVIDER_ICONS.custom!
+
+  if (readOnly) {
+    const label = current.value === value ? t(runtimeLabelKeys[current.value]) : runtimeFallbackLabels[value]
+
+    return (
+      <Button
+        variant="ghost"
+        size="xs"
+        disabled
+        data-testid="runtime-selector"
+        aria-label={label}
+        className="disabled:pointer-events-auto disabled:opacity-70"
+      >
+        <Icon className="size-3.5 shrink-0" />
+        <span>{label}</span>
+      </Button>
+    )
+  }
 
   return (
     <Menu>

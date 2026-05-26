@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl } from '~/lib/lobe-icons'
+import type { RuntimeKind } from '~/lib/types'
 
 type IconProps = ComponentProps<'svg'>
 
@@ -59,6 +60,15 @@ export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Elem
   'codex': CodexIcon,
   'openai': OpenAIIcon,
   'custom': CustomIcon,
+}
+
+export const RUNTIME_ICON_KEYS: Record<RuntimeKind, keyof typeof PROVIDER_ICONS> = {
+  'standard': 'custom',
+  'claude-agent': 'claude-agent',
+  'codex': 'codex',
+  'jar-core': 'anthropic',
+  'acp-chat': 'custom',
+  'cli-tui': 'claude-cli',
 }
 
 // ── Unified provider icon component ──

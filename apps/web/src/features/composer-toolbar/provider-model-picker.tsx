@@ -4,26 +4,25 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-
 import { ProviderIcon } from '~/features/agent-management/provider-icons'
 import type { ModelDescriptor } from '~/lib/types'
 
-import type { ThinkingOption } from './provider-model-menu'
-import { ProviderModelMenu } from './provider-model-menu'
-import type { ModelsByProfileId, ProviderModelOption } from './types'
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
+import type { ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'
+import { ProviderModelMenu } from './provider-model-menu'
+import type { ProviderModelOption } from './types'
 
 interface ProviderModelPickerProps<TThinking extends string | null> {
-  profiles: ProviderModelOption[]
-  selectedProfileId: string | null
+  providerTargets: ProviderModelOption[]
+  selectedProviderTargetId: string | null
   selectedModelId: string | null
   selectedModel: ModelDescriptor | null
-  modelsByProfileId: ModelsByProfileId
-  loadingProfileIds: Set<string>
+  modelsByProviderTargetId: ModelsByProviderTargetId
+  loadingProviderTargetIds: Set<string>
   thinkingValue: TThinking
   thinkingOptions: Array<ThinkingOption<TThinking>>
   isLoadingSelectedModels?: boolean
-  emptyProfilesLabel?: string
+  emptyProviderTargetsLabel?: string
   loadingLabel?: string
   emptySelectionLabel?: string
   menuSide?: 'top' | 'bottom' | 'left' | 'right'
@@ -31,23 +30,23 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
   triggerTestId?: string
   disabled?: boolean
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
-  onRequestProfileModels?: (id: string) => void
-  onSelectProfile: (id: string) => void
-  onSelectModel: (id: string | null, profileId: string) => void
+  onRequestProviderTargetModels?: (id: string) => void
+  onSelectProviderTarget: (id: string) => void
+  onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
 }
 
 export function ProviderModelPicker<TThinking extends string | null>({
-  profiles,
-  selectedProfileId,
+  providerTargets,
+  selectedProviderTargetId,
   selectedModelId,
   selectedModel,
-  modelsByProfileId,
-  loadingProfileIds,
+  modelsByProviderTargetId,
+  loadingProviderTargetIds,
   thinkingValue,
   thinkingOptions,
   isLoadingSelectedModels = false,
-  emptyProfilesLabel,
+  emptyProviderTargetsLabel,
   loadingLabel,
   emptySelectionLabel,
   menuSide = 'top',
@@ -55,22 +54,22 @@ export function ProviderModelPicker<TThinking extends string | null>({
   triggerTestId = 'provider-model-selector',
   disabled = false,
   getThinkingOptionsForModel,
-  onRequestProfileModels,
-  onSelectProfile,
+  onRequestProviderTargetModels,
+  onSelectProviderTarget,
   onSelectModel,
   onSelectThinking,
 }: ProviderModelPickerProps<TThinking>) {
   const { t } = useTranslation('common')
-  const selectedProfile = profiles.find(profile => profile.id === selectedProfileId) ?? null
-  const effectiveLoadingProfileIds = useMemo(() => {
-    if (!selectedProfileId || !isLoadingSelectedModels || loadingProfileIds.has(selectedProfileId)) {
-      return loadingProfileIds
+  const selectedProviderTarget = providerTargets.find(target => target.id === selectedProviderTargetId) ?? null
+  const effectiveLoadingProviderTargetIds = useMemo(() => {
+    if (!selectedProviderTargetId || !isLoadingSelectedModels || loadingProviderTargetIds.has(selectedProviderTargetId)) {
+      return loadingProviderTargetIds
     }
 
-    const next = new Set(loadingProfileIds)
-    next.add(selectedProfileId)
+    const next = new Set(loadingProviderTargetIds)
+    next.add(selectedProviderTargetId)
     return next
-  }, [isLoadingSelectedModels, loadingProfileIds, selectedProfileId])
+  }, [isLoadingSelectedModels, loadingProviderTargetIds, selectedProviderTargetId])
 
   const triggerThinkingOptions = getThinkingOptionsForModel
     ? getThinkingOptionsForModel(selectedModel)
@@ -86,8 +85,8 @@ export function ProviderModelPicker<TThinking extends string | null>({
   return (
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} />}>
-        {selectedProfile
-          ? <ProviderIcon iconSlug={selectedProfile.iconSlug} presetId={presetForProviderKind(selectedProfile.providerKind).id} className="size-3.5 shrink-0" />
+        {selectedProviderTarget
+          ? <ProviderIcon iconSlug={selectedProviderTarget.iconSlug} presetId={presetForProviderKind(selectedProviderTarget.providerKind).id} className="size-3.5 shrink-0" />
           : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
         <span className="max-w-40 truncate">
           {modelLabel}
@@ -101,17 +100,17 @@ export function ProviderModelPicker<TThinking extends string | null>({
       </MenuTrigger>
       <MenuPopup side={menuSide} align={menuAlign}>
         <ProviderModelMenu
-          profiles={profiles}
-          selectedProfileId={selectedProfileId}
+          providerTargets={providerTargets}
+          selectedProviderTargetId={selectedProviderTargetId}
           selectedModelId={selectedModelId}
-          modelsByProfileId={modelsByProfileId}
-          loadingProfileIds={effectiveLoadingProfileIds}
+          modelsByProviderTargetId={modelsByProviderTargetId}
+          loadingProviderTargetIds={effectiveLoadingProviderTargetIds}
           thinkingValue={thinkingValue}
           thinkingOptions={thinkingOptions}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
-          emptyProfilesLabel={emptyProfilesLabel}
-          onRequestProfileModels={onRequestProfileModels}
-          onSelectProfile={onSelectProfile}
+          emptyProviderTargetsLabel={emptyProviderTargetsLabel}
+          onRequestProviderTargetModels={onRequestProviderTargetModels}
+          onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}
           onSelectThinking={onSelectThinking}
         />

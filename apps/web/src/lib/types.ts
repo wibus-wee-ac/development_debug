@@ -91,12 +91,6 @@ export interface ModelDescriptor {
   capabilities: ModelCapabilities
 }
 
-interface _ProviderHealthCheckResult {
-  ok: boolean
-  latencyMs: number
-  error?: string
-}
-
 interface _CredentialMetadata {
   id: string
   providerKind: ProviderKind

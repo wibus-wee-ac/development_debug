@@ -26,18 +26,13 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
     isLoadingModels,
   } = state
 
-  // In 'chat' context, only show the model selector (provider is bound)
-  // In 'new-chat' and 'capsule', show both runtime and provider/model selectors
-  const showRuntime = context !== 'chat'
-
   return (
     <div className="flex items-center gap-1">
-      {showRuntime && (
-        <RuntimeSelector
-          value={selection.runtimeKind}
-          onChange={setRuntimeKind}
-        />
-      )}
+      <RuntimeSelector
+        value={selection.runtimeKind}
+        onChange={setRuntimeKind}
+        readOnly={context === 'chat'}
+      />
       {selection.runtimeKind === 'cli-tui'
         ? (
             <CliTuiAgentSelector

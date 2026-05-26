@@ -17,7 +17,7 @@
 - **settings-overlay-store.test.ts**: Store-level regression coverage for Chronicle and Agent focus target write/clear behavior
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面
 - **settings-content-loader.ts**: Settings content 的共享 lazy loader 与 intent preload 入口，供 app shell 和 sidebar 在打开设置前预热
-- **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件
+- **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件；支持在 label 旁挂载轻量 accessory，例如 dev-only badge。
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试
 - **support-settings.tsx**: Support 设置页，提供本地 diagnostics JSON 导出、feedback template copy、feedback issue 入口、Cradle-owned data directory reveal 和卸载数据保留说明；Settings Support 首屏在 feedback template 与控制表面 ready 后记录 performance gate。

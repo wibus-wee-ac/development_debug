@@ -1,6 +1,7 @@
 import {
   BotIcon,
   ChevronRightIcon,
+  DownloadIcon,
   PlusIcon,
   SearchIcon,
   SlidersHorizontalIcon,
@@ -13,8 +14,17 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
 import {
   Empty,
   EmptyContent,
@@ -27,9 +37,12 @@ import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-config-schema'
-import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import type { PreviewLocalConfigImportResult } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import type { ProviderTargetOption } from '~/features/agent-runtime/use-provider-targets'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import {
   filterThinkingOptionsForModel,
   selectSupportedThinkingValue,
@@ -39,7 +52,7 @@ import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import type { Agent, AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { Agent, ModelDescriptor, ProviderTarget } from '~/lib/types'
 
 import type { AgentBatchThinkingEffort, AgentProviderBatchSelection } from './agent-batch-configuration'
 import {
@@ -77,30 +90,6 @@ const thinkingDescriptionKeys = {
   high: 'detail.thinking.high.description',
 } satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
 
-function providerTargetFromAgent(agent: Agent): ProviderTarget | null {
-  return agent.providerTargetId ? { kind: 'manual', id: agent.providerTargetId } : null
-}
-
-function providerTargetKey(target: ProviderTarget | null): string | null {
-  return target ? `${target.kind}:${target.id}` : null
-}
-
-function providerTargetFromKey(key: string | null): ProviderTarget | null {
-  if (!key) {
-    return null
-  }
-  const separatorIndex = key.indexOf(':')
-  if (separatorIndex < 0) {
-    return null
-  }
-  const kind = key.slice(0, separatorIndex)
-  const id = key.slice(separatorIndex + 1)
-  if ((kind !== 'manual' && kind !== 'external') || !id) {
-    return null
-  }
-  return { kind, id } as ProviderTarget
-}
-
 function commonString(values: Array<string | null>): string | null {
   if (values.length === 0) {
     return null
@@ -109,22 +98,35 @@ function commonString(values: Array<string | null>): string | null {
   return values.every(value => value === first) ? first : null
 }
 
-function defaultBatchProviderTarget(agents: Agent[], profiles: AgentProfile[]): ProviderTarget | null {
-  const enabledProfileIds = new Set(
-    profiles.filter(profile => profile.enabled).map(profile => profile.id),
-  )
+function providerTargetFromOption(option: ProviderTargetOption): ProviderTarget {
+  return { kind: option.kind, id: option.id }
+}
+
+function providerTargetCompatibleWithAgents(
+  target: ProviderTargetOption,
+  agents: Agent[],
+): boolean {
+  return agents.every(agent =>
+    agent.runtimeKind === 'cli-tui'
+    || runtimeSupportsProviderKind(agent.runtimeKind, target.providerKind))
+}
+
+function defaultBatchProviderTarget(
+  agents: Agent[],
+  providerTargets: ProviderTargetOption[],
+): ProviderTarget | null {
   const providerAgents = agents.filter(agent => agent.runtimeKind !== 'cli-tui')
-  const commonTarget = providerTargetFromKey(commonString(
-    providerAgents.map(agent => providerTargetKey(providerTargetFromAgent(agent))),
-  ))
-  if (commonTarget?.kind === 'manual' && enabledProfileIds.has(commonTarget.id)) {
-    return commonTarget
+  const enabledTargets = providerTargets.filter(target =>
+    target.enabled && providerTargetCompatibleWithAgents(target, providerAgents))
+  const commonTargetId = commonString(providerAgents.map(agent => agent.providerTargetId))
+  const commonTarget = commonTargetId
+    ? enabledTargets.find(target => target.id === commonTargetId) ?? null
+    : null
+  if (commonTarget) {
+    return providerTargetFromOption(commonTarget)
   }
-  if (commonTarget?.kind === 'external') {
-    return commonTarget
-  }
-  const fallbackProfileId = profiles.find(profile => profile.enabled)?.id ?? null
-  return fallbackProfileId ? { kind: 'manual', id: fallbackProfileId } : null
+  const fallbackTarget = enabledTargets[0] ?? null
+  return fallbackTarget ? providerTargetFromOption(fallbackTarget) : null
 }
 
 function defaultBatchModelId(agents: Agent[], providerTarget: ProviderTarget | null): string | null {
@@ -134,7 +136,7 @@ function defaultBatchModelId(agents: Agent[], providerTarget: ProviderTarget | n
   const matchingAgents = agents.filter(
     agent =>
       agent.runtimeKind !== 'cli-tui'
-      && providerTargetKey(providerTargetFromAgent(agent)) === providerTargetKey(providerTarget),
+      && agent.providerTargetId === providerTarget.id,
   )
   return commonString(matchingAgents.map(agent => agent.modelId))
 }
@@ -150,14 +152,14 @@ function defaultBatchThinkingEffort(agents: Agent[]): AgentBatchThinkingEffort {
 
 function AgentSidebarRow({
   agent,
-  profiles,
+  providerTargets,
   active,
   selected,
   onClick,
   onToggleSelected,
 }: {
   agent: Agent
-  profiles: AgentProfile[]
+  providerTargets: ProviderTargetOption[]
   active: boolean
   selected: boolean
   onClick: (shiftKey: boolean) => void
@@ -165,9 +167,8 @@ function AgentSidebarRow({
 }) {
   const checkboxShiftKeyRef = useRef(false)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
-  const providerTarget = providerTargetFromAgent(agent)
-  const profile = providerTarget?.kind === 'manual'
-    ? profiles.find(p => p.id === providerTarget.id)
+  const providerTarget = agent.providerTargetId
+    ? providerTargets.find(target => target.id === agent.providerTargetId) ?? null
     : null
   const cliTuiLaunch
     = agent.runtimeKind === 'cli-tui'
@@ -178,7 +179,7 @@ function AgentSidebarRow({
       ? ['CLI TUI', cliTuiLaunch?.preset ?? cliTuiLaunch?.executable]
           .filter(Boolean)
           .join(' ·\n') || 'CLI TUI'
-      : [profile?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined
+      : [providerTarget?.name, agent.modelId].filter(Boolean).join(' ·\n') || undefined
 
   return (
     <div
@@ -249,13 +250,13 @@ function AgentSidebarRow({
 
 function AgentBatchProviderPanel({
   selectedAgents,
-  profiles,
+  providerTargets,
   busy,
   onApply,
   onClear,
 }: {
   selectedAgents: Agent[]
-  profiles: AgentProfile[]
+  providerTargets: ProviderTargetOption[]
   busy: boolean
   onApply: (selection: AgentProviderBatchSelection) => void
   onClear: () => void
@@ -263,7 +264,11 @@ function AgentBatchProviderPanel({
   const { t } = useTranslation('agentManagement')
   const providerAgents = selectedAgents.filter(agent => agent.runtimeKind !== 'cli-tui')
   const skippedCliTuiCount = selectedAgents.length - providerAgents.length
-  const enabledProfiles = useMemo(() => profiles.filter(profile => profile.enabled), [profiles])
+  const selectableProviderTargets = useMemo(
+    () => providerTargets.filter(target =>
+      target.enabled && providerTargetCompatibleWithAgents(target, providerAgents)),
+    [providerAgents, providerTargets],
+  )
   const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = useMemo(() => THINKING_EFFORTS.map((option) => {
     const value = option.value ?? 'auto'
     return {
@@ -273,7 +278,7 @@ function AgentBatchProviderPanel({
     }
   }), [t])
   const defaultSelection = useMemo((): AgentProviderBatchSelection | null => {
-    const providerTarget = defaultBatchProviderTarget(selectedAgents, profiles)
+    const providerTarget = defaultBatchProviderTarget(selectedAgents, providerTargets)
     if (!providerTarget) {
       return null
     }
@@ -282,28 +287,30 @@ function AgentBatchProviderPanel({
       modelId: defaultBatchModelId(selectedAgents, providerTarget),
       thinkingEffort: defaultBatchThinkingEffort(selectedAgents),
     }
-  }, [profiles, selectedAgents])
+  }, [providerTargets, selectedAgents])
   const [selectionOverride, setSelectionOverride] = useState<AgentProviderBatchSelection | null>(
     null,
   )
   const selection = selectionOverride ?? defaultSelection
-  const initialProfileIds = useMemo(
-    () => [selection?.providerTarget.kind === 'manual' ? selection.providerTarget.id : null],
-    [selection?.providerTarget],
+  const initialProviderTargetIds = useMemo(
+    () => [selection?.providerTarget.id ?? null],
+    [selection?.providerTarget.id],
   )
-  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(
-    enabledProfiles,
-    initialProfileIds,
+  const {
+    modelsByProviderTargetId,
+    loadingProviderTargetIds,
+    requestProviderTargetModels,
+  } = useProviderTargetModelMap(
+    selectableProviderTargets,
+    initialProviderTargetIds,
   )
-  const selectedProfileId = selection?.providerTarget.kind === 'manual'
-    ? selection.providerTarget.id
-    : null
-  const selectedModels = selectedProfileId
-    ? (modelsByProfileId[selectedProfileId] ?? [])
+  const selectedProviderTargetId = selection?.providerTarget.id ?? null
+  const selectedModels = selectedProviderTargetId
+    ? (modelsByProviderTargetId[selectedProviderTargetId] ?? [])
     : []
   const selectedModel = selectedModels.find(model => model.id === selection?.modelId) ?? null
-  const isLoadingSelectedModels = selectedProfileId
-    ? loadingProfileIds.has(selectedProfileId)
+  const isLoadingSelectedModels = selectedProviderTargetId
+    ? loadingProviderTargetIds.has(selectedProviderTargetId)
     : false
 
   const resolveThinkingForModel = (
@@ -312,22 +319,28 @@ function AgentBatchProviderPanel({
   ): AgentBatchThinkingEffort =>
     selectSupportedThinkingValue(model, thinkingOptions, current, 'auto')
 
-  const applyProfileSelection = (nextProfileId: string) => {
-    requestProfileModels(nextProfileId)
-    const nextModel = (modelsByProfileId[nextProfileId] ?? [])[0] ?? null
+  const applyProviderTargetSelection = (nextProviderTargetId: string) => {
+    requestProviderTargetModels(nextProviderTargetId)
+    const nextTarget = selectableProviderTargets.find(target => target.id === nextProviderTargetId)
+    const nextModel = (modelsByProviderTargetId[nextProviderTargetId] ?? [])[0] ?? null
     setSelectionOverride({
-      providerTarget: { kind: 'manual', id: nextProfileId },
+      providerTarget: nextTarget
+        ? providerTargetFromOption(nextTarget)
+        : { id: nextProviderTargetId },
       modelId: nextModel?.id ?? null,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
   }
 
-  const applyModelSelection = (nextModelId: string | null, nextProfileId: string) => {
+  const applyModelSelection = (nextModelId: string | null, nextProviderTargetId: string) => {
+    const nextTarget = selectableProviderTargets.find(target => target.id === nextProviderTargetId)
     const nextModel = nextModelId
-      ? ((modelsByProfileId[nextProfileId] ?? []).find(model => model.id === nextModelId) ?? null)
+      ? ((modelsByProviderTargetId[nextProviderTargetId] ?? []).find(model => model.id === nextModelId) ?? null)
       : null
     setSelectionOverride({
-      providerTarget: { kind: 'manual', id: nextProfileId },
+      providerTarget: nextTarget
+        ? providerTargetFromOption(nextTarget)
+        : { id: nextProviderTargetId },
       modelId: nextModelId,
       thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
     })
@@ -356,16 +369,16 @@ function AgentBatchProviderPanel({
 
         <div className="flex flex-wrap items-center justify-center gap-2">
           <ProviderModelPicker
-            profiles={enabledProfiles}
-            selectedProfileId={selectedProfileId}
+            providerTargets={selectableProviderTargets}
+            selectedProviderTargetId={selectedProviderTargetId}
             selectedModelId={selection?.modelId ?? null}
             selectedModel={selectedModel}
-            modelsByProfileId={modelsByProfileId}
-            loadingProfileIds={loadingProfileIds}
+            modelsByProviderTargetId={modelsByProviderTargetId}
+            loadingProviderTargetIds={loadingProviderTargetIds}
             thinkingValue={selection?.thinkingEffort ?? 'auto'}
             thinkingOptions={thinkingOptions}
             isLoadingSelectedModels={isLoadingSelectedModels}
-            emptyProfilesLabel={t('batch.provider.emptyProfiles')}
+            emptyProviderTargetsLabel={t('batch.provider.emptyProviderTargets')}
             emptySelectionLabel={t('batch.provider.emptySelection')}
             menuSide="bottom"
             menuAlign="center"
@@ -373,8 +386,8 @@ function AgentBatchProviderPanel({
             disabled={providerAgents.length === 0}
             getThinkingOptionsForModel={model =>
               filterThinkingOptionsForModel(model, thinkingOptions)}
-            onRequestProfileModels={requestProfileModels}
-            onSelectProfile={applyProfileSelection}
+            onRequestProviderTargetModels={requestProviderTargetModels}
+            onSelectProviderTarget={applyProviderTargetSelection}
             onSelectModel={applyModelSelection}
             onSelectThinking={(thinkingEffort) => {
               if (!selection) {
@@ -404,18 +417,147 @@ function AgentBatchProviderPanel({
   )
 }
 
+function AgentImportDialog({
+  open,
+  preview,
+  selectedIds,
+  busy,
+  error,
+  onOpenChange,
+  onToggleCandidate,
+  onImport,
+}: {
+  open: boolean
+  preview: PreviewLocalConfigImportResult | null
+  selectedIds: Set<string>
+  busy: boolean
+  error: string | null
+  onOpenChange: (open: boolean) => void
+  onToggleCandidate: (candidateId: string, checked: boolean) => void
+  onImport: () => void
+}) {
+  const importableSelectedCount = preview?.candidates.filter(candidate => candidate.importable && selectedIds.has(candidate.id)).length ?? 0
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Import Agents</DialogTitle>
+          <DialogDescription>
+            Review detected Claude, Codex, and CC Switch mappings before creating Agents.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid gap-3">
+          {error && (
+            <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2 text-[12px] text-destructive">
+              {error}
+            </div>
+          )}
+
+          {!preview && (
+            <div className="rounded-md border border-foreground/8 px-3 py-6 text-center text-[12.5px] text-muted-foreground">
+              Scanning local config
+            </div>
+          )}
+
+          {preview && preview.candidates.length === 0 && (
+            <div className="rounded-md border border-foreground/8 px-3 py-6 text-center text-[12.5px] text-muted-foreground">
+              No Claude, Codex, or CC Switch mappings found
+            </div>
+          )}
+
+          {preview && preview.candidates.length > 0 && (
+            <div className="max-h-[420px] overflow-auto rounded-lg border border-foreground/8">
+              {preview.candidates.map(candidate => (
+                <label
+                  key={candidate.id}
+                  className={cn(
+                    'flex gap-3 border-b border-foreground/6 px-3 py-3 last:border-b-0',
+                    candidate.importable ? 'cursor-pointer hover:bg-foreground/[0.025]' : 'opacity-60',
+                  )}
+                >
+                  <Checkbox
+                    checked={selectedIds.has(candidate.id)}
+                    disabled={!candidate.importable || busy}
+                    onCheckedChange={value => onToggleCandidate(candidate.id, Boolean(value))}
+                  />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="truncate text-[13px] font-medium text-foreground">
+                        {candidate.agentName}
+                      </span>
+                      <Badge variant={candidate.sourceKind === 'cc-switch' ? 'secondary' : 'outline'} className="font-normal">
+                        {candidate.sourceLabel}
+                      </Badge>
+                      {candidate.alreadyConfigured && (
+                        <Badge variant="outline" className="font-normal">
+                          Existing
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-[11.5px] text-muted-foreground">
+                      <span>{candidate.app}</span>
+                      <span className="truncate">{candidate.resolvedProviderName}</span>
+                      {candidate.modelId && <span className="truncate">{candidate.modelId}</span>}
+                      {candidate.endpoint && <span className="truncate font-mono">{candidate.endpoint}</span>}
+                    </div>
+                    {candidate.notes.map(note => (
+                      <p key={note} className="text-[11.5px] leading-relaxed text-muted-foreground">
+                        {note}
+                      </p>
+                    ))}
+                    {candidate.reason && (
+                      <p className="text-[11.5px] leading-relaxed text-destructive">
+                        {candidate.reason}
+                      </p>
+                    )}
+                  </div>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter variant="bare">
+          <Button size="sm" variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            Cancel
+          </Button>
+          <Button size="sm" onClick={onImport} disabled={busy || importableSelectedCount === 0}>
+            <DownloadIcon />
+            {busy ? 'Importing' : 'Import selected'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 export function AgentList() {
-  const { agents, isLoading, isSuccess: agentsReady, updateAgent, removeAgent } = useAgents()
-  const { profiles, isSuccess: profilesReady } = useAgentProfiles()
+  const {
+    agents,
+    isLoading,
+    isSuccess: agentsReady,
+    importLocalConfig,
+    previewLocalConfigImport,
+    updateAgent,
+    removeAgent,
+  } = useAgents()
+  const { providerOptions, isSuccess: providerTargetsReady } = useProviderTargets()
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const selectionAnchorIdRef = useRef<string | null>(null)
   const [isDrafting, setIsDrafting] = useState(false)
   const [filter, setFilter] = useState('')
+  const [importMessage, setImportMessage] = useState<string | null>(null)
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importPreview, setImportPreview] = useState<PreviewLocalConfigImportResult | null>(null)
+  const [selectedImportCandidateIds, setSelectedImportCandidateIds] = useState<Set<string>>(() => new Set())
+  const [importError, setImportError] = useState<string | null>(null)
   const [batchBusy, setBatchBusy] = useState(false)
   const agentFocusTargetId = useSettingsOverlayStore(state => state.agentFocusTarget?.id ?? null)
   const clearAgentFocusTarget = useSettingsOverlayStore(state => state.clearAgentFocusTarget)
-  const settingsAgentsReady = agentsReady && profilesReady
+  const settingsAgentsReady = agentsReady && providerTargetsReady
 
   const visibleAgents = useMemo(() => {
     if (!filter.trim()) {
@@ -483,6 +625,62 @@ export function AgentList() {
     setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
   }, [])
+
+  const openImportDialog = useCallback(async () => {
+    setImportMessage(null)
+    setImportError(null)
+    setImportDialogOpen(true)
+    setImportPreview(null)
+    setSelectedImportCandidateIds(new Set())
+    try {
+      const preview = await previewLocalConfigImport.mutateAsync()
+      setImportPreview(preview)
+      setSelectedImportCandidateIds(new Set(preview.candidates.filter(candidate => candidate.importable).map(candidate => candidate.id)))
+    }
+    catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Import preview failed')
+    }
+  }, [previewLocalConfigImport])
+
+  const toggleImportCandidate = useCallback((candidateId: string, checked: boolean) => {
+    setSelectedImportCandidateIds((current) => {
+      const next = new Set(current)
+      if (checked) {
+        next.add(candidateId)
+      }
+      else {
+        next.delete(candidateId)
+      }
+      return next
+    })
+  }, [])
+
+  const confirmImportLocalConfig = useCallback(async () => {
+    setImportError(null)
+    try {
+      const result = await importLocalConfig.mutateAsync({
+        candidateIds: Array.from(selectedImportCandidateIds),
+      })
+      const selectedImport = result.agents.find(imported => imported.status === 'created' && imported.agent)
+        ?? result.agents.find(imported => imported.status === 'existing' && imported.agent)
+      if (selectedImport?.agent) {
+        setIsDrafting(false)
+        setSelectedIds(new Set([selectedImport.agent.id]))
+        selectionAnchorIdRef.current = selectedImport.agent.id
+      }
+
+      const parts = [
+        result.created > 0 ? `${result.created} imported` : null,
+        result.existing > 0 ? `${result.existing} already configured` : null,
+        result.skipped > 0 ? `${result.skipped} skipped` : null,
+      ].filter(Boolean)
+      setImportMessage(parts.join(' · ') || 'No changes')
+      setImportDialogOpen(false)
+    }
+    catch (error) {
+      setImportError(error instanceof Error ? error.message : 'Import failed')
+    }
+  }, [importLocalConfig, selectedImportCandidateIds])
 
   const toggleVisibleSelected = useCallback(() => {
     setSelectedIds(prev =>
@@ -648,14 +846,42 @@ export function AgentList() {
             Agents
           </h3>
           <p className="text-[12.5px] leading-relaxed text-muted-foreground">
-            Create AI agents with unique identities, personas, and runtime profiles.
+            Create AI agents with unique identities, personas, and provider targets.
           </p>
         </div>
-        <Button data-testid="new-agent-btn" size="sm" onClick={startDraft} disabled={isDrafting}>
-          <PlusIcon />
-          Add agent
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          {importMessage && (
+            <span className="max-w-52 truncate text-[11.5px] text-muted-foreground">
+              {importMessage}
+            </span>
+          )}
+          <Button
+            data-testid="import-agent-btn"
+            size="sm"
+            variant="outline"
+            onClick={() => void openImportDialog()}
+            disabled={previewLocalConfigImport.isPending || importLocalConfig.isPending}
+          >
+            <DownloadIcon />
+            {previewLocalConfigImport.isPending ? 'Scanning' : 'Import'}
+          </Button>
+          <Button data-testid="new-agent-btn" size="sm" onClick={startDraft} disabled={isDrafting}>
+            <PlusIcon />
+            Add agent
+          </Button>
+        </div>
       </header>
+
+      <AgentImportDialog
+        open={importDialogOpen}
+        preview={importPreview}
+        selectedIds={selectedImportCandidateIds}
+        busy={previewLocalConfigImport.isPending || importLocalConfig.isPending}
+        error={importError}
+        onOpenChange={setImportDialogOpen}
+        onToggleCandidate={toggleImportCandidate}
+        onImport={() => void confirmImportLocalConfig()}
+      />
 
       <Separator className="bg-foreground/6" />
 
@@ -796,7 +1022,7 @@ visible
                   <AgentSidebarRow
                     key={agent.id}
                     agent={agent}
-                    profiles={profiles}
+                    providerTargets={providerOptions}
                     active={selectedAgentId === agent.id && !isDraftSelected}
                     selected={selectedIds.has(agent.id)}
                     onClick={shiftKey => openAgent(agent.id, shiftKey)}
@@ -835,7 +1061,6 @@ active
 ? (
             <div key={DRAFT_ID} className="flex-1">
               <AgentDetailPage
-                profiles={profiles}
                 onCreated={handleCreated}
                 onDeleted={handleDeleted}
               />
@@ -846,7 +1071,7 @@ active
             <AgentBatchProviderPanel
               key={selectedAgents.map(agent => agent.id).join('|')}
               selectedAgents={selectedAgents}
-              profiles={profiles}
+              providerTargets={providerOptions}
               busy={batchBusy}
               onApply={selection => void handleBatchConfigureProvider(selection)}
               onClear={clearSelection}
@@ -857,7 +1082,6 @@ active
             <div key={selectedAgent.id} className="flex-1">
               <AgentDetailPage
                 agent={selectedAgent}
-                profiles={profiles}
                 onDeleted={handleDeleted}
               />
             </div>

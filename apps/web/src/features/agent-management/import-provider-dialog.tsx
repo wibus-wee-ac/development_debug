@@ -1,0 +1,339 @@
+import { DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { z } from 'zod'
+
+import { postSecrets } from '~/api-gen/sdk.gen'
+import { Button } from '~/components/ui/button'
+import { Checkbox } from '~/components/ui/checkbox'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input'
+import { ScrollArea } from '~/components/ui/scroll-area'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
+import { Spinner } from '~/components/ui/spinner'
+import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { cn } from '~/lib/cn'
+import type { ProviderKind } from '~/lib/types'
+
+import { buildProfileId } from './provider-settings-utils'
+import { type ParsedProvider, parseProviderConfig } from './import-provider-parser'
+
+const SecretCreateResponseSchema = z.object({ id: z.string().min(1) })
+
+const KIND_OPTIONS: { value: ProviderKind; label: string }[] = [
+  { value: 'openai-compatible', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+]
+
+function hostnameFromUrl(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
+}
+
+export function ImportProviderDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}) {
+  const { createProfile } = useAgentProfiles()
+  const [text, setText] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [enabledSet, setEnabledSet] = useState<Set<number>>(new Set())
+  const [kinds, setKinds] = useState<ProviderKind[]>([])
+  const [manualUrl, setManualUrl] = useState('')
+  const [manualKind, setManualKind] = useState<ProviderKind>('openai-compatible')
+  const prevTokenRef = useRef<string | null>(null)
+
+  const parseResult = useMemo(() => {
+    if (!text.trim()) return null
+    return parseProviderConfig(text)
+  }, [text])
+
+  useEffect(() => {
+    if (!parseResult) return
+    if (parseResult.token !== prevTokenRef.current) {
+      prevTokenRef.current = parseResult.token
+      setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
+      setKinds(parseResult.providers.map((p) => p.providerKind))
+      setManualUrl('')
+    }
+  }, [parseResult])
+
+  const token = parseResult?.token ?? null
+  const hasProviders = parseResult && parseResult.providers.length > 0
+  const showManualEntry = parseResult && !hasProviders && parseResult.urls.length === 0
+
+  const handleImport = useCallback(async () => {
+    if (importing) return
+    const providers: ParsedProvider[] = parseResult?.providers ?? []
+    const finalKinds = [...kinds]
+
+    // Manual entry fallback
+    if (providers.length === 0 && token && manualUrl.trim()) {
+      providers.push({
+        providerKind: manualKind,
+        name: hostnameFromUrl(manualUrl.trim()),
+        apiKey: token,
+        baseUrl: manualUrl.trim(),
+      })
+      finalKinds.push(manualKind)
+    }
+
+    if (!token || providers.length === 0) return
+    setImporting(true)
+
+    try {
+      const { data: meta } = await postSecrets({
+        body: { kind: finalKinds[0] ?? providers[0].providerKind, label: 'imported', secret: token },
+      })
+      const credentialRef = SecretCreateResponseSchema.parse(meta).id
+
+      for (let i = 0; i < providers.length; i++) {
+        if (!enabledSet.has(i) && providers.length > 1) continue
+        const p = providers[i]
+
+        const profileId = buildProfileId(p.name, `imported-${Date.now()}-${i}`)
+        await createProfile.mutateAsync({
+          id: profileId,
+          body: {
+            name: p.name,
+            providerKind: finalKinds[i] ?? p.providerKind,
+            enabled: true,
+            config: { baseUrl: p.baseUrl },
+            credentialRef,
+          },
+        })
+      }
+      onOpenChange(false)
+      setText('')
+      setManualUrl('')
+    } catch (err) {
+      console.error('[ImportProvider]', err)
+    } finally {
+      setImporting(false)
+    }
+  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange])
+
+  const handleClose = useCallback(() => {
+    if (importing) return
+    setText('')
+    setManualUrl('')
+    onOpenChange(false)
+  }, [importing, onOpenChange])
+
+  const providerCount = hasProviders
+    ? parseResult!.providers.filter((_, i) => enabledSet.has(i)).length
+    : (token && manualUrl.trim() ? 1 : 0)
+  const canImport = !!token && providerCount > 0
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Import Provider</DialogTitle>
+          <DialogDescription>
+            Paste a configuration snippet — keys and URLs are detected automatically.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col gap-4">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={`token: dHAtYzM3cXI2MGUzaXowZTdmdXRmeDcwb21paTc0bjQydnQ2aGVrdDNnY280YW1zZjNm\nhttps://api.example.com/v1\nhttps://api.example.com/anthropic`}
+            className={cn(
+              'w-full rounded-lg border bg-muted/40 px-3 py-2.5 font-mono text-[12px] leading-relaxed',
+              'placeholder:text-muted-foreground/50',
+              'focus:outline-none focus:ring-2 focus:ring-ring/30',
+              'min-h-[80px] resize-y',
+            )}
+          />
+
+          {parseResult && (
+            <>
+              {/* Key indicator */}
+              <div
+                className={cn(
+                  'flex items-center gap-2 rounded-md px-2.5 py-1.5 text-[12px]',
+                  token
+                    ? 'bg-emerald-500/8 text-emerald-600 dark:text-emerald-400'
+                    : 'bg-amber-500/8 text-amber-600 dark:text-amber-400',
+                )}
+              >
+                <KeyIcon className="size-3.5 shrink-0" />
+                {token ? (
+                  <span className="truncate font-mono text-[11px]">
+                    {token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token}
+                  </span>
+                ) : (
+                  <span>No API key detected.</span>
+                )}
+              </div>
+
+              {/* Auto-detected providers */}
+              {hasProviders && (
+                <ScrollArea className="max-h-[260px]">
+                  <div className="flex flex-col gap-2">
+                    {parseResult.providers.map((p, i) => (
+                      <ProviderCard
+                        key={i}
+                        provider={p}
+                        kind={kinds[i] ?? p.providerKind}
+                        enabled={enabledSet.has(i)}
+                        onToggle={() => {
+                          setEnabledSet((prev) => {
+                            const next = new Set(prev)
+                            if (next.has(i)) next.delete(i)
+                            else next.add(i)
+                            return next
+                          })
+                        }}
+                        onKindChange={(k) => {
+                          setKinds((prev) => {
+                            const next = [...prev]
+                            next[i] = k
+                            return next
+                          })
+                        }}
+                      />
+                    ))}
+                  </div>
+                </ScrollArea>
+              )}
+
+              {/* Manual endpoint entry */}
+              {showManualEntry && (
+                <div className="flex items-center gap-2">
+                  <Select value={manualKind} onValueChange={(v) => setManualKind(v as ProviderKind)}>
+                    <SelectTrigger
+                      className={cn(
+                        'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
+                        manualKind === 'anthropic'
+                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                      )}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {KIND_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>
+                          {o.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex-1 flex items-center gap-1.5">
+                    <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <Input
+                      value={manualUrl}
+                      onChange={(e) => setManualUrl(e.target.value)}
+                      placeholder="https://api.example.com/v1"
+                      className="h-8 flex-1 font-mono text-[12px]"
+                    />
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button size="sm" variant="outline" onClick={handleClose} disabled={importing}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void handleImport()}
+            disabled={!canImport || importing}
+          >
+            {importing ? <Spinner className="size-3" /> : <DownloadIcon className="size-3" />}
+            {importing ? 'Importing...' : `Import ${providerCount}`}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ProviderCard({
+  provider,
+  kind,
+  enabled,
+  onToggle,
+  onKindChange,
+}: {
+  provider: ParsedProvider
+  kind: ProviderKind
+  enabled: boolean
+  onToggle: () => void
+  onKindChange: (k: ProviderKind) => void
+}) {
+  return (
+    <label
+      className={cn(
+        'flex items-start gap-3 rounded-lg border p-3 transition-colors cursor-pointer',
+        enabled
+          ? 'border-foreground/10 bg-card'
+          : 'border-foreground/5 bg-muted/20 opacity-60',
+      )}
+    >
+      <Checkbox checked={enabled} onCheckedChange={onToggle} className="mt-0.5" />
+      <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+        <div className="flex items-center gap-2">
+          <Select value={kind} onValueChange={(v) => onKindChange(v as ProviderKind)}>
+            <SelectTrigger
+              className={cn(
+                'h-6 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
+                kind === 'anthropic'
+                  ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
+                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+              )}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {KIND_OPTIONS.map((o) => (
+                <SelectItem key={o.value} value={o.value}>
+                  {o.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="truncate text-[13px] font-medium text-foreground">
+            {provider.name}
+          </span>
+        </div>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <GlobeIcon className="size-3 shrink-0" />
+            <span className="truncate font-mono text-[11px]">{provider.baseUrl}</span>
+          </div>
+          {provider.apiKey && (
+            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <KeyIcon className="size-3 shrink-0" />
+              <span className="truncate font-mono text-[11px]">
+                {provider.apiKey.length > 40
+                  ? `${provider.apiKey.slice(0, 20)}...${provider.apiKey.slice(-8)}`
+                  : provider.apiKey}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    </label>
+  )
+}
