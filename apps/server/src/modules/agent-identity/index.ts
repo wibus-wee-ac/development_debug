@@ -50,6 +50,20 @@ export const agentIdentity = new Elysia({
     body: AgentIdentityModel.createBody,
     response: { 200: AgentIdentityModel.agent },
   })
+  .post('/import/local-config', ({ body }) => AgentIdentity.importLocalConfig(body ?? {}), {
+    detail: {
+      summary: 'Import agents from local Claude and Codex config',
+    },
+    body: AgentIdentityModel.importLocalConfigBody,
+    response: { 200: AgentIdentityModel.importLocalConfigResult },
+  })
+  .post('/import/local-config/preview', ({ body }) => AgentIdentity.previewLocalConfigImport(body ?? {}), {
+    detail: {
+      summary: 'Preview agents available from local Claude, Codex, and CC Switch config',
+    },
+    body: AgentIdentityModel.importLocalConfigBody,
+    response: { 200: AgentIdentityModel.previewLocalConfigImportResult },
+  })
   .patch('/:id', ({ params, body }) => {
     const agent = AgentIdentity.update(params.id, body)
     if (!agent) {

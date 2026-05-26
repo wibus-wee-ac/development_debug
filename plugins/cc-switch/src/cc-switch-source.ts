@@ -107,6 +107,8 @@ const CodexTomlConfigSchema = z.object({
   model_provider: OptionalExternalStringSchema,
   model: OptionalExternalStringSchema,
   model_reasoning_effort: OptionalExternalStringSchema,
+  approval_policy: OptionalExternalStringSchema,
+  sandbox_mode: OptionalExternalStringSchema,
   model_providers: z.record(z.string(), CodexTomlModelProviderSchema).default({}),
 }).passthrough()
 
@@ -471,6 +473,11 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
   if (!isClaudeAnthropicMessages(provider)) { return null }
 
   const env = provider.settingsConfig.env
+  const modelAliases = compactJsonObject({
+    haiku: env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
+    sonnet: env.ANTHROPIC_DEFAULT_SONNET_MODEL,
+    opus: env.ANTHROPIC_DEFAULT_OPUS_MODEL,
+  })
   const baseUrl = env.ANTHROPIC_BASE_URL
   const model = env.ANTHROPIC_MODEL
     ?? env.ANTHROPIC_DEFAULT_SONNET_MODEL
@@ -484,6 +491,8 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     providerKind: 'anthropic',
     config: compactJsonObject({
       baseUrl,
+      model,
+      claudeAgent: Object.keys(modelAliases).length > 0 ? { modelAliases } : undefined,
     }),
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
@@ -510,6 +519,8 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
   const baseUrl = activeProvider?.base_url
   const model = parsedToml.model
   const reasoningEffort = parsedToml.model_reasoning_effort
+  const approvalPolicy = parsedToml.approval_policy
+  const sandboxMode = parsedToml.sandbox_mode
   const wireApi = activeProvider?.wire_api
   const credential = auth.OPENAI_API_KEY
 
@@ -520,6 +531,11 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
     providerKind: 'openai-compatible',
     config: compactJsonObject({
       baseUrl,
+      model,
+      reasoningEffort,
+      approvalPolicy,
+      sandboxMode,
+      apiMode: wireApi === 'responses' ? 'responses' : 'chat-completions',
     }),
     credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
     current: provider.isCurrent,
@@ -528,6 +544,8 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
       baseUrl,
       model,
       reasoningEffort,
+      approvalPolicy,
+      sandboxMode,
       apiFormat: wireApi === 'responses' ? 'openai_responses' : 'openai_chat',
     }),
   }
