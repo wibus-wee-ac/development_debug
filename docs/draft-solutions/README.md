@@ -11,5 +11,6 @@ This directory holds exploratory product and architecture proposals before they 
 ## Files
 
 - **cloudflare-ai-code-review-orchestration-notes.md**: Architecture notes on applying Cloudflare-style AI code review orchestration patterns to Cradle's runtime, plugin, review, usage, and observability boundaries.
+- **chat-prop-drilling-refactor-report.md**: Refactor handoff report for reducing Chat feature prop drilling, render coupling, and oversized composer/view props without introducing a new state library.
 - **cradle-onboarding-research.md**: Research-backed onboarding strategy for making Cradle feel approachable despite its broad feature surface.
 - **yansu-chronicle-spec.md**: Draft Chronicle product and technical specification.

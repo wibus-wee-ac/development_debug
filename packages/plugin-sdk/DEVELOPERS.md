@@ -1240,7 +1240,7 @@ A plugin with an API route AND a sidebar panel.
     "@types/react": "^19.2.1",
     "@vitejs/plugin-react": "^5.1.1",
     "react": "^19.2.1",
-    "vite": "^7.2.6"
+    "vite": "^8.0.0"
   }
 }
 ```
@@ -1447,7 +1447,7 @@ A plugin that provides an MCP server and skill for agent use, with desktop integ
   "devDependencies": {
     "@cradle/plugin-sdk": "workspace:*",
     "@types/node": "^22.0.0",
-    "vite": "^7.2.6"
+    "vite": "^8.0.0"
   }
 }
 ```

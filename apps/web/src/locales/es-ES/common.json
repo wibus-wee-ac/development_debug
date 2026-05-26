@@ -18,7 +18,7 @@
   "model.fuzzyMatchTitle": "Coincidencia aproximada de models.dev",
   "model.noMatchingModels": "No hay modelos coincidentes",
   "model.noModelsAvailable": "No hay modelos disponibles",
-  "model.noProviderTargets": "No hay provider targets disponibles",
+  "model.noProviderTargets": "No providers available",
   "model.searchPlaceholder": "Buscar modelos...",
   "runtime.claudeAgent.description": "Bucle agentic con uso de herramientas",
   "runtime.claudeAgent.label": "Claude Agent",

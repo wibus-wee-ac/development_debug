@@ -1,5 +1,7 @@
-import { Link } from '@cradle/tabs-next'
+import type { ScreenCoordinates } from '@cradle/tabs-next'
+import { getEventScreenCoordinates, isPointerOutsideWindow, Link } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import {
   BarChart3Icon,
   ClipboardCopyIcon,
@@ -21,7 +23,6 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { TFunction } from 'i18next'
 
 import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
@@ -37,16 +38,18 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/compone
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/features/agent-management/provider-icons'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
-import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
+import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
-import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
+import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
 import type { Workspace } from '~/lib/types'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
+import { detachTearoffSessionTab } from '~/tabs/tearoff-tabs'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
@@ -192,7 +195,18 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const [isRenaming, setIsRenaming] = useState(false)
+  const dragPointerRef = useRef<ScreenCoordinates | null>(null)
+  const dragCleanupRef = useRef<(() => void) | null>(null)
+  const dragWasTornOffRef = useRef(false)
   const sessionTitle = session.title ?? t('session.fallbackTitle')
+
+  const releaseSessionDrag = useCallback(() => {
+    dragCleanupRef.current?.()
+    dragCleanupRef.current = null
+    dragPointerRef.current = null
+    dragWasTornOffRef.current = false
+  }, [])
+  const RuntimeIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
 
   const invalidateSessionQueries = useCallback(async () => {
     await Promise.all([
@@ -242,24 +256,73 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
     }
   }, [session.id])
 
+  const checkSessionTearOff = useCallback(() => {
+    if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
+      return false
+    }
+
+    const pointer = dragPointerRef.current
+    if (!pointer || !isPointerOutsideWindow(pointer, window)) {
+      return false
+    }
+
+    dragWasTornOffRef.current = true
+    dragCleanupRef.current?.()
+    dragCleanupRef.current = null
+
+    void nativeIpc.window.tearOffSession(session.id, pointer.screenX, pointer.screenY)
+      .then(() => {
+        if (!isTearoffWindow) {
+          detachTearoffSessionTab(useCradleTabStore, session.id)
+        }
+      })
+      .catch(() => {
+        dragWasTornOffRef.current = false
+      })
+
+    return true
+  }, [session.id])
+
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-cradle-session', session.id)
     e.dataTransfer.effectAllowed = 'move'
-  }, [session.id])
+    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
+    dragWasTornOffRef.current = false
+    dragCleanupRef.current?.()
 
-  const handleDragEnd = useCallback((_e: React.DragEvent) => {
-    // Detect if cursor dropped outside the current window bounds (Electron only)
-    // const { screenX, screenY } = e
-    // const outside = (
-    //   screenX < window.screenX
-    //   || screenX > window.screenX + window.outerWidth
-    //   || screenY < window.screenY
-    //   || screenY > window.screenY + window.outerHeight
-    // )
-    // if (outside) {
-    //   ipc?.window.tearOffSession(session.id, screenX, screenY)
-    // }
-  }, [])
+    const handleDragMove = (event: DragEvent | MouseEvent | PointerEvent | TouchEvent) => {
+      dragPointerRef.current = getEventScreenCoordinates(event)
+      checkSessionTearOff()
+    }
+
+    window.addEventListener('dragover', handleDragMove, true)
+    window.addEventListener('mousemove', handleDragMove, true)
+    window.addEventListener('pointermove', handleDragMove, true)
+    window.addEventListener('touchmove', handleDragMove, true)
+    dragCleanupRef.current = () => {
+      window.removeEventListener('dragover', handleDragMove, true)
+      window.removeEventListener('mousemove', handleDragMove, true)
+      window.removeEventListener('pointermove', handleDragMove, true)
+      window.removeEventListener('touchmove', handleDragMove, true)
+    }
+  }, [checkSessionTearOff, session.id])
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
+    checkSessionTearOff()
+  }, [checkSessionTearOff])
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
+    if (!dragWasTornOffRef.current) {
+      checkSessionTearOff()
+    }
+    releaseSessionDrag()
+  }, [checkSessionTearOff, releaseSessionDrag])
+
+  useEffect(() => {
+    return releaseSessionDrag
+  }, [releaseSessionDrag])
 
   const sessionActions: SessionMenuAction[] = [
     {
@@ -309,6 +372,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
     <div
       draggable={!isRenaming}
       onDragStart={handleDragStart}
+      onDrag={handleDrag}
       onDragEnd={handleDragEnd}
       className={cn(
         'group flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50',
@@ -338,6 +402,7 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
               data-testid={`session-open-${session.id}`}
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
+              <RuntimeIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
               {session.pinned
                 ? (
                   <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${session.id}`} />
@@ -600,16 +665,12 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       openSettings(activeTabId)
     }
   }, [openSettings])
-  const [searchOpen, setSearchOpen] = useState(false)
 
   const handleDelete = useCallback((id: string) => {
     remove(id)
   }, [remove])
 
-  const openSearch = useCallback(() => setSearchOpen(true), [])
-
-  useShortcut('open-thread-search', { meta: true, key: 'k' }, openSearch)
-  useShortcut('open-thread-search-ctrl', { ctrl: true, key: 'k' }, openSearch)
+  const openSearch = useCallback(() => useGlobalSearchStore.getState().openSearch(), [])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -742,8 +803,6 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
           </nav>
         </div>
       </ScrollArea>
-
-      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

@@ -6,9 +6,9 @@ This document follows `/Users/wibus/.agents/skills/execplan/references/PLANS.md`
 
 ## Purpose / Big Picture
 
-Cradle should be able to notice that a user already has local Claude Code and Codex configuration on the machine, normalize those configurations into the same external provider source shape used by CC Switch, and later reuse the existing external provider refresh pipeline to create Cradle-owned `provider_targets`. This work prepares that capability without enabling it at startup. The current implementation is intentionally a utility and source factory only: it does not register itself with the server, does not write `~/.claude`, `~/.codex`, or `~/.cc-switch`, and does not log or expose real secrets through metadata.
+Cradle should be able to notice that a user already has local Claude Code and Codex configuration on the machine, normalize those configurations into the same external provider source shape used by CC Switch, and reuse the existing external provider refresh pipeline to create Cradle-owned `provider_targets`. This work does not enable automatic startup scanning. It provides an explicit Settings Agents `Import` action that reads allowlisted local files, projects the detected providers into Cradle-owned runtime targets, and creates user-visible Agent rows for Local Claude and Local Codex. The implementation does not write `~/.claude`, `~/.codex`, or `~/.cc-switch`, and does not log or expose real secrets through metadata or import responses.
 
-After this change, a developer can run a focused server test that creates temporary Claude and Codex fixture files, calls the local source reader, and observes two standard `ExternalProviderRecord` records: one `anthropic` Claude record and one `openai-compatible` Codex record. A later onboarding step can register the source and call the existing `/external-provider-sources/:sourceKey/refresh` route to project those records into `provider_targets`.
+After this change, a user can open Settings Agents, click `Import`, review a dialog of detected local Claude and Codex candidates, and choose which local Agent identities to import. If the user's local Claude or Codex configuration points at the CC Switch local proxy, Cradle resolves CC Switch's current upstream provider and model settings, but the Agent identity still remains `Local Claude` or `Local Codex`. Repeating the action refreshes the Cradle-owned external provider target data and reports the local Agent identity as already configured rather than creating duplicates. A developer can run focused server tests that create temporary Claude, Codex, and CC Switch fixture files, call the local source reader, and exercise `POST /agents/import/local-config` twice to prove idempotence.
 
 ## Progress
 
@@ -19,6 +19,11 @@ After this change, a developer can run a focused server test that creates tempor
 - [x] (2026-05-25 09:01Z) Updated `apps/server/src/modules/external-provider-sources/README.md` to list the new onboarding utility and state that it is intentionally not registered on startup.
 - [x] (2026-05-25 09:02Z) Verified the new reader and existing host external source tests with focused Vitest commands and server TypeScript checking.
 - [x] (2026-05-25 09:09Z) Created this ExecPlan record after implementation to preserve the design, boundaries, validation evidence, and future integration path.
+- [x] (2026-05-26 03:53Z) Added an explicit `/agents/import/local-config` route and Settings Agents `Import` button; startup behavior remains unchanged.
+- [x] (2026-05-26 03:53Z) Added Agent import tests proving first import creates Local Claude and Local Codex, second import reports existing Agents, and secret values do not appear in the HTTP response.
+- [x] (2026-05-26 03:53Z) Verified focused server tests and server TypeScript checking after the explicit import integration.
+- [x] (2026-05-26 08:05Z) Corrected CC Switch proxy import semantics so CC Switch is provenance and upstream resolution only; imported Agent names remain Local Claude and Local Codex, while `modelId` and runtime config are copied from the resolved upstream provider.
+- [x] (2026-05-26 08:05Z) Confirmed Agent detail and Agent list provider/model pickers use `provider_targets` through `useProviderTargets()` and `useProviderTargetModelMap()` rather than the legacy manual `agent_profiles` list.
 
 ## Surprises & Discoveries
 
@@ -33,6 +38,12 @@ After this change, a developer can run a focused server test that creates tempor
 
 - Observation: Real Claude and Codex home directories can contain many unrelated session/history files.
   Evidence: A broad local search through `~/.claude` and `~/.codex` produced large session/history output. The final reader therefore reads only fixed allowlisted paths and tests only temporary fixture directories.
+
+- Observation: External provider projection requires Cradle's credential secret when imported records include API keys.
+  Evidence: A direct refresh attempt without `CRADLE_CREDENTIAL_SECRET` returned an error message `CRADLE_CREDENTIAL_SECRET is required to manage secrets`. The import route now surfaces refresh errors as `local_agent_config_import_failed` instead of silently returning zero records.
+
+- Observation: A CC Switch current provider is not an Agent identity.
+  Evidence: The preview response now separates `agentName` (`Local Claude` or `Local Codex`) from `resolvedProviderName` (for example `CC Switch Claude`), and `apps/server/tests/agent.test.ts` asserts the imported Agent name stays local while `modelId`, Claude haiku/sonnet/opus aliases, and Codex reasoning/approval/sandbox settings come from the resolved CC Switch upstream provider.
 
 ## Decision Log
 
@@ -56,11 +67,31 @@ After this change, a developer can run a focused server test that creates tempor
   Rationale: The host projection layer already encrypts `credential` values. Metadata is displayed and persisted for diagnostics, so it must only contain non-secret signals and booleans like `hasCredential`.
   Date/Author: 2026-05-25 / Codex.
 
+- Decision: Import is an explicit Settings Agents action, not an automatic startup action.
+  Rationale: The user asked to prepare onboarding utilities without starting them automatically, then requested a nearby Import button. Explicit import gives the user control over when local files are read while still making the flow one click from Agent Management.
+  Date/Author: 2026-05-26 / Codex.
+
+- Decision: The route is owned by `agent-identity`, while local config reading and provider-target projection remain owned by `external-provider-sources`.
+  Rationale: The user-visible action is "create/import Agents", but the source semantics and Cradle-owned runtime target writes already belong to the external provider source module. This preserves ownership boundaries and avoids writing to Claude/Codex namespaces.
+  Date/Author: 2026-05-26 / Codex.
+
+- Decision: Superseded: dedupe initially used Cradle-owned external runtime target identity plus runtime kind.
+  Rationale: The first import implementation treated an existing Agent with the same `providerTargetId` and runtime kind as already configured. This was later superseded because CC Switch's current upstream provider can change without changing the user's local Claude or Codex app identity.
+  Date/Author: 2026-05-26 / Codex.
+
+- Decision: Dedupe now uses the local app identity before provider target identity for onboarding imports.
+  Rationale: CC Switch's current upstream provider can change, but the user still has one local Claude configuration and one local Codex configuration. Importing a new upstream target must update or reuse `Local Claude` / `Local Codex`, not create `CC Switch current provider Agent` rows or multiple local Agents for the same app.
+  Date/Author: 2026-05-26 / Codex.
+
+- Decision: Agent detail and Agent list provider/model pickers use `provider_targets` directly.
+  Rationale: Runtime selection has to include both manual provider targets and external provider targets created by CC Switch and local onboarding. The legacy `agent_profiles` route is a manual-provider settings adapter and is not a complete runtime-selection source.
+  Date/Author: 2026-05-26 / Codex.
+
 ## Outcomes & Retrospective
 
-The preparation work is complete. The server now has a reusable `createLocalAgentConfigExternalProviderSource()` factory and direct snapshot reader for local Claude and Codex configuration, while startup behavior remains unchanged. Fixture tests prove the mapper returns standard external provider records, handles missing files, emits non-blocking missing-credential warnings, respects context path overrides, and avoids putting test secrets in metadata.
+The preparation work is complete, and the first explicit onboarding entry point is implemented. The server now has a reusable `createLocalAgentConfigExternalProviderSource()` factory and direct snapshot reader for local Claude and Codex configuration, while startup behavior remains unchanged. The Agent Identity module exposes preview and commit routes for local import. Preview refreshes the direct local source and any registered CC Switch source, then returns selectable candidates for a dialog. Commit projects records into Cradle-owned external provider targets, creates or updates Local Claude and Local Codex Agent rows, and returns existing Agents on repeated imports. Fixture tests prove the mapper returns standard external provider records, handles missing files, emits non-blocking missing-credential warnings, respects context path overrides, resolves CC Switch proxy upstream models and runtime settings, avoids putting test secrets in metadata, and keeps the HTTP import response free of plaintext fixture secrets.
 
-The next product step is to decide where onboarding should register this source. The likely path is a controlled onboarding flow or feature flag that registers the source and then uses the existing external provider source refresh route. That future step should also decide whether detected `provider_targets` automatically create user-visible `agents` or only appear as available provider targets for manual agent creation.
+The previous product gap around Agent detail has been closed for runtime selection: Agent detail and Agent list provider/model pickers now use provider targets directly. The manual profile screens still exist as the manual provider editing surface, but they are no longer the Agent detail runtime picker data source.
 
 ## Context and Orientation
 
@@ -69,6 +100,8 @@ Cradle's server code lives under `apps/server`. The external provider source mod
 The existing host projection service is `apps/server/src/modules/external-provider-sources/service.ts`. It reads registered sources from `apps/server/src/plugins/external-provider-source-registry.ts`, validates each `ExternalProviderSourceSnapshot`, writes `external_provider_sources` and `external_provider_records`, and then creates `provider_targets` rows with `kind: 'external'`.
 
 The local onboarding utility is `apps/server/src/modules/external-provider-sources/local-agent-config-source.ts`. It exports `resolveLocalAgentConfigSourceConfig`, `readLocalAgentConfigExternalProviderSnapshot`, `readLocalAgentConfigExternalProviderSnapshotFromContext`, and `createLocalAgentConfigExternalProviderSource`. It is not imported by `apps/server/src/app.ts`, `apps/server/src/plugins/context.ts`, or any plugin activation path, so it does not run automatically.
+
+The explicit Agent import routes are `POST /agents/import/local-config/preview` and `POST /agents/import/local-config` in `apps/server/src/modules/agent-identity/index.ts`. Their service implementations are `previewLocalConfigImport()` and `importLocalConfig()` in `apps/server/src/modules/agent-identity/service.ts`. They create no source registration at startup; instead, preview calls `refreshDirectExternalProviderSource()` in `apps/server/src/modules/external-provider-sources/service.ts` for the local source only when the route is invoked, and it refreshes registered CC Switch sources to resolve proxy upstreams. The renderer hook `useAgents()` in `apps/web/src/features/agent-runtime/use-agents.ts` calls these routes, and `apps/web/src/features/agent-management/agent-list.tsx` exposes the Settings Agents `Import` button next to `Add agent`.
 
 The current local file assumptions are deliberately small. For Claude, the reader looks for `~/.claude/settings.json` and `~/.claude/settings.local.json` by default and reads their `env` objects. For Codex, it looks for `~/.codex/config.toml` and `~/.codex/auth.json` by default. All paths can be overridden through the source read context `sharedConfig` or environment variables with the `LOCAL_AGENT_CONFIG_*` names documented below.
 
@@ -80,24 +113,31 @@ Second, add focused tests that create temporary directories and files for the re
 
 Third, update server dependency metadata and the external provider source README. Server needs `smol-toml` because Codex configuration is TOML and must be parsed with a structured parser. The README should tell future contributors that the utility exists and is intentionally not registered on startup.
 
+Fourth, expose a controlled Agent import action. In `apps/server/src/plugins/external-provider-source-registry.ts`, export the stable source-key derivation helper so direct refresh can use the same key as registered sources. In `apps/server/src/modules/external-provider-sources/service.ts`, extract refresh logic into a helper and add `refreshDirectExternalProviderSource()` for explicit, unregistered onboarding reads. In `apps/server/src/modules/agent-identity/service.ts`, add `importLocalConfig()` that refreshes the local source, lists active records for that source, resolves each projected runtime target, and creates or reuses an Agent for Claude and Codex. In `apps/web/src/features/agent-runtime/use-agents.ts`, add a TanStack mutation for the import route and invalidate Agents and provider targets on success. In `apps/web/src/features/agent-management/agent-list.tsx`, place an `Import` button next to `Add agent`, show a compact result message, and select the first created or existing imported Agent.
+
 ## Concrete Steps
 
 The implementation has already been applied in the current worktree. To reproduce or continue it from repository root `/Users/wibus/dev/Cradle`, inspect these files:
 
     sed -n '1,460p' apps/server/src/modules/external-provider-sources/local-agent-config-source.ts
+    sed -n '200,360p' apps/server/src/modules/agent-identity/service.ts
+    sed -n '1,120p' apps/web/src/features/agent-runtime/use-agents.ts
+    sed -n '640,720p' apps/web/src/features/agent-management/agent-list.tsx
     sed -n '1,260p' apps/server/tests/local-agent-config-source.test.ts
+    sed -n '250,370p' apps/server/tests/agent.test.ts
     sed -n '1,80p' apps/server/src/modules/external-provider-sources/README.md
     rg -n "createLocalAgentConfigExternalProviderSource|local-agent-config|LOCAL_AGENT_CONFIG" apps/server/src apps/server/tests
 
-The final `rg` command should show the source factory only in the new utility and tests. It should not show imports from `apps/server/src/app.ts` or plugin activation code.
+The final `rg` command should show the source factory in the utility, the Agent import service, and tests. It should not show imports from `apps/server/src/app.ts` or plugin activation code.
 
 Run the focused tests and typecheck from repository root:
 
     pnpm --filter @cradle/server exec vitest run tests/local-agent-config-source.test.ts
+    pnpm --filter @cradle/server exec vitest run tests/agent.test.ts tests/local-agent-config-source.test.ts
     pnpm --filter @cradle/server exec tsc --noEmit
     pnpm --filter @cradle/server exec vitest run tests/external-provider-sources.test.ts tests/local-agent-config-source.test.ts
 
-Expected results are one passing test file for the first command, no TypeScript errors for the second command, and two passing test files with eight passing tests for the third command.
+Expected results are one passing test file for the first command, two passing test files with six passing tests for the second command, no TypeScript errors for the third command, and two passing test files with eight passing tests for the fourth command.
 
 ## Validation and Acceptance
 
@@ -111,6 +151,17 @@ The expected result is:
     Tests  4 passed (4)
 
 The most important behavior in that test is that temporary fixture Claude and Codex files produce two records. The Claude record has `externalId: 'claude:local-current'`, `app: 'claude'`, and `providerKind: 'anthropic'`. The Codex record has `externalId: 'codex:local-current'`, `app: 'codex'`, and `providerKind: 'openai-compatible'`. The test also checks that fixture secrets are present only in `credential` fields and not in provider metadata.
+
+Run:
+
+    pnpm --filter @cradle/server exec vitest run tests/agent.test.ts tests/local-agent-config-source.test.ts
+
+The expected result after explicit import integration is:
+
+    Test Files  2 passed (2)
+    Tests  6 passed (6)
+
+The new Agent import test creates temporary Claude and Codex config fixtures, configures `CRADLE_CREDENTIAL_SECRET` for encrypted credential projection, calls `POST /agents/import/local-config` twice, and expects the first response to report `created: 2` and the second response to report `existing: 2`. It also expects the HTTP responses not to contain the fixture secret values.
 
 Run:
 
@@ -137,6 +188,8 @@ If dependency installation or lockfile verification is interrupted, rerun `pnpm 
 
 If local machine environment variables interfere with manual experiments, pass `LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV=false` through source `sharedConfig` or environment. The tests already do this by using `includeProcessEnv: false` in direct config and shared config override values.
 
+The explicit HTTP import reads only the default allowlisted locations and the process environment switch. Do not add arbitrary file path fields to the public route body; test-only fixture paths should be supplied through environment overrides or direct source-context tests, not through renderer-controlled request payloads.
+
 ## Artifacts and Notes
 
 The main implementation file is:
@@ -146,6 +199,10 @@ The main implementation file is:
 The focused test file is:
 
     apps/server/tests/local-agent-config-source.test.ts
+
+The explicit import integration test is in:
+
+    apps/server/tests/agent.test.ts
 
 The dependency and lockfile updates are:
 
@@ -162,11 +219,22 @@ Observed validation output from the completed implementation:
     RUN  v4.1.4 /Users/wibus/dev/Cradle/apps/server
 
     Test Files  2 passed (2)
+    Tests  6 passed (6)
+
+    RUN  v4.1.4 /Users/wibus/dev/Cradle/apps/server
+
+    Test Files  2 passed (2)
     Tests  8 passed (8)
 
 The server typecheck command also exited successfully:
 
     pnpm --filter @cradle/server exec tsc --noEmit
+
+The web typecheck command was also attempted:
+
+    pnpm --filter @cradle/web exec tsc --noEmit --pretty false
+
+It remained blocked by pre-existing Node type configuration errors under `apps/web/scripts/i18n-workflow/utils.ts`, not by the Agent import files. A separate unrelated generated mutation call in `agent-runtime-settings.tsx` was fixed by passing an empty options object to `refreshExternalSources.mutate({})`.
 
 During validation, pnpm performed lockfile supply-chain checks and Electron postinstall hooks because the server dependency graph changed. Those hooks completed successfully. The worktree also contained unrelated desktop, web, CC Switch, and docs changes that were not part of this plan and were not reverted.
 
@@ -194,6 +262,20 @@ The local source utility must provide these exported interfaces and functions in
 
 The source id is `local-agent-config`, and the label is `Local Agent Config`. The stable record ids are `claude:local-current` and `codex:local-current`. These ids are intentionally source-local ids; once the source is registered by a future onboarding flow, the host registry will derive a full source key from the owner and source id.
 
+The explicit Agent import preview route has this public shape:
+
+    POST /agents/import/local-config/preview
+    body: { includeProcessEnv?: boolean }
+
+The response includes `candidates` and `sourceRefreshes`. Each candidate includes the local app (`claude` or `codex`), `agentName` (`Local Claude` or `Local Codex`), `resolvedProviderName` for the upstream provider used to populate model settings, `sourceKind` (`local-config` or `cc-switch`), source-local external record id, provider target id if projected, model id, endpoint, importability, existing-Agent status, optional reason, notes, and the Agent row when present.
+
+The explicit Agent import commit route has this public shape:
+
+    POST /agents/import/local-config
+    body: { includeProcessEnv?: boolean, candidateIds?: string[] }
+
+The response includes the preview, `created`, `existing`, `skipped`, and an `agents` array. Each array item includes the local app (`claude` or `codex`), selected candidate id, `sourceKind`, source-local external record id, provider target id if projected, runtime kind, status (`created`, `existing`, or `skipped`), optional reason, and the Agent row when present. The route intentionally does not expose arbitrary path override fields.
+
 The supported override keys are:
 
     LOCAL_AGENT_CONFIG_CLAUDE_DIR
@@ -211,3 +293,7 @@ The dependency added to `apps/server/package.json` is:
 `smol-toml` is used only to parse Codex `config.toml`. Claude files are JSON and are parsed with `JSON.parse` through Zod-backed schemas. Zod validates both reader inputs so malformed files become warnings rather than process crashes.
 
 Revision note, 2026-05-25 09:09Z: Created this ExecPlan after implementing the first local-agent-config onboarding utility. The note exists so future contributors can understand why the source is present but not yet registered at startup.
+
+Revision note, 2026-05-26 03:53Z: Updated this ExecPlan after adding the explicit Settings Agents import flow. The revision records the non-startup boundary, idempotent Agent creation behavior, credential-secret projection requirement, validation evidence, and the public HTTP interface.
+
+Revision note, 2026-05-26 08:05Z: Updated this ExecPlan after correcting CC Switch proxy semantics and Agent detail provider-target migration. The revision records that CC Switch current providers resolve upstream model settings but do not become Agent identities, and that Agent detail/list runtime pickers now use `provider_targets`.

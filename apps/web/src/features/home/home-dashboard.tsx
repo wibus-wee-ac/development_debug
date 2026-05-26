@@ -22,7 +22,7 @@ import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
 import type { AutomationDefinition, AutomationRun } from '~/features/automation'
 import { AutomationDashboard, useAutomationDefinitions } from '~/features/automation'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
-import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
+import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { Session, Workspace } from '~/lib/types'
@@ -397,7 +397,6 @@ type ActivityItem
 export function HomeDashboard() {
   const { t: homeT } = useTranslation('home')
   const { workspaces } = useWorkspaces()
-  const [searchOpen, setSearchOpen] = useState(false)
   const [automationOpen, setAutomationOpen] = useState(false)
   const queryClient = useQueryClient()
   const { selectDirectory } = useDirectoryPicker()
@@ -455,7 +454,7 @@ export function HomeDashboard() {
       <div className="px-4 pt-4 pb-3 shrink-0">
         <button
           type="button"
-          onClick={() => setSearchOpen(true)}
+          onClick={() => useGlobalSearchStore.getState().openSearch()}
           className="flex w-full items-center gap-2.5 rounded-md border border-border/50 bg-background px-3 h-8 text-xs text-muted-foreground transition-colors hover:border-border/80"
         >
           <SearchIcon className="size-3.5 shrink-0" />
@@ -606,8 +605,6 @@ export function HomeDashboard() {
           </section>
         </div>
       </div>
-
-      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   )
 }

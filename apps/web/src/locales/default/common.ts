@@ -19,13 +19,14 @@ export default {
   'status.error': 'Something went wrong',
   'status.loading': 'Loading...',
   'errorBoundary.title': 'Cradle hit a rendering error',
-  'errorBoundary.description': 'The app caught this crash, so you can retry the render or reload the window.',
+  'errorBoundary.description':
+    'The app caught this crash, so you can retry the render or reload the window.',
   'errorBoundary.details': 'Error details',
   'model.emptySelection': 'Model',
   'model.fuzzyMatchTitle': 'Fuzzy models.dev match',
   'model.noMatchingModels': 'No matching models',
   'model.noModelsAvailable': 'No models available',
-  'model.noProviderTargets': 'No provider targets available',
+  'model.noProviderTargets': 'No providers available',
   'model.searchPlaceholder': 'Search models...',
   'runtime.claudeAgent.description': 'Agentic tool-use loop',
   'runtime.claudeAgent.label': 'Claude Agent',
@@ -42,5 +43,5 @@ export default {
   'thinking.low.description': 'Fast responses with light reasoning.',
   'thinking.low.label': 'Low',
   'thinking.medium.description': 'Balanced reasoning for everyday work.',
-  'thinking.medium.label': 'Medium',
+  'thinking.medium.label': 'Medium'
 } as const

@@ -1,17 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import type { TFunction } from 'i18next'
 import {
   ArrowDownIcon,
   ArrowUpIcon,
-  BrainIcon,
   CircleDotIcon,
   CornerDownLeftIcon,
   FileIcon,
   MessageSquareIcon,
   SettingsIcon,
-  SparklesIcon,
   TerminalIcon,
-  UserIcon
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -19,7 +15,8 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getIssuesSearch, getKanbanBoards, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import {
   Command,
   CommandEmpty,
@@ -31,33 +28,77 @@ import {
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
-import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import type { ChronicleSearchHit, ThreadSearchHit } from '~/lib/types'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 import { selectFileSearchResult } from './global-search-actions'
-import { HighlightedText } from './highlighted-text'
-import { groupHitsByWorkspace } from './thread-search-groups'
-import { useChronicleSearch } from './use-chronicle-search'
-import { useThreadSearch } from './use-thread-search'
 
 interface GlobalSearchDialogProps {
   open: boolean
+  initialQuery?: string
   onOpenChange: (open: boolean) => void
 }
 
-type SearchTranslation = TFunction<'search'>
+type SearchMessageKey = keyof typeof import('~/locales/default/search').default
+type PaletteModeId = 'command' | 'quickOpen' | 'symbol' | 'line' | 'workspaceSymbol'
+type FileSearchAvailability = 'available' | 'unsupported-tab' | 'missing-workspace'
 
-const DEBOUNCE_MS = 150
+interface PaletteMode {
+  id: PaletteModeId
+  prefix: string
+  labelKey: SearchMessageKey
+  descriptionKey: SearchMessageKey
+  placeholderKey: SearchMessageKey
+  query: string
+}
+
+const COMMAND_HISTORY_KEY = 'cradle.commandPalette.recentCommands'
+const COMMAND_HISTORY_LIMIT = 12
+const PALETTE_MODES = [
+  {
+    id: 'command',
+    prefix: '>',
+    labelKey: 'mode.command.label',
+    descriptionKey: 'mode.command.description',
+    placeholderKey: 'mode.command.placeholder'
+  },
+  {
+    id: 'quickOpen',
+    prefix: '',
+    labelKey: 'mode.quickOpen.label',
+    descriptionKey: 'mode.quickOpen.description',
+    placeholderKey: 'mode.quickOpen.placeholder'
+  },
+  {
+    id: 'symbol',
+    prefix: '@',
+    labelKey: 'mode.symbol.label',
+    descriptionKey: 'mode.symbol.description',
+    placeholderKey: 'mode.symbol.placeholder'
+  },
+  {
+    id: 'line',
+    prefix: ':',
+    labelKey: 'mode.line.label',
+    descriptionKey: 'mode.line.description',
+    placeholderKey: 'mode.line.placeholder'
+  },
+  {
+    id: 'workspaceSymbol',
+    prefix: '#',
+    labelKey: 'mode.workspaceSymbol.label',
+    descriptionKey: 'mode.workspaceSymbol.description',
+    placeholderKey: 'mode.workspaceSymbol.placeholder'
+  }
+] as const
 const SessionWorkspaceSchema = z
   .object({
     workspaceId: z.string().nullable()
   })
   .passthrough()
-
 // ── Commands (static actions) ─────────────────────────────────────────────────
 
 interface CommandAction {
@@ -69,16 +110,94 @@ interface CommandAction {
   handler: () => void
 }
 
-interface GlobalSearchIssue {
-  id: string
-  title: string
-  priority: string
-  workspaceId?: string
+function parsePaletteInput(input: string): PaletteMode {
+  const prefixedMode = PALETTE_MODES.find(mode => mode.prefix && input.startsWith(mode.prefix))
+  const mode = prefixedMode ?? PALETTE_MODES[1]
+  const query = prefixedMode ? input.slice(mode.prefix.length).trimStart() : input.trim()
+
+  return { ...mode, query }
 }
 
-interface GlobalSearchBoard {
-  id: string
-  workspaceId: string
+function scoreFuzzyMatch(source: string, query: string): number | null {
+  const normalizedSource = source.toLowerCase()
+  const normalizedQuery = query.trim().toLowerCase()
+
+  if (!normalizedQuery) {
+    return 0
+  }
+
+  if (normalizedSource.includes(normalizedQuery)) {
+    return normalizedSource.indexOf(normalizedQuery)
+  }
+
+  let score = 0
+  let sourceIndex = 0
+  for (const char of normalizedQuery) {
+    const nextIndex = normalizedSource.indexOf(char, sourceIndex)
+    if (nextIndex === -1) {
+      return null
+    }
+    score += nextIndex - sourceIndex + 1
+    sourceIndex = nextIndex + 1
+  }
+
+  return score + normalizedSource.length
+}
+
+function readCommandHistory(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COMMAND_HISTORY_KEY) ?? '[]')
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === 'string') : []
+  }
+  catch {
+    return []
+  }
+}
+
+function writeCommandHistory(commandId: string): string[] {
+  const nextHistory = [commandId, ...readCommandHistory().filter(id => id !== commandId)].slice(0, COMMAND_HISTORY_LIMIT)
+  try {
+    window.localStorage.setItem(COMMAND_HISTORY_KEY, JSON.stringify(nextHistory))
+  }
+  catch {
+    return nextHistory
+  }
+  return nextHistory
+}
+
+function useActiveFileSearchWorkspaceId(): {
+  availability: FileSearchAvailability
+  workspaceId: string | null
+} {
+  const { slots } = useLayoutSlotsCtx()
+  const activeTab = useCradleTabStore((s) => s.tabs.find(tab => tab.id === s.activeTabId) ?? null)
+  const chatSessionId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+
+  const { data: chatSession } = useQuery({
+    ...getSessionsByIdOptions({ path: { id: chatSessionId ?? '' } }),
+    enabled: !!chatSessionId,
+    staleTime: 60_000,
+    select: (data) => (data ? SessionWorkspaceSchema.parse(data) : undefined)
+  })
+
+  const canSearchFiles = activeTab?.type === 'new-chat'
+    || activeTab?.type === 'chat'
+    || activeTab?.type === 'workspace-detail'
+
+  if (!canSearchFiles) {
+    return { availability: 'unsupported-tab', workspaceId: null }
+  }
+
+  const workspaceId = activeTab?.type === 'workspace-detail'
+    ? activeTab.params.workspaceId ?? null
+    : activeTab?.type === 'chat'
+      ? chatSession?.workspaceId ?? null
+      : slots.asideWorkspaceId ?? null
+
+  return {
+    availability: workspaceId ? 'available' : 'missing-workspace',
+    workspaceId
+  }
 }
 
 interface GlobalSearchFile {
@@ -87,32 +206,12 @@ interface GlobalSearchFile {
   path: string
 }
 
-const GlobalSearchIssueListSchema = z
-  .array(
-    z.object({
-      id: z.string(),
-      title: z.string(),
-      priority: z.string(),
-      workspaceId: z.string().optional()
-    })
-  )
-  .default([])
-
 const GlobalSearchFileListSchema = z
   .array(
     z.object({
       type: z.enum(['file', 'directory']),
       name: z.string(),
       path: z.string()
-    })
-  )
-  .default([])
-
-const GlobalSearchBoardListSchema = z
-  .array(
-    z.object({
-      id: z.string(),
-      workspaceId: z.string()
     })
   )
   .default([])
@@ -175,61 +274,16 @@ function useCommands(close: () => void): CommandAction[] {
   )
 }
 
-// ── Issue search hook ─────────────────────────────────────────────────────────
-
-function useIssueSearch(query: string, enabled: boolean) {
-  const [debouncedQuery, setDebouncedQuery] = useState(query)
-
-  useEffect(() => {
-    const timer = setTimeout(setDebouncedQuery, DEBOUNCE_MS, query)
-    return () => clearTimeout(timer)
-  }, [query])
-
-  const currentTrimmed = query.trim()
-  const trimmed = debouncedQuery.trim()
-
-  const { data = [], isFetching } = useQuery({
-    queryKey: ['search-issues', trimmed],
-    queryFn: async () => {
-      const { data } = await getIssuesSearch({ query: { q: trimmed, limit: '10' } })
-      return GlobalSearchIssueListSchema.parse(data) satisfies GlobalSearchIssue[]
-    },
-    enabled: enabled && !!trimmed,
-    staleTime: 5_000
-  })
-
-  return {
-    issues: data,
-    isPending: enabled && currentTrimmed.length > 0 && (isFetching || debouncedQuery !== query)
-  }
-}
-
 // ── File search hook (client-side filter on cached file lists) ─────────────────
 
-function useFileSearch(query: string, enabled: boolean) {
-  // Get current workspace from active tab
-  const activeTab = useCradleTabStore((s) => {
-    const t = s.tabs.find((tab) => tab.id === s.activeTabId)
-    return t?.type === 'chat' ? t.params : null
-  })
-
-  // Load sessions to get workspaceId
-  const { data: session } = useQuery({
-    ...getSessionsByIdOptions({ path: { id: activeTab?.sessionId ?? '' } }),
-    enabled: !!activeTab?.sessionId,
-    staleTime: 60_000,
-    select: (data) => (data ? SessionWorkspaceSchema.parse(data) : undefined)
-  })
-
-  const workspaceId = session?.workspaceId ?? null
-
+function useFileSearch(query: string, enabled: boolean, workspaceId: string | null | undefined) {
   const { data: files = [], isFetching } = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
       return GlobalSearchFileListSchema.parse(data) satisfies GlobalSearchFile[]
     },
-    enabled: !!workspaceId,
+    enabled: enabled && !!workspaceId,
     staleTime: 30_000
   })
 
@@ -240,7 +294,17 @@ function useFileSearch(query: string, enabled: boolean) {
       return []
     }
     return files
-      .filter((f) => f.type === 'file' && f.path.toLowerCase().includes(trimmed))
+      .map((file) => {
+        if (file.type !== 'file') {
+          return null
+        }
+
+        const matchScore = scoreFuzzyMatch(file.path, trimmed)
+        return matchScore === null ? null : { file, matchScore }
+      })
+      .filter((result): result is { file: GlobalSearchFile, matchScore: number } => result !== null)
+      .sort((a, b) => a.matchScore - b.matchScore || a.file.path.localeCompare(b.file.path))
+      .map(result => result.file)
       .slice(0, 10)
   }, [enabled, trimmed, files])
 
@@ -253,13 +317,13 @@ function useFileSearch(query: string, enabled: boolean) {
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogProps) {
+export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) {
   const { t } = useTranslation('search')
-  const { openTab } = useCradleNavigation()
-  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
-  const setSettingsSection = useSettingsOverlayStore((s) => s.setSettingsSection)
-  const setChronicleFocusTarget = useSettingsOverlayStore((s) => s.setChronicleFocusTarget)
+  const fileSearchWorkspace = useActiveFileSearchWorkspaceId()
+  const openWorkspaceFile = useBrowserPanelStore((s) => s.openWorkspaceFileTab)
+  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
   const [query, setQuery] = useState('')
+  const [commandHistory, setCommandHistory] = useState(readCommandHistory)
   const panelRef = useRef<HTMLDivElement>(null)
   const requestedQueryRef = useRef('')
   const measuredQueryRef = useRef('')
@@ -275,8 +339,16 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
       return
     }
 
-    panelRef.current?.querySelector<HTMLInputElement>('[data-slot="command-input"]')?.focus()
-  }, [open])
+    setQuery(initialQuery)
+    requestedQueryRef.current = ''
+    measuredQueryRef.current = ''
+
+    requestAnimationFrame(() => {
+      const input = panelRef.current?.querySelector<HTMLInputElement>('[data-slot="command-input"]')
+      input?.focus()
+      input?.setSelectionRange(initialQuery.length, initialQuery.length)
+    })
+  }, [initialQuery, open])
 
   useEffect(() => {
     if (!open) {
@@ -312,39 +384,67 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
     [open]
   )
   const commands = useCommands(close)
-  const trimmed = query.trim()
+  const paletteMode = useMemo(() => parsePaletteInput(query), [query])
+  const trimmed = paletteMode.query.trim()
   const hasQuery = trimmed.length > 0
+  const isCommandMode = paletteMode.id === 'command'
+  const isQuickOpenMode = paletteMode.id === 'quickOpen'
+  const isUnsupportedMode = paletteMode.id === 'symbol'
+    || paletteMode.id === 'line'
+    || paletteMode.id === 'workspaceSymbol'
 
-  // Search sources
-  const { hits: threadHits, isPending: threadsPending } = useThreadSearch({ query, enabled: open })
-  const { hits: chronicleHits, isPending: chroniclePending } = useChronicleSearch({ query, enabled: open })
-  const { issues, isPending: issuesPending } = useIssueSearch(query, open)
   const {
     files,
     workspaceId: fileWorkspaceId,
     isPending: filesPending
-  } = useFileSearch(query, open)
-
-  const threadGroups = useMemo(() => groupHitsByWorkspace(threadHits), [threadHits])
+  } = useFileSearch(
+    trimmed,
+    open && isQuickOpenMode && fileSearchWorkspace.availability === 'available',
+    fileSearchWorkspace.workspaceId
+  )
 
   // Filter commands by query
   const filteredCommands = useMemo(() => {
-    if (!hasQuery) {
-      return commands
+    if (!isCommandMode) {
+      return []
     }
-    const q = trimmed.toLowerCase()
-    return commands.filter(
-      (c) => c.label.toLowerCase().includes(q) || c.keywords.toLowerCase().includes(q)
-    )
-  }, [commands, hasQuery, trimmed])
 
-  const isPending = threadsPending || chroniclePending || issuesPending || filesPending
-  const hasResults =
-    threadHits.length > 0
-    || chronicleHits.length > 0
-    || issues.length > 0
-    || files.length > 0
-    || filteredCommands.length > 0
+    return commands
+      .map((command) => {
+        const searchTarget = `${command.label} ${command.keywords}`
+        const matchScore = scoreFuzzyMatch(searchTarget, trimmed)
+        if (matchScore === null) {
+          return null
+        }
+
+        const historyIndex = commandHistory.indexOf(command.id)
+        return {
+          command,
+          matchScore,
+          historyIndex: historyIndex === -1 ? Number.MAX_SAFE_INTEGER : historyIndex
+        }
+      })
+      .filter((result): result is NonNullable<typeof result> => result !== null)
+      .sort((a, b) => {
+        if (!hasQuery && a.historyIndex !== b.historyIndex) {
+          return a.historyIndex - b.historyIndex
+        }
+        if (a.matchScore !== b.matchScore) {
+          return a.matchScore - b.matchScore
+        }
+        return a.command.label.localeCompare(b.command.label)
+      })
+      .map(result => result.command)
+  }, [commandHistory, commands, hasQuery, isCommandMode, trimmed])
+
+  const isPending = isQuickOpenMode && filesPending
+  const hasResults = filteredCommands.length > 0 || files.length > 0
+  const showModeGuide = !hasQuery && isCommandMode
+  const showUnsupportedModeState = isUnsupportedMode && !isPending && !hasResults
+  const showFileSearchUnavailableState = isQuickOpenMode
+    && !hasResults
+    && !isPending
+    && fileSearchWorkspace.availability !== 'available'
 
   useEffect(() => {
     if (
@@ -367,66 +467,26 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
     })
   }, [hasQuery, isPending, open, trimmed])
 
+  const handleSelectCommand = useCallback((command: CommandAction) => {
+    setCommandHistory(writeCommandHistory(command.id))
+    command.handler()
+  }, [])
+
   const handleSelectFile = useCallback(
     (filePath: string) => {
       if (!fileWorkspaceId) {
         return
       }
 
-      void selectFileSearchResult({
+      selectFileSearchResult({
         workspaceId: fileWorkspaceId,
         filePath,
-        openTab,
         close,
-        writeText: navigator.clipboard?.writeText?.bind(navigator.clipboard),
-        notify: (notification) => toastManager.add(notification)
+        openWorkspaceFile,
+        setBrowserPanelOpen
       })
     },
-    [close, fileWorkspaceId, openTab]
-  )
-
-  const handleSelectThread = useCallback(
-    (sessionId: string) => {
-      close()
-      openTab('chat', { sessionId })
-    },
-    [close, openTab]
-  )
-
-  const handleSelectChronicle = useCallback((hit: ChronicleSearchHit) => {
-    const tabStore = useCradleTabStore.getState()
-    const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
-      ? tabStore.activeTabId
-      : (() => {
-          return tabStore.openTab('home', {}, { pinned: true })
-        })()
-    close()
-    tabStore.setActiveTab(activeTabId)
-    setSettingsSection('chronicle')
-    setChronicleFocusTarget({ type: hit.type, id: hit.id })
-    openSettings(activeTabId)
-  }, [close, openSettings, setChronicleFocusTarget, setSettingsSection])
-
-  const handleSelectIssue = useCallback(
-    (issue: GlobalSearchIssue) => {
-      close()
-      void (async () => {
-        let boards: GlobalSearchBoard[] = []
-        try {
-          if (issue.workspaceId) {
-            const { data } = await getKanbanBoards({ query: { workspaceId: issue.workspaceId } })
-            boards = GlobalSearchBoardListSchema.parse(data) satisfies GlobalSearchBoard[]
-          }
-        }
-        catch (error) {
-          console.error('[GlobalSearchDialog] failed to resolve issue board:', error)
-        }
-
-        const boardId = boards[0]?.id
-        openTab('kanban-board', boardId ? { boardId, issue: issue.id } : {})
-      })()
-    },
-    [close, openTab]
+    [close, fileWorkspaceId, openWorkspaceFile, setBrowserPanelOpen]
   )
 
   return createPortal(
@@ -452,8 +512,20 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
       >
         <Command shouldFilter={false} data-testid="global-search-dialog">
           <div className="overflow-hidden rounded-xl!">
+            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded bg-foreground/8 px-1.5 font-mono text-[11px] text-foreground/70">
+                  {paletteMode.prefix || '⌘P'}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-medium">{t(paletteMode.labelKey)}</div>
+                  <div className="truncate text-[11px] text-muted-foreground">{t(paletteMode.descriptionKey)}</div>
+                </div>
+              </div>
+              {isPending && <Spinner className="size-3.5 shrink-0" />}
+            </div>
             <CommandInput
-              placeholder={t('placeholder')}
+              placeholder={t(paletteMode.placeholderKey)}
               value={query}
               onValueChange={handleQueryChange}
               aria-label={t('aria.input')}
@@ -461,94 +533,45 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
             />
             <div>
               <CommandEmpty className="not-empty:py-12">
-                {hasQuery ? isPending ? <LoadingState /> : <NoResults /> : <IdleState />}
+                {isPending
+                  ? <LoadingState />
+                  : showUnsupportedModeState
+                    ? <ModeUnavailableState mode={paletteMode} />
+                    : showFileSearchUnavailableState
+                      ? <FileSearchUnavailableState availability={fileSearchWorkspace.availability} />
+                      : hasQuery
+                        ? <NoResults />
+                        : <IdleState />}
               </CommandEmpty>
               <CommandList>
-                {/* Commands (always show when idle or matching) */}
-                {filteredCommands.length > 0 && !hasQuery && (
+                {showModeGuide && (
+                  <>
+                    <CommandGroup>
+                      <GroupHeader label={t('group.modes')} count={PALETTE_MODES.length} />
+                      {PALETTE_MODES.map((mode) => (
+                        <PaletteModeRow key={mode.id} mode={mode} onSelect={setQuery} />
+                      ))}
+                    </CommandGroup>
+                    {filteredCommands.length > 0 && <CommandSeparator />}
+                  </>
+                )}
+
+                {filteredCommands.length > 0 && (
                   <>
                     <CommandGroup>
                       <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
                       {filteredCommands.map((cmd) => (
-                        <CommandActionRow key={cmd.id} command={cmd} />
-                      ))}
-                    </CommandGroup>
-                    {hasResults && <CommandSeparator />}
-                  </>
-                )}
-
-                {/* Commands matching query */}
-                {filteredCommands.length > 0 && hasQuery && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
-                      {filteredCommands.map((cmd) => (
-                        <CommandActionRow key={cmd.id} command={cmd} />
-                      ))}
-                    </CommandGroup>
-                    {(threadHits.length > 0 || chronicleHits.length > 0 || issues.length > 0 || files.length > 0) && (
-                      <CommandSeparator />
-                    )}
-                  </>
-                )}
-
-                {/* Thread results */}
-                {threadHits.length > 0 && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.threads')} count={threadHits.length} />
-                      {threadGroups.map((group) =>
-                        group.items
-                          .slice(0, 5)
-                          .map((hit: ThreadSearchHit) => (
-                            <ThreadSearchCommandRow
-                              key={hit.sessionId}
-                              hit={hit}
-                              workspaceLabel={group.label}
-                              onSelect={handleSelectThread}
-                            />
-                          ))
-                      )}
-                    </CommandGroup>
-                    {(chronicleHits.length > 0 || issues.length > 0 || files.length > 0) && <CommandSeparator />}
-                  </>
-                )}
-
-                {/* Chronicle results */}
-                {chronicleHits.length > 0 && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.chronicle')} count={chronicleHits.length} />
-                      {chronicleHits.slice(0, 8).map((hit) => (
-                        <ChronicleSearchCommandRow
-                          key={`${hit.type}-${hit.id}`}
-                          hit={hit}
-                          onSelect={handleSelectChronicle}
+                        <CommandActionRow
+                          key={cmd.id}
+                          command={cmd}
+                          recent={commandHistory.includes(cmd.id)}
+                          onSelect={handleSelectCommand}
                         />
                       ))}
                     </CommandGroup>
-                    {(issues.length > 0 || files.length > 0) && <CommandSeparator />}
                   </>
                 )}
 
-                {/* Issue results */}
-                {issues.length > 0 && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.issues')} count={issues.length} />
-                      {issues.slice(0, 8).map((issue) => (
-                        <IssueSearchCommandRow
-                          key={issue.id}
-                          issue={issue}
-                          onSelect={handleSelectIssue}
-                        />
-                      ))}
-                    </CommandGroup>
-                    {files.length > 0 && <CommandSeparator />}
-                  </>
-                )}
-
-                {/* File results */}
                 {files.length > 0 && (
                   <CommandGroup>
                     <GroupHeader label={t('group.files')} count={files.length} />
@@ -564,9 +587,16 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
               </CommandList>
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-between border-t border-border px-3 py-2 text-muted-foreground text-xs">
               <div className="flex items-center gap-4">
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <Kbd>⌘P</Kbd>
+                  <span>{t('footer.quickOpen')}</span>
+                </div>
+                <div className="hidden items-center gap-1.5 sm:flex">
+                  <Kbd>⌘⇧P</Kbd>
+                  <span>{t('footer.commands')}</span>
+                </div>
                 <div className="flex items-center gap-1.5">
                   <KbdGroup>
                     <Kbd>
@@ -589,7 +619,9 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
                   <span>{t('footer.close')}</span>
                 </div>
               </div>
-              {isPending && <Spinner className="size-3" />}
+              <span className="hidden font-mono text-[10px] text-muted-foreground/60 sm:inline">
+                &gt; @ : #
+              </span>
             </div>
           </div>
         </Command>
@@ -601,92 +633,65 @@ export function GlobalSearchDialog({ open, onOpenChange }: GlobalSearchDialogPro
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const CommandActionRow = memo(function CommandActionRow({ command }: { command: CommandAction }) {
+const PaletteModeRow = memo(function PaletteModeRow({
+  mode,
+  onSelect
+}: {
+  mode: (typeof PALETTE_MODES)[number]
+  onSelect: (query: string) => void
+}) {
+  const { t } = useTranslation('search')
+  const selectMode = useCallback(() => {
+    onSelect(mode.prefix)
+  }, [mode.prefix, onSelect])
+
+  return (
+    <CommandItem
+      value={`mode-${mode.id}`}
+      onSelect={selectMode}
+      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      data-testid={`global-search-mode-${mode.id}`}
+    >
+      <span className="inline-flex size-6 shrink-0 items-center justify-center rounded bg-foreground/8 font-mono text-[11px] text-foreground/70">
+        {mode.prefix || '⌘P'}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-sm">{t(mode.labelKey)}</span>
+      <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+        {t(mode.descriptionKey)}
+      </span>
+    </CommandItem>
+  )
+})
+
+const CommandActionRow = memo(function CommandActionRow({
+  command,
+  recent,
+  onSelect
+}: {
+  command: CommandAction
+  recent: boolean
+  onSelect: (command: CommandAction) => void
+}) {
+  const { t } = useTranslation('search')
+  const selectCommand = useCallback(() => {
+    onSelect(command)
+  }, [command, onSelect])
+
   return (
     <CommandItem
       value={command.id}
-      onSelect={command.handler}
+      onSelect={selectCommand}
       className="flex items-center gap-2.5 px-2.5 py-1.5"
       data-testid={`global-search-command-${command.id}`}
     >
       <command.icon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="flex-1 text-sm">{command.label}</span>
-      {command.shortcut && (
-        <span className="text-[10px] text-muted-foreground">{command.shortcut}</span>
+      {recent && (
+        <span className="hidden text-[10px] text-muted-foreground sm:inline">{t('command.recent')}</span>
       )}
-    </CommandItem>
-  )
-})
-
-const ThreadSearchCommandRow = memo(function ThreadSearchCommandRow({
-  hit,
-  workspaceLabel,
-  onSelect
-}: {
-  hit: ThreadSearchHit
-  workspaceLabel: string
-  onSelect: (sessionId: string) => void
-}) {
-  const selectThread = useCallback(() => {
-    onSelect(hit.sessionId)
-  }, [hit.sessionId, onSelect])
-
-  return (
-    <CommandItem
-      value={`thread-${hit.sessionId}`}
-      onSelect={selectThread}
-      className="flex-col items-stretch gap-1.5 px-2.5 py-2"
-      data-testid={`global-search-thread-result-${hit.sessionId}`}
-    >
-      <ThreadSearchResultRow hit={hit} workspaceLabel={workspaceLabel} />
-    </CommandItem>
-  )
-})
-
-const ChronicleSearchCommandRow = memo(function ChronicleSearchCommandRow({
-  hit,
-  onSelect
-}: {
-  hit: ChronicleSearchHit
-  onSelect: (hit: ChronicleSearchHit) => void
-}) {
-  const selectChronicleHit = useCallback(() => {
-    onSelect(hit)
-  }, [hit, onSelect])
-
-  return (
-    <CommandItem
-      value={`chronicle-${hit.type}-${hit.id}`}
-      onSelect={selectChronicleHit}
-      className="flex-col items-stretch gap-1.5 px-2.5 py-2"
-      data-testid={`global-search-chronicle-result-${hit.id}`}
-    >
-      <ChronicleSearchResultRow hit={hit} />
-    </CommandItem>
-  )
-})
-
-const IssueSearchCommandRow = memo(function IssueSearchCommandRow({
-  issue,
-  onSelect
-}: {
-  issue: GlobalSearchIssue
-  onSelect: (issue: GlobalSearchIssue) => void
-}) {
-  const selectIssue = useCallback(() => {
-    onSelect(issue)
-  }, [issue, onSelect])
-
-  return (
-    <CommandItem
-      value={`issue-${issue.id}`}
-      onSelect={selectIssue}
-      className="flex items-center gap-2.5 px-2.5 py-1.5"
-      data-testid={`global-search-issue-result-${issue.id}`}
-    >
-      <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
-      <PriorityBadge priority={issue.priority} />
+      {command.shortcut && (
+        <span className="font-mono text-[10px] text-muted-foreground">{command.shortcut}</span>
+      )}
     </CommandItem>
   )
 })
@@ -728,145 +733,6 @@ function GroupHeader({ label, count }: { label: string; count: number }) {
   )
 }
 
-function ThreadSearchResultRow({
-  hit,
-  workspaceLabel
-}: {
-  hit: ThreadSearchHit
-  workspaceLabel: string
-}) {
-  const { t } = useTranslation('search')
-  const snippets = hit.snippets ?? []
-
-  return (
-    <>
-      <div className="flex items-center gap-2.5">
-        <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span
-          className="min-w-0 flex-1 truncate text-sm"
-          data-testid={`global-search-thread-title-${hit.sessionId}`}
-        >
-          <HighlightedText text={hit.sessionTitle} ranges={hit.titleRanges ?? []} />
-        </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">{workspaceLabel}</span>
-      </div>
-
-      {snippets.length > 0 ? (
-        <div className="flex flex-col gap-1 pl-6">
-          {snippets.slice(0, 2).map((snippet) => (
-            <ThreadSearchSnippetRow key={snippet.messageId} snippet={snippet} />
-          ))}
-        </div>
-      ) : (
-        <div className="pl-6 text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</div>
-      )}
-    </>
-  )
-}
-
-function ThreadSearchSnippetRow({ snippet }: { snippet: ThreadSearchHit['snippets'][number] }) {
-  const { t } = useTranslation('search')
-  const isUser = snippet.messageRole === 'user'
-
-  return (
-    <div
-      className="flex items-start gap-1.5 text-xs leading-relaxed text-muted-foreground"
-      data-testid={`global-search-thread-snippet-${snippet.messageId}`}
-    >
-      <span
-        className={cn(
-          'mt-0.5 inline-flex size-3.5 shrink-0 items-center justify-center rounded-sm',
-          isUser ? 'bg-primary/10 text-primary' : 'bg-foreground/10 text-foreground/70'
-        )}
-        title={isUser ? t('thread.role.user') : t('thread.role.assistant')}
-        aria-hidden="true"
-      >
-        {isUser ? <UserIcon className="size-2.5" /> : <SparklesIcon className="size-2.5" />}
-      </span>
-      <span className="min-w-0 line-clamp-2 wrap-break-word">
-        <HighlightedText text={snippet.text} ranges={snippet.ranges ?? []} />
-      </span>
-    </div>
-  )
-}
-
-function ChronicleSearchResultRow({ hit }: { hit: ChronicleSearchHit }) {
-  const { t } = useTranslation('search')
-  const workspaceLabel = hit.workspaceName ?? t('workspace.none')
-  const typeLabel = hit.type === 'memory' ? formatMemorySearchType(hit, t) : formatKnowledgeSearchType(hit, t)
-
-  return (
-    <>
-      <div className="flex items-center gap-2.5">
-        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span
-          className="min-w-0 flex-1 truncate text-sm"
-          data-testid={`global-search-chronicle-title-${hit.id}`}
-        >
-          <HighlightedText text={hit.title} ranges={hit.titleRanges ?? []} />
-        </span>
-        <span className="shrink-0 text-[10px] text-muted-foreground">{workspaceLabel}</span>
-      </div>
-      <div className="flex items-start gap-2 pl-6 text-xs leading-relaxed text-muted-foreground">
-        <span className="mt-0.5 shrink-0 rounded-sm bg-foreground/8 px-1.5 py-0.5 text-[10px] text-foreground/70">
-          {typeLabel}
-        </span>
-        <span className="min-w-0 line-clamp-2 wrap-break-word">
-          <HighlightedText text={hit.snippet.text} ranges={hit.snippet.ranges ?? []} />
-        </span>
-      </div>
-    </>
-  )
-}
-
-function formatMemorySearchType(hit: ChronicleSearchHit, t: SearchTranslation): string {
-  if (hit.memorySource === 'imported') {
-    return t('type.imported')
-  }
-  return hit.memoryType === '6h' ? t('type.memory.sixHour') : t('type.memory')
-}
-
-function formatKnowledgeSearchType(hit: ChronicleSearchHit, t: SearchTranslation): string {
-  switch (hit.cardType) {
-    case 'decision':
-      return t('type.knowledge.decision')
-    case 'insight':
-      return t('type.knowledge.insight')
-    case 'task':
-      return t('type.knowledge.task')
-    case 'pattern':
-      return t('type.knowledge.pattern')
-    default:
-      return t('type.knowledge')
-  }
-}
-
-const PRIORITY_CLASSES: Record<string, string> = {
-  urgent: 'text-red-500',
-  high: 'text-orange-500',
-  medium: 'text-yellow-600',
-  low: 'text-muted-foreground',
-  none: 'text-muted-foreground'
-}
-
-function PriorityBadge({ priority }: { priority: string }) {
-  const { t } = useTranslation('search')
-  const priorityLabel = {
-    urgent: t('priority.urgent'),
-    high: t('priority.high'),
-    medium: t('priority.medium'),
-    low: t('priority.low'),
-  }[priority]
-
-  return (
-    <span
-      className={cn('text-[10px] shrink-0', PRIORITY_CLASSES[priority] ?? PRIORITY_CLASSES.none)}
-    >
-      {priorityLabel ?? ''}
-    </span>
-  )
-}
-
 function LoadingState() {
   const { t } = useTranslation('search')
 
@@ -884,6 +750,31 @@ function NoResults() {
   return (
     <div className="flex flex-col items-center gap-2">
       <span className="text-xs text-muted-foreground">{t('state.noResults')}</span>
+    </div>
+  )
+}
+
+function ModeUnavailableState({ mode }: { mode: PaletteMode }) {
+  const { t } = useTranslation('search')
+
+  return (
+    <div className="flex flex-col items-center gap-2 px-8">
+      <span className="text-xs font-medium text-foreground">{t(mode.labelKey)}</span>
+      <span className="text-center text-xs text-muted-foreground">{t('state.modeUnavailable')}</span>
+    </div>
+  )
+}
+
+function FileSearchUnavailableState({ availability }: { availability: FileSearchAvailability }) {
+  const { t } = useTranslation('search')
+  const message = availability === 'missing-workspace'
+    ? t('state.fileSearchMissingWorkspace')
+    : t('state.fileSearchUnsupportedTab')
+
+  return (
+    <div className="flex flex-col items-center gap-2 px-8">
+      <span className="text-xs font-medium text-foreground">{t('mode.quickOpen.label')}</span>
+      <span className="text-center text-xs text-muted-foreground">{message}</span>
     </div>
   )
 }

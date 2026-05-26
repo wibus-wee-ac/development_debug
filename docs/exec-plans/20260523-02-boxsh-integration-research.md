@@ -181,7 +181,7 @@ The initial `plugins/boxsh/package.json` should follow the existing plugin manif
       "devDependencies": {
         "@cradle/plugin-sdk": "workspace:*",
         "@types/node": "^22.19.1",
-        "vite": "^7.2.6",
+        "vite": "^8.0.0",
         "vitest": "^4.1.4",
         "typescript": "^5.9.3"
       }

@@ -1,7 +1,9 @@
 {
+  "action.attachSelection": "Attach selection",
   "action.close": "Close",
   "action.collapse": "Collapse",
   "action.expand": "Expand",
+  "action.removeContext": "Remove context",
   "action.send": "Send",
   "action.stop": "Stop",
   "empty.noProfile.description": "Go to Settings → Jarvis and select a provider profile and model.",
@@ -9,6 +11,7 @@
   "empty.ready.description": "I have full awareness of your workspace, active tabs, chat sessions, and current layout.",
   "empty.ready.title": "What can I help with?",
   "error.createSessionFailed": "Failed to create session",
+  "error.noTextSelection": "Select text first to attach it.",
   "error.sessionCreationFailed": "Session creation failed",
   "input.aria": "Jarvis message",
   "input.includeContext": "Include context",

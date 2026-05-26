@@ -18,7 +18,7 @@
   "model.fuzzyMatchTitle": "models.dev のあいまい一致",
   "model.noMatchingModels": "一致するモデルはありません",
   "model.noModelsAvailable": "利用可能なモデルはありません",
-  "model.noProviderTargets": "利用可能な provider target はありません",
+  "model.noProviderTargets": "利用可能な provider はありません",
   "model.searchPlaceholder": "モデルを検索...",
   "runtime.claudeAgent.description": "ツール利用に対応したエージェントループ",
   "runtime.claudeAgent.label": "Claude Agent",

@@ -9,31 +9,39 @@ export default {
   'placeholder.fixTest': 'Fix a failing test and explain the root cause...',
   'placeholder.refactor': 'Plan a refactor before editing implementation code...',
   'quick.explain.label': 'Explain this codebase',
-  'quick.explain.prompt': 'Explain this codebase from the perspective of a new contributor. Focus on architecture, key modules, data flow, and where I should start.',
+  'quick.explain.prompt':
+    'Explain this codebase from the perspective of a new contributor. Focus on architecture, key modules, data flow, and where I should start.',
   'quick.risk.label': 'Find risky changes',
-  'quick.risk.prompt': 'Inspect the recent changes in this project and identify risky areas, likely regressions, and the smallest verification plan.',
+  'quick.risk.prompt':
+    'Inspect the recent changes in this project and identify risky areas, likely regressions, and the smallest verification plan.',
   'quick.fixTest.label': 'Fix a failing test',
-  'quick.fixTest.prompt': 'Find the failing test in this project, explain the root cause, and make the smallest maintainable fix.',
+  'quick.fixTest.prompt':
+    'Find the failing test in this project, explain the root cause, and make the smallest maintainable fix.',
   'quick.notes.label': 'Write project notes',
-  'quick.notes.prompt': 'Read the project context and write concise project notes that capture architecture, conventions, and important workflows.',
+  'quick.notes.prompt':
+    'Read the project context and write concise project notes that capture architecture, conventions, and important workflows.',
   'quick.refactor.label': 'Plan a refactor',
-  'quick.refactor.prompt': 'Plan a focused refactor for this project. Identify the boundary, risks, migration steps, and tests before editing code.',
+  'quick.refactor.prompt':
+    'Plan a focused refactor for this project. Identify the boundary, risks, migration steps, and tests before editing code.',
   'relative.justNow': 'just now',
   'relative.minutesAgo': '{{count}} minutes ago',
   'relative.hoursAgo': '{{count}} hours ago',
   'relative.daysAgo': '{{count}} days ago',
   'relative.monthsAgo': '{{count}} months ago',
-  'readiness.workspace.message': 'Add a project first so Cradle can bind the chat to a real workspace.',
+  'readiness.workspace.message':
+    'Add a project first so Cradle can bind the chat to a real workspace.',
   'readiness.workspace.adding': 'Adding...',
   'readiness.workspace.action': 'Add project',
-  'readiness.agent.message': 'No CLI agent is available. Enable a local agent in settings to start.',
+  'readiness.agent.message':
+    'No CLI agent is available. Enable a local agent in settings to start.',
   'readiness.agent.action': 'Open agents',
-  'readiness.provider.message': 'No provider target is available. Configure a provider target before sending the first message.',
+  'readiness.provider.message':
+    'No provider is available. Configure a provider before sending the first message.',
   'readiness.provider.action': 'Open providers',
   'workspace.fallback': 'Project',
   'workspace.group': 'Workspaces',
   'workspace.empty': 'No workspaces',
   'send.tooltip': 'Send',
   'recent.title': 'Recent chats',
-  'recent.untitled': 'Untitled',
+  'recent.untitled': 'Untitled'
 } as const

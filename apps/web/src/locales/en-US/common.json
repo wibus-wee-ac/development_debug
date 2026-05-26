@@ -18,7 +18,7 @@
   "model.fuzzyMatchTitle": "Fuzzy models.dev match",
   "model.noMatchingModels": "No matching models",
   "model.noModelsAvailable": "No models available",
-  "model.noProviderTargets": "No provider targets available",
+  "model.noProviderTargets": "No providers available",
   "model.searchPlaceholder": "Search models...",
   "runtime.claudeAgent.description": "Agentic tool-use loop",
   "runtime.claudeAgent.label": "Claude Agent",

@@ -17,7 +17,7 @@ Store naming convention: `use<Domain>Store`.
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
 - **session-activity.ts**: Session activity owner — tracks the currently visible chat session plus unread background activity, so sidebar session items stay display-only while the app shell owns unread reconciliation
 - **session-activity.test.ts**: Regression tests for unread ownership, background activity marking, and visible-session clearing semantics
-- **chat.ts**: Chat streaming state — stores per-session UI messages, browser-owned tool entities keyed by `toolCallId`, session-level local driver metadata, generation flags, errors, local abort-controller cleanup, and reconciles equivalent server snapshots without changing message references; server cancellation requests stay in the chat feature boundary
+- **chat.ts**: Chat streaming state — stores per-session UI messages, browser-owned tool entities keyed by `toolCallId`, session-level local driver metadata, local/passive generation flags, errors, local abort-controller cleanup, and reconciles equivalent server snapshots without changing message references; server cancellation requests stay in the chat feature boundary
 - **chat.test.ts**: Regression tests for chat snapshot structural sharing, unchanged message reference preservation, and pre-SSE local driver streaming visibility
 - **new-chat.ts**: Composer preferences — persisted last selected runtime, CLI TUI agent, agent profile, per-profile model choice, and thinking effort, plus profile reconciliation when the available profile list changes
 - **new-chat.test.ts**: Regression tests for idempotent preference updates and stale-profile reconciliation

@@ -17,7 +17,7 @@
   "readiness.agent.action": "打开 Agents",
   "readiness.agent.message": "当前没有可用的 CLI agent。请在设置中启用一个本地 agent 后再开始。",
   "readiness.provider.action": "打开 Providers",
-  "readiness.provider.message": "当前没有可用的 provider target。请先配置 provider target 再发送第一条消息。",
+  "readiness.provider.message": "当前没有可用的 provider。请先配置 provider 再发送第一条消息。",
   "readiness.workspace.action": "添加项目",
   "readiness.workspace.adding": "添加中...",
   "readiness.workspace.message": "请先添加项目，让 Cradle 能把聊天绑定到真实工作区。",

@@ -17,7 +17,7 @@
   "readiness.agent.action": "Abrir Agents",
   "readiness.agent.message": "No hay ningún CLI agent disponible. Habilita un agent local en ajustes para empezar.",
   "readiness.provider.action": "Abrir Providers",
-  "readiness.provider.message": "No hay ningún provider target disponible. Configura uno antes de enviar el primer mensaje.",
+  "readiness.provider.message": "No provider is available. Configure a provider before sending the first message.",
   "readiness.workspace.action": "Agregar proyecto",
   "readiness.workspace.adding": "Agregando...",
   "readiness.workspace.message": "Agrega primero un proyecto para que Cradle pueda vincular el chat a un workspace real.",

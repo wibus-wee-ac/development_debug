@@ -28,8 +28,8 @@ const UsageSummarySchema = z.object({
   totalTokens: z.number(),
   totalTurns: z.number(),
   byAgent: z.array(z.object({
-    agentProfileId: z.string(),
-    agentProfileName: z.string().nullable(),
+    providerTargetId: z.string(),
+    providerTargetName: z.string().nullable(),
     totalTokens: z.number(),
     count: z.number(),
   })),
@@ -264,7 +264,7 @@ export function UsageDashboard() {
                 <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.byAgent')}</p>
                 <div className="space-y-2.5">
                   {summary!.byAgent.map(a => (
-                    <BarRow key={a.agentProfileId} label={a.agentProfileName ?? a.agentProfileId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
+                    <BarRow key={a.providerTargetId} label={a.providerTargetName ?? a.providerTargetId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
                   ))}
                 </div>
               </div>

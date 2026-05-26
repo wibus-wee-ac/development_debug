@@ -1,16 +1,11 @@
 // Renders workspace Git changes in the right-aside Changes tab.
-/* eslint-disable react-dom/no-dangerously-set-innerhtml -- Trees exposes a package-owned SVG sprite sheet. */
-import {
-  createFileTreeIconResolver,
-  getBuiltInFileIconColor,
-  getBuiltInSpriteSheet,
-  prepareFileTreeInput,
-} from '@pierre/trees'
+import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
 import { FileDiffIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
 import type { GitFileStatus } from '~/lib/types'
@@ -21,9 +16,6 @@ import type { ChangeSection } from './changes-grouping'
 import { groupGitFileStatuses } from './changes-grouping'
 import { resolveTreeItemFromEvent } from './tree-event-target'
 import { useGitFileStatuses } from './use-git'
-
-const FILE_ICON_RESOLVER = createFileTreeIconResolver({ set: 'complete', colored: true })
-const FILE_ICON_SPRITE_SHEET = getBuiltInSpriteSheet('complete')
 
 type ChangesViewMode = 'type' | 'tree'
 type TreeGitStatus = { path: string, status: GitFileStatus['status'] }
@@ -190,10 +182,7 @@ function ChangesTypeView({
       className="relative min-h-0 flex-1 overflow-y-auto py-2"
       data-testid="changes-panel-sections"
     >
-      <span
-        className="pointer-events-none absolute size-0 overflow-hidden"
-        dangerouslySetInnerHTML={{ __html: FILE_ICON_SPRITE_SHEET }}
-      />
+      <WorkspaceFileIconSpriteSheet />
       {sections
         .filter(section => section.files.length > 0)
         .map(section => (
@@ -322,8 +311,6 @@ function ChangeFileRow({
   onClick: (path: string) => void
 }) {
   const display = getFileDisplay(file.path)
-  const icon = FILE_ICON_RESOLVER.resolveIcon('file-tree-icon-file', file.path)
-  const color = icon.token ? getBuiltInFileIconColor(icon.token) : undefined
 
   return (
     <button
@@ -335,16 +322,7 @@ function ChangeFileRow({
       data-status={file.status}
       onClick={() => onClick(file.path)}
     >
-      <svg
-        className="size-4 shrink-0 text-muted-foreground"
-        viewBox={icon.viewBox ?? '0 0 16 16'}
-        width={icon.width ?? 16}
-        height={icon.height ?? 16}
-        style={color ? { color } : undefined}
-        aria-hidden
-      >
-        <use href={`#${icon.name}`} />
-      </svg>
+      <WorkspaceFileIcon path={file.path} />
       <span className="min-w-0 flex-1 truncate text-foreground/85">{display.name}</span>
       {display.directory && (
         <span className="min-w-0 max-w-24 shrink truncate text-[10px] text-muted-foreground/45">
