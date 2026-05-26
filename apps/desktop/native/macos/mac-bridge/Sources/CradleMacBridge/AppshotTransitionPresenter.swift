@@ -8,6 +8,7 @@ struct AppshotTransitionResult {
     let animationDuration: TimeInterval
     let transitionSnapshotPath: String?
     let transitionSnapshotHeight: Double?
+    let transitionSnapshotImageSize: CaptureImageSize?
     let transitionSpringDampingFraction: Double?
     let transitionSpringResponse: Double?
     let transitionGeometry: [String: Any]
@@ -18,6 +19,7 @@ struct AppshotTransitionResult {
             "animationDuration": animationDuration,
             "transitionSnapshotPath": transitionSnapshotPath ?? NSNull(),
             "transitionSnapshotHeight": transitionSnapshotHeight ?? NSNull(),
+            "transitionSnapshotImageSize": transitionSnapshotImageSize?.serialize() ?? NSNull(),
             "transitionSpringDampingFraction": transitionSpringDampingFraction ?? NSNull(),
             "transitionSpringResponse": transitionSpringResponse ?? NSNull(),
             "transitionGeometry": transitionGeometry,
@@ -59,7 +61,7 @@ struct AppshotTransitionCalibration {
 
 enum AppshotTransitionTiming {
     static let animationDuration: TimeInterval = 0.88
-    static let completionDelay: TimeInterval = 0
+    static let completionDelay: TimeInterval = 0.08
     static let placeholderSpringResponse = 0.35
     static let placeholderSpringDampingFraction = 0.73
     static let backgroundFadeIn: NSNumber = 0.06
@@ -73,9 +75,11 @@ enum AppshotTransitionTiming {
     static let snapshotFadeIn: NSNumber = 0.82
     static let magicMoveFadeDuration: TimeInterval = 0.10
     static let shadowFadeIn: NSNumber = 0.32
+    static let visualHandoffStartProgress: NSNumber = 0.92
     static let appIconFadeIn: NSNumber = 0.68
     static let accessoryFadeStartProgress: NSNumber = appIconFadeIn
     static let accessoryFadeDuration: TimeInterval = 0.12
+    static let accessoryFadeOutStartProgress: NSNumber = 0.94
     static func magicMoveTimingFunction() -> CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.16, 0, 0.3, 1)
     }
@@ -91,6 +95,7 @@ enum AppshotLayerMetrics {
     static let transitionBackgroundOpacity: Float = 0.0
     static let shutterOpacity: Float = 1.0
     static let overlayPadding: CGFloat = 96
+    static let transitionSnapshotBaseWidth: CGFloat = 232
     static let transitionSnapshotBaseHeight: Double = 140
     static let shadowOpacity: Float = 0.3
     static let shadowCornerRadius: CGFloat = 12
@@ -99,6 +104,10 @@ enum AppshotLayerMetrics {
     static let shadowYOffset: CGFloat = -10
     static let appIconSize: CGFloat = 24
     static let appIconBottomInset: CGFloat = 0
+    static let titleHeight: CGFloat = 17
+    static let titleTopMargin: CGFloat = 4
+    static let titleHorizontalInset: CGFloat = 8
+    static let titleFontSize: CGFloat = 13
 }
 
 struct AppshotTransitionTarget {
@@ -233,10 +242,10 @@ struct AppshotTransitionTarget {
             "appKitSourceContentFrame": serializeAppshotRect(source),
             "appKitDestinationFrame": serializeAppshotRect(destination),
             "overlayStartFrame": serializeAppshotRect(CGRect(
-                x: source.minX - overlayFrame.minX,
-                y: source.minY - overlayFrame.minY,
-                width: source.width,
-                height: source.height
+                x: capture.minX - overlayFrame.minX,
+                y: capture.minY - overlayFrame.minY,
+                width: capture.width,
+                height: capture.height
             )),
             "overlayCaptureFrame": serializeAppshotRect(CGRect(
                 x: capture.minX - overlayFrame.minX,
@@ -434,6 +443,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     func present(
         screenshotPath: String,
         transitionSnapshotPath: String?,
+        transitionSnapshotImageSize: CaptureImageSize?,
         sourceWindow: WindowCandidate?,
         target: AppshotTransitionTarget,
         calibration: AppshotTransitionCalibration,
@@ -444,6 +454,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
         Task { @MainActor in
             self.presentOnMain(
                 screenshotPath: screenshotPath,
+                transitionSnapshotPath: transitionSnapshotPath,
                 sourceWindow: sourceWindow,
                 target: target,
                 calibration: calibration,
@@ -457,6 +468,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             animationDuration: calibration.animationDuration,
             transitionSnapshotPath: transitionSnapshotPath,
             transitionSnapshotHeight: calibration.transitionSnapshotHeight,
+            transitionSnapshotImageSize: transitionSnapshotImageSize,
             transitionSpringDampingFraction: calibration.springDampingFraction,
             transitionSpringResponse: calibration.springResponse,
             transitionGeometry: target.serializeTransitionGeometry()
@@ -466,6 +478,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
     @MainActor
     private func presentOnMain(
         screenshotPath: String,
+        transitionSnapshotPath: String?,
         sourceWindow: WindowCandidate?,
         target: AppshotTransitionTarget,
         calibration: AppshotTransitionCalibration,
@@ -488,6 +501,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             let panel = AppshotTransitionOverlayWindow(
                 frame: panelFrame,
                 screenshotPath: screenshotPath,
+                transitionSnapshotPath: transitionSnapshotPath,
                 transitionController: transitionController,
                 target: target,
                 transitionSnapshotHeight: calibration.transitionSnapshotHeight,
@@ -573,7 +587,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
             sourceWindow: sourceWindow,
             sourceFrame: target.appKitSourceWindowFrame,
             targetFrame: target.appKitDestinationFrame,
-            targetCornerRadius: max(target.destinationCornerRadius, 0),
+            targetCornerRadius: AppshotLayerMetrics.screenshotCornerRadius,
             appIcon: readApplicationIconImage(bundleIdentifier: bundleIdentifier),
             titleText: appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
             titleColor: target.destinationPrimaryTextColor,
@@ -705,6 +719,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
         let panel = AppshotTransitionOverlayWindow(
             frame: target.overlayFrame,
             screenshotPath: screenshotPath,
+            transitionSnapshotPath: nil,
             transitionController: transitionController,
             target: target,
             transitionSnapshotHeight: calibration.transitionSnapshotHeight,
@@ -781,6 +796,7 @@ final class AppshotTransitionPresenter: @unchecked Sendable {
         let panel = AppshotTransitionOverlayWindow(
             frame: target.overlayFrame,
             screenshotPath: screenshotPath,
+            transitionSnapshotPath: nil,
             transitionController: transitionController,
             target: target,
             transitionSnapshotHeight: calibration.transitionSnapshotHeight,
@@ -1094,6 +1110,7 @@ final class AppshotTransitionOverlayWindow: NSWindow {
     fileprivate init(
         frame: CGRect,
         screenshotPath: String,
+        transitionSnapshotPath: String?,
         transitionController: AppshotCaptureTransition,
         target: AppshotTransitionTarget,
         transitionSnapshotHeight: Double?,
@@ -1114,7 +1131,7 @@ final class AppshotTransitionOverlayWindow: NSWindow {
         self.transitionController = transitionController
         sourceFrame = AppshotTransitionOverlayWindow.readSourceFrame(target: target, viewportFrame: frame)
         targetFrame = AppshotTransitionOverlayWindow.readTargetFrame(target: target, viewportFrame: frame)
-        targetCornerRadius = max(target.destinationCornerRadius, 0)
+        targetCornerRadius = AppshotLayerMetrics.screenshotCornerRadius
         self.contentLayer = contentLayer
         self.transitionBackgroundLayer = transitionBackgroundLayer
         self.shadowLayer = shadowLayer
@@ -1132,6 +1149,7 @@ final class AppshotTransitionOverlayWindow: NSWindow {
         titleText = appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         transitionView = AppshotTransitionView(
             screenshotPath: screenshotPath,
+            transitionSnapshotPath: transitionSnapshotPath,
             transitionController: transitionController,
             target: target,
             viewportFrame: frame,
@@ -1265,7 +1283,7 @@ private final class AppshotNonanimatedGradientLayer: CAGradientLayer {
     }
 }
 
-private enum AppshotVerticalAlignment {
+enum AppshotVerticalAlignment {
     case center
     case bottom
 }
@@ -1278,6 +1296,7 @@ final class AppshotTransitionView: NSView {
     private let transitionSnapshotHeight: CGFloat?
     private let appTitle: String?
     private let bundleIdentifier: String?
+    private let snapshotImageSource: String
     private let contentLayer: AppshotNonanimatedLayer
     private let transitionBackgroundLayer: AppshotNonanimatedGradientLayer
     private let shadowLayer: AppshotNonanimatedLayer
@@ -1300,6 +1319,7 @@ final class AppshotTransitionView: NSView {
 
     fileprivate init(
         screenshotPath: String,
+        transitionSnapshotPath: String?,
         transitionController: AppshotCaptureTransition,
         target: AppshotTransitionTarget,
         viewportFrame: CGRect,
@@ -1314,6 +1334,7 @@ final class AppshotTransitionView: NSView {
         self.transitionSnapshotHeight = transitionSnapshotHeight.map { CGFloat($0) }
         self.appTitle = appTitle
         self.bundleIdentifier = bundleIdentifier
+        snapshotImageSource = transitionSnapshotPath == nil ? "screenshot" : "transitionSnapshot"
         contentLayer = layers.contentLayer
         transitionBackgroundLayer = layers.transitionBackgroundLayer
         shadowLayer = layers.shadowLayer
@@ -1327,7 +1348,7 @@ final class AppshotTransitionView: NSView {
         titleLayer = layers.titleLayer
         super.init(frame: CGRect(origin: .zero, size: viewportFrame.size))
         wantsLayer = true
-        configureLayers(screenshotPath: screenshotPath)
+        configureLayers(snapshotImagePath: transitionSnapshotPath ?? screenshotPath)
     }
 
     required init?(coder: NSCoder) {
@@ -1349,9 +1370,15 @@ final class AppshotTransitionView: NSView {
         overlayWindow?.updateProgress(progress, accessoryFadeStarted: accessoryFadeStarted)
         activeTransitionPhaseHistory = []
         let startFrame = readStartFrame()
+        let startCaptureFrame = readStartCaptureFrame()
         let endFrame = readEndFrame()
         let startBounds = CGRect(origin: .zero, size: startFrame.size)
         let endBounds = CGRect(origin: .zero, size: endFrame.size)
+        let snapshotImageStartFrame = snapshotImageStartFrame(
+            startFrame: startFrame,
+            captureFrame: startCaptureFrame
+        )
+        let snapshotImageEndFrame = CGRect(origin: .zero, size: endFrame.size)
         let initialCornerRadius = readInitialCornerRadius()
         let targetCornerRadius = readTargetCornerRadius()
 
@@ -1362,7 +1389,7 @@ final class AppshotTransitionView: NSView {
         applyFrame(startFrame, to: shadowLayer)
         applyFrame(startFrame, to: containerLayer)
         applyFrame(startBounds, to: snapshotEffectsLayer)
-        applyFrame(startBounds, to: snapshotImageLayer)
+        applyFrame(snapshotImageStartFrame, to: snapshotImageLayer)
         applyFrame(startBounds, to: snapshotMaskLayer)
         applyFrame(startBounds, to: snapshotMaskDebugLayer)
         applyFrame(startBounds, to: shutterLayer)
@@ -1387,6 +1414,8 @@ final class AppshotTransitionView: NSView {
                 endFrame: endFrame,
                 startBounds: startBounds,
                 endBounds: endBounds,
+                snapshotImageStartFrame: snapshotImageStartFrame,
+                snapshotImageEndFrame: snapshotImageEndFrame,
                 initialCornerRadius: initialCornerRadius,
                 targetCornerRadius: targetCornerRadius,
                 totalDuration: duration,
@@ -1400,6 +1429,8 @@ final class AppshotTransitionView: NSView {
         endFrame: CGRect,
         startBounds: CGRect,
         endBounds: CGRect,
+        snapshotImageStartFrame: CGRect,
+        snapshotImageEndFrame: CGRect,
         initialCornerRadius: CGFloat,
         targetCornerRadius: CGFloat,
         totalDuration: TimeInterval,
@@ -1424,6 +1455,8 @@ final class AppshotTransitionView: NSView {
                     endFrame: endFrame,
                     startBounds: startBounds,
                     endBounds: endBounds,
+                    snapshotImageStartFrame: snapshotImageStartFrame,
+                    snapshotImageEndFrame: snapshotImageEndFrame,
                     initialCornerRadius: initialCornerRadius,
                     targetCornerRadius: targetCornerRadius,
                     duration: max(totalDuration - readyDuration - waitDuration, 0.001),
@@ -1448,6 +1481,8 @@ final class AppshotTransitionView: NSView {
         endFrame: CGRect,
         startBounds: CGRect,
         endBounds: CGRect,
+        snapshotImageStartFrame: CGRect,
+        snapshotImageEndFrame: CGRect,
         initialCornerRadius: CGFloat,
         targetCornerRadius: CGFloat,
         duration: TimeInterval,
@@ -1462,8 +1497,10 @@ final class AppshotTransitionView: NSView {
         let snapshotFadeStart = shutterFadeStart
         let snapshotFadeEnd = shutterFadeEnd
         let shadowStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.shadowFadeIn).doubleValue
+        let visualHandoffStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.visualHandoffStartProgress).doubleValue
         let accessoryFadeProgressDuration = AppshotTransitionTiming.accessoryFadeDuration / max(duration, 0.001)
         let appIconStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.accessoryFadeStartProgress).doubleValue
+        let accessoryFadeOutStart = normalizedMagicProgress(globalProgress: AppshotTransitionTiming.accessoryFadeOutStartProgress).doubleValue
         let startAccessoryFrame = accessoryFrame(in: startFrame)
         let endAccessoryFrame = accessoryFrame(in: endFrame)
 
@@ -1473,19 +1510,20 @@ final class AppshotTransitionView: NSView {
         applyFrame(endFrame, to: shadowLayer)
         applyFrame(endFrame, to: containerLayer)
         applyFrame(endBounds, to: snapshotEffectsLayer)
-        applyFrame(endBounds, to: snapshotImageLayer)
+        applyFrame(snapshotImageEndFrame, to: snapshotImageLayer)
         applyFrame(endBounds, to: shutterLayer)
         applyFrame(endBounds, to: snapshotMaskLayer)
         applyFrame(endBounds, to: snapshotMaskDebugLayer)
-        updateShadowPath(for: endFrame, radius: targetCornerRadius)
-        updateSnapshotMaskPath(for: endBounds, radius: targetCornerRadius)
-        appIconLayer.frame = endAccessoryFrame
-        snapshotEffectsLayer.cornerRadius = targetCornerRadius
+        updateShadowPath(for: endFrame, radius: 0)
+        updateSnapshotMaskPath(for: endBounds, radius: 0)
+        layoutAccessoryLayers(in: endFrame)
+        snapshotEffectsLayer.cornerRadius = 0
         shutterLayer.cornerRadius = targetCornerRadius
         shutterLayer.opacity = 0
         snapshotImageLayer.opacity = 1
-        shadowLayer.opacity = 1
-        appIconLayer.opacity = appIconLayer.contents == nil ? 0 : 1
+        shadowLayer.opacity = 0
+        appIconLayer.opacity = 0
+        titleLayer.opacity = 0
 
         animateFrame(
             layer: shadowLayer,
@@ -1513,8 +1551,8 @@ final class AppshotTransitionView: NSView {
         )
         animateFrame(
             layer: snapshotImageLayer,
-            from: startBounds,
-            to: endBounds,
+            from: snapshotImageStartFrame,
+            to: snapshotImageEndFrame,
             duration: duration,
             timingFunction: timingFunction,
             keyPrefix: "appshotSnapshotImageMagicMove"
@@ -1546,7 +1584,7 @@ final class AppshotTransitionView: NSView {
         animateCornerRadius(
             layer: snapshotEffectsLayer,
             from: initialCornerRadius,
-            to: targetCornerRadius,
+            to: 0,
             duration: duration,
             timingFunction: timingFunction,
             key: "appshotSnapshotCornerRadius"
@@ -1572,7 +1610,7 @@ final class AppshotTransitionView: NSView {
             fromBounds: startBounds,
             toBounds: endBounds,
             fromRadius: initialCornerRadius,
-            toRadius: targetCornerRadius,
+            toRadius: 0,
             duration: duration,
             timingFunction: timingFunction,
             key: "appshotSnapshotMaskPath"
@@ -1582,7 +1620,7 @@ final class AppshotTransitionView: NSView {
             fromBounds: startBounds,
             toBounds: endBounds,
             fromRadius: initialCornerRadius,
-            toRadius: targetCornerRadius,
+            toRadius: 0,
             duration: duration,
             timingFunction: timingFunction,
             key: "appshotSnapshotMaskDebugPath"
@@ -1603,8 +1641,8 @@ final class AppshotTransitionView: NSView {
         )
         animateOpacityKeyframes(
             layer: shadowLayer,
-            values: [0, 0, 1],
-            keyTimes: [0, NSNumber(value: shadowStart), 1],
+            values: [0, 0, 1, 1, 0],
+            keyTimes: [0, NSNumber(value: shadowStart), NSNumber(value: min(1, shadowStart + 0.12)), NSNumber(value: visualHandoffStart), 1],
             duration: duration,
             key: "appshotShadowFadeIn"
         )
@@ -1620,9 +1658,27 @@ final class AppshotTransitionView: NSView {
             layer: appIconLayer,
             start: appIconStart,
             fadeDuration: accessoryFadeProgressDuration,
+            fadeOutStart: accessoryFadeOutStart,
             duration: duration,
             hasContent: appIconLayer.contents != nil,
             key: "appshotAppIconFadeIn"
+        )
+        animateFrame(
+            layer: titleLayer,
+            from: titleFrame(in: startFrame),
+            to: titleFrame(in: endFrame),
+            duration: duration,
+            timingFunction: timingFunction,
+            keyPrefix: "appshotTitleMagicMove"
+        )
+        animateAccessoryOpacity(
+            layer: titleLayer,
+            start: appIconStart,
+            fadeDuration: accessoryFadeProgressDuration,
+            fadeOutStart: accessoryFadeOutStart,
+            duration: duration,
+            hasContent: titleLayer.string != nil,
+            key: "appshotTitleFadeIn"
         )
         CATransaction.commit()
 
@@ -1653,7 +1709,7 @@ final class AppshotTransitionView: NSView {
         }
     }
 
-    private func configureLayers(screenshotPath: String) {
+    private func configureLayers(snapshotImagePath: String) {
         guard let rootLayer = layer else { return }
         rootLayer.masksToBounds = false
         rootLayer.backgroundColor = NSColor.clear.cgColor
@@ -1698,7 +1754,7 @@ final class AppshotTransitionView: NSView {
         snapshotEffectsLayer.backgroundColor = NSColor.clear.cgColor
         containerLayer.addSublayer(snapshotEffectsLayer)
 
-        if let image = NSImage(contentsOfFile: screenshotPath) {
+        if let image = NSImage(contentsOfFile: snapshotImagePath) {
             var proposedRect = CGRect(origin: .zero, size: image.size)
             snapshotImageLayer.contents = image.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil)
             snapshotImageSize = proposedRect.size
@@ -1737,7 +1793,19 @@ final class AppshotTransitionView: NSView {
         appIconLayer.opacity = 0
         contentLayer.addSublayer(appIconLayer)
 
+        let resolvedTitle = appTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !resolvedTitle.isEmpty {
+            titleLayer.string = resolvedTitle
+            titleLayer.foregroundColor = target.destinationPrimaryTextColor.cgColor
+            titleLayer.alignmentMode = .center
+            titleLayer.truncationMode = .end
+            titleLayer.contentsScale = target.displayScaleFactor
+            titleLayer.font = NSFont.systemFont(ofSize: AppshotLayerMetrics.titleFontSize, weight: .medium)
+            titleLayer.fontSize = AppshotLayerMetrics.titleFontSize
+            titleLayer.isWrapped = false
+        }
         titleLayer.opacity = 0
+        contentLayer.addSublayer(titleLayer)
     }
 
     override func layout() {
@@ -1756,7 +1824,7 @@ final class AppshotTransitionView: NSView {
     }
 
     private func readStartFrame() -> CGRect {
-        let source = target.appKitSourceContentFrame
+        let source = target.appKitSourceWindowFrame
         return CGRect(
             x: source.minX - viewportFrame.minX,
             y: source.minY - viewportFrame.minY,
@@ -1945,6 +2013,7 @@ final class AppshotTransitionView: NSView {
         layer: CALayer,
         start: Double,
         fadeDuration: Double,
+        fadeOutStart: Double,
         duration: TimeInterval,
         hasContent: Bool,
         key: String
@@ -1952,11 +2021,12 @@ final class AppshotTransitionView: NSView {
         guard hasContent else {
             return
         }
-        let end = min(1, start + max(fadeDuration, 0.001))
+        let fadeInEnd = min(1, start + max(fadeDuration, 0.001))
+        let fadeOutStart = min(1, max(fadeInEnd, fadeOutStart))
         animateOpacityKeyframes(
             layer: layer,
-            values: [0, 0, 1, 1],
-            keyTimes: [0, NSNumber(value: start), NSNumber(value: end), 1],
+            values: [0, 0, 1, 1, 0],
+            keyTimes: [0, NSNumber(value: start), NSNumber(value: fadeInEnd), NSNumber(value: fadeOutStart), 1],
             duration: duration,
             key: key
         )
@@ -2012,7 +2082,7 @@ final class AppshotTransitionView: NSView {
     }
 
     private func readTargetCornerRadius() -> CGFloat {
-        max(target.destinationCornerRadius, 0)
+        AppshotLayerMetrics.screenshotCornerRadius
     }
 
     private func updateShadowPath(for frame: CGRect, radius: CGFloat) {
@@ -2036,6 +2106,7 @@ final class AppshotTransitionView: NSView {
 
     private func layoutAccessoryLayers(in frame: CGRect) {
         appIconLayer.frame = accessoryFrame(in: frame)
+        titleLayer.frame = titleFrame(in: frame)
     }
 
     private func accessoryFrame(in frame: CGRect) -> CGRect {
@@ -2045,6 +2116,16 @@ final class AppshotTransitionView: NSView {
             y: frame.minY + AppshotLayerMetrics.appIconBottomInset,
             width: iconSize,
             height: iconSize
+        )
+    }
+
+    private func titleFrame(in frame: CGRect) -> CGRect {
+        let titleInset = min(AppshotLayerMetrics.titleHorizontalInset, max(frame.width / 2 - 1, 0))
+        return CGRect(
+            x: frame.minX + titleInset,
+            y: frame.minY - AppshotLayerMetrics.titleTopMargin - AppshotLayerMetrics.titleHeight,
+            width: max(frame.width - titleInset * 2, 1),
+            height: AppshotLayerMetrics.titleHeight
         )
     }
 
@@ -2138,15 +2219,18 @@ final class AppshotTransitionView: NSView {
             "targetCornerRadius": Double(readTargetCornerRadius()),
             "readyForMagicMoveProgress": AppshotTransitionTiming.readyForMagicMove.doubleValue,
             "magicMoveFadeDuration": AppshotTransitionTiming.magicMoveFadeDuration,
+            "visualHandoffStartProgress": AppshotTransitionTiming.visualHandoffStartProgress.doubleValue,
             "magicMoveFadeEndProgress": AppshotTransitionTiming.magicMoveFadeEndProgress(
                 duration: activeAnimationDuration
             ).doubleValue,
             "accessoryFadeStartProgress": AppshotTransitionTiming.accessoryFadeStartProgress.doubleValue,
             "accessoryFadeDuration": AppshotTransitionTiming.accessoryFadeDuration,
+            "accessoryFadeOutStartProgress": AppshotTransitionTiming.accessoryFadeOutStartProgress.doubleValue,
             "coverBackgroundColor": serializeColor(shutterLayer.backgroundColor),
             "shutterBackgroundColor": serializeColor(shutterLayer.backgroundColor),
             "snapshotBackgroundColor": serializeColor(snapshotEffectsLayer.backgroundColor),
             "snapshotImageHasContents": snapshotImageLayer.contents != nil,
+            "snapshotImageSource": snapshotImageSource,
             "snapshotImageContentsScale": Double(snapshotImageLayer.contentsScale),
             "snapshotImageSize": serialize(rect: CGRect(origin: .zero, size: snapshotImageSize)),
             "layerTypes": [
@@ -2182,7 +2266,7 @@ final class AppshotTransitionView: NSView {
             "expectedSnapshotImageEndFrame": serialize(rect: CGRect(origin: .zero, size: readEndFrame().size)),
             "expectedEndFrame": serialize(rect: readEndFrame()),
             "transitionSnapshotHeight": transitionSnapshotHeight.map(Double.init) ?? NSNull(),
-            "transitionSnapshotHeightAffectsNativeTarget": false,
+            "transitionSnapshotHeightAffectsNativeTarget": true,
             "containerFrame": serialize(rect: readPresentationFrame(containerLayer)),
             "shutterFrame": serialize(rect: readPresentationFrame(shutterLayer)),
             "coverFrame": serialize(rect: readPresentationFrame(shutterLayer)),
@@ -2267,7 +2351,7 @@ final class AppshotTransitionView: NSView {
     }
 }
 
-private func aspectFitRect(
+func aspectFitRect(
     sourceSize: CGSize,
     targetBounds: CGRect,
     verticalAlignment: AppshotVerticalAlignment

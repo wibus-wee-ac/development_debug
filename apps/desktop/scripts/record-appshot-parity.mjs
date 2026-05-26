@@ -970,11 +970,6 @@ function summarizeNativePresentationGeometryEvidence(samples) {
         height: last.expectedEndFrame.height,
       }
     : null
-  const expectedWebFinalImageFrame = readAspectFitRect({
-    sourceSize: last?.snapshotImageSize,
-    targetBounds: expectedEndBounds,
-    verticalAlignment: 'bottom',
-  })
   return {
     firstShutterMatchesSourceContentBounds: areSameRect(first?.shutterFrame, first?.expectedStartContentBounds),
     firstShadowMatchesSourceContentFrame: areSameRect(first?.shadowFrame, first?.expectedStartContentFrame),
@@ -982,7 +977,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
     lastShutterMatchesDestinationBounds: areSameRect(last?.shutterFrame, expectedEndBounds),
     lastSnapshotMatchesDestinationBounds: areSameRect(last?.snapshotFrame, expectedEndBounds),
     lastSnapshotImageMatchesExpectedEndFrame: areSameRect(last?.snapshotImageFrame, last?.expectedSnapshotImageEndFrame),
-    lastSnapshotImageMatchesWebFinalImageFrame: areSameRect(last?.snapshotImageFrame, expectedWebFinalImageFrame),
+    lastSnapshotImageMatchesComposerImageFrame: areSameRect(last?.snapshotImageFrame, expectedEndBounds),
     lastShadowMatchesDestinationFrame: areSameRect(last?.shadowFrame, last?.expectedEndFrame),
     transitionSnapshotHeightDoesNotAffectNativeTarget: last?.transitionSnapshotHeightAffectsNativeTarget === false,
     firstShutterFrame: first?.shutterFrame ?? null,
@@ -995,7 +990,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
     lastSnapshotFrame: last?.snapshotFrame ?? null,
     lastSnapshotImageFrame: last?.snapshotImageFrame ?? null,
     lastExpectedSnapshotImageEndFrame: last?.expectedSnapshotImageEndFrame ?? null,
-    lastExpectedWebFinalImageFrame: expectedWebFinalImageFrame,
+    lastExpectedComposerImageFrame: expectedEndBounds,
     lastShadowFrame: last?.shadowFrame ?? null,
     lastExpectedEndFrame: last?.expectedEndFrame ?? null,
     transitionSnapshotHeight: last?.transitionSnapshotHeight ?? null,
@@ -1278,24 +1273,27 @@ async function readCradleFrontendAppshotEvidence() {
     const composerAttachmentsSource = await readFile(cradleComposerAttachmentsSourcePath, 'utf8')
     const composerBranch = source.match(/variant === 'composer'[\s\S]*?\)\s*: \(/)?.[0] ?? ''
     const threadBranch = source.match(/variant === 'thread'[\s\S]*?data-testid="chat-appshot-identity"/)?.[0] ?? ''
+    const composerTransitionImage = source.match(/function ComposerAppshotTransitionImage[\s\S]*?function AppshotImageFrame/)?.[0] ?? ''
     const imageFrame = source.match(/function AppshotImageFrame[\s\S]*?function readThreadImageHeight/)?.[0] ?? ''
-    const imageFrameAfterMaskedWrapper = source.match(/<\/div>\s*\{appIconDataUrl && \([\s\S]*?data-testid="chat-appshot-app-icon"/)?.[0] ?? ''
+    const appIconComponent = source.match(/function AppshotAppIcon[\s\S]*?function readThreadImageHeight/)?.[0] ?? ''
     const patterns = {
       sourceAvailable: true,
       cardWidth232: /const APPSHOT_CARD_WIDTH = 232/.test(source),
-      composerUsesTransitionSnapshot: /const composerImageDataUrl = metadata\.transitionSnapshotDataUrl/.test(source),
-      composerRendersPlaceholderWithoutSnapshot: /data-testid="chat-appshot-placeholder"/.test(source),
-      composerSuppressesExtraIconOverlay: /<ComposerAppshotTransitionImage/.test(composerBranch),
-      finalCardUsesNormalDiv: /<div\s+className=\{cn\(/.test(source) && !/<m\.figure/.test(source) && !/layout=\{variant === 'composer'/.test(source),
-      composerHeightAddsEight: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(source),
+      composerUsesTransitionSnapshot: /metadata\.transitionSnapshotDataUrl \?\? metadata\.imageDataUrl/.test(composerBranch),
+      composerRendersPlaceholderWithoutSnapshot: /data-testid="chat-appshot-empty-snapshot"/.test(source),
+      composerShowsIconAndTitle: /<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(composerTransitionImage)
+        && /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(composerTransitionImage),
+      finalCardUsesMotionWithHandoffSuppressedInitial: /<m\.div/.test(source) && /initial=\{variant === 'composer' \? false : \{ opacity: 0, y: 4 \}\}/.test(source),
+      composerHeightAddsTitleAwarePadding: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING \+ APPSHOT_TITLE_HEIGHT/.test(source),
       composerImageUsesFixedTargetStyle: /style=\{\{ height: imageHeight, width: APPSHOT_CARD_WIDTH \}\}/.test(source),
       threadUsesCaptureImage: /imageDataUrl=\{metadata\.imageDataUrl\}/.test(threadBranch),
       threadVisualWidth256: /const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256/.test(source),
       threadInlinePadding12: /const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12/.test(source),
       threadIconOverlay: /appIconDataUrl=\{metadata\.appIconDataUrl\}/.test(threadBranch),
-      iconOverlayBottomCentered: /absolute bottom-0 left-1\/2 size-6 -translate-x-1\/2/.test(imageFrameAfterMaskedWrapper),
-      iconOverlayIsMaskSibling: imageFrameAfterMaskedWrapper.length > 0,
-      threadCaptionOnly: /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(source),
+      iconOverlayBottomCentered: /absolute bottom-0 left-1\/2[^"]*size-6[^"]*-translate-x-1\/2/.test(appIconComponent),
+      iconOverlayIsMaskSibling: /<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(imageFrame),
+      threadCaptionOnly: /variant === 'thread' && \(/.test(source)
+        && /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(source),
       composerAnimationTargetWidth232: /const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232/.test(actionContextSource),
       composerAnimationTargetHeight140: /const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140/.test(actionContextSource),
       composerAnimationTargetCornerRadiusZero: /const APPSHOT_ANIMATION_TARGET_CORNER_RADIUS = 0/.test(actionContextSource),
@@ -1558,10 +1556,10 @@ function readParityStatus({
     missingEvidence.push('Cradle native AppShot snapshot image layer must start on the captured PNG frame so screenshot shadow padding stays inside the source-content container.')
   }
   if (!nativeGeometryEvidence?.lastSnapshotImageMatchesExpectedEndFrame) {
-    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the expected object-contain frame so the native transition image matches the final AppShot card image size.')
+    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the expected composer image slot frame.')
   }
-  if (!nativeGeometryEvidence?.lastSnapshotImageMatchesWebFinalImageFrame) {
-    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the independently computed web final image body frame.')
+  if (!nativeGeometryEvidence?.lastSnapshotImageMatchesComposerImageFrame) {
+    missingEvidence.push('Cradle native AppShot snapshot image layer must finish on the same 232x140 composer image frame used by the native handoff.')
   }
   if (!nativeGeometryEvidence?.lastShutterMatchesDestinationBounds || !nativeGeometryEvidence?.lastSnapshotMatchesDestinationBounds || !nativeGeometryEvidence?.lastShadowMatchesDestinationFrame) {
     missingEvidence.push('Cradle native AppShot shutter, snapshot container, and shadow must finish on the composer visual destination.')
@@ -3778,7 +3776,7 @@ function formatNativeGeometryEvidence(evidence) {
     `endShutterOnSlot=${evidence.lastShutterMatchesDestinationBounds}`,
     `endSnapshotOnSlot=${evidence.lastSnapshotMatchesDestinationBounds}`,
     `endSnapshotImageOnContainFrame=${evidence.lastSnapshotImageMatchesExpectedEndFrame}`,
-    `endSnapshotImageOnWebBody=${evidence.lastSnapshotImageMatchesWebFinalImageFrame}`,
+    `endSnapshotImageOnComposerImageFrame=${evidence.lastSnapshotImageMatchesComposerImageFrame}`,
     `endShadowOnSlot=${evidence.lastShadowMatchesDestinationFrame}`,
     `transitionSnapshotHeightDoesNotAffectNativeTarget=${evidence.transitionSnapshotHeightDoesNotAffectNativeTarget}`,
   ].join(', ')

@@ -2,7 +2,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 
@@ -152,6 +152,19 @@ function createBridgeError(message: string, code = 'mac-bridge-error', details?:
   return error
 }
 
+function readBinarySignature(binaryPath: string | null): string | null {
+  if (!binaryPath) {
+    return null
+  }
+  try {
+    const stat = statSync(binaryPath)
+    return `${binaryPath}:${stat.size}:${stat.mtimeMs}`
+  }
+  catch {
+    return null
+  }
+}
+
 export class MacBridgeManager {
   private readonly events = new EventEmitter()
   private readonly options: Required<Pick<MacBridgeManagerOptions, 'args' | 'requestTimeoutMs'>> & MacBridgeManagerOptions
@@ -162,6 +175,8 @@ export class MacBridgeManager {
   private lastError: string | null = null
   private binaryPath: string | null = null
   private stoppingChild: ChildProcessWithoutNullStreams | null = null
+  private runningBinaryPath: string | null = null
+  private runningBinarySignature: string | null = null
 
   constructor(options: MacBridgeManagerOptions = {}) {
     this.options = {
@@ -188,7 +203,16 @@ export class MacBridgeManager {
 
   async start(): Promise<MacBridgeRuntimeStatus> {
     if (this.child && this.child.exitCode === null) {
-      return this.getStatus()
+      const status = this.getStatus()
+      const currentSignature = readBinarySignature(status.binaryPath)
+      if (status.binaryPath === this.runningBinaryPath && currentSignature === this.runningBinarySignature) {
+        return status
+      }
+      console.debug('[mac-bridge] restarting after binary changed:', {
+        previousBinaryPath: this.runningBinaryPath,
+        nextBinaryPath: status.binaryPath,
+      })
+      await this.stop()
     }
 
     const status = this.getStatus()
@@ -209,6 +233,12 @@ export class MacBridgeManager {
     this.child = child
     this.startedAt = new Date().toISOString()
     this.lastError = null
+    this.runningBinaryPath = status.binaryPath
+    this.runningBinarySignature = readBinarySignature(status.binaryPath)
+    console.debug('[mac-bridge] started:', {
+      binaryPath: status.binaryPath,
+      pid: child.pid ?? null,
+    })
 
     const stdout = createInterface({ input: child.stdout })
     stdout.on('line', line => this.handleStdoutLine(line))
@@ -227,6 +257,8 @@ export class MacBridgeManager {
         : `cradle-mac-bridge exited with code=${code} signal=${signal}`
       this.child = null
       this.startedAt = null
+      this.runningBinaryPath = null
+      this.runningBinarySignature = null
       stdout.close()
       this.rejectAllPending(createBridgeError(this.lastError ?? 'cradle-mac-bridge exited', 'mac-bridge-exited'))
     })
@@ -242,6 +274,8 @@ export class MacBridgeManager {
 
     this.child = null
     this.startedAt = null
+    this.runningBinaryPath = null
+    this.runningBinarySignature = null
     this.stoppingChild = child
     this.rejectAllPending(createBridgeError('Mac Bridge stopped', 'mac-bridge-stopped'))
 

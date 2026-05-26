@@ -1,5 +1,5 @@
 /* Verifies Mac Bridge process management and binary resolution behavior. */
-import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -11,7 +11,7 @@ function createFakeBridgeScript(): string {
   const root = join(tmpdir(), `cradle-mac-bridge-test-${process.pid}-${Date.now()}`)
   mkdirSync(root, { recursive: true })
   const scriptPath = join(root, 'fake-bridge.mjs')
-  writeFileSync(scriptPath, `
+  writeFileSync(scriptPath, `#!/usr/bin/env node
 import readline from 'node:readline'
 
 const rl = readline.createInterface({ input: process.stdin })
@@ -161,6 +161,10 @@ rl.on('line', (line) => {
           animationDuration: 0.88,
           transitionSnapshotPath: request.params.outputDir + '/appshot-1-transition.png',
           transitionSnapshotHeight: 360,
+          transitionSnapshotImageSize: {
+            pixelWidth: 464,
+            pixelHeight: 720
+          },
           transitionSpringDampingFraction: 0.82,
           transitionSpringResponse: 0.52
         }
@@ -579,5 +583,28 @@ describe('MacBridgeManager', () => {
         }),
       }),
     }])
+  })
+
+  it('restarts the bridge when the binary changes while a dev process is running', async () => {
+    const scriptPath = createFakeBridgeScript()
+    manager = new MacBridgeManager({
+      binaryPath: scriptPath,
+      platform: 'darwin',
+      env: process.env,
+    })
+
+    const firstStatus = await manager.readBridgeStatus()
+    const firstPid = firstStatus.pid
+    const nextTimestamp = new Date(Date.now() + 5_000)
+    utimesSync(scriptPath, nextTimestamp, nextTimestamp)
+
+    const secondStatus = await manager.readBridgeStatus()
+
+    expect(secondStatus.pid).not.toBe(firstPid)
+    expect(manager.getStatus()).toMatchObject({
+      running: true,
+      pid: secondStatus.pid,
+      binaryPath: scriptPath,
+    })
   })
 })

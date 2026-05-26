@@ -156,6 +156,11 @@ export const MacCapturedWindowSchema = z.object({
   frameEvidence: MacWindowFrameEvidenceSchema.optional(),
 })
 
+export const MacCaptureImageSizeSchema = z.object({
+  pixelWidth: z.number().int().positive(),
+  pixelHeight: z.number().int().positive(),
+})
+
 export const MacCaptureFrontmostWindowResultSchema = z.object({
   filePath: z.string(),
   metadataPath: z.string(),
@@ -165,10 +170,7 @@ export const MacCaptureFrontmostWindowResultSchema = z.object({
     'screencapture-fallback',
     'screencapture',
   ]).optional(),
-  captureImageSize: z.object({
-    pixelWidth: z.number().int().positive(),
-    pixelHeight: z.number().int().positive(),
-  }).nullable().optional(),
+  captureImageSize: MacCaptureImageSizeSchema.nullable().optional(),
   screenCaptureKitError: z.unknown().optional().nullable(),
   window: MacCapturedWindowSchema,
 })
@@ -220,6 +222,7 @@ export const MacAppshotCaptureFrontmostWindowResultSchema = MacCaptureFrontmostW
     animationDuration: z.number().nonnegative(),
     transitionSnapshotPath: z.string().nullable(),
     transitionSnapshotHeight: z.number().positive().nullable(),
+    transitionSnapshotImageSize: MacCaptureImageSizeSchema.nullable().optional(),
     transitionSpringDampingFraction: z.number().positive().nullable(),
     transitionSpringResponse: z.number().positive().nullable(),
     transitionGeometry: z.record(z.string(), z.unknown()).optional(),

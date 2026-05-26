@@ -859,6 +859,7 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
 
     let captureId = "appshot-\(Int(Date().timeIntervalSince1970 * 1000))-\(window.windowId)"
     let filePath = (outputDir as NSString).appendingPathComponent("\(captureId).png")
+    let transitionSnapshotPath = (outputDir as NSString).appendingPathComponent("\(captureId)-transition.png")
     let metadataPath = (outputDir as NSString).appendingPathComponent("\(captureId).json")
     let captureResult = try captureWindowImage(window: window, filePath: filePath)
     let captureImageSize = readCaptureImageSize(filePath: filePath)
@@ -873,13 +874,22 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
         windowTitle: window.title,
         appName: window.appName
     )
+    let appshotDisplayTitle = readAppshotDisplayTitle(windowTitle: window.title, appName: window.appName)
+    try writeAppshotTransitionSnapshotImage(
+        screenshotPath: filePath,
+        outputPath: transitionSnapshotPath,
+        snapshotHeight: CGFloat(calibration.transitionSnapshotHeight ?? AppshotLayerMetrics.transitionSnapshotBaseHeight),
+        scale: max(target.transitionSnapshotScale, 1)
+    )
+    let transitionSnapshotImageSize = readCaptureImageSize(filePath: transitionSnapshotPath)
     let transition = appshotTransitionPresenter.present(
         screenshotPath: filePath,
-        transitionSnapshotPath: nil,
+        transitionSnapshotPath: transitionSnapshotPath,
+        transitionSnapshotImageSize: transitionSnapshotImageSize,
         sourceWindow: window,
         target: target,
         calibration: calibration,
-        appTitle: window.appName,
+        appTitle: appshotDisplayTitle,
         bundleIdentifier: window.bundleId,
         soundEnabled: (params["soundEnabled"] as? Bool) ?? true
     )
@@ -901,6 +911,85 @@ func captureAppshotFrontmostWindow(params: [String: Any], appshotTransitionPrese
     try metadataData.write(to: URL(fileURLWithPath: metadataPath), options: [.atomic])
 
     return metadata
+}
+
+func readAppshotDisplayTitle(windowTitle: String?, appName: String?) -> String? {
+    let trimmedWindowTitle = windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let trimmedWindowTitle, !trimmedWindowTitle.isEmpty {
+        return trimmedWindowTitle
+    }
+    let trimmedAppName = appName?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let trimmedAppName, !trimmedAppName.isEmpty {
+        return trimmedAppName
+    }
+    return nil
+}
+
+func writeAppshotTransitionSnapshotImage(
+    screenshotPath: String,
+    outputPath: String,
+    snapshotHeight: CGFloat,
+    scale: CGFloat
+) throws {
+    guard let screenshot = NSImage(contentsOfFile: screenshotPath) else {
+        throw BridgeError("appshot-transition-snapshot-source-unavailable", "Could not read Appshot screenshot for transition snapshot.", details: [
+            "screenshotPath": screenshotPath,
+        ])
+    }
+
+    let pointSize = NSSize(
+        width: AppshotLayerMetrics.transitionSnapshotBaseWidth,
+        height: max(snapshotHeight, 1)
+    )
+    let pixelSize = NSSize(
+        width: max(ceil(pointSize.width * scale), 1),
+        height: max(ceil(pointSize.height * scale), 1)
+    )
+    guard let bitmap = NSBitmapImageRep(
+        bitmapDataPlanes: nil,
+        pixelsWide: Int(pixelSize.width),
+        pixelsHigh: Int(pixelSize.height),
+        bitsPerSample: 8,
+        samplesPerPixel: 4,
+        hasAlpha: true,
+        isPlanar: false,
+        colorSpaceName: .deviceRGB,
+        bitmapFormat: [.alphaFirst],
+        bytesPerRow: 0,
+        bitsPerPixel: 0
+    ) else {
+        throw BridgeError("appshot-transition-snapshot-bitmap-unavailable", "Could not allocate Appshot transition snapshot bitmap.")
+    }
+    bitmap.size = pointSize
+
+    guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else {
+        throw BridgeError("appshot-transition-snapshot-context-unavailable", "Could not create Appshot transition snapshot graphics context.")
+    }
+
+    let drawRect = aspectFitRect(
+        sourceSize: screenshot.size,
+        targetBounds: CGRect(origin: .zero, size: pointSize),
+        verticalAlignment: .center
+    )
+
+    NSGraphicsContext.saveGraphicsState()
+    NSGraphicsContext.current = context
+    NSColor.clear.setFill()
+    NSRect(origin: .zero, size: pointSize).fill()
+    screenshot.draw(
+        in: drawRect,
+        from: NSRect(origin: .zero, size: screenshot.size),
+        operation: .copy,
+        fraction: 1,
+        respectFlipped: false,
+        hints: [.interpolation: NSImageInterpolation.high]
+    )
+    NSGraphicsContext.restoreGraphicsState()
+
+    guard let data = bitmap.representation(using: NSBitmapImageRep.FileType.png, properties: [:]) else {
+        throw BridgeError("appshot-transition-snapshot-png-unavailable", "Could not encode Appshot transition snapshot PNG.")
+    }
+    try data.write(to: URL(fileURLWithPath: outputPath), options: Data.WritingOptions.atomic)
 }
 
 func readAppshotFrontmostContext() throws -> [String: Any] {
@@ -977,13 +1066,17 @@ func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPr
         windowTitle: sourceWindow?["title"] as? String,
         appName: sourceWindow?["appName"] as? String
     )
+    let appshotDisplayTitle = readAppshotDisplayTitle(
+        windowTitle: sourceWindow?["title"] as? String,
+        appName: sourceWindow?["appName"] as? String
+    )
 
     return try appshotTransitionPresenter.probeVisibility(
         screenshotPath: screenshotPath,
         outputDir: outputDir,
         target: target,
         calibration: calibration,
-        appTitle: sourceWindow?["appName"] as? String,
+        appTitle: appshotDisplayTitle,
         bundleIdentifier: sourceWindow?["bundleId"] as? String,
         sampleCount: sampleCount,
         sampleIntervalSeconds: sampleIntervalSeconds
@@ -1019,13 +1112,17 @@ func probeAppshotTransitionPresentation(params: [String: Any], appshotTransition
         windowTitle: sourceWindow?["title"] as? String,
         appName: sourceWindow?["appName"] as? String
     )
+    let appshotDisplayTitle = readAppshotDisplayTitle(
+        windowTitle: sourceWindow?["title"] as? String,
+        appName: sourceWindow?["appName"] as? String
+    )
 
     return try appshotTransitionPresenter.probePresentation(
         screenshotPath: screenshotPath,
         outputDir: outputDir,
         target: target,
         calibration: calibration,
-        appTitle: sourceWindow?["appName"] as? String,
+        appTitle: appshotDisplayTitle,
         bundleIdentifier: sourceWindow?["bundleId"] as? String,
         sampleCount: sampleCount,
         sampleIntervalSeconds: sampleIntervalSeconds,

@@ -1,5 +1,5 @@
-import { createServices, IpcMethod, IpcService } from '@cradle/ipc'
-import { app, dialog, screen, shell } from 'electron'
+import { createServices, getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
+import { app, BrowserWindow, dialog, screen, shell } from 'electron'
 import { readFile, realpath, stat } from 'node:fs/promises'
 import { extname, isAbsolute, join, relative } from 'node:path'
 
@@ -134,24 +134,53 @@ function getMacBridgeManager(): MacBridgeManager | null {
   return nativeServicesContext?.getMacBridgeManager() ?? null
 }
 
-function readScreenAppshotAnimationTarget(target: MacAppshotAnimationTarget | undefined): MacAppshotAnimationTarget | undefined {
+function readIpcSenderWindow(): BrowserWindow | null {
+  try {
+    return BrowserWindow.fromWebContents(getIpcContext().sender)
+  }
+  catch {
+    return null
+  }
+}
+
+function serializeAppshotBrowserWindowForLog(window: BrowserWindow | null | undefined) {
+  if (!window || window.isDestroyed()) {
+    return null
+  }
+  return {
+    id: window.id,
+    bounds: window.getBounds(),
+    contentBounds: window.getContentBounds(),
+    url: window.webContents.getURL(),
+    isFocused: window.isFocused(),
+  }
+}
+
+function readScreenAppshotAnimationTarget(
+  target: MacAppshotAnimationTarget | undefined,
+  rendererWindow: BrowserWindow | null = readIpcSenderWindow(),
+): MacAppshotAnimationTarget | undefined {
   if (!target || target.coordinateSpace !== 'viewportPixels') {
     return target
   }
   const windowManager = getWindowManager()
-  const mainWindow = windowManager?.getMainWindow()
-  if (!mainWindow || mainWindow.isDestroyed()) {
+  const window = rendererWindow && !rendererWindow.isDestroyed()
+    ? rendererWindow
+    : windowManager?.getMainWindow()
+  if (!window || window.isDestroyed()) {
     return target
   }
   const scaleFactor = target.codexDisplay.scaleFactor
-  const windowBounds = mainWindow.getBounds()
-  const contentBounds = mainWindow.getContentBounds()
+  const windowBounds = window.getBounds()
+  const contentBounds = window.getContentBounds()
   const destinationFrame = readScreenPointAppshotDestinationFrame(target, contentBounds)
   const display = screen.getDisplayMatching(destinationFrame)
   const convertedTarget = readScreenPointAppshotAnimationTarget(target, contentBounds, display)
   console.debug('[mac-capture] Appshot destination converted:', {
     inputCoordinateSpace: target.coordinateSpace,
     inputScaleFactor: scaleFactor,
+    rendererWindow: serializeAppshotBrowserWindowForLog(rendererWindow),
+    selectedWindow: serializeAppshotBrowserWindowForLog(window),
     windowBounds,
     contentBounds,
     displays: screen.getAllDisplays(),
@@ -456,6 +485,7 @@ export async function captureFrontmostWindowWithMacBridge(options: MacCaptureReq
 export async function captureAppshotWithMacBridge(
   options: MacAppshotCaptureRequest = {},
 ): Promise<MacAppshotCaptureResponse> {
+  const rendererWindow = readIpcSenderWindow()
   const manager = getMacBridgeManager()
   if (!manager) {
     throw new Error('Mac Bridge manager is not initialized')
@@ -465,6 +495,9 @@ export async function captureAppshotWithMacBridge(
   if (strategy !== 'cradle-native') {
     throw new Error(`Unsupported Appshot strategy: ${strategy}`)
   }
+  if (options.targetWindow && !options.animationTarget) {
+    throw new Error('Appshot capture requires an animation target when a target window is provided.')
+  }
   const context = await readAppshotContext(manager, options)
   const captureOptions = context
     ? {
@@ -473,12 +506,14 @@ export async function captureAppshotWithMacBridge(
         animationTarget: options.animationTarget ?? context.animationTarget,
       }
     : options
-  const animationTarget = readScreenAppshotAnimationTarget(captureOptions.animationTarget)
+  const animationTarget = readScreenAppshotAnimationTarget(captureOptions.animationTarget, rendererWindow)
   console.debug('[mac-capture] Appshot capture starting:', {
     strategy,
     requestId: options.requestId,
     hasContext: Boolean(context),
     targetWindow: captureOptions.targetWindow,
+    rendererWindow: serializeAppshotBrowserWindowForLog(rendererWindow),
+    mainWindow: serializeAppshotBrowserWindowForLog(getWindowManager()?.getMainWindow()),
     animationTarget,
   })
 
@@ -499,6 +534,7 @@ export async function captureAppshotWithMacBridge(
     requestId: options.requestId,
     filePath: capture.filePath,
     window: capture.window,
+    transitionSnapshotImageSize: capture.appshot.transitionSnapshotImageSize,
     transitionGeometry: capture.appshot.transitionGeometry,
   })
   const sink = await runMacScreenshotSink({
