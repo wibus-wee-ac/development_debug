@@ -1,5 +1,3 @@
-import { z } from 'zod'
-
 export type ToolState
   = | 'input-streaming'
     | 'input-available'
@@ -66,151 +64,324 @@ const JSON_WHITESPACE_PATTERN = /\s/
 const JSON_PRIMITIVE_PATTERN = /^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i
 const LINE_BREAK_PATTERN = /\r?\n/
 
-const NullableStringSchema = z.string().nullable().optional().default(null)
-const NullableNumberSchema = z.number().finite().nullable().optional().default(null)
-const NullableBooleanSchema = z.boolean().nullable().optional().default(null)
-const StringListSchema = z.array(z.string()).optional().default([])
+interface ToolContentBlock {
+  text: string | null
+  title: string | null
+  url: string | null
+  uri: string | null
+}
 
-const ToolContentBlockSchema = z.object({
-  text: NullableStringSchema,
-  title: NullableStringSchema,
-  url: NullableStringSchema,
-  uri: NullableStringSchema,
-}).passthrough()
+interface ToolFile {
+  filePath: string | null
+  type: string | null
+  base64: string | null
+  content: string | null
+  originalSize: number | null
+  count: number | null
+  outputDir: string | null
+  numLines: number | null
+  totalLines: number | null
+}
 
-function emptyToolContentValue(): { text: string | null, blocks: ToolContentBlock[] } {
+interface ToolGitDiff {
+  additions: number
+  deletions: number
+  patch: string
+}
+
+interface ToolPatchHunk {
+  lines: string[]
+}
+
+interface ToolTodo {
+  content: string | null
+  activeForm: string | null
+  status: string | null
+}
+
+interface ToolWebResult {
+  content: ToolContentBlock[]
+}
+
+interface ToolObjectPayload {
+  input: string | null
+  description: string | null
+  explanation: string | null
+  goal: string | null
+  type: string | null
+  file_path: string | null
+  filePath: string | null
+  path: string | null
+  file: { path: string | null, file: ToolFile | null }
+  filename: string | null
+  notebook_path: string | null
+  command: string | null
+  cmd: string | null
+  timeout: number | null
+  pattern: string | null
+  query: string | null
+  glob: string | null
+  url: string | null
+  name: string | null
+  subagent_type: string | null
+  team_name: string | null
+  agentId: string | null
+  agentType: string | null
+  task_id: string | null
+  shell_id: string | null
+  task_type: string | null
+  plan: string | null
+  server: string | null
+  uri: string | null
+  tool: string | null
+  worktreePath: string | null
+  worktreeBranch: string | null
+  action: string | null
+  edit_mode: string | null
+  cell_type: string | null
+  message: string | null
+  stdout: string | null
+  stderr: string | null
+  output: string | null
+  result: string | null
+  content: { text: string | null, blocks: ToolContentBlock[] }
+  text: string | null
+  backgroundTaskId: string | null
+  interrupted: boolean | null
+  noOutputExpected: boolean | null
+  numFiles: number | null
+  numMatches: number | null
+  code: number | null
+  bytes: number | null
+  durationSeconds: number | null
+  status: string | null
+  totalToolUseCount: number | null
+  totalTokens: number | null
+  pages: string | null
+  old_string: string | null
+  oldString: string | null
+  new_string: string | null
+  newString: string | null
+  originalFile: string | null
+  original_file: string | null
+  replace_all: boolean | null
+  replaceAll: boolean | null
+  userModified: boolean | null
+  structuredPatch: ToolPatchHunk[]
+  gitDiff: ToolGitDiff
+  filenames: string[]
+  results: ToolWebResult[]
+  contents: ToolContentBlock[]
+  outputFile: string | null
+  newTodos: ToolTodo[]
+  todos: ToolTodo[]
+  questions: unknown[]
+  allowedPrompts: unknown[]
+  answers: Record<string, unknown> | null
+  mode: string | null
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readNullableBoolean(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function readContentBlock(value: unknown): ToolContentBlock {
+  const record = isRecord(value) ? value : {}
+  return {
+    text: readNullableString(record.text),
+    title: readNullableString(record.title),
+    url: readNullableString(record.url),
+    uri: readNullableString(record.uri),
+  }
+}
+
+function readContentBlocks(value: unknown): ToolContentBlock[] {
+  return Array.isArray(value) ? value.map(readContentBlock) : []
+}
+
+function readContentValue(value: unknown): { text: string | null, blocks: ToolContentBlock[] } {
+  if (typeof value === 'string') {
+    return { text: value, blocks: [] }
+  }
+  if (Array.isArray(value)) {
+    return { text: null, blocks: readContentBlocks(value) }
+  }
   return { text: null, blocks: [] }
 }
 
-const ToolContentValueSchema = z.union([
-  z.string().transform(value => ({ text: value, blocks: [] as ToolContentBlock[] })),
-  z.array(ToolContentBlockSchema).transform(value => ({ text: null, blocks: value })),
-  z.null().transform(() => ({ text: null, blocks: [] as ToolContentBlock[] })),
-]).optional().transform(value => value ?? emptyToolContentValue())
+function readToolFile(value: unknown): ToolFile {
+  const record = isRecord(value) ? value : {}
+  return {
+    filePath: readNullableString(record.filePath),
+    type: readNullableString(record.type),
+    base64: readNullableString(record.base64),
+    content: readNullableString(record.content),
+    originalSize: readNullableNumber(record.originalSize),
+    count: readNullableNumber(record.count),
+    outputDir: readNullableString(record.outputDir),
+    numLines: readNullableNumber(record.numLines),
+    totalLines: readNullableNumber(record.totalLines),
+  }
+}
 
-const ToolFileSchema = z.object({
-  filePath: NullableStringSchema,
-  type: NullableStringSchema,
-  base64: NullableStringSchema,
-  content: NullableStringSchema,
-  originalSize: NullableNumberSchema,
-  count: NullableNumberSchema,
-  outputDir: NullableStringSchema,
-  numLines: NullableNumberSchema,
-  totalLines: NullableNumberSchema,
-}).passthrough()
+function readToolFileValue(value: unknown): { path: string | null, file: ToolFile | null } {
+  if (typeof value === 'string') {
+    return { path: value, file: null }
+  }
+  if (isRecord(value)) {
+    const file = readToolFile(value)
+    return { path: file.filePath, file }
+  }
+  return { path: null, file: null }
+}
 
-const ToolFileValueSchema = z.union([
-  z.string().transform(value => ({ path: value, file: null as ToolFile | null })),
-  ToolFileSchema.transform(value => ({ path: value.filePath, file: value })),
-  z.null().transform(() => ({ path: null, file: null as ToolFile | null })),
-]).optional().transform(value => value ?? ({ path: null, file: null as ToolFile | null }))
+function readGitDiff(value: unknown): ToolGitDiff {
+  const record = isRecord(value) ? value : {}
+  return {
+    additions: readNullableNumber(record.additions) ?? 0,
+    deletions: readNullableNumber(record.deletions) ?? 0,
+    patch: readNullableString(record.patch) ?? '',
+  }
+}
 
-const ToolGitDiffSchema = z.object({
-  additions: z.number().default(0),
-  deletions: z.number().default(0),
-  patch: z.string().default(''),
-}).passthrough()
+function readPatchHunks(value: unknown): ToolPatchHunk[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map((item) => {
+    const record = isRecord(item) ? item : {}
+    return { lines: readStringList(record.lines) }
+  })
+}
 
-const ToolPatchHunkSchema = z.object({
-  lines: StringListSchema,
-}).passthrough()
+function readTodos(value: unknown): ToolTodo[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map((item) => {
+    const record = isRecord(item) ? item : {}
+    return {
+      content: readNullableString(record.content),
+      activeForm: readNullableString(record.activeForm),
+      status: readNullableString(record.status),
+    }
+  })
+}
 
-const ToolTodoSchema = z.object({
-  content: NullableStringSchema,
-  activeForm: NullableStringSchema,
-  status: NullableStringSchema,
-}).passthrough()
+function readWebResults(value: unknown): ToolWebResult[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.map((item) => {
+    const record = isRecord(item) ? item : {}
+    return { content: readContentBlocks(record.content) }
+  })
+}
 
-const ToolWebResultSchema = z.object({
-  content: z.array(ToolContentBlockSchema).optional().default([]),
-}).passthrough()
+function readUnknownList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
 
-const ToolObjectPayloadSchema = z.object({
-  input: NullableStringSchema,
-  description: NullableStringSchema,
-  explanation: NullableStringSchema,
-  goal: NullableStringSchema,
-  type: NullableStringSchema,
-  file_path: NullableStringSchema,
-  filePath: NullableStringSchema,
-  path: NullableStringSchema,
-  file: ToolFileValueSchema,
-  filename: NullableStringSchema,
-  notebook_path: NullableStringSchema,
-  command: NullableStringSchema,
-  cmd: NullableStringSchema,
-  timeout: NullableNumberSchema,
-  pattern: NullableStringSchema,
-  query: NullableStringSchema,
-  glob: NullableStringSchema,
-  url: NullableStringSchema,
-  name: NullableStringSchema,
-  subagent_type: NullableStringSchema,
-  team_name: NullableStringSchema,
-  agentId: NullableStringSchema,
-  agentType: NullableStringSchema,
-  task_id: NullableStringSchema,
-  shell_id: NullableStringSchema,
-  task_type: NullableStringSchema,
-  plan: NullableStringSchema,
-  server: NullableStringSchema,
-  uri: NullableStringSchema,
-  tool: NullableStringSchema,
-  worktreePath: NullableStringSchema,
-  worktreeBranch: NullableStringSchema,
-  action: NullableStringSchema,
-  edit_mode: NullableStringSchema,
-  cell_type: NullableStringSchema,
-  message: NullableStringSchema,
-  stdout: NullableStringSchema,
-  stderr: NullableStringSchema,
-  output: NullableStringSchema,
-  result: NullableStringSchema,
-  content: ToolContentValueSchema,
-  text: NullableStringSchema,
-  backgroundTaskId: NullableStringSchema,
-  interrupted: NullableBooleanSchema,
-  noOutputExpected: NullableBooleanSchema,
-  numFiles: NullableNumberSchema,
-  numMatches: NullableNumberSchema,
-  code: NullableNumberSchema,
-  bytes: NullableNumberSchema,
-  durationSeconds: NullableNumberSchema,
-  status: NullableStringSchema,
-  totalToolUseCount: NullableNumberSchema,
-  totalTokens: NullableNumberSchema,
-  pages: NullableStringSchema,
-  old_string: NullableStringSchema,
-  oldString: NullableStringSchema,
-  new_string: NullableStringSchema,
-  newString: NullableStringSchema,
-  originalFile: NullableStringSchema,
-  original_file: NullableStringSchema,
-  replace_all: NullableBooleanSchema,
-  replaceAll: NullableBooleanSchema,
-  userModified: NullableBooleanSchema,
-  structuredPatch: z.array(ToolPatchHunkSchema).optional().default([]),
-  gitDiff: ToolGitDiffSchema.default({
-    additions: 0,
-    deletions: 0,
-    patch: '',
-  }),
-  filenames: StringListSchema,
-  results: z.array(ToolWebResultSchema).optional().default([]),
-  contents: z.array(ToolContentBlockSchema).optional().default([]),
-  outputFile: NullableStringSchema,
-  newTodos: z.array(ToolTodoSchema).optional().default([]),
-  todos: z.array(ToolTodoSchema).optional().default([]),
-  questions: z.array(z.unknown()).optional().default([]),
-  allowedPrompts: z.array(z.unknown()).optional().default([]),
-  answers: z.record(z.string(), z.unknown()).nullable().optional().default(null),
-  mode: NullableStringSchema,
-}).passthrough()
+function readAnswers(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null
+}
 
-type ToolContentBlock = z.infer<typeof ToolContentBlockSchema>
-type ToolFile = z.infer<typeof ToolFileSchema>
-type ToolObjectPayload = z.infer<typeof ToolObjectPayloadSchema>
+function readToolObjectPayload(value: unknown): ToolObjectPayload {
+  const record = isRecord(value) ? value : {}
+  return {
+    input: readNullableString(record.input),
+    description: readNullableString(record.description),
+    explanation: readNullableString(record.explanation),
+    goal: readNullableString(record.goal),
+    type: readNullableString(record.type),
+    file_path: readNullableString(record.file_path),
+    filePath: readNullableString(record.filePath),
+    path: readNullableString(record.path),
+    file: readToolFileValue(record.file),
+    filename: readNullableString(record.filename),
+    notebook_path: readNullableString(record.notebook_path),
+    command: readNullableString(record.command),
+    cmd: readNullableString(record.cmd),
+    timeout: readNullableNumber(record.timeout),
+    pattern: readNullableString(record.pattern),
+    query: readNullableString(record.query),
+    glob: readNullableString(record.glob),
+    url: readNullableString(record.url),
+    name: readNullableString(record.name),
+    subagent_type: readNullableString(record.subagent_type),
+    team_name: readNullableString(record.team_name),
+    agentId: readNullableString(record.agentId),
+    agentType: readNullableString(record.agentType),
+    task_id: readNullableString(record.task_id),
+    shell_id: readNullableString(record.shell_id),
+    task_type: readNullableString(record.task_type),
+    plan: readNullableString(record.plan),
+    server: readNullableString(record.server),
+    uri: readNullableString(record.uri),
+    tool: readNullableString(record.tool),
+    worktreePath: readNullableString(record.worktreePath),
+    worktreeBranch: readNullableString(record.worktreeBranch),
+    action: readNullableString(record.action),
+    edit_mode: readNullableString(record.edit_mode),
+    cell_type: readNullableString(record.cell_type),
+    message: readNullableString(record.message),
+    stdout: readNullableString(record.stdout),
+    stderr: readNullableString(record.stderr),
+    output: readNullableString(record.output),
+    result: readNullableString(record.result),
+    content: readContentValue(record.content),
+    text: readNullableString(record.text),
+    backgroundTaskId: readNullableString(record.backgroundTaskId),
+    interrupted: readNullableBoolean(record.interrupted),
+    noOutputExpected: readNullableBoolean(record.noOutputExpected),
+    numFiles: readNullableNumber(record.numFiles),
+    numMatches: readNullableNumber(record.numMatches),
+    code: readNullableNumber(record.code),
+    bytes: readNullableNumber(record.bytes),
+    durationSeconds: readNullableNumber(record.durationSeconds),
+    status: readNullableString(record.status),
+    totalToolUseCount: readNullableNumber(record.totalToolUseCount),
+    totalTokens: readNullableNumber(record.totalTokens),
+    pages: readNullableString(record.pages),
+    old_string: readNullableString(record.old_string),
+    oldString: readNullableString(record.oldString),
+    new_string: readNullableString(record.new_string),
+    newString: readNullableString(record.newString),
+    originalFile: readNullableString(record.originalFile),
+    original_file: readNullableString(record.original_file),
+    replace_all: readNullableBoolean(record.replace_all),
+    replaceAll: readNullableBoolean(record.replaceAll),
+    userModified: readNullableBoolean(record.userModified),
+    structuredPatch: readPatchHunks(record.structuredPatch),
+    gitDiff: readGitDiff(record.gitDiff),
+    filenames: readStringList(record.filenames),
+    results: readWebResults(record.results),
+    contents: readContentBlocks(record.contents),
+    outputFile: readNullableString(record.outputFile),
+    newTodos: readTodos(record.newTodos),
+    todos: readTodos(record.todos),
+    questions: readUnknownList(record.questions),
+    allowedPrompts: readUnknownList(record.allowedPrompts),
+    answers: readAnswers(record.answers),
+    mode: readNullableString(record.mode),
+  }
+}
 
 export interface ToolPayload {
   rawText: string | null
@@ -260,15 +431,15 @@ export interface ToolPayload {
   replaceAll: boolean | null
   userModified: boolean | null
   file: ToolFile | null
-  gitDiff: z.infer<typeof ToolGitDiffSchema>
-  structuredPatch: Array<z.infer<typeof ToolPatchHunkSchema>>
+  gitDiff: ToolGitDiff
+  structuredPatch: ToolPatchHunk[]
   filenames: string[]
-  results: Array<z.infer<typeof ToolWebResultSchema>>
+  results: ToolWebResult[]
   contentBlocks: ToolContentBlock[]
   contents: ToolContentBlock[]
   outputFile: string | null
-  todos: Array<z.infer<typeof ToolTodoSchema>>
-  newTodos: Array<z.infer<typeof ToolTodoSchema>>
+  todos: ToolTodo[]
+  newTodos: ToolTodo[]
   questions: unknown[]
   allowedPrompts: unknown[]
   answers: Record<string, unknown> | null
@@ -340,25 +511,27 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
   }
 }
 
-export const ToolPayloadSchema = z.union([
-  z.string().transform((value): ToolPayload => ({
-    ...toolPayloadFromObject(ToolObjectPayloadSchema.parse({})),
-    rawText: value,
-  })),
-  z.array(ToolContentBlockSchema).transform((value): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({ contents: value }))),
-  ToolObjectPayloadSchema.transform(toolPayloadFromObject),
-  z.null().transform((): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({}))),
-  z.undefined().transform((): ToolPayload => toolPayloadFromObject(ToolObjectPayloadSchema.parse({}))),
-])
+export function readToolPayload(value: unknown): ToolPayload {
+  if (typeof value === 'string') {
+    return {
+      ...toolPayloadFromObject(readToolObjectPayload({})),
+      rawText: value,
+    }
+  }
+  if (Array.isArray(value)) {
+    return toolPayloadFromObject(readToolObjectPayload({ contents: value }))
+  }
+  return toolPayloadFromObject(readToolObjectPayload(value))
+}
 
 export function readToolInputPayload(input: unknown, argumentsText?: string): ToolPayload {
-  const inputPayload = ToolPayloadSchema.parse(input)
+  const inputPayload = readToolPayload(input)
   if (input !== undefined || argumentsText === undefined) {
     return inputPayload
   }
 
   const argumentsObject = parsePartialJsonObject(argumentsText)
-  const argumentsPayload = ToolPayloadSchema.parse(argumentsObject)
+  const argumentsPayload = readToolPayload(argumentsObject)
   return {
     ...argumentsPayload,
     rawText: argumentsText,
@@ -369,7 +542,7 @@ export function readToolInputPayload(input: unknown, argumentsText?: string): To
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
   const toolName = part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
   const input = readToolInputPayload(part.input, part.argumentsText)
-  const output = ToolPayloadSchema.parse(part.output)
+  const output = readToolPayload(part.output)
   const normalizedName = normalizeToolName(toolName)
   const kind = classifyToolKind(normalizedName, input, output)
   const displayName = formatToolName(toolName)
@@ -392,7 +565,7 @@ function parsePartialJsonObject(text: string): Record<string, unknown> {
 
   try {
     const parsed = JSON.parse(trimmed)
-    return z.record(z.string(), z.unknown()).parse(parsed)
+    return isRecord(parsed) ? parsed : {}
   }
   catch {
     return parseTopLevelObjectPrefix(trimmed)

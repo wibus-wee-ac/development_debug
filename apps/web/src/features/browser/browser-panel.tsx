@@ -1,6 +1,7 @@
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
+  BugIcon,
   Code2Icon,
   EyeIcon,
   FileCodeIcon,
@@ -8,17 +9,18 @@ import {
   GlobeIcon,
   PlusIcon,
   RefreshCwIcon,
-  XIcon
+  XIcon,
 } from 'lucide-react'
 import { Activity, createElement, useCallback, useEffect, useRef, useState } from 'react'
 
 import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
-import { isElectron } from '~/lib/electron'
-import type { BrowserPanelTab } from '~/store/browser-panel'
+import { isElectron, nativeIpc } from '~/lib/electron'
+import type { BrowserPanelScriptRunAt, BrowserPanelTab } from '~/store/browser-panel'
 import { handleBrowserPanelTabShortcut, useBrowserPanelStore } from '~/store/browser-panel'
 
+import { BROWSER_TAB_SCRIPT_PRESETS, getBrowserTabScriptsByIds } from './browser-tab-scripts'
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
 
 // Electron webview element — not in React's JSX types
@@ -34,23 +36,25 @@ type WebviewElement = HTMLElement & {
   getURL: () => string
   getTitle: () => string
   isLoading: () => boolean
+  getWebContentsId: () => number
   executeJavaScript: (code: string) => Promise<unknown>
   addEventListener: (event: string, handler: (...args: unknown[]) => void) => void
   removeEventListener: (event: string, handler: (...args: unknown[]) => void) => void
 }
 
-// Script injection presets
-const INJECT_PRESETS = [
-  {
-    id: 'react-scan',
-    label: 'React Scan',
-    script: `(function(){if(!window.__REACT_SCAN_INJECTED__){window.__REACT_SCAN_INJECTED__=true;const s=document.createElement('script');s.src='https://unpkg.com/react-scan/dist/auto.global.js';document.head.appendChild(s)}})()`
-  }
-] as const
-
 const MAX_TABS = 5
 const WEBVIEW_PARTITION = 'persist:browser'
 const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
+const SCRIPT_RUN_AT_LABELS = {
+  'document-start': 'start',
+  'document-end': 'end',
+  'document-idle': 'idle',
+} as const
+const CUSTOM_SCRIPT_RUN_AT_OPTIONS: BrowserPanelScriptRunAt[] = ['document-start', 'document-end', 'document-idle']
+
+function isElectronWebview(el: WebviewElement): boolean {
+  return typeof el.loadURL === 'function' && typeof el.getWebContentsId === 'function'
+}
 
 interface ElectronWebviewProps {
   url: string
@@ -104,14 +108,18 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
   const setActiveTab = useBrowserPanelStore(state => state.setActiveTab)
   const updateTab = useBrowserPanelStore(state => state.updateTab)
   const navigateTo = useBrowserPanelStore(state => state.navigateTo)
+  const setBrowserTabScripts = useBrowserPanelStore(state => state.setBrowserTabScripts)
+  const addBrowserTabCustomScript = useBrowserPanelStore(state => state.addBrowserTabCustomScript)
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
-  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const activeTab = tabs.find(t => t.id === activeTabId)
   const activeBrowserTab = activeTab?.kind === 'browser' ? activeTab : null
   const activeWorkspaceFileTab = activeTab?.kind === 'workspace-file' ? activeTab : null
   const activeWorkspaceDiffTab = activeTab?.kind === 'workspace-diff' ? activeTab : null
-  const browserTabCount = tabs.filter((tab) => tab.kind === 'browser').length
+  const browserTabCount = tabs.filter(tab => tab.kind === 'browser').length
   const [urlInput, setUrlInput] = useState('')
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
+  const loadedWebviewTabIdsRef = useRef<Set<string>>(new Set())
+  const scriptSyncKeysRef = useRef<Map<string, string>>(new Map())
 
   useEffect(() => {
     if (!requestedTab) {
@@ -140,7 +148,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         updateTab(tabId, {
           url: e.url,
           canGoBack: el.canGoBack(),
-          canGoForward: el.canGoForward()
+          canGoForward: el.canGoForward(),
         })
       }
       const handleDidStartLoading = () => {
@@ -150,7 +158,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         updateTab(tabId, {
           loading: false,
           canGoBack: el.canGoBack(),
-          canGoForward: el.canGoForward()
+          canGoForward: el.canGoForward(),
         })
       }
       // eslint-disable-next-line ts/no-explicit-any
@@ -174,7 +182,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         el.removeEventListener('page-favicon-updated', handleFavicon)
       }
     },
-    [updateTab]
+    [updateTab],
   )
 
   // Ref callback factory for each webview
@@ -183,15 +191,23 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       if (el && !webviewMapRef.current.has(tabId)) {
         webviewMapRef.current.set(tabId, el)
         el.__cleanup = attachWebviewListeners(tabId, el)
-      } else if (!el) {
+      }
+ else if (!el) {
         const prev = webviewMapRef.current.get(tabId)
         if (prev) {
           prev.__cleanup?.()
           webviewMapRef.current.delete(tabId)
+          loadedWebviewTabIdsRef.current.delete(tabId)
+          scriptSyncKeysRef.current.delete(tabId)
+          void nativeIpc?.browserTabScripts.clearScripts({
+            webContentsId: prev.getWebContentsId(),
+          }).catch((error) => {
+            console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
+          })
         }
       }
     },
-    [attachWebviewListeners]
+    [attachWebviewListeners],
   )
 
   const handleGoBack = useCallback(() => {
@@ -215,15 +231,133 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
     webviewMapRef.current.get(activeBrowserTab.id)?.reload()
   }, [activeBrowserTab])
 
-  const handleInjectScript = useCallback(
-    (script: string) => {
+  useEffect(() => {
+    const browserTabScripts = nativeIpc?.browserTabScripts
+    if (!browserTabScripts) {
+      for (const tab of tabs) {
+        if (tab.kind !== 'browser' || loadedWebviewTabIdsRef.current.has(tab.id)) {
+          continue
+        }
+        const webview = webviewMapRef.current.get(tab.id)
+        if (!webview) {
+          continue
+        }
+        if (!isElectronWebview(webview)) {
+          continue
+        }
+        loadedWebviewTabIdsRef.current.add(tab.id)
+        void webview.loadURL(tab.url)
+      }
+      return
+    }
+
+    for (const tab of tabs) {
+      if (tab.kind !== 'browser') {
+        continue
+      }
+      const webview = webviewMapRef.current.get(tab.id)
+      if (!webview) {
+        continue
+      }
+      if (!isElectronWebview(webview)) {
+        continue
+      }
+
+      const scripts = [
+        ...getBrowserTabScriptsByIds(tab.scriptIds),
+        ...tab.customScripts.map(script => ({
+          ...script,
+          description: 'Custom browser tab script',
+        })),
+      ]
+      const scriptPayloads = scripts.map(script => ({
+        id: script.id,
+        label: script.label,
+        runAt: script.runAt,
+        source: script.source,
+      }))
+      const webContentsId = webview.getWebContentsId()
+      const syncKey = JSON.stringify({
+        webContentsId,
+        scripts: scriptPayloads,
+      })
+      const isLoaded = loadedWebviewTabIdsRef.current.has(tab.id)
+      let syncScripts: Promise<unknown> = Promise.resolve()
+
+      if (scriptSyncKeysRef.current.get(tab.id) !== syncKey) {
+        scriptSyncKeysRef.current.set(tab.id, syncKey)
+        syncScripts = browserTabScripts.setScripts({
+          webContentsId,
+          scripts: scriptPayloads,
+        }).then(() => {
+          if (isLoaded) {
+            return Promise.all(scripts.map(script =>
+              browserTabScripts.runScript({
+                webContentsId,
+                script: {
+                  id: script.id,
+                  label: script.label,
+                  runAt: script.runAt,
+                  source: script.source,
+                },
+              }).catch((error) => {
+                console.warn(`[browser-panel] Failed to run ${script.id}:`, error)
+              })))
+          }
+          return undefined
+        }).catch((error) => {
+          console.warn('[browser-panel] Failed to sync browser tab scripts:', error)
+        })
+      }
+
+      if (!isLoaded) {
+        loadedWebviewTabIdsRef.current.add(tab.id)
+        void syncScripts.finally(() => {
+          if (!webviewMapRef.current.has(tab.id)) {
+            return
+          }
+          void webview.loadURL(tab.url)
+        }).catch((error) => {
+          console.warn('[browser-panel] Failed to load browser tab URL:', error)
+        })
+      }
+    }
+  }, [tabs])
+
+  const handleToggleScript = useCallback(
+    (scriptId: string) => {
       if (!activeBrowserTab) {
         return
       }
-      webviewMapRef.current.get(activeBrowserTab.id)?.executeJavaScript(script)
+      const nextScriptIds = activeBrowserTab.scriptIds.includes(scriptId)
+        ? activeBrowserTab.scriptIds.filter(id => id !== scriptId)
+        : [...activeBrowserTab.scriptIds, scriptId]
+      setBrowserTabScripts(activeBrowserTab.id, nextScriptIds)
     },
-    [activeBrowserTab]
+    [activeBrowserTab, setBrowserTabScripts],
   )
+
+  const handleAddCustomScript = useCallback(() => {
+    if (!activeBrowserTab) {
+      return
+    }
+
+    const source = window.prompt('Script source')
+    if (!source?.trim()) {
+      return
+    }
+    const runAtInput = window.prompt('Run at: document-start, document-end, or document-idle', 'document-idle')
+    const runAt = CUSTOM_SCRIPT_RUN_AT_OPTIONS.includes(runAtInput as BrowserPanelScriptRunAt)
+      ? runAtInput as BrowserPanelScriptRunAt
+      : 'document-idle'
+    const label = window.prompt('Script label', 'Custom Script')?.trim() || 'Custom Script'
+
+    addBrowserTabCustomScript(activeBrowserTab.id, {
+      label,
+      runAt,
+      source,
+    })
+  }, [activeBrowserTab, addBrowserTabCustomScript])
 
   const handleUrlSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -241,7 +375,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         navigateTo(activeBrowserTab.id, url)
       }
     },
-    [activeBrowserTab, urlInput, navigateTo]
+    [activeBrowserTab, urlInput, navigateTo],
   )
 
   const handleNewTab = useCallback(() => {
@@ -297,7 +431,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
               'group flex max-w-40 items-center rounded-md text-[11px] transition-colors',
               tab.id === activeTabId
                 ? 'bg-foreground/5 text-foreground'
-                : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/4'
+                : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/4',
             )}
           >
             <button
@@ -402,24 +536,65 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
             <input
               type="text"
               value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
+              onChange={e => setUrlInput(e.target.value)}
               placeholder="URL"
               aria-label="URL"
               className="w-full px-3 py-1 text-xs rounded-full bg-foreground/4 placeholder:text-muted-foreground/40 focus:bg-foreground/7 focus:outline-none transition-[background-color]"
             />
           </form>
 
-          {INJECT_PRESETS.map((preset) => (
+          <div className="flex shrink-0 items-center gap-1 rounded-md bg-foreground/4 p-0.5">
             <button
-              key={preset.id}
               type="button"
-              onClick={() => handleInjectScript(preset.script)}
-              className="px-2.5 py-1 text-[10px] font-medium rounded-full bg-foreground/4 hover:bg-foreground/8 text-muted-foreground/70 hover:text-foreground transition-colors active:scale-95 whitespace-nowrap"
-              title={`Inject ${preset.label}`}
+              onClick={handleAddCustomScript}
+              className="flex h-6 min-w-6 items-center justify-center rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-[background-color,color,scale] hover:bg-foreground/5 hover:text-foreground active:scale-[0.96]"
+              title="Add custom script"
+              aria-label="Add custom script"
             >
-              {preset.label}
+              <Code2Icon className="size-3" aria-hidden="true" />
+              {activeBrowserTab.customScripts.length > 0 && (
+                <span className="ml-1 font-mono text-[8px] leading-none text-muted-foreground/70">
+                  {activeBrowserTab.customScripts.length}
+                </span>
+              )}
             </button>
-          ))}
+            {BROWSER_TAB_SCRIPT_PRESETS.map((preset) => {
+              const enabled = activeBrowserTab.scriptIds.includes(preset.id)
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => handleToggleScript(preset.id)}
+                  className={cn(
+                    'flex h-6 min-w-6 items-center justify-center rounded px-1.5 text-[10px] font-medium transition-[background-color,color,scale] active:scale-[0.96]',
+                    enabled
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5',
+                  )}
+                  title={`${preset.label}: ${preset.description} (${preset.runAt})`}
+                  aria-label={`${enabled ? 'Disable' : 'Enable'} ${preset.label}`}
+                  aria-pressed={enabled}
+                >
+                  {preset.id === 'eruda'
+? (
+                    <BugIcon className="size-3" aria-hidden="true" />
+                  )
+: (
+                    <span>{preset.label}</span>
+                  )}
+                  <span className={cn(
+                    'ml-1 rounded-sm px-1 py-px font-mono text-[8px] leading-none',
+                    enabled
+                      ? 'bg-foreground/8 text-muted-foreground'
+                      : 'bg-background/60 text-muted-foreground/60',
+                  )}
+                  >
+                    {SCRIPT_RUN_AT_LABELS[preset.runAt]}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -441,14 +616,13 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                 openWorkspaceFileTab({
                   workspaceId: activeWorkspaceFileTab.workspaceId,
                   path: activeWorkspaceFileTab.path,
-                  view: 'preview'
-                })
-              }
+                  view: 'preview',
+                })}
               className={cn(
                 'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
                 activeWorkspaceFileTab.view === 'preview'
                   ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground/70 hover:text-foreground'
+                  : 'text-muted-foreground/70 hover:text-foreground',
               )}
               aria-pressed={activeWorkspaceFileTab.view === 'preview'}
             >
@@ -461,14 +635,13 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                 openWorkspaceFileTab({
                   workspaceId: activeWorkspaceFileTab.workspaceId,
                   path: activeWorkspaceFileTab.path,
-                  view: 'editor'
-                })
-              }
+                  view: 'editor',
+                })}
               className={cn(
                 'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
                 activeWorkspaceFileTab.view === 'editor'
                   ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground/70 hover:text-foreground'
+                  : 'text-muted-foreground/70 hover:text-foreground',
               )}
               aria-pressed={activeWorkspaceFileTab.view === 'editor'}
             >
@@ -494,7 +667,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
             return (
               <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
                 <ElectronWebview
-                  url={tab.url}
+                  url="about:blank"
                   webviewRef={webviewRef(tab.id)}
                 />
               </Activity>
@@ -512,9 +685,11 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           return (
             <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
               <div className="absolute inset-0 min-h-0">
-                {tab.view === 'editor' ? (
+                {tab.view === 'editor'
+? (
                   <WorkspaceFileEditor workspaceId={tab.workspaceId} path={tab.path} />
-                ) : (
+                )
+: (
                   <WorkspaceFilePreview
                     workspaceId={tab.workspaceId}
                     path={tab.path}
@@ -522,9 +697,8 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                       openWorkspaceFileTab({
                         workspaceId: tab.workspaceId,
                         path: tab.path,
-                        view: 'editor'
-                      })
-                    }
+                        view: 'editor',
+                      })}
                   />
                 )}
               </div>

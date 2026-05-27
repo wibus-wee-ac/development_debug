@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'
 import { VList } from 'virtua'
@@ -74,7 +74,6 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     () => (commits ? computeGraphLayout(commits) : []),
     [commits],
   )
-
 
   if (!workspaceId) {
     return (

@@ -1,9 +1,11 @@
+import { useTabFrameActive } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import type { TFunction } from 'i18next'
 import {
   ClockIcon,
   FolderIcon,
+  FolderPlusIcon,
   MessageSquareIcon,
   SettingsIcon,
 } from 'lucide-react'
@@ -24,10 +26,11 @@ import type { MentionItem } from '~/features/chat/mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
-import { useAddWorkspace, useWorkspaces } from '~/features/workspace/use-workspace'
+import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -75,22 +78,25 @@ function timeAgo(timestamp: number, now: number, t: NewChatTranslation): string 
 
 /* ─── Animated Placeholder ────────────────────────────────────────────── */
 
-function useRotatingPlaceholder(hints: string[], interval = 4000): string {
+function useRotatingPlaceholder(hints: string[], active: boolean, interval = 4000): string {
   const [index, setIndex] = useState(0)
 
   useEffect(() => {
+    if (!active) {
+      return
+    }
     const timer = setInterval(() => {
       setIndex(i => (i + 1) % hints.length)
     }, interval)
     return () => clearInterval(timer)
-  }, [hints.length, interval])
+  }, [active, hints.length, interval])
 
   return hints[index]
 }
 
 /* ─── Owner Hook ──────────────────────────────────────────────────────── */
 
-function useNewChatPageOwner() {
+function useNewChatPageOwner(active: boolean) {
   const { t } = useTranslation('new-chat')
   const composerState = useComposerState({ context: 'new-chat' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
@@ -107,19 +113,19 @@ function useNewChatPageOwner() {
   const [sending, setSending] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
 
-  const effectiveWorkspaceId = useMemo(() => {
+  const selectedProjectWorkspaceId = useMemo(() => {
     if (selectedWorkspaceId && workspaces.some(w => w.id === selectedWorkspaceId)) {
       return selectedWorkspaceId
     }
-    return workspaces[0]?.id ?? null
+    return null
   }, [selectedWorkspaceId, workspaces])
 
-  const selectedWorkspace = workspaces.find(w => w.id === effectiveWorkspaceId) ?? null
-  const { sessions, loading: sessionsLoading } = useSessions(effectiveWorkspaceId)
-  const { files: workspaceFiles } = useWorkspaceFiles(effectiveWorkspaceId)
-  const now = useNow()
+  const selectedWorkspace = workspaces.find(w => w.id === selectedProjectWorkspaceId) ?? null
+  const { sessions, loading: sessionsLoading } = useSessions(selectedProjectWorkspaceId)
+  const { files: workspaceFiles } = useWorkspaceFiles(selectedProjectWorkspaceId)
+  const now = useNow(60_000, active)
   const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
-  const placeholder = useRotatingPlaceholder(placeholderHints)
+  const placeholder = useRotatingPlaceholder(placeholderHints, active)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const slashCommands = useMemo(
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
@@ -129,7 +135,7 @@ function useNewChatPageOwner() {
     () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
     [workspaceFiles],
   )
-  const sessionsReady = effectiveWorkspaceId === null || !sessionsLoading
+  const sessionsReady = selectedProjectWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
     && !composerState.isLoadingAgents
@@ -152,21 +158,12 @@ function useNewChatPageOwner() {
   }, [sessions])
 
   const sendDisabled = selection.runtimeKind === 'cli-tui'
-    ? !effectiveAgent || !effectiveWorkspaceId || sending
-    : !effectiveProfile || !effectiveWorkspaceId || sending
+    ? !effectiveAgent || sending
+    : !effectiveProfile || sending
 
   const readinessNotice = useMemo(() => {
     if (!isReady) {
       return null
-    }
-    if (!effectiveWorkspaceId) {
-      return {
-        key: 'workspace',
-        icon: FolderIcon,
-        message: t('readiness.workspace.message'),
-        actionLabel: addingWorkspace ? t('readiness.workspace.adding') : t('readiness.workspace.action'),
-        disabled: addingWorkspace,
-      }
     }
     if (selection.runtimeKind === 'cli-tui' && !effectiveAgent) {
       return {
@@ -187,7 +184,7 @@ function useNewChatPageOwner() {
       }
     }
     return null
-  }, [addingWorkspace, effectiveAgent, effectiveProfile, effectiveWorkspaceId, isReady, selection.runtimeKind, t])
+  }, [effectiveAgent, effectiveProfile, isReady, selection.runtimeKind, t])
 
   const openSettingsSection = useCallback((section: string) => {
     const tabStore = useCradleTabStore.getState()
@@ -205,21 +202,17 @@ function useNewChatPageOwner() {
     if (!readinessNotice) {
       return
     }
-    if (readinessNotice.key === 'workspace') {
-      void addFromPicker()
-      return
-    }
     openSettingsSection(readinessNotice.key)
-  }, [addFromPicker, openSettingsSection, readinessNotice])
+  }, [openSettingsSection, readinessNotice])
 
   const handleSend = useCallback(async (text: string, files: FileUIPart[]) => {
     const trimmedText = text.trim()
     const hasDraft = trimmedText.length > 0 || files.length > 0
     const canSubmit = selection.runtimeKind === 'cli-tui'
-      ? !!effectiveAgent && !!effectiveWorkspaceId && !sending
-      : !!effectiveProfile && !!effectiveWorkspaceId && hasDraft && !sending
+      ? !!effectiveAgent && !sending
+      : !!effectiveProfile && hasDraft && !sending
 
-    if (!canSubmit || !effectiveWorkspaceId || !selectedWorkspace) {
+    if (!canSubmit) {
       return false
     }
 
@@ -231,16 +224,24 @@ function useNewChatPageOwner() {
         }
         const { data: sessionData } = await postSessions({
           body: {
-            workspaceId: effectiveWorkspaceId,
+            ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
             title: trimmedText.slice(0, 80) || effectiveAgent.name,
             agentId: effectiveAgent.id,
           },
         })
-        const session = sessionData as { id: string } | null
+        const session = sessionData as { id: string, workspaceId: string | null } | null
         if (!session?.id) {
           return false
         }
-        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+        useSessionLayoutStore.getState().upsertSession({
+          sessionId: session.id,
+          sessionTitle: trimmedText.slice(0, 80) || effectiveAgent.name,
+          workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
+          workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
+          runtimeKind: 'cli-tui',
+        })
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) })
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
         void openTab('chat', { sessionId: session.id })
         return true
       }
@@ -250,16 +251,23 @@ function useNewChatPageOwner() {
       }
       const { data: sessionData } = await postSessions({
         body: {
-          workspaceId: effectiveWorkspaceId,
+          ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
           title: trimmedText.slice(0, 80) || effectiveProfile.name,
           providerTargetId: effectiveProfile.id,
           runtimeKind: selection.runtimeKind,
         },
       })
-      const session = sessionData as { id: string } | null
+      const session = sessionData as { id: string, workspaceId: string | null } | null
       if (!session?.id) {
         return false
       }
+      useSessionLayoutStore.getState().upsertSession({
+        sessionId: session.id,
+        sessionTitle: trimmedText.slice(0, 80) || effectiveProfile.name,
+        workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
+        workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
+        runtimeKind: selection.runtimeKind,
+      })
       void startChatResponse({
         sessionId: session.id,
         body: {
@@ -269,7 +277,8 @@ function useNewChatPageOwner() {
           thinkingEffort: selection.thinkingEffort ?? undefined,
         },
       })
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(effectiveWorkspaceId) })
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) })
+      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
       void openTab('chat', { sessionId: session.id })
       return true
     }
@@ -280,7 +289,7 @@ function useNewChatPageOwner() {
     finally {
       setSending(false)
     }
-  }, [effectiveAgent, effectiveProfile, effectiveWorkspaceId, effectiveModel, queryClient, selectedWorkspace, selection.runtimeKind, selection.thinkingEffort, sending, openTab])
+  }, [effectiveAgent, effectiveProfile, selectedProjectWorkspaceId, selectedWorkspace?.id, selectedWorkspace?.path, effectiveModel, queryClient, selection.runtimeKind, selection.thinkingEffort, sending, openTab])
 
   const handleQuickAction = useCallback((prompt: string) => {
     setQuickActionText(prompt)
@@ -295,7 +304,7 @@ function useNewChatPageOwner() {
     availableFiles,
     composerState,
     draft,
-    effectiveWorkspaceId,
+    effectiveWorkspaceId: selectedProjectWorkspaceId,
     handleQuickAction,
     handleReadinessAction,
     handleResumeSession,
@@ -310,6 +319,8 @@ function useNewChatPageOwner() {
     sendDisabled,
     setDraft,
     sending,
+    addFromPicker,
+    addingWorkspace,
     setSelectedWorkspaceId,
     t,
     quickActionKey,
@@ -331,6 +342,8 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     quickActionText,
     sendDisabled,
     sending,
+    addFromPicker,
+    addingWorkspace,
     setSelectedWorkspaceId,
     setDraft,
     selectedWorkspace,
@@ -345,24 +358,38 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/35 hover:text-muted-foreground/60" />} data-testid="new-chat-workspace-selector">
         <FolderIcon className="size-3 shrink-0" />
-        <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.fallback')}</span>
+        <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.adhoc')}</span>
       </MenuTrigger>
       <MenuPopup>
         <MenuGroup>
           <MenuGroupLabel>{t('workspace.group')}</MenuGroupLabel>
           <MenuSeparator />
-          {workspaces.length === 0
-            ? <MenuItem disabled>{t('workspace.empty')}</MenuItem>
-            : workspaces.map(workspace => (
-                <MenuItem
-                  key={workspace.id}
-                  onClick={() => setSelectedWorkspaceId(workspace.id)}
-                  data-testid={`new-chat-workspace-option-${workspace.id}`}
-                >
-                  <FolderIcon className="size-3" />
-                  <span className="flex-1">{workspace.name}</span>
-                </MenuItem>
-              ))}
+          <MenuItem
+            onClick={() => setSelectedWorkspaceId(null)}
+            data-testid="new-chat-workspace-option-adhoc"
+          >
+            <MessageSquareIcon className="size-3" />
+            <span className="flex-1">{t('workspace.adhoc')}</span>
+          </MenuItem>
+          {workspaces.map(workspace => (
+            <MenuItem
+              key={workspace.id}
+              onClick={() => setSelectedWorkspaceId(workspace.id)}
+              data-testid={`new-chat-workspace-option-${workspace.id}`}
+            >
+              <FolderIcon className="size-3" />
+              <span className="flex-1">{workspace.name}</span>
+            </MenuItem>
+          ))}
+          <MenuSeparator />
+          <MenuItem
+            onClick={() => void addFromPicker()}
+            disabled={addingWorkspace}
+            data-testid="new-chat-workspace-add-project"
+          >
+            <FolderPlusIcon className="size-3" />
+            <span className="flex-1">{addingWorkspace ? t('workspace.adding') : t('workspace.addProject')}</span>
+          </MenuItem>
         </MenuGroup>
       </MenuPopup>
     </Menu>
@@ -553,7 +580,8 @@ export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useN
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
 export function NewChatPage() {
-  const owner = useNewChatPageOwner()
+  const isActive = useTabFrameActive()
+  const owner = useNewChatPageOwner(isActive)
   const hasWorkspace = !!owner.selectedWorkspace?.path
 
   useRegisterLayoutSlots('new-chat', useMemo(() => ({
@@ -579,6 +607,7 @@ export function NewChatPage() {
           density={0.4}
           glowRadius={140}
           trackGlobal
+          active={isActive}
         />
       </m.div>
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-4">

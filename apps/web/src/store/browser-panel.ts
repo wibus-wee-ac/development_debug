@@ -5,6 +5,8 @@ export interface BrowserWebTab {
   id: string
   sessionId: string | null
   sessionTitle: string | null
+  scriptIds: string[]
+  customScripts: BrowserPanelCustomScript[]
   url: string
   title: string
   loading: boolean
@@ -36,7 +38,17 @@ export interface BrowserWorkspaceDiffTab {
 
 export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab | BrowserWorkspaceDiffTab
 
+export type BrowserPanelScriptRunAt = 'document-start' | 'document-end' | 'document-idle'
+
+export interface BrowserPanelCustomScript {
+  id: string
+  label: string
+  runAt: BrowserPanelScriptRunAt
+  source: string
+}
+
 let tabCounter = 0
+let customScriptCounter = 0
 const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
 export const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
 
@@ -64,6 +76,8 @@ interface BrowserPanelState {
   setActiveTab: (id: string) => void
   updateTab: (id: string, updates: Partial<BrowserWebTab>) => void
   navigateTo: (id: string, url: string) => void
+  setBrowserTabScripts: (id: string, scriptIds: string[]) => void
+  addBrowserTabCustomScript: (id: string, input: Omit<BrowserPanelCustomScript, 'id'>) => string
 }
 
 export interface BrowserTabSource {
@@ -85,6 +99,8 @@ function createBrowserTab(url?: string, source?: BrowserTabSource): BrowserWebTa
     id: `bt-${tabCounter++}`,
     sessionId: normalizedSource.sessionId,
     sessionTitle: normalizedSource.sessionTitle,
+    scriptIds: [],
+    customScripts: [],
     url: url ?? 'about:blank',
     title: '',
     loading: false,
@@ -239,6 +255,26 @@ export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => (
     set(s => ({
       tabs: s.tabs.map(t => (t.id === id && t.kind === 'browser' ? { ...t, url } : t)),
     }))
+  },
+
+  setBrowserTabScripts: (id, scriptIds) => {
+    set(s => ({
+      tabs: s.tabs.map(t => (t.id === id && t.kind === 'browser' ? { ...t, scriptIds } : t)),
+    }))
+  },
+
+  addBrowserTabCustomScript: (id, input) => {
+    const scriptId = `custom-script-${customScriptCounter++}`
+    const script: BrowserPanelCustomScript = {
+      id: scriptId,
+      ...input,
+    }
+    set(s => ({
+      tabs: s.tabs.map(t => (t.id === id && t.kind === 'browser'
+        ? { ...t, customScripts: [...t.customScripts, script] }
+        : t)),
+    }))
+    return scriptId
   },
 }))
 

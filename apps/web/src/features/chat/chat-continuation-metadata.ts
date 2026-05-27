@@ -1,0 +1,65 @@
+/**
+ * Output: Chat-owned helpers for continuation metadata on UIMessage snapshots.
+ * Input: AI SDK UIMessage metadata stored under the Cradle namespace.
+ * Position: Feature/chat owns continuation presentation while chat-runtime owns persistence.
+ */
+
+import type { UIMessage } from 'ai'
+
+import type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
+
+export interface ChatContinuationMetadata {
+  mode: ChatContinuationMode
+  queueItemId?: string
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
+
+export function readChatContinuationMetadata(message: UIMessage): ChatContinuationMetadata | null {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradle = readRecord(metadata?.cradle)
+  const continuation = readRecord(cradle?.continuation)
+  if (!continuation) {
+    return null
+  }
+  const mode = continuation?.mode
+
+  if (mode !== 'queue' && mode !== 'steer') {
+    return null
+  }
+
+  const queueItemId = continuation.queueItemId
+  return {
+    mode,
+    ...(typeof queueItemId === 'string' && queueItemId.length > 0 ? { queueItemId } : {}),
+  }
+}
+
+export function createContinuationUserMessage(input: {
+  queueItem: ChatQueueItem
+  fallbackText: string
+  fallbackFiles: UIMessage['parts']
+}): UIMessage {
+  const text = input.queueItem.text || input.fallbackText
+  const files = input.queueItem.files.length > 0 ? input.queueItem.files : input.fallbackFiles
+  const parts: UIMessage['parts'] = text ? [{ type: 'text', text }] : []
+  parts.push(...files)
+
+  return {
+    id: `continuation-${input.queueItem.id}`,
+    role: 'user',
+    parts,
+    metadata: {
+      cradle: {
+        continuation: {
+          mode: input.queueItem.mode,
+          queueItemId: input.queueItem.id,
+        },
+      },
+    },
+  } as UIMessage
+}

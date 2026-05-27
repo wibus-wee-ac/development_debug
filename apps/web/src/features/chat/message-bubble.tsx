@@ -18,14 +18,15 @@ import { readCradleAppshotMetadata } from './appshot-attachment-model'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
+import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
 import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
 import type { ChatToolEntity } from './chat-tool-entities'
+import { readSubagentOutputMessage } from './chat-tool-entities'
 import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
-const EMPTY_SUBAGENT_MESSAGES: UIMessage[] = []
 const THINKING_IDLE_DELAY_MS = 900
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
@@ -196,6 +197,34 @@ function renderSubagentItem(
   }
 }
 
+function renderSubagentMessage(
+  message: UIMessage,
+  isStreaming: boolean,
+  streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean },
+) {
+  const groupedParts = groupMessageParts({
+    parts: message.parts,
+    messageId: message.id,
+    describeToolKind: (toolCallId) => {
+      const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
+      if (!tool) {
+        return null
+      }
+      return describeToolCall({
+        type: 'dynamic-tool',
+        toolCallId: tool.toolCallId,
+        toolName: tool.toolName,
+        state: tool.state,
+        argumentsText: tool.argumentsText,
+        input: tool.input,
+        output: tool.output,
+        errorText: tool.errorText,
+      }).kind
+    },
+  })
+  return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, streamdownSettings))
+}
+
 /* ─── Execution Phase Fold ──────────────────────────────────────── */
 
 function ExecutionPhaseFold({
@@ -238,30 +267,51 @@ interface MessageBubbleProps {
   isStreaming: boolean
   executionDetailsDefaultOpen?: boolean
   presentation?: 'thread' | 'export'
+  onToolApprovalResponse?: (response: {
+    messageId: string
+    approvalId: string
+    approved: boolean
+  }) => void
 }
 
 function ToolCallBlockFromStore({
   toolCallId,
+  onToolApprovalResponse,
   children,
 }: {
   toolCallId: string
+  onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   children?: React.ReactNode
 }) {
   const tool = useChatStore(chatSelectors.toolEntity(toolCallId))
+  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   if (!tool) {
     return null
   }
+
+  const subagentMessage = readSubagentOutputMessage(tool.output)
 
   return (
     <ToolCallBlock
       toolName={tool.toolName}
       toolCallId={tool.toolCallId}
       state={tool.state}
+      approval={tool.approval}
       argumentsText={tool.argumentsText}
       input={tool.input}
       output={tool.output}
       errorText={tool.errorText}
+      onApprovalResponse={tool.approval && onToolApprovalResponse
+        ? approval => onToolApprovalResponse({
+            messageId: tool.messageId,
+            approvalId: approval.id,
+            approved: approval.approved,
+          })
+        : undefined}
     >
+      {subagentMessage
+        ? renderSubagentMessage(subagentMessage, tool.preliminary === true, { animationPreset, animateMode, showCursor })
+        : null}
       {children}
     </ToolCallBlock>
   )
@@ -275,17 +325,13 @@ function GroupedToolCallBlockFromStore({
   uiKind: ReturnType<typeof describeToolCall>['kind']
 }) {
   const selectedToolState = useChatStore(useShallow(state =>
-    items.flatMap(item => [
-      state.toolEntitiesMap.get(item.toolCallId),
-      state.subagentMessagesMap.get(item.messageId)?.get(item.toolCallId) ?? EMPTY_SUBAGENT_MESSAGES,
-    ])))
+    items.map(item => state.toolEntitiesMap.get(item.toolCallId))))
   const tools = useMemo(() =>
     items.flatMap((item, index) => {
-      const entity = selectedToolState[index * 2] as ChatToolEntity | undefined
+      const entity = selectedToolState[index] as ChatToolEntity | undefined
       if (!entity) {
         return []
       }
-      const subagentMessages = selectedToolState[index * 2 + 1] as UIMessage[]
       return [{
         key: item.key,
         part: {
@@ -298,7 +344,6 @@ function GroupedToolCallBlockFromStore({
           output: entity.output,
           errorText: entity.errorText,
         },
-        subagentMessages,
       }]
     }), [items, selectedToolState])
 
@@ -309,14 +354,16 @@ function GroupedToolCallBlockFromStore({
   return <GroupedToolCallBlock items={tools} uiKind={uiKind} />
 }
 
-function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread' }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const isExportPresentation = presentation === 'export'
+  const continuationMetadata = readChatContinuationMetadata(message)
+  const isSteerMessage = isUser && continuationMetadata?.mode === 'steer'
+  const { t } = useTranslation('chat')
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
-  const subagentMap = useChatStore(s => s.subagentMessagesMap.get(message.id))
   const [streamTextIdle, setStreamTextIdle] = useState(false)
 
   const isFirstAppearance = !seenMessageIds.has(message.id)
@@ -428,31 +475,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
           <ToolCallBlockFromStore
             key={item.key}
             toolCallId={item.toolCallId}
-          >
-            {(subagentMap?.get(item.toolCallId) ?? []).flatMap((subMsg) => {
-              const groupedParts = groupMessageParts({
-                parts: subMsg.parts,
-                messageId: subMsg.id,
-                describeToolKind: (toolCallId) => {
-                  const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
-                  if (!tool) {
-                    return null
-                  }
-                  return describeToolCall({
-                    type: 'dynamic-tool',
-                    toolCallId: tool.toolCallId,
-                    toolName: tool.toolName,
-                    state: tool.state,
-                    argumentsText: tool.argumentsText,
-                    input: tool.input,
-                    output: tool.output,
-                    errorText: tool.errorText,
-                  }).kind
-                },
-              })
-              return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, { animationPreset, animateMode, showCursor }))
-            })}
-          </ToolCallBlockFromStore>
+            onToolApprovalResponse={onToolApprovalResponse}
+          />
         )
 
       case 'file-attachment':
@@ -500,15 +524,24 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       <div
         className={cn(
           'min-w-0',
-          isUser && 'max-w-[70%] ',
+          isUser && !isSteerMessage && 'max-w-[70%]',
+          isSteerMessage && 'max-w-[78%]',
           !isUser && 'w-full',
         )}
       >
+        {isSteerMessage && (
+          <div className="mb-1 flex justify-end pr-1">
+            <span className="text-[10px] font-medium uppercase text-muted-foreground/60">
+              {t('continuation.steer.label')}
+            </span>
+          </div>
+        )}
         {/* Bubble */}
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            isUser && !isSteerMessage && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
             isAssistant && 'text-foreground',
           )}
         >
@@ -550,5 +583,6 @@ export const MessageBubble = memo(
     prevProps.message === nextProps.message
     && prevProps.isStreaming === nextProps.isStreaming
     && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
-    && prevProps.presentation === nextProps.presentation,
+    && prevProps.presentation === nextProps.presentation
+    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse,
 )

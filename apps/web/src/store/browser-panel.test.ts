@@ -85,6 +85,37 @@ describe('browser panel shortcuts', () => {
     })
   })
 
+  it('stores enabled script ids per browser tab', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+
+    useBrowserPanelStore.getState().setBrowserTabScripts(tabId, ['react-scan', 'eruda'])
+
+    expect(useBrowserPanelStore.getState().tabs.find(tab => tab.id === tabId)).toMatchObject({
+      kind: 'browser',
+      scriptIds: ['react-scan', 'eruda'],
+    })
+  })
+
+  it('stores custom scripts per browser tab with insertion timing', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+
+    const scriptId = useBrowserPanelStore.getState().addBrowserTabCustomScript(tabId, {
+      label: 'Debug Hook',
+      runAt: 'document-start',
+      source: 'globalThis.__debugHook = true',
+    })
+
+    expect(useBrowserPanelStore.getState().tabs.find(tab => tab.id === tabId)).toMatchObject({
+      kind: 'browser',
+      customScripts: [{
+        id: scriptId,
+        label: 'Debug Hook',
+        runAt: 'document-start',
+        source: 'globalThis.__debugHook = true',
+      }],
+    })
+  })
+
   it('preserves session source metadata when fulfilling a requested browser tab', () => {
     useBrowserPanelStore.getState().requestTab('https://example.com', {
       sessionId: 'session-a',

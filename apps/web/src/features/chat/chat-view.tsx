@@ -1,4 +1,4 @@
-import type { FileUIPart, UIMessage } from 'ai'
+import type { UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
@@ -14,7 +14,6 @@ import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
-import { SessionApprovalList } from '../approval/approval-card'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
@@ -24,14 +23,14 @@ import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
-import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
-import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
 import type { ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
+import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
+import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 import { useSessionAwaitSummary } from './use-session-await'
 
 interface ChatViewProps {
@@ -62,12 +61,14 @@ function ChatMessageListPane({
   error,
   isReady,
   scrollRuntime,
+  onToolApprovalResponse,
 }: {
   messages: ReturnType<typeof useChatSession>['messages']
   status: ReturnType<typeof useChatSession>['status']
   error: ReturnType<typeof useChatSession>['error']
   isReady: boolean
   scrollRuntime: ChatScrollRuntime
+  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
 }) {
   const { t } = useTranslation('chat')
 
@@ -107,7 +108,11 @@ function ChatMessageListPane({
             onScroll={scrollRuntime.handleVirtualScroll}
           >
             {messages.map(message => (
-              <MessageBubbleWithStreamState key={message.id} message={message} />
+              <MessageBubbleWithStreamState
+                key={message.id}
+                message={message}
+                onToolApprovalResponse={onToolApprovalResponse}
+              />
             ))}
           </Virtualizer>
 
@@ -264,6 +269,7 @@ export function ChatView({
     status,
     error,
     sendMessage,
+    respondToToolApproval,
     stop,
     isReady,
     queueItems,
@@ -356,10 +362,8 @@ export function ChatView({
         error={error}
         isReady={isReady}
         scrollRuntime={scrollRuntime}
+        onToolApprovalResponse={respondToToolApproval}
       />
-
-      {/* Approval cards — pinned above composer */}
-      <SessionApprovalList chatSessionId={sessionId} />
 
       <ChatComposerSection
         awaitSummary={awaitSummary}
@@ -380,7 +384,19 @@ export function ChatView({
   )
 }
 
-function MessageBubbleWithStreamState({ message }: { message: UIMessage }) {
+function MessageBubbleWithStreamState({
+  message,
+  onToolApprovalResponse,
+}: {
+  message: UIMessage
+  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+}) {
   const isStreaming = useChatStore(chatSelectors.isStreamingMessage(message.id))
-  return <MessageBubble message={message} isStreaming={isStreaming} />
+  return (
+    <MessageBubble
+      message={message}
+      isStreaming={isStreaming}
+      onToolApprovalResponse={onToolApprovalResponse}
+    />
+  )
 }

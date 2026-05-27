@@ -1,13 +1,29 @@
 // Renders workspace Git changes in the right-aside Changes tab.
 import { prepareFileTreeInput } from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
+import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { FileDiffIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
+import { getWorkspacesByIdGitStatusQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
+import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import {
+  CreateWorkspaceFileDialog,
+  createWorkspaceFileEntry,
+  getWorkspaceFileDefaultView,
+  isCopyPathChordStart,
+  isCopyPathShortcut,
+  isCopyRelativePathShortcut,
+  joinWorkspacePath,
+  renameWorkspaceFilePath,
+  WorkspaceFileContextMenu,
+} from '~/features/workspace/workspace-file-menu'
 import { cn } from '~/lib/cn'
+import { isElectron, nativeIpc } from '~/lib/electron'
 import type { GitFileStatus } from '~/lib/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -20,11 +36,17 @@ import { useGitFileStatuses } from './use-git'
 type ChangesViewMode = 'type' | 'tree'
 type TreeGitStatus = { path: string, status: GitFileStatus['status'] }
 
-interface ChangesPanelProps {
-  workspaceId: string | null | undefined
+function formatErrorDescription(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
 
-export function ChangesPanel({ workspaceId }: ChangesPanelProps) {
+interface ChangesPanelProps {
+  workspaceId: string | null | undefined
+  workspacePath?: string | null
+  onPackRequested?: (paths: string[]) => void
+}
+
+export function ChangesPanel({ workspaceId, workspacePath, onPackRequested }: ChangesPanelProps) {
   const [viewMode, setViewMode] = useState<ChangesViewMode>('type')
   const { data: files, isLoading, isError, isSuccess } = useGitFileStatuses(workspaceId)
   const sections = useMemo(() => groupGitFileStatuses(files ?? []), [files])
@@ -70,7 +92,15 @@ export function ChangesPanel({ workspaceId }: ChangesPanelProps) {
     )
   }
   if (changedFileCount > 0 && viewMode === 'tree') {
-    changesContent = <ChangesTreeView files={changedFiles} onFileClick={handleReviewFile} />
+    changesContent = (
+      <ChangesTreeView
+        files={changedFiles}
+        workspaceId={workspaceId}
+        workspacePath={workspacePath ?? undefined}
+        onFileClick={handleReviewFile}
+        onPackRequested={onPackRequested}
+      />
+    )
   }
 
   if (!workspaceId) {
@@ -227,11 +257,26 @@ function ChangeSectionView({
 
 function ChangesTreeView({
   files,
+  workspaceId,
+  workspacePath,
   onFileClick,
+  onPackRequested,
 }: {
   files: GitFileStatus[]
+  workspaceId: string | null | undefined
+  workspacePath?: string
   onFileClick: (path: string) => void
+  onPackRequested?: (paths: string[]) => void
 }) {
+  const { t } = useTranslation('workspace')
+  const queryClient = useQueryClient()
+  const [createDialog, setCreateDialog] = useState<{
+    kind: 'file' | 'folder'
+    parentPath: string
+  } | null>(null)
+  const copyPathChordActiveRef = useRef(false)
+  const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const paths = useMemo(() => files.map(file => file.path), [files])
   const filePathSet = useMemo(() => new Set(paths), [paths])
   const preparedInput = useMemo(
@@ -242,9 +287,38 @@ function ChangesTreeView({
     () => files.map(file => ({ path: file.path, status: file.status })),
     [files],
   )
+  const refreshChangedFiles = useCallback(async () => {
+    if (!workspaceId) {
+      return
+    }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: getWorkspacesByIdGitStatusQueryKey({ path: { id: workspaceId } }) }),
+      queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] }),
+    ])
+  }, [queryClient, workspaceId])
+  const commitRename = useEffectEvent(async (sourcePath: string, destinationPath: string) => {
+    if (!workspaceId) {
+      return
+    }
+
+    await renameWorkspaceFilePath({
+      workspaceId,
+      sourcePath,
+      destinationPath,
+      operationFailedMessage: t('fileTree.error.operationFailed'),
+    })
+    await refreshChangedFiles()
+  })
 
   const { model } = useFileTree({
     preparedInput,
+    composition: {
+      contextMenu: {
+        enabled: true,
+        triggerMode: 'both',
+        buttonVisibility: 'when-needed',
+      },
+    },
     density: 'compact',
     dragAndDrop: {
       canDrop: () => false,
@@ -253,6 +327,93 @@ function ChangesTreeView({
     gitStatus,
     icons: { set: 'complete', colored: true },
     initialExpansion: 'open',
+    renaming: {
+      onError: (error) => {
+        toastManager.add({
+          type: 'error',
+          title: t('fileTree.toast.renameFailed'),
+          description: formatErrorDescription(error),
+        })
+        void refreshChangedFiles()
+      },
+      onRename: (event) => {
+        void commitRename(event.sourcePath, event.destinationPath).catch((error) => {
+          toastManager.add({
+            type: 'error',
+            title: t('fileTree.toast.renameFailed'),
+            description: formatErrorDescription(error),
+          })
+          void refreshChangedFiles()
+        })
+      },
+    },
+  })
+  const selectedPaths = useFileTreeSelection(model)
+
+  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+    if (!workspaceId) {
+      return null
+    }
+
+    const nextPath = await createWorkspaceFileEntry({
+      workspaceId,
+      kind: input.kind,
+      parentPath: input.parentPath,
+      name: input.name,
+      operationFailedMessage: t('fileTree.error.operationFailed'),
+    })
+    if (!nextPath) {
+      return null
+    }
+
+    await refreshChangedFiles()
+    model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
+    return nextPath
+  }, [model, refreshChangedFiles, t, workspaceId])
+  const copyRelativePath = useCallback(async (path: string) => {
+    await navigator.clipboard.writeText(path)
+  }, [])
+  const copyAbsolutePath = useCallback(async (path: string) => {
+    await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, path) : path)
+  }, [workspacePath])
+  const openWorkspaceFile = useCallback((path: string) => {
+    if (!workspaceId) {
+      return
+    }
+    openWorkspaceFileTab({ workspaceId, path, view: getWorkspaceFileDefaultView(path) })
+    setBrowserPanelOpen(true)
+  }, [openWorkspaceFileTab, setBrowserPanelOpen, workspaceId])
+  const openInDefaultApplication = useCallback(async (path: string) => {
+    if (!workspacePath || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.openPath(joinWorkspacePath(workspacePath, path))
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('fileTree.toast.openDefaultFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspacePath])
+  const revealWorkspacePath = useEffectEvent(async (path: string) => {
+    if (!workspacePath || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.showItemInFolder(joinWorkspacePath(workspacePath, path))
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('fileTree.toast.revealFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
   })
 
   useEffect(() => {
@@ -274,15 +435,62 @@ function ChangesTreeView({
     [filePathSet, model, onFileClick],
   )
 
+  const handleTreeKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+    const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0]
+    if (isCopyPathChordStart(event.nativeEvent)) {
+      event.preventDefault()
+      copyPathChordActiveRef.current = true
+      return
+    }
+    if (copyPathChordActiveRef.current) {
+      copyPathChordActiveRef.current = false
+      if (isCopyPathShortcut(event.nativeEvent) && selectedPath) {
+        event.preventDefault()
+        void copyAbsolutePath(selectedPath)
+      }
+      return
+    }
+    if (isCopyRelativePathShortcut(event.nativeEvent) && selectedPath) {
+      event.preventDefault()
+      void copyRelativePath(selectedPath)
+    }
+  }, [copyAbsolutePath, copyRelativePath, model])
+
   return (
     <div
       className="min-h-0 flex-1"
       data-testid="changes-panel-tree"
       onDoubleClick={handleTreeDoubleClick}
+      onKeyDown={handleTreeKeyDown}
     >
       <PierreFileTree
         model={model}
         className="h-full"
+        renderContextMenu={(item, context) => (
+          <WorkspaceFileContextMenu
+            context={context}
+            item={item}
+            onCopyAbsolutePath={copyAbsolutePath}
+            onCopyRelativePath={copyRelativePath}
+            onCreateRequest={(kind, parentPath) => setCreateDialog({ kind, parentPath })}
+            onOpen={(path, kind) => {
+              if (kind === 'file') {
+                openWorkspaceFile(path)
+                return
+              }
+              model.focusPath(path)
+            }}
+            onOpenDefault={openInDefaultApplication}
+            onPackRequested={onPackRequested}
+            onRename={(path) => {
+              model.startRenaming(path)
+            }}
+            onReveal={revealWorkspacePath}
+            selectedPaths={selectedPaths}
+            t={t}
+            workspacePath={workspacePath}
+          />
+        )}
         style={
           {
             '--trees-theme-list-active-selection-bg':
@@ -298,6 +506,28 @@ function ChangesTreeView({
             '--trees-padding-inline': '0px',
           } as React.CSSProperties
         }
+      />
+      <CreateWorkspaceFileDialog
+        request={createDialog}
+        onOpenChange={open => !open && setCreateDialog(null)}
+        onCommit={async (name) => {
+          if (!createDialog) {
+            return
+          }
+          try {
+            await commitCreate({ ...createDialog, name })
+            setCreateDialog(null)
+          }
+          catch (error) {
+            toastManager.add({
+              type: 'error',
+              title: t('fileTree.toast.createFailed'),
+              description: error instanceof Error ? error.message : String(error),
+            })
+            void refreshChangedFiles()
+          }
+        }}
+        t={t}
       />
     </div>
   )

@@ -4,7 +4,7 @@
  * Position: Chat feature owns AppShot presentation while model input remains a normal file part.
  */
 
-import { AppWindowIcon, XIcon } from 'lucide-react'
+import { XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useState } from 'react'
@@ -106,7 +106,7 @@ export function AppshotAttachmentCard({
               />
             )}
         {variant === 'thread' && (
-          <div className="mt-1 w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
+          <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
             {title}
           </div>
         )}
@@ -181,8 +181,9 @@ function ComposerAppshotTransitionImage({
 }) {
   return (
     <div
-      className="relative flex w-full items-center justify-center"
+      className="relative flex w-full items-center justify-center overflow-visible"
       style={{ height: imageHeight }}
+      data-chat-appshot-transition-target
     >
       {imageDataUrl
         ? (
@@ -271,27 +272,19 @@ function AppshotImageFrame({
 }
 
 function AppshotAppIcon({ appIconDataUrl }: { appIconDataUrl: string | null }) {
-  if (appIconDataUrl) {
-    return (
-      <img
-        src={appIconDataUrl}
-        alt=""
-        aria-hidden="true"
-        className="absolute bottom-0 left-1/2 size-6 -translate-x-1/2 object-contain"
-        draggable={false}
-        data-testid="chat-appshot-app-icon"
-      />
-    )
+  if (!appIconDataUrl) {
+    return null
   }
 
   return (
-    <span
-      className="absolute bottom-0 left-1/2 flex size-6 -translate-x-1/2 items-center justify-center rounded-[6px] bg-background/95 text-muted-foreground shadow-sm"
+    <img
+      src={appIconDataUrl}
+      alt=""
       aria-hidden="true"
+      className="absolute bottom-0 left-1/2 size-6 -translate-x-1/2 object-contain"
+      draggable={false}
       data-testid="chat-appshot-app-icon"
-    >
-      <AppWindowIcon className="size-4" />
-    </span>
+    />
   )
 }
 

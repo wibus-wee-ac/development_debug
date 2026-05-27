@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart, UIMessage } from 'ai'
+import { lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { z } from 'zod'
 
 import {
   getChatSessionsBySessionIdMessagesOptions,
@@ -11,7 +11,7 @@ import {
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import type { ChatMessageSnapshotRow } from './chat-delta-events'
+import { createContinuationUserMessage } from './chat-continuation-metadata'
 import type { ChatContinuationMode } from './chat-response-command'
 import {
   cancelChatResponse,
@@ -23,7 +23,7 @@ import {
   subscribeChatSessionStream,
 } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
-import { buildEventStreamFromResponse, onChatRunEvent } from './sse-chat-transport'
+import { buildUIMessageChunkStreamFromResponse } from './sse-chat-transport'
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -63,7 +63,18 @@ export async function stopChatTurn(args: {
 
 // ── Message Snapshot Types ──────────────────────────────────
 
-export type ChatSessionMessageRow = ChatMessageSnapshotRow
+export interface ChatSessionMessageRow {
+  messageId: string
+  role: 'user' | 'assistant'
+  status: string
+  errorText?: string | null
+  content: string
+  message: UIMessage
+  parentMessageId: string | null
+  parentToolCallId: string | null
+  taskId: string | null
+  depth: number
+}
 export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
 
 export interface SendMessageOptions {
@@ -73,27 +84,11 @@ export interface SendMessageOptions {
   continuationMode?: ChatContinuationMode
 }
 
-/**
- * Extract subagent message snapshots, keyed by parent message and tool call.
- */
-export function bucketSubagentMessagesByParentToolCall(
-  rows: ChatSessionMessageRow[],
-): Map<string, Map<string, UIMessage[]>> {
-  const result = new Map<string, Map<string, UIMessage[]>>()
-  for (const row of rows) {
-    if (!row.parentMessageId || !row.parentToolCallId) {
-      continue
-    }
-    let messageMap = result.get(row.parentMessageId)
-    if (!messageMap) {
-      messageMap = new Map()
-      result.set(row.parentMessageId, messageMap)
-    }
-    const messages = messageMap.get(row.parentToolCallId) ?? []
-    messages.push(row.message)
-    messageMap.set(row.parentToolCallId, messages)
-  }
-  return result
+export interface ToolApprovalResponseInput {
+  messageId: string
+  approvalId: string
+  approved: boolean
+  reason?: string
 }
 
 export function projectMainMessagesFromSnapshotRows(rows: ChatSessionMessageRow[]): UIMessage[] {
@@ -125,27 +120,17 @@ function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
   return 'idle'
 }
 
+function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: string): boolean {
+  if (!(part.type === 'dynamic-tool' || part.type.startsWith('tool-'))) {
+    return false
+  }
+  const approval = (part as { approval?: { id?: unknown } }).approval
+  return typeof approval?.id === 'string' && approval.id === approvalId
+}
+
 // ── Hook ────────────────────────────────────────────────────
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
-const UIMessageSchema: z.ZodType<UIMessage> = z.object({
-  id: z.string(),
-  role: z.enum(['system', 'user', 'assistant']),
-  parts: z.array(z.unknown()),
-}).passthrough() as z.ZodType<UIMessage>
-const ChatMessageSnapshotRowSchema = z.object({
-  messageId: z.string(),
-  role: z.enum(['user', 'assistant']),
-  status: z.string(),
-  errorText: z.string().nullable().optional(),
-  content: z.string(),
-  message: UIMessageSchema,
-  parentMessageId: z.string().nullable(),
-  parentToolCallId: z.string().nullable(),
-  taskId: z.string().nullable(),
-  depth: z.number().finite(),
-})
-const ChatMessageSnapshotRowsSchema = z.array(ChatMessageSnapshotRowSchema)
 
 export function useChatSession(chatSessionId: string | null) {
   const queryClient = useQueryClient()
@@ -212,7 +197,7 @@ export function useChatSession(chatSessionId: string | null) {
     queryKey: generatedSnapshotRowsOptions.queryKey,
     queryFn: generatedSnapshotRowsOptions.queryFn,
     enabled: !!chatSessionId,
-    select: data => ChatMessageSnapshotRowsSchema.parse(data),
+    select: data => data as ChatSessionMessageRow[],
   })
 
   const queueQuery = useQuery({
@@ -266,12 +251,6 @@ export function useChatSession(chatSessionId: string | null) {
       if (row.role === 'assistant' && row.status === 'failed' && row.errorText) {
         useChatStore.getState().failGeneration(row.messageId, row.errorText)
       }
-    }
-
-    // Hydrate subagent messages
-    const subagentMap = bucketSubagentMessagesByParentToolCall(snapshotRowsQuery.data)
-    for (const [messageId, parentMap] of subagentMap) {
-      useChatStore.getState().setSubagentMessages(messageId, parentMap)
     }
   }, [chatSessionId, snapshotRowsQuery.data])
 
@@ -347,19 +326,7 @@ export function useChatSession(chatSessionId: string | null) {
           throw new Error(`Failed to subscribe chat session stream: ${res.status} ${body}`)
         }
 
-        const stream = buildEventStreamFromResponse(res, chatSessionId)
-        const reader = stream.getReader()
-
-        const pump = async (): Promise<void> => {
-          const { done, value } = await reader.read()
-          if (done) {
-            return
-          }
-          handler.handleEvent(value)
-          await pump()
-        }
-
-        await pump()
+        await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
         handler.finish()
       }
       catch (err) {
@@ -380,57 +347,6 @@ export function useChatSession(chatSessionId: string | null) {
     return undefined
   }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, snapshotRowsQuery.data])
 
-  // ── Passive observer: SSE run events ──
-
-  useEffect(() => {
-    if (!chatSessionId) {
-      return
-    }
-
-    return onChatRunEvent(chatSessionId, (data) => {
-      const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
-      const isLocallyDriving = meta?.locallyDriving ?? false
-      const isCancelling = meta?.cancelling ?? false
-
-      if (data.event.type === 'run.failed') {
-        if (isLocallyDriving) {
-          // Let the in-band stream handler capture the error with its message
-          return
-        }
-        useChatStore.getState().setPassiveStreamingMessage(chatSessionId, data.messageId, false)
-        useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
-        useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
-        scheduleSnapshotRefresh(0)
-        void queryClient.invalidateQueries({ queryKey: queueQueryKey })
-        return
-      }
-
-      if (isCancelling && data.event.type === 'run.streaming') {
-        return
-      }
-
-      if (isLocallyDriving) {
-        // We're driving this stream locally — useChat handler manages state
-        return
-      }
-
-      switch (data.event.type) {
-        case 'run.completed':
-        case 'run.aborted':
-          useChatStore.getState().setPassiveStreamingMessage(chatSessionId, data.messageId, false)
-          useChatStore.getState().setSessionMeta(chatSessionId, { cancelling: false, locallyDriving: false, localDriverMessageId: undefined })
-          useChatStore.getState().setPassiveStatus(chatSessionId, 'idle')
-          scheduleSnapshotRefresh(0)
-          void queryClient.invalidateQueries({ queryKey: queueQueryKey })
-          break
-        default:
-          useChatStore.getState().setPassiveStatus(chatSessionId, 'streaming')
-          void queryClient.invalidateQueries({ queryKey: queueQueryKey })
-          break
-      }
-    })
-  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh])
-
   // ── Send message ──
 
   const sendMessage = useCallback(async (
@@ -446,10 +362,11 @@ export function useChatSession(chatSessionId: string | null) {
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
     if (isBusy) {
-      await enqueueChatSessionQueueItem({
+      const continuationMode = opts?.continuationMode ?? 'queue'
+      const queueItem = await enqueueChatSessionQueueItem({
         sessionId: chatSessionId,
         body: {
-          mode: opts?.continuationMode ?? 'queue',
+          mode: continuationMode,
           text: trimmedText,
           files,
           providerTargetId: opts?.providerTargetId ?? undefined,
@@ -457,6 +374,14 @@ export function useChatSession(chatSessionId: string | null) {
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
         },
       })
+      if (queueItem.mode === 'steer' && queueItem.status === 'completed') {
+        useChatStore.getState().appendMessage(chatSessionId, createContinuationUserMessage({
+          queueItem,
+          fallbackText: trimmedText,
+          fallbackFiles: files,
+        }))
+        scheduleSnapshotRefresh(0)
+      }
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       return
     }
@@ -508,20 +433,7 @@ export function useChatSession(chatSessionId: string | null) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
 
-      // 4. Pipe delta events to handler
-      const stream = buildEventStreamFromResponse(res, chatSessionId)
-      const reader = stream.getReader()
-
-      const pump = async (): Promise<void> => {
-        const { done, value } = await reader.read()
-        if (done) {
-          return
-        }
-        handler.handleEvent(value)
-        await pump()
-      }
-
-      await pump()
+      await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
 
       handler.finish()
     }
@@ -548,6 +460,88 @@ export function useChatSession(chatSessionId: string | null) {
       }
     }
   }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+
+  const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
+    if (!chatSessionId) {
+      return
+    }
+
+    const store = useChatStore.getState()
+    store.updateMessage(chatSessionId, response.messageId, message => ({
+      ...message,
+      parts: message.parts.map(part =>
+        isMatchingApprovalPart(part, response.approvalId)
+          ? {
+              ...part,
+              state: 'approval-responded',
+              approval: {
+                id: response.approvalId,
+                approved: response.approved,
+                ...(response.reason ? { reason: response.reason } : {}),
+              },
+            } as UIMessage['parts'][number]
+          : part),
+    }))
+
+    const messagesForContinuation = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
+    if (!lastAssistantMessageIsCompleteWithApprovalResponses({ messages: messagesForContinuation })) {
+      return
+    }
+
+    const controller = new AbortController()
+    const requestStartedAtMs = performance.now()
+    const handler = new ChatStreamingHandler(chatSessionId, response.messageId, requestStartedAtMs)
+    handler.start(controller)
+    handlerRef.current = handler
+
+    try {
+      const res = await startChatResponse({
+        sessionId: chatSessionId,
+        body: {
+          text: '',
+          messages: messagesForContinuation,
+        },
+        signal: controller.signal,
+      })
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        throw new Error(`Failed to continue chat approval response: ${res.status} ${body}`)
+      }
+
+      const runId = res.headers.get('x-cradle-run-id')
+      if (runId) {
+        useChatStore.getState().setRunDisplayId(response.messageId, runId)
+      }
+
+      if (sessionBindingQueryKey) {
+        void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
+      }
+
+      await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
+      handler.finish()
+    }
+    catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        handler.finish()
+      }
+      else {
+        handler.fail(err instanceof Error ? err.message : 'Approval continuation failed')
+      }
+    }
+    finally {
+      handlerRef.current = null
+      const currentPassiveStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus
+      useChatStore.getState().setSessionMeta(chatSessionId, {
+        locallyDriving: false,
+        localDriverMessageId: undefined,
+        passiveStatus: currentPassiveStatus === 'streaming' ? 'streaming' : 'idle',
+      })
+      if (!controller.signal.aborted) {
+        scheduleSnapshotRefresh(0)
+      }
+    }
+  }, [chatSessionId, queryClient, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
   const cancelQueueItem = useCallback(async (queueItemId: string) => {
     if (!chatSessionId) {
@@ -601,6 +595,7 @@ export function useChatSession(chatSessionId: string | null) {
     status: visibleStatus,
     error: lastError?.message,
     sendMessage,
+    respondToToolApproval,
     stop,
     isReady,
     queueItems: queueQuery.data?.items ?? [],
