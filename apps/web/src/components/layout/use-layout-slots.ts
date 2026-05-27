@@ -12,9 +12,9 @@ export function useLayoutSlotsCtx() {
 /**
  * Register layout slots (asideSessionId, asideWorkspaceId, panel, hasAside, hasPanel,
  * hasBrowserPanel, title, workspace, gitBranch)
- * for a tab content component. Hidden React Activity trees clean up effects, so
- * slot lifetime is pruned by LayoutSlotsProvider validSlotIds instead of this
- * hook's cleanup.
+ * for a tab content component. Retained tab frames keep registration effects
+ * mounted while inactive, so slot lifetime is pruned by LayoutSlotsProvider
+ * validSlotIds instead of this hook's cleanup.
  *
  * IMPORTANT: The `slots` argument MUST be a stable reference (e.g. produced by useMemo)
  * so that the effect only re-fires when slot content actually changes.

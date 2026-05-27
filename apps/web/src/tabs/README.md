@@ -6,8 +6,8 @@ The registry exports the store instance consumed by the rest of the app.
 
 ## Files
 
-- **registry.ts**: Central registry mapping type strings to tab definitions; exports `useCradleTabStore` with main-window persistence by default and session-scoped persistence for Electron tear-off windows, and installs Cradle-owned tab lifecycle bridges.
-- **route-preload.ts**: Route-level tab preload registry; maps tab type strings to feature-owned preload functions so navigation intent can warm deferred route chunks without eager importing page implementations.
+- **registry.ts**: Central registry mapping type strings to tab definitions; exports `useCradleTabStore` with main-window persistence by default and session-scoped persistence for Electron tear-off windows, exposes the live store on `window.__CRADLE_TAB_STORE__` in Vite dev for performance sampling, and installs Cradle-owned tab lifecycle bridges.
+- **route-preload.ts**: 后台 route chunk preload 入口；App shell 渲染后预热常用 tab 页面代码，但不接管页面数据所有权。
 - **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior and both paths preload the target route chunk before navigation.
 - **tearoff-tabs.ts**: Main-window tear-off lifecycle helpers; detach a chat tab from the main tab bar after the Electron tear-off opens, and restore it when the tear-off window reports closed.
 - **tearoff-tabs.test.ts**: Unit coverage for detaching torn-off chat tabs, restoring them on close, and keeping the main tab bar non-empty.
@@ -19,7 +19,6 @@ The registry exports the store instance consumed by the rest of the app.
 - **chat.tab.tsx**: Chat session tab（params: `sessionId`），使用通用 fallback label，在会话标题加载后替换为真实标题，并为 chat composer 注入 session workspace 的文件列表以支持 `@` mention；非 CLI-TUI workspace-backed chat 注册默认激活/持久化的 bottom terminal panel、browser panel capability、right aside capability，CLI-TUI chat route 显式不注册 bottom shell，避免双 PTY 争用
 - **chat.tab.test.tsx**: 覆盖 chat tab 标题 fallback 清理与 session title 同步的回归测试
 - **new-chat.tab.tsx**: New chat creation tab (no params); page-owned workspace selection drives browser panel and right aside capability while the tab route remains parameterless.
-- **approvals.tab.tsx**: Pending approval inbox tab opened by Desktop tray actions.
 - **awaits.tab.tsx**: Pending external-await overview tab opened by Desktop tray actions.
 - **automation.tab.tsx**: Automation dashboard tab opened by Desktop tray actions.
 - **plugin-panel.tab.tsx**: Plugin panel tab，按 `{routeSegment}/{localId}` URL key 渲染 web plugin 注册的 panel，并提供 hash serialize/deserialize 契约与 plugin panel first-render performance gate。

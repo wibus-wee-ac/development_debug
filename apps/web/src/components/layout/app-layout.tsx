@@ -1,10 +1,12 @@
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Activity, useCallback, useEffect, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
+import { deriveActiveLayoutContract } from '~/components/layout/layout-contract'
 import {
   LayoutGeometryProvider,
   useLayoutGeometry,
@@ -21,6 +23,7 @@ import { isElectron } from '~/lib/electron'
 import type { BrowserTabSource } from '~/store/browser-panel'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
 
 const ASIDE = { min: 200, max: 560 }
@@ -139,18 +142,41 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
 
   // Per-tab layout slots registered by tab content components
   const { slots } = useLayoutSlotsCtx()
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const activeTab = useCradleTabStore(s => s.tabs.find(t => t.id === s.activeTabId))
+  const activeTab = useCradleTabStore(useShallow((s) => {
+    const tab = s.tabs.find(t => t.id === s.activeTabId)
+    return tab
+      ? {
+        id: tab.id,
+        type: tab.type,
+        label: tab.label,
+        params: tab.params,
+      }
+      : undefined
+  }))
   const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
   const activeSessionTitle = activeTab?.type === 'chat' ? activeTab.label : null
+  const activeSessionLayout = useSessionLayoutStore(state =>
+    activeSessionId ? state.sessions[activeSessionId] : undefined)
+  const layoutContract = deriveActiveLayoutContract({
+    activeTab,
+    slots,
+    sessionLayout: activeSessionLayout,
+    explicitPanel: panel,
+    explicitHasBrowserPanel: hasBrowserPanel,
+    explicitHasPanel: hasPanel,
+  })
 
-  // Slot props override explicit props so per-tab content wins
-  const resolvedPanel = slots.panel ?? panel
-  const resolvedAsideSessionId = slots.asideSessionId ?? activeSessionId
-  const resolvedAsideWorkspaceId = slots.asideWorkspaceId ?? null
-  const resolvedHasAside = slots.hasAside ?? !!activeSessionId
-  const resolvedHasBrowserPanel = slots.hasBrowserPanel ?? hasBrowserPanel
-  const resolvedHasPanel = slots.hasPanel ?? hasPanel
+  const resolvedPanel = layoutContract.panel
+  const resolvedAsideSessionId = layoutContract.asideSessionId
+  const resolvedAsideWorkspaceId = layoutContract.asideWorkspaceId
+  const resolvedHasAside = layoutContract.hasAside
+  const resolvedHasBrowserPanel = layoutContract.hasBrowserPanel
+  const resolvedHasPanel = layoutContract.hasPanel
+  const resolvedWorkspaceLayout = useSessionLayoutStore(state =>
+    resolvedAsideWorkspaceId ? state.workspaces[resolvedAsideWorkspaceId] : undefined)
+  const resolvedAsideWorkspacePath = resolvedWorkspaceLayout?.workspacePath
+    ?? (activeSessionLayout?.workspaceId === resolvedAsideWorkspaceId ? activeSessionLayout.workspacePath : null)
+  const resolvedAsideWorkspaceName = resolvedWorkspaceLayout?.workspaceName ?? null
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
@@ -164,7 +190,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
   const browserPanelRatio = useLayoutStore(state => state.browserPanelRatio)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
-  const isSettings = settingsTabId !== null && settingsTabId === activeTabId
+  const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
@@ -243,7 +269,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
           </main>
 
           {/* Bottom panel resize handle */}
-          {!isSettings && bottomPanelOpen && resolvedPanel !== undefined && (
+          {!isSettings && bottomPanelOpen && resolvedHasPanel && (
             <ResizeHandle
               direction="vertical"
               value={bottomPanelHeight}
@@ -257,7 +283,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
             />
           )}
           {/* Bottom panel — always mounted to preserve xterm state */}
-          {!isSettings && resolvedPanel !== undefined && (
+          {!isSettings && resolvedHasPanel && (
             <m.div
               initial={{
                 height: bottomPanelOpen ? bottomPanelHeight : 0,
@@ -307,7 +333,12 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
               data-aside-open={asideOpen ? 'true' : 'false'}
             >
               <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-                <RightAside sessionId={resolvedAsideSessionId} workspaceId={resolvedAsideWorkspaceId} />
+                <RightAside
+                  sessionId={resolvedAsideSessionId}
+                  workspaceId={resolvedAsideWorkspaceId}
+                  workspaceName={resolvedAsideWorkspaceName}
+                  workspacePath={resolvedAsideWorkspacePath}
+                />
               </div>
             </m.aside>
           </>

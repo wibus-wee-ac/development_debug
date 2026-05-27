@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { z } from 'zod'
 
-import { deleteWorkspacesById, getWorkspaces, postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
+import { deleteWorkspacesById, getWorkspaces, patchWorkspacesById, postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import type { Workspace } from '~/lib/types'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
 export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
 
@@ -13,6 +14,7 @@ export const WorkspaceSchema = z.object({
   name: z.string(),
   path: z.string(),
   identifier: z.string(),
+  pinned: z.number(),
   createdAt: z.number(),
   updatedAt: z.number(),
 })
@@ -26,6 +28,14 @@ export function useWorkspaces() {
       return WorkspaceListSchema.parse(data) satisfies Workspace[]
     },
   })
+
+  useEffect(() => {
+    useSessionLayoutStore.getState().upsertWorkspaces(workspaces.map(workspace => ({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspacePath: workspace.path,
+    })))
+  }, [workspaces])
 
   return { workspaces, loading, ready }
 }
@@ -62,4 +72,18 @@ export function useDeleteWorkspace() {
   })
 
   return { remove }
+}
+
+export function useToggleWorkspacePin() {
+  const queryClient = useQueryClient()
+
+  const { mutate: togglePin } = useMutation({
+    mutationFn: ({ id, pinned }: { id: string, pinned: boolean }) => patchWorkspacesById({
+      path: { id },
+      body: { pinned },
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+  })
+
+  return { togglePin }
 }

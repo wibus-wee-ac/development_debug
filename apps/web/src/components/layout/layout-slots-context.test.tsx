@@ -38,7 +38,7 @@ function RegisterWithEffect({ id, label }: { id: string, label: string }) {
   return null
 }
 
-describe('LayoutSlotsProvider', () => {
+describe('layoutSlotsProvider', () => {
   afterEach(() => {
     cleanup()
   })

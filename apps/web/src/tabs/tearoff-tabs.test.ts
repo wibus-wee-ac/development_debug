@@ -1,7 +1,5 @@
+import { createTabStore, defineTab } from '@cradle/tabs-next'
 import { describe, expect, it } from 'vitest'
-
-import { defineTab } from '@cradle/tabs-next'
-import { createTabStore } from '@cradle/tabs-next'
 
 import { detachTearoffSessionTab, restoreTearoffSessionTab } from './tearoff-tabs'
 

@@ -25,9 +25,8 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
   const { t } = useTranslation('chrome')
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
-  const isSettingsActive = settingsTabId !== null && settingsTabId === activeTabId
+  const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
   const isDrillIn = isSettingsActive
   const sidebarToggleLabel = sidebarCollapsed ? t('header.action.expandSidebar') : t('header.action.collapseSidebar')
   const reserveTrafficLightSpace = isTearoffWindow && platform === 'darwin'

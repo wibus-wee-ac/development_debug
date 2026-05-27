@@ -1,6 +1,5 @@
-import type { StoreApi, UseBoundStore } from 'zustand'
-
 import type { TabStoreState } from '@cradle/tabs-next'
+import type { StoreApi, UseBoundStore } from 'zustand'
 
 import { subscribeTearoffSessionClosed } from '~/lib/electron'
 

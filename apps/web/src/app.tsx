@@ -1,27 +1,22 @@
 import './styles.css'
 
 import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
-import { domAnimation, LazyMotion } from 'motion/react'
-import { useCallback, useEffect, useMemo } from 'react'
+import { useCallback, useEffect } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
+import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
 import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
-import { ToastProvider } from '~/components/ui/toast'
-import { TooltipProvider } from '~/components/ui/tooltip'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
-import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
-import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
-import { connectServerEvents } from '~/lib/server-events'
-import { ShortcutProvider } from '~/lib/shortcut-provider'
-import { useThemeStore } from '~/store/theme'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { preloadCradleTabRoutes } from '~/tabs/route-preload'
 import { installTearoffSessionRestore } from '~/tabs/tearoff-tabs'
 
 function getActiveLayoutSlotId(tab: { type: string, params: Record<string, string | undefined> } | undefined): string | null {
@@ -40,57 +35,10 @@ function getActiveLayoutSlotId(tab: { type: string, params: Record<string, strin
   return null
 }
 
-function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
-  return (
-    <LazyMotion features={domAnimation}>
-      <ToastProvider>
-        <TooltipProvider>
-          <ShortcutProvider>
-            <DirectoryPickerProvider>{children}</DirectoryPickerProvider>
-          </ShortcutProvider>
-        </TooltipProvider>
-      </ToastProvider>
-    </LazyMotion>
-  )
-}
-
 export function App() {
   'use no memo'
 
-  useEffect(() => connectServerEvents(), [])
-
-  return <AppRuntime />
-}
-
-function AppRuntime() {
-  'use no memo'
-
-  if (isTearoffWindow) {
-    return <TearoffAppRuntime />
-  }
-
   return <MainAppRuntime />
-}
-
-function useThemeClass(): void {
-  const mode = useThemeStore(s => s.mode)
-
-  useEffect(() => {
-    const applyDark = (dark: boolean): void => {
-      document.documentElement.classList.toggle('dark', dark)
-    }
-
-    if (mode !== 'system') {
-      applyDark(mode === 'dark')
-      return
-    }
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    applyDark(mq.matches)
-    const listener = (e: MediaQueryListEvent): void => applyDark(e.matches)
-    mq.addEventListener('change', listener)
-    return () => mq.removeEventListener('change', listener)
-  }, [mode])
 }
 
 function MainAppRuntime() {
@@ -100,18 +48,23 @@ function MainAppRuntime() {
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
 
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const tabs = useCradleTabStore(s => s.tabs)
-  const activeTab = tabs.find(t => t.id === activeTabId)
-  const activeSlotId = getActiveLayoutSlotId(activeTab)
-  const validSlotIds = useMemo(
-    () => tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null),
-    [tabs],
-  )
-  const settingsTabExists = settingsTabId !== null && tabs.some(tab => tab.id === settingsTabId)
+  const activeSlotId = useCradleTabStore((s) => {
+    const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)
+    return getActiveLayoutSlotId(activeTab)
+  })
+  const validSlotIds = useCradleTabStore(useShallow(s => (
+    s.tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null)
+  )))
+  const settingsTabExists = useCradleTabStore(s => (
+    settingsTabId !== null && s.tabs.some(tab => tab.id === settingsTabId)
+  ))
 
   // Settings overlay is visible when the settings tab is the currently active tab
-  const isSettingsVisible = settingsTabExists && settingsTabId === activeTabId
+  const isSettingsVisible = useCradleTabStore(s => (
+    settingsTabId !== null
+    && settingsTabExists
+    && s.activeTabId === settingsTabId
+  ))
 
   const openGlobalSearch = useCallback(() => {
     useGlobalSearchStore.getState().openSearch()
@@ -120,6 +73,10 @@ function MainAppRuntime() {
   useThemeClass()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
+
+  useEffect(() => {
+    queueMicrotask(preloadCradleTabRoutes)
+  }, [])
 
   useEffect(() => installTearoffSessionRestore(useCradleTabStore), [])
 
@@ -187,7 +144,7 @@ function MainAppRuntime() {
                 </div>
                 {isSettingsVisible && (
                   <div
-                    className="absolute inset-0 min-w-0 overflow-hidden bg-background"
+                    className="absolute inset-0 min-w-0 overflow-hidden bg-background z-10"
                     data-testid="settings-tab-overlay"
                     onKeyDownCapture={(event) => {
                       if (
@@ -250,52 +207,4 @@ function GlobalCommandPaletteHost() {
   }, [])
 
   return <GlobalSearchDialog open={open} initialQuery={initialQuery} onOpenChange={setOpen} />
-}
-
-function TearoffAppRuntime() {
-  'use no memo'
-
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const tabs = useCradleTabStore(s => s.tabs)
-  const activeTab = tabs.find(tab => tab.id === activeTabId)
-  const activeSlotId = getActiveLayoutSlotId(activeTab)
-  const validSlotIds = useMemo(
-    () => tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null),
-    [tabs],
-  )
-
-  useThemeClass()
-
-  useEffect(() => {
-    if (!tearoffSessionId) {
-      return
-    }
-    useCradleTabStore.getState().openTab('chat', { sessionId: tearoffSessionId })
-  }, [])
-
-  useEffect(() => {
-    if (!tearoffSessionId) {
-      return
-    }
-    const urlSync = createUrlSync({ store: useCradleTabStore, registry: cradleRegistry })
-    urlSync.init()
-    return () => urlSync.destroy()
-  }, [])
-
-  return (
-    <AppEnvironmentProviders>
-      <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
-        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-            <AppLayout showFooter={false}>
-              <TabRenderer
-                fallback={null}
-                className="h-full flex overflow-hidden w-full [&>div]:contents"
-              />
-            </AppLayout>
-          </div>
-        </TabsProvider>
-      </LayoutSlotsProvider>
-    </AppEnvironmentProviders>
-  )
 }

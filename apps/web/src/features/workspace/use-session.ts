@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { useEffect } from 'react'
 import { z } from 'zod'
 
 import { getSessions } from '~/api-gen/sdk.gen'
 import type { RuntimeKind } from '~/lib/types'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
 export interface WorkspaceSession {
   id: string
@@ -45,6 +47,15 @@ export function useSessions(workspaceId: string | null) {
     },
     enabled: !!workspaceId,
   })
+
+  useEffect(() => {
+    useSessionLayoutStore.getState().upsertSessions(sessions.map(session => ({
+      sessionId: session.id,
+      sessionTitle: session.title,
+      workspaceId: session.workspaceId,
+      runtimeKind: session.runtimeKind,
+    })))
+  }, [sessions])
 
   return { sessions, loading }
 }

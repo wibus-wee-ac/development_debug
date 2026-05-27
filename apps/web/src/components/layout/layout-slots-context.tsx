@@ -96,7 +96,8 @@ export function LayoutSlotsProvider({
       for (const [id, slots] of Object.entries(prev.map)) {
         if (validSlotSet.has(id)) {
           nextMap[id] = slots
-        } else {
+        }
+ else {
           changed = true
         }
       }

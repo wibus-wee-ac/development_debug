@@ -41,9 +41,6 @@ const isDevtoolWindow = window.location.hash === '#devtool' || window.location.h
 async function startApp(): Promise<void> {
   const initialLocale = resolveInitialLocale()
 
-  // Load web plugins before rendering.
-  await loadWebPlugins()
-
   ReactDOMClient.createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
       <AppErrorBoundary>
@@ -56,8 +53,12 @@ async function startApp(): Promise<void> {
     </React.StrictMode>,
   )
 
-  // Non-blocking: initialize performance monitoring after render.
-  queueMicrotask(initPerfMonitor)
+  queueMicrotask(() => {
+    initPerfMonitor()
+    void loadWebPlugins().catch((error) => {
+      console.error('[plugin-host] failed to load web plugins:', error)
+    })
+  })
 }
 
 void startApp()

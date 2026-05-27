@@ -34,8 +34,7 @@ export function AppSidebar() {
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const isSettings = settingsTabId !== null && settingsTabId === activeTabId
+  const isSettings = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
 
   const handleToggleSettings = useCallback(() => {
     if (isSettings) {

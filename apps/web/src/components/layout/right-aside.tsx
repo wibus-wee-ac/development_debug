@@ -18,23 +18,23 @@ import { useLayoutStore } from '~/store/layout'
 
 interface Tab {
   id: string
-  labelKey: 'rightAside.tab.files' | 'rightAside.tab.changes' | 'rightAside.tab.issue' | 'rightAside.tab.await'
-  labelWidth: number
+  labelKey:
+    | 'rightAside.tab.files'
+    | 'rightAside.tab.changes'
+    | 'rightAside.tab.issue'
+    | 'rightAside.tab.await'
   icon: typeof FolderTreeIcon
 }
 
 const TABS: Tab[] = [
-  { id: 'files', labelKey: 'rightAside.tab.files', labelWidth: 24, icon: FolderTreeIcon },
-  { id: 'changes', labelKey: 'rightAside.tab.changes', labelWidth: 50, icon: FileDiffIcon },
-  // { id: 'git', label: 'Git', labelWidth: 20, icon: GitBranchIcon },
-  { id: 'issue', labelKey: 'rightAside.tab.issue', labelWidth: 32, icon: CircleDotIcon },
-  { id: 'await', labelKey: 'rightAside.tab.await', labelWidth: 28, icon: RssIcon },
+  { id: 'files', labelKey: 'rightAside.tab.files', icon: FolderTreeIcon },
+  { id: 'changes', labelKey: 'rightAside.tab.changes', icon: FileDiffIcon },
+  // { id: 'git', label: 'Git', icon: GitBranchIcon },
+  { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon },
+  { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon },
 ]
 
 const TAB_GAP = 2
-const TAB_INACTIVE_WIDTH = 32
-const TAB_INACTIVE_BADGE_WIDTH = 44
-const TAB_ACTIVE_EXTRA_WIDTH = 36
 
 const TAB_SPRING = {
   type: 'spring',
@@ -44,28 +44,25 @@ const TAB_SPRING = {
 } as const
 
 const TAB_LABEL_TRANSITION = {
-  width: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
-  marginLeft: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
   opacity: { duration: 0.16, ease: 'easeOut' },
   x: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
   filter: { duration: 0.16, ease: 'easeOut' },
   scaleX: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
 } as const
 
-function tabWidth(tab: Tab, isActive: boolean, hasBadge: boolean): number {
-  if (isActive) {
-    return TAB_ACTIVE_EXTRA_WIDTH + tab.labelWidth
-  }
-
-  return hasBadge ? TAB_INACTIVE_BADGE_WIDTH : TAB_INACTIVE_WIDTH
-}
-
 interface RightAsideProps {
   sessionId?: string | null
   workspaceId?: string | null
+  workspaceName?: string | null
+  workspacePath?: string | null
 }
 
-export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId = null }: RightAsideProps) {
+export function RightAside({
+  sessionId = null,
+  workspaceId: explicitWorkspaceId = null,
+  workspaceName: explicitWorkspaceName = null,
+  workspacePath: explicitWorkspacePath = null,
+}: RightAsideProps) {
   const { t } = useTranslation('chrome')
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
@@ -76,7 +73,7 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
   const { data: sessionMeta } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     select: s => ({ workspaceId: s?.workspaceId as string | null }),
-    enabled: !!sessionId,
+    enabled: !!sessionId && !explicitWorkspaceId,
     staleTime: 60_000,
   })
   const workspaceId = explicitWorkspaceId ?? sessionMeta?.workspaceId ?? null
@@ -88,10 +85,11 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
       const { data } = await getWorkspacesById({ path: { id: workspaceId! } })
       return data as import('~/lib/types').Workspace | undefined
     },
-    enabled: !!workspaceId,
+    enabled: !!workspaceId && (!explicitWorkspaceName || !explicitWorkspacePath),
     staleTime: 60_000,
   })
-  const workspacePath = workspace?.path ?? null
+  const workspaceName = explicitWorkspaceName ?? workspace?.name ?? null
+  const workspacePath = explicitWorkspacePath ?? workspace?.path ?? null
 
   // Badge: pending awaits for Feed tab
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
@@ -112,12 +110,10 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
       <div className="flex shrink-0 justify-center border-b border-border px-2 py-1.5">
         <LayoutGroup id="right-aside-tabs">
           <div className="relative flex items-center justify-center" style={{ gap: TAB_GAP }}>
-            {TABS.map(({ id, labelKey, labelWidth, icon: Icon }) => {
+            {TABS.map(({ id, labelKey, icon: Icon }) => {
               const isActive = activeTab === id
               const showBadge = id === 'await' && hasPendingAwaits && !isActive
               const label = t(labelKey)
-              const tab = { id, labelKey, labelWidth, icon: Icon }
-              const width = tabWidth(tab, isActive, showBadge)
 
               const button = (
                 <m.button
@@ -128,12 +124,15 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
                   data-testid={`right-aside-tab-${id}`}
                   data-active={isActive ? 'true' : 'false'}
                   initial={false}
-                  animate={{ width }}
                   transition={TAB_SPRING}
                   className={cn(
                     'relative z-10 grid h-7 place-items-center overflow-hidden rounded-md px-2 text-xs select-none',
                     'transition-[color] duration-150 ease-out',
                     isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    {
+                      'w-8': !isActive && !showBadge,
+                      'w-11': !isActive && showBadge,
+                    },
                   )}
                 >
                   {isActive && (
@@ -149,15 +148,16 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
                       aria-hidden={!isActive}
                       initial={false}
                       animate={{
-                        width: isActive ? labelWidth : 0,
-                        marginLeft: isActive ? 6 : 0,
                         opacity: isActive ? 1 : 0,
                         x: isActive ? 0 : 4,
                         filter: isActive ? 'blur(0px)' : 'blur(2px)',
                         scaleX: isActive ? 1 : 0.96,
                       }}
                       transition={TAB_LABEL_TRANSITION}
-                      className="block origin-center overflow-hidden whitespace-nowrap text-left"
+                      className={cn(
+                        'block origin-center whitespace-nowrap text-left',
+                        isActive ? 'ml-1.5' : 'pointer-events-none absolute ml-0 w-0 overflow-hidden',
+                      )}
                     >
                       {label}
                     </m.span>
@@ -174,7 +174,11 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
               return (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>{button}</TooltipTrigger>
-                  {!isActive && <TooltipContent side="bottom" sideOffset={8}>{label}</TooltipContent>}
+                  {!isActive && (
+                    <TooltipContent side="bottom" sideOffset={8}>
+                      {label}
+                    </TooltipContent>
+                  )}
                 </Tooltip>
               )
             })}
@@ -206,7 +210,11 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
             className="flex flex-1 flex-col overflow-hidden"
             data-testid="right-aside-panel-changes"
           >
-            <ChangesPanel workspaceId={workspaceId} />
+            <ChangesPanel
+              workspaceId={workspaceId}
+              workspacePath={workspacePath}
+              onPackRequested={workspaceId ? handlePackRequested : undefined}
+            />
           </div>
         )}
         {activeTab === 'issue' && sessionId && (
@@ -235,10 +243,10 @@ export function RightAside({ sessionId = null, workspaceId: explicitWorkspaceId 
         )}
       </div>
 
-      {workspaceId && workspace && (
+      {workspaceId && workspaceName && (
         <PackCodebaseDialog
           workspaceId={workspaceId}
-          workspaceName={workspace.name ?? workspaceId}
+          workspaceName={workspaceName}
           initialPaths={packInitialPaths}
           open={packOpen}
           onOpenChange={setPackOpen}

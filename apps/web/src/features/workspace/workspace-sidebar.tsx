@@ -4,9 +4,15 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   BarChart3Icon,
+  ChevronDownIcon,
+  ChevronUpIcon,
   ClipboardCopyIcon,
+  CopyIcon,
+  ExternalLinkIcon,
+  FilePlusIcon,
   FolderClosedIcon,
   FolderOpenIcon,
+  FolderPlusIcon,
   GitBranchIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
@@ -21,10 +27,17 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { deleteSessionsById, getSessionsByIdExportMarkdown, patchSessionsById } from '~/api-gen'
+import {
+  deleteSessionsById,
+  getSessionsByIdExportMarkdown,
+  patchSessionsById,
+  patchWorkspacesById,
+  postWorkspacesByIdFilesFile,
+  postWorkspacesByIdFilesFolder,
+} from '~/api-gen'
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import {
@@ -34,7 +47,16 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '~/components/ui/context-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
+import { Input } from '~/components/ui/input'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
@@ -48,15 +70,20 @@ import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
 import type { Workspace } from '~/lib/types'
 import { useSessionActivityStore } from '~/store/session-activity'
+import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab } from '~/tabs/tearoff-tabs'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, useSessions } from './use-session'
-import { useAddWorkspace, useDeleteWorkspace, useWorkspaces } from './use-workspace'
+import { useAddWorkspace, useDeleteWorkspace, useToggleWorkspacePin, useWorkspaces, WORKSPACES_QUERY_KEY } from './use-workspace'
 
 type WorkspaceTranslation = TFunction<'workspace'>
+const SESSION_PREVIEW_LIMIT = 5
+const COLLAPSED_WORKSPACE_POPOVER_CLOSE_DELAY = 140
+const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
+const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
 
 function SessionRenameInput({
   initialTitle,
@@ -146,6 +173,16 @@ type SessionMenuAction = {
   variant?: 'default' | 'destructive'
 }
 
+type WorkspaceMenuAction = {
+  key: string
+  label: string
+  icon: React.ReactNode
+  testId: string
+  invoke: () => void | Promise<void>
+  variant?: 'default' | 'destructive'
+  separatorBefore?: boolean
+}
+
 function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuAction[], surface: 'button' | 'context' }) {
   return actions.map((action) => {
     const content = (
@@ -185,13 +222,120 @@ function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuActi
   })
 }
 
+function WorkspaceMenuActionItems({ actions, surface }: { actions: WorkspaceMenuAction[], surface: 'button' | 'context' }) {
+  return actions.map((action) => {
+    const content = (
+      <>
+        {action.icon}
+        {action.label}
+      </>
+    )
+
+    if (surface === 'context') {
+      return (
+        <Fragment key={action.key}>
+          {action.separatorBefore && <ContextMenuSeparator />}
+          <ContextMenuItem
+            variant={action.variant}
+            onSelect={() => { void action.invoke() }}
+            data-testid={`${action.testId}-context`}
+          >
+            {content}
+          </ContextMenuItem>
+        </Fragment>
+      )
+    }
+
+    return (
+      <Fragment key={action.key}>
+        {action.separatorBefore && <MenuSeparator />}
+        <MenuItem
+          variant={action.variant}
+          onClick={() => { void action.invoke() }}
+          data-testid={action.testId}
+        >
+          {content}
+        </MenuItem>
+      </Fragment>
+    )
+  })
+}
+
+function WorkspaceTextInputDialog({
+  open,
+  title,
+  initialValue,
+  label,
+  confirmLabel,
+  onOpenChange,
+  onCommit,
+}: {
+  open: boolean
+  title: string
+  initialValue: string
+  label: string
+  confirmLabel: string
+  onOpenChange: (open: boolean) => void
+  onCommit: (value: string) => Promise<void>
+}) {
+  const { t } = useTranslation('workspace')
+  const [value, setValue] = useState(initialValue)
+
+  useEffect(() => {
+    if (open) {
+      setValue(initialValue)
+    }
+  }, [initialValue, open])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-xs">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <form
+          className="grid gap-3"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void onCommit(value)
+          }}
+        >
+          <Input
+            autoFocus
+            value={value}
+            onChange={event => setValue(event.currentTarget.value)}
+            onFocus={event => event.currentTarget.select()}
+            aria-label={label}
+          />
+          <DialogFooter variant="bare">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t('workspace.dialog.cancel')}
+            </Button>
+            <Button type="submit">
+              {confirmLabel}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Session item ──────────────────────────────────────────────────────────────
 
-function SessionItem({ session, workspaceId }: { session: WorkspaceSession, workspaceId: string }) {
+function SessionItem({
+  session,
+  workspaceId,
+  workspacePath,
+}: {
+  session: WorkspaceSession
+  workspaceId: string
+  workspacePath: string
+}) {
   'use no memo'
   const { t } = useTranslation('workspace')
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
-  const { openTab } = useCradleNavigation()
+  const { openNewTab, openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const [isRenaming, setIsRenaming] = useState(false)
@@ -200,11 +344,34 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
   const dragWasTornOffRef = useRef(false)
   const sessionTitle = session.title ?? t('session.fallbackTitle')
 
+  const recordSessionLayout = useCallback(() => {
+    useSessionLayoutStore.getState().upsertSession({
+      sessionId: session.id,
+      sessionTitle,
+      workspaceId: session.workspaceId ?? workspaceId,
+      workspacePath,
+      runtimeKind: session.runtimeKind,
+    })
+  }, [session.id, session.runtimeKind, session.workspaceId, sessionTitle, workspaceId, workspacePath])
+
   const releaseSessionDrag = useCallback(() => {
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
     dragPointerRef.current = null
     dragWasTornOffRef.current = false
+  }, [])
+
+  const recordDragPointer = useCallback((event: Event) => {
+    const pointer = getEventScreenCoordinates(event, window)
+    if (!pointer) {
+      return
+    }
+
+    if (event.type.startsWith('drag') && pointer.screenX === 0 && pointer.screenY === 0 && dragPointerRef.current) {
+      return
+    }
+
+    dragPointerRef.current = pointer
   }, [])
   const RuntimeIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
 
@@ -256,6 +423,27 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
     }
   }, [session.id])
 
+  const handleOpenInNewTab = useCallback(() => {
+    recordSessionLayout()
+    openNewTab('chat', { sessionId: session.id })
+  }, [openNewTab, recordSessionLayout, session.id])
+
+  const handleOpenInNewWindow = useCallback(() => {
+    if (!isElectron || !nativeIpc) {
+      return
+    }
+
+    const screenX = window.screenX + Math.round(window.outerWidth / 2)
+    const screenY = window.screenY + Math.round(window.outerHeight / 2)
+    void nativeIpc.window.tearOffSession(session.id, screenX, screenY)
+      .then(() => {
+        if (!isTearoffWindow) {
+          detachTearoffSessionTab(useCradleTabStore, session.id)
+        }
+      })
+      .catch(() => {})
+  }, [session.id])
+
   const checkSessionTearOff = useCallback(() => {
     if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
       return false
@@ -286,13 +474,12 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.dataTransfer.setData('application/x-cradle-session', session.id)
     e.dataTransfer.effectAllowed = 'move'
-    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
+    recordDragPointer(e.nativeEvent)
     dragWasTornOffRef.current = false
     dragCleanupRef.current?.()
 
     const handleDragMove = (event: DragEvent | MouseEvent | PointerEvent | TouchEvent) => {
-      dragPointerRef.current = getEventScreenCoordinates(event)
-      checkSessionTearOff()
+      recordDragPointer(event)
     }
 
     window.addEventListener('dragover', handleDragMove, true)
@@ -305,26 +492,43 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
       window.removeEventListener('pointermove', handleDragMove, true)
       window.removeEventListener('touchmove', handleDragMove, true)
     }
-  }, [checkSessionTearOff, session.id])
+  }, [recordDragPointer, session.id])
 
   const handleDrag = useCallback((e: React.DragEvent) => {
-    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
-    checkSessionTearOff()
-  }, [checkSessionTearOff])
+    recordDragPointer(e.nativeEvent)
+  }, [recordDragPointer])
 
   const handleDragEnd = useCallback((e: React.DragEvent) => {
-    dragPointerRef.current = getEventScreenCoordinates(e.nativeEvent)
+    recordDragPointer(e.nativeEvent)
     if (!dragWasTornOffRef.current) {
       checkSessionTearOff()
     }
     releaseSessionDrag()
-  }, [checkSessionTearOff, releaseSessionDrag])
+  }, [checkSessionTearOff, recordDragPointer, releaseSessionDrag])
 
   useEffect(() => {
     return releaseSessionDrag
   }, [releaseSessionDrag])
 
   const sessionActions: SessionMenuAction[] = [
+    {
+      key: 'open-new-tab',
+      label: t('session.action.openInNewTab'),
+      icon: <PlusIcon />,
+      testId: `session-menu-open-new-tab-${session.id}`,
+      invoke: handleOpenInNewTab,
+    },
+    ...(isElectron
+      ? [
+        {
+          key: 'open-new-window',
+          label: t('session.action.openInNewWindow'),
+          icon: <ExternalLinkIcon />,
+          testId: `session-menu-open-new-window-${session.id}`,
+          invoke: handleOpenInNewWindow,
+        },
+      ]
+      : []),
     {
       key: 'rename',
       label: t('session.action.rename'),
@@ -399,6 +603,8 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
             <Link
               to="chat"
               params={{ sessionId: session.id }}
+              onClick={recordSessionLayout}
+              onPointerDown={recordSessionLayout}
               data-testid={`session-open-${session.id}`}
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
@@ -460,87 +666,335 @@ function SessionItem({ session, workspaceId }: { session: WorkspaceSession, work
 function WorkspaceGroup({
   workspace,
   onDelete,
+  onTogglePin,
 }: {
   workspace: Workspace
   onDelete: (id: string) => void
+  onTogglePin: (id: string, pinned: boolean) => void
 }) {
   const { t } = useTranslation('workspace')
+  const queryClient = useQueryClient()
+  const { openTab } = useCradleNavigation()
   const [expanded, setExpanded] = useState(true)
+  const [sessionListExpanded, setSessionListExpanded] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
+  const [renameOpen, setRenameOpen] = useState(false)
+  const [createRequest, setCreateRequest] = useState<{
+    kind: 'file' | 'folder'
+  } | null>(null)
+  const workspacePinned = Boolean(workspace.pinned)
   const { sessions } = useSessions(expanded ? workspace.id : null)
+  const sortedSessions = useMemo(() => {
+    return sessions.toSorted((a, b) => {
+      const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+      if (pinDiff !== 0) {
+        return pinDiff
+      }
+      return b.createdAt - a.createdAt
+    })
+  }, [sessions])
+  const hasHiddenSessions = sortedSessions.length > SESSION_PREVIEW_LIMIT
+  const hiddenSessionCount = Math.max(sortedSessions.length - SESSION_PREVIEW_LIMIT, 0)
+  const visibleSessions = sessionListExpanded
+    ? sortedSessions
+    : sortedSessions.slice(0, SESSION_PREVIEW_LIMIT)
   const toggleExpanded = useCallback(() => {
     setExpanded(prev => !prev)
   }, [])
+  const toggleSessionListExpanded = useCallback(() => {
+    setSessionListExpanded(prev => !prev)
+  }, [])
+  const recordWorkspaceLayout = useCallback(() => {
+    useSessionLayoutStore.getState().upsertWorkspace({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspacePath: workspace.path,
+    })
+  }, [workspace.id, workspace.name, workspace.path])
+  const handleTogglePin = useCallback(() => {
+    onTogglePin(workspace.id, !workspacePinned)
+  }, [onTogglePin, workspace.id, workspacePinned])
+  const handleOpenWorkspace = useCallback(() => {
+    recordWorkspaceLayout()
+    openTab('workspace-detail', { workspaceId: workspace.id })
+  }, [openTab, recordWorkspaceLayout, workspace.id])
+  const handleOpenDefault = useCallback(async () => {
+    if (!isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.openPath(workspace.path)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('workspace.toast.openDefaultFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspace.path])
+  const handleRevealInFinder = useCallback(async () => {
+    if (!isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.showItemInFolder(workspace.path)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('workspace.toast.openInFinderFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspace.path])
+  const handleCopyAbsolutePath = useCallback(async () => {
+    await navigator.clipboard.writeText(workspace.path)
+  }, [workspace.path])
+  const handleRenameWorkspace = useCallback(async (value: string) => {
+    const name = value.trim()
+    if (!name || name === workspace.name) {
+      setRenameOpen(false)
+      return
+    }
+
+    try {
+      await patchWorkspacesById({ path: { id: workspace.id }, body: { name } })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] }),
+      ])
+      setRenameOpen(false)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('workspace.toast.renameFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [queryClient, t, workspace.id, workspace.name])
+  const handleCreateWorkspaceChild = useCallback(async (nameValue: string) => {
+    if (!createRequest) {
+      return
+    }
+
+    const name = nameValue.trim()
+    if (!name) {
+      return
+    }
+
+    const request = {
+      path: { id: workspace.id },
+      body: {
+        path: name,
+        confirmedNonCradleOwnedWrite: true,
+      },
+    }
+    try {
+      const { data } = createRequest.kind === 'file'
+        ? await postWorkspacesByIdFilesFile(request)
+        : await postWorkspacesByIdFilesFolder(request)
+
+      if (!(data as { success?: boolean } | null)?.success) {
+        toastManager.add({
+          type: 'error',
+          title: t('workspace.toast.createFailed'),
+        })
+        return
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspace.id] })
+      setCreateRequest(null)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('workspace.toast.createFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [createRequest, queryClient, t, workspace.id])
+  const workspaceActions = useMemo<WorkspaceMenuAction[]>(() => [
+    {
+      key: 'open',
+      label: t('workspace.action.open'),
+      icon: <ExternalLinkIcon />,
+      testId: `workspace-open-action-${workspace.id}`,
+      invoke: handleOpenWorkspace,
+    },
+    {
+      key: 'open-default',
+      label: t('workspace.action.openDefault'),
+      icon: <ExternalLinkIcon />,
+      testId: `workspace-open-default-${workspace.id}`,
+      invoke: handleOpenDefault,
+    },
+    {
+      key: 'open-in-finder',
+      label: t('workspace.action.openInFinder'),
+      icon: <FolderOpenIcon />,
+      testId: `workspace-open-in-finder-${workspace.id}`,
+      invoke: handleRevealInFinder,
+    },
+    {
+      key: 'new-file',
+      label: t('workspace.action.newFile'),
+      icon: <FilePlusIcon />,
+      testId: `workspace-new-file-${workspace.id}`,
+      invoke: () => setCreateRequest({ kind: 'file' }),
+      separatorBefore: true,
+    },
+    {
+      key: 'new-folder',
+      label: t('workspace.action.newFolder'),
+      icon: <FolderPlusIcon />,
+      testId: `workspace-new-folder-${workspace.id}`,
+      invoke: () => setCreateRequest({ kind: 'folder' }),
+    },
+    {
+      key: 'rename',
+      label: t('workspace.action.rename'),
+      icon: <PencilIcon />,
+      testId: `workspace-rename-${workspace.id}`,
+      invoke: () => setRenameOpen(true),
+    },
+    {
+      key: 'copy-path',
+      label: t('workspace.action.copyPath'),
+      icon: <CopyIcon />,
+      testId: `workspace-copy-path-${workspace.id}`,
+      invoke: handleCopyAbsolutePath,
+      separatorBefore: true,
+    },
+    {
+      key: 'copy-relative-path',
+      label: t('workspace.action.copyRelativePath'),
+      icon: <ClipboardCopyIcon />,
+      testId: `workspace-copy-relative-path-${workspace.id}`,
+      invoke: async () => navigator.clipboard.writeText('.'),
+    },
+    {
+      key: 'pack-codebase',
+      label: t('workspace.action.packCodebase'),
+      icon: <PackageIcon />,
+      testId: `workspace-pack-codebase-${workspace.id}`,
+      invoke: () => setPackOpen(true),
+      separatorBefore: true,
+    },
+    {
+      key: 'toggle-pin',
+      label: workspacePinned ? t('workspace.action.unpin') : t('workspace.action.pin'),
+      icon: workspacePinned ? <PinOffIcon /> : <PinIcon />,
+      testId: `workspace-toggle-pin-${workspace.id}`,
+      invoke: handleTogglePin,
+    },
+    {
+      key: 'remove',
+      label: t('workspace.action.remove'),
+      icon: <Trash2Icon />,
+      testId: `workspace-remove-${workspace.id}`,
+      invoke: () => onDelete(workspace.id),
+      variant: 'destructive',
+      separatorBefore: true,
+    },
+  ], [
+    handleCopyAbsolutePath,
+    handleOpenDefault,
+    handleOpenWorkspace,
+    handleRevealInFinder,
+    handleTogglePin,
+    onDelete,
+    t,
+    workspace.id,
+    workspacePinned,
+  ])
+
+  const headerContent = (
+    <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50">
+      <button
+        type="button"
+        onClick={toggleExpanded}
+        aria-label={t('workspace.aria.toggleExpanded')}
+        className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70"
+      >
+        {expanded
+          ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+          : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
+      </button>
+
+      <Link
+        to="workspace-detail"
+        params={{ workspaceId: workspace.id }}
+        onClick={recordWorkspaceLayout}
+        onPointerDown={recordWorkspaceLayout}
+        data-testid={`workspace-open-${workspace.id}`}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      >
+        {workspacePinned
+          ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('workspace.aria.pinned')} data-testid={`workspace-pin-indicator-${workspace.id}`} />
+          : null}
+        <span className="truncate text-xs font-medium text-sidebar-foreground/80">
+          {workspace.name}
+        </span>
+      </Link>
+
+      <Menu>
+        <MenuTrigger
+          render={(
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="opacity-0 group-hover:opacity-100 -mr-1"
+              onClick={e => e.stopPropagation()}
+            />
+          )}
+        >
+          <MoreHorizontalIcon />
+        </MenuTrigger>
+        <MenuPopup align="start" side="bottom" sideOffset={4}>
+          <WorkspaceMenuActionItems actions={workspaceActions} surface="button" />
+        </MenuPopup>
+      </Menu>
+    </div>
+  )
 
   return (
-    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`}>
-      <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50">
-        <button
-          type="button"
-          onClick={toggleExpanded}
-          aria-label={t('workspace.aria.toggleExpanded')}
-          className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70"
-        >
-          {expanded
-            ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
-            : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
-        </button>
-
-        <Link
-          to="workspace-detail"
-          params={{ workspaceId: workspace.id }}
-          data-testid={`workspace-open-${workspace.id}`}
-          className="flex min-w-0 flex-1 items-center text-left"
-        >
-          <span className="truncate text-xs font-medium text-sidebar-foreground/80">
-            {workspace.name}
-          </span>
-        </Link>
-
-        <Menu>
-          <MenuTrigger
-            render={(
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="opacity-0 group-hover:opacity-100 -mr-1"
-                onClick={e => e.stopPropagation()}
-              />
-            )}
-          >
-            <MoreHorizontalIcon />
-          </MenuTrigger>
-          <MenuPopup align="start" side="bottom" sideOffset={4}>
-            <MenuItem
-              onClick={() => window.open(`file://${workspace.path}`, '_blank')}
-            >
-              <FolderOpenIcon />
-              {t('workspace.action.openInFinder')}
-            </MenuItem>
-            <MenuItem
-              data-testid={`workspace-pack-codebase-${workspace.id}`}
-              onClick={() => setPackOpen(true)}
-            >
-              <PackageIcon />
-              {t('workspace.action.packCodebase')}
-            </MenuItem>
-            <MenuSeparator />
-            <MenuItem
-              variant="destructive"
-              onClick={() => onDelete(workspace.id)}
-            >
-              <Trash2Icon />
-              {t('workspace.action.remove')}
-            </MenuItem>
-          </MenuPopup>
-        </Menu>
-      </div>
+    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`} data-workspace-pinned={workspacePinned ? 'true' : 'false'}>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {headerContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <WorkspaceMenuActionItems actions={workspaceActions} surface="context" />
+        </ContextMenuContent>
+      </ContextMenu>
 
       <PackCodebaseDialog
         workspaceId={workspace.id}
         workspaceName={workspace.name}
         open={packOpen}
         onOpenChange={setPackOpen}
+      />
+      <WorkspaceTextInputDialog
+        open={renameOpen}
+        title={t('workspace.dialog.renameTitle')}
+        initialValue={workspace.name}
+        label={t('workspace.dialog.nameLabel')}
+        confirmLabel={t('workspace.dialog.rename')}
+        onOpenChange={setRenameOpen}
+        onCommit={handleRenameWorkspace}
+      />
+      <WorkspaceTextInputDialog
+        open={createRequest !== null}
+        title={createRequest?.kind === 'folder' ? t('workspace.dialog.newFolderTitle') : t('workspace.dialog.newFileTitle')}
+        initialValue={createRequest?.kind === 'folder' ? DEFAULT_WORKSPACE_FOLDER_NAME : DEFAULT_WORKSPACE_FILE_NAME}
+        label={t('workspace.dialog.nameLabel')}
+        confirmLabel={t('workspace.dialog.create')}
+        onOpenChange={open => !open && setCreateRequest(null)}
+        onCommit={handleCreateWorkspaceChild}
       />
 
       {/* Session list with expand/collapse animation */}
@@ -558,19 +1012,175 @@ function WorkspaceGroup({
               {sessions.length === 0 && (
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
               )}
-              {sessions.toSorted((a, b) => {
-                const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
-                if (pinDiff !== 0) {
-                  return pinDiff
-                }
-                return b.createdAt - a.createdAt
-              }).map(session => (
-                <SessionItem key={session.id} session={session} workspaceId={workspace.id} />
+              {visibleSessions.map(session => (
+                <SessionItem key={session.id} session={session} workspaceId={workspace.id} workspacePath={workspace.path} />
               ))}
+              {hasHiddenSessions && (
+                <button
+                  type="button"
+                  onClick={toggleSessionListExpanded}
+                  className="mt-0.5 flex h-6 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-left text-[11px] text-muted-foreground hover:bg-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  aria-expanded={sessionListExpanded}
+                  data-testid={`workspace-sessions-toggle-${workspace.id}`}
+                >
+                  {sessionListExpanded
+                    ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
+                    : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
+                  <span className="min-w-0 truncate">
+                    {sessionListExpanded
+                      ? t('session.action.showLess')
+                      : t('session.action.showAll', { count: hiddenSessionCount })}
+                  </span>
+                </button>
+              )}
             </div>
           </m.div>
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function getWorkspaceInitial(workspaceName: string): string {
+  const trimmedName = workspaceName.trim()
+  if (!trimmedName) {
+    return '?'
+  }
+
+  return trimmedName[0].toLocaleUpperCase()
+}
+
+function CollapsedWorkspaceItem({
+  workspace,
+  onDelete,
+  onTogglePin,
+}: {
+  workspace: Workspace
+  onDelete: (id: string) => void
+  onTogglePin: (id: string, pinned: boolean) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const closeTimerRef = useRef<number | null>(null)
+  const workspacePinned = Boolean(workspace.pinned)
+  const isActive = useIsActiveTab('workspace-detail', { workspaceId: workspace.id })
+  const workspaceInitial = getWorkspaceInitial(workspace.name)
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current === null) {
+      return
+    }
+
+    window.clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = null
+  }, [])
+
+  const scheduleClose = useCallback(() => {
+    cancelClose()
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null
+      setOpen(false)
+    }, COLLAPSED_WORKSPACE_POPOVER_CLOSE_DELAY)
+  }, [cancelClose])
+
+  useEffect(() => {
+    return cancelClose
+  }, [cancelClose])
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={(
+          <button
+            type="button"
+            className={cn(
+              'relative flex size-10 items-center justify-center rounded-lg text-sm font-semibold',
+              'bg-background text-sidebar-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-foreground/10',
+              'transition-[background-color,color,box-shadow,scale] duration-150 ease-out active:scale-[0.96]',
+              'hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              isActive && 'bg-accent text-accent-foreground ring-ring/35',
+            )}
+            aria-label={workspace.name}
+            data-testid={`workspace-avatar-${workspace.id}`}
+            onPointerEnter={() => {
+              cancelClose()
+              setOpen(true)
+            }}
+            onPointerLeave={scheduleClose}
+            onFocus={() => {
+              cancelClose()
+              setOpen(true)
+            }}
+            onBlur={scheduleClose}
+          >
+            {workspaceInitial}
+            {workspacePinned && (
+              <span className="absolute -right-0.5 -top-0.5 flex size-3 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-sidebar">
+                <PinIcon className="size-2" aria-hidden="true" />
+              </span>
+            )}
+          </button>
+        )}
+      />
+      <PopoverContent
+        side="right"
+        align="start"
+        sideOffset={6}
+        className="w-80 gap-0 p-2"
+        onPointerEnter={cancelClose}
+        onPointerLeave={scheduleClose}
+        onOpenAutoFocus={event => event.preventDefault()}
+        data-testid={`workspace-popover-${workspace.id}`}
+      >
+        <WorkspaceGroup
+          workspace={workspace}
+          onDelete={onDelete}
+          onTogglePin={onTogglePin}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function CollapsedWorkspaceRail({
+  workspaces,
+  onAddWorkspace,
+  adding,
+  onDelete,
+  onTogglePin,
+}: {
+  workspaces: Workspace[]
+  onAddWorkspace: () => void
+  adding: boolean
+  onDelete: (id: string) => void
+  onTogglePin: (id: string, pinned: boolean) => void
+}) {
+  const { t } = useTranslation('workspace')
+
+  return (
+    <div className="flex min-w-0 flex-col items-center gap-1.5 px-1 py-2" data-testid="workspace-avatar-rail">
+      {workspaces.map(workspace => (
+        <CollapsedWorkspaceItem
+          key={workspace.id}
+          workspace={workspace}
+          onDelete={onDelete}
+          onTogglePin={onTogglePin}
+        />
+      ))}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="mt-1 size-10 rounded-lg text-muted-foreground/70 hover:bg-accent hover:text-accent-foreground active:scale-[0.96] transition-[background-color,color,scale]"
+            onClick={onAddWorkspace}
+            disabled={adding}
+            data-testid="add-workspace-avatar-btn"
+          >
+            <PlusIcon className="size-3.5" aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right" sideOffset={8}>{t('sidebar.action.addProject')}</TooltipContent>
+      </Tooltip>
     </div>
   )
 }
@@ -658,6 +1268,16 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const { workspaces } = useWorkspaces()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
+  const { togglePin } = useToggleWorkspacePin()
+  const sortedWorkspaces = useMemo(() => {
+    return workspaces.toSorted((a, b) => {
+      const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+      if (pinDiff !== 0) {
+        return pinDiff
+      }
+      return a.name.localeCompare(b.name)
+    })
+  }, [workspaces])
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const handleOpenSettings = useCallback(() => {
     const activeTabId = useCradleTabStore.getState().activeTabId
@@ -669,6 +1289,10 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   const handleDelete = useCallback((id: string) => {
     remove(id)
   }, [remove])
+
+  const handleToggleWorkspacePin = useCallback((id: string, pinned: boolean) => {
+    togglePin({ id, pinned })
+  }, [togglePin])
 
   const openSearch = useCallback(() => useGlobalSearchStore.getState().openSearch(), [])
 
@@ -716,92 +1340,104 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         viewportClassName="min-w-0 max-w-full overflow-x-hidden"
         contentClassName="min-w-0 max-w-full overflow-x-hidden"
       >
-        {/* ── Kanban section ── */}
-        <KanbanSidebar collapsed={collapsed} />
+        {collapsed
+          ? (
+            <CollapsedWorkspaceRail
+              workspaces={sortedWorkspaces}
+              onAddWorkspace={addFromPicker}
+              adding={adding}
+              onDelete={handleDelete}
+              onTogglePin={handleToggleWorkspacePin}
+            />
+          )
+          : (
+            <>
+              {/* ── Kanban section ── */}
+              <KanbanSidebar collapsed={false} />
 
-        {/* ── Plugins section ── */}
-        <PluginsSidebar collapsed={collapsed} />
+              {/* ── Plugins section ── */}
+              <PluginsSidebar collapsed={false} />
 
-        {/* ── Projects section — always rendered, opacity fades on collapse ── */}
-        <div
-          className="flex min-w-0 flex-col"
-          style={{ opacity: collapsed ? 0 : 1, transition: 'opacity 120ms ease', pointerEvents: collapsed ? 'none' : undefined }}
-        >
-          <div className="flex items-center px-2.5 py-1.5">
-            <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
-              {t('sidebar.projects.title')}
-            </span>
-            <div className="flex items-center gap-0.5">
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                title={t('sidebar.action.sort')}
-              >
-                <SlidersHorizontalIcon className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                title={t('sidebar.action.filter')}
-                onClick={() => {
-                  toastManager.add({
-                    type: 'error',
-                    title: t('sidebar.filterSoon.title'),
-                    description: t('sidebar.filterSoon.description'),
-                  })
-                }}
-              >
-                <GitBranchIcon className="size-3" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                onClick={addFromPicker}
-                disabled={adding}
-                title={t('sidebar.action.addProject')}
-                data-testid="add-workspace-btn"
-              >
-                <PlusIcon className="size-3" />
-              </Button>
-            </div>
-          </div>
-
-          {/* Workspace list */}
-          <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
-            {workspaces.length === 0 && (
-              <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-                <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
-                  <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+              {/* ── Projects section ── */}
+              <div className="flex min-w-0 flex-col">
+                <div className="flex items-center px-2.5 py-1.5">
+                  <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
+                    {t('sidebar.projects.title')}
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                      title={t('sidebar.action.sort')}
+                    >
+                      <SlidersHorizontalIcon className="size-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                      title={t('sidebar.action.filter')}
+                      onClick={() => {
+                        toastManager.add({
+                          type: 'error',
+                          title: t('sidebar.filterSoon.title'),
+                          description: t('sidebar.filterSoon.description'),
+                        })
+                      }}
+                    >
+                      <GitBranchIcon className="size-3" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                      onClick={addFromPicker}
+                      disabled={adding}
+                      title={t('sidebar.action.addProject')}
+                      data-testid="add-workspace-btn"
+                    >
+                      <PlusIcon className="size-3" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
-                  <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="xs"
-                  onClick={addFromPicker}
-                  disabled={adding}
-                  className="mt-1 border-dashed"
-                  data-testid="add-workspace-empty-btn"
-                >
-                  <PlusIcon />
-                  {t('sidebar.action.addProject')}
-                </Button>
+
+                {/* Workspace list */}
+                <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
+                  {workspaces.length === 0 && (
+                    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                      <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
+                        <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
+                        <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={addFromPicker}
+                        disabled={adding}
+                        className="mt-1 border-dashed"
+                        data-testid="add-workspace-empty-btn"
+                      >
+                        <PlusIcon />
+                        {t('sidebar.action.addProject')}
+                      </Button>
+                    </div>
+                  )}
+                  {sortedWorkspaces.map(workspace => (
+                    <WorkspaceGroup
+                      key={workspace.id}
+                      workspace={workspace}
+                      onDelete={handleDelete}
+                      onTogglePin={handleToggleWorkspacePin}
+                    />
+                  ))}
+                </nav>
               </div>
-            )}
-            {workspaces.map(workspace => (
-              <WorkspaceGroup
-                key={workspace.id}
-                workspace={workspace}
-                onDelete={handleDelete}
-              />
-            ))}
-          </nav>
-        </div>
+            </>
+          )}
       </ScrollArea>
     </div>
   )
