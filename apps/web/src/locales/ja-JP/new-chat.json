@@ -18,9 +18,6 @@
   "readiness.agent.message": "利用可能な CLI agent がありません。開始するには設定でローカル agent を有効にしてください。",
   "readiness.provider.action": "Providers を開く",
   "readiness.provider.message": "利用可能な provider がありません。最初のメッセージ送信前に provider を設定してください。",
-  "readiness.workspace.action": "プロジェクトを追加",
-  "readiness.workspace.adding": "追加中...",
-  "readiness.workspace.message": "まずプロジェクトを追加して、Cradle がチャットを実ワークスペースに紐づけられるようにしてください。",
   "recent.title": "最近のチャット",
   "recent.untitled": "無題",
   "relative.daysAgo": "{{count}} 日前",
@@ -29,7 +26,8 @@
   "relative.minutesAgo": "{{count}} 分前",
   "relative.monthsAgo": "{{count}} か月前",
   "send.tooltip": "送信",
-  "workspace.empty": "ワークスペースはありません",
-  "workspace.fallback": "プロジェクト",
+  "workspace.addProject": "プロジェクトを追加",
+  "workspace.adding": "追加中...",
+  "workspace.adhoc": "プロジェクトなし",
   "workspace.group": "ワークスペース"
 }

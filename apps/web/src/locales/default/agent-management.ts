@@ -58,6 +58,8 @@ export default {
   'detail.identity.name.placeholder': 'Name your agent',
   'detail.model.description': 'Choose provider, model, and thinking effort',
   'detail.model.label': 'Model',
+  'detail.providerModel.disabledReason':
+    '{{providerName}} is disabled. This agent cannot be started until the provider is enabled.',
   'detail.providerModel.emptyProviderTargets': 'No providers configured',
   'detail.providerModel.emptySelection': 'Select a provider',
   'detail.runtime.claudeAgent.description': 'Agentic loop powered by Claude with tool-use support',
@@ -142,6 +144,7 @@ export default {
   'models.registry.status.exact': 'exact',
   'models.registry.status.fuzzy': 'fuzzy',
   'models.registry.status.manual': 'manual',
+  'models.registry.status.alias': 'alias',
   'models.registry.status.unmatched': 'unmatched',
   'models.search.noMatches.prefix': 'No models match',
   'models.search.noMatches.suffix': '.',
@@ -155,6 +158,7 @@ export default {
   'models.time.justNow': 'just now',
   'models.time.minutesAgo': '{{minuteCount}}m ago',
   'runtime.action.addManualProvider': 'Add manual provider',
+  'runtime.action.import': 'Import',
   'runtime.action.refreshSources': 'Refresh connected apps',
   'runtime.draft.description': 'Pick a template',
   'runtime.draft.title': 'New provider',
@@ -193,5 +197,5 @@ export default {
   'runtime.toast.syncFailed': '{{sourceCount}} connected apps failed to sync',
   'runtime.visible.count': '{{visibleCount}} visible',
   'runtime.visible.select': 'Select visible',
-  'runtime.visible.unselect': 'Unselect visible'
+  'runtime.visible.unselect': 'Unselect visible',
 } as const

@@ -28,20 +28,17 @@ export default {
   'relative.hoursAgo': '{{count}} hours ago',
   'relative.daysAgo': '{{count}} days ago',
   'relative.monthsAgo': '{{count}} months ago',
-  'readiness.workspace.message':
-    'Add a project first so Cradle can bind the chat to a real workspace.',
-  'readiness.workspace.adding': 'Adding...',
-  'readiness.workspace.action': 'Add project',
   'readiness.agent.message':
     'No CLI agent is available. Enable a local agent in settings to start.',
   'readiness.agent.action': 'Open agents',
   'readiness.provider.message':
     'No provider is available. Configure a provider before sending the first message.',
   'readiness.provider.action': 'Open providers',
-  'workspace.fallback': 'Project',
+  'workspace.adhoc': 'No project',
+  'workspace.addProject': 'Add project',
+  'workspace.adding': 'Adding...',
   'workspace.group': 'Workspaces',
-  'workspace.empty': 'No workspaces',
   'send.tooltip': 'Send',
   'recent.title': 'Recent chats',
-  'recent.untitled': 'Untitled'
+  'recent.untitled': 'Untitled',
 } as const

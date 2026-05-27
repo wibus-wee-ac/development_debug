@@ -2,12 +2,11 @@
 // Input: Namespace modules under this directory.
 // Position: Source of truth for i18n authoring and runtime fallback resources.
 
-import approval from './approval'
 import agentManagement from './agent-management'
 import awaits from './awaits'
 import chat from './chat'
-import chronicle from './chronicle'
 import chrome from './chrome'
+import chronicle from './chronicle'
 import common from './common'
 import devtool from './devtool'
 import filesystem from './filesystem'
@@ -24,7 +23,6 @@ import usage from './usage'
 import workspace from './workspace'
 
 const resources = {
-  approval,
   agentManagement,
   awaits,
   chat,

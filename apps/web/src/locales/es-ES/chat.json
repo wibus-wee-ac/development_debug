@@ -2,6 +2,7 @@
   "await.action.view": "Ver",
   "await.source.event": "evento",
   "await.waitingFor": "Esperando {{source}}...",
+  "continuation.steer.label": "Guía",
   "empty.startConversation": "Envía un mensaje para iniciar la conversación",
   "error.loadMessages": "No se pudieron cargar los mensajes. (Error desconocido)",
   "status.thinking": "Pensando..."

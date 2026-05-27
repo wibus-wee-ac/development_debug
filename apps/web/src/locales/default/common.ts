@@ -43,5 +43,5 @@ export default {
   'thinking.low.description': 'Fast responses with light reasoning.',
   'thinking.low.label': 'Low',
   'thinking.medium.description': 'Balanced reasoning for everyday work.',
-  'thinking.medium.label': 'Medium'
+  'thinking.medium.label': 'Medium',
 } as const

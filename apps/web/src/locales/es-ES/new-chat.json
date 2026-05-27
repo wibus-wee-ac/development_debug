@@ -18,9 +18,6 @@
   "readiness.agent.message": "No hay ningún CLI agent disponible. Habilita un agent local en ajustes para empezar.",
   "readiness.provider.action": "Abrir Providers",
   "readiness.provider.message": "No provider is available. Configure a provider before sending the first message.",
-  "readiness.workspace.action": "Agregar proyecto",
-  "readiness.workspace.adding": "Agregando...",
-  "readiness.workspace.message": "Agrega primero un proyecto para que Cradle pueda vincular el chat a un workspace real.",
   "recent.title": "Chats recientes",
   "recent.untitled": "Sin título",
   "relative.daysAgo": "hace {{count}} días",
@@ -29,7 +26,8 @@
   "relative.minutesAgo": "hace {{count}} minutos",
   "relative.monthsAgo": "hace {{count}} meses",
   "send.tooltip": "Enviar",
-  "workspace.empty": "No hay workspaces",
-  "workspace.fallback": "Proyecto",
+  "workspace.addProject": "Agregar proyecto",
+  "workspace.adding": "Agregando...",
+  "workspace.adhoc": "Sin proyecto",
   "workspace.group": "Workspaces"
 }
