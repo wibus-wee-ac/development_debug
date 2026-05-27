@@ -393,6 +393,68 @@ describe('session capability', () => {
     }
   })
 
+  it('keeps explicitly unbound Jarvis sessions out of workspace records', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const adHocRoot = makeTempDir('cradle-ad-hoc-workspaces-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousAdHocRoot = process.env.CRADLE_AD_HOC_WORKSPACE_ROOT
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_AD_HOC_WORKSPACE_ROOT = adHocRoot
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+      const providerTargetId = randomUUID()
+      d.insert(providerTargets)
+        .values({
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Jarvis Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+
+      const createRes = await app.handle(
+        new Request('http://localhost/sessions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            workspaceId: null,
+            title: 'Jarvis',
+            providerTargetId,
+            runtimeKind: 'jar-core',
+          }),
+        }),
+      )
+
+      expect(createRes.status).toBe(200)
+      const created = await createRes.json()
+      expect(created).toEqual(expect.objectContaining({
+        workspaceId: null,
+        runtimeKind: 'jar-core',
+      }))
+      expect(d.select().from(workspaces).all()).toEqual([])
+    }
+ finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(adHocRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+ else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousAdHocRoot === undefined) {
+        delete process.env.CRADLE_AD_HOC_WORKSPACE_ROOT
+      }
+ else {
+        process.env.CRADLE_AD_HOC_WORKSPACE_ROOT = previousAdHocRoot
+      }
+    }
+  })
+
   it('deletes session-owned search and cli-tui pty state', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

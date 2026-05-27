@@ -173,6 +173,7 @@ export function JarvisPopover({
       try {
         const res = await postSessions({
           body: {
+            workspaceId: null,
             title: 'Jarvis',
             providerTargetId: prefs!.profileId!,
             runtimeKind: 'jar-core',

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
-import { AnimatePresence, LayoutGroup, m } from 'motion/react'
+import { LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -19,10 +19,10 @@ import { useLayoutStore } from '~/store/layout'
 interface Tab {
   id: string
   labelKey:
-    | 'rightAside.tab.files'
-    | 'rightAside.tab.changes'
-    | 'rightAside.tab.issue'
-    | 'rightAside.tab.await'
+  | 'rightAside.tab.files'
+  | 'rightAside.tab.changes'
+  | 'rightAside.tab.issue'
+  | 'rightAside.tab.await'
   icon: typeof FolderTreeIcon
 }
 
@@ -43,13 +43,36 @@ const TAB_SPRING = {
   mass: 0.8,
 } as const
 
+// const TAB_LABEL_TRANSITION = {
+//   width: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
+//   marginLeft: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
+//   opacity: { duration: 0.16, ease: 'easeOut' },
+//   x: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+//   filter: { duration: 0.16, ease: 'easeOut' },
+//   scaleX: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+// } as const
+
 const TAB_LABEL_TRANSITION = {
-  width: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
-  marginLeft: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
-  opacity: { duration: 0.16, ease: 'easeOut' },
-  x: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
-  filter: { duration: 0.16, ease: 'easeOut' },
-  scaleX: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
+  width: {
+    type: 'spring',
+    stiffness: 390,
+    damping: 32,
+    mass: 0.8,
+  },
+  opacity: {
+    duration: 0.12,
+    ease: 'easeOut',
+    delay: 0.03,
+  },
+  x: {
+    duration: 0.24,
+    ease: [0.16, 1, 0.3, 1],
+    delay: 0.02,
+  },
+  filter: {
+    duration: 0.2,
+    ease: [0.16, 1, 0.3, 1],
+  },
 } as const
 
 interface RightAsideProps {
@@ -147,16 +170,28 @@ export function RightAside({
                       initial={false}
                       animate={{
                         width: isActive ? 'auto' : 0,
-                        marginLeft: isActive ? 6 : 0,
-                        opacity: isActive ? 1 : 0,
-                        x: isActive ? 0 : 4,
-                        filter: isActive ? 'blur(0px)' : 'blur(2px)',
-                        scaleX: isActive ? 1 : 0.96,
                       }}
-                      transition={TAB_LABEL_TRANSITION}
-                      className="block origin-center overflow-hidden whitespace-nowrap text-left"
+                      transition={{
+                        width: TAB_LABEL_TRANSITION.width,
+                      }}
+                      className="block overflow-hidden"
                     >
-                      {label}
+                      <m.span
+                        initial={false}
+                        animate={{
+                          opacity: isActive ? 1 : 0,
+                          x: isActive ? 0 : 6,
+                          filter: isActive ? 'blur(0px)' : 'blur(3px)',
+                        }}
+                        transition={{
+                          opacity: TAB_LABEL_TRANSITION.opacity,
+                          x: TAB_LABEL_TRANSITION.x,
+                          filter: TAB_LABEL_TRANSITION.filter,
+                        }}
+                        className="ml-1.5 block whitespace-nowrap text-left will-change-transform"
+                      >
+                        {label}
+                      </m.span>
                     </m.span>
                   </span>
                   {showBadge && (

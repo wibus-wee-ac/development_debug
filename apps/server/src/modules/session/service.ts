@@ -22,7 +22,7 @@ const RuntimeKindSchema = z.enum(runtimeKinds)
 
 const SessionCreateInputSchema = z.object({
   id: z.string().default(() => randomUUID()),
-  workspaceId: z.string().nullable().default(null),
+  workspaceId: z.string().nullable().optional(),
   title: z.string(),
   providerTargetId: z.string().nullable().optional(),
   runtimeKind: RuntimeKindSchema.optional(),
@@ -119,7 +119,7 @@ export function create(input: {
 }): SessionView {
   const parsed = SessionCreateInputSchema.parse(input)
   const resolved = resolveSessionCreateInput(parsed)
-  const workspaceId = parsed.workspaceId ?? Workspace.createAdHocWorkspace().id
+  const workspaceId = resolveSessionWorkspaceId(parsed)
   const rowInput = z
     .object({
       configJson: z.string().default(() => resolved.configJson),
@@ -141,6 +141,13 @@ export function create(input: {
     .get()
 
   return toSessionView(created, null)
+}
+
+function resolveSessionWorkspaceId(input: { workspaceId?: string | null }): string | null {
+  if (input.workspaceId !== undefined) {
+    return input.workspaceId
+  }
+  return Workspace.createAdHocWorkspace().id
 }
 
 function resolveSessionCreateInput(input: {

@@ -53,7 +53,7 @@ export const SessionModel = {
   }),
 
   createBody: t.Object({
-    workspaceId: t.Optional(t.String({ minLength: 1 })),
+    workspaceId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     title: t.String({ minLength: 1 }),
     providerTargetId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     agentId: t.Optional(t.String({ minLength: 1 })),
