@@ -55,7 +55,6 @@ const tracePhaseSchema = t.Union([
   t.Literal('provider_raw'),
   t.Literal('mapper_output'),
   t.Literal('runtime_chunk'),
-  t.Literal('projection_apply'),
   t.Literal('sse_emit'),
   t.Literal('run_completed'),
   t.Literal('run_failed'),
@@ -123,6 +122,7 @@ export const ChatRuntimeModel = {
   responseBody: t.Object({
     text: t.Optional(t.String()),
     files: t.Optional(t.Array(filePartSchema)),
+    messages: t.Optional(t.Array(uiMessageSchema)),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),

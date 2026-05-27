@@ -19,7 +19,6 @@ import {
   PROTOCOL_VERSION,
 } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
-import { z } from 'zod'
 
 import { getRegisteredMcpServers } from '../../../../plugins'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
@@ -45,38 +44,6 @@ export interface AcpPermissionResponse {
 }
 
 export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
-
-const PromptResponseUsageSchema = z.object({
-  usage: z.object({
-    inputTokens: z.number().nullable().optional(),
-    outputTokens: z.number().nullable().optional(),
-    totalTokens: z.number().nullable().optional(),
-  }).nullable().default(null),
-}).passthrough()
-
-const AcpSessionStateResponseSchema = z.object({
-  models: z.custom<SessionModelState>().nullable().default(null),
-  configOptions: z.array(z.custom<SessionConfigOption>()).default([]),
-}).passthrough()
-
-const PermissionRequestOptionsSchema = z.array(z.object({
-  optionId: z.string(),
-  name: z.string(),
-  kind: z.string(),
-})).default([])
-
-const SessionConfigOptionValueSchema = z.union([
-  z.boolean().transform(value => ({ type: 'boolean' as const, value })),
-  z.string().transform(value => ({ value })),
-])
-
-const AcpArgsJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(z.array(z.string()))
-
-const AcpEnvJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(z.record(z.string(), z.string()))
 
 export function listRegisteredAcpMcpServers(): McpServer[] {
   return Object.entries(getRegisteredMcpServers()).map(([name, config]) => ({
@@ -201,7 +168,7 @@ export class AcpConnectionManager {
   async newSession(agentId: string, cwd: string): Promise<NewSessionResponse & AcpSessionState> {
     const conn = this.getConnection(agentId)
     const response = await conn.connection.newSession({ cwd, mcpServers: listRegisteredAcpMcpServers() })
-    const sessionState = AcpSessionStateResponseSchema.parse(response)
+    const sessionState = readAcpSessionState(response)
     this.cacheSessionState(conn, response.sessionId, sessionState)
     return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
   }
@@ -223,7 +190,7 @@ export class AcpConnectionManager {
     conn.restoringSessionLoads.add(sessionId)
     try {
       const response = await conn.connection.loadSession({ sessionId, cwd, mcpServers: listRegisteredAcpMcpServers() })
-      const sessionState = AcpSessionStateResponseSchema.parse(response)
+      const sessionState = readAcpSessionState(response)
       this.cacheSessionState(conn, sessionId, sessionState)
       return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
     }
@@ -239,7 +206,7 @@ export class AcpConnectionManager {
     }
 
     const response = await conn.connection.unstable_resumeSession({ sessionId, cwd, mcpServers: listRegisteredAcpMcpServers() })
-    const sessionState = AcpSessionStateResponseSchema.parse(response)
+    const sessionState = readAcpSessionState(response)
     this.cacheSessionState(conn, sessionId, sessionState)
     return { ...response, models: sessionState.models, configOptions: sessionState.configOptions }
   }
@@ -259,7 +226,7 @@ export class AcpConnectionManager {
 
   async setSessionConfigOption(agentId: string, sessionId: string, configId: string, value: string | boolean): Promise<void> {
     const conn = this.getConnection(agentId)
-    const params = { sessionId, configId, ...SessionConfigOptionValueSchema.parse(value) }
+    const params = { sessionId, configId, ...formatSessionConfigOptionValue(value) }
     const response = await conn.connection.setSessionConfigOption(params)
     const state = conn.sessionStates.get(sessionId)
     if (state && response?.configOptions) {
@@ -369,8 +336,8 @@ export class AcpConnectionManager {
   }
 
   private async openConnection(agentId: string, record: AcpConnectionRecord): Promise<InitializeResponse> {
-    const args = AcpArgsJsonSchema.parse(record.args)
-    const env = AcpEnvJsonSchema.parse(record.env)
+    const args = JSON.parse(record.args) as string[]
+    const env = JSON.parse(record.env) as Record<string, string>
     const procEntry = this.processManager.spawn({
       agentId,
       cmd: record.cmd,
@@ -465,15 +432,9 @@ export class AcpConnectionManager {
   private createClient(agentId: string, _agent: Agent): Client {
     return {
       requestPermission: async (params) => {
-        const options = PermissionRequestOptionsSchema.parse(params.options)
+        const options = readPermissionOptions(params.options)
         if (!this.permissionHandler) {
-          const firstOption = options[0]
-          return {
-            outcome: {
-              outcome: 'selected' as const,
-              optionId: firstOption?.optionId ?? '',
-            },
-          }
+          return { outcome: { outcome: 'cancelled' as const } }
         }
 
         const response = await this.permissionHandler({
@@ -589,5 +550,24 @@ function readUsage(response: PromptResponse | null): {
   outputTokens?: number | null
   totalTokens?: number | null
 } | null {
-  return response === null ? null : PromptResponseUsageSchema.parse(response).usage
+  return response?.usage ?? null
+}
+
+function readAcpSessionState(response: { models?: SessionModelState | null, configOptions?: SessionConfigOption[] | null }): AcpSessionState {
+  return {
+    models: response.models ?? null,
+    configOptions: response.configOptions ?? [],
+  }
+}
+
+function readPermissionOptions(value: unknown): Array<{ optionId: string, name: string, kind: string }> {
+  return Array.isArray(value)
+    ? value as Array<{ optionId: string, name: string, kind: string }>
+    : []
+}
+
+function formatSessionConfigOptionValue(value: string | boolean): { type: 'boolean', value: boolean } | { value: string } {
+  return typeof value === 'boolean'
+    ? { type: 'boolean', value }
+    : { value }
 }

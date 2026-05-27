@@ -6,11 +6,11 @@ import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/jar-core'
 import type { UIMessageChunk } from 'ai'
 
 import { getServerConfig } from '../../../../infra'
+import * as ModelRegistry from '../../../model-registry/service'
 import * as Preferences from '../../../preferences/service'
 import { lookupModelRaw, lookupModelRawExact } from '../../../providers/model-info-registry'
-import { ProfileConfigWithModelRegistryJsonSchema } from '../../../providers/model-registry-mappings'
 import {
-  SystemAgentConfigJsonSchema,
+  readTrustedSystemAgentConfig,
 } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type {
@@ -23,7 +23,7 @@ import type {
   TokenUsage,
 } from '../../runtime-provider-types'
 import { projectTextOnlyInput } from '../../ui-message-input'
-import { ProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
+import { readProviderStateSnapshot } from '../provider-state-snapshot'
 
 interface SystemAgentProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -74,9 +74,8 @@ function selectRuntimeThinkingLevel(
   return requested
 }
 
-async function resolveMappedRegistryModel(configJson: string, modelId: string): Promise<Awaited<ReturnType<typeof lookupModelRaw>> | null> {
-  const config = ProfileConfigWithModelRegistryJsonSchema.parse(configJson)
-  const mapping = config.modelRegistryMappings.find(item => item.modelId === modelId)
+async function resolveMappedRegistryModel(modelId: string): Promise<Awaited<ReturnType<typeof lookupModelRaw>> | null> {
+  const mapping = ModelRegistry.getMapping(modelId)
   if (!mapping) {
     return null
   }
@@ -133,7 +132,7 @@ export class SystemAgentProvider implements ChatRuntime {
     if (!currentModelId) {
       return input.runtimeSession
     }
-    const snapshot = ProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
+    const snapshot = readProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -145,7 +144,7 @@ export class SystemAgentProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
-    const config = SystemAgentConfigJsonSchema.parse(input.profile.configJson)
+    const config = readTrustedSystemAgentConfig(input.profile.configJson)
     const userPrompt = projectTextOnlyInput(input.message, 'Jarvis provider')
 
     const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
@@ -161,7 +160,7 @@ export class SystemAgentProvider implements ChatRuntime {
       : config.apiKey
 
     const registryModel = await lookupModelRaw(model)
-    const mappedRegistryModel = await resolveMappedRegistryModel(input.profile.configJson, model)
+    const mappedRegistryModel = await resolveMappedRegistryModel(model)
     const runtimeRegistryModel = mappedRegistryModel ?? registryModel
     const thinkingLevel = selectRuntimeThinkingLevel(
       model,

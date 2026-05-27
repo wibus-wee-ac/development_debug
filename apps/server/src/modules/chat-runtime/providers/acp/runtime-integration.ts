@@ -1,4 +1,3 @@
-import * as Approval from '../../../approval/service'
 import * as Session from '../../../session/service'
 import * as ChatRuntime from '../../service'
 import type { AcpConnectionManager } from './connection-manager'
@@ -17,26 +16,15 @@ async function handlePermission(request: {
   options: Array<{ optionId: string, name: string, kind: string }>
 }): Promise<{ outcome: 'selected' | 'cancelled', optionId?: string }> {
   const chatSessionId = ChatRuntime.listChatSessionIdsByBackendSessionId(request.sessionId)[0] ?? null
-  const response = await Approval.requestApproval({
-    chatSessionId,
+  const rejectOption = request.options.find(option => option.kind === 'reject_once' || option.kind === 'reject_always')
+  console.warn('[acp] permission request denied because legacy approval SSE is removed', {
     agentId: request.agentId,
-    prompt: request.toolTitle,
-    options: request.options.map(option => ({
-      optionId: option.optionId,
-      label: option.name,
-      description: option.kind,
-    })),
+    chatSessionId,
+    toolTitle: request.toolTitle,
   })
-
-  if (response.decision === 'rejected') {
-    const rejectOption = request.options.find(option => option.kind === 'reject_once' || option.kind === 'reject_always')
-    if (rejectOption) {
-      return { outcome: 'selected', optionId: rejectOption.optionId }
-    }
-    return { outcome: 'cancelled' }
-  }
-
-  return { outcome: 'selected', optionId: response.selectedOptionId }
+  return rejectOption
+    ? { outcome: 'selected', optionId: rejectOption.optionId }
+    : { outcome: 'cancelled' }
 }
 
 function handleSessionTitle(acpSessionId: string, title: string): void {

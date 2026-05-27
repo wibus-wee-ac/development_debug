@@ -56,6 +56,7 @@ export interface StreamTurnInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
   message: UIMessage
+  originalMessages?: UIMessage[]
   responseMessageId?: string
   modelId?: string
   workspaceId?: string | null
@@ -100,7 +101,6 @@ export interface ChatRuntime {
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
-  streamTurnSnapshots?: (input: StreamTurnInput) => AsyncGenerator<UIMessage, void, void>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.

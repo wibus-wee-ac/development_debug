@@ -2,16 +2,15 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-export type ChatStreamTracePhase =
-  | 'run_started'
-  | 'provider_raw'
-  | 'mapper_output'
-  | 'runtime_chunk'
-  | 'projection_apply'
-  | 'sse_emit'
-  | 'run_completed'
-  | 'run_failed'
-  | 'run_aborted'
+export type ChatStreamTracePhase
+  = | 'run_started'
+    | 'provider_raw'
+    | 'mapper_output'
+    | 'runtime_chunk'
+    | 'sse_emit'
+    | 'run_completed'
+    | 'run_failed'
+    | 'run_aborted'
 
 export interface ChatStreamTraceContext {
   chatSessionId: string

@@ -1,31 +1,29 @@
 import { randomUUID } from 'node:crypto'
 
-import type { CanUseTool, Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
+import type { Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
-import * as Approval from '../../../approval/service'
-import { ClaudeAgentConfigJsonSchema, resolveApiKey } from '../../../providers/provider-base'
+import { readTrustedClaudeAgentConfig, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
-  ChatRuntimeCapabilities,
   ChatRuntime,
+  ChatRuntimeCapabilities,
   GetCapabilitiesInput,
   ResumeChatSessionInput,
-  RuntimeSlashCommand,
   RuntimeSession,
+  RuntimeSlashCommand,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
 import { recordChatStreamTrace } from '../../stream-trace'
-import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
+import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import type { ClaudeAgentChunkMapperState } from './mapper'
 import { mapClaudeAgentMessageToChunks } from './mapper'
 
@@ -44,22 +42,14 @@ type RuntimeMessageInput = UIMessage | string
 type MessagePart = UIMessage['parts'][number]
 type ClaudeAgentUserContent = SDKUserMessage['message']['content']
 type AnthropicImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp'
-type ClaudeAgentContentBlock =
-  | { type: 'text', text: string }
-  | {
+type ClaudeAgentContentBlock
+  = | { type: 'text', text: string }
+    | {
     type: 'image'
     source:
       | { type: 'base64', media_type: AnthropicImageMediaType, data: string }
       | { type: 'url', url: string }
   }
-const LangfuseGenerationSpanSchema = z.object({
-  otelSpan: z.object({
-    setAttribute: z.function({
-      input: [z.string(), z.string()],
-      output: z.void(),
-    }),
-  }),
-}).passthrough()
 
 export class ClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
@@ -94,7 +84,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -143,7 +133,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const textItemId = randomUUID()
-    const config = ClaudeAgentConfigJsonSchema.parse(input.profile.configJson)
+    const config = readTrustedClaudeAgentConfig(input.profile.configJson)
     const effectiveModel = input.modelId ?? config.model
     const queryOptions = buildClaudeQueryOptions({
       deps: this.deps,
@@ -167,7 +157,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       emittedTextByTextItemId: new Map(),
       emittedToolStateByToolCallId: new Map(),
       activeToolBlockIds: new Map(),
-      currentParentToolUseId: null,
+      subagentStreams: new Map(),
     }
 
     // Langfuse tracing via @langfuse/tracing SDK
@@ -180,7 +170,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
           : [{ role: 'user', content: userPromptText }],
       }, { asType: 'generation' }) as LangfuseGeneration
       // Set trace-level attributes for session grouping
-      const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
+      const span = generation.otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'claude-agent-chat')
     }
@@ -210,7 +200,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
           payload: message,
         })
 
-        const result = mapClaudeAgentMessageToChunks(message, mapperState)
+        const result = await mapClaudeAgentMessageToChunks(message, mapperState)
         mapperState.assistantStarted = result.assistantStarted
 
         recordChatStreamTrace({
@@ -303,8 +293,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
     if (!entry) {
       return
     }
-    // Reject any pending approval prompts so the canUseTool callback unblocks
-    Approval.rejectPendingBySession(sessionId)
     entry.abortController.abort()
     entry.query.close()
     entry.inputStream.close()
@@ -338,7 +326,7 @@ class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
     this.wakeAllWaiters()
   }
 
-  async *[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+  async* [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
     while (true) {
       const next = this.messages.shift()
       if (next) {
@@ -561,7 +549,7 @@ function buildClaudeQueryOptions(input: {
   abortController: AbortController
   attachPermissionHandler: boolean
 }): Options {
-  const config = ClaudeAgentConfigJsonSchema.parse(input.input.profile.configJson)
+  const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
   const effectiveModel = input.input.modelId ?? config.model
 
@@ -569,7 +557,7 @@ function buildClaudeQueryOptions(input: {
     throw new Error('Claude Agent provider requires an API key')
   }
 
-  const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.input.runtimeSession.providerStateSnapshot)
+  const snapshot = readWorkspaceProviderStateSnapshot(input.input.runtimeSession.providerStateSnapshot)
   const queryOptions: Options = {
     abortController: input.abortController,
     cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
@@ -637,10 +625,6 @@ function buildClaudeQueryOptions(input: {
   Object.assign(env, buildClaudeAgentModelEnv(config.claudeAgent))
   queryOptions.env = env
 
-  if (input.attachPermissionHandler && config.permissionMode !== 'bypassPermissions') {
-    queryOptions.canUseTool = buildCanUseTool(input.input.runtimeSession.chatSessionId, input.abortController.signal)
-  }
-
   return queryOptions
 }
 
@@ -678,61 +662,5 @@ function toRuntimeSlashCommand(command: SlashCommand): RuntimeSlashCommand {
     description: command.description,
     argumentHint: command.argumentHint,
     aliases: command.aliases,
-  }
-}
-
-function buildCanUseTool(chatSessionId: string, abortSignal: AbortSignal): CanUseTool {
-  return async (toolName, _input, options) => {
-    if (process.env.CRADLE_HEADLESS === '1') {
-      return process.env.CRADLE_TOOL_APPROVAL === 'auto'
-        ? { behavior: 'allow' as const, updatedInput: {}, toolUseID: options.toolUseID }
-        : { behavior: 'deny' as const, message: 'Headless mode: auto-deny', toolUseID: options.toolUseID }
-    }
-
-    if (abortSignal.aborted) {
-      return { behavior: 'deny' as const, message: 'Session aborted', toolUseID: options.toolUseID }
-    }
-
-    const policyKeys = Approval.generatePolicyKeys({
-      runtimeKind: 'claude-agent',
-      chatSessionId,
-      toolName,
-    })
-    if (Approval.isPreviouslyAllowed(chatSessionId, policyKeys)) {
-      return { behavior: 'allow' as const, updatedInput: {}, toolUseID: options.toolUseID }
-    }
-
-    const prompt = options.title ?? options.displayName ?? `Allow "${toolName}"?`
-
-    const approvalOptions = [
-      { optionId: 'allow', label: 'Allow', description: 'allow_once' },
-      { optionId: 'allow_always', label: 'Always Allow', description: 'allow_always' },
-      { optionId: 'deny', label: 'Deny', description: 'reject_once' },
-    ]
-
-    const response = await Approval.requestApproval({
-      chatSessionId,
-      agentId: 'claude-agent',
-      prompt,
-      options: approvalOptions,
-    })
-
-    if (response.decision === 'rejected' || response.selectedOptionId === 'deny') {
-      return {
-        behavior: 'deny' as const,
-        message: 'User denied permission',
-        toolUseID: options.toolUseID,
-      }
-    }
-
-    if (response.selectedOptionId === 'allow_always') {
-      Approval.markAllowed(chatSessionId, policyKeys)
-    }
-
-    return {
-      behavior: 'allow' as const,
-      updatedInput: {},
-      toolUseID: options.toolUseID,
-    }
   }
 }

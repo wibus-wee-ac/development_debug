@@ -1,7 +1,7 @@
 import { agents, messages, sessions } from '@cradle/db'
 import { and, eq, isNull } from 'drizzle-orm'
 
-import { AgentRuntimeConfigJsonSchema } from '../../helpers/agent-runtime-config'
+import { readTrustedAgentRuntimeConfig } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 
 export interface ChatTurnContext {
@@ -15,7 +15,7 @@ export function resolve(input: { sessionId: string, draftMessageId: string, draf
   let systemPrompt: string | undefined
   if (session?.agentId) {
     const agent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
-    systemPrompt = AgentRuntimeConfigJsonSchema.parse(agent?.configJson).systemPrompt
+    systemPrompt = readTrustedAgentRuntimeConfig(agent?.configJson).systemPrompt
   }
 
   const historyRows = db()

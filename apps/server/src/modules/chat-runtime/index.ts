@@ -13,6 +13,7 @@ export const chatRuntime = new Elysia({
       sessionId: params.sessionId,
       text: body.text ?? '',
       files: body.files,
+      messages: body.messages as Parameters<typeof ChatRuntime.streamResponse>[0]['messages'],
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
@@ -32,13 +33,13 @@ export const chatRuntime = new Elysia({
       summary: 'Send message and stream response via SSE',
       responses: {
         200: {
-          description: 'Server-sent event stream for chat runtime delta events (`message_delta`, `subagent_message_delta`, `run_completed`, `run_aborted`, `run_failed`). `deltas[*].seq` is monotonically increasing within a run and subagent events carry `context.parentToolCallId` for routing.',
+          description: 'Server-sent event stream encoded as AI SDK UIMessageChunk JSON frames. The stream emits chunks such as `start`, `text-start`, `text-delta`, `tool-input-available`, `tool-approval-request`, `tool-output-available`, `finish`, `abort`, and `error`.',
           content: {
             'text/event-stream': {
               schema: {
                 type: 'string',
               },
-              example: 'data: {"type":"message_delta","data":{"messageId":"msg_main","deltas":[{"seq":0,"type":"part_add","partIndex":0,"part":{"type":"text","text":"","state":"streaming"}},{"seq":1,"type":"text_append","partIndex":0,"partType":"text","text":"Hello"},{"seq":2,"type":"text_done","partIndex":0,"partType":"text"}]}}\n\ndata: {"type":"subagent_message_delta","data":{"context":{"messageId":"msg_sub","parentMessageId":"msg_main","parentToolCallId":"tool_1","taskId":null},"deltas":[{"seq":3,"type":"part_add","partIndex":0,"part":{"type":"text","text":"","state":"streaming"}},{"seq":4,"type":"text_append","partIndex":0,"partType":"text","text":"Working..."}]}}\n\ndata: {"type":"run_completed","data":{"messageId":"msg_main"}}\n\n',
+              example: 'data: {"type":"start","messageId":"msg_main"}\n\ndata: {"type":"text-start","id":"text_1"}\n\ndata: {"type":"text-delta","id":"text_1","delta":"Hello"}\n\ndata: {"type":"text-end","id":"text_1"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\ndata: [DONE]\n\n',
             },
           },
         },
@@ -62,13 +63,13 @@ export const chatRuntime = new Elysia({
       summary: 'Subscribe to the active chat run stream for an existing session',
       responses: {
         200: {
-          description: 'Server-sent event stream for the currently active chat run. The stream starts at subscription time and does not replay deltas already covered by the message snapshot endpoint.',
+          description: 'AI SDK UIMessageChunk SSE stream for the currently active chat run. The stream starts at subscription time and does not replay chunks already covered by the message snapshot endpoint.',
           content: {
             'text/event-stream': {
               schema: {
                 type: 'string',
               },
-              example: 'data: {"type":"message_delta","data":{"messageId":"msg_main","deltas":[{"seq":7,"type":"text_append","partIndex":0,"partType":"text","text":" world"}]}}\n\ndata: {"type":"run_completed","data":{"messageId":"msg_main"}}\n\n',
+              example: 'data: {"type":"text-delta","id":"text_1","delta":" world"}\n\ndata: {"type":"text-end","id":"text_1"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\ndata: [DONE]\n\n',
             },
           },
         },

@@ -2,15 +2,13 @@
 // Yields UIMessageChunk directly — no intermediate timeline abstraction
 
 import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
-import { convertToModelMessages, readUIMessageStream, stepCountIs, streamText } from 'ai'
+import { convertToModelMessages, stepCountIs, streamText } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import type { BudgetConfig } from '../../usage/budget'
 import { checkDailyBudget, checkTurnBudget } from '../../usage/budget'
 import { estimateCost } from '../../usage/pricing'
 import { compactByWindow, compactWithSummary, isContextOverflow, resolveCompactionConfig } from './compaction'
-import type { ToolApprovalContext } from './tool-approval-wrapper'
-import { wrapToolsWithApproval } from './tool-approval-wrapper'
 
 export interface TokenUsage {
   promptTokens: number
@@ -22,6 +20,7 @@ export interface AiSdkEngineInput {
   model: LanguageModel
   messages: ModelMessage[]
   initialMessage?: UIMessage
+  originalMessages?: UIMessage[]
   system?: string
   tools?: ToolSet
   maxSteps?: number
@@ -39,8 +38,6 @@ export interface AiSdkEngineInput {
     modelId?: string
     usage: TokenUsage
   }) => void
-  /** Tool approval context. When set, tools are wrapped with approval gates. */
-  approvalContext?: ToolApprovalContext
   /** Context window of the model in tokens (for auto-compaction) */
   contextWindow?: number
   /** Compaction strategy: 'window' drops old messages, 'summarize' generates a summary first */
@@ -68,7 +65,6 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
     abortSignal,
     abortController,
     onStepFinish,
-    approvalContext,
     contextWindow,
     compactionStrategy = 'window',
     budgetConfig,
@@ -80,10 +76,6 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
   const effectiveAbortSignal = abortController?.signal ?? abortSignal
   let accumulatedTurnCost = 0
 
-  const effectiveTools = approvalContext
-    ? wrapToolsWithApproval(tools, approvalContext)
-    : tools
-
   const compactionConfig = resolveCompactionConfig({
     contextWindow,
   })
@@ -92,7 +84,7 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
     model,
     messages,
     system,
-    tools: effectiveTools,
+    tools,
     stopWhen: maxSteps > 1 ? stepCountIs(maxSteps) : undefined,
     abortSignal: effectiveAbortSignal,
     experimental_telemetry: langfuseEnabled
@@ -255,36 +247,14 @@ async function emitUsage(result: ReturnType<typeof streamText>, onUsage?: (usage
 export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator<UIMessageChunk, void, void> {
   const { onUsage } = input
   const { result, effectiveAbortSignal } = createAiSdkStreamResult(input)
+  const originalMessages = input.originalMessages ?? (input.initialMessage ? [input.initialMessage] : undefined)
 
   // Use toUIMessageStream() to get native UIMessageChunk events
-  const uiStream = result.toUIMessageStream()
-  const iterator = uiStream[Symbol.asyncIterator]()
-
-  while (true) {
-    const { done, value } = await nextOrAbort(iterator, effectiveAbortSignal)
-    if (done) {
-      break
-    }
-
-    yield value
-  }
-
-  await emitUsage(result, onUsage)
-}
-
-/**
- * Execute an AI SDK turn and emit progressive assistant UIMessage snapshots.
- */
-export async function* executeAiSdkTurnSnapshots(input: AiSdkEngineInput & { initialMessage: UIMessage }): AsyncGenerator<UIMessage, void, void> {
-  const { initialMessage, onUsage } = input
-  const { result, effectiveAbortSignal } = createAiSdkStreamResult(input)
-
-  const messageStream = readUIMessageStream<UIMessage>({
-    message: initialMessage,
-    stream: result.toUIMessageStream(),
-    terminateOnError: true,
+  const uiStream = result.toUIMessageStream({
+    generateMessageId: input.initialMessage ? () => input.initialMessage!.id : undefined,
+    originalMessages,
   })
-  const iterator = messageStream[Symbol.asyncIterator]()
+  const iterator = uiStream[Symbol.asyncIterator]()
 
   while (true) {
     const { done, value } = await nextOrAbort(iterator, effectiveAbortSignal)

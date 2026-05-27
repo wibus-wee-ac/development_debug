@@ -11,14 +11,13 @@ import { fileURLToPath } from 'node:url'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { z } from 'zod'
 
 import { langfuseEnabled } from '../../../../langfuse'
 import { getRegisteredMcpServers } from '../../../../plugins'
 import type { CreateEventInput } from '../../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../../observability/contract'
 import type { CodexConfig } from '../../../providers/provider-base'
-import { CodexConfigJsonSchema, resolveApiKey } from '../../../providers/provider-base'
+import { readTrustedCodexConfig, resolveApiKey } from '../../../providers/provider-base'
 import type { RuntimeKind } from '../../../providers/types'
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 import type {
@@ -31,7 +30,7 @@ import type {
   StreamTurnInput,
 } from '../../runtime-provider-types'
 import { extractUiMessageText } from '../../ui-message-input'
-import { WorkspaceProviderStateSnapshotJsonSchema } from '../provider-state-snapshot'
+import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerClient } from './app-server-client'
 import {
@@ -108,14 +107,6 @@ const MAX_DIAGNOSTIC_STRING_LENGTH = 2_000
 const MAX_DIAGNOSTIC_ARRAY_ITEMS = 20
 const MAX_DIAGNOSTIC_OBJECT_KEYS = 40
 const MAX_DIAGNOSTIC_DEPTH = 4
-const LangfuseGenerationSpanSchema = z.object({
-  otelSpan: z.object({
-    setAttribute: z.function({
-      input: [z.string(), z.string()],
-      output: z.void(),
-    }),
-  }),
-}).passthrough()
 
 class CodexProviderError extends Error {
   readonly code: string
@@ -159,7 +150,7 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
-    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
@@ -173,7 +164,7 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    const config = CodexConfigJsonSchema.parse(input.profile.configJson)
+    const config = readTrustedCodexConfig(input.profile.configJson)
     const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
@@ -182,7 +173,7 @@ export class CodexProvider implements ChatRuntime {
       throw new Error('Codex provider requires an API key')
     }
 
-    const snapshot = WorkspaceProviderStateSnapshotJsonSchema.parse(input.runtimeSession.providerStateSnapshot)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
     const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile)
@@ -204,7 +195,7 @@ export class CodexProvider implements ChatRuntime {
           ? [{ role: 'system', content: input.systemPrompt }, { role: 'user', content: describeCodexUserInput(userInput, userPromptText) }]
           : [{ role: 'user', content: describeCodexUserInput(userInput, userPromptText) }],
       }, { asType: 'generation' }) as LangfuseGeneration
-      const span = LangfuseGenerationSpanSchema.parse(generation).otelSpan
+      const span = generation.otelSpan
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'codex-chat')
     }

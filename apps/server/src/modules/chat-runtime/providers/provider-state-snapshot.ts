@@ -1,19 +1,26 @@
-import { z } from 'zod'
+export interface ProviderStateSnapshot {
+  models: {
+    currentModelId: string | null
+    [key: string]: unknown
+  }
+  [key: string]: unknown
+}
 
-const ProviderStateSnapshotSchema = z.object({
-  models: z.object({
-    currentModelId: z.string().nullable().default(null),
-  }).default({ currentModelId: null }),
-}).passthrough()
+export interface WorkspaceProviderStateSnapshot extends ProviderStateSnapshot {
+  workspacePath?: string
+}
 
-const WorkspaceProviderStateSnapshotSchema = ProviderStateSnapshotSchema.extend({
-  workspacePath: z.string().optional(),
-})
+export function readProviderStateSnapshot(raw: string | null | undefined): ProviderStateSnapshot {
+  const snapshot = raw ? JSON.parse(raw) as ProviderStateSnapshot : { models: { currentModelId: null } }
+  return {
+    ...snapshot,
+    models: {
+      ...snapshot.models,
+      currentModelId: snapshot.models?.currentModelId ?? null,
+    },
+  }
+}
 
-export const ProviderStateSnapshotJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(ProviderStateSnapshotSchema)
-
-export const WorkspaceProviderStateSnapshotJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(WorkspaceProviderStateSnapshotSchema)
+export function readWorkspaceProviderStateSnapshot(raw: string | null | undefined): WorkspaceProviderStateSnapshot {
+  return readProviderStateSnapshot(raw) as WorkspaceProviderStateSnapshot
+}

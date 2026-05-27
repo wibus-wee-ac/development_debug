@@ -2,7 +2,6 @@
 
 import type { LanguageModel, ModelMessage } from 'ai'
 import { generateText } from 'ai'
-import { z } from 'zod'
 
 export interface CompactionConfig {
   /** Number of recent messages to keep (Alma default: 4) */
@@ -71,27 +70,6 @@ const SUMMARIZATION_PROMPT = `You are a conversation summarizer. Summarize the f
 - Current state of any tasks being discussed
 Be concise — focus on information that would be needed to continue the conversation.`
 
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]),
-)
-
-const SummaryMessageLineSchema = z.object({
-  role: z.string(),
-  content: z.union([
-    z.string(),
-    JsonValueSchema.transform(value => JSON.stringify(value)),
-  ]),
-}).transform(message => `${message.role}: ${message.content}`)
-
 /**
  * Compact messages by summarizing older messages and keeping recent ones.
  * Falls back to compactByWindow if summarization fails.
@@ -122,7 +100,7 @@ export async function compactWithSummary(
 
   try {
     const conversationText = olderMessages
-      .map(message => SummaryMessageLineSchema.parse(message))
+      .map(formatSummaryMessageLine)
       .join('\n')
 
     const summary = await generateText({
@@ -142,4 +120,11 @@ export async function compactWithSummary(
     // Summarization failed — fall back to window compaction
     return [...systemMessages, ...recentMessages]
   }
+}
+
+function formatSummaryMessageLine(message: ModelMessage): string {
+  const content = typeof message.content === 'string'
+    ? message.content
+    : JSON.stringify(message.content)
+  return `${message.role}: ${content}`
 }

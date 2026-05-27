@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
+import { readUIMessageStream } from 'ai'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
 
@@ -42,8 +43,19 @@ export interface ClaudeAgentChunkMapperState {
   emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean }>
   /** Maps content block index → tool_use block ID for streaming tool input deltas */
   activeToolBlockIds: Map<number, string>
-  /** Current parent_tool_use_id for subagent nesting */
-  currentParentToolUseId: string | null
+  /** Accumulated child-agent chunk state keyed by parent tool call. */
+  subagentStreams: Map<string, ClaudeAgentSubagentStreamState>
+}
+
+interface ClaudeAgentSubagentStreamState {
+  chunks: UIMessageChunk[]
+  message: UIMessage | null
+}
+
+interface ClaudeAgentSubagentOutput {
+  type: 'cradle.subagent-output.v1'
+  message: UIMessage
+  result?: unknown
 }
 
 export interface ClaudeAgentChunkMapperResult {
@@ -53,31 +65,7 @@ export interface ClaudeAgentChunkMapperResult {
   usage: TokenUsage | null
 }
 
-/**
- * Attach parentToolUseId metadata to a chunk when inside a subagent context.
- */
-function withParentMeta(chunk: UIMessageChunk, parentToolUseId: string | null): UIMessageChunk {
-  if (!parentToolUseId) {
-    return chunk
-  }
-  const providerMetadata = (chunk as { providerMetadata?: Record<string, unknown> }).providerMetadata ?? {}
-  const cradleMetadata = typeof providerMetadata.cradle === 'object' && providerMetadata.cradle !== null
-    ? providerMetadata.cradle as Record<string, unknown>
-    : {}
-
-  return {
-    ...(chunk as object),
-    providerMetadata: {
-      ...providerMetadata,
-      cradle: {
-        ...cradleMetadata,
-        parentToolUseId,
-      },
-    },
-  } as unknown as UIMessageChunk
-}
-
-export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
   const base: ClaudeAgentChunkMapperResult = {
     chunks: [],
     assistantStarted: state.assistantStarted,
@@ -85,21 +73,32 @@ export function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgen
     usage: null,
   }
 
-  // Track parent context for subagent messages
   const parentToolUseId = 'parent_tool_use_id' in msg ? (msg as { parent_tool_use_id: string | null }).parent_tool_use_id : null
-  state.currentParentToolUseId = parentToolUseId
 
-  switch (msg.type) {
+  const result = (() => {
+    switch (msg.type) {
     case 'assistant':
-      return mapAssistant(msg, state, parentToolUseId)
+      return mapAssistant(msg, state)
     case 'user':
-      return mapUser(msg as SDKUserMessage, state, parentToolUseId)
+      return mapUser(msg as SDKUserMessage, state)
     case 'stream_event':
-      return mapStreamEvent(msg, state, parentToolUseId)
+      return mapStreamEvent(msg, state)
     case 'result':
       return mapResult(msg, state)
     default:
       return mapSystemOrUnknown(msg, state, base)
+    }
+  })()
+
+  if (!parentToolUseId || result.chunks.length === 0) {
+    return result
+  }
+
+  const preliminaryChunk = await projectSubagentOutputChunk(parentToolUseId, result.chunks, state)
+  return {
+    ...result,
+    chunks: preliminaryChunk ? [preliminaryChunk] : [],
+    assistantStarted: state.assistantStarted,
   }
 }
 
@@ -152,10 +151,10 @@ function mapSystemOrUnknown(msg: SDKMessage, state: ClaudeAgentChunkMapperState,
     }
   }
 
-  return { ...base, chunks: chunks.map(chunk => withParentMeta(chunk, state.currentParentToolUseId)), sessionId }
+  return { ...base, chunks, sessionId }
 }
 
-function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {
+function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
   let assistantStarted = state.assistantStarted
 
@@ -164,7 +163,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       return
     }
     const result = emitAssistantTextSegment(text, state, assistantStarted)
-    chunks.push(...result.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+    chunks.push(...result.chunks)
     assistantStarted = result.assistantStarted
   }
 
@@ -180,13 +179,13 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
 
     if (block.type === 'tool_use') {
       const mapped = mapContentBlock(block, state.textItemId, assistantStarted, state)
-      chunks.push(...mapped.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+      chunks.push(...mapped.chunks)
       state.hadToolCallSinceLastText = true
       continue
     }
 
     const mapped = mapContentBlock(block, state.textItemId, assistantStarted, state)
-    chunks.push(...mapped.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+    chunks.push(...mapped.chunks)
     if (mapped.assistantStarted) {
       assistantStarted = true
     }
@@ -196,7 +195,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
   return { chunks, assistantStarted, sessionId: msg.session_id, usage: null }
 }
 
-function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {
+function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
   const content = msg.message.content
 
@@ -212,10 +211,17 @@ function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState, parent
               ? JSON.stringify(b.content)
               : ''
           if (b.is_error) {
-            chunks.push(withParentMeta({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: output || 'Tool execution failed' }, parentToolUseId))
+            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: output || 'Tool execution failed' })
           }
           else {
-            chunks.push(withParentMeta({ type: 'tool-output-available', toolCallId: b.tool_use_id, output }, parentToolUseId))
+            const subagentState = state.subagentStreams.get(b.tool_use_id)
+            chunks.push({
+              type: 'tool-output-available',
+              toolCallId: b.tool_use_id,
+              output: subagentState?.message
+                ? createSubagentOutput(subagentState.message, b.content ?? output)
+                : output,
+            })
           }
         }
       }
@@ -272,7 +278,7 @@ function mapContentBlock(
   }
 }
 
-function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunkMapperState, parentToolUseId: string | null): ClaudeAgentChunkMapperResult {
+function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
   let assistantStarted = state.assistantStarted
 
@@ -287,22 +293,22 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           assistantStarted = false
         }
         if (!assistantStarted) {
-          chunks.push(withParentMeta({ type: 'text-start', id: state.textItemId }, parentToolUseId))
+          chunks.push({ type: 'text-start', id: state.textItemId })
           assistantStarted = true
         }
         const textDelta = deltaEvent.delta.text ?? ''
         appendEmittedText(state, state.textItemId, textDelta)
-        chunks.push(withParentMeta({ type: 'text-delta', id: state.textItemId, delta: textDelta }, parentToolUseId))
+        chunks.push({ type: 'text-delta', id: state.textItemId, delta: textDelta })
       }
       else if (deltaEvent.delta.type === 'thinking_delta') {
         const itemId = `thinking-${deltaEvent.index}`
-        chunks.push(withParentMeta({ type: 'reasoning-delta', id: itemId, delta: deltaEvent.delta.thinking ?? '' }, parentToolUseId))
+        chunks.push({ type: 'reasoning-delta', id: itemId, delta: deltaEvent.delta.thinking ?? '' })
       }
       else if (deltaEvent.delta.type === 'input_json_delta') {
         const partialJson = (deltaEvent.delta as { type: 'input_json_delta', partial_json: string }).partial_json
         const toolId = state.activeToolBlockIds.get(deltaEvent.index)
         if (toolId && partialJson) {
-          chunks.push(withParentMeta({ type: 'tool-input-delta', toolCallId: toolId, inputTextDelta: partialJson }, parentToolUseId))
+          chunks.push({ type: 'tool-input-delta', toolCallId: toolId, inputTextDelta: partialJson })
         }
       }
       break
@@ -311,7 +317,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
       const startEvent = msg.event as BetaRawContentBlockStartEvent
       if (startEvent.content_block.type === 'thinking') {
         const itemId = `thinking-${startEvent.index}`
-        chunks.push(withParentMeta({ type: 'reasoning-start', id: itemId }, parentToolUseId))
+        chunks.push({ type: 'reasoning-start', id: itemId })
       }
       else if (startEvent.content_block.type === 'tool_use') {
         if (!startEvent.content_block.id || !startEvent.content_block.name) {
@@ -326,13 +332,68 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           state,
           assistantStarted,
         )
-        chunks.push(...emitted.chunks.map(chunk => withParentMeta(chunk, parentToolUseId)))
+        chunks.push(...emitted.chunks)
       }
       break
     }
   }
 
   return { chunks, assistantStarted, sessionId: msg.session_id, usage: null }
+}
+
+async function projectSubagentOutputChunk(
+  parentToolUseId: string,
+  chunks: UIMessageChunk[],
+  state: ClaudeAgentChunkMapperState,
+): Promise<UIMessageChunk | null> {
+  const streamState = state.subagentStreams.get(parentToolUseId) ?? { chunks: [], message: null }
+  streamState.chunks.push(...chunks)
+
+  const stream = new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      for (const chunk of streamState.chunks) {
+        controller.enqueue(chunk)
+      }
+      controller.close()
+    },
+  })
+
+  let latestMessage: UIMessage | null = null
+  for await (const message of readUIMessageStream<UIMessage>({
+    message: {
+      id: `subagent-${parentToolUseId}`,
+      role: 'assistant',
+      parts: [],
+    },
+    stream,
+    terminateOnError: false,
+  })) {
+    latestMessage = message
+  }
+
+  if (!latestMessage) {
+    state.subagentStreams.set(parentToolUseId, streamState)
+    return null
+  }
+
+  streamState.message = latestMessage
+  state.subagentStreams.set(parentToolUseId, streamState)
+  return {
+    type: 'tool-output-available',
+    toolCallId: parentToolUseId,
+    output: {
+      ...createSubagentOutput(latestMessage),
+    },
+    preliminary: true,
+  }
+}
+
+function createSubagentOutput(message: UIMessage, result?: unknown): ClaudeAgentSubagentOutput {
+  return {
+    type: 'cradle.subagent-output.v1',
+    message,
+    ...(result === undefined ? {} : { result }),
+  }
 }
 
 function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {

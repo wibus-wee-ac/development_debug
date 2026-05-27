@@ -2,7 +2,8 @@
 // Input: Codex CLI app-server stdio transport, request payloads, and provider config overrides.
 // Position: Codex runtime provider infrastructure used to support live turn steering.
 
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 
 type RequestId = number
@@ -32,6 +33,7 @@ export class CodexAppServerClient {
     resolve: (value: unknown) => void
     reject: (error: Error) => void
   }>()
+
   private readonly notificationQueue: CodexAppServerMessage[] = []
   private readonly notificationWaiters: Array<(message: CodexAppServerMessage) => void> = []
   private nextRequestId = 1

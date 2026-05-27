@@ -8,24 +8,6 @@ import type {
   ToolCallUpdate,
 } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
-import { z } from 'zod'
-
-const TextContentBlockSchema = z.object({
-  type: z.literal('text'),
-  text: z.string(),
-}).passthrough()
-
-const PayloadTextSchema = z.union([
-  z.string(),
-  z.undefined().transform(() => null),
-  z.union([
-    z.number(),
-    z.boolean(),
-    z.null(),
-    z.array(z.unknown()),
-    z.record(z.string(), z.unknown()),
-  ]).transform(value => JSON.stringify(value)),
-])
 
 export class AcpChunkMapper {
   private currentMessageItemId: string | null = null
@@ -126,9 +108,12 @@ export class AcpChunkMapper {
 }
 
 function extractText(block: ContentBlock): string | null {
-  return TextContentBlockSchema.parse(block).text
+  return block.type === 'text' ? block.text : null
 }
 
 function stringifyPayload(value: unknown): string | null {
-  return PayloadTextSchema.parse(value)
+  if (value === undefined) {
+    return null
+  }
+  return typeof value === 'string' ? value : JSON.stringify(value)
 }
