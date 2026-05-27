@@ -328,9 +328,9 @@ describe('claudeAgentProvider MCP integration', () => {
       prompt?: AsyncIterable<{ message: { content: unknown } }>
     } | undefined
     expect(call?.options).toEqual(expect.objectContaining({
+      model: 'claude-opus-4-20250514',
       resume: 'claude-session-1',
     }))
-    expect(call?.options).not.toHaveProperty('model')
 
     let promptDelivered = false
     const promptNext = call!.prompt![Symbol.asyncIterator]().next().then((result) => {
@@ -361,6 +361,46 @@ describe('claudeAgentProvider MCP integration', () => {
       expect.objectContaining({ type: 'text-delta', delta: 'Context preserved' }),
     ]))
     expect(runtimeSession.providerSessionId).toBe('claude-session-2')
+  })
+
+  it('uses the runtime session model snapshot when a resumed Claude Agent turn has no explicit model override', async () => {
+    const activeQuery = createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-snapshot-model',
+        message: {
+          content: [{ type: 'text', text: 'Snapshot model used' }],
+        },
+      },
+    ])
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createResumedRuntimeSession({
+      providerStateSnapshot: JSON.stringify({
+        workspacePath: '/tmp/cradle-workspace',
+        models: { currentModelId: 'mimo-v2.5-pro' },
+      }),
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-snapshot-model',
+      runtimeSession,
+      profile: createProfile({ model: 'claude-sonnet-4-20250514' }),
+      message: createUserMessage('Continue without a per-turn model override'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream to force query construction.
+    }
+
+    expect(activeQuery.setModel).toHaveBeenCalledWith('mimo-v2.5-pro')
+    const call = sdkMocks.query.mock.calls[0]?.[0] as {
+      options?: { model?: string, env?: Record<string, string | undefined> }
+    } | undefined
+    expect(call?.options?.model).toBe('mimo-v2.5-pro')
+    expect(call?.options?.env?.ANTHROPIC_MODEL).toBeUndefined()
   })
 
   it('includes Cradle chat history when a provider-target switch starts a new Claude Agent SDK session', async () => {

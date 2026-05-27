@@ -26,6 +26,7 @@
   "detail.title.aria": "Workspace name",
   "detail.toast.openInEditorFailed": "Workspace could not be opened in an editor",
   "detail.toast.openInFinderFailed": "Workspace could not be opened in Finder",
+  "detail.toast.startChatFailed": "Chat response could not be started",
   "detail.toc.workflowRules": "Workflow Rules",
   "document.status.loading": "Loading...",
   "document.status.saving": "Saving",

@@ -305,7 +305,7 @@ export function useChatSession(chatSessionId: string | null) {
       chatSessionId,
       streamingMessageId,
       performance.now(),
-      { mode: 'passive' },
+      { mode: 'passive', useStoredMessageSnapshot: false },
     )
     handler.start(controller)
     passiveStreamRef.current = {
@@ -324,6 +324,11 @@ export function useChatSession(chatSessionId: string | null) {
         if (!res.ok) {
           const body = await res.text().catch(() => '')
           throw new Error(`Failed to subscribe chat session stream: ${res.status} ${body}`)
+        }
+
+        const runId = res.headers.get('x-cradle-run-id')
+        if (runId) {
+          useChatStore.getState().setRunDisplayId(streamingMessageId, runId)
         }
 
         await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))

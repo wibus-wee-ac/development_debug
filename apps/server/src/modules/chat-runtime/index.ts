@@ -51,11 +51,13 @@ export const chatRuntime = new Elysia({
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
   .get('/sessions/:sessionId/stream', ({ params }) => {
     const stream = ChatRuntime.openSessionRunStream(params.sessionId)
+    const activeRun = ChatRuntime.getActiveSessionRun(params.sessionId)
     return new Response(stream, {
       headers: {
         'content-type': 'text/event-stream',
         'cache-control': 'no-cache',
         'connection': 'keep-alive',
+        ...(activeRun ? { 'x-cradle-run-id': activeRun.runId } : {}),
       },
     })
   }, {
@@ -63,7 +65,7 @@ export const chatRuntime = new Elysia({
       summary: 'Subscribe to the active chat run stream for an existing session',
       responses: {
         200: {
-          description: 'AI SDK UIMessageChunk SSE stream for the currently active chat run. The stream starts at subscription time and does not replay chunks already covered by the message snapshot endpoint.',
+          description: 'AI SDK UIMessageChunk SSE stream for the currently active chat run. The stream replays the active run buffer before forwarding live chunks so late subscribers receive required protocol start frames.',
           content: {
             'text/event-stream': {
               schema: {

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
-import { LayoutGroup, m } from 'motion/react'
+import { AnimatePresence, LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -44,6 +44,8 @@ const TAB_SPRING = {
 } as const
 
 const TAB_LABEL_TRANSITION = {
+  width: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
+  marginLeft: { type: 'spring', stiffness: 520, damping: 36, mass: 0.7 },
   opacity: { duration: 0.16, ease: 'easeOut' },
   x: { duration: 0.2, ease: [0.22, 1, 0.36, 1] },
   filter: { duration: 0.16, ease: 'easeOut' },
@@ -129,10 +131,6 @@ export function RightAside({
                     'relative z-10 grid h-7 place-items-center overflow-hidden rounded-md px-2 text-xs select-none',
                     'transition-[color] duration-150 ease-out',
                     isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                    {
-                      'w-8': !isActive && !showBadge,
-                      'w-11': !isActive && showBadge,
-                    },
                   )}
                 >
                   {isActive && (
@@ -148,16 +146,15 @@ export function RightAside({
                       aria-hidden={!isActive}
                       initial={false}
                       animate={{
+                        width: isActive ? 'auto' : 0,
+                        marginLeft: isActive ? 6 : 0,
                         opacity: isActive ? 1 : 0,
                         x: isActive ? 0 : 4,
                         filter: isActive ? 'blur(0px)' : 'blur(2px)',
                         scaleX: isActive ? 1 : 0.96,
                       }}
                       transition={TAB_LABEL_TRANSITION}
-                      className={cn(
-                        'block origin-center whitespace-nowrap text-left',
-                        isActive ? 'ml-1.5' : 'pointer-events-none absolute ml-0 w-0 overflow-hidden',
-                      )}
+                      className="block origin-center overflow-hidden whitespace-nowrap text-left"
                     >
                       {label}
                     </m.span>

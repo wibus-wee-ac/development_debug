@@ -8,6 +8,7 @@ export class ChatStreamingHandler {
   private readonly messageId: string
   private readonly requestStartedAtMs: number
   private readonly mode: 'local' | 'passive'
+  private readonly useStoredMessageSnapshot: boolean
   private activeMessageId: string | null = null
   private terminated = false
 
@@ -15,12 +16,13 @@ export class ChatStreamingHandler {
     sessionId: string,
     messageId: string,
     requestStartedAtMs = performance.now(),
-    options: { mode?: 'local' | 'passive' } = {},
+    options: { mode?: 'local' | 'passive', useStoredMessageSnapshot?: boolean } = {},
   ) {
     this.sessionId = sessionId
     this.messageId = messageId
     this.requestStartedAtMs = requestStartedAtMs
     this.mode = options.mode ?? 'local'
+    this.useStoredMessageSnapshot = options.useStoredMessageSnapshot ?? true
   }
 
   start(controller: AbortController): void {
@@ -39,7 +41,9 @@ export class ChatStreamingHandler {
   }
 
   async consume(stream: ReadableStream<UIMessageChunk>): Promise<void> {
-    const initialMessage = useChatStore.getState().messagesMap.get(this.sessionId)?.find(message => message.id === (this.activeMessageId ?? this.messageId))
+    const initialMessage = this.useStoredMessageSnapshot
+      ? useChatStore.getState().messagesMap.get(this.sessionId)?.find(message => message.id === (this.activeMessageId ?? this.messageId))
+      : undefined
 
     for await (const message of readUIMessageStream<UIMessage>({
       message: initialMessage ?? {
@@ -59,7 +63,13 @@ export class ChatStreamingHandler {
       return
     }
     this.terminated = true
-    useChatStore.getState().finishGeneration(this.activeMessageId ?? this.messageId)
+    const messageId = this.activeMessageId ?? this.messageId
+    const store = useChatStore.getState()
+    store.finishGeneration(messageId)
+    if (this.mode === 'passive') {
+      store.setPassiveStreamingMessage(this.sessionId, messageId, false)
+      store.setSessionMeta(this.sessionId, { passiveStatus: 'idle' })
+    }
   }
 
   fail(error: string): void {
@@ -67,7 +77,13 @@ export class ChatStreamingHandler {
       return
     }
     this.terminated = true
-    useChatStore.getState().failGeneration(this.activeMessageId ?? this.messageId, error)
+    const messageId = this.activeMessageId ?? this.messageId
+    const store = useChatStore.getState()
+    store.failGeneration(messageId, error)
+    if (this.mode === 'passive') {
+      store.setPassiveStreamingMessage(this.sessionId, messageId, false)
+      store.setSessionMeta(this.sessionId, { passiveStatus: 'error' })
+    }
   }
 
   dispose(): void {}

@@ -134,7 +134,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const textItemId = randomUUID()
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
-    const effectiveModel = input.modelId ?? config.model
+    const effectiveModel = readClaudeAgentModelId(input, config)
     const queryOptions = buildClaudeQueryOptions({
       deps: this.deps,
       input,
@@ -551,7 +551,7 @@ function buildClaudeQueryOptions(input: {
 }): Options {
   const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
-  const effectiveModel = input.input.modelId ?? config.model
+  const effectiveModel = readClaudeAgentModelId(input.input, config)
 
   if (!apiKey) {
     throw new Error('Claude Agent provider requires an API key')
@@ -628,6 +628,14 @@ function buildClaudeQueryOptions(input: {
   return queryOptions
 }
 
+function readClaudeAgentModelId(
+  input: Pick<StreamTurnInput | GetCapabilitiesInput, 'modelId' | 'runtimeSession'>,
+  config: ReturnType<typeof readTrustedClaudeAgentConfig>,
+): string | undefined {
+  const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+  return input.modelId ?? snapshot.models.currentModelId ?? config.model
+}
+
 function buildClaudeAgentModelEnv(config: {
   modelAliases?: {
     haiku?: string
@@ -638,20 +646,30 @@ function buildClaudeAgentModelEnv(config: {
 } | undefined): Record<string, string> {
   const env: Record<string, string> = {}
   const aliases = config?.modelAliases
-  if (aliases?.haiku) {
-    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = aliases.haiku
+  const haiku = readNonEmptyEnvValue(aliases?.haiku)
+  const sonnet = readNonEmptyEnvValue(aliases?.sonnet)
+  const opus = readNonEmptyEnvValue(aliases?.opus)
+  const subagentModel = readNonEmptyEnvValue(config?.subagentModel)
+
+  if (haiku) {
+    env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku
   }
-  if (aliases?.sonnet) {
-    env.ANTHROPIC_DEFAULT_SONNET_MODEL = aliases.sonnet
+  if (sonnet) {
+    env.ANTHROPIC_DEFAULT_SONNET_MODEL = sonnet
   }
-  if (aliases?.opus) {
-    env.ANTHROPIC_DEFAULT_OPUS_MODEL = aliases.opus
+  if (opus) {
+    env.ANTHROPIC_DEFAULT_OPUS_MODEL = opus
   }
-  if (config?.subagentModel) {
-    env.CLAUDE_CODE_SUBAGENT_MODEL = config.subagentModel
+  if (subagentModel) {
+    env.CLAUDE_CODE_SUBAGENT_MODEL = subagentModel
   }
 
   return env
+}
+
+function readNonEmptyEnvValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim()
+  return trimmed ? trimmed : undefined
 }
 
 async function* emptyUserInput(): AsyncGenerator<SDKUserMessage, void, void> {}

@@ -27,6 +27,7 @@ import { WorkspaceDiffViewer } from './workspace-diff-viewer'
 type WebviewElement = HTMLElement & {
   src: string
   __cleanup?: () => void
+  __webContentsId?: number
   loadURL: (url: string) => Promise<void>
   goBack: () => void
   goForward: () => void
@@ -173,6 +174,11 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       el.addEventListener('did-stop-loading', handleDidStopLoading)
       el.addEventListener('page-favicon-updated', handleFavicon)
 
+      const handleDomReady = () => {
+        el.__webContentsId = el.getWebContentsId()
+      }
+      el.addEventListener('dom-ready', handleDomReady)
+
       return () => {
         el.removeEventListener('page-title-updated', handleTitleUpdated)
         el.removeEventListener('did-navigate', handleDidNavigate)
@@ -180,6 +186,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         el.removeEventListener('did-start-loading', handleDidStartLoading)
         el.removeEventListener('did-stop-loading', handleDidStopLoading)
         el.removeEventListener('page-favicon-updated', handleFavicon)
+        el.removeEventListener('dom-ready', handleDomReady)
       }
     },
     [updateTab],
@@ -199,11 +206,13 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           webviewMapRef.current.delete(tabId)
           loadedWebviewTabIdsRef.current.delete(tabId)
           scriptSyncKeysRef.current.delete(tabId)
-          void nativeIpc?.browserTabScripts.clearScripts({
-            webContentsId: prev.getWebContentsId(),
-          }).catch((error) => {
-            console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
-          })
+          if (prev.__webContentsId != null) {
+            void nativeIpc?.browserTabScripts.clearScripts({
+              webContentsId: prev.__webContentsId,
+            }).catch((error) => {
+              console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
+            })
+          }
         }
       }
     },
@@ -276,7 +285,10 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         runAt: script.runAt,
         source: script.source,
       }))
-      const webContentsId = webview.getWebContentsId()
+      if (webview.__webContentsId == null) {
+        continue
+      }
+      const webContentsId = webview.__webContentsId
       const syncKey = JSON.stringify({
         webContentsId,
         scripts: scriptPayloads,

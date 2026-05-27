@@ -17,6 +17,10 @@ import type { CSSProperties } from 'react'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  getChatSessionsBySessionIdMessagesQueryKey,
+  getSessionsByIdQueryKey,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { getSessions, getWorkflowRulesByWorkspaceId, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
@@ -623,12 +627,37 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       workspacePath: workspace.path,
       runtimeKind: opts.runtimeKind,
     })
-    await startChatResponse({
-      sessionId: session.id,
-      body: { text, files, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
-    })
     queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     openTab('chat', { sessionId: session.id })
+
+    void (async () => {
+      try {
+        const response = await startChatResponse({
+          sessionId: session.id,
+          body: { text, files, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
+        })
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          throw new Error(`Failed to start chat response: ${response.status} ${body}`)
+        }
+        await response.body?.cancel()
+      }
+      catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: t('detail.toast.startChatFailed'),
+          description: error instanceof Error ? error.message : String(error),
+        })
+      }
+      finally {
+        void queryClient.invalidateQueries({
+          queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: session.id } }),
+        })
+        void queryClient.invalidateQueries({
+          queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }),
+        })
+      }
+    })()
   }, [openTab, queryClient, t, workspace, workspaceId])
 
   const handleTocNavigate = useCallback((slug: string) => {

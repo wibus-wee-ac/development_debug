@@ -26,6 +26,7 @@
   "detail.title.aria": "工作区名称",
   "detail.toast.openInEditorFailed": "无法在编辑器中打开工作区",
   "detail.toast.openInFinderFailed": "无法在 Finder 中打开工作区",
+  "detail.toast.startChatFailed": "无法启动聊天回复",
   "detail.toc.workflowRules": "Workflow Rules",
   "document.status.loading": "正在加载...",
   "document.status.saving": "保存中",

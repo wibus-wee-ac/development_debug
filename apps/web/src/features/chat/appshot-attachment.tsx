@@ -1,9 +1,3 @@
-/**
- * Output: Cradle-owned AppShot attachment metadata readers and visual cards.
- * Input: AI SDK file parts and native AppShot capture metadata.
- * Position: Chat feature owns AppShot presentation while model input remains a normal file part.
- */
-
 import { XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import type { KeyboardEvent, MouseEvent } from 'react'
@@ -74,7 +68,7 @@ export function AppshotAttachmentCard({
         role="button"
         tabIndex={0}
         aria-label={title}
-        initial={variant === 'composer' ? false : { opacity: 0, y: 4 }}
+        initial={{ opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ type: 'spring', duration: 0.3, bounce: 0 }}
         onClick={openPreview}
@@ -83,33 +77,21 @@ export function AppshotAttachmentCard({
         data-chat-appshot-card
         data-testid="chat-appshot-card"
       >
-        {variant === 'composer'
-          ? (
-              <ComposerAppshotTransitionImage
-                alt={title}
-                imageDataUrl={metadata.transitionSnapshotDataUrl}
-                imageHeight={snapshotHeight}
-              />
-            )
-          : (
-              <AppshotImageFrame
-                alt={title}
-                appIconDataUrl={metadata.appIconDataUrl}
-                imageDataUrl={metadata.imageDataUrl}
-                imageHeight={APPSHOT_FALLBACK_HEIGHT}
-                renderedImageHeight={threadImageHeight}
-                slotWidth={APPSHOT_CARD_WIDTH}
-                visualWidth={APPSHOT_THREAD_IMAGE_CANVAS_WIDTH}
-                imageInlinePadding={APPSHOT_THREAD_IMAGE_INLINE_PADDING}
-                usesThreadTreatment
-                onImageSize={setThreadImageSize}
-              />
-            )}
-        {variant === 'thread' && (
-          <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
+        <AppshotImageFrame
+          alt={title}
+          appIconDataUrl={metadata.appIconDataUrl}
+          imageDataUrl={metadata.imageDataUrl}
+          imageHeight={APPSHOT_FALLBACK_HEIGHT}
+          renderedImageHeight={threadImageHeight}
+          slotWidth={APPSHOT_CARD_WIDTH}
+          visualWidth={APPSHOT_THREAD_IMAGE_CANVAS_WIDTH}
+          imageInlinePadding={APPSHOT_THREAD_IMAGE_INLINE_PADDING}
+          usesThreadTreatment
+          onImageSize={setThreadImageSize}
+        />
+        <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
             {title}
-          </div>
-        )}
+        </div>
         {onRemove && (
           <Button
             type="button"
@@ -167,44 +149,6 @@ export function AppshotAttachmentCard({
         </DialogContent>
       </Dialog>
     </>
-  )
-}
-
-function ComposerAppshotTransitionImage({
-  alt,
-  imageDataUrl,
-  imageHeight,
-}: {
-  alt: string
-  imageDataUrl: string | null
-  imageHeight: number
-}) {
-  return (
-    <div
-      className="relative flex w-full items-center justify-center overflow-visible"
-      style={{ height: imageHeight }}
-      data-chat-appshot-transition-target
-    >
-      {imageDataUrl
-        ? (
-            <img
-              src={imageDataUrl}
-              alt={alt}
-              className="object-contain"
-              style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
-              draggable={false}
-              data-testid="chat-appshot-image"
-            />
-          )
-        : (
-            <span
-              aria-hidden="true"
-              className="block"
-              style={{ height: imageHeight, width: APPSHOT_CARD_WIDTH }}
-              data-testid="chat-appshot-empty-snapshot"
-            />
-          )}
-    </div>
   )
 }
 

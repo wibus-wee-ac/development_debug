@@ -14,7 +14,7 @@ import {
 } from '@cradle/db'
 import type { FileUIPart, UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
-import { and, desc, eq, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { readTrustedAgentRuntimeConfig } from '../../helpers/agent-runtime-config'
@@ -193,6 +193,7 @@ const pendingRunSessions = new Map<string, PendingRunState>()
 const runSubscribers = new Map<string, Set<RunSubscriber>>()
 const drainingQueueSessionIds = new Set<string>()
 const requestedQueueDrainSessionIds = new Set<string>()
+const messageInsertOrder = sql`messages.rowid`
 
 // ── store helpers (merged from chat-runtime.store.ts) ──
 
@@ -589,6 +590,24 @@ export function listActiveRunSummaries(): ActiveRunSummary[] {
   }))
 }
 
+export function getActiveSessionRun(sessionId: string): ActiveRunSummary | null {
+  const runId = activeRunIdsBySession.get(sessionId)
+  if (!runId) {
+    return null
+  }
+  const run = activeRuns.get(runId)
+  return run
+    ? {
+        runId: run.runId,
+        sessionId: run.sessionId,
+        messageId: run.messageId,
+        providerTargetKind: run.providerTargetKind,
+        providerTargetId: run.providerTargetId,
+        modelId: run.modelId,
+      }
+    : null
+}
+
 function toRunTraceDto(run: BackendRun): ChatRunTraceDto {
   const trace = readChatRunTrace(run.id)
   return {
@@ -855,7 +874,7 @@ function resolveTurnContext(input: {
         isNull(messages.parentToolCallId),
       ),
     )
-    .orderBy(messages.createdAt)
+    .orderBy(messages.createdAt, messageInsertOrder)
     .all()
     .filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
@@ -910,7 +929,7 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
     .select()
     .from(messages)
     .where(eq(messages.sessionId, sessionId))
-    .orderBy(messages.createdAt, messages.id)
+    .orderBy(messages.createdAt, messageInsertOrder)
     .all()
 
   return rows.map((row) => {
@@ -1354,7 +1373,7 @@ export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Arr
     return openIdleRunStream()
   }
 
-  return openRunEventStream(runId, { replayBufferedEvents: false })
+  return openRunEventStream(runId, { replayBufferedEvents: true })
 }
 
 export async function abortRun(runId: string): Promise<void> {
@@ -1564,7 +1583,7 @@ export function getMessages(sessionId: string): Message[] {
     .select()
     .from(messages)
     .where(eq(messages.sessionId, sessionId))
-    .orderBy(messages.createdAt, messages.id)
+    .orderBy(messages.createdAt, messageInsertOrder)
     .all()
 }
 
