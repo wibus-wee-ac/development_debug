@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest'
 import type { PluginManifest } from '@cradle/plugin-sdk'
 import { CradlePluginPackageJsonSchema } from '@cradle/plugin-sdk/manifest'
+import { afterEach, describe, expect, it } from 'vitest'
+
 import {
   classifyPluginSource,
   createPluginDescriptor,

@@ -4,12 +4,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it, afterEach } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   createLocalAgentConfigExternalProviderSource,
   readLocalAgentConfigExternalProviderSnapshot,
-  resolveLocalAgentConfigSourceConfig
+  resolveLocalAgentConfigSourceConfig,
 } from '../src/modules/external-provider-sources/local-agent-config-source'
 
 const tempDirs: string[] = []
@@ -32,7 +32,7 @@ function createFixtureConfig(root: string) {
     codexDir,
     codexConfigPath: join(codexDir, 'config.toml'),
     codexAuthPath: join(codexDir, 'auth.json'),
-    includeProcessEnv: false
+    includeProcessEnv: false,
   }
 }
 
@@ -52,8 +52,8 @@ describe('local agent config external provider source', () => {
         ANTHROPIC_MODEL: 'claude-sonnet-test',
         ANTHROPIC_AUTH_TOKEN: 'test-anthropic-secret',
         ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-test',
-        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-test'
-      }
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-test',
+      },
     }))
     writeFileSync(config.codexConfigPath, [
       'model_provider = "fixture"',
@@ -64,10 +64,10 @@ describe('local agent config external provider source', () => {
       '',
       '[model_providers.fixture]',
       'base_url = "https://openai.example.test/v1"',
-      'wire_api = "responses"'
+      'wire_api = "responses"',
     ].join('\n'))
     writeFileSync(config.codexAuthPath, JSON.stringify({
-      OPENAI_API_KEY: 'test-openai-secret'
+      OPENAI_API_KEY: 'test-openai-secret',
     }))
 
     const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
@@ -85,12 +85,12 @@ describe('local agent config external provider source', () => {
           claudeAgent: {
             modelAliases: {
               haiku: 'claude-haiku-test',
-              sonnet: 'claude-sonnet-test'
-            }
-          }
+              sonnet: 'claude-sonnet-test',
+            },
+          },
         },
         credential: { kind: 'api-key', value: 'test-anthropic-secret', label: 'Local Claude' },
-        current: true
+        current: true,
       }),
       expect.objectContaining({
         externalId: 'codex:local-current',
@@ -103,14 +103,14 @@ describe('local agent config external provider source', () => {
           apiMode: 'responses',
           reasoningEffort: 'high',
           approvalPolicy: 'on-request',
-          sandboxMode: 'workspace-write'
+          sandboxMode: 'workspace-write',
         },
         credential: { kind: 'api-key', value: 'test-openai-secret', label: 'Local Codex' },
-        current: true
-      })
+        current: true,
+      }),
     ])
-    expect(JSON.stringify(snapshot.providers.map((provider) => provider.metadata))).not.toContain('test-anthropic-secret')
-    expect(JSON.stringify(snapshot.providers.map((provider) => provider.metadata))).not.toContain('test-openai-secret')
+    expect(JSON.stringify(snapshot.providers.map(provider => provider.metadata))).not.toContain('test-anthropic-secret')
+    expect(JSON.stringify(snapshot.providers.map(provider => provider.metadata))).not.toContain('test-openai-secret')
   })
 
   it('returns an empty snapshot when allowlisted local config files do not exist', () => {
@@ -130,8 +130,8 @@ describe('local agent config external provider source', () => {
     writeFileSync(config.claudeSettingsPath, JSON.stringify({
       env: {
         ANTHROPIC_BASE_URL: 'https://anthropic.example.test',
-        ANTHROPIC_MODEL: 'claude-sonnet-test'
-      }
+        ANTHROPIC_MODEL: 'claude-sonnet-test',
+      },
     }))
     writeFileSync(config.codexConfigPath, [
       'model_provider = "fixture"',
@@ -139,7 +139,7 @@ describe('local agent config external provider source', () => {
       '',
       '[model_providers.fixture]',
       'base_url = "https://openai.example.test/v1"',
-      'wire_api = "responses"'
+      'wire_api = "responses"',
     ].join('\n'))
 
     const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
@@ -149,12 +149,12 @@ describe('local agent config external provider source', () => {
     expect(snapshot.providers).toEqual([
       expect.objectContaining({
         credential: undefined,
-        warnings: [expect.objectContaining({ code: 'local-claude-credential-missing', severity: 'info' })]
+        warnings: [expect.objectContaining({ code: 'local-claude-credential-missing', severity: 'info' })],
       }),
       expect.objectContaining({
         credential: undefined,
-        warnings: [expect.objectContaining({ code: 'local-codex-credential-missing', severity: 'info' })]
-      })
+        warnings: [expect.objectContaining({ code: 'local-codex-credential-missing', severity: 'info' })],
+      }),
     ])
   })
 
@@ -171,7 +171,7 @@ describe('local agent config external provider source', () => {
         info() {},
         warn() {},
         error() {},
-        debug() {}
+        debug() {},
       },
       sharedConfig: new Map([
         ['LOCAL_AGENT_CONFIG_CLAUDE_DIR', config.claudeDir],
@@ -180,8 +180,8 @@ describe('local agent config external provider source', () => {
         ['LOCAL_AGENT_CONFIG_CODEX_DIR', config.codexDir],
         ['LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', config.codexConfigPath],
         ['LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', config.codexAuthPath],
-        ['LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false']
-      ])
+        ['LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false'],
+      ]),
     })
 
     const snapshot = await source.readSnapshot({
@@ -190,7 +190,7 @@ describe('local agent config external provider source', () => {
         info() {},
         warn() {},
         error() {},
-        debug() {}
+        debug() {},
       },
       sharedConfig: new Map([
         ['LOCAL_AGENT_CONFIG_CLAUDE_DIR', config.claudeDir],
@@ -199,8 +199,8 @@ describe('local agent config external provider source', () => {
         ['LOCAL_AGENT_CONFIG_CODEX_DIR', config.codexDir],
         ['LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', config.codexConfigPath],
         ['LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', config.codexAuthPath],
-        ['LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false']
-      ])
+        ['LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false'],
+      ]),
     })
 
     expect(source.id).toBe('local-agent-config')
@@ -210,9 +210,9 @@ describe('local agent config external provider source', () => {
         externalId: 'codex:local-current',
         config: {
           baseUrl: 'https://openai.example.test/v1',
-          model: 'gpt-test'
-        }
-      })
+          model: 'gpt-test',
+        },
+      }),
     ])
   })
 })

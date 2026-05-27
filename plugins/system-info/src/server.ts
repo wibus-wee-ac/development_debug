@@ -1,4 +1,5 @@
-import { cpus, totalmem, freemem, platform, arch, hostname, uptime, release, type as osType, version as osVersion, homedir } from 'node:os'
+import { arch, cpus, freemem, homedir, hostname, platform, release, totalmem, type as osType, uptime, version as osVersion } from 'node:os'
+
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
 
 interface SystemInfo {

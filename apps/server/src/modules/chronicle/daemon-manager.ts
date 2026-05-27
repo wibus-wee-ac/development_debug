@@ -105,7 +105,7 @@ function findChronicleBinary(): string {
   ]
 
   for (const candidate of candidates) {
-    if (existsSync(candidate)) return candidate
+    if (existsSync(candidate)) { return candidate }
   }
   return 'cradle-chronicle'
 }
@@ -287,7 +287,7 @@ export function getDaemonResources(): {
 }
 
 export function startDaemon(options: ChronicleDaemonOptions): boolean {
-  if (isRunning()) return true
+  if (isRunning()) { return true }
 
   const binary = findChronicleBinary()
   const cradleUrl = process.env.CRADLE_URL ?? buildServerUrl()
@@ -350,7 +350,7 @@ export function stopDaemon(): void {
 }
 
 function stopCurrentDaemon(): void {
-  if (!chronicleProcess) return
+  if (!chronicleProcess) { return }
 
   chronicleProcess.kill('SIGTERM')
 

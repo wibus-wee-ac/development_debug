@@ -29,8 +29,8 @@ export {
   captureCallerStack,
   createObservedEvent,
   createTraceEnvelope,
-  IpcTraceEnvelopeSchema,
   IPC_DEVTOOL_METADATA_KEY,
+  IpcTraceEnvelopeSchema,
   serializeError,
   serializePayload,
 } from './events'

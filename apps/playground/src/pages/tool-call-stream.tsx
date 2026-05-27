@@ -23,11 +23,11 @@ interface TextPart {
 
 type MessagePart = DynamicToolPart | TextPart
 
-type ChatPartDelta =
-  | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
-  | { seq: number, type: 'tool_arguments_append', partIndex: number, text: string }
-  | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
-  | { seq: number, type: 'tool_output_set', partIndex: number, state: 'output-available' | 'output-error' | 'output-denied', output?: unknown, errorText?: string }
+type ChatPartDelta
+  = | { seq: number, type: 'part_add', partIndex: number, part: MessagePart }
+    | { seq: number, type: 'tool_arguments_append', partIndex: number, text: string }
+    | { seq: number, type: 'tool_input_set', partIndex: number, input: unknown }
+    | { seq: number, type: 'tool_output_set', partIndex: number, state: 'output-available' | 'output-error' | 'output-denied', output?: unknown, errorText?: string }
 
 interface SimulatedEvent {
   label: string
@@ -644,7 +644,10 @@ function DeltaTimeline({
         >
           <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-medium">{event.label}</span>
-            <span className="font-mono text-[10px]">seq {event.delta.seq}</span>
+            <span className="font-mono text-[10px]">
+seq
+{event.delta.seq}
+            </span>
           </div>
           <p className="mt-1 text-[11px] leading-relaxed opacity-80">{event.note}</p>
         </button>
@@ -755,7 +758,10 @@ function DeltaInspector({ event }: { event: SimulatedEvent | null }) {
           <h3 className="text-sm font-semibold text-foreground">{event.label}</h3>
           <p className="text-xs text-muted-foreground">{event.note}</p>
         </div>
-        <span className="font-mono text-[11px] text-muted-foreground">seq {event.delta.seq}</span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+seq
+{event.delta.seq}
+        </span>
       </div>
       <div className="mt-3">
         <CodePanel title="delta" value={event.delta} />
@@ -781,7 +787,11 @@ export function ToolCallStreamPage() {
             </p>
           </div>
           <div className="rounded-md bg-muted px-3 py-2 text-right">
-            <div className="font-mono text-xs text-foreground">{currentStep}/{STREAM_EVENTS.length}</div>
+            <div className="font-mono text-xs text-foreground">
+{currentStep}
+/
+{STREAM_EVENTS.length}
+            </div>
             <div className="text-[10px] uppercase text-muted-foreground">events applied</div>
           </div>
         </div>

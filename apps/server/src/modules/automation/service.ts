@@ -11,14 +11,14 @@ import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Session from '../session/service'
-import { getNextOccurrence, listDueOccurrences } from './scheduler'
 import type { AutomationTrigger, DueOccurrence } from './scheduler'
+import { getNextOccurrence, listDueOccurrences } from './scheduler'
 
-export type AutomationInput =
-  | { type: 'file_ref', path: string }
-  | { type: 'inline_file', name: string, content: string }
-  | { type: 'text', name: string, content: string }
-  | { type: 'url', url: string }
+export type AutomationInput
+  = | { type: 'file_ref', path: string }
+    | { type: 'inline_file', name: string, content: string }
+    | { type: 'text', name: string, content: string }
+    | { type: 'url', url: string }
 
 export interface AutomationArtifactRequest {
   kind: 'markdown' | 'text' | 'json' | 'file_ref'
@@ -241,10 +241,7 @@ function validateRecipe(recipe: AutomationRecipe): void {
 
 function refreshDefinitionSchedule(definitionId: string, trigger: AutomationTrigger, now = currentUnixSeconds()): void {
   const nextRunAt = getNextOccurrence(trigger, now)
-  db().update(automationDefinitions)
-    .set({ nextRunAt, updatedAt: now })
-    .where(eq(automationDefinitions.id, definitionId))
-    .run()
+  db().update(automationDefinitions).set({ nextRunAt, updatedAt: now }).where(eq(automationDefinitions.id, definitionId)).run()
 }
 
 export function create(input: {
@@ -311,8 +308,8 @@ export function update(id: string, input: {
   const existing = getDefinitionRow(id)
   const now = currentUnixSeconds()
   const patch: Partial<typeof automationDefinitions.$inferInsert> = { updatedAt: now }
-  if (input.title !== undefined) patch.title = input.title
-  if (input.description !== undefined) patch.description = input.description
+  if (input.title !== undefined) { patch.title = input.title }
+  if (input.description !== undefined) { patch.description = input.description }
   if (input.trigger !== undefined) {
     patch.triggerJson = JSON.stringify(input.trigger)
     patch.nextRunAt = getNextOccurrence(input.trigger, now)
@@ -321,8 +318,8 @@ export function update(id: string, input: {
     validateRecipe(input.recipe)
     patch.recipeJson = JSON.stringify(input.recipe)
   }
-  if (input.createdByKind !== undefined) patch.createdByKind = input.createdByKind
-  if (input.createdById !== undefined) patch.createdById = input.createdById
+  if (input.createdByKind !== undefined) { patch.createdByKind = input.createdByKind }
+  if (input.createdById !== undefined) { patch.createdById = input.createdById }
   db().update(automationDefinitions).set(patch).where(eq(automationDefinitions.id, existing.id)).run()
   writeEvent({ definitionId: id, type: 'automation.updated', message: 'Automation updated' })
   return get(id)
@@ -396,7 +393,7 @@ export function enqueueDueRuns(input: { now?: number, lookbackSeconds?: number, 
     })
     for (const occurrence of due) {
       const run = insertScheduledRunIfMissing(definition, occurrence)
-      if (run) created.push(run)
+      if (run) { created.push(run) }
     }
     refreshDefinitionSchedule(definition.id, trigger, now)
   }

@@ -2,8 +2,6 @@ import { cors } from '@elysiajs/cors'
 import { node } from '@elysiajs/node'
 import { Elysia } from 'elysia'
 
-import { activateServerPlugins } from './plugins'
-
 import { createErrorHandler } from './http/error-mapping'
 import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
@@ -12,25 +10,26 @@ import { shutdownInfra } from './infra'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { automation } from './modules/automation'
-import { approval } from './modules/approval'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle, chronicleApi, chronicleMemoryApi } from './modules/chronicle'
 import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
 import {
   initDaemon as chronicleInitDaemon,
-  stopActivityPipelineScheduler as chronicleStopActivityPipelineScheduler,
   startSlackBackgroundSync as chronicleStartSlackBackgroundSync,
-  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync
+  stopActivityPipelineScheduler as chronicleStopActivityPipelineScheduler,
+  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync,
 } from './modules/chronicle/service'
 import { desktop } from './modules/desktop'
-import { filesystem } from './modules/filesystem'
 import { externalProviderSources } from './modules/external-provider-sources'
 import { refreshAllExternalProviderSources } from './modules/external-provider-sources/service'
+import { externalWorkImport } from './modules/external-work-import'
+import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
 import { health } from './modules/health'
 import { issue } from './modules/issue'
 import { issueAgent } from './modules/issue-agent'
 import { kanban } from './modules/kanban'
+import { modelRegistry } from './modules/model-registry'
 import { observability } from './modules/observability'
 import { packCodebase } from './modules/pack-codebase'
 import { preferences } from './modules/preferences'
@@ -47,6 +46,7 @@ import { testReset } from './modules/test-reset'
 import { usage } from './modules/usage'
 import { workflowRules } from './modules/workflow-rules'
 import { workspace } from './modules/workspace'
+import { activateServerPlugins } from './plugins'
 
 interface CreateServerAppOptions {
   startBackgroundTasks?: boolean
@@ -61,10 +61,11 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   try {
     const parsed = new URL(origin)
     return (
-      (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
-      ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
     )
-  } catch {
+  }
+ catch {
     return false
   }
 }
@@ -74,7 +75,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),
-    normalize: 'typebox'
+    normalize: 'typebox',
   })
 
   app.use(
@@ -83,9 +84,9 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
       exposeHeaders: [
         'x-cradle-run-id',
         'x-cradle-assistant-message-id',
-        'x-cradle-user-message-id'
-      ]
-    })
+        'x-cradle-user-message-id',
+      ],
+    }),
   )
   app.use(createRequestIdPlugin())
   app.use(createRequestLoggerPlugin())
@@ -99,7 +100,9 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(profiles)
   app.use(providerTargets)
   app.use(externalProviderSources)
+  app.use(externalWorkImport)
   app.use(secrets)
+  app.use(modelRegistry)
   app.use(providers)
   app.use(agentIdentity)
   app.use(automation)
@@ -112,7 +115,6 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(workflowRules)
   app.use(git)
   app.use(packCodebase)
-  app.use(approval)
   app.use(acp)
   app.use(chatRuntime)
   app.use(chronicle)
@@ -132,7 +134,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     () => chronicleStopActivityPipelineScheduler(),
     () => chronicleStopSlackBackgroundSync(),
     () => chronicleCleanup(),
-    () => shutdownInfra()
+    () => shutdownInfra(),
   ])
 
   // Start chronicle daemon if enabled
@@ -143,7 +145,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
           if (result.status === 'error') {
             console.error('[external-provider-sources] Source refresh failed:', {
               sourceKey: result.sourceKey,
-              message: result.message ?? 'Unknown sync error'
+              message: result.message ?? 'Unknown sync error',
             })
           }
         }

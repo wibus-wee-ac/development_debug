@@ -1,6 +1,7 @@
 /* Reads Cradle Marketplace install receipts from plugin package directories. */
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+
 import type { PluginSourceProvenance } from '@cradle/plugin-sdk'
 import { z } from 'zod'
 
@@ -26,7 +27,7 @@ const PluginInstallReceiptJsonSchema = z.string()
 
 export async function readPluginInstallProvenance(
   packageDir: string,
-  expected?: { packageName: string; version: string },
+  expected?: { packageName: string, version: string },
 ): Promise<PluginSourceProvenance | undefined> {
   const receiptPath = resolve(packageDir, MARKETPLACE_INSTALL_RECEIPT_FILE)
   let raw: string

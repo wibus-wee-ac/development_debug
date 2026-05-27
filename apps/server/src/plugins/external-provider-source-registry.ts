@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto'
 
 import type { Disposable } from '@cradle/plugin-sdk'
 import type { ExternalProviderSource } from '@cradle/plugin-sdk/server'
+
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
 export interface RegisteredExternalProviderSource {
@@ -45,7 +46,7 @@ export function registerExternalProviderSource(owner: string, source: ExternalPr
   let disposed = false
   return {
     dispose() {
-      if (disposed) return
+      if (disposed) { return }
       disposed = true
       sources.delete(key)
       unregisterPluginCapability(owner, record.id)

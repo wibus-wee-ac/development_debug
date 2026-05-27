@@ -10,8 +10,8 @@ function encodeSseEvent(event: Chronicle.ChronicleRealtimeEventEntry): Uint8Arra
 export const chronicle = new Elysia({ prefix: '/chronicle' })
   .get('/config', () => Chronicle.getConfig(), {
     detail: {
-      summary: 'Get Chronicle daemon configuration',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle daemon configuration',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'config', 'get'] },
     },
     response: { 200: ChronicleModel.config },
@@ -32,8 +32,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .put('/config', ({ body }) => Chronicle.updateConfig(body), {
     detail: {
-      summary: 'Update Chronicle daemon configuration',
-      tags: ['chronicle'],
+      'summary': 'Update Chronicle daemon configuration',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'config', 'set'] },
     },
     body: ChronicleModel.config,
@@ -41,48 +41,48 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/status', () => Chronicle.getStatus(), {
     detail: {
-      summary: 'Get Chronicle daemon status',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle daemon status',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'status'] },
     },
     response: { 200: ChronicleModel.status },
   })
   .get('/resources', () => Chronicle.getDaemonResources(), {
     detail: {
-      summary: 'Get Chronicle daemon resource usage',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle daemon resource usage',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'resources'] },
     },
     response: { 200: ChronicleModel.daemonResources },
   })
   .get('/daemon/resources', () => Chronicle.getDaemonResources(), {
     detail: {
-      summary: 'Get Chronicle daemon process resource usage',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle daemon process resource usage',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'daemon', 'resources'] },
     },
     response: { 200: ChronicleModel.daemonResources },
   })
   .get('/model-resources', () => Chronicle.getModelResources(), {
     detail: {
-      summary: 'Get Chronicle local model resource status',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle local model resource status',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'model-resources', 'list'] },
     },
     response: { 200: t.Array(ChronicleModel.modelResource) },
   })
   .post('/model-resources/reconcile', () => Chronicle.reconcileModelResources(), {
     detail: {
-      summary: 'Reconcile Chronicle local model resources',
-      tags: ['chronicle'],
+      'summary': 'Reconcile Chronicle local model resources',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'model-resources', 'reconcile'] },
     },
     response: { 200: t.Array(ChronicleModel.modelResource) },
   })
   .post('/model-resources/install-all', () => Chronicle.installAllModelResources(), {
     detail: {
-      summary: 'Install all Chronicle model resources from manifests',
-      tags: ['chronicle'],
+      'summary': 'Install all Chronicle model resources from manifests',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'model-resources', 'install-all'] },
     },
     response: { 200: t.Array(ChronicleModel.modelResource) },
@@ -100,17 +100,20 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
         const unsubscribe = Chronicle.subscribeDownloadProgress((entry) => {
           try {
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(entry)}\n\n`))
-          } catch {
+          }
+ catch {
             unsubscribe()
           }
         })
         // Keep alive every 15s
         const keepAlive = setInterval(() => {
-          try { controller.enqueue(encoder.encode(': keepalive\n\n')) } catch { clearInterval(keepAlive) }
+          try { controller.enqueue(encoder.encode(': keepalive\n\n')) }
+ catch { clearInterval(keepAlive) }
         }, 15000)
         // Clean up when client disconnects (controller closed)
         const checkClosed = setInterval(() => {
-          try { controller.enqueue(encoder.encode('')) } catch {
+          try { controller.enqueue(encoder.encode('')) }
+ catch {
             clearInterval(checkClosed)
             clearInterval(keepAlive)
             unsubscribe()
@@ -130,8 +133,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/model-resources/:category/verify', ({ params }) => Chronicle.verifyModelResource(params.category), {
     detail: {
-      summary: 'Verify a Chronicle local model resource',
-      tags: ['chronicle'],
+      'summary': 'Verify a Chronicle local model resource',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'model-resources', 'verify'] },
     },
     params: ChronicleModel.modelResourceCategoryParams,
@@ -139,8 +142,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/model-resources/:category/install', ({ params, body }) => Chronicle.installModelResource(params.category, body), {
     detail: {
-      summary: 'Install a Chronicle local model resource',
-      tags: ['chronicle'],
+      'summary': 'Install a Chronicle local model resource',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'model-resources', 'install'] },
     },
     params: ChronicleModel.modelResourceCategoryParams,
@@ -154,16 +157,16 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/message-sources', () => Chronicle.listMessageSources(), {
     detail: {
-      summary: 'List Chronicle message sources',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle message sources',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'message-sources', 'list'] },
     },
     response: { 200: t.Array(ChronicleModel.messageSource) },
   })
   .post('/message-sources', ({ body }) => Chronicle.createMessageSource(body), {
     detail: {
-      summary: 'Create a Chronicle message source',
-      tags: ['chronicle'],
+      'summary': 'Create a Chronicle message source',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'message-sources', 'create'] },
     },
     body: ChronicleModel.messageSourceBody,
@@ -171,8 +174,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .patch('/message-sources/:sourceId', ({ params, body }) => Chronicle.updateMessageSource(params.sourceId, body), {
     detail: {
-      summary: 'Update a Chronicle message source',
-      tags: ['chronicle'],
+      'summary': 'Update a Chronicle message source',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'message-sources', 'update'] },
     },
     params: t.Object({ sourceId: t.String({ minLength: 1 }) }),
@@ -186,8 +189,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/message-sources/:sourceId/sync', ({ params }) => Chronicle.syncSlackSource(params.sourceId), {
     detail: {
-      summary: 'Synchronize a Chronicle Slack source',
-      tags: ['chronicle'],
+      'summary': 'Synchronize a Chronicle Slack source',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'message-sources', 'sync'] },
     },
     params: t.Object({ sourceId: t.String({ minLength: 1 }) }),
@@ -214,8 +217,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/messages', ({ query }) => Chronicle.listMessages(query.limit), {
     detail: {
-      summary: 'List Chronicle message events',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle message events',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'messages', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 50 })) }),
@@ -223,8 +226,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/audio-transcripts', ({ query }) => Chronicle.listAudioTranscripts(query.limit), {
     detail: {
-      summary: 'List Chronicle audio transcripts',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle audio transcripts',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'audio-transcripts', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -237,16 +240,16 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/speaker-profiles', () => Chronicle.listSpeakerProfiles(), {
     detail: {
-      summary: 'List Chronicle speaker profiles learned from transcripts',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle speaker profiles learned from transcripts',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'speaker-profiles', 'list'] },
     },
     response: { 200: t.Array(ChronicleModel.speakerProfile) },
   })
   .post('/speaker-profiles', ({ body }) => Chronicle.upsertSpeakerProfile(body), {
     detail: {
-      summary: 'Create or update a Chronicle speaker profile',
-      tags: ['chronicle'],
+      'summary': 'Create or update a Chronicle speaker profile',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'speaker-profiles', 'upsert'] },
     },
     body: ChronicleModel.speakerProfileBody,
@@ -254,8 +257,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/audio-raw-segments', ({ query }) => Chronicle.listAudioRawSegments(query.limit), {
     detail: {
-      summary: 'List Chronicle raw audio segment artifacts',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle raw audio segment artifacts',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'audio-raw-segments', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -268,8 +271,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/audio-raw-segments/:sourceId/processing-result', ({ params, body }) => Chronicle.recordAudioRawSegmentProcessingResult(params.sourceId, body), {
     detail: {
-      summary: 'Record Chronicle raw audio processing results',
-      tags: ['chronicle'],
+      'summary': 'Record Chronicle raw audio processing results',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'audio-raw-segments', 'processing-result'] },
     },
     params: t.Object({ sourceId: t.String({ minLength: 1 }) }),
@@ -278,8 +281,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/accessibility-snapshots', ({ query }) => Chronicle.listAccessibilitySnapshots(query.limit), {
     detail: {
-      summary: 'List Chronicle accessibility evidence snapshots',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle accessibility evidence snapshots',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'accessibility-snapshots', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -287,8 +290,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/accessibility-events', ({ query }) => Chronicle.listAccessibilityEvents(query.limit), {
     detail: {
-      summary: 'List Chronicle accessibility observer events',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle accessibility observer events',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'accessibility-events', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 50 })) }),
@@ -301,8 +304,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/activity-segments', ({ query }) => Chronicle.listActivitySegments(query.limit), {
     detail: {
-      summary: 'List Chronicle activity segments',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle activity segments',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-segments', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -310,8 +313,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/activity-segments/:segmentId', ({ params }) => Chronicle.getActivitySegment(params.segmentId), {
     detail: {
-      summary: 'Get a Chronicle activity segment',
-      tags: ['chronicle'],
+      'summary': 'Get a Chronicle activity segment',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-segments', 'get'] },
     },
     params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
@@ -319,8 +322,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/activity-segments/:segmentId/triage', ({ params }) => Chronicle.triageActivitySegment(params.segmentId), {
     detail: {
-      summary: 'Run Chronicle activity segment triage',
-      tags: ['chronicle'],
+      'summary': 'Run Chronicle activity segment triage',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-segments', 'triage'] },
     },
     params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
@@ -328,8 +331,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/activity-segments/:segmentId/summarize', ({ params }) => Chronicle.summarizeActivitySegment(params.segmentId), {
     detail: {
-      summary: 'Run Chronicle activity segment summarization',
-      tags: ['chronicle'],
+      'summary': 'Run Chronicle activity segment summarization',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-segments', 'summarize'] },
     },
     params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
@@ -337,8 +340,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/activity-segments/:segmentId/crystallize', ({ params }) => Chronicle.crystallizeActivitySegment(params.segmentId), {
     detail: {
-      summary: 'Run Chronicle activity segment knowledge crystallization',
-      tags: ['chronicle'],
+      'summary': 'Run Chronicle activity segment knowledge crystallization',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-segments', 'crystallize'] },
     },
     params: t.Object({ segmentId: t.String({ minLength: 1 }) }),
@@ -346,16 +349,16 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/activity-pipeline/tick', () => Chronicle.runActivityPipelineTick(), {
     detail: {
-      summary: 'Run one Chronicle automatic activity pipeline tick',
-      tags: ['chronicle'],
+      'summary': 'Run one Chronicle automatic activity pipeline tick',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'activity-pipeline', 'tick'] },
     },
     response: { 200: ChronicleModel.activityPipelineTickResponse },
   })
   .get('/pipeline-runs', ({ query }) => Chronicle.listPipelineRuns(query.limit), {
     detail: {
-      summary: 'List Chronicle activity pipeline runs',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle activity pipeline runs',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'pipeline-runs', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -368,8 +371,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
     includeDeleted: query.includeDeleted,
   }), {
     detail: {
-      summary: 'List Chronicle knowledge cards',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle knowledge cards',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'list'] },
     },
     query: ChronicleModel.knowledgeCardsQuery,
@@ -377,8 +380,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/knowledge-cards', ({ body }) => Chronicle.createKnowledgeCard(body), {
     detail: {
-      summary: 'Create a Chronicle knowledge card',
-      tags: ['chronicle'],
+      'summary': 'Create a Chronicle knowledge card',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'create'] },
     },
     body: ChronicleModel.knowledgeCardMutationBody,
@@ -386,8 +389,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/knowledge-cards/:knowledgeId/versions', ({ params }) => Chronicle.listKnowledgeVersions(params.knowledgeId), {
     detail: {
-      summary: 'List Chronicle knowledge card versions',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle knowledge card versions',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'versions'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -395,8 +398,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/knowledge-cards/:knowledgeId/files', ({ params }) => Chronicle.listKnowledgeFiles(params.knowledgeId), {
     detail: {
-      summary: 'List Chronicle knowledge card evidence files',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle knowledge card evidence files',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'files'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -404,8 +407,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/knowledge-cards/:knowledgeId/versions/restore', ({ params, body }) => Chronicle.restoreKnowledgeVersion(params.knowledgeId, body.version), {
     detail: {
-      summary: 'Restore a Chronicle knowledge card version',
-      tags: ['chronicle'],
+      'summary': 'Restore a Chronicle knowledge card version',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'restore-version'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -414,8 +417,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/knowledge-cards/:knowledgeId', ({ params }) => Chronicle.getKnowledgeCard(params.knowledgeId), {
     detail: {
-      summary: 'Get a Chronicle knowledge card',
-      tags: ['chronicle'],
+      'summary': 'Get a Chronicle knowledge card',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'get'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -423,8 +426,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .patch('/knowledge-cards/:knowledgeId', ({ params, body }) => Chronicle.updateKnowledgeCard(params.knowledgeId, body), {
     detail: {
-      summary: 'Update a Chronicle knowledge card',
-      tags: ['chronicle'],
+      'summary': 'Update a Chronicle knowledge card',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'update'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -433,8 +436,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .delete('/knowledge-cards/:knowledgeId', ({ params }) => Chronicle.deleteKnowledgeCard(params.knowledgeId), {
     detail: {
-      summary: 'Delete a Chronicle knowledge card',
-      tags: ['chronicle'],
+      'summary': 'Delete a Chronicle knowledge card',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'knowledge-cards', 'delete'] },
     },
     params: t.Object({ knowledgeId: t.String({ minLength: 1 }) }),
@@ -442,8 +445,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/dream-runs', ({ query }) => Chronicle.listDreamRuns(query.limit), {
     detail: {
-      summary: 'List Chronicle dream merge runs',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle dream merge runs',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'dream-runs', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -451,8 +454,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/dream-runs', ({ body }) => Chronicle.startDreamRun(body), {
     detail: {
-      summary: 'Start a Chronicle dream merge run',
-      tags: ['chronicle'],
+      'summary': 'Start a Chronicle dream merge run',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'dream-runs', 'start'] },
     },
     body: ChronicleModel.dreamStartBody,
@@ -460,8 +463,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/timeline', ({ query }) => Chronicle.getTimeline(query.limit), {
     detail: {
-      summary: 'Get recent Chronicle captures',
-      tags: ['chronicle'],
+      'summary': 'Get recent Chronicle captures',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'timeline'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 50 })) }),
@@ -469,8 +472,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/events', ({ query }) => Chronicle.listRealtimeEvents(query), {
     detail: {
-      summary: 'List Chronicle realtime-compatible events',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle realtime-compatible events',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'events', 'list'] },
     },
     query: ChronicleModel.realtimeEventsQuery,
@@ -536,8 +539,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/memories', ({ query }) => Chronicle.getMemories(query.limit), {
     detail: {
-      summary: 'Get Chronicle AI memories/summaries',
-      tags: ['chronicle'],
+      'summary': 'Get Chronicle AI memories/summaries',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'memories', 'list'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
@@ -545,8 +548,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/memories/search', ({ query }) => Chronicle.searchMemories(query.q, query.limit), {
     detail: {
-      summary: 'Search Chronicle memories',
-      tags: ['chronicle'],
+      'summary': 'Search Chronicle memories',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'memories', 'search'] },
     },
     query: t.Object({
@@ -557,8 +560,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/memories/:memoryId', ({ params }) => Chronicle.getMemory(params.memoryId), {
     detail: {
-      summary: 'Get a Chronicle memory',
-      tags: ['chronicle'],
+      'summary': 'Get a Chronicle memory',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'memories', 'get'] },
     },
     params: t.Object({ memoryId: t.String({ minLength: 1 }) }),
@@ -566,8 +569,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .patch('/memories/:memoryId', ({ params, body }) => Chronicle.updateMemory(params.memoryId, body), {
     detail: {
-      summary: 'Update a Chronicle memory',
-      tags: ['chronicle'],
+      'summary': 'Update a Chronicle memory',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'memories', 'update'] },
     },
     params: t.Object({ memoryId: t.String({ minLength: 1 }) }),
@@ -576,8 +579,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .delete('/memories/:memoryId', ({ params }) => Chronicle.deleteMemory(params.memoryId), {
     detail: {
-      summary: 'Delete a Chronicle memory',
-      tags: ['chronicle'],
+      'summary': 'Delete a Chronicle memory',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'memories', 'delete'] },
     },
     params: t.Object({ memoryId: t.String({ minLength: 1 }) }),
@@ -585,8 +588,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/privacy/redact', ({ body }) => Chronicle.redactPrivacyText(body), {
     detail: {
-      summary: 'Preview Chronicle privacy text redaction',
-      tags: ['chronicle'],
+      'summary': 'Preview Chronicle privacy text redaction',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'privacy', 'redact'] },
     },
     body: ChronicleModel.privacyRedactBody,
@@ -594,8 +597,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .post('/privacy/export', ({ body }) => Chronicle.exportPrivacyRedacted(body), {
     detail: {
-      summary: 'Export Chronicle data with privacy redaction',
-      tags: ['chronicle'],
+      'summary': 'Export Chronicle data with privacy redaction',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'privacy', 'export'] },
     },
     body: ChronicleModel.privacyExportBody,
@@ -611,8 +614,8 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
   })
   .get('/privacy/breadcrumbs', ({ query }) => Chronicle.listPrivacyBreadcrumbs(query.limit), {
     detail: {
-      summary: 'List Chronicle privacy breadcrumbs',
-      tags: ['chronicle'],
+      'summary': 'List Chronicle privacy breadcrumbs',
+      'tags': ['chronicle'],
       'x-cradle-cli': { command: ['chronicle', 'privacy', 'breadcrumbs'] },
     },
     query: t.Object({ limit: t.Optional(t.Number({ default: 50 })) }),

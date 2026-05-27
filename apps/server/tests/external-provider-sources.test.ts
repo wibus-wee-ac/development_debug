@@ -2,8 +2,9 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { externalProviderRecords, providerTargets } from '@cradle/db'
+import { agents, externalProviderRecords, providerTargets } from '@cradle/db'
 import type { ExternalProviderRecord } from '@cradle/plugin-sdk/server'
+import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
@@ -24,7 +25,7 @@ const RuntimeTargetResponseSchema = z.object({
   iconSlug: z.string().nullable(),
   lastResolvedFingerprint: z.string(),
   createdAt: z.number(),
-  updatedAt: z.number()
+  updatedAt: z.number(),
 })
 
 const ProviderTargetModelSettingsResponseSchema = z.object({
@@ -32,7 +33,7 @@ const ProviderTargetModelSettingsResponseSchema = z.object({
   providerTargetId: z.string(),
   configJson: z.string(),
   customModelsJson: z.string(),
-  modelRegistryMappingsJson: z.string()
+  modelRegistryMappingsJson: z.string(),
 })
 
 function makeTempDir(prefix: string): string {
@@ -51,25 +52,29 @@ function restoreEnv(previous: {
 }): void {
   if (previous.dataDir === undefined) {
     delete process.env.CRADLE_DATA_DIR
-  } else {
+  }
+ else {
     process.env.CRADLE_DATA_DIR = previous.dataDir
   }
 
   if (previous.credentialSecret === undefined) {
     delete process.env.CRADLE_CREDENTIAL_SECRET
-  } else {
+  }
+ else {
     process.env.CRADLE_CREDENTIAL_SECRET = previous.credentialSecret
   }
 
   if (previous.pluginsDir === undefined) {
     delete process.env.CRADLE_PLUGINS_DIR
-  } else {
+  }
+ else {
     process.env.CRADLE_PLUGINS_DIR = previous.pluginsDir
   }
 
   if (previous.externalPluginsDirs === undefined) {
     delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
-  } else {
+  }
+ else {
     process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previous.externalPluginsDirs
   }
 }
@@ -85,7 +90,7 @@ describe('external provider sources capability', () => {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
       pluginsDir: process.env.CRADLE_PLUGINS_DIR,
-      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-test-secret'
@@ -103,8 +108,8 @@ describe('external provider sources capability', () => {
         enabled: false,
         metadata: {
           baseUrl: 'https://anthropic.example.test',
-          model: 'claude-test'
-        }
+          model: 'claude-test',
+        },
       },
       {
         externalId: 'codex:test-openai',
@@ -116,9 +121,9 @@ describe('external provider sources capability', () => {
         metadata: {
           baseUrl: 'https://openai.example.test',
           model: 'gpt-test',
-          apiFormat: 'openai_responses'
-        }
-      }
+          apiFormat: 'openai_responses',
+        },
+      },
     ]
 
     try {
@@ -131,13 +136,13 @@ describe('external provider sources capability', () => {
           return {
             source: { status: 'ok', observedAt: '2026-05-21T09:37:00Z' },
             inventory: { mcpServers: 2, prompts: 1, skills: 3 },
-            providers
+            providers,
           }
-        }
+        },
       })
 
       const sourcesBeforeRefresh = await app.handle(
-        new Request('http://localhost/external-provider-sources')
+        new Request('http://localhost/external-provider-sources'),
       )
       expect(sourcesBeforeRefresh.status).toBe(200)
       const sourceList = (await sourcesBeforeRefresh.json()) as Array<{
@@ -148,15 +153,15 @@ describe('external provider sources capability', () => {
       expect(sourceList).toEqual([
         expect.objectContaining({
           label: 'Fixture Providers',
-          lastSyncStatus: 'never'
-        })
+          lastSyncStatus: 'never',
+        }),
       ])
       const sourceKey = sourceList[0].id
 
       const refresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(refresh.status).toBe(200)
       expect(await refresh.json()).toEqual(
@@ -165,20 +170,20 @@ describe('external provider sources capability', () => {
           status: 'ok',
           recordsSeen: 2,
           recordsProjected: 2,
-          recordsMissing: 0
-        })
+          recordsMissing: 0,
+        }),
       )
 
       const recordsRes = await app.handle(
-        new Request('http://localhost/external-provider-sources/records')
+        new Request('http://localhost/external-provider-sources/records'),
       )
       expect(recordsRes.status).toBe(200)
-      const records = (await recordsRes.json()) as Array<{ externalId: string; status: string }>
+      const records = (await recordsRes.json()) as Array<{ externalId: string, status: string }>
       expect(records).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ externalId: 'claude:test-anthropic', status: 'active' }),
-          expect.objectContaining({ externalId: 'codex:test-openai', status: 'active' })
-        ])
+          expect.objectContaining({ externalId: 'codex:test-openai', status: 'active' }),
+        ]),
       )
 
       const profilesRes = await app.handle(new Request('http://localhost/profiles'))
@@ -189,8 +194,8 @@ describe('external provider sources capability', () => {
 
       const anthropicTargetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/claude:test-anthropic/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/claude:test-anthropic/runtime-target`,
+        ),
       )
       expect(anthropicTargetRes.status).toBe(200)
       const anthropicTarget = RuntimeTargetResponseSchema.parse(await anthropicTargetRes.json())
@@ -201,9 +206,26 @@ describe('external provider sources capability', () => {
           providerKind: 'anthropic',
           displayName: 'Fixture Anthropic',
           enabled: true,
-          credentialRef: expect.stringMatching(/^external_credential_/)
-        })
+          credentialRef: expect.stringMatching(/^external_credential_/),
+        }),
       )
+
+      const createAgent = await app.handle(
+        new Request('http://localhost/agents', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Fixture Claude Agent',
+            avatarStyle: 'bottts-neutral',
+            avatarSeed: 'fixture-claude-agent',
+            providerTargetId: anthropicTarget.id,
+            runtimeKind: 'claude-agent',
+          }),
+        }),
+      )
+      expect(createAgent.status).toBe(200)
+      const agent = (await createAgent.json()) as { id: string, enabled: boolean }
+      expect(agent.enabled).toBe(true)
 
       const disableAnthropicTarget = await app.handle(
         new Request(
@@ -211,54 +233,89 @@ describe('external provider sources capability', () => {
           {
             method: 'PATCH',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ enabled: false })
-          }
-        )
+            body: JSON.stringify({ enabled: false }),
+          },
+        ),
       )
       expect(disableAnthropicTarget.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await disableAnthropicTarget.json())).toEqual(
         expect.objectContaining({
           externalRecordId: 'claude:test-anthropic',
-          enabled: false
-        })
+          enabled: false,
+        }),
       )
+
+      expect(db().select().from(agents).where(eq(agents.id, agent.id)).get()).toEqual(
+        expect.objectContaining({
+          id: agent.id,
+          providerTargetId: anthropicTarget.id,
+          enabled: false,
+        }),
+      )
+
+      const reenableAgent = await app.handle(
+        new Request(`http://localhost/agents/${agent.id}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled: true }),
+        }),
+      )
+      expect(reenableAgent.status).toBe(200)
+      expect(await reenableAgent.json()).toEqual(
+        expect.objectContaining({
+          id: agent.id,
+          enabled: false,
+        }),
+      )
+
+      const createSessionWithDisabledAgent = await app.handle(
+        new Request('http://localhost/sessions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            title: 'Disabled provider session',
+            agentId: agent.id,
+          }),
+        }),
+      )
+      expect(createSessionWithDisabledAgent.status).toBe(409)
 
       const refreshAfterDisable = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(refreshAfterDisable.status).toBe(200)
       const disabledTargetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/claude:test-anthropic/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/claude:test-anthropic/runtime-target`,
+        ),
       )
       expect(disabledTargetRes.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await disabledTargetRes.json())).toEqual(
         expect.objectContaining({
           externalRecordId: 'claude:test-anthropic',
-          enabled: false
-        })
+          enabled: false,
+        }),
       )
 
       const recordsAfterDisableRes = await app.handle(
-        new Request('http://localhost/external-provider-sources/records')
+        new Request('http://localhost/external-provider-sources/records'),
       )
       expect(recordsAfterDisableRes.status).toBe(200)
       expect(await recordsAfterDisableRes.json()).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             externalId: 'claude:test-anthropic',
-            runtimeTargetEnabled: false
-          })
-        ])
+            runtimeTargetEnabled: false,
+          }),
+        ]),
       )
 
       const openAiTargetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/codex:test-openai/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:test-openai/runtime-target`,
+        ),
       )
       expect(openAiTargetRes.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await openAiTargetRes.json())).toEqual(
@@ -266,34 +323,35 @@ describe('external provider sources capability', () => {
           sourceKey,
           externalRecordId: 'codex:test-openai',
           providerKind: 'openai-compatible',
-          displayName: 'Fixture OpenAI'
-        })
+          displayName: 'Fixture OpenAI',
+        }),
       )
 
       providers = [providers[0]]
       const missingRefresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(missingRefresh.status).toBe(200)
       expect(await missingRefresh.json()).toEqual(expect.objectContaining({ recordsMissing: 1 }))
 
       const missingTargetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/codex:test-openai/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:test-openai/runtime-target`,
+        ),
       )
       expect(missingTargetRes.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await missingTargetRes.json())).toEqual(
         expect.objectContaining({
           externalRecordId: 'codex:test-openai',
-          enabled: false
-        })
+          enabled: false,
+        }),
       )
 
       registration.dispose()
-    } finally {
+    }
+ finally {
       shutdownInfra()
       restoreEnv(previous)
       rmSync(dataDir, { recursive: true, force: true })
@@ -306,7 +364,7 @@ describe('external provider sources capability', () => {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
       pluginsDir: process.env.CRADLE_PLUGINS_DIR,
-      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-error-secret'
@@ -332,11 +390,11 @@ describe('external provider sources capability', () => {
                 app: 'codex',
                 name: 'Error Fixture OpenAI',
                 providerKind: 'openai-compatible',
-                config: { baseUrl: 'https://error.example.test', model: 'gpt-test' }
-              }
-            ]
+                config: { baseUrl: 'https://error.example.test', model: 'gpt-test' },
+              },
+            ],
           }
-        }
+        },
       })
 
       const sources = (await (
@@ -346,23 +404,23 @@ describe('external provider sources capability', () => {
 
       const firstRefresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(firstRefresh.status).toBe(200)
 
       shouldFail = true
       const failedRefresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(failedRefresh.status).toBe(200)
       expect(await failedRefresh.json()).toEqual(
         expect.objectContaining({
           status: 'error',
-          message: 'fixture source unavailable'
-        })
+          message: 'fixture source unavailable',
+        }),
       )
 
       const profilesRes = await app.handle(new Request('http://localhost/profiles'))
@@ -371,16 +429,16 @@ describe('external provider sources capability', () => {
 
       const targetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/codex:error-openai/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:error-openai/runtime-target`,
+        ),
       )
       expect(targetRes.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await targetRes.json())).toEqual(
         expect.objectContaining({
           externalRecordId: 'codex:error-openai',
           displayName: 'Error Fixture OpenAI',
-          enabled: true
-        })
+          enabled: true,
+        }),
       )
 
       const sourceList = await app.handle(new Request('http://localhost/external-provider-sources'))
@@ -388,12 +446,13 @@ describe('external provider sources capability', () => {
       expect(await sourceList.json()).toEqual([
         expect.objectContaining({
           lastSyncStatus: 'error',
-          lastSyncError: 'fixture source unavailable'
-        })
+          lastSyncError: 'fixture source unavailable',
+        }),
       ])
 
       registration.dispose()
-    } finally {
+    }
+ finally {
       shutdownInfra()
       restoreEnv(previous)
       rmSync(dataDir, { recursive: true, force: true })
@@ -406,7 +465,7 @@ describe('external provider sources capability', () => {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
       pluginsDir: process.env.CRADLE_PLUGINS_DIR,
-      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-legacy-secret'
@@ -430,12 +489,12 @@ describe('external provider sources capability', () => {
                 config: { baseUrl: 'https://legacy.example.test/v1', model: 'gpt-legacy' },
                 metadata: {
                   baseUrl: 'https://legacy.example.test/v1',
-                  model: 'gpt-legacy'
-                }
-              }
-            ]
+                  model: 'gpt-legacy',
+                },
+              },
+            ],
           }
-        }
+        },
       })
 
       const sources = (await (
@@ -459,7 +518,7 @@ describe('external provider sources capability', () => {
           warningsJson: '[]',
           lastSeenAt: now,
           createdAt: now,
-          updatedAt: now
+          updatedAt: now,
         })
         .run()
       db()
@@ -480,14 +539,14 @@ describe('external provider sources capability', () => {
           iconSlug: null,
           sourceFingerprint: 'legacy-target-fingerprint',
           createdAt: now,
-          updatedAt: now
+          updatedAt: now,
         })
         .run()
 
       const refresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(refresh.status).toBe(200)
       expect(await refresh.json()).toEqual(
@@ -496,12 +555,12 @@ describe('external provider sources capability', () => {
           status: 'ok',
           recordsSeen: 1,
           recordsProjected: 1,
-          recordsMissing: 0
-        })
+          recordsMissing: 0,
+        }),
       )
 
       const recordsRes = await app.handle(
-        new Request('http://localhost/external-provider-sources/records')
+        new Request('http://localhost/external-provider-sources/records'),
       )
       expect(recordsRes.status).toBe(200)
       expect(await recordsRes.json()).toEqual([
@@ -510,14 +569,14 @@ describe('external provider sources capability', () => {
           providerTargetId: 'legacy-target-id',
           externalId: 'codex:legacy-openai',
           name: 'Updated Legacy OpenAI',
-          status: 'active'
-        })
+          status: 'active',
+        }),
       ])
 
       const targetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/codex:legacy-openai/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:legacy-openai/runtime-target`,
+        ),
       )
       expect(targetRes.status).toBe(200)
       expect(RuntimeTargetResponseSchema.parse(await targetRes.json())).toEqual(
@@ -525,12 +584,13 @@ describe('external provider sources capability', () => {
           id: 'legacy-target-id',
           externalRecordId: 'codex:legacy-openai',
           displayName: 'Updated Legacy OpenAI',
-          enabled: false
-        })
+          enabled: false,
+        }),
       )
 
       registration.dispose()
-    } finally {
+    }
+ finally {
       shutdownInfra()
       restoreEnv(previous)
       rmSync(dataDir, { recursive: true, force: true })
@@ -543,7 +603,7 @@ describe('external provider sources capability', () => {
       dataDir: process.env.CRADLE_DATA_DIR,
       credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
       pluginsDir: process.env.CRADLE_PLUGINS_DIR,
-      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
     }
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-target-secret'
@@ -555,7 +615,7 @@ describe('external provider sources capability', () => {
       if (url === MODELS_DEV_URL) {
         return new Response(JSON.stringify({}), {
           status: 200,
-          headers: { 'content-type': 'application/json' }
+          headers: { 'content-type': 'application/json' },
         })
       }
 
@@ -563,7 +623,7 @@ describe('external provider sources capability', () => {
       expect(init?.headers).toMatchObject({ Authorization: 'Bearer target-secret-value' })
       return new Response(JSON.stringify({ data: [{ id: 'gpt-4.1-mini' }, { id: 'gpt-4.1' }] }), {
         status: 200,
-        headers: { 'content-type': 'application/json' }
+        headers: { 'content-type': 'application/json' },
       })
     })
 
@@ -585,12 +645,12 @@ describe('external provider sources capability', () => {
                 credential: {
                   kind: 'api-key',
                   value: 'target-secret-value',
-                  label: 'Target OpenAI'
-                }
-              }
-            ]
+                  label: 'Target OpenAI',
+                },
+              },
+            ],
           }
-        }
+        },
       })
 
       const sources = (await (
@@ -600,15 +660,15 @@ describe('external provider sources capability', () => {
 
       const refresh = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(refresh.status).toBe(200)
 
       const targetRes = await app.handle(
         new Request(
-          `http://localhost/external-provider-sources/${sourceKey}/records/codex:target-openai/runtime-target`
-        )
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:target-openai/runtime-target`,
+        ),
       )
       expect(targetRes.status).toBe(200)
       const target = RuntimeTargetResponseSchema.parse(await targetRes.json())
@@ -623,33 +683,33 @@ describe('external provider sources capability', () => {
             config: {},
             secretRef: null,
             providerTargetKind: 'external',
-            providerTargetId: target.id
-          })
-        })
+            providerTargetId: target.id,
+          }),
+        }),
       )
       expect(modelsRes.status).toBe(200)
       expect(await modelsRes.json()).toEqual([
         expect.objectContaining({ id: 'gpt-4.1-mini', providerKind: 'openai-compatible' }),
-        expect.objectContaining({ id: 'gpt-4.1', providerKind: 'openai-compatible' })
+        expect.objectContaining({ id: 'gpt-4.1', providerKind: 'openai-compatible' }),
       ])
 
       const visibilityRes = await app.handle(
         new Request(`http://localhost/provider-targets/${target.id}/model-visibility`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ enabledModels: ['gpt-4.1'] })
-        })
+          body: JSON.stringify({ enabledModels: ['gpt-4.1'] }),
+        }),
       )
       expect(visibilityRes.status).toBe(200)
       const visibilitySettings = ProviderTargetModelSettingsResponseSchema.parse(
-        await visibilityRes.json()
+        await visibilityRes.json(),
       )
       expect(JSON.parse(visibilitySettings.configJson)).toEqual(
         expect.objectContaining({
           baseUrl: 'https://target-openai.example.test/v1',
           model: 'gpt-4.1',
-          enabledModels: ['gpt-4.1']
-        })
+          enabledModels: ['gpt-4.1'],
+        }),
       )
 
       const customModelsRes = await app.handle(
@@ -661,15 +721,15 @@ describe('external provider sources capability', () => {
               {
                 id: 'provider-private-model',
                 label: 'Provider Private Model',
-                capabilities: { contextWindow: 64000 }
-              }
-            ]
-          })
-        })
+                capabilities: { contextWindow: 64000 },
+              },
+            ],
+          }),
+        }),
       )
       expect(customModelsRes.status).toBe(200)
       expect(await customModelsRes.json()).toEqual([
-        expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' })
+        expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' }),
       ])
 
       const mappingRes = await app.handle(
@@ -683,14 +743,14 @@ describe('external provider sources capability', () => {
               name: 'GPT-4.1 Mini',
               limit: { context: 1047576, output: 32768 },
               modalities: { input: ['text'], output: ['text'] },
-              tool_call: true
-            }
-          })
-        })
+              tool_call: true,
+            },
+          }),
+        }),
       )
       expect(mappingRes.status).toBe(200)
       expect(await mappingRes.json()).toEqual([
-        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' })
+        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' }),
       ])
 
       const mappedModelsRes = await app.handle(
@@ -703,9 +763,9 @@ describe('external provider sources capability', () => {
             config: {},
             secretRef: null,
             providerTargetKind: 'external',
-            providerTargetId: target.id
-          })
-        })
+            providerTargetId: target.id,
+          }),
+        }),
       )
       expect(mappedModelsRes.status).toBe(200)
       expect(await mappedModelsRes.json()).toEqual([
@@ -714,45 +774,46 @@ describe('external provider sources capability', () => {
           label: 'GPT-4.1 Mini',
           capabilities: expect.objectContaining({
             registryMatch: 'manual',
-            contextWindow: 1047576
-          })
+            contextWindow: 1047576,
+          }),
         }),
         expect.objectContaining({ id: 'gpt-4.1', providerKind: 'openai-compatible' }),
-        expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' })
+        expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' }),
       ])
 
       const refreshAfterPreferences = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
-          method: 'POST'
-        })
+          method: 'POST',
+        }),
       )
       expect(refreshAfterPreferences.status).toBe(200)
       const settingsAfterRefreshRes = await app.handle(
-        new Request(`http://localhost/provider-targets/${target.id}/model-settings`)
+        new Request(`http://localhost/provider-targets/${target.id}/model-settings`),
       )
       expect(settingsAfterRefreshRes.status).toBe(200)
       const settingsAfterRefresh = ProviderTargetModelSettingsResponseSchema.parse(
-        await settingsAfterRefreshRes.json()
+        await settingsAfterRefreshRes.json(),
       )
       expect(JSON.parse(settingsAfterRefresh.configJson)).toEqual(
         expect.objectContaining({
-          enabledModels: ['gpt-4.1']
-        })
+          enabledModels: ['gpt-4.1'],
+        }),
       )
       expect(JSON.parse(settingsAfterRefresh.customModelsJson)).toEqual([
-        expect.objectContaining({ id: 'provider-private-model' })
+        expect.objectContaining({ id: 'provider-private-model' }),
       ])
       expect(JSON.parse(settingsAfterRefresh.modelRegistryMappingsJson)).toEqual([
-        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' })
+        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' }),
       ])
 
       const providerFetchCount = fetchSpy.mock.calls.filter(
-        ([callInput]) => getRequestUrl(callInput) === 'https://target-openai.example.test/v1/models'
+        ([callInput]) => getRequestUrl(callInput) === 'https://target-openai.example.test/v1/models',
       ).length
       expect(providerFetchCount).toBe(2)
 
       registration.dispose()
-    } finally {
+    }
+ finally {
       shutdownInfra()
       restoreEnv(previous)
       rmSync(dataDir, { recursive: true, force: true })

@@ -1,13 +1,15 @@
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Elysia } from 'elysia'
+
 import type { Disposable, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
 import { evaluatePluginPermissionPolicy } from '@cradle/plugin-sdk/permissions'
-import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+import { Elysia } from 'elysia'
+
 import { createChildLogger } from '../logging/logger'
 import { createServerPluginContext } from './context'
-import { discoverPluginPackages, type DiscoveredPluginPackage } from './discovery'
+import type { DiscoveredPluginPackage } from './discovery'
+import { discoverPluginPackages } from './discovery'
 import { resetExternalProviderSourceRegistry } from './external-provider-source-registry'
 import {
   classifyPluginSource,
@@ -22,7 +24,7 @@ import { createPluginStaticServer } from './static-server'
 import { validatePluginModule } from './validation'
 
 // Store deactivation functions for shutdown
-const activePlugins = new Map<string, { deactivate?: () => void | Promise<void>; subscriptions: Disposable[] }>()
+const activePlugins = new Map<string, { deactivate?: () => void | Promise<void>, subscriptions: Disposable[] }>()
 const logger = createChildLogger({ module: 'plugins' })
 
 interface PluginDiscoverySource {
@@ -59,7 +61,7 @@ function getPluginDiscoverySources(defaultPluginsDir: string): PluginDiscoverySo
   const sources: PluginDiscoverySource[] = []
   const addSource = (pluginsDir: string, kind?: PluginSourceKind): void => {
     const normalizedDir = resolve(pluginsDir)
-    if (sources.some(source => resolve(source.pluginsDir) === normalizedDir)) return
+    if (sources.some(source => resolve(source.pluginsDir) === normalizedDir)) { return }
     sources.push({
       pluginsDir,
       kind,
@@ -96,7 +98,8 @@ function disposeSubscriptions(name: string, subscriptions: Disposable[]): void {
   for (const subscription of [...subscriptions].reverse()) {
     try {
       subscription.dispose()
-    } catch (err) {
+    }
+ catch (err) {
       logger.error('plugin subscription disposal failed', { plugin: name, err })
     }
   }
@@ -125,11 +128,11 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   const descriptors = listPluginDescriptors()
   const manifests: PluginManifest[] = packages.flatMap(({ pkg }) => pkg.manifest ? [pkg.manifest] : [])
 
-  if (descriptors.length === 0) return
+  if (descriptors.length === 0) { return }
 
   for (const manifest of manifests.filter(m => m.cradle.web)) {
     const descriptor = descriptors.find(d => d.identity === manifest.name)
-    if (!descriptor || descriptor.layers.web.status === 'invalid') continue
+    if (!descriptor || descriptor.layers.web.status === 'invalid') { continue }
     const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'web', process.env)
     if (!permissionDecision.allowed) {
       setPluginLayerState(manifest.name, 'web', 'disabled', permissionDecision.reason)
@@ -144,7 +147,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   const serverPlugins = manifests.filter(m => m.cradle.server)
   for (const manifest of serverPlugins) {
     const descriptor = descriptors.find(d => d.identity === manifest.name)
-    if (!descriptor || descriptor.layers.server.status === 'invalid') continue
+    if (!descriptor || descriptor.layers.server.status === 'invalid') { continue }
     const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'server', process.env)
     if (!permissionDecision.allowed) {
       setPluginLayerState(manifest.name, 'server', 'disabled', permissionDecision.reason)
@@ -174,7 +177,8 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
       })
       setPluginLayerState(manifest.name, 'server', 'active')
       logger.info('plugin activated', { plugin: manifest.name })
-    } catch (err) {
+    }
+ catch (err) {
       const message = err instanceof Error ? err.message : String(err)
       setPluginLayerState(manifest.name, 'server', 'failed', message)
       disposeSubscriptions(manifest.name, subscriptions)
@@ -206,9 +210,11 @@ export async function deactivateAllPlugins(): Promise<void> {
   for (const [name, plugin] of activePlugins) {
     try {
       await plugin.deactivate?.()
-    } catch (err) {
+    }
+ catch (err) {
       logger.error('plugin deactivation failed', { plugin: name, err })
-    } finally {
+    }
+ finally {
       disposeSubscriptions(name, plugin.subscriptions)
     }
   }

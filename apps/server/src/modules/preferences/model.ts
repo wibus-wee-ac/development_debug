@@ -1,4 +1,3 @@
-import type { Static } from 'elysia'
 import { t } from 'elysia'
 import { z } from 'zod'
 
@@ -10,10 +9,6 @@ export const PreferencesModel = {
       t.Literal('queue'),
       t.Literal('steer'),
     ], { default: 'queue' }),
-    approvalMode: t.Union([
-      t.Literal('ask'),
-      t.Literal('allowAll'),
-    ], { default: 'ask' }),
   }, { additionalProperties: false }),
   chatPreferencesUpdate: t.Object({
     modelId: t.Nullable(t.String()),
@@ -22,10 +17,6 @@ export const PreferencesModel = {
       t.Literal('queue'),
       t.Literal('steer'),
     ], { default: 'queue' })),
-    approvalMode: t.Optional(t.Union([
-      t.Literal('ask'),
-      t.Literal('allowAll'),
-    ], { default: 'ask' })),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     profileId: t.Nullable(t.String({ description: 'ID of the agent profile to use for Jarvis' })),
@@ -50,12 +41,10 @@ export const ChatPreferencesJsonSchema = z.union([
   modelId: z.string().nullable().default(null),
   configSelections: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
   continuationBehavior: z.enum(['queue', 'steer']).default('queue'),
-  approvalMode: z.enum(['ask', 'allowAll']).default('ask'),
 }).default({
   modelId: null,
   configSelections: {},
   continuationBehavior: 'queue',
-  approvalMode: 'ask',
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([

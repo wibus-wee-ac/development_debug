@@ -1,12 +1,11 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto'
 import { createReadStream, createWriteStream, existsSync, readFileSync } from 'node:fs'
-import { copyFile, mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, relative, resolve } from 'node:path'
-import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
+import { pipeline } from 'node:stream/promises'
 
-import { generateText, type LanguageModel } from 'ai'
 import {
   chronicleAccessibilityEvents,
   chronicleAccessibilitySnapshots,
@@ -30,9 +29,11 @@ import {
   chronicleMessageSources,
   chronicleModelResources,
   chroniclePipelineRuns,
-  chronicleSpeakerProfiles,
   chronicleSnapshots,
+  chronicleSpeakerProfiles,
 } from '@cradle/db'
+import type { LanguageModel } from 'ai'
+import { generateText } from 'ai'
 import { count, desc, eq, inArray, sql } from 'drizzle-orm'
 import sharp from 'sharp'
 import { z } from 'zod'
@@ -632,14 +633,6 @@ interface ActivitySegmentContext {
   evidenceCounts: Record<string, number>
 }
 
-interface ActivityTriageResult {
-  keep: boolean
-  reason: string
-  segmentType: ActivitySegmentType
-  title: string | null
-  priority: 'low' | 'normal' | 'high'
-}
-
 interface ActivitySummaryResult {
   title: string
   summary: string
@@ -656,12 +649,6 @@ interface CrystallizedKnowledgeCardDraft {
   confidenceBps: number
   tags: string[]
   stableKey: string
-}
-
-interface ActivityCrystallizationResult {
-  summary: string
-  knowledgeCards: CrystallizedKnowledgeCardDraft[]
-  rejectedCount: number
 }
 
 const ModelTextJsonObjectSchema = z.string()
@@ -794,16 +781,6 @@ const SlackMessageEventBaseSchema = z.object({
   bot_id: z.string().optional(),
   username: z.string().nullable().default(null),
   thread_ts: SlackMessageTsTextSchema.optional(),
-}).passthrough()
-const SlackMessageEventSchema = SlackMessageEventBaseSchema.transform(message => ({
-  ...message,
-  userId: message.user || message.bot_id || null,
-  threadId: message.thread_ts || message.ts,
-}))
-const SlackEventCallbackPayloadSchema = z.object({
-  type: z.literal('event_callback'),
-  team_id: z.string().optional(),
-  event: SlackMessageEventSchema,
 }).passthrough()
 const SlackEventsPayloadJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
@@ -1139,7 +1116,8 @@ export function subscribeDownloadProgress(listener: (entry: DownloadProgressEntr
 function emitDownloadProgress(entry: DownloadProgressEntry): void {
   downloadProgress.set(`${entry.category}/${entry.file}`, entry)
   for (const listener of downloadProgressListeners) {
-    try { listener(entry) } catch {}
+    try { listener(entry) }
+ catch {}
   }
 }
 // --- End download progress tracking ---
@@ -1357,17 +1335,17 @@ export interface PrivacyBreadcrumbEntry {
   createdAtUnix: number
 }
 
-export type ChronicleRealtimeChannel =
-  | 'activity'
-  | 'cron'
-  | 'meeting'
-  | 'memory'
-  | 'notification'
-  | 'error'
-  | 'message'
-  | 'audio'
-  | 'snapshot'
-  | 'model'
+export type ChronicleRealtimeChannel
+  = | 'activity'
+    | 'cron'
+    | 'meeting'
+    | 'memory'
+    | 'notification'
+    | 'error'
+    | 'message'
+    | 'audio'
+    | 'snapshot'
+    | 'model'
 
 export interface ChronicleRealtimeEventEntry {
   id: string
@@ -2312,21 +2290,19 @@ export async function getStatus(): Promise<ChronicleStatus> {
   const daemonInfo = DaemonManager.getDaemonInfo()
   const latestSnapshot = db().select().from(chronicleSnapshots).orderBy(desc(chronicleSnapshots.capturedAt)).limit(1).get()
   const latestMemory = db().select().from(chronicleMemories).orderBy(desc(chronicleMemories.createdAt)).limit(1).get()
-  const latestError = db().select().from(chronicleEvents)
-    .where(eq(chronicleEvents.status, 'error'))
-    .orderBy(desc(chronicleEvents.createdAt))
-    .limit(1)
-    .get()
+  const latestError = db().select().from(chronicleEvents).where(eq(chronicleEvents.status, 'error')).orderBy(desc(chronicleEvents.createdAt)).limit(1).get()
   const snapshotCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_snapshots`)?.count ?? 0
   const memoryCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_memories`)?.count ?? 0
   const accessibilitySnapshotCount = db()
     .select({ value: count() })
     .from(chronicleAccessibilitySnapshots)
-    .get()?.value ?? 0
+    .get()
+?.value ?? 0
   const accessibilityEventCount = db()
     .select({ value: count() })
     .from(chronicleAccessibilityEvents)
-    .get()?.value ?? 0
+    .get()
+?.value ?? 0
   const audioTranscriptCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_transcripts`)?.count ?? 0
   const audioRawSegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_audio_raw_segments`)?.count ?? 0
   const activitySegmentCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_activity_segments`)?.count ?? 0
@@ -2761,12 +2737,12 @@ export function deleteMemory(memoryId: string): { ok: true } {
 }
 
 const PII_PATTERNS: Array<{ type: string, pattern: RegExp }> = [
-  { type: 'api_key', pattern: /\bsk-[A-Za-z0-9_-]{8,}\b/g },
+  { type: 'api_key', pattern: /\bsk-[\w-]{8,}\b/g },
   { type: 'api_key', pattern: /\bxox[abprs]-[A-Za-z0-9-]{8,}\b/g },
-  { type: 'api_key', pattern: /\b(?:ghp|github_pat|glpat|hf)_[A-Za-z0-9_-]{12,}\b/g },
-  { type: 'email', pattern: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi },
+  { type: 'api_key', pattern: /\b(?:ghp|github_pat|glpat|hf)_[\w-]{12,}\b/g },
+  { type: 'email', pattern: /\b[\w.%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi },
   { type: 'ssn', pattern: /\b\d{3}-\d{2}-\d{4}\b/g },
-  { type: 'phone_number', pattern: /(?<!\w)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\w)/g },
+  { type: 'phone_number', pattern: /(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g },
   { type: 'ip_address', pattern: /\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g },
   { type: 'credit_card', pattern: /\b(?:\d[ -]*?){13,19}\b/g },
 ]
@@ -3211,7 +3187,8 @@ export async function installAllModelResources(): Promise<ModelResourceEntry[]> 
       if (hasDownloadableFiles) {
         await installModelResource(category, { source: 'manifest' })
       }
-    } catch {
+    }
+ catch {
       // Continue installing other models even if one fails
     }
   }
@@ -3730,7 +3707,8 @@ export async function crystallizeMemory(rawInput: MemoryCrystallizeInput = {}): 
     .where(sql`${chronicleActivitySegments.isCrystallized} = 0`)
     .orderBy(chronicleActivitySegments.startedAt)
     .limit(1)
-    .get()?.id
+    .get()
+?.id
 
   if (!segmentId) {
     return {
@@ -4888,13 +4866,13 @@ function redactActivityEvidenceText(text: string): string {
 
 function redactApiKeys(text: string): string {
   return text
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[API_KEY]')
+    .replace(/\bsk-[\w-]{8,}\b/g, '[API_KEY]')
     .replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}\b/g, '[API_KEY]')
-    .replace(/\b(?:ghp|github_pat|glpat|hf)_[A-Za-z0-9_-]{12,}\b/g, '[API_KEY]')
+    .replace(/\b(?:ghp|github_pat|glpat|hf)_[\w-]{12,}\b/g, '[API_KEY]')
 }
 
 function redactEmails(text: string): string {
-  return text.replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]')
+  return text.replace(/\b[\w.%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]')
 }
 
 function redactSsns(text: string): string {
@@ -4909,7 +4887,7 @@ function redactCreditCards(text: string): string {
 }
 
 function redactPhoneNumbers(text: string): string {
-  return text.replace(/(?<!\w)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\w)/g, '[PHONE_NUMBER]')
+  return text.replace(/(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, '[PHONE_NUMBER]')
 }
 
 function redactIpv4Addresses(text: string): string {
@@ -5979,7 +5957,7 @@ function firstSourceRef(values: string[] | undefined): string | null {
 }
 
 function lastSourceRef(values: string[] | undefined): string | null {
-  return values && values.length > 0 ? values[values.length - 1] : null
+  return values && values.length > 0 ? values.at(-1) ?? null : null
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -6042,9 +6020,7 @@ function upsertSpeakerProfileFromLabel(
     : input.embedding === null
       ? null
       : input.embeddingModelId ?? existing?.embeddingModelId ?? 'speaker-embedding-extractor'
-  const lastSeenAt = input.seenAt === undefined || input.seenAt === null
-    ? existing ? existing.lastSeenAt : null
-    : input.seenAt
+  const lastSeenAt = input.seenAt ?? (existing ? existing.lastSeenAt : null)
 
   if (existing) {
     d.update(chronicleSpeakerProfiles).set({
@@ -6273,13 +6249,13 @@ function deriveRawAudioStatus(
   input: AudioRawSegmentProcessingResultInput,
   currentStatus: AudioRawSegmentEntry['status'],
 ): AudioRawSegmentEntry['status'] {
-  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'error')) {
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].includes('error')) {
     return 'error'
   }
-  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'pending')) {
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].includes('pending')) {
     return 'queued'
   }
-  if ([input.vadStatus, input.asrStatus, input.speakerStatus].some(status => status === 'ready')) {
+  if ([input.vadStatus, input.asrStatus, input.speakerStatus].includes('ready')) {
     return 'processed'
   }
   return currentStatus
@@ -7041,7 +7017,7 @@ export function recordMemory(
   }
 
   if (duplicate) {
-    const merged = db().transaction((tx) => mergeDuplicateMemory(tx, duplicate, {
+    const merged = db().transaction(tx => mergeDuplicateMemory(tx, duplicate, {
       sourceId: input.sourceId,
       sourcePaths,
       sourceSnapshotIds,
@@ -8780,11 +8756,13 @@ function getOnnxEmbeddingRuntimeHealth(): { ok: boolean, error: string | null } 
 }
 
 function buildLexicalEmbeddingVector(text: string): number[] {
-  const vector = Array.from({ length: MEMORY_EMBEDDING_DIMENSIONS }, () => 0)
+  const vector = Array.from({ length: MEMORY_EMBEDDING_DIMENSIONS }).fill(0) as number[]
   for (const term of tokenizeMemoryText(text)) {
-    vector[stableTermIndex(`term:${term}`)] += 1
+    const termIndex = stableTermIndex(`term:${term}`)
+    vector[termIndex] = (vector[termIndex] ?? 0) + 1
     for (const trigram of termTrigrams(term)) {
-      vector[stableTermIndex(`tri:${trigram}`)] += 0.35
+      const trigramIndex = stableTermIndex(`tri:${trigram}`)
+      vector[trigramIndex] = (vector[trigramIndex] ?? 0) + 0.35
     }
   }
   return normalizeVector(vector)
@@ -8862,24 +8840,24 @@ function unixSecondsToIso(value: number | null): string | null {
   return value === null ? null : new Date(value * 1000).toISOString()
 }
 
-type ChronicleCountTable =
-  | 'chronicle_accessibility_events'
-  | 'chronicle_accessibility_snapshots'
-  | 'chronicle_activity_segments'
-  | 'chronicle_activity_sessions'
-  | 'chronicle_audio_raw_segments'
-  | 'chronicle_audio_transcripts'
-  | 'chronicle_dream_runs'
-  | 'chronicle_knowledge_cards'
-  | 'chronicle_knowledge_versions'
-  | 'chronicle_memories'
-  | 'chronicle_memory_chunks'
-  | 'chronicle_memory_embeddings'
-  | 'chronicle_memory_keywords'
-  | 'chronicle_messages'
-  | 'chronicle_model_resources'
-  | 'chronicle_pipeline_runs'
-  | 'chronicle_snapshots'
+type ChronicleCountTable
+  = | 'chronicle_accessibility_events'
+    | 'chronicle_accessibility_snapshots'
+    | 'chronicle_activity_segments'
+    | 'chronicle_activity_sessions'
+    | 'chronicle_audio_raw_segments'
+    | 'chronicle_audio_transcripts'
+    | 'chronicle_dream_runs'
+    | 'chronicle_knowledge_cards'
+    | 'chronicle_knowledge_versions'
+    | 'chronicle_memories'
+    | 'chronicle_memory_chunks'
+    | 'chronicle_memory_embeddings'
+    | 'chronicle_memory_keywords'
+    | 'chronicle_messages'
+    | 'chronicle_model_resources'
+    | 'chronicle_pipeline_runs'
+    | 'chronicle_snapshots'
 
 function countTable(tableName: ChronicleCountTable): number {
   return db().get<{ count: number }>(sql.raw(`SELECT COUNT(*) AS count FROM ${tableName}`))?.count ?? 0

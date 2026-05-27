@@ -1,5 +1,6 @@
 import type { Disposable } from '@cradle/plugin-sdk'
 import type { SkillDefinition } from '@cradle/plugin-sdk/server'
+
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
 const skills: SkillDefinition[] = []
@@ -17,7 +18,7 @@ export function registerOwnedPluginSkill(owner: string, skill: SkillDefinition):
   let disposed = false
   return {
     dispose() {
-      if (disposed) return
+      if (disposed) { return }
       disposed = true
       const index = skills.indexOf(skill)
       if (index >= 0) {

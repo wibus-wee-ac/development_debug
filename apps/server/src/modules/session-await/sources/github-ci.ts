@@ -1,4 +1,7 @@
+import { z } from 'zod'
+
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
+import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from './github-api'
 import {
   fetchCheckRuns,
   fetchCombinedStatus,
@@ -10,17 +13,9 @@ import {
   isGitHubMissingTarget,
   isGitHubRateLimited,
   resetTokenCache,
-  type GitHubCheckRun,
-  type GitHubCommitStatus,
-  type GitHubWorkflowJob,
-  type GitHubWorkflowJobStep,
-  type GitHubWorkflowRun,
 } from './github-api'
-import { z } from 'zod'
 
 export { resetTokenCache }
-
-type GitHubCIMode = 'all'
 
 export interface LiveCheckRun {
   id: number | null
@@ -122,8 +117,7 @@ const PASSING_CHECK_CONCLUSIONS = new Set(['success', 'neutral', 'skipped'])
 const FAILING_CHECK_CONCLUSIONS = new Set(['failure', 'timed_out', 'cancelled', 'action_required', 'startup_failure'])
 const CHECK_RUN_ID_PATTERN = /\/check-runs\/(\d+)(?:$|\?)/
 
-const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/)
-  .transform((repoFullName) => {
+const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/).transform((repoFullName) => {
     const [owner, repo] = repoFullName.split('/')
     return { owner, repo }
   })

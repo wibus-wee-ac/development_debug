@@ -207,7 +207,7 @@ afterEach(() => {
   }
 })
 
-describe('CC Switch external provider source', () => {
+describe('cC Switch external provider source', () => {
   it('reads providers and applies local settings current provider precedence', () => {
     const dir = createTempWorkspace()
     const dbPath = join(dir, 'cc-switch.db')
@@ -266,6 +266,7 @@ describe('CC Switch external provider source', () => {
           current: true,
           config: expect.objectContaining({
             baseUrl: 'https://anthropic-a.example.test',
+            model: 'claude-test',
           }),
           metadata: expect.objectContaining({ model: 'claude-test' }),
           credential: expect.objectContaining({ value: 'test-anthropic-key' }),
@@ -275,13 +276,14 @@ describe('CC Switch external provider source', () => {
           providerKind: 'openai-compatible',
           config: expect.objectContaining({
             baseUrl: 'https://openai.example.test/v1',
+            model: 'gpt-test',
+            apiMode: 'responses',
           }),
           metadata: expect.objectContaining({ model: 'gpt-test', apiFormat: 'openai_responses' }),
           credential: expect.objectContaining({ value: 'test-openai-key' }),
         }),
       ]))
       for (const provider of snapshot.providers) {
-        expect(provider.config).not.toHaveProperty('model')
         expect(provider.config).not.toHaveProperty('customModels')
         expect(provider.config).not.toHaveProperty('modelRegistryMappings')
       }
@@ -295,11 +297,11 @@ describe('CC Switch external provider source', () => {
       ]))
     }
     finally {
-      if (previousDbPath === undefined) delete process.env.CRADLE_CC_SWITCH_DB_PATH
-      else process.env.CRADLE_CC_SWITCH_DB_PATH = previousDbPath
+      if (previousDbPath === undefined) { delete process.env.CRADLE_CC_SWITCH_DB_PATH }
+      else { process.env.CRADLE_CC_SWITCH_DB_PATH = previousDbPath }
 
-      if (previousSettingsPath === undefined) delete process.env.CRADLE_CC_SWITCH_SETTINGS_PATH
-      else process.env.CRADLE_CC_SWITCH_SETTINGS_PATH = previousSettingsPath
+      if (previousSettingsPath === undefined) { delete process.env.CRADLE_CC_SWITCH_SETTINGS_PATH }
+      else { process.env.CRADLE_CC_SWITCH_SETTINGS_PATH = previousSettingsPath }
     }
   })
 
@@ -427,7 +429,11 @@ describe('CC Switch external provider source', () => {
     expect(snapshot.source.status).toBe('warning')
     expect(nullableProvider).toEqual(expect.objectContaining({
       providerKind: 'openai-compatible',
-      config: { baseUrl: 'https://null-key.example.test/v1' },
+      config: expect.objectContaining({
+        baseUrl: 'https://null-key.example.test/v1',
+        model: 'gpt-null-key',
+        apiMode: 'responses',
+      }),
       metadata: expect.objectContaining({ model: 'gpt-null-key' }),
     }))
     expect(nullableProvider?.credential).toBeUndefined()

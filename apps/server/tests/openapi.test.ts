@@ -40,7 +40,10 @@ describe('openapi capability', () => {
                 string,
                 {
                   description?: string
-                  content?: { 'application/json'?: { schema?: { $ref?: string } } }
+                  content?: {
+                    'application/json'?: { schema?: { $ref?: string } }
+                    'text/event-stream'?: { example?: string, schema?: { type?: string } }
+                  }
                 }
               >
             }
@@ -62,22 +65,23 @@ describe('openapi capability', () => {
       expect(
         document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.content?.[
           'text/event-stream'
-        ]
+        ],
       ).toBeTruthy()
       expect(
-        document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.description
-      ).toContain('message_delta')
+        document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']?.description,
+      ).toContain('AI SDK UIMessageChunk')
       expect(
         String(
           document.paths['/chat/sessions/{sessionId}/response']?.post?.responses?.['200']
-            ?.content?.['text/event-stream']?.example ?? ''
-        )
-      ).toContain('text_append')
+            ?.content?.['text/event-stream']
+?.example ?? '',
+        ),
+      ).toContain('text-delta')
       expect(document.paths['/chat/sessions/{sessionId}/messages']?.get).toBeTruthy()
       expect(
         document.paths['/chat/sessions/{sessionId}/messages']?.get?.responses?.['200']?.content?.[
           'application/json'
-        ]?.schema
+        ]?.schema,
       ).toBeTruthy()
       expect(document.paths['/chat/sessions/{sessionId}/cancel']?.post).toBeTruthy()
       expect(document.paths['/chat/runs/{runId}']).toBeUndefined()
@@ -107,12 +111,14 @@ describe('openapi capability', () => {
       expect(docsResponse.headers.get('content-type')).toContain('text/html')
       const html = await docsResponse.text()
       expect(html).toContain('api-reference')
-    } finally {
+    }
+ finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
-      } else {
+      }
+ else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }

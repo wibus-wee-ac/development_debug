@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { promisify } from 'node:util'
 
 import type { StatusResult } from 'simple-git'
@@ -67,7 +67,7 @@ const STATUS_RANK: Record<GitFileStatusKind, number> = {
   renamed: 4,
   added: 3,
   modified: 2,
-  untracked: 1
+  untracked: 1,
 }
 
 function getGit(workspaceId: string) {
@@ -81,7 +81,7 @@ function getWorkspacePath(workspaceId: string): string {
       code: 'workspace_not_found',
       status: 404,
       message: 'Workspace not found',
-      details: { workspaceId }
+      details: { workspaceId },
     })
   }
   return workspace.path
@@ -93,7 +93,7 @@ function mapGitError(workspaceId: string, error: unknown): AppError {
     code: 'git_repository_unavailable',
     status: 409,
     message: 'Git repository unavailable',
-    details: { workspaceId, reason: message }
+    details: { workspaceId, reason: message },
   })
 }
 
@@ -107,9 +107,10 @@ export async function getStatus(workspaceId: string): Promise<GitStatusView> {
       ahead: status.ahead,
       behind: status.behind,
       isDetached: status.detached,
-      files: collectFileStatuses(status)
+      files: collectFileStatuses(status),
     }
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -141,7 +142,7 @@ function collectFileStatuses(status: StatusResult): GitFileStatusView[] {
   }
 
   return Array.from(byPath.entries(), ([path, fileStatus]) => ({ path, status: fileStatus })).sort(
-    (left, right) => left.path.localeCompare(right.path)
+    (left, right) => left.path.localeCompare(right.path),
   )
 }
 
@@ -151,7 +152,7 @@ export async function getBranches(workspaceId: string): Promise<GitBranchesView>
     const raw = await git.raw([
       'branch',
       '-a',
-      `--format=%(refname:short)${FIELD_SEP}%(upstream:short)${FIELD_SEP}%(HEAD)`
+      `--format=%(refname:short)${FIELD_SEP}%(upstream:short)${FIELD_SEP}%(HEAD)`,
     ])
 
     const local: GitLocalBranchView[] = []
@@ -171,17 +172,19 @@ export async function getBranches(workspaceId: string): Promise<GitBranchesView>
         if (!remoteName.endsWith('/HEAD')) {
           remote.push({ name: remoteName })
         }
-      } else {
+      }
+ else {
         local.push({
           name,
           isCurrent: head === '*',
-          tracking: upstream?.trim() || undefined
+          tracking: upstream?.trim() || undefined,
         })
       }
     }
 
     return { local, remote }
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -190,12 +193,13 @@ export async function getRemotes(workspaceId: string): Promise<GitRemoteView[]> 
   const git = getGit(workspaceId)
   try {
     const remotes = await git.getRemotes(true)
-    return remotes.map((remote) => ({
+    return remotes.map(remote => ({
       name: remote.name,
       fetchUrl: remote.refs.fetch ?? null,
-      pushUrl: remote.refs.push ?? null
+      pushUrl: remote.refs.push ?? null,
     }))
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -208,16 +212,16 @@ export async function getGraph(workspaceId: string, limit: number): Promise<GitG
 
     return raw
       .split('\n')
-      .filter((line) => line.trim().length > 0)
+      .filter(line => line.trim().length > 0)
       .map((line) => {
-        const [sha, parentsRaw, refsRaw, subject, authorName, authorEmail, timestampStr] =
-          line.split(FIELD_SEP)
+        const [sha, parentsRaw, refsRaw, subject, authorName, authorEmail, timestampStr]
+          = line.split(FIELD_SEP)
         const parents = parentsRaw?.trim() ? parentsRaw.trim().split(' ') : []
         const refs = refsRaw?.trim()
           ? refsRaw
               .trim()
               .split(',')
-              .map((ref) => ref.trim())
+              .map(ref => ref.trim())
               .filter(Boolean)
           : []
         const timestamp = timestampStr ? Number.parseInt(timestampStr, 10) * 1000 : 0
@@ -234,10 +238,11 @@ export async function getGraph(workspaceId: string, limit: number): Promise<GitG
             .update((authorEmail ?? '').toLowerCase().trim())
             .digest('hex'),
           date: new Date(timestamp).toISOString(),
-          timestamp
+          timestamp,
         }
       })
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -251,14 +256,16 @@ export async function checkout(workspaceId: string, branch: string): Promise<voi
       const summary = await git.branchLocal()
       if (summary.all.includes(localName)) {
         await git.checkout(localName)
-      } else {
+      }
+ else {
         await git.checkoutBranch(localName, branch)
       }
       return
     }
 
     await git.checkout(branch)
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -266,12 +273,13 @@ export async function checkout(workspaceId: string, branch: string): Promise<voi
 export async function createBranch(
   workspaceId: string,
   name: string,
-  from?: string
+  from?: string,
 ): Promise<void> {
   const git = getGit(workspaceId)
   try {
     await git.checkoutBranch(name, from ?? 'HEAD')
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -280,7 +288,8 @@ export async function fetch(workspaceId: string): Promise<void> {
   const git = getGit(workspaceId)
   try {
     await git.fetch(['--all', '--prune'])
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -291,23 +300,24 @@ export async function getDiff(workspaceId: string, paths?: string[]): Promise<st
     const selectedPaths = normalizeDiffPaths(paths)
     const status = await simpleGit(workspacePath).status()
     const untrackedPaths = collectUntrackedDiffPaths(status, selectedPaths)
-    const trackedPaths = selectedPaths?.filter((path) => !untrackedPaths.has(path))
-    const trackedDiff =
-      trackedPaths?.length === 0
+    const trackedPaths = selectedPaths?.filter(path => !untrackedPaths.has(path))
+    const trackedDiff
+      = trackedPaths?.length === 0
         ? ''
         : await runGitDiff(workspacePath, [
             'diff',
             'HEAD',
-            ...(trackedPaths ? ['--', ...trackedPaths] : [])
+            ...(trackedPaths ? ['--', ...trackedPaths] : []),
           ])
     const untrackedDiffs: string[] = []
     for (const path of untrackedPaths) {
       untrackedDiffs.push(
-        await runGitDiff(workspacePath, ['diff', '--no-index', '--', '/dev/null', path], [1])
+        await runGitDiff(workspacePath, ['diff', '--no-index', '--', '/dev/null', path], [1]),
       )
     }
     return joinDiffs([trackedDiff, ...untrackedDiffs])
-  } catch (error) {
+  }
+ catch (error) {
     throw mapGitError(workspaceId, error)
   }
 }
@@ -317,7 +327,7 @@ function normalizeDiffPaths(paths?: string[]): string[] | undefined {
     return undefined
   }
 
-  const normalizedPaths = paths.map((path) => path.trim()).filter(Boolean)
+  const normalizedPaths = paths.map(path => path.trim()).filter(Boolean)
   return normalizedPaths.length > 0 ? Array.from(new Set(normalizedPaths)) : undefined
 }
 
@@ -327,22 +337,23 @@ function collectUntrackedDiffPaths(status: StatusResult, selectedPaths?: string[
     return untrackedPaths
   }
 
-  return new Set(selectedPaths.filter((path) => untrackedPaths.has(path)))
+  return new Set(selectedPaths.filter(path => untrackedPaths.has(path)))
 }
 
 async function runGitDiff(
   cwd: string,
   args: string[],
-  allowedExitCodes: number[] = []
+  allowedExitCodes: number[] = [],
 ): Promise<string> {
   try {
     const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 1024 * 1024 * 50 })
     return stdout
-  } catch (error) {
+  }
+ catch (error) {
     if (
-      isExecError(error) &&
-      typeof error.code === 'number' &&
-      allowedExitCodes.includes(error.code)
+      isExecError(error)
+      && typeof error.code === 'number'
+      && allowedExitCodes.includes(error.code)
     ) {
       return typeof error.stdout === 'string' ? error.stdout : ''
     }
@@ -350,13 +361,13 @@ async function runGitDiff(
   }
 }
 
-function isExecError(error: unknown): error is Error & { code?: number; stdout?: string } {
+function isExecError(error: unknown): error is Error & { code?: number, stdout?: string } {
   return error instanceof Error
 }
 
 function joinDiffs(diffs: string[]): string {
   return diffs
-    .map((diff) => diff.trimEnd())
+    .map(diff => diff.trimEnd())
     .filter(Boolean)
     .join('\n')
 }

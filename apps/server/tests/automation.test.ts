@@ -218,10 +218,10 @@ describe('automation capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
-      if (previousSecret === undefined) delete process.env.CRADLE_CREDENTIAL_SECRET
-      else process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
+      if (previousSecret === undefined) { delete process.env.CRADLE_CREDENTIAL_SECRET }
+      else { process.env.CRADLE_CREDENTIAL_SECRET = previousSecret }
     }
   })
 
@@ -324,10 +324,10 @@ describe('automation capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
-      if (previousSecret === undefined) delete process.env.CRADLE_CREDENTIAL_SECRET
-      else process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
+      if (previousSecret === undefined) { delete process.env.CRADLE_CREDENTIAL_SECRET }
+      else { process.env.CRADLE_CREDENTIAL_SECRET = previousSecret }
     }
   })
 
@@ -394,10 +394,10 @@ describe('automation capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
-      if (previousSecret === undefined) delete process.env.CRADLE_CREDENTIAL_SECRET
-      else process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
+      if (previousSecret === undefined) { delete process.env.CRADLE_CREDENTIAL_SECRET }
+      else { process.env.CRADLE_CREDENTIAL_SECRET = previousSecret }
     }
   })
 
@@ -437,10 +437,10 @@ describe('automation capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
-      if (previousSecret === undefined) delete process.env.CRADLE_CREDENTIAL_SECRET
-      else process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
+      if (previousSecret === undefined) { delete process.env.CRADLE_CREDENTIAL_SECRET }
+      else { process.env.CRADLE_CREDENTIAL_SECRET = previousSecret }
     }
   })
 
@@ -518,10 +518,10 @@ describe('automation capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
-      if (previousSecret === undefined) delete process.env.CRADLE_CREDENTIAL_SECRET
-      else process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
+      if (previousSecret === undefined) { delete process.env.CRADLE_CREDENTIAL_SECRET }
+      else { process.env.CRADLE_CREDENTIAL_SECRET = previousSecret }
     }
   })
 })

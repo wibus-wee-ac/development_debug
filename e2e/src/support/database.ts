@@ -9,8 +9,8 @@ import type { CradleWorld } from './world'
 type SqliteParam = string | number | null
 interface ElectronDatabaseContext {
   app: {
-    getAppPath(): string
-    getPath(name: string): string
+    getAppPath: () => string
+    getPath: (name: string) => string
   }
 }
 

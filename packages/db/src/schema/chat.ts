@@ -122,16 +122,6 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   byStartedRun: index('chat_session_queue_items_started_run_id_idx').on(table.startedRunId),
 }))
 
-export const approvalAudit = sqliteTable('approval_audit', {
-  id: textPk(),
-  sessionId: text('session_id')
-    .references(() => sessions.id, { onDelete: 'cascade' }),
-  toolName: text('tool_name').notNull(),
-  decision: text('decision', { enum: ['approved', 'rejected'] }).notNull(),
-  selectedOptionId: text('selected_option_id').notNull(),
-  ...createdAt(),
-})
-
 export type Session = typeof sessions.$inferSelect
 export type NewSession = typeof sessions.$inferInsert
 export type Message = typeof messages.$inferSelect
@@ -142,5 +132,3 @@ export type StepUsageRow = typeof stepUsage.$inferSelect
 export type NewStepUsageRow = typeof stepUsage.$inferInsert
 export type ChatSessionQueueItem = typeof chatSessionQueueItems.$inferSelect
 export type NewChatSessionQueueItem = typeof chatSessionQueueItems.$inferInsert
-export type ApprovalAuditRow = typeof approvalAudit.$inferSelect
-export type NewApprovalAuditRow = typeof approvalAudit.$inferInsert

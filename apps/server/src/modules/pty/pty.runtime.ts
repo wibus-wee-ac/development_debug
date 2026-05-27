@@ -104,7 +104,7 @@ export class PtyRuntimeRegistry {
       role: input.role,
       executable: input.executable,
       cwd: input.cwd,
-      startedAt: Date.now()
+      startedAt: Date.now(),
     }
 
     record.cols = input.cols
@@ -123,7 +123,7 @@ export class PtyRuntimeRegistry {
       cwd: input.cwd,
       env: input.env
         ? ({ ...process.env, ...input.env } as Record<string, string>)
-        : (process.env as Record<string, string>)
+        : (process.env as Record<string, string>),
     })
 
     record.process = child
@@ -136,7 +136,7 @@ export class PtyRuntimeRegistry {
       record.process = null
       const exit: PtyExitState = {
         exitCode,
-        signal: signal !== undefined ? String(signal) : null
+        signal: signal !== undefined ? String(signal) : null,
       }
       this.hooks.onExit(input.sessionId, exit)
 
@@ -241,14 +241,15 @@ async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> 
     }
 
     return rows
-  } catch {
+  }
+ catch {
     return null
   }
 }
 
 function collectProcessTree(
   rootPid: number,
-  rows: Map<number, ProcessTableRow>
+  rows: Map<number, ProcessTableRow>,
 ): ProcessTableRow[] {
   const root = rows.get(rootPid)
   if (!root) {

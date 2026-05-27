@@ -9,13 +9,13 @@ import type { SampleSource } from '../data/samples'
 import { SAMPLES } from '../data/samples'
 
 type TweakpaneBinding<T> = {
-  on(eventName: 'change', handler: (ev: TpChangeEvent<T>) => void): unknown
-  off(eventName: 'change', handler: (ev: TpChangeEvent<T>) => void): unknown
+  on: (eventName: 'change', handler: (ev: TpChangeEvent<T>) => void) => unknown
+  off: (eventName: 'change', handler: (ev: TpChangeEvent<T>) => void) => unknown
 }
 
 type TweakpaneButton = {
-  on(eventName: 'click', handler: () => void): unknown
-  off(eventName: 'click', handler: () => void): unknown
+  on: (eventName: 'click', handler: () => void) => unknown
+  off: (eventName: 'click', handler: () => void) => unknown
 }
 
 interface ControlPanelParams {

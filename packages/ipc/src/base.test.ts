@@ -15,11 +15,28 @@ class TestService extends IpcService {
     super()
   }
 
-  @IpcMethod()
   ping() {
     return this.value
   }
 }
+
+const SymbolMetadata = Symbol.metadata ?? Symbol.for('Symbol.metadata')
+const testServiceMetadata = {}
+
+IpcMethod()(TestService.prototype.ping, {
+  kind: 'method',
+  name: 'ping',
+  static: false,
+  private: false,
+  metadata: testServiceMetadata,
+  access: {
+    has: object => 'ping' in object,
+    get: object => object.ping,
+  },
+  addInitializer() {},
+} satisfies ClassMethodDecoratorContext<TestService, TestService['ping']>)
+
+Object.defineProperty(TestService, SymbolMetadata, { value: testServiceMetadata })
 
 describe('createServices', () => {
   it('accepts pre-built service instances for explicit dependency injection', () => {

@@ -14,8 +14,6 @@ import { register as registerAgentDelete } from './agent/delete'
 import { register as registerAgentGet } from './agent/get'
 import { register as registerAgentList } from './agent/list'
 import { register as registerAgentUpdate } from './agent/update'
-import { register as registerApprovalList } from './approval/list'
-import { register as registerApprovalRespond } from './approval/respond'
 import { register as registerAutomationArtifactGet } from './automation/artifact/get'
 import { register as registerAutomationArtifactList } from './automation/artifact/list'
 import { register as registerAutomationArtifacts } from './automation/artifacts'
@@ -178,9 +176,12 @@ import { register as registerWorkflowRuleList } from './workflow-rule/list'
 import { register as registerWorkflowRuleSave } from './workflow-rule/save'
 import { register as registerWorkspaceCreate } from './workspace/create'
 import { register as registerWorkspaceDelete } from './workspace/delete'
+import { register as registerWorkspaceFileCreate } from './workspace/file/create'
 import { register as registerWorkspaceFileRead } from './workspace/file/read'
+import { register as registerWorkspaceFileRename } from './workspace/file/rename'
 import { register as registerWorkspaceFileWrite } from './workspace/file/write'
 import { register as registerWorkspaceFiles } from './workspace/files'
+import { register as registerWorkspaceFolderCreate } from './workspace/folder/create'
 import { register as registerWorkspaceGet } from './workspace/get'
 import { register as registerWorkspaceGitBranchCreate } from './workspace/git/branch/create'
 import { register as registerWorkspaceGitBranches } from './workspace/git/branches'
@@ -210,8 +211,6 @@ export function registerGeneratedCommands(program: Command): void {
   registerAgentGet(program)
   registerAgentList(program)
   registerAgentUpdate(program)
-  registerApprovalList(program)
-  registerApprovalRespond(program)
   registerAutomationArtifactGet(program)
   registerAutomationArtifactList(program)
   registerAutomationArtifacts(program)
@@ -374,9 +373,12 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkflowRuleSave(program)
   registerWorkspaceCreate(program)
   registerWorkspaceDelete(program)
+  registerWorkspaceFileCreate(program)
   registerWorkspaceFileRead(program)
+  registerWorkspaceFileRename(program)
   registerWorkspaceFileWrite(program)
   registerWorkspaceFiles(program)
+  registerWorkspaceFolderCreate(program)
   registerWorkspaceGet(program)
   registerWorkspaceGitBranchCreate(program)
   registerWorkspaceGitBranches(program)

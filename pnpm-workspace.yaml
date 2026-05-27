@@ -13,4 +13,4 @@ allowBuilds:
   node-pty: true
   sharp: true
 patchedDependencies:
-  "@elysiajs/node@1.4.5": "patches/@elysiajs__node@1.4.5.patch"
+  '@elysiajs/node@1.4.5': patches/@elysiajs__node@1.4.5.patch

@@ -56,8 +56,8 @@ Create-time note:
 
 ## Side Effects
 
-- 删除会话时触发 PTY 停止、搜索索引清理、以及 session-scoped approval cleanup。
-- 清理回调由 session capability 统一编排，当前已接入 PTY、search、approval capability。
+- 删除会话时触发 PTY 停止和搜索索引清理。
+- 清理回调由 session capability 统一编排，当前已接入 PTY 与 search capability。
 
 ## Dependencies
 
@@ -138,7 +138,7 @@ HTTP endpoints (Tsuki/Hono controller):
 - `PATCH /sessions/:id`：支持 title / pinned 的资源字段更新。
 - `getMessages`：按时间升序返回。
 - `exportAsMarkdown`：包含标题、模型信息与消息内容，assistant 文本来自 `messages.content`。
-- 删除时调用 PTY/搜索/approval 清理（可用时）。
+- 删除时调用 PTY/搜索清理（可用时）。
 
 ## Cutover Plan
 

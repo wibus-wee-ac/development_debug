@@ -29,7 +29,7 @@ export const git = new Elysia({
   })
   .get('/:id/git/remotes', ({ params }) => Git.getRemotes(params.id), {
     detail: {
-      'summary': 'Get git remotes',
+      summary: 'Get git remotes',
     },
     params: GitModel.idParams,
     response: { 200: GitModel.remotesView },

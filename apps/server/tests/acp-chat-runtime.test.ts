@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
@@ -110,18 +110,18 @@ function makeTempDir(prefix: string): string {
 }
 
 async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
-  const profileRes = await app.handle(new Request('http://localhost/profiles/profile-acp', {
+  const targetRes = await app.handle(new Request('http://localhost/provider-targets/provider-target-acp', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      name: 'ACP Runtime Profile',
+      displayName: 'ACP Runtime Provider',
       providerKind: 'openai-compatible',
       enabled: true,
-      config: { distributionType: 'npx', cmd: '@demo/acp-agent', args: ['--stdio'] },
+      connectionConfig: { distributionType: 'npx', cmd: '@demo/acp-agent', args: ['--stdio'] },
       credentialRef: null,
     }),
   }))
-  expect(profileRes.status).toBe(200)
+  expect(targetRes.status).toBe(200)
 
   const sessionRes = await app.handle(new Request('http://localhost/sessions', {
     method: 'POST',
@@ -130,7 +130,7 @@ async function createAcpProfileAndSession(app: ElysiaApp, workspaceId: string) {
       id: 'session-acp',
       workspaceId,
       title: 'ACP Runtime Session',
-      agentProfileId: 'profile-acp',
+      providerTargetId: 'provider-target-acp',
       runtimeKind: 'acp-chat',
     }),
   }))
@@ -151,21 +151,6 @@ async function waitForMessageStatus(app: ElysiaApp, sessionId: string, expectedS
   }
 
   throw new Error(`Timed out waiting for assistant status ${expectedStatus}`)
-}
-
-async function waitForPendingApproval(app: ElysiaApp, chatSessionId: string): Promise<{ id: string, prompt: string, options: Array<{ optionId: string }> }> {
-  for (let attempt = 0; attempt < 50; attempt += 1) {
-    const response = await app.handle(new Request(`http://localhost/approvals?chatSessionId=${encodeURIComponent(chatSessionId)}`))
-    if (response.status === 200) {
-      const approvals = await response.json() as Array<{ id: string, prompt: string, options: Array<{ optionId: string }> }>
-      if (approvals.length > 0) {
-        return approvals[0]
-      }
-    }
-    await new Promise(resolve => setTimeout(resolve, 20))
-  }
-
-  throw new Error('Timed out waiting for ACP approval request')
 }
 
 describe('acp chat runtime capability', () => {
@@ -283,7 +268,7 @@ describe('acp chat runtime capability', () => {
     vi.restoreAllMocks()
   })
 
-  it('runs an ACP turn through server chat-runtime, routes approvals, syncs titles, and writes usage', async () => {
+  it('runs an ACP turn through server chat-runtime, rejects ACP permission side channels, syncs titles, and writes usage', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -308,32 +293,19 @@ describe('acp chat runtime capability', () => {
       }))
       expect(runRes.status).toBe(200)
 
-      const approval = await waitForPendingApproval(app, 'session-acp')
-      expect(approval.prompt).toBe('Write workspace file')
-
-      const respondRes = await app.handle(new Request(`http://localhost/approvals/${encodeURIComponent(approval.id)}/respond`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          decision: 'approved',
-          selectedOptionId: approval.options[0]!.optionId,
-        }),
-      }))
-      expect(respondRes.status).toBe(200)
-      expect(await respondRes.json()).toEqual({ ok: true })
-
       const timeline = await waitForMessageStatus(app, 'session-acp', 'complete')
       expect(timeline).toHaveLength(2)
-      expect(timeline[0]).toEqual(expect.objectContaining({
+      const user = timeline.find(message => message.role === 'user')
+      const assistant = timeline.find(message => message.role === 'assistant')
+      expect(user).toEqual(expect.objectContaining({
         role: 'user',
         content: 'Explain ACP runtime ownership',
         status: 'complete',
       }))
 
-      const assistant = timeline[1]
       expect(assistant).toEqual(expect.objectContaining({ role: 'assistant', status: 'complete' }))
-      expect(assistant.content).toBe('Hello from ACP runtime')
-      expect(assistant.message.parts).toEqual(expect.arrayContaining([
+      expect(assistant?.content).toBe('Hello from ACP runtime')
+      expect(assistant?.message.parts).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: 'reasoning', text: 'Thinking...', state: 'done' }),
         expect.objectContaining({ type: 'text', text: 'Hello from ACP runtime', state: 'done' }),
       ]))
@@ -341,10 +313,6 @@ describe('acp chat runtime capability', () => {
       const sessionRes = await app.handle(new Request('http://localhost/sessions/session-acp'))
       expect(sessionRes.status).toBe(200)
       expect((await sessionRes.json()).title).toBe('ACP Session Renamed')
-
-      const approvalsAfterRes = await app.handle(new Request('http://localhost/approvals?chatSessionId=session-acp'))
-      expect(approvalsAfterRes.status).toBe(200)
-      expect(await approvalsAfterRes.json()).toEqual([])
 
       const usageRes = await app.handle(new Request('http://localhost/usage/sessions/session-acp'))
       expect(usageRes.status).toBe(200)
@@ -361,11 +329,6 @@ describe('acp chat runtime capability', () => {
             command: 'node',
             args: ['/tmp/browser-use-mcp-server.mjs'],
             env: [{ name: 'BROWSER_BACKEND_SOCKET', value: '/tmp/cradle-browser.sock' }],
-          }),
-          expect.objectContaining({
-            name: 'chronicle',
-            command: 'node',
-            env: [{ name: 'CRADLE_URL', value: 'http://127.0.0.1:21423' }],
           }),
         ]),
       })
@@ -412,11 +375,6 @@ describe('acp chat runtime capability', () => {
 
     const expectedMcpServers = [
       expect.objectContaining({
-        name: 'chronicle',
-        command: 'node',
-        env: [{ name: 'CRADLE_URL', value: 'http://127.0.0.1:21423' }],
-      }),
-      expect.objectContaining({
         name: 'browser-use',
         command: 'node',
         args: ['/tmp/browser-use-mcp-server.mjs'],
@@ -443,11 +401,10 @@ describe('acp chat runtime capability', () => {
     }))
   })
 
-  it('requires explicit approval before ACP agents write client filesystem paths', async () => {
+  it('fails closed before ACP agents write client filesystem paths', async () => {
     const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
     const workspaceRoot = makeTempDir('cradle-acp-write-')
     const targetPath = join(workspaceRoot, 'notes.md')
-    const permissionRequests: unknown[] = []
     const manager = new AcpConnectionManager({
       spawn: () => ({
         agentId: 'profile-acp',
@@ -462,11 +419,6 @@ describe('acp chat runtime capability', () => {
       disposeAll: () => {},
     } as never)
 
-    manager.setPermissionHandler(async (request) => {
-      permissionRequests.push(request)
-      return { outcome: 'selected', optionId: 'allow_file_write_once' }
-    })
-
     try {
       await manager.connect('profile-acp', {
         distributionType: 'npx',
@@ -478,26 +430,13 @@ describe('acp chat runtime capability', () => {
 
       const client = acpMocks.getClient()
       expect(client?.writeTextFile).toBeTypeOf('function')
-      await client?.writeTextFile?.({
+      await expect(client?.writeTextFile?.({
         sessionId: 'acp-session-write',
         path: targetPath,
         content: 'allowed write\n',
-      })
+      })).rejects.toThrow('ACP file write requires an approval handler before writing client filesystem paths')
 
-      expect(readFileSync(targetPath, 'utf8')).toBe('allowed write\n')
-      expect(permissionRequests).toEqual([
-        expect.objectContaining({
-          agentId: 'profile-acp',
-          sessionId: 'acp-session-write',
-          toolTitle: expect.stringContaining(targetPath),
-          options: [
-            { optionId: 'allow_file_write_once', name: 'Allow write once', kind: 'allow_once' },
-            { optionId: 'reject_file_write_once', name: 'Deny write', kind: 'reject_once' },
-          ],
-        }),
-      ])
-      expect((permissionRequests[0] as { toolTitle: string }).toolTitle).toContain('non-Cradle-owned filesystem write')
-      expect((permissionRequests[0] as { toolTitle: string }).toolTitle).toContain('Owner boundary: client filesystem outside Cradle-owned data.')
+      expect(existsSync(targetPath)).toBe(false)
     }
     finally {
       rmSync(workspaceRoot, { recursive: true, force: true })
@@ -505,7 +444,7 @@ describe('acp chat runtime capability', () => {
     }
   })
 
-  it('does not write ACP client filesystem paths when approval is rejected', async () => {
+  it('does not write ACP client filesystem paths when the injected policy rejects', async () => {
     const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
     const workspaceRoot = makeTempDir('cradle-acp-write-reject-')
     const targetPath = join(workspaceRoot, 'notes.md')

@@ -6,7 +6,7 @@ Evidence catalog of the old service layer for migration reference.
 
 | Category | Modules |
 |----------|---------|
-| 🟢 Pure Logic | `events/`, `agent-runtime/` (core), `kanban/`, `workspace/`, `skills/`, `workflow-rules/`, `observability/`, `backend-control-plane/`, `approval/`, `issue-agent/`, `pty/`, `acp-feature/`, `chat/` (core) |
+| 🟢 Pure Logic | `events/`, `agent-runtime/` (core), `kanban/`, `workspace/`, `skills/`, `workflow-rules/`, `observability/`, `backend-control-plane/`, `issue-agent/`, `pty/`, `acp-feature/`, `chat/` (core) |
 | 🟡 Adapter Needed | `db/` (path resolution), `chat/` (broadcast), `signal/` (consumers) |
 | 🔴 Electron-Coupled | `signal/` (impl), `socket/`, `acp/`, `pack-codebase/`, `storage/`, `window/`, `devtools/` |
 
@@ -25,7 +25,6 @@ Evidence catalog of the old service layer for migration reference.
 | UsageService | token usage stats | 🟢 | db |
 | SkillsService | skills CRUD | 🟢 | skills |
 | WorkflowRulesService | rules CRUD | 🟢 | workflow-rules |
-| ApprovalService | tool-use approval | 🟢 | approval |
 | PtyService | terminal mgmt | 🟢 | pty-manager |
 | GitService | git operations | 🟢 | simple-git |
 | PackCodebaseService | repomix pack | 🔴 | pack-codebase |

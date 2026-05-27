@@ -24,7 +24,8 @@ describe('server plugin storage', () => {
     shutdownInfra()
     if (previousDataDir === undefined) {
       delete process.env.CRADLE_DATA_DIR
-    } else {
+    }
+ else {
       process.env.CRADLE_DATA_DIR = previousDataDir
     }
     if (dataDir) {

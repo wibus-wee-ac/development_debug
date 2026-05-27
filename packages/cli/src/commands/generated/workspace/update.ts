@@ -19,9 +19,15 @@ const spec = {
   "flags": [
     {
       "name": "name",
-      "required": true,
+      "required": false,
       "target": "body.name",
       "type": "string"
+    },
+    {
+      "name": "pinned",
+      "required": false,
+      "target": "body.pinned",
+      "type": "boolean"
     }
   ],
   "method": "patch",

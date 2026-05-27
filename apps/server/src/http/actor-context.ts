@@ -17,7 +17,7 @@ export interface MutationActor {
 const DEFAULT_USER_ACTOR: MutationActor = {
   kind: 'user',
   id: '__self__',
-  source: 'default-user'
+  source: 'default-user',
 }
 
 export function resolveActorContext(request: Request): MutationActor {
@@ -31,7 +31,7 @@ export function resolveActorContext(request: Request): MutationActor {
       id: sessions.id,
       agentId: sessions.agentId,
       providerTargetId: sessions.providerTargetId,
-      runtimeKind: sessions.runtimeKind
+      runtimeKind: sessions.runtimeKind,
     })
     .from(sessions)
     .where(eq(sessions.id, chatSessionId))
@@ -42,7 +42,7 @@ export function resolveActorContext(request: Request): MutationActor {
       code: 'runtime_context_not_found',
       status: 401,
       message: 'Runtime context not found',
-      details: { chatSessionId }
+      details: { chatSessionId },
     })
   }
 
@@ -50,7 +50,7 @@ export function resolveActorContext(request: Request): MutationActor {
     return {
       kind: 'agent',
       id: session.agentId,
-      source: 'chat-session'
+      source: 'chat-session',
     }
   }
 
@@ -58,7 +58,7 @@ export function resolveActorContext(request: Request): MutationActor {
     return {
       kind: 'system',
       id: 'jarvis',
-      source: 'chat-session'
+      source: 'chat-session',
     }
   }
 
@@ -66,13 +66,13 @@ export function resolveActorContext(request: Request): MutationActor {
     return {
       kind: 'provider-target',
       id: session.providerTargetId,
-      source: 'chat-session'
+      source: 'chat-session',
     }
   }
 
   return {
     kind: 'user',
     id: '__self__',
-    source: 'chat-session'
+    source: 'chat-session',
   }
 }

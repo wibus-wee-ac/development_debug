@@ -46,7 +46,7 @@ describe('browser command helpers', () => {
   })
 
   it('treats ERR_ABORTED as recoverable only when final URL matches', () => {
-    const err = new Error("ERR_ABORTED (-3) loading 'http://127.0.0.1:37891/'")
+    const err = new Error('ERR_ABORTED (-3) loading \'http://127.0.0.1:37891/\'')
 
     expect(isRecoverableNavigationAbort(err, 'http://127.0.0.1:37891/', 'http://127.0.0.1:37891/')).toBe(true)
     expect(isRecoverableNavigationAbort(err, 'http://127.0.0.1:37891/', 'http://127.0.0.1:37891')).toBe(true)
@@ -94,7 +94,7 @@ describe('browser command helpers', () => {
     const expression = buildScrollActionExpression('#panel', 'right', 120)
 
     expect(expression).toContain('document.querySelector("#panel")')
-    expect(expression).toContain("target.scrollIntoView?.({ block: 'center', inline: 'center' })")
+    expect(expression).toContain('target.scrollIntoView?.({ block: \'center\', inline: \'center\' })')
     expect(expression).toContain('target.scrollLeft += deltaX')
     expect(expression).toContain('target.scrollTop += deltaY')
     expect(expression).not.toContain('Input.dispatchMouseEvent')

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -162,8 +162,8 @@ describe('chronicle privacy capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
     }
   })
 
@@ -281,8 +281,8 @@ describe('chronicle privacy capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(storageRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
     }
   })
 
@@ -390,8 +390,8 @@ describe('chronicle privacy capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(storageRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) delete process.env.CRADLE_DATA_DIR
-      else process.env.CRADLE_DATA_DIR = previousDataDir
+      if (previousDataDir === undefined) { delete process.env.CRADLE_DATA_DIR }
+      else { process.env.CRADLE_DATA_DIR = previousDataDir }
     }
   })
 })

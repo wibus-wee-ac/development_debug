@@ -37,11 +37,6 @@ export interface RegistryAgent {
   distribution: RegistryAgentDistribution
 }
 
-interface RegistryPayload {
-  version: string
-  agents: RegistryAgent[]
-}
-
 const BinaryTargetSchema = z.object({
   archive: z.string(),
   cmd: z.string(),

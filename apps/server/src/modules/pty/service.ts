@@ -3,16 +3,16 @@ import { sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import type { CodexCliSessionBinding } from '../../helpers/agent-runtime-config'
 import {
-  type CodexCliSessionBinding,
   SessionRuntimeConfigJsonSchema,
-  writeCodexCliSessionBindingToSessionConfig
+  writeCodexCliSessionBindingToSessionConfig,
 } from '../../helpers/agent-runtime-config'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
 import * as SessionService from '../session/service'
-import type { PtyClientEvent } from './protocol'
 import { captureCodexCliSession } from './codex-session-capture'
+import type { PtyClientEvent } from './protocol'
 import { PtyRuntimeRegistry } from './pty.runtime'
 import type { PtyLiveSocket } from './pty.socket'
 import { PtySocketHub } from './pty.socket'
@@ -51,7 +51,7 @@ const ptyRuntime = new PtyRuntimeRegistry({
   },
   onRelease: (sessionId) => {
     ptyTimeline.delete(sessionId)
-  }
+  },
 })
 
 const ptySocketHub = new PtySocketHub(ptyRuntime, ptyTimeline)
@@ -83,7 +83,7 @@ function getSession(sessionId: string): TerminalSessionRecord | undefined {
       providerTargetId: sessions.providerTargetId,
       runtimeKind: sessions.runtimeKind,
       configJson: sessions.configJson,
-      ptyStartedAt: sessions.ptyStartedAt
+      ptyStartedAt: sessions.ptyStartedAt,
     })
     .from(sessions)
     .where(eq(sessions.id, sessionId))
@@ -113,7 +113,7 @@ function requireSession(sessionId: string): TerminalSessionRecord {
       code: 'terminal_session_not_found',
       status: 404,
       message: 'Chat session not found',
-      details: { sessionId }
+      details: { sessionId },
     })
   }
   return session
@@ -126,7 +126,7 @@ function requireTerminalContext(sessionId: string): TerminalSessionContext {
       code: 'terminal_session_not_found',
       status: 404,
       message: 'Chat session not found',
-      details: { sessionId }
+      details: { sessionId },
     })
   }
   return context
@@ -170,14 +170,14 @@ function hasCodexPositionalArg(args: string[]): boolean {
   return false
 }
 
-export function startOrAttach(input: { sessionId: string; cols: number; rows: number }) {
+export function startOrAttach(input: { sessionId: string, cols: number, rows: number }) {
   const context = requireTerminalContext(input.sessionId)
   if (context.session.runtimeKind !== 'cli-tui') {
     throw new AppError({
       code: 'terminal_profile_not_supported',
       status: 409,
       message: 'Terminal runtime only supports cli-tui sessions',
-      details: { sessionId: input.sessionId, runtimeKind: context.session.runtimeKind }
+      details: { sessionId: input.sessionId, runtimeKind: context.session.runtimeKind },
     })
   }
 
@@ -188,7 +188,7 @@ export function startOrAttach(input: { sessionId: string; cols: number; rows: nu
       code: 'terminal_launch_config_missing',
       status: 409,
       message: 'Terminal launch configuration is missing for this session',
-      details: { sessionId: input.sessionId }
+      details: { sessionId: input.sessionId },
     })
   }
   const args = [...config.args]
@@ -198,7 +198,8 @@ export function startOrAttach(input: { sessionId: string; cols: number; rows: nu
   if (isClaudeCli(config.executable)) {
     if (context.session.ptyStartedAt) {
       args.push('--resume', input.sessionId)
-    } else {
+    }
+ else {
       args.push('--session-id', input.sessionId)
     }
 
@@ -233,8 +234,8 @@ export function startOrAttach(input: { sessionId: string; cols: number; rows: nu
     env: {
       ...config.env,
       CRADLE_CHAT_SESSION_ID: input.sessionId,
-      ...(context.session.workspaceId ? { CRADLE_WORKSPACE_ID: context.session.workspaceId } : {})
-    }
+      ...(context.session.workspaceId ? { CRADLE_WORKSPACE_ID: context.session.workspaceId } : {}),
+    },
   })
 
   if (!context.session.ptyStartedAt) {
@@ -265,7 +266,7 @@ export function openChatSocket(input: {
   requireTimelineSession(input.sessionId, 'Terminal session not found')
   ptySocketHub.open(input.ws, {
     channelId: input.sessionId,
-    fromSeq: input.fromSeq
+    fromSeq: input.fromSeq,
   })
 }
 
@@ -287,7 +288,7 @@ export function stop(sessionId: string): void {
   ptyRuntime.destroy(sessionId)
 }
 
-export function startShell(input: { ptyId: string; cwd: string; cols: number; rows: number }) {
+export function startShell(input: { ptyId: string, cwd: string, cols: number, rows: number }) {
   if (!ptyRuntime.isRunning(input.ptyId)) {
     ptyTimeline.reset(input.ptyId)
   }
@@ -299,7 +300,7 @@ export function startShell(input: { ptyId: string; cwd: string; cols: number; ro
     args: [],
     cwd: input.cwd,
     cols: input.cols,
-    rows: input.rows
+    rows: input.rows,
   })
 
   return { ptyId: input.ptyId, running: ptyRuntime.isRunning(input.ptyId) }
@@ -343,7 +344,8 @@ export async function listResources() {
       if (item.rssMB !== null) {
         if (item.role === 'cli-tui') {
           acc.cliTuiRssMB += item.rssMB
-        } else {
+        }
+ else {
           acc.bottomPanelRssMB += item.rssMB
         }
       }
@@ -351,7 +353,8 @@ export async function listResources() {
       if (item.cpuPercent !== null) {
         if (item.role === 'cli-tui') {
           acc.cliTuiCpuPercent += item.cpuPercent
-        } else {
+        }
+ else {
           acc.bottomPanelCpuPercent += item.cpuPercent
         }
       }
@@ -363,7 +366,7 @@ export async function listResources() {
       bottomPanelRssMB: 0,
       cliTuiCpuPercent: 0,
       bottomPanelCpuPercent: 0,
-    }
+    },
   )
 
   return {
@@ -429,7 +432,7 @@ function cancelCodexSessionCapture(sessionId: string): void {
 
 function persistCodexSessionBinding(
   sessionId: string,
-  binding: CodexCliSessionBinding
+  binding: CodexCliSessionBinding,
 ): void {
   const session = getSession(sessionId)
   if (!session) {
@@ -446,7 +449,7 @@ function persistCodexSessionBinding(
       configJson: writeCodexCliSessionBindingToSessionConfig({
         configJson: session.configJson,
         binding,
-      })
+      }),
     })
     .where(eq(sessions.id, sessionId))
     .run()

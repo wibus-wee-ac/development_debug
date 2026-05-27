@@ -66,7 +66,6 @@ describe('desktop tray projection', () => {
       expect(tray.quickActions.length).toBeGreaterThanOrEqual(10)
       expect(tray.quickActions.map(action => action.id)).toEqual(expect.arrayContaining([
         'new-chat',
-        'open-approvals',
         'open-awaits',
         'open-automation',
         'open-agents',

@@ -175,13 +175,13 @@ function truncateContextText(text: string, maxChars: number): string {
 
 function redactSensitiveContextText(text: string): string {
   return text
-    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, '[API_KEY]')
+    .replace(/\bsk-[\w-]{8,}\b/g, '[API_KEY]')
     .replace(/\bxox[abprs]-[A-Za-z0-9-]{8,}\b/g, '[API_KEY]')
-    .replace(/\b(?:ghp|github_pat|glpat|hf)_[A-Za-z0-9_-]{12,}\b/g, '[API_KEY]')
-    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]')
+    .replace(/\b(?:ghp|github_pat|glpat|hf)_[\w-]{12,}\b/g, '[API_KEY]')
+    .replace(/\b[\w.%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[EMAIL]')
     .replace(/\b\d{3}-\d{2}-\d{4}\b/g, '[SSN]')
     .replace(/\b(?:\d[ -]*?){13,19}\b/g, candidate => isLikelyCreditCardNumber(candidate.replace(/\D/g, '')) ? '[CREDIT_CARD]' : candidate)
-    .replace(/(?<!\w)(?:\+?1[\s.-]?)?(?:\(?\d{3}\)?[\s.-]?)\d{3}[\s.-]?\d{4}(?!\w)/g, '[PHONE_NUMBER]')
+    .replace(/(?<!\w)(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/g, '[PHONE_NUMBER]')
     .replace(/\b(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\b/g, '[IP_ADDRESS]')
 }
 

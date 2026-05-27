@@ -38,16 +38,28 @@ const JsonFieldsOptionSchema = z.union([
 const CliValueSchemas = {
   string: z.string().optional(),
   number: z.coerce.number().optional(),
-  boolean: z.union([
-    z.boolean(),
-    z.enum(['true', 'false']).transform(value => value === 'true'),
-  ]).optional(),
+  boolean: z.boolean().optional(),
   'string[]': z.union([
     z.array(z.string()),
     z.string().transform(value => value.split(',').map(item => item.trim()).filter(Boolean)),
   ]).optional(),
   json: z.string().transform(value => JSON.parse(value)).optional(),
 } satisfies Record<CliValueType, z.ZodTypeAny>
+
+function parseBooleanValue(value: unknown): boolean | undefined {
+  if (value === undefined) { return undefined }
+  if (typeof value === 'boolean') { return value }
+  if (value === 'true') { return true }
+  if (value === 'false') { return false }
+  throw new Error('Expected a boolean')
+}
+
+function parseCliValue(type: CliValueType, value: unknown): unknown {
+  if (type === 'boolean') {
+    return parseBooleanValue(value)
+  }
+  return CliValueSchemas[type].parse(value)
+}
 
 function findSubcommand(parent: Command, name: string): Command | undefined {
   return parent.commands.find(command => command.name() === name)
@@ -63,7 +75,6 @@ function describeGroup(name: string): string | undefined {
   const descriptions: Record<string, string> = {
     'acp': 'Manage ACP agents',
     'agent': 'Manage Cradle agents',
-    'approval': 'Manage pending approvals',
     'automation': 'Manage scheduled automations',
     'board': 'Manage kanban boards',
     'branch': 'Manage git branches',
@@ -182,7 +193,7 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
     for (const [index, argument] of spec.arguments.entries()) {
       setTarget(
         argument.target,
-        CliValueSchemas[argument.type].parse(args[index]),
+        parseCliValue(argument.type, args[index]),
         containers,
       )
     }
@@ -190,7 +201,7 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
     for (const flag of spec.flags) {
       setTarget(
         flag.target,
-        CliValueSchemas[flag.type].parse(opts[flag.name]),
+        parseCliValue(flag.type, opts[flag.name]),
         containers,
       )
     }

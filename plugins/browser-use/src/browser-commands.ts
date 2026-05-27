@@ -12,21 +12,21 @@ const modifierBits: Record<string, number> = {
 }
 
 const specialKeys: Record<string, { key: string, code: string, keyCode: number }> = {
-  Enter: { key: 'Enter', code: 'Enter', keyCode: 13 },
-  Tab: { key: 'Tab', code: 'Tab', keyCode: 9 },
-  Escape: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  Esc: { key: 'Escape', code: 'Escape', keyCode: 27 },
-  Backspace: { key: 'Backspace', code: 'Backspace', keyCode: 8 },
-  Delete: { key: 'Delete', code: 'Delete', keyCode: 46 },
-  ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
-  ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
-  ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
-  ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
-  Home: { key: 'Home', code: 'Home', keyCode: 36 },
-  End: { key: 'End', code: 'End', keyCode: 35 },
-  PageUp: { key: 'PageUp', code: 'PageUp', keyCode: 33 },
-  PageDown: { key: 'PageDown', code: 'PageDown', keyCode: 34 },
-  Space: { key: ' ', code: 'Space', keyCode: 32 },
+  'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
+  'Tab': { key: 'Tab', code: 'Tab', keyCode: 9 },
+  'Escape': { key: 'Escape', code: 'Escape', keyCode: 27 },
+  'Esc': { key: 'Escape', code: 'Escape', keyCode: 27 },
+  'Backspace': { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+  'Delete': { key: 'Delete', code: 'Delete', keyCode: 46 },
+  'ArrowLeft': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+  'ArrowUp': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+  'ArrowRight': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  'ArrowDown': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+  'Home': { key: 'Home', code: 'Home', keyCode: 36 },
+  'End': { key: 'End', code: 'End', keyCode: 35 },
+  'PageUp': { key: 'PageUp', code: 'PageUp', keyCode: 33 },
+  'PageDown': { key: 'PageDown', code: 'PageDown', keyCode: 34 },
+  'Space': { key: ' ', code: 'Space', keyCode: 32 },
   ' ': { key: ' ', code: 'Space', keyCode: 32 },
 }
 
@@ -113,7 +113,7 @@ export function createKeyEventPayload(
     }
   }
 
-  if (/^[0-9]$/.test(keyInput)) {
+  if (/^\d$/.test(keyInput)) {
     return {
       type,
       key: keyInput,

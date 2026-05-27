@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { SessionAwait } from '../src/modules/session-await/types'
 import { fetchLiveCIStatus, githubCISource, resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 import { githubReviewSource } from '../src/modules/session-await/sources/github-review'
+import type { SessionAwait } from '../src/modules/session-await/types'
 
 const originalFetch = globalThis.fetch
 
@@ -52,7 +52,7 @@ function installGitHubFetch(routes: Record<string, unknown | Response>): ReturnT
   return mock
 }
 
-describe('GitHub session-await sources', () => {
+describe('gitHub session-await sources', () => {
   beforeEach(() => {
     process.env.GITHUB_TOKEN = 'token'
     resetTokenCache()

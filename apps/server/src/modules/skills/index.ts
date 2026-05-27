@@ -97,7 +97,7 @@ export const skills = new Elysia({
     const result = await Skills.fetchSource(body.source)
     return {
       sessionId: result.sessionId,
-      source: { type: result.source.type, value: result.source.url },
+      source: result.source,
       skills: result.skills.map(s => ({ skillDir: s.skillDir, relativePath: s.relativePath, name: s.name, description: s.description })),
     }
   }, {

@@ -7,6 +7,9 @@ import { join } from 'node:path'
 import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { SystemAgentProvider } from '../src/modules/chat-runtime/providers/system-agent/provider'
+import type { RuntimeProviderTargetProfile } from '../src/modules/chat-runtime/runtime-provider-types'
+
 const jarCoreMocks = vi.hoisted(() => ({
   defaultRuntimeConfig: vi.fn(async (options: unknown) => ({ options })),
   executeIngressCommand: vi.fn(async ({ command }: {
@@ -24,10 +27,7 @@ vi.mock('../src/modules/providers/model-info-registry', () => ({
   lookupModelRawExact: vi.fn(async () => null),
 }))
 
-import { SystemAgentProvider } from '../src/modules/chat-runtime/providers/system-agent/provider'
-import type { RuntimeProviderTargetProfile } from '../src/modules/chat-runtime/runtime-provider-types'
-
-describe('SystemAgentProvider', () => {
+describe('systemAgentProvider', () => {
   afterEach(() => {
     vi.clearAllMocks()
   })

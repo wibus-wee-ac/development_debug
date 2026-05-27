@@ -20,7 +20,7 @@ const distNodeModules = join(distRoot, 'node_modules')
 rmSync(distNodeModules, { recursive: true, force: true })
 
 const dependencies = Object.fromEntries(
-  serverRuntimePackages.map((packageName) => [packageName, readInstalledVersion(packageName)])
+  serverRuntimePackages.map(packageName => [packageName, readInstalledVersion(packageName)]),
 )
 
 writeFileSync(
@@ -30,12 +30,12 @@ writeFileSync(
       name: '@cradle/server-runtime',
       private: true,
       type: 'module',
-      dependencies
+      dependencies,
     },
     null,
-    2
+    2,
   )}\n`,
-  'utf8'
+  'utf8',
 )
 
 const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
@@ -49,11 +49,11 @@ const result = spawnSync(
     distRoot,
     '--package-import-method',
     'copy',
-    '--config.node-linker=hoisted'
+    '--config.node-linker=hoisted',
   ],
   {
-    stdio: 'inherit'
-  }
+    stdio: 'inherit',
+  },
 )
 
 if (result.error) {
@@ -73,7 +73,8 @@ function readInstalledVersion(packageName) {
 function findPackageJsonPath(packageName) {
   try {
     return require.resolve(`${packageName}/package.json`)
-  } catch {
+  }
+ catch {
     let currentDir = dirname(require.resolve(packageName))
 
     while (currentDir !== dirname(currentDir)) {

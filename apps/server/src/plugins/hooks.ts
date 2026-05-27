@@ -1,4 +1,5 @@
 import type { AfterResponseHandler, BeforeQueryHandler, Disposable, QueryHookContext, ResponseHookContext } from '@cradle/plugin-sdk/server'
+
 import { createChildLogger } from '../logging/logger'
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
@@ -11,7 +12,7 @@ export function registerBeforeQueryHook(handler: BeforeQueryHandler): Disposable
   return {
     dispose() {
       const idx = beforeQueryHandlers.indexOf(handler)
-      if (idx >= 0) beforeQueryHandlers.splice(idx, 1)
+      if (idx >= 0) { beforeQueryHandlers.splice(idx, 1) }
     },
   }
 }
@@ -21,7 +22,7 @@ export function registerAfterResponseHook(handler: AfterResponseHandler): Dispos
   return {
     dispose() {
       const idx = afterResponseHandlers.indexOf(handler)
-      if (idx >= 0) afterResponseHandlers.splice(idx, 1)
+      if (idx >= 0) { afterResponseHandlers.splice(idx, 1) }
     },
   }
 }
@@ -66,7 +67,8 @@ export async function runAfterResponseHooks(ctx: ResponseHookContext): Promise<v
   for (const handler of afterResponseHandlers) {
     try {
       await handler(ctx)
-    } catch (err) {
+    }
+ catch (err) {
       logger.error('after response hook failed', { err })
     }
   }

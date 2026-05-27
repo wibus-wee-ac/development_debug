@@ -1,5 +1,6 @@
 import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import type { McpServerConfig, ServerPluginContext, ServerPluginRouteRegistration } from '@cradle/plugin-sdk/server'
+
 import { createChildLogger } from '../logging/logger'
 import { createPluginEventBus } from './event-bus'
 import { registerExternalProviderSource } from './external-provider-source-registry'
@@ -21,11 +22,11 @@ interface PluginRouteHostContext {
 }
 
 interface PluginRouteApp {
-  get(path: string, handler: unknown): unknown
-  post(path: string, handler: unknown): unknown
-  put(path: string, handler: unknown): unknown
-  patch(path: string, handler: unknown): unknown
-  delete(path: string, handler: unknown): unknown
+  get: (path: string, handler: unknown) => unknown
+  post: (path: string, handler: unknown) => unknown
+  put: (path: string, handler: unknown) => unknown
+  patch: (path: string, handler: unknown) => unknown
+  delete: (path: string, handler: unknown) => unknown
 }
 
 export function createServerPluginContext(
@@ -108,19 +109,23 @@ export function createServerPluginContext(
 
     if (route.method === 'GET') {
       routeApp.get(normalizedPath, handler)
-    } else if (route.method === 'POST') {
+    }
+ else if (route.method === 'POST') {
       routeApp.post(normalizedPath, handler)
-    } else if (route.method === 'PUT') {
+    }
+ else if (route.method === 'PUT') {
       routeApp.put(normalizedPath, handler)
-    } else if (route.method === 'PATCH') {
+    }
+ else if (route.method === 'PATCH') {
       routeApp.patch(normalizedPath, handler)
-    } else {
+    }
+ else {
       routeApp.delete(normalizedPath, handler)
     }
 
     return track({
       dispose() {
-        if (disposed) return
+        if (disposed) { return }
         disposed = true
         unregisterPluginCapability(manifest.name, capability.id)
       },

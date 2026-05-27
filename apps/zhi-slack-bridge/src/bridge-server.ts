@@ -19,8 +19,6 @@ const ZhiToolRequestJsonSchema = z.string().transform(raw => JSON.parse(raw)).pi
   }),
 }))
 
-type ZhiToolRequest = z.infer<typeof ZhiToolRequestJsonSchema>
-
 interface BridgeResponse {
   success: boolean
   result?: {

@@ -1,9 +1,10 @@
 /* Verifies server plugin context registration and disposal behavior. */
 
-import { afterEach, describe, expect, it } from 'vitest'
-import { Elysia } from 'elysia'
 import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import { CradlePluginPackageJsonSchema } from '@cradle/plugin-sdk/manifest'
+import { Elysia } from 'elysia'
+import { afterEach, describe, expect, it } from 'vitest'
+
 import { createServerPluginContext } from './context'
 import { getRegisteredMcpServers } from './mcp-registry'
 import {

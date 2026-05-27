@@ -574,6 +574,34 @@ describe('agent identity capability', () => {
       ]))
       expect(preview.candidates.some((candidate: { sourceKind: string }) => candidate.sourceKind === 'local-config')).toBe(false)
 
+      const claudeCandidate = preview.candidates.find((candidate: { app: string }) => candidate.app === 'claude')
+      expect(claudeCandidate).toEqual(expect.objectContaining({
+        importable: true,
+        providerTargetId: expect.any(String),
+      }))
+      const recordsRes = await app.handle(new Request('http://localhost/external-provider-sources/records'))
+      expect(recordsRes.status).toBe(200)
+      const records = await recordsRes.json()
+      const claudeRecord = records.find((record: { externalId: string }) => record.externalId === claudeCandidate.externalRecordId)
+      expect(claudeRecord).toEqual(expect.objectContaining({
+        externalId: claudeCandidate.externalRecordId,
+        providerTargetId: claudeCandidate.providerTargetId,
+        runtimeTargetEnabled: true,
+      }))
+      const disableTarget = await app.handle(new Request(
+        `http://localhost/external-provider-sources/${claudeRecord.sourceKey}/records/${claudeRecord.externalId}/runtime-target`,
+        {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ enabled: false }),
+        },
+      ))
+      expect(disableTarget.status).toBe(200)
+      expect(await disableTarget.json()).toEqual(expect.objectContaining({
+        id: claudeCandidate.providerTargetId,
+        enabled: false,
+      }))
+
       const importRes = await app.handle(new Request('http://localhost/agents/import/local-config', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -591,10 +619,13 @@ describe('agent identity capability', () => {
           app: 'claude',
           sourceKind: 'cc-switch',
           externalRecordId: 'cc-switch:claude:claude-current',
+          providerTargetId: claudeCandidate.providerTargetId,
           agent: expect.objectContaining({
             name: 'Local Claude',
             modelId: 'claude-cc-switch-model',
             runtimeKind: 'claude-agent',
+            providerTargetId: claudeCandidate.providerTargetId,
+            enabled: false,
           }),
         }),
         expect.objectContaining({
@@ -605,6 +636,7 @@ describe('agent identity capability', () => {
             name: 'Local Codex',
             modelId: 'gpt-cc-switch',
             runtimeKind: 'codex',
+            enabled: true,
           }),
         }),
       ]))

@@ -7,14 +7,11 @@ import type { DesktopPluginContext, DesktopWebview } from '@cradle/plugin-sdk/de
 
 import {
   buildDocumentReadyExpression,
-  buildElementClickExpression,
-  buildEditableSelectionExpression,
   buildElementCenterExpression,
+  buildElementClickExpression,
   buildFocusedEditableStateExpression,
   buildKeyboardTextFallbackExpression,
   buildScrollActionExpression,
-  buildScrollStateExpression,
-  buildScrollWaitExpression,
   buildTextReplacementExpression,
   createKeyEventPayload,
   isRecoverableNavigationAbort,
@@ -34,9 +31,9 @@ import type {
   ScrollResult,
   TabInfo,
   TabsCloseResult,
-  TabsVisibilityResult,
   TabsListResult,
   TabsNewResult,
+  TabsVisibilityResult,
   TypeResult,
   WaitForSelectorResult,
 } from './protocol.js'
@@ -272,7 +269,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: replacement } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean; editable?: boolean }>>('Runtime.evaluate', {
+        const { result: { value: replacement } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean, editable?: boolean }>>('Runtime.evaluate', {
           expression: buildTextReplacementExpression(cmd.selector, cmd.text),
           returnByValue: true,
         })
@@ -309,7 +306,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         }
         ensureDebugger(entry)
         const amount = cmd.amount ?? 300
-        const { result: { value: scroll } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean; canMove?: boolean; moved?: boolean }>>('Runtime.evaluate', {
+        const { result: { value: scroll } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ found?: boolean, canMove?: boolean, moved?: boolean }>>('Runtime.evaluate', {
           expression: buildScrollActionExpression(cmd.selector, cmd.direction, amount),
           returnByValue: true,
         })
@@ -329,7 +326,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: box } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ x: number; y: number } | undefined>>('Runtime.evaluate', {
+        const { result: { value: box } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ x: number, y: number } | undefined>>('Runtime.evaluate', {
           expression: buildElementCenterExpression(cmd.selector),
           returnByValue: true,
         })
@@ -399,13 +396,13 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
         ensureDebugger(entry)
-        const { result: { value: before } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean; value?: string }>>('Runtime.evaluate', {
+        const { result: { value: before } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean, value?: string }>>('Runtime.evaluate', {
           expression: buildFocusedEditableStateExpression(),
           returnByValue: true,
         })
         await entry.webview.cdp.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyDown', cmd.key, cmd.modifiers))
         await entry.webview.cdp.sendCommand('Input.dispatchKeyEvent', createKeyEventPayload('keyUp', cmd.key, cmd.modifiers))
-        const { result: { value: after } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean; value?: string }>>('Runtime.evaluate', {
+        const { result: { value: after } } = await entry.webview.cdp.sendCommand<CdpValueResult<{ editable?: boolean, value?: string }>>('Runtime.evaluate', {
           expression: buildFocusedEditableStateExpression(),
           returnByValue: true,
         })

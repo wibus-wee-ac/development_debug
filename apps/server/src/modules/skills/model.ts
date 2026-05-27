@@ -39,12 +39,22 @@ const discoveredSkill = t.Object({
   description: t.Nullable(t.String()),
 })
 
+const skillSource = t.Object({
+  type: t.Union([
+    t.Literal('github'),
+    t.Literal('gitlab'),
+    t.Literal('git'),
+    t.Literal('local'),
+  ]),
+  url: t.String(),
+  ref: t.Optional(t.String()),
+  subpath: t.Optional(t.String()),
+  label: t.String(),
+})
+
 const fetchSourceResult = t.Object({
   sessionId: t.String(),
-  source: t.Object({
-    type: t.String(),
-    value: t.String(),
-  }),
+  source: skillSource,
   skills: t.Array(discoveredSkill),
 })
 
@@ -71,6 +81,7 @@ export const SkillsModel = {
   skillScope,
   skillInventoryEntry,
   skillDocument,
+  skillSource,
   fetchSourceResult,
   importFromFetchResult,
   okResponse,

@@ -77,7 +77,7 @@ const ValueSummarySchema = z.union([
   z.instanceof(Error).transform(value => `${value.name}: ${value.message}`),
   z.string().transform(value => value.length > 80 ? `${value.slice(0, 80)}…` : value),
   z.unknown().transform((value) => {
-    const boxed = Object(value)
+    const boxed = new Object(value)
     if (boxed === value) {
       const name = boxed.constructor?.name
       return name && name !== 'Object'

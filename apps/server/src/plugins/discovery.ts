@@ -1,8 +1,10 @@
 import type { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+
 import type { PluginManifest, PluginSourceProvenance } from '@cradle/plugin-sdk'
 import { parseCradlePluginPackageJsonText } from '@cradle/plugin-sdk/manifest'
+
 import { readPluginInstallProvenance } from './install-receipt'
 
 export interface DiscoveredPluginPackage {
@@ -27,12 +29,13 @@ export async function discoverPluginPackages(pluginsDir: string): Promise<Discov
   let entries: Dirent[]
   try {
     entries = await readdir(pluginsDir, { withFileTypes: true })
-  } catch {
+  }
+ catch {
     return [] // plugins dir doesn't exist
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    if (!entry.isDirectory()) { continue }
     const name = String(entry.name)
     const packageDir = resolve(pluginsDir, name)
     const pkgPath = resolve(pluginsDir, name, 'package.json')
@@ -53,7 +56,8 @@ export async function discoverPluginPackages(pluginsDir: string): Promise<Discov
           version: manifest.version,
         }),
       })
-    } catch (err) {
+    }
+ catch (err) {
       packages.push({
         packageDir,
         error: err instanceof Error ? err.message : String(err),

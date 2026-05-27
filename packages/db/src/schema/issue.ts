@@ -103,9 +103,9 @@ export type IssueRelation = typeof issueRelations.$inferSelect
 
 export {
   issueComments as kanbanIssueComments,
-  issueMilestones as kanbanMilestones,
   issueRelations as kanbanIssueRelations,
   issues as kanbanIssues,
+  issueMilestones as kanbanMilestones,
   issueStatuses as kanbanStatuses,
 }
 

@@ -1,7 +1,7 @@
 import { flushLogger, getLogger } from './logging/logger'
 
 interface RuntimeServer {
-  stop(): void | Promise<void>
+  stop: () => void | Promise<void>
 }
 
 function recordFatalError(message: string, err: unknown): void {
@@ -62,7 +62,7 @@ async function bootstrap() {
 
   let shutdownStarted = false
   const gracefulShutdown = async (signal: string) => {
-    if (shutdownStarted) return
+    if (shutdownStarted) { return }
     shutdownStarted = true
 
     logger.info(`received ${signal}, shutting down gracefully...`)
@@ -74,9 +74,11 @@ async function bootstrap() {
         await app.stop()
       }
       logger.info('graceful shutdown complete')
-    } catch (err) {
+    }
+ catch (err) {
       logger.error('error during graceful shutdown', { err })
-    } finally {
+    }
+ finally {
       flushLogger()
       process.exit(0)
     }

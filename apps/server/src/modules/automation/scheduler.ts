@@ -1,5 +1,5 @@
-import * as rrulePackage from 'rrule'
 import type { rrulestr as parseRRuleString } from 'rrule'
+import * as rrulePackage from 'rrule'
 
 type RRulePackageShape = typeof rrulePackage & {
   default?: {

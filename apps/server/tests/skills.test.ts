@@ -211,6 +211,11 @@ describe('skills capability', () => {
       }))
       expect(fetchSource.status).toBe(200)
       const fetched = await fetchSource.json() as FetchSourceResponse
+      expect(fetched.source).toEqual(expect.objectContaining({
+        type: 'local',
+        url: fetchSourceRoot,
+        label: fetchSourceRoot,
+      }))
       expect(fetched.skills.map(skill => skill.name).sort()).toEqual(['alpha-fetch', 'bravo-fetch'])
 
       const importFetched = await app.handle(new Request('http://localhost/skills/import-from-fetch', {

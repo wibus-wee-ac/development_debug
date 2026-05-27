@@ -40,6 +40,19 @@ export const SessionRuntimeConfigJsonSchema = z.union([
 export type CliTuiLaunchSpec = z.infer<typeof cliTuiLaunchSpecSchema>
 export type CodexCliSessionBinding = z.infer<typeof codexCliSessionBindingSchema>
 export type AgentRuntimeConfig = z.infer<typeof agentRuntimeConfigSchema>
+export type SessionRuntimeConfig = z.infer<typeof sessionRuntimeConfigSchema>
+
+function readTrustedConfigRecord(raw?: string | null): Record<string, unknown> {
+  return raw ? JSON.parse(raw) as Record<string, unknown> : {}
+}
+
+export function readTrustedAgentRuntimeConfig(raw?: string | null): AgentRuntimeConfig {
+  return readTrustedConfigRecord(raw) as AgentRuntimeConfig
+}
+
+export function readTrustedSessionRuntimeConfig(raw?: string | null): SessionRuntimeConfig {
+  return readTrustedConfigRecord(raw) as SessionRuntimeConfig
+}
 
 export function buildSessionRuntimeConfigJson(input: {
   cliTuiLaunch?: CliTuiLaunchSpec | null
@@ -64,7 +77,7 @@ export function writeCodexCliSessionBindingToSessionConfig(input: {
   configJson?: string | null
   binding: CodexCliSessionBinding
 }): string {
-  const config = SessionRuntimeConfigJsonSchema.parse(input.configJson)
+  const config = readTrustedSessionRuntimeConfig(input.configJson)
   return JSON.stringify({
     ...config,
     codexCliSession: input.binding,

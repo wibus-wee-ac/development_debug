@@ -1,6 +1,6 @@
 import * as SessionService from '../session/service'
-import { searchChronicle as runChronicleSearch } from './chronicle-search.engine'
 import type { ChronicleSearchParams } from './chronicle-search.engine'
+import { searchChronicle as runChronicleSearch } from './chronicle-search.engine'
 import type { ThreadSearchParams } from './thread-search.engine'
 import { ThreadSearchEngine } from './thread-search.engine'
 

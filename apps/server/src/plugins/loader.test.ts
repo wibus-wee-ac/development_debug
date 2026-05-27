@@ -3,8 +3,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
 import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
+
 import { activateServerPlugins, deactivateAllPlugins } from './loader'
 import { getRegisteredMcpServers } from './mcp-registry'
 import { listPluginDescriptors } from './runtime-registry'
@@ -34,7 +36,9 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
         apiVersion: '1',
         server: options.server === false ? undefined : 'server.mjs',
         web: options.web === true ? 'web.mjs' : undefined,
-        ...(options.omitContributes ? {} : {
+        ...(options.omitContributes
+? {}
+: {
           contributes: options.contributes ?? {
             capabilities: [{
               id: 'mcp.loader-cleanup',

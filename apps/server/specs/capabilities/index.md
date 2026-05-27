@@ -51,13 +51,12 @@ Each capability is documented in its own file following the per-capability recon
 | 14 | issue-agent | ✅ | Issue delegation, agent sessions, activities, rerun |
 | 15 | git | ✅ | Workspace-owned status, branches, graph, checkout, fetch |
 | 16 | pty | ✅ | Session-owned cli-tui terminal runtime, stream, input, cleanup |
-| 17 | approval | ✅ | Tool-use approval request/response |
 
 ### Tier 4 — Advanced / Deferred
 
 | # | Capability | Status | Description |
 |---|-----------|--------|-------------|
-| 18 | acp | ✅ | ACP registry, install lifecycle, installed-agent inventory, and audit queries |
-| 19 | pack-codebase | ✅ | Repomix codebase packing over HTTP |
-| 20 | observability | ✅ | Telemetry recording, incident rules |
-| 21 | preferences | ✅ | User preferences store |
+| 17 | acp | ✅ | ACP registry, install lifecycle, installed-agent inventory, and audit queries |
+| 18 | pack-codebase | ✅ | Repomix codebase packing over HTTP |
+| 19 | observability | ✅ | Telemetry recording, incident rules |
+| 20 | preferences | ✅ | User preferences store |

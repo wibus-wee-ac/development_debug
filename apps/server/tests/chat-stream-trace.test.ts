@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, backendRuns, backendSessionBindings, messages, sessions, workspaces } from '@cradle/db'
+import { backendRuns, backendSessionBindings, messages, providerTargets, sessions, workspaces } from '@cradle/db'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -117,14 +117,14 @@ describe('chat stream trace', () => {
       name: 'Trace Route Workspace',
       path: dataDir,
     }).run()
-    db().insert(agentProfiles).values({
-      id: 'profile-trace-route',
-      name: 'Trace Route Profile',
+    db().insert(providerTargets).values({
+      id: 'provider-target-trace-route',
+      kind: 'manual',
+      displayName: 'Trace Route Provider',
       providerKind: 'anthropic',
       enabled: true,
-      configJson: JSON.stringify({ model: 'claude-sonnet-4-20250514' }),
+      connectionConfigJson: JSON.stringify({ model: 'claude-sonnet-4-20250514' }),
       credentialRef: null,
-      customModels: '[]',
       iconSlug: null,
       createdAt: now,
       updatedAt: now,
@@ -133,9 +133,7 @@ describe('chat stream trace', () => {
       id: 'session-trace-route',
       workspaceId: 'workspace-trace-route',
       title: 'Trace Route Session',
-      agentProfileId: 'profile-trace-route',
-      providerTargetKind: 'manual-profile',
-      providerTargetId: 'profile-trace-route',
+      providerTargetId: 'provider-target-trace-route',
       runtimeKind: 'claude-agent',
       configJson: '{}',
       pinned: 0,
@@ -160,9 +158,7 @@ describe('chat stream trace', () => {
     db().insert(backendSessionBindings).values({
       id: 'binding-trace-route',
       chatSessionId: 'session-trace-route',
-      agentProfileId: 'profile-trace-route',
-      providerTargetKind: 'manual-profile',
-      providerTargetId: 'profile-trace-route',
+      providerTargetId: 'provider-target-trace-route',
       runtimeKind: 'claude-agent',
       backendSessionId: null,
       backendStateSnapshot: null,

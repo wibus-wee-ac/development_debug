@@ -476,6 +476,131 @@ describe('elysia migration skeleton', () => {
         },
       })
 
+      const createFileResponse = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/file`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'src/created.ts', confirmedNonCradleOwnedWrite: true }),
+      }))
+      expect(createFileResponse.status).toBe(200)
+      expect(await createFileResponse.json()).toEqual({
+        success: true,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'src/created.ts',
+          targetPath: join(workspaceRoot, 'src', 'created.ts'),
+        },
+      })
+      expect(readFileSync(join(workspaceRoot, 'src', 'created.ts'), 'utf8')).toBe('')
+
+      const createFolderResponse = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/folder`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: 'src/generated', confirmedNonCradleOwnedWrite: true }),
+      }))
+      expect(createFolderResponse.status).toBe(200)
+      expect(await createFolderResponse.json()).toEqual({
+        success: true,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'src/generated',
+          targetPath: join(workspaceRoot, 'src', 'generated'),
+        },
+      })
+      expect(existsSync(join(workspaceRoot, 'src', 'generated'))).toBe(true)
+
+      const renameResponse = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/path`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourcePath: 'src/created.ts',
+          destinationPath: 'src/generated/renamed.ts',
+          confirmedNonCradleOwnedWrite: true,
+        }),
+      }))
+      expect(renameResponse.status).toBe(200)
+      expect(await renameResponse.json()).toEqual({
+        success: true,
+        sourceBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'src/created.ts',
+          targetPath: join(workspaceRoot, 'src', 'created.ts'),
+        },
+        destinationBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'src/generated/renamed.ts',
+          targetPath: join(workspaceRoot, 'src', 'generated', 'renamed.ts'),
+        },
+      })
+      expect(existsSync(join(workspaceRoot, 'src', 'created.ts'))).toBe(false)
+      expect(existsSync(join(workspaceRoot, 'src', 'generated', 'renamed.ts'))).toBe(true)
+
+      const blockedCreateFile = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/file`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: '../outside.ts', confirmedNonCradleOwnedWrite: true }),
+      }))
+      expect(blockedCreateFile.status).toBe(200)
+      expect(await blockedCreateFile.json()).toEqual({
+        success: false,
+        ownerBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: '../outside.ts',
+          targetPath: null,
+        },
+      })
+
+      const blockedRename = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/path`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sourcePath: 'src/generated/renamed.ts',
+          destinationPath: '../outside.ts',
+          confirmedNonCradleOwnedWrite: true,
+        }),
+      }))
+      expect(blockedRename.status).toBe(200)
+      expect(await blockedRename.json()).toEqual({
+        success: false,
+        sourceBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: 'src/generated/renamed.ts',
+          targetPath: join(workspaceRoot, 'src', 'generated', 'renamed.ts'),
+        },
+        destinationBoundary: {
+          classification: 'non-cradle-owned',
+          owner: 'workspace',
+          consentRequired: true,
+          consentConfirmed: true,
+          workspacePath: workspaceRoot,
+          relativePath: '../outside.ts',
+          targetPath: null,
+        },
+      })
+
       const invalidCreate = await app.handle(new Request('http://localhost/workspaces', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

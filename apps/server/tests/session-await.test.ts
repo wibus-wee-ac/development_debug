@@ -10,12 +10,12 @@ import { agentProfiles, sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { AppError } from '../src/errors/app-error'
 import { createServerApp } from '../src/app'
+import { AppError } from '../src/errors/app-error'
 import { db, shutdownInfra } from '../src/infra'
 import { createRun } from '../src/modules/chat-runtime/service'
-import { resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 import { trigger } from '../src/modules/session-await/service'
+import { resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 
 // Mock createRun to simulate 409 without needing full chat runtime setup
 vi.mock('../src/modules/chat-runtime/service', () => ({

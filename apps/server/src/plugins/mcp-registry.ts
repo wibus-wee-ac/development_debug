@@ -1,6 +1,7 @@
 import type { Disposable } from '@cradle/plugin-sdk'
 import type { McpServerConfig } from '@cradle/plugin-sdk/server'
 import { z } from 'zod'
+
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 
 const McpServerConfigSchema = z.object({
@@ -31,7 +32,7 @@ export function registerHostMcpServer(owner: string, config: McpServerConfig): D
   let disposed = false
   return {
     dispose() {
-      if (disposed) return
+      if (disposed) { return }
       disposed = true
       registry.delete(config.name)
       unregisterPluginCapability(owner, record.id)
@@ -50,8 +51,8 @@ export function removeHostMcpServer(name: string): void {
   registry.delete(name)
 }
 
-export function getRegisteredMcpServers(): Record<string, { command: string; args: string[]; env: Record<string, string> }> {
+export function getRegisteredMcpServers(): Record<string, { command: string, args: string[], env: Record<string, string> }> {
   return Object.fromEntries(
-    [...registry.entries()].map(([name, c]) => [name, { command: c.command, args: c.args, env: c.env }]),
+    Array.from(registry.entries(), ([name, c]) => [name, { command: c.command, args: c.args, env: c.env }]),
   )
 }

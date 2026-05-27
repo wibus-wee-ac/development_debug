@@ -1,4 +1,7 @@
+import { z } from 'zod'
+
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
+import type { GitHubPullRequestReview } from './github-api'
 import {
   fetchPullRequest,
   fetchPullRequestReviews,
@@ -6,9 +9,7 @@ import {
   hasGitHubToken,
   isGitHubMissingTarget,
   isGitHubRateLimited,
-  type GitHubPullRequestReview,
 } from './github-api'
-import { z } from 'zod'
 
 const GitHubReviewModeSchema = z.enum(['approved', 'changes-requested', 'reviewed'])
 
@@ -53,8 +54,7 @@ interface ReviewAggregate {
   matched: boolean
 }
 
-const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/)
-  .transform((repoFullName) => {
+const GitHubRepoSchema = z.string().min(1).regex(/^[^/]+\/[^/]+$/).transform((repoFullName) => {
     const [owner, repo] = repoFullName.split('/')
     return { owner, repo }
   })

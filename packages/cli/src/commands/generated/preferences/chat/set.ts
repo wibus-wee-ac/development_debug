@@ -32,16 +32,6 @@ const spec = {
         "queue",
         "steer"
       ]
-    },
-    {
-      "name": "approvalMode",
-      "required": false,
-      "target": "body.approvalMode",
-      "type": "string",
-      "values": [
-        "ask",
-        "allowAll"
-      ]
     }
   ],
   "method": "put",

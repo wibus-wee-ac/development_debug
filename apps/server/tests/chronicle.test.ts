@@ -23,9 +23,8 @@ import {
   chronicleMemoryKeywords,
   chronicleMessages,
   chronicleMessageSources,
-  chroniclePipelineRuns,
-  chronicleSpeakerProfiles,
   chronicleSnapshots,
+  chronicleSpeakerProfiles,
 } from '@cradle/db'
 import { generateText } from 'ai'
 import { desc, eq, sql } from 'drizzle-orm'
@@ -351,7 +350,7 @@ describe('chronicle module', () => {
       expect(audioConfig.audioSegmentIntervalMs).toBe(100)
       expect(audioConfig.audioRmsThreshold).toBe(1)
       mkdirSync(join(storageRoot, '1/20260521100000'), { recursive: true })
-      writeFileSync(join(storageRoot, '1/20260521100000/frame-00007.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]))
+      writeFileSync(join(storageRoot, '1/20260521100000/frame-00007.jpg'), Buffer.from([0xFF, 0xD8, 0xFF, 0xD9]))
 
       const snapshotResponse = await postSnapshot(app, 'snapshot-source-1')
       expect(snapshotResponse.status).toBe(200)
@@ -2551,7 +2550,6 @@ describe('chronicle module', () => {
       expect(streamText).toContain('event: chronicle.memory.success')
       expect(streamText).toContain('data: ')
       expect(streamText).toContain('"channel":"memory"')
-
     }
     finally {
       stopActivityPipelineScheduler()

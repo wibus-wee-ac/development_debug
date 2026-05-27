@@ -1,15 +1,8 @@
+import type { PluginCapabilityRecord, PluginDescriptor, PluginLayer, PluginLayerState, PluginLayerStatus, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
 import {
   derivePluginCapabilityId,
   derivePluginRouteSegment,
   projectCradlePluginContributions,
-  type PluginCapabilityRecord,
-  type PluginDescriptor,
-  type PluginLayer,
-  type PluginLayerState,
-  type PluginLayerStatus,
-  type PluginManifest,
-  type PluginSourceDescriptor,
-  type PluginSourceKind,
 } from '@cradle/plugin-sdk'
 import { evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
 
@@ -118,7 +111,7 @@ export function createInvalidPluginDescriptor(
   error: string,
 ): PluginDescriptor {
   const routeSegment = derivePluginRouteSegment(identity)
-  const layers = Object.fromEntries(layerNames.map((layer) => [layer, {
+  const layers = Object.fromEntries(layerNames.map(layer => [layer, {
     layer,
     status: 'invalid',
     error,
@@ -175,7 +168,7 @@ export function setPluginLayerState(
   error?: string,
 ): void {
   const descriptor = descriptors.get(owner)
-  if (!descriptor) return
+  if (!descriptor) { return }
   descriptor.layers[layer] = {
     ...descriptor.layers[layer],
     status,
@@ -225,7 +218,7 @@ export function registerPluginCapability(
 
 export function unregisterPluginCapability(owner: string, capabilityId: string): void {
   const descriptor = descriptors.get(owner)
-  if (!descriptor) return
+  if (!descriptor) { return }
   descriptor.capabilities = descriptor.capabilities.filter(capability => capability.id !== capabilityId)
 }
 
