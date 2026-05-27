@@ -17,6 +17,7 @@ export const workspaces = sqliteTable('workspaces', {
   name: text('name').notNull(),
   path: text('path').notNull().unique(),
   identifier: text('identifier').notNull().default(''),
+  pinned: int('pinned').notNull().default(0),
   ...timestamps(),
 })
 

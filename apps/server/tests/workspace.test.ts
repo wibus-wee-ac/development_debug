@@ -30,6 +30,7 @@ describe('workspace capability', () => {
       expect(createRes.status).toBe(200)
       const created = await createRes.json()
       expect(created.name).toBe(basename(workspaceRoot))
+      expect(created.pinned).toBe(0)
       expect(created.createdAt).toBeTypeOf('number')
       expect(created.updatedAt).toBeTypeOf('number')
 
@@ -41,11 +42,22 @@ describe('workspace capability', () => {
       expect(explicitRes.status).toBe(200)
       const explicit = await explicitRes.json()
       expect(explicit.name).toBe('Manual Workspace')
+      expect(explicit.pinned).toBe(0)
       expect(explicit.createdAt).toBeTypeOf('number')
       expect(explicit.updatedAt).toBeTypeOf('number')
 
+      const pinRes = await app.handle(new Request(`http://localhost/workspaces/${explicit.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pinned: true }),
+      }))
+      expect(pinRes.status).toBe(200)
+      const pinned = await pinRes.json()
+      expect(pinned).toEqual(expect.objectContaining({ id: explicit.id, pinned: 1 }))
+
       const listRes = await app.handle(new Request('http://localhost/workspaces'))
       const list = await listRes.json()
+      expect(list[0]).toEqual(expect.objectContaining({ id: explicit.id, pinned: 1 }))
       expect(list).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: created.id, path: workspaceRoot }),
         expect.objectContaining({ id: explicit.id, path: explicitWorkspaceRoot }),
@@ -71,6 +83,15 @@ describe('workspace capability', () => {
       const updated = await updateRes.json()
       expect(updated).toEqual(expect.objectContaining({ name: 'Renamed Workspace' }))
 
+      const unpinRes = await app.handle(new Request(`http://localhost/workspaces/${explicit.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ pinned: false }),
+      }))
+      expect(unpinRes.status).toBe(200)
+      const unpinned = await unpinRes.json()
+      expect(unpinned).toEqual(expect.objectContaining({ id: explicit.id, pinned: 0 }))
+
       const missingUpdate = await app.handle(new Request('http://localhost/workspaces/missing-workspace', {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
@@ -78,6 +99,15 @@ describe('workspace capability', () => {
       }))
       expect(missingUpdate.status).toBe(200)
       expect(await missingUpdate.json()).toBeNull()
+
+      const invalidPatchRes = await app.handle(new Request(`http://localhost/workspaces/${created.id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(invalidPatchRes.status).toBe(400)
+      const invalidPatchBody = await invalidPatchRes.json()
+      expect(invalidPatchBody.code).toBe('invalid_workspace_input')
 
       const duplicateRes = await app.handle(new Request('http://localhost/workspaces', {
         method: 'POST',
