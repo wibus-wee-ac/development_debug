@@ -9,7 +9,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {

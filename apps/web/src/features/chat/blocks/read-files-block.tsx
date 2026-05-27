@@ -1,5 +1,6 @@
-import { useState } from 'react'
 import { AnimatePresence, m } from 'motion/react'
+import { useState } from 'react'
+
 import { cn } from '~/lib/cn'
 
 interface ReadFilesBlockProps {
@@ -53,7 +54,11 @@ export function ReadFilesBlock({ paths }: ReadFilesBlockProps) {
           aria-expanded={expanded}
           className="text-xs text-muted-foreground/50 hover:text-muted-foreground mt-1 transition-colors duration-150"
         >
-          and {hiddenCount} more...
+          and
+{' '}
+{hiddenCount}
+{' '}
+more...
         </button>
       )}
       {expanded && hiddenCount > 0 && (

@@ -3,7 +3,6 @@ import '@xterm/xterm/css/xterm.css'
 // Output: Interactive bottom-panel shell terminal backed by a PTY WebSocket.
 // Input: A stable PTY id, working directory, panel visibility, and metadata callbacks.
 // Position: Owned by TUI; chat/workspace panels mount it as the visible shell surface.
-
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'
@@ -19,7 +18,8 @@ import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 import { startShell, stopShell } from './shell-api'
-import { mergeTerminalMetadata, readTerminalMetadata, type TerminalMetadata } from './terminal-metadata'
+import type { TerminalMetadata } from './terminal-metadata'
+import { mergeTerminalMetadata, readTerminalMetadata } from './terminal-metadata'
 
 const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
 const MAX_TRANSCRIPT_CHARS = 8_000

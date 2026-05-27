@@ -1,12 +1,12 @@
-import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
 import type { TFunction } from 'i18next'
+import { RefreshCwIcon, SearchIcon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import {
-  patchProviderTargetsByProviderTargetIdModelRegistryMappings,
-  postProvidersModelSearch
+  postProvidersModelSearch,
+  putModelRegistryMappingsByModelId,
 } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -17,21 +17,21 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
-import { ModelVisibilitySchema, modelIsVisible } from '~/features/agent-runtime/model-visibility'
+import { modelIsVisible, ModelVisibilitySchema } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
-import type { ModelCapabilities, ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { ModelCapabilities, ModelDescriptor } from '~/lib/types'
 
 import { ALL_DISABLED_SENTINEL } from './provider-settings-utils'
 
-type TimeAgoMessage =
-  | { key: 'models.time.justNow' }
-  | { key: 'models.time.minutesAgo', options: { minuteCount: number } }
-  | { key: 'models.time.hoursAgo', options: { hourCount: number } }
-  | { key: 'models.time.daysAgo', options: { dayCount: number } }
+type TimeAgoMessage
+  = | { key: 'models.time.justNow' }
+    | { key: 'models.time.minutesAgo', options: { minuteCount: number } }
+    | { key: 'models.time.hoursAgo', options: { hourCount: number } }
+    | { key: 'models.time.daysAgo', options: { dayCount: number } }
 
 function formatTimeAgo(ts: number): TimeAgoMessage {
   const seconds = Math.round((Date.now() - ts) / 1000)
@@ -90,15 +90,15 @@ const ModelCapabilitiesSchema = z
         input: z.number().optional(),
         output: z.number().optional(),
         cacheRead: z.number().optional(),
-        cacheWrite: z.number().optional()
+        cacheWrite: z.number().optional(),
       })
       .optional(),
     family: z.string().optional(),
     knowledgeCutoff: z.string().optional(),
     releaseDate: z.string().optional(),
-    registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+    registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'alias', 'unmatched']).optional(),
     registryModelId: z.string().optional(),
-    registryModelLabel: z.string().optional()
+    registryModelLabel: z.string().optional(),
   })
   .default({})
 
@@ -107,8 +107,8 @@ const SearchResultListSchema = z
     z.object({
       id: z.string(),
       label: z.string(),
-      capabilities: ModelCapabilitiesSchema
-    })
+      capabilities: ModelCapabilitiesSchema,
+    }),
   )
   .default([])
 
@@ -136,7 +136,7 @@ interface ManualRegistryDraft {
 const OptionalNumberTextSchema = z
   .string()
   .trim()
-  .transform((value) => (value === '' ? undefined : Number(value)))
+  .transform(value => (value === '' ? undefined : Number(value)))
   .pipe(z.number().finite().optional())
 
 const ManualRegistryDraftProjectionSchema = z
@@ -155,21 +155,21 @@ const ManualRegistryDraftProjectionSchema = z
     family: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     knowledge: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     releaseDate: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     costInput: OptionalNumberTextSchema,
     costOutput: OptionalNumberTextSchema,
     costCacheRead: OptionalNumberTextSchema,
-    costCacheWrite: OptionalNumberTextSchema
+    costCacheWrite: OptionalNumberTextSchema,
   })
-  .transform((draft) => ({
+  .transform(draft => ({
     id: draft.id.trim(),
     name: draft.name.trim() || draft.id.trim(),
     inputModalities: [...(draft.inputText ? ['text'] : []), ...(draft.inputImage ? ['image'] : [])],
@@ -187,14 +187,14 @@ const ManualRegistryDraftProjectionSchema = z
       input: draft.costInput,
       output: draft.costOutput,
       cache_read: draft.costCacheRead,
-      cache_write: draft.costCacheWrite
+      cache_write: draft.costCacheWrite,
     },
     capabilitiesCost: {
       input: draft.costInput,
       output: draft.costOutput,
       cacheRead: draft.costCacheRead,
-      cacheWrite: draft.costCacheWrite
-    }
+      cacheWrite: draft.costCacheWrite,
+    },
   }))
 
 function createManualDraft(model: ModelDescriptor | null, query: string): ManualRegistryDraft {
@@ -220,7 +220,7 @@ function createManualDraft(model: ModelDescriptor | null, query: string): Manual
     costCacheRead:
       model?.capabilities.cost?.cacheRead != null ? String(model.capabilities.cost.cacheRead) : '',
     costCacheWrite:
-      model?.capabilities.cost?.cacheWrite != null ? String(model.capabilities.cost.cacheWrite) : ''
+      model?.capabilities.cost?.cacheWrite != null ? String(model.capabilities.cost.cacheWrite) : '',
   }
 }
 
@@ -232,7 +232,7 @@ function buildManualModelsDevModel(draft: ManualRegistryDraft) {
     name: projected.name,
     limit: {
       context: projected.contextWindow,
-      output: projected.maxOutput
+      output: projected.maxOutput,
     },
     modalities: { input: projected.inputModalities, output: projected.outputModalities },
     reasoning: projected.reasoning,
@@ -242,7 +242,7 @@ function buildManualModelsDevModel(draft: ManualRegistryDraft) {
     cost: projected.modelsDevCost,
     family: projected.family,
     knowledge: projected.knowledgeCutoff,
-    release_date: projected.releaseDate
+    release_date: projected.releaseDate,
   }
 }
 
@@ -261,14 +261,14 @@ function capabilitiesFromManualDraft(draft: ManualRegistryDraft): ModelCapabilit
     cost: projected.capabilitiesCost,
     family: projected.family,
     knowledgeCutoff: projected.knowledgeCutoff,
-    releaseDate: projected.releaseDate
+    releaseDate: projected.releaseDate,
   }
 }
 
 function applyRegistryResult(
   model: ModelDescriptor,
   result: SearchResult,
-  match: 'manual'
+  match: 'manual' | 'alias',
 ): ModelDescriptor {
   return {
     ...model,
@@ -278,12 +278,12 @@ function applyRegistryResult(
       ...model.capabilities,
       registryMatch: match,
       registryModelId: result.id,
-      registryModelLabel: result.label || result.id
-    }
+      registryModelLabel: result.label || result.id,
+    },
   }
 }
 
-type RegistryStatus = 'exact' | 'fuzzy' | 'manual' | 'unmatched'
+type RegistryStatus = 'exact' | 'fuzzy' | 'manual' | 'alias' | 'unmatched'
 
 function registryStatusLabel(model: ModelDescriptor): RegistryStatus {
   switch (model.capabilities.registryMatch) {
@@ -293,6 +293,8 @@ function registryStatusLabel(model: ModelDescriptor): RegistryStatus {
       return 'fuzzy'
     case 'manual':
       return 'manual'
+    case 'alias':
+      return 'alias'
     default:
       return 'unmatched'
   }
@@ -302,29 +304,28 @@ const REGISTRY_STATUS_KEYS = {
   exact: 'models.registry.status.exact',
   fuzzy: 'models.registry.status.fuzzy',
   manual: 'models.registry.status.manual',
-  unmatched: 'models.registry.status.unmatched'
+  alias: 'models.registry.status.alias',
+  unmatched: 'models.registry.status.unmatched',
 } as const
 
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
   const { data } = await postProvidersModelSearch({
     body: { query },
-    throwOnError: true
+    throwOnError: true,
   })
   return SearchResultListSchema.parse(data) satisfies SearchResult[]
 }
 
 export function ModelsPanel({
   loading,
-  providerTarget,
   models,
   enabledModels,
   onChange,
   onModelRegistryMapped,
   onRefresh,
-  cachedAt
+  cachedAt,
 }: {
   loading: boolean
-  providerTarget: ProviderTarget
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
@@ -341,8 +342,7 @@ export function ModelsPanel({
   const [savingMapping, setSavingMapping] = useState(false)
   const [manualOpen, setManualOpen] = useState(false)
   const [manualDraft, setManualDraft] = useState<ManualRegistryDraft>(() =>
-    createManualDraft(null, '')
-  )
+    createManualDraft(null, ''))
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const visibility = useMemo(() => ModelVisibilitySchema.parse(enabledModels), [enabledModels])
@@ -353,7 +353,7 @@ export function ModelsPanel({
     let filtered = models
     if (filter.trim()) {
       const q = filter.toLowerCase()
-      filtered = models.filter((m) => (m.label || m.id).toLowerCase().includes(q))
+      filtered = models.filter(m => (m.label || m.id).toLowerCase().includes(q))
     }
     // Sort: enabled first, then alphabetical within each group
     return filtered.toSorted((a, b) => {
@@ -366,12 +366,12 @@ export function ModelsPanel({
     })
   }, [models, filter, visibility])
 
-  const enabledCount =
-    visibility.kind === 'none'
+  const enabledCount
+    = visibility.kind === 'none'
       ? 0
       : visibility.kind === 'all'
         ? models.length
-        : models.filter((model) => visibility.ids.has(model.id)).length
+        : models.filter(model => visibility.ids.has(model.id)).length
 
   const isChecked = (id: string): boolean => {
     return modelIsVisible(visibility, id)
@@ -383,17 +383,20 @@ export function ModelsPanel({
       if (allDisabled) {
         // From "all disabled" → enable only this one
         onChange([id])
-      } else if (visibility.kind === 'all') {
+      }
+ else if (visibility.kind === 'all') {
         // "All enabled" state — shouldn't normally check an already-checked item,
         // but just in case, keep all enabled (no-op)
-      } else {
+      }
+ else {
         // Explicit selection — add this model
         onChange([...enabledModels, id])
       }
-    } else {
+    }
+ else {
       // Disabling a model
-      const base = visibility.kind === 'all' ? models.map((m) => m.id) : enabledModels
-      const next = base.filter((x) => x !== id)
+      const base = visibility.kind === 'all' ? models.map(m => m.id) : enabledModels
+      const next = base.filter(x => x !== id)
       onChange(next.length === 0 ? [ALL_DISABLED_SENTINEL] : next)
     }
   }
@@ -418,7 +421,7 @@ export function ModelsPanel({
         () => {
           setSearchResults([])
           setSearchPending(false)
-        }
+        },
       )
     }, 220)
 
@@ -449,25 +452,29 @@ export function ModelsPanel({
     async (
       model: ModelDescriptor,
       result: SearchResult,
-      manualModel?: ReturnType<typeof buildManualModelsDevModel>
+      manualModel?: ReturnType<typeof buildManualModelsDevModel>,
     ) => {
       setSavingMapping(true)
       const body = manualModel
         ? { modelId: model.id, registryModelId: result.id, model: manualModel }
         : { modelId: model.id, registryModelId: result.id }
       try {
-        await patchProviderTargetsByProviderTargetIdModelRegistryMappings({
-          path: { providerTargetId: providerTarget.id },
-          body,
-          throwOnError: true
+        await putModelRegistryMappingsByModelId({
+          path: { modelId: model.id },
+          body: {
+            ...body,
+            matchType: manualModel ? 'manual' : 'alias',
+          },
+          throwOnError: true,
         })
-        onModelRegistryMapped(applyRegistryResult(model, result, 'manual'))
+        onModelRegistryMapped(applyRegistryResult(model, result, manualModel ? 'manual' : 'alias'))
         closeMappingDialog()
-      } finally {
+      }
+ finally {
         setSavingMapping(false)
       }
     },
-    [closeMappingDialog, onModelRegistryMapped, providerTarget]
+    [closeMappingDialog, onModelRegistryMapped],
   )
 
   const saveManualMapping = useCallback(() => {
@@ -480,9 +487,9 @@ export function ModelsPanel({
       {
         id: manualModel.id,
         label: manualModel.name,
-        capabilities: capabilitiesFromManualDraft(manualDraft)
+        capabilities: capabilitiesFromManualDraft(manualDraft),
       },
-      manualModel
+      manualModel,
     )
   }, [manualDraft, mappingModel, saveRegistryMapping])
 
@@ -540,7 +547,7 @@ export function ModelsPanel({
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
         <Input
           value={filter}
-          onChange={(e) => setFilter(e.target.value)}
+          onChange={e => setFilter(e.target.value)}
           placeholder={t('models.search.placeholder')}
           className="h-8 pl-8 text-[12.5px]"
         />
@@ -548,12 +555,15 @@ export function ModelsPanel({
 
       {/* Body */}
       <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
-        {loading ? (
+        {loading
+? (
           <div className="flex items-center justify-center gap-2 py-8 text-[12px] text-muted-foreground">
             <Spinner className="size-3" />
             {t('models.loading')}
           </div>
-        ) : models.length === 0 ? (
+        )
+: models.length === 0
+? (
           <div className="px-4 py-8 text-center">
             <p className="text-[12px] text-muted-foreground">
               {t('models.empty.title')}
@@ -573,7 +583,8 @@ export function ModelsPanel({
               </Button>
             )}
           </div>
-        ) : (
+        )
+: (
           <div className="max-h-72 overflow-y-auto">
             <ul className="divide-y divide-foreground/4">
               {visible.map((m) => {
@@ -584,12 +595,12 @@ export function ModelsPanel({
                     <div
                       className={cn(
                         'flex items-center gap-3 px-3 py-2 transition-colors',
-                        'hover:bg-foreground/2.5'
+                        'hover:bg-foreground/2.5',
                       )}
                     >
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={(c) => handleToggle(m.id, !!c)}
+                        onCheckedChange={c => handleToggle(m.id, !!c)}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12.5px] font-medium text-foreground">
@@ -600,10 +611,11 @@ export function ModelsPanel({
                             {m.id}
                           </div>
                         )}
-                        {m.capabilities.registryModelId &&
-                          m.capabilities.registryModelId !== m.id && (
+                        {m.capabilities.registryModelId
+                          && m.capabilities.registryModelId !== m.id && (
                             <div className="truncate text-[10.5px] text-muted-foreground/70">
-                              models.dev:{' '}
+                              models.dev:
+{' '}
                               <span className="font-mono">{m.capabilities.registryModelId}</span>
                             </div>
                           )}
@@ -612,13 +624,13 @@ export function ModelsPanel({
                         variant="secondary"
                         className={cn(
                           'text-[10px] font-normal tabular-nums',
-                          registryStatus === 'exact' &&
-                            'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-                          registryStatus === 'fuzzy' &&
-                            'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-                          registryStatus === 'manual' &&
-                            'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-                          registryStatus === 'unmatched' && 'text-muted-foreground'
+                          registryStatus === 'exact'
+                          && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                          registryStatus === 'fuzzy'
+                          && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                          registryStatus === 'manual'
+                          && 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                          registryStatus === 'unmatched' && 'text-muted-foreground',
                         )}
                       >
                         {t(REGISTRY_STATUS_KEYS[registryStatus])}
@@ -628,7 +640,8 @@ export function ModelsPanel({
                           variant="secondary"
                           className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground"
                         >
-                          {Math.round(m.capabilities.contextWindow / 1000)}k
+                          {Math.round(m.capabilities.contextWindow / 1000)}
+k
                         </Badge>
                       )}
                       <Button
@@ -648,7 +661,8 @@ export function ModelsPanel({
               })}
               {visible.length === 0 && (
                 <li className="px-4 py-8 text-center text-[11.5px] text-muted-foreground">
-                  {t('models.search.noMatches.prefix')}{' '}
+                  {t('models.search.noMatches.prefix')}
+{' '}
                   <span className="font-mono text-foreground">{filter}</span>
                   {t('models.search.noMatches.suffix')}
                 </li>
@@ -660,7 +674,7 @@ export function ModelsPanel({
 
       <Dialog
         open={mappingModel !== null && !manualOpen}
-        onOpenChange={(open) => !open && closeMappingDialog()}
+        onOpenChange={open => !open && closeMappingDialog()}
       >
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
@@ -685,7 +699,7 @@ export function ModelsPanel({
                 <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
                 <Input
                   value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  onChange={event => setSearchQuery(event.target.value)}
                   placeholder={t('models.mapping.search.placeholder')}
                   className="h-8 pl-8 font-mono text-[12px]"
                 />
@@ -695,9 +709,10 @@ export function ModelsPanel({
               </div>
 
               <div className="max-h-72 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
-                {searchResults.length > 0 ? (
+                {searchResults.length > 0
+? (
                   <ul className="divide-y divide-foreground/4">
-                    {searchResults.map((result) => (
+                    {searchResults.map(result => (
                       <li key={result.id}>
                         <button
                           type="button"
@@ -713,17 +728,19 @@ export function ModelsPanel({
                               {result.id}
                             </div>
                           </div>
-                          {result.capabilities.contextWindow != null &&
-                            result.capabilities.contextWindow > 0 && (
+                          {result.capabilities.contextWindow != null
+                            && result.capabilities.contextWindow > 0 && (
                               <span className="font-mono text-[10px] text-muted-foreground">
-                                {Math.round(result.capabilities.contextWindow / 1000)}k
+                                {Math.round(result.capabilities.contextWindow / 1000)}
+k
                               </span>
                             )}
                         </button>
                       </li>
                     ))}
                   </ul>
-                ) : (
+                )
+: (
                   <div className="px-4 py-8 text-center text-[12px] text-muted-foreground">
                     {searchPending
                       ? t('models.mapping.searching')
@@ -754,7 +771,7 @@ export function ModelsPanel({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={manualOpen} onOpenChange={(open) => !open && setManualOpen(false)}>
+      <Dialog open={manualOpen} onOpenChange={open => !open && setManualOpen(false)}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t('models.manual.title')}</DialogTitle>
@@ -766,79 +783,73 @@ export function ModelsPanel({
           <div className="grid max-h-[min(70vh,34rem)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
             <Input
               value={manualDraft.id}
-              onChange={(event) => setManualDraft({ ...manualDraft, id: event.target.value })}
+              onChange={event => setManualDraft({ ...manualDraft, id: event.target.value })}
               placeholder={t('models.manual.field.id')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.name}
-              onChange={(event) => setManualDraft({ ...manualDraft, name: event.target.value })}
+              onChange={event => setManualDraft({ ...manualDraft, name: event.target.value })}
               placeholder={t('models.manual.field.name')}
               className="h-8 text-[12px]"
             />
             <Input
               value={manualDraft.context}
-              onChange={(event) => setManualDraft({ ...manualDraft, context: event.target.value })}
+              onChange={event => setManualDraft({ ...manualDraft, context: event.target.value })}
               placeholder={t('models.manual.field.contextWindow')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.output}
-              onChange={(event) => setManualDraft({ ...manualDraft, output: event.target.value })}
+              onChange={event => setManualDraft({ ...manualDraft, output: event.target.value })}
               placeholder={t('models.manual.field.maxOutputTokens')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.family}
-              onChange={(event) => setManualDraft({ ...manualDraft, family: event.target.value })}
+              onChange={event => setManualDraft({ ...manualDraft, family: event.target.value })}
               placeholder={t('models.manual.field.family')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.knowledge}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, knowledge: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, knowledge: event.target.value })}
               placeholder={t('models.manual.field.knowledgeCutoff')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.releaseDate}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, releaseDate: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, releaseDate: event.target.value })}
               placeholder={t('models.manual.field.releaseDate')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.costInput}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, costInput: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, costInput: event.target.value })}
               placeholder={t('models.manual.field.inputCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.costOutput}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, costOutput: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, costOutput: event.target.value })}
               placeholder={t('models.manual.field.outputCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.costCacheRead}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, costCacheRead: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, costCacheRead: event.target.value })}
               placeholder={t('models.manual.field.cacheReadCost')}
               className="h-8 font-mono text-[12px]"
             />
             <Input
               value={manualDraft.costCacheWrite}
-              onChange={(event) =>
-                setManualDraft({ ...manualDraft, costCacheWrite: event.target.value })
-              }
+              onChange={event =>
+                setManualDraft({ ...manualDraft, costCacheWrite: event.target.value })}
               placeholder={t('models.manual.field.cacheWriteCost')}
               className="h-8 font-mono text-[12px]"
             />
@@ -848,63 +859,56 @@ export function ModelsPanel({
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.inputText}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, inputText: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, inputText: !!checked })}
                   />
                   {t('models.manual.capability.textInput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.inputImage}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, inputImage: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, inputImage: !!checked })}
                   />
                   {t('models.manual.capability.imageInput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.outputText}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, outputText: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, outputText: !!checked })}
                   />
                   {t('models.manual.capability.textOutput')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.reasoning}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, reasoning: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, reasoning: !!checked })}
                   />
                   {t('models.manual.capability.reasoning')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.toolCall}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, toolCall: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, toolCall: !!checked })}
                   />
                   {t('models.manual.capability.tools')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.temperature}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, temperature: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, temperature: !!checked })}
                   />
                   {t('models.manual.capability.temperature')}
                 </label>
                 <label className="flex items-center gap-2 text-[12px] text-muted-foreground">
                   <Checkbox
                     checked={manualDraft.structuredOutput}
-                    onCheckedChange={(checked) =>
-                      setManualDraft({ ...manualDraft, structuredOutput: !!checked })
-                    }
+                    onCheckedChange={checked =>
+                      setManualDraft({ ...manualDraft, structuredOutput: !!checked })}
                   />
                   {t('models.manual.capability.structuredOutput')}
                 </label>

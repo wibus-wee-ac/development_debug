@@ -67,7 +67,7 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
       const index = owner.nextIndex
       const session = createSession(ownerId, cwd, index)
 
-      set((state) => ({
+      set(state => ({
         owners: {
           ...state.owners,
           [ownerId]: {

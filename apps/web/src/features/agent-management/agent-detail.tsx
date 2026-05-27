@@ -377,7 +377,7 @@ function listSelectableProviderTargets(
   runtimeKind: RuntimeKind,
 ): ProviderTargetOption[] {
   return providerTargets.filter(target =>
-    target.enabled && runtimeSupportsProviderKind(runtimeKind, target.providerKind))
+    runtimeSupportsProviderKind(runtimeKind, target.providerKind))
 }
 
 function defaultProviderTargetId(
@@ -798,12 +798,14 @@ function AgentDetailHeader({
 function AgentIdentitySection({
   draft,
   selectableProviderTargets,
+  providerDisabledReason,
   avatarUrl,
   avatarSpinKey,
   onShuffleAvatar,
 }: {
   draft: AgentDetailDraft
   selectableProviderTargets: ProviderTargetOption[]
+  providerDisabledReason: string | null
   avatarUrl: string
   avatarSpinKey: number
   onShuffleAvatar: () => void
@@ -1014,12 +1016,22 @@ function AgentIdentitySection({
             <>
               <SettingsDivider />
               <SettingsRow label={t('detail.model.label')} description={t('detail.model.description')}>
-                <AgentProviderModelPicker
-                  providerTargets={selectableProviderTargets}
-                  providerTargetId={draft.providerTargetId}
-                  modelId={draft.modelId}
-                  thinkingEffort={draft.thinkingEffort}
-                />
+                <div className="flex flex-col items-end gap-1.5">
+                  <AgentProviderModelPicker
+                    providerTargets={selectableProviderTargets}
+                    providerTargetId={draft.providerTargetId}
+                    modelId={draft.modelId}
+                    thinkingEffort={draft.thinkingEffort}
+                  />
+                  {providerDisabledReason && (
+                    <p
+                      className="max-w-72 text-right text-[11px] leading-snug text-amber-700 dark:text-amber-300"
+                      data-testid="agent-provider-disabled-reason"
+                    >
+                      {providerDisabledReason}
+                    </p>
+                  )}
+                </div>
               </SettingsRow>
 
               {draft.runtimeKind === 'claude-agent' && (
@@ -1122,6 +1134,7 @@ function useAgentDetailOwner({
   onCreated?: (agentId: string) => void
   onDeleted?: () => void
 }) {
+  const { t } = useTranslation('agentManagement')
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const { providerOptions } = useProviderTargets()
@@ -1197,6 +1210,17 @@ function useAgentDetailOwner({
     () => listSelectableProviderTargets(providerOptions, draft.runtimeKind),
     [providerOptions, draft.runtimeKind],
   )
+  const selectedProviderTarget = useMemo(
+    () => draft.providerTargetId
+      ? providerOptions.find(target => target.id === draft.providerTargetId) ?? null
+      : null,
+    [draft.providerTargetId, providerOptions],
+  )
+  const providerDisabledReason = draft.runtimeKind !== 'cli-tui'
+    && selectedProviderTarget
+    && !selectedProviderTarget.enabled
+      ? t('detail.providerModel.disabledReason', { providerName: selectedProviderTarget.name })
+      : null
 
   useEffect(() => {
     if (agent || !selectableProviderTargets[0]) {
@@ -1382,6 +1406,7 @@ function useAgentDetailOwner({
     form,
     draft,
     selectableProviderTargets,
+    providerDisabledReason,
     avatarSpinKey,
     avatarUrl: buildAvatarUrl(draft.avatarStyle, draft.avatarSeed),
     saveState,
@@ -1424,6 +1449,7 @@ export function AgentDetailPage({
         <AgentIdentitySection
           draft={owner.draft}
           selectableProviderTargets={owner.selectableProviderTargets}
+          providerDisabledReason={owner.providerDisabledReason}
           avatarUrl={owner.avatarUrl}
           avatarSpinKey={owner.avatarSpinKey}
           onShuffleAvatar={owner.shuffleAvatar}

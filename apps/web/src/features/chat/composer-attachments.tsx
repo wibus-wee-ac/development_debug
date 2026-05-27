@@ -184,11 +184,11 @@ export function ComposerAttachmentList({
 
 function PendingAppshotSlot({ pending }: { pending: PendingAppshotAttachment }) {
   const height = pending.transitionSnapshotHeightResolved
-    ? Math.max(
-        APPSHOT_COMPOSER_VERTICAL_PADDING,
-        (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT) + APPSHOT_COMPOSER_VERTICAL_PADDING,
-      )
-    : 0
+      ? Math.max(
+          APPSHOT_COMPOSER_VERTICAL_PADDING,
+          (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT) + APPSHOT_COMPOSER_VERTICAL_PADDING,
+        )
+      : 0
   const transition = {
     type: 'spring' as const,
     visualDuration: pending.transitionSpringResponse ?? 0.35,

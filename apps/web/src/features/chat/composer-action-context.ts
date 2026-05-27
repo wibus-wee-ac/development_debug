@@ -45,7 +45,9 @@ export interface ComposerSlashCommandActionContext {
 
 export interface ComposerActionContextOptions {
   pendingAppshotRequestId?: string | null
+  attachmentTrayGrowthDirection?: 'up' | 'down'
   transitionSnapshotHeight?: number | null
+  transitionSnapshotLayoutHeight?: number | null
 }
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i
@@ -126,11 +128,11 @@ function readAppshotDestinationFrame(
   const containerRect = attachmentsContainer?.getBoundingClientRect() ?? composerRect
   const containerStyle = attachmentsContainer ? window.getComputedStyle(attachmentsContainer) : composerStyle
   const attachmentsRow = targetElement.querySelector<HTMLElement>('[data-composer-attachments-row]')
-  const rawPendingRect = options.pendingAppshotRequestId
+  const pendingElement = options.pendingAppshotRequestId
     ? Array.from(targetElement.querySelectorAll<HTMLElement>('[data-pending-appshot-capture-request-id]'))
-        .find(element => element.dataset.pendingAppshotCaptureRequestId === options.pendingAppshotRequestId)
-        ?.getBoundingClientRect() ?? null
+        .find(element => element.dataset.pendingAppshotCaptureRequestId === options.pendingAppshotRequestId) ?? null
     : null
+  const rawPendingRect = pendingElement?.getBoundingClientRect() ?? null
   const pendingRect = rawPendingRect && (
     rawPendingRect.left !== 0
     || rawPendingRect.top !== 0
@@ -160,20 +162,20 @@ function readAppshotDestinationFrame(
   const rowTop = containerRect.top + paddingTop
   const left = pendingRect?.left ?? fallbackLeft
   const transitionSnapshotHeight = readPositiveNumber(options.transitionSnapshotHeight) ?? APPSHOT_ATTACHMENT_SLOT_HEIGHT
-  const renderedCardHeight = transitionSnapshotHeight
-    + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
-  const upwardGrowthOffset = rowRect
+  const transitionSnapshotLayoutHeight = readPositiveNumber(options.transitionSnapshotLayoutHeight) ?? transitionSnapshotHeight
+  const targetWidth = APPSHOT_ATTACHMENT_SLOT_WIDTH
+  const targetHeight = transitionSnapshotHeight
+  const renderedCardHeight = transitionSnapshotLayoutHeight + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
+  const upwardGrowthOffset = options.attachmentTrayGrowthDirection === 'up' && rowRect
     ? Math.max(0, renderedCardHeight - rowRect.height)
     : 0
-  const targetTop = pendingRect
-    ? pendingRect.top
-    : rowTop - upwardGrowthOffset
+  const targetTop = rowTop - upwardGrowthOffset
 
   return {
     x: left * scaleFactor,
     y: targetTop * scaleFactor,
-    width: APPSHOT_ATTACHMENT_SLOT_WIDTH * scaleFactor,
-    height: APPSHOT_ATTACHMENT_SLOT_HEIGHT * scaleFactor,
+    width: targetWidth * scaleFactor,
+    height: targetHeight * scaleFactor,
   }
 }
 

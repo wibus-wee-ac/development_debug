@@ -1,5 +1,6 @@
-import { getServerWebSocketUrl } from '~/lib/electron'
 import { z } from 'zod'
+
+import { getServerWebSocketUrl } from '~/lib/electron'
 
 import type { PtyClientEvent, PtyErrorEvent, PtyExitEvent, PtyOutputEvent, PtySnapshotEvent } from './pty-protocol'
 import { PtyServerEventJsonSchema } from './pty-protocol'

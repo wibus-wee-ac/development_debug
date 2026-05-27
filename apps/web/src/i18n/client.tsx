@@ -2,15 +2,18 @@
 // Input: Initial locale resolved during Vite app bootstrap and locale resources.
 // Position: Client runtime boundary; React components read copy through react-i18next context.
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { createInstance, type i18n as I18nInstance } from 'i18next'
+import type { i18n as I18nInstance } from 'i18next'
+import { createInstance } from 'i18next'
 import resourcesToBackend from 'i18next-resources-to-backend'
+import type { ReactNode } from 'react'
+import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 
 import enUS, { allNamespaces } from '~/locales/default'
 
 import { applyDocumentLocale, writeLocaleCookie } from './browser-locale'
-import { DEFAULT_LOCALE, normalizeLocale, type SupportedLocale } from './locales'
+import type { SupportedLocale } from './locales'
+import { DEFAULT_LOCALE, normalizeLocale } from './locales'
 import { getI18nSettings } from './settings'
 
 interface I18nContextValue {

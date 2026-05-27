@@ -15,7 +15,7 @@ const SelectSignalMetadataJsonSchema = z.string()
     options: z.array(z.string()),
   }))
 
-export const AgentActivityItem = memo(function AgentActivityItem({ activity }: AgentActivityItemProps) {
+export const AgentActivityItem = memo(({ activity }: AgentActivityItemProps) => {
   const base = 'py-1.5 px-3 text-[13px]'
 
   switch (activity.type) {

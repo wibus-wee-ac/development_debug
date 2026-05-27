@@ -4,22 +4,23 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { MentionPanel, type MentionItem } from './mention-panel'
+import type { MentionItem } from './mention-panel'
+import { MentionPanel } from './mention-panel'
 
 const items: MentionItem[] = [
   { type: 'file', name: 'README.md', path: 'README.md' },
   { type: 'directory', name: 'apps', path: 'apps' },
 ]
 
-afterEach(() => {
-  cleanup()
-})
-
 beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
-describe('MentionPanel', () => {
+afterEach(() => {
+  cleanup()
+})
+
+describe('mentionPanel', () => {
   it('renders workspace file icons from the shared sprite-backed resolver', () => {
     render(
       <MentionPanel

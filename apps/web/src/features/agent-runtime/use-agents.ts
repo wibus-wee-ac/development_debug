@@ -6,7 +6,7 @@ import { deleteAgentsById, getAgents, patchAgentsById, postAgents } from '~/api-
 import { getServerUrl } from '~/lib/electron'
 import type { Agent, CreateAgentInput, UpdateAgentInput } from '~/lib/types'
 
-const AGENTS_QUERY_KEY = ['agents'] as const
+export const AGENTS_QUERY_KEY = ['agents'] as const
 const AgentSchema = z.object({
   id: z.string(),
   name: z.string(),

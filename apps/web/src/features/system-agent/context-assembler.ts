@@ -43,11 +43,11 @@ const DEFAULT_TOKEN_BUDGET = 1_200
 
 function compareContextItems(left: ContextItem, right: ContextItem): number {
   const explicitRank = Number(right.id.startsWith('explicit:')) - Number(left.id.startsWith('explicit:'))
-  return explicitRank ||
-    right.priority - left.priority ||
-    freshnessRank(right.freshness) - freshnessRank(left.freshness) ||
-    left.tokenEstimate - right.tokenEstimate ||
-    left.id.localeCompare(right.id)
+  return explicitRank
+    || right.priority - left.priority
+    || freshnessRank(right.freshness) - freshnessRank(left.freshness)
+    || left.tokenEstimate - right.tokenEstimate
+    || left.id.localeCompare(right.id)
 }
 
 function freshnessRank(freshness: ContextItem['freshness']): number {

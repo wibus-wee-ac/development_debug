@@ -14,9 +14,9 @@ export interface GitHubRepository {
   remoteUrl: string
 }
 
-export type GitHubAwaitTarget =
-  | { kind: 'pull-request', filter: { pr: number }, label: string }
-  | { kind: 'commit-ref', filter: { sha: string }, label: string }
+export type GitHubAwaitTarget
+  = | { kind: 'pull-request', filter: { pr: number }, label: string }
+    | { kind: 'commit-ref', filter: { sha: string }, label: string }
 
 function normalizeRepositoryPath(pathname: string): string | null {
   const clean = pathname.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.git$/i, '')
@@ -26,7 +26,7 @@ function normalizeRepositoryPath(pathname: string): string | null {
   }
 
   const [owner, repo] = segments
-  if (!/^[A-Za-z0-9-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo)) {
+  if (!/^[A-Z0-9-]+$/i.test(owner) || !/^[\w.-]+$/.test(repo)) {
     return null
   }
 
@@ -127,7 +127,7 @@ export function parseGitHubAwaitTargetInput(input: string): GitHubAwaitTarget | 
       : null
   }
 
-  if (/^[A-Za-z0-9._/-]+$/.test(trimmed)) {
+  if (/^[\w./-]+$/.test(trimmed)) {
     return { kind: 'commit-ref', filter: { sha: trimmed }, label: `@${trimmed}` }
   }
 

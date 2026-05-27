@@ -2,26 +2,26 @@
 // Input: Feature-owned context providers and legacy SystemAgentContext projections.
 // Position: Owned by system-agent as the renderer context aggregation boundary.
 
-export type ContextItemKind =
-  | 'attention'
-  | 'selection'
-  | 'entity'
-  | 'view'
-  | 'layout'
-  | 'history'
-  | 'retrieval'
-  | 'tool-output'
-  | 'memory'
+export type ContextItemKind
+  = | 'attention'
+    | 'selection'
+    | 'entity'
+    | 'view'
+    | 'layout'
+    | 'history'
+    | 'retrieval'
+    | 'tool-output'
+    | 'memory'
 
-export type ContextReferenceKind =
-  | 'text-selection'
-  | 'chat-message'
-  | 'chat-session'
-  | 'workspace-file'
-  | 'issue'
-  | 'terminal-buffer'
-  | 'browser-page'
-  | 'chronicle-memory'
+export type ContextReferenceKind
+  = | 'text-selection'
+    | 'chat-message'
+    | 'chat-session'
+    | 'workspace-file'
+    | 'issue'
+    | 'terminal-buffer'
+    | 'browser-page'
+    | 'chronicle-memory'
 
 export type ContextFreshness = 'live' | 'recent' | 'stale'
 export type ContextSensitivity = 'public' | 'workspace' | 'private' | 'secret'

@@ -7,7 +7,7 @@ export interface TerminalMetadata {
   cwd: string | null
 }
 
-const OSC_TERMINATOR_RE = /(?:\u0007|\u001B\\)/
+const OSC_TERMINATOR_RE = /\u0007|\u001B\\/
 const OSC_SEQUENCE_RE = /\u001B\](\d+);([^\u0007\u001B]*(?:\u001B(?!\\)[^\u0007\u001B]*)*)(?:\u0007|\u001B\\)/g
 const TITLE_OSC_CODES = new Set(['0', '2'])
 const CWD_OSC_CODES = new Set(['7'])

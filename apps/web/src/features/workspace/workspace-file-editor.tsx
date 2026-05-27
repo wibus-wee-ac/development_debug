@@ -3,11 +3,14 @@
 // Position: Workspace file viewing surface rendered inside BrowserPanel workspace file tabs.
 
 import Editor from '@monaco-editor/react'
-import { Loader2Icon } from 'lucide-react'
+import { CheckIcon, Loader2Icon, SaveIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { Button } from '~/components/ui/button'
+import { cn } from '~/lib/cn'
 import { useThemeStore } from '~/store/theme'
 
-import { useWorkspaceFileContent } from './use-workspace-file-content'
+import { useWorkspaceFileContent, useWorkspaceFileContentMutation } from './use-workspace-file-content'
 import { getMonacoLanguage } from './workspace-file-language'
 
 function useMonacoTheme(): 'vs' | 'vs-dark' {
@@ -26,8 +29,101 @@ function useMonacoTheme(): 'vs' | 'vs-dark' {
 
 export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string, path: string }) {
   const fileQuery = useWorkspaceFileContent(workspaceId, path)
+  const saveMutation = useWorkspaceFileContentMutation(workspaceId, path)
   const monacoTheme = useMonacoTheme()
   const content = fileQuery.data?.content
+  const fileIdentity = useMemo(() => `${workspaceId}\0${path}`, [path, workspaceId])
+  const saveDraftRef = useRef<() => Promise<void>>(async () => {})
+  const [editorState, setEditorState] = useState({
+    fileIdentity,
+    draft: '',
+    savedContent: '',
+    saveError: null as string | null,
+  })
+  const isDirty = editorState.draft !== editorState.savedContent
+  const isSaving = saveMutation.isPending
+
+  useEffect(() => {
+    if (typeof content !== 'string') {
+      return
+    }
+
+    setEditorState((current) => {
+      const currentFileChanged = current.fileIdentity !== fileIdentity
+      const currentDraftDirty = current.draft !== current.savedContent
+      if (!currentFileChanged && currentDraftDirty) {
+        return current
+      }
+      if (
+        !currentFileChanged
+        && current.draft === content
+        && current.savedContent === content
+        && current.saveError === null
+      ) {
+        return current
+      }
+      return {
+        fileIdentity,
+        draft: content,
+        savedContent: content,
+        saveError: null,
+      }
+    })
+  }, [content, fileIdentity])
+
+  const saveDraft = useCallback(async () => {
+    if (!isDirty || isSaving) {
+      return
+    }
+
+    const contentToSave = editorState.draft
+    setEditorState(current => ({ ...current, saveError: null }))
+    try {
+      await saveMutation.mutateAsync(contentToSave)
+      setEditorState(current => ({
+        ...current,
+        savedContent: contentToSave,
+        saveError: null,
+      }))
+    }
+    catch (error) {
+      setEditorState(current => ({
+        ...current,
+        saveError: error instanceof Error ? error.message : 'Unable to save this file.',
+      }))
+    }
+  }, [editorState.draft, isDirty, isSaving, saveMutation])
+
+  useEffect(() => {
+    saveDraftRef.current = saveDraft
+  }, [saveDraft])
+
+  let saveLabel = 'Saved'
+  if (isSaving) {
+    saveLabel = 'Saving'
+  }
+  else if (isDirty) {
+    saveLabel = 'Save'
+  }
+
+  let statusMessage = 'Saved'
+  let statusClassName = 'text-muted-foreground'
+  if (editorState.saveError) {
+    statusMessage = editorState.saveError
+    statusClassName = 'text-destructive'
+  }
+  else if (isDirty) {
+    statusMessage = 'Unsaved changes'
+    statusClassName = 'text-amber-600 dark:text-amber-300'
+  }
+
+  let saveIcon = <CheckIcon className="size-3" aria-hidden="true" />
+  if (isSaving) {
+    saveIcon = <Loader2Icon className="size-3 animate-spin" aria-hidden="true" />
+  }
+  else if (isDirty) {
+    saveIcon = <SaveIcon className="size-3" aria-hidden="true" />
+  }
 
   if (fileQuery.isLoading) {
     return (
@@ -47,18 +143,44 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
-      {/* We dont need this */}
-      {/* <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border/60 px-3">
-        <span className="min-w-0 truncate font-mono text-[11px] text-muted-foreground">{path}</span>
-      </div> */}
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/50 px-2">
+        <div className="min-w-0 flex-1" aria-live="polite">
+          <p className={cn('truncate text-[11px]', statusClassName)}>
+            {statusMessage}
+          </p>
+        </div>
+        <Button
+          type="button"
+          size="xs"
+          variant={isDirty ? 'default' : 'outline'}
+          onClick={() => void saveDraft()}
+          disabled={!isDirty || isSaving}
+          aria-label="Save file"
+        >
+          {saveIcon}
+          {saveLabel}
+        </Button>
+      </div>
       <div className="min-h-0 flex-1">
         <Editor
           key={`${workspaceId}:${path}`}
-          value={content}
+          value={editorState.draft}
           language={getMonacoLanguage(path)}
           theme={monacoTheme}
           path={`${workspaceId}/${path}`}
           loading={null}
+          onChange={(value) => {
+            setEditorState(current => ({
+              ...current,
+              draft: value ?? '',
+              saveError: null,
+            }))
+          }}
+          onMount={(editor, monaco) => {
+            editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+              void saveDraftRef.current()
+            })
+          }}
           options={{
             automaticLayout: true,
             folding: true,
@@ -66,7 +188,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
             fontSize: 13,
             lineNumbers: 'on',
             minimap: { enabled: false },
-            readOnly: true,
+            readOnly: isSaving,
             renderLineHighlight: 'line',
             scrollBeyondLastLine: false,
             smoothScrolling: true,

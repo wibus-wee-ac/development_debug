@@ -10,7 +10,7 @@ import {
   useMemo,
   useReducer,
   useRef,
-  useState
+  useState,
 } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
@@ -20,7 +20,7 @@ import {
   patchProfilesByIdIcon,
   postProvidersModels,
   postSecrets,
-  putProfilesById
+  putProfilesById,
 } from '~/api-gen/sdk.gen'
 import {
   AlertDialog,
@@ -31,7 +31,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogMedia,
-  AlertDialogTitle
+  AlertDialogTitle,
 } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -42,7 +42,7 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue
+  SelectValue,
 } from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
@@ -61,12 +61,12 @@ import { ProviderIcon } from './provider-icons'
 import {
   ALL_DISABLED_SENTINEL,
   presetForProfile,
-  PROVIDER_KIND_LABELS
+  PROVIDER_KIND_LABELS,
 } from './provider-settings-utils'
+import type { EditableCustomModel } from './provider-target-model-settings'
 import {
   CustomModelsJsonSchema,
-  type EditableCustomModel,
-  updateProviderTargetCustomModels
+  updateProviderTargetCustomModels,
 } from './provider-target-model-settings'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
@@ -90,24 +90,24 @@ interface ProfileDetailUiState {
 }
 
 const SecretCreateResponseSchema = z.object({
-  id: z.string().min(1)
+  id: z.string().min(1),
 })
 
-type ProfileDetailUiAction =
-  | { type: 'reset' }
-  | { type: 'models/loading' }
-  | { type: 'models/loaded'; models: ModelDescriptor[]; cachedAt?: number | null }
-  | { type: 'models/failed' }
-  | { type: 'models/update-one'; model: ModelDescriptor }
-  | { type: 'save/set'; state: SaveState }
-  | { type: 'remove/set'; open: boolean }
+type ProfileDetailUiAction
+  = | { type: 'reset' }
+    | { type: 'models/loading' }
+    | { type: 'models/loaded', models: ModelDescriptor[], cachedAt?: number | null }
+    | { type: 'models/failed' }
+    | { type: 'models/update-one', model: ModelDescriptor }
+    | { type: 'save/set', state: SaveState }
+    | { type: 'remove/set', open: boolean }
 
 const INITIAL_UI_STATE: ProfileDetailUiState = {
   availableModels: [],
   modelsLoading: false,
   modelsCachedAt: null,
   saveState: 'idle',
-  confirmRemove: false
+  confirmRemove: false,
 }
 
 const EMPTY_ENABLED_MODELS: string[] = []
@@ -118,10 +118,10 @@ const ModelDescriptorSchema = z.object({
   providerKind: z.enum(['openai-compatible', 'anthropic']),
   capabilities: z
     .object({
-      contextWindow: z.number().optional()
+      contextWindow: z.number().optional(),
     })
     .passthrough()
-    .default({})
+    .default({}),
 })
 
 const ModelDescriptorListSchema = z.array(ModelDescriptorSchema).default([])
@@ -130,13 +130,13 @@ const ProviderModelsCacheSchema = z
   .object({
     models: ModelDescriptorListSchema,
     cached: z.boolean(),
-    stale: z.boolean()
+    stale: z.boolean(),
   })
   .nullable()
 
 function profileDetailUiReducer(
   state: ProfileDetailUiState,
-  action: ProfileDetailUiAction
+  action: ProfileDetailUiAction,
 ): ProfileDetailUiState {
   switch (action.type) {
     case 'reset':
@@ -148,16 +148,15 @@ function profileDetailUiReducer(
         ...state,
         availableModels: action.models,
         modelsLoading: false,
-        modelsCachedAt: 'cachedAt' in action ? (action.cachedAt ?? null) : Date.now()
+        modelsCachedAt: 'cachedAt' in action ? (action.cachedAt ?? null) : Date.now(),
       }
     case 'models/failed':
       return { ...state, availableModels: [], modelsLoading: false }
     case 'models/update-one':
       return {
         ...state,
-        availableModels: state.availableModels.map((model) =>
-          model.id === action.model.id ? action.model : model
-        )
+        availableModels: state.availableModels.map(model =>
+          model.id === action.model.id ? action.model : model),
       }
     case 'save/set':
       return { ...state, saveState: action.state }
@@ -180,7 +179,7 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     baseUrl: config.baseUrl,
     model: config.model,
     api: config.api,
-    enabledModels: getInitialEnabledModels(config.enabledModels)
+    enabledModels: getInitialEnabledModels(config.enabledModels),
   }
 }
 
@@ -192,22 +191,22 @@ function buildProviderRequestBody(profile: AgentProfile) {
     secretRef: profile.credentialRef ?? null,
     profileId: profile.id,
     providerTargetKind: 'manual' as const,
-    providerTargetId: profile.id
+    providerTargetId: profile.id,
   }
 }
 
 function buildProfileConfig(
   values: ProfileDetailFormValues,
-  currentConfig: Record<string, unknown>
+  currentConfig: Record<string, unknown>,
 ): Record<string, unknown> {
-  const cleanEnabled = values.enabledModels.filter((id) => id !== ALL_DISABLED_SENTINEL)
+  const cleanEnabled = values.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
   const allDisabledNow = values.enabledModels[0] === ALL_DISABLED_SENTINEL
   return {
     ...currentConfig,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
-    enabledModels: cleanEnabled.length > 0 ? cleanEnabled : allDisabledNow ? [] : undefined
+    enabledModels: cleanEnabled.length > 0 ? cleanEnabled : allDisabledNow ? [] : undefined,
   }
 }
 
@@ -218,7 +217,7 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     baseUrl: values.baseUrl,
     model: values.model,
     api: values.api,
-    enabledModels: values.enabledModels
+    enabledModels: values.enabledModels,
   })
 }
 
@@ -235,7 +234,7 @@ export function ProfileDetailPanel({
   profile,
   onRemove,
   onToggle,
-  onSaved
+  onSaved,
 }: {
   profile: AgentProfile
   onRemove: () => void
@@ -246,21 +245,21 @@ export function ProfileDetailPanel({
   const queryClient = useQueryClient()
   const providerTarget = useMemo<ProviderTarget>(
     () => ({ kind: 'manual', id: profile.id }),
-    [profile.id]
+    [profile.id],
   )
 
   const supportsModels = true
 
   const form = useForm<ProfileDetailFormValues>({
-    defaultValues: getProfileFormValues(profile)
+    defaultValues: getProfileFormValues(profile),
   })
   const name = useWatch({ control: form.control, name: 'name' }) ?? ''
   const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
-  const enabledModels =
-    useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
+  const enabledModels
+    = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
   const [uiState, dispatch] = useReducer(profileDetailUiReducer, INITIAL_UI_STATE)
   const { availableModels, modelsLoading, modelsCachedAt, saveState, confirmRemove } = uiState
@@ -279,14 +278,14 @@ export function ProfileDetailPanel({
     (field: ProfileTextField, value: string) => {
       form.setValue(field, value, { shouldDirty: true })
     },
-    [form]
+    [form],
   )
 
   const handleEnabledModelsChange = useCallback(
     (next: string[]) => {
       form.setValue('enabledModels', next, { shouldDirty: true })
     },
-    [form]
+    [form],
   )
 
   const handleModelRegistryMapped = useCallback(
@@ -295,7 +294,7 @@ export function ProfileDetailPanel({
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       onSaved()
     },
-    [queryClient, onSaved]
+    [queryClient, onSaved],
   )
 
   const clearAutoSaveTimer = useCallback(() => {
@@ -339,8 +338,8 @@ export function ProfileDetailPanel({
     queryClient
       .fetchQuery(
         getProvidersTargetsByProviderTargetIdModelsCacheOptions({
-          path: { providerTargetId: profile.id }
-        })
+          path: { providerTargetId: profile.id },
+        }),
       )
       .then((rawCache) => {
         const cache = ProviderModelsCacheSchema.parse(rawCache)
@@ -375,7 +374,7 @@ export function ProfileDetailPanel({
         dispatch({
           type: 'models/loaded',
           models: ModelDescriptorListSchema.parse(data),
-          cachedAt: Date.now()
+          cachedAt: Date.now(),
         })
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       })
@@ -399,8 +398,8 @@ export function ProfileDetailPanel({
           body: {
             kind: profile.providerKind,
             label: currentValues.name,
-            secret: currentValues.apiKey
-          }
+            secret: currentValues.apiKey,
+          },
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
@@ -414,8 +413,8 @@ export function ProfileDetailPanel({
           config: supportsModels
             ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson))
             : ProfileConfigJsonSchema.parse(profile.configJson),
-          credentialRef
-        }
+          credentialRef,
+        },
       })
 
       if (requestId !== saveRequestRef.current) {
@@ -425,7 +424,7 @@ export function ProfileDetailPanel({
       dispatch({ type: 'save/set', state: 'saved' })
       const savedValues = {
         ...currentValues,
-        apiKey: ''
+        apiKey: '',
       }
       savedSignatureRef.current = createProfileSignature(savedValues)
       form.reset(savedValues)
@@ -436,7 +435,8 @@ export function ProfileDetailPanel({
         }
       }, 1600)
       onSaved()
-    } catch (err) {
+    }
+ catch (err) {
       if (requestId !== saveRequestRef.current) {
         return
       }
@@ -454,9 +454,9 @@ export function ProfileDetailPanel({
         baseUrl,
         model,
         api,
-        enabledModels
+        enabledModels,
       }),
-    [name, apiKey, baseUrl, model, api, enabledModels]
+    [name, apiKey, baseUrl, model, api, enabledModels],
   )
 
   // Auto-save with debounce — but skip the very first run after switching profiles
@@ -486,14 +486,14 @@ export function ProfileDetailPanel({
     (slug: string | null) => {
       patchProfilesByIdIcon({
         path: { id: profile.id },
-        body: { iconSlug: slug }
+        body: { iconSlug: slug },
       })
         .then(() => {
           onSaved()
         })
         .catch(() => {})
     },
-    [profile.id, onSaved]
+    [profile.id, onSaved],
   )
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
@@ -503,7 +503,7 @@ export function ProfileDetailPanel({
       <ProfileDetailHeader
         profile={profile}
         kindLabel={kindLabel}
-        icon={
+        icon={(
           <IconPicker value={profile.iconSlug ?? null} onChange={handleIconChange}>
             <button
               type="button"
@@ -512,7 +512,7 @@ export function ProfileDetailPanel({
               <ProviderIcon iconSlug={profile.iconSlug} presetId={preset.id} className="size-6" />
             </button>
           </IconPicker>
-        }
+        )}
         saveState={saveState}
         onToggle={onToggle}
         onOpenRemove={() => dispatch({ type: 'remove/set', open: true })}
@@ -532,7 +532,6 @@ export function ProfileDetailPanel({
           // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileModelsSection
             loading={modelsLoading}
-            providerTarget={providerTarget}
             models={availableModels}
             enabledModels={enabledModels}
             onChange={handleEnabledModelsChange}
@@ -556,7 +555,7 @@ export function ProfileDetailPanel({
       <RemoveProfileDialog
         open={confirmRemove}
         profileName={profile.name}
-        onOpenChange={(open) => dispatch({ type: 'remove/set', open })}
+        onOpenChange={open => dispatch({ type: 'remove/set', open })}
         onConfirm={() => {
           dispatch({ type: 'remove/set', open: false })
           onRemove()
@@ -572,7 +571,7 @@ function ProfileDetailHeader({
   icon,
   saveState,
   onToggle,
-  onOpenRemove
+  onOpenRemove,
 }: {
   profile: AgentProfile
   kindLabel: string
@@ -631,7 +630,7 @@ function ProfileGeneralSettings({
   values,
   onTextFieldChange,
   supportsModels,
-  readOnly
+  readOnly,
 }: {
   profile: AgentProfile
   values: Pick<ProfileDetailFormValues, ProfileTextField>
@@ -645,7 +644,7 @@ function ProfileGeneralSettings({
         <Input
           data-testid="provider-edit-name"
           value={values.name}
-          onChange={(e) => onTextFieldChange('name', e.target.value)}
+          onChange={e => onTextFieldChange('name', e.target.value)}
           disabled={readOnly}
           className="h-9 w-56 text-[13px]"
         />
@@ -658,7 +657,7 @@ function ProfileGeneralSettings({
             <Input
               data-testid="provider-edit-baseurl"
               value={values.baseUrl}
-              onChange={(e) => onTextFieldChange('baseUrl', e.target.value)}
+              onChange={e => onTextFieldChange('baseUrl', e.target.value)}
               disabled={readOnly}
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="https://api.openai.com/v1"
@@ -669,7 +668,7 @@ function ProfileGeneralSettings({
           <SettingsRow label="API protocol" description="Communication protocol for this endpoint">
             <Select
               value={values.api || 'auto'}
-              onValueChange={(v) => onTextFieldChange('api', v === 'auto' ? '' : v)}
+              onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)}
               disabled={readOnly}
             >
               <SelectTrigger className="h-9 w-56 text-[12.5px]">
@@ -700,7 +699,7 @@ function ProfileGeneralSettings({
               data-testid="provider-edit-apikey"
               type="password"
               value={values.apiKey}
-              onChange={(e) => onTextFieldChange('apiKey', e.target.value)}
+              onChange={e => onTextFieldChange('apiKey', e.target.value)}
               disabled={readOnly}
               placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
               className="h-9 w-56 text-[12.5px] font-mono"
@@ -714,16 +713,14 @@ function ProfileGeneralSettings({
 
 function ProfileModelsSection({
   loading,
-  providerTarget,
   models,
   enabledModels,
   onChange,
   onModelRegistryMapped,
   onRefresh,
-  cachedAt
+  cachedAt,
 }: {
   loading: boolean
-  providerTarget: ProviderTarget
   models: ModelDescriptor[]
   enabledModels: string[]
   onChange: (next: string[]) => void
@@ -737,7 +734,6 @@ function ProfileModelsSection({
       <section className="mt-4 flex flex-col gap-4">
         <ModelsPanel
           loading={loading}
-          providerTarget={providerTarget}
           models={models}
           enabledModels={enabledModels}
           onChange={onChange}
@@ -756,7 +752,7 @@ function ProfileCustomModelsSection({
   providerTarget,
   customModelsJson,
   onSaved,
-  onRefreshModels
+  onRefreshModels,
 }: {
   providerTarget: ProviderTarget
   customModelsJson: string
@@ -765,8 +761,7 @@ function ProfileCustomModelsSection({
 }) {
   const queryClient = useQueryClient()
   const [models, setModels] = useState<EditableCustomModel[]>(() =>
-    CustomModelsJsonSchema.parse(customModelsJson)
-  )
+    CustomModelsJsonSchema.parse(customModelsJson))
 
   // Sync from props when profile changes
   useEffect(() => {
@@ -781,15 +776,16 @@ function ProfileCustomModelsSection({
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         onRefreshModels()
         onSaved()
-      } catch (error) {
+      }
+ catch (error) {
         toastManager.add({
           type: 'error',
           title: 'Save failed',
-          description: error instanceof Error ? error.message : 'Unknown error'
+          description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
     },
-    [providerTarget, queryClient, onSaved, onRefreshModels]
+    [providerTarget, queryClient, onSaved, onRefreshModels],
   )
 
   return (
@@ -808,7 +804,7 @@ function RemoveProfileDialog({
   open,
   profileName,
   onOpenChange,
-  onConfirm
+  onConfirm,
 }: {
   open: boolean
   profileName: string
@@ -824,7 +820,9 @@ function RemoveProfileDialog({
           </AlertDialogMedia>
           <AlertDialogTitle>Remove provider?</AlertDialogTitle>
           <AlertDialogDescription>
-            <strong className="text-foreground">{profileName}</strong> will be disconnected from
+            <strong className="text-foreground">{profileName}</strong>
+{' '}
+will be disconnected from
             every agent that uses it. Stored credentials will be deleted from this machine. You can
             always add it back later.
           </AlertDialogDescription>
@@ -855,7 +853,7 @@ function SaveIndicator({ state }: { state: SaveState }) {
             'flex items-center gap-1 text-[11px] font-medium',
             state === 'saving' || state === 'pending' ? 'text-muted-foreground' : '',
             state === 'saved' ? 'text-emerald-600 dark:text-emerald-400' : '',
-            state === 'error' ? 'text-destructive' : ''
+            state === 'error' ? 'text-destructive' : '',
           )}
         >
           {(state === 'saving' || state === 'pending') && <Spinner className="size-2.5" />}

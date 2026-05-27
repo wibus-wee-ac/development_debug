@@ -6,13 +6,16 @@ import {
   CornerDownLeftIcon,
   FileIcon,
   MessageSquareIcon,
+  PuzzleIcon,
   SettingsIcon,
   TerminalIcon,
 } from 'lucide-react'
+import type { ComponentType } from 'react'
 import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
+import { useShallow } from 'zustand/react/shallow'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
@@ -24,16 +27,20 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator
+  CommandSeparator,
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
+import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { cn } from '~/lib/cn'
+import type { WebCommandRegistration } from '~/lib/plugin-store'
+import { usePluginStore } from '~/lib/plugin-store'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
+
 import { selectFileSearchResult } from './global-search-actions'
 
 interface GlobalSearchDialogProps {
@@ -63,40 +70,40 @@ const PALETTE_MODES = [
     prefix: '>',
     labelKey: 'mode.command.label',
     descriptionKey: 'mode.command.description',
-    placeholderKey: 'mode.command.placeholder'
+    placeholderKey: 'mode.command.placeholder',
   },
   {
     id: 'quickOpen',
     prefix: '',
     labelKey: 'mode.quickOpen.label',
     descriptionKey: 'mode.quickOpen.description',
-    placeholderKey: 'mode.quickOpen.placeholder'
+    placeholderKey: 'mode.quickOpen.placeholder',
   },
   {
     id: 'symbol',
     prefix: '@',
     labelKey: 'mode.symbol.label',
     descriptionKey: 'mode.symbol.description',
-    placeholderKey: 'mode.symbol.placeholder'
+    placeholderKey: 'mode.symbol.placeholder',
   },
   {
     id: 'line',
     prefix: ':',
     labelKey: 'mode.line.label',
     descriptionKey: 'mode.line.description',
-    placeholderKey: 'mode.line.placeholder'
+    placeholderKey: 'mode.line.placeholder',
   },
   {
     id: 'workspaceSymbol',
     prefix: '#',
     labelKey: 'mode.workspaceSymbol.label',
     descriptionKey: 'mode.workspaceSymbol.description',
-    placeholderKey: 'mode.workspaceSymbol.placeholder'
-  }
+    placeholderKey: 'mode.workspaceSymbol.placeholder',
+  },
 ] as const
 const SessionWorkspaceSchema = z
   .object({
-    workspaceId: z.string().nullable()
+    workspaceId: z.string().nullable(),
   })
   .passthrough()
 // ── Commands (static actions) ─────────────────────────────────────────────────
@@ -104,10 +111,12 @@ const SessionWorkspaceSchema = z
 interface CommandAction {
   id: string
   label: string
+  description?: string
   keywords: string
-  icon: typeof SettingsIcon
+  icon: ComponentType<{ className?: string }>
   shortcut?: string
-  handler: () => void
+  source: 'app' | 'plugin'
+  handler: () => void | Promise<void>
 }
 
 function parsePaletteInput(input: string): PaletteMode {
@@ -165,20 +174,46 @@ function writeCommandHistory(commandId: string): string[] {
   return nextHistory
 }
 
-function useActiveFileSearchWorkspaceId(): {
+function normalizeCommandKeywords(value: string | string[] | undefined): string {
+  if (Array.isArray(value)) {
+    return value.join(' ')
+  }
+  return value ?? ''
+}
+
+function getPluginCommandIcon(command: WebCommandRegistration): ComponentType<{ className?: string }> {
+  return typeof command.icon === 'function' ? command.icon : PuzzleIcon
+}
+
+function useActiveFileSearchWorkspaceId(enabled: boolean): {
   availability: FileSearchAvailability
   workspaceId: string | null
 } {
   const { slots } = useLayoutSlotsCtx()
-  const activeTab = useCradleTabStore((s) => s.tabs.find(tab => tab.id === s.activeTabId) ?? null)
-  const chatSessionId = activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+  const activeTab = useCradleTabStore(useShallow((s) => {
+    if (!enabled) {
+      return null
+    }
+    const tab = s.tabs.find(item => item.id === s.activeTabId)
+    return tab
+      ? {
+        type: tab.type,
+        params: tab.params,
+      }
+      : null
+  }))
+  const chatSessionId = enabled && activeTab?.type === 'chat' ? activeTab.params.sessionId : null
 
   const { data: chatSession } = useQuery({
     ...getSessionsByIdOptions({ path: { id: chatSessionId ?? '' } }),
-    enabled: !!chatSessionId,
+    enabled: enabled && !!chatSessionId,
     staleTime: 60_000,
-    select: (data) => (data ? SessionWorkspaceSchema.parse(data) : undefined)
+    select: data => (data ? SessionWorkspaceSchema.parse(data) : undefined),
   })
+
+  if (!enabled) {
+    return { availability: 'unsupported-tab', workspaceId: null }
+  }
 
   const canSearchFiles = activeTab?.type === 'new-chat'
     || activeTab?.type === 'chat'
@@ -196,7 +231,7 @@ function useActiveFileSearchWorkspaceId(): {
 
   return {
     availability: workspaceId ? 'available' : 'missing-workspace',
-    workspaceId
+    workspaceId,
   }
 }
 
@@ -211,66 +246,105 @@ const GlobalSearchFileListSchema = z
     z.object({
       type: z.enum(['file', 'directory']),
       name: z.string(),
-      path: z.string()
-    })
+      path: z.string(),
+    }),
   )
   .default([])
 
 function useCommands(close: () => void): CommandAction[] {
   const { t } = useTranslation('search')
   const { openTab } = useCradleNavigation()
-  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
-  const toggleSidebar = useLayoutStore((s) => s.toggleSidebar)
+  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
+  const pluginCommands = usePluginStore(s => s.commands)
 
   return useMemo(
-    () => [
-      {
-        id: 'new-chat',
-        label: t('command.newChat.label'),
-        keywords: t('command.newChat.keywords'),
-        icon: MessageSquareIcon,
-        handler: () => {
+    () => {
+      const appCommands: CommandAction[] = [
+        {
+          id: 'new-chat',
+          label: t('command.newChat.label'),
+          keywords: t('command.newChat.keywords'),
+          icon: MessageSquareIcon,
+          source: 'app',
+          handler: () => {
+            close()
+            openTab('new-chat', {})
+          },
+        },
+        {
+          id: 'open-settings',
+          label: t('command.openSettings.label'),
+          keywords: t('command.openSettings.keywords'),
+          icon: SettingsIcon,
+          shortcut: '⌘,',
+          source: 'app',
+          handler: () => {
+            close()
+            const activeTabId = useCradleTabStore.getState().activeTabId
+            if (activeTabId) {
+              openSettings(activeTabId)
+            }
+          },
+        },
+        {
+          id: 'toggle-sidebar',
+          label: t('command.toggleSidebar.label'),
+          keywords: t('command.toggleSidebar.keywords'),
+          icon: TerminalIcon,
+          shortcut: '⌘B',
+          source: 'app',
+          handler: () => {
+            close()
+            toggleSidebar()
+          },
+        },
+        {
+          id: 'open-usage',
+          label: t('command.openUsage.label'),
+          keywords: t('command.openUsage.keywords'),
+          icon: CircleDotIcon,
+          source: 'app',
+          handler: () => {
+            close()
+            openTab('usage', {})
+          },
+        },
+      ]
+
+      const contributedCommands: CommandAction[] = pluginCommands.map(command => ({
+        id: command.id,
+        label: command.title,
+        description: command.description ?? command.category ?? command.owner,
+        keywords: [
+          command.owner,
+          command.localId,
+          command.title,
+          command.description ?? '',
+          command.category ?? '',
+          normalizeCommandKeywords(command.keywords),
+        ].join(' '),
+        icon: getPluginCommandIcon(command),
+        shortcut: command.keybinding,
+        source: 'plugin',
+        handler: async () => {
           close()
-          openTab('new-chat', {})
-        }
-      },
-      {
-        id: 'open-settings',
-        label: t('command.openSettings.label'),
-        keywords: t('command.openSettings.keywords'),
-        icon: SettingsIcon,
-        shortcut: '⌘,',
-        handler: () => {
-          close()
-          const activeTabId = useCradleTabStore.getState().activeTabId
-          if (activeTabId) {
-            openSettings(activeTabId)
+          try {
+            await command.execute()
           }
-        }
-      },
-      {
-        id: 'toggle-sidebar',
-        label: t('command.toggleSidebar.label'),
-        keywords: t('command.toggleSidebar.keywords'),
-        icon: TerminalIcon,
-        shortcut: '⌘B',
-        handler: () => {
-          close()
-          toggleSidebar()
-        }
-      },
-      {
-        id: 'open-usage',
-        label: t('command.openUsage.label'),
-        keywords: t('command.openUsage.keywords'),
-        icon: CircleDotIcon,
-        handler: () => {
-          close()
-          openTab('usage', {})
-        }
-      }
-    ],
-    [close, openTab, openSettings, t, toggleSidebar]
+          catch (err) {
+            toastManager.add({
+              type: 'error',
+              title: `Plugin command failed: ${command.title}`,
+              description: err instanceof Error ? err.message : String(err),
+            })
+          }
+        },
+      }))
+
+      return [...appCommands, ...contributedCommands]
+    },
+    [close, openTab, openSettings, pluginCommands, t, toggleSidebar],
   )
 }
 
@@ -284,7 +358,7 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
       return GlobalSearchFileListSchema.parse(data) satisfies GlobalSearchFile[]
     },
     enabled: enabled && !!workspaceId,
-    staleTime: 30_000
+    staleTime: 30_000,
   })
 
   const trimmed = query.trim().toLowerCase()
@@ -311,17 +385,31 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
   return {
     files: filtered,
     workspaceId,
-    isPending: enabled && !!trimmed && !!workspaceId && isFetching
+    isPending: enabled && !!trimmed && !!workspaceId && isFetching,
   }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) {
+export const GlobalSearchDialog = memo(({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
+  if (!open) {
+    return null
+  }
+
+  return (
+    <GlobalSearchDialogContent
+      open={open}
+      initialQuery={initialQuery}
+      onOpenChange={onOpenChange}
+    />
+  )
+})
+
+const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
   const { t } = useTranslation('search')
-  const fileSearchWorkspace = useActiveFileSearchWorkspaceId()
-  const openWorkspaceFile = useBrowserPanelStore((s) => s.openWorkspaceFileTab)
-  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
+  const fileSearchWorkspace = useActiveFileSearchWorkspaceId(open)
+  const openWorkspaceFile = useBrowserPanelStore(s => s.openWorkspaceFileTab)
+  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
   const [query, setQuery] = useState('')
   const [commandHistory, setCommandHistory] = useState(readCommandHistory)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -381,7 +469,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
       requestedQueryRef.current = nextTrimmed
       measuredQueryRef.current = ''
     },
-    [open]
+    [open],
   )
   const commands = useCommands(close)
   const paletteMode = useMemo(() => parsePaletteInput(query), [query])
@@ -396,11 +484,11 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
   const {
     files,
     workspaceId: fileWorkspaceId,
-    isPending: filesPending
+    isPending: filesPending,
   } = useFileSearch(
     trimmed,
     open && isQuickOpenMode && fileSearchWorkspace.availability === 'available',
-    fileSearchWorkspace.workspaceId
+    fileSearchWorkspace.workspaceId,
   )
 
   // Filter commands by query
@@ -421,7 +509,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
         return {
           command,
           matchScore,
-          historyIndex: historyIndex === -1 ? Number.MAX_SAFE_INTEGER : historyIndex
+          historyIndex: historyIndex === -1 ? Number.MAX_SAFE_INTEGER : historyIndex,
         }
       })
       .filter((result): result is NonNullable<typeof result> => result !== null)
@@ -448,11 +536,11 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
 
   useEffect(() => {
     if (
-      !open ||
-      !hasQuery ||
-      isPending ||
-      requestedQueryRef.current !== trimmed ||
-      measuredQueryRef.current === trimmed
+      !open
+      || !hasQuery
+      || isPending
+      || requestedQueryRef.current !== trimmed
+      || measuredQueryRef.current === trimmed
     ) {
       return
     }
@@ -469,7 +557,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
 
   const handleSelectCommand = useCallback((command: CommandAction) => {
     setCommandHistory(writeCommandHistory(command.id))
-    command.handler()
+    void command.handler()
   }, [])
 
   const handleSelectFile = useCallback(
@@ -483,10 +571,10 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
         filePath,
         close,
         openWorkspaceFile,
-        setBrowserPanelOpen
+        setBrowserPanelOpen,
       })
     },
-    [close, fileWorkspaceId, openWorkspaceFile, setBrowserPanelOpen]
+    [close, fileWorkspaceId, openWorkspaceFile, setBrowserPanelOpen],
   )
 
   return createPortal(
@@ -494,7 +582,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
       role="presentation"
       className={cn(
         'fixed inset-0 isolate z-50 flex items-start justify-center bg-black/10 px-4 pt-[18vh] supports-backdrop-filter:backdrop-blur-xs',
-        open ? 'visible pointer-events-auto opacity-100' : 'invisible pointer-events-none opacity-0'
+        open ? 'visible pointer-events-auto opacity-100' : 'invisible pointer-events-none opacity-0',
       )}
       aria-hidden={open ? undefined : 'true'}
       onMouseDown={(event) => {
@@ -548,7 +636,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
                   <>
                     <CommandGroup>
                       <GroupHeader label={t('group.modes')} count={PALETTE_MODES.length} />
-                      {PALETTE_MODES.map((mode) => (
+                      {PALETTE_MODES.map(mode => (
                         <PaletteModeRow key={mode.id} mode={mode} onSelect={setQuery} />
                       ))}
                     </CommandGroup>
@@ -560,7 +648,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
                   <>
                     <CommandGroup>
                       <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
-                      {filteredCommands.map((cmd) => (
+                      {filteredCommands.map(cmd => (
                         <CommandActionRow
                           key={cmd.id}
                           command={cmd}
@@ -575,7 +663,7 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
                 {files.length > 0 && (
                   <CommandGroup>
                     <GroupHeader label={t('group.files')} count={files.length} />
-                    {files.map((file) => (
+                    {files.map(file => (
                       <FileSearchCommandRow
                         key={file.path}
                         file={file}
@@ -627,19 +715,19 @@ export function GlobalSearchDialog({ open, initialQuery = '>', onOpenChange }: G
         </Command>
       </div>
     </div>,
-    document.body
+    document.body,
   )
-}
+})
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const PaletteModeRow = memo(function PaletteModeRow({
+const PaletteModeRow = memo(({
   mode,
-  onSelect
+  onSelect,
 }: {
   mode: (typeof PALETTE_MODES)[number]
   onSelect: (query: string) => void
-}) {
+}) => {
   const { t } = useTranslation('search')
   const selectMode = useCallback(() => {
     onSelect(mode.prefix)
@@ -663,15 +751,15 @@ const PaletteModeRow = memo(function PaletteModeRow({
   )
 })
 
-const CommandActionRow = memo(function CommandActionRow({
+const CommandActionRow = memo(({
   command,
   recent,
-  onSelect
+  onSelect,
 }: {
   command: CommandAction
   recent: boolean
   onSelect: (command: CommandAction) => void
-}) {
+}) => {
   const { t } = useTranslation('search')
   const selectCommand = useCallback(() => {
     onSelect(command)
@@ -685,7 +773,15 @@ const CommandActionRow = memo(function CommandActionRow({
       data-testid={`global-search-command-${command.id}`}
     >
       <command.icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="flex-1 text-sm">{command.label}</span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-sm">{command.label}</span>
+        {command.description && (
+          <span className="truncate text-[11px] text-muted-foreground">{command.description}</span>
+        )}
+      </span>
+      {command.source === 'plugin' && (
+        <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">Plugin</span>
+      )}
       {recent && (
         <span className="hidden text-[10px] text-muted-foreground sm:inline">{t('command.recent')}</span>
       )}
@@ -696,13 +792,13 @@ const CommandActionRow = memo(function CommandActionRow({
   )
 })
 
-const FileSearchCommandRow = memo(function FileSearchCommandRow({
+const FileSearchCommandRow = memo(({
   file,
-  onSelect
+  onSelect,
 }: {
   file: GlobalSearchFile
   onSelect: (filePath: string) => void
-}) {
+}) => {
   const selectFile = useCallback(() => {
     onSelect(file.path)
   }, [file.path, onSelect])
@@ -720,7 +816,7 @@ const FileSearchCommandRow = memo(function FileSearchCommandRow({
   )
 })
 
-function GroupHeader({ label, count }: { label: string; count: number }) {
+function GroupHeader({ label, count }: { label: string, count: number }) {
   const { t } = useTranslation('search')
 
   return (

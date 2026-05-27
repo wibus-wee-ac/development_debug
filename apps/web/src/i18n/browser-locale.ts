@@ -2,14 +2,14 @@
 // Input: URL query parameters, cookies, navigator languages, and supported locale rules.
 // Position: Vite replacement for request middleware and HTML mounting responsibilities.
 
+import type { SupportedLocale } from './locales'
 import {
   DEFAULT_LOCALE,
+  isRtl,
   LOCALE_COOKIE,
   LOCALE_QUERY_PARAM,
-  isRtl,
   matchSupportedLocale,
   resolveBrowserLanguage,
-  type SupportedLocale,
 } from './locales'
 
 const COOKIE_MAX_AGE_SECONDS = 365 * 86400

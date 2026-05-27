@@ -237,14 +237,14 @@ export function MenuSeparator({
   );
 }
 
-function MenuShortcut({
+export function MenuShortcut({
   className,
   ...props
 }: React.ComponentProps<"kbd">): React.ReactElement {
   return (
     <kbd
       className={cn(
-        "ms-auto font-medium font-sans text-muted-foreground/72 text-xs tracking-widest",
+        "ms-auto font-medium font-sans text-muted-foreground/72 text-xs",
         className,
       )}
       data-slot="menu-shortcut"
@@ -308,5 +308,3 @@ export function MenuSubPopup({
     />
   );
 }
-
-

@@ -22,7 +22,7 @@ interface IssueHeaderProps {
   onDelete: () => void
 }
 
-export const IssueHeader = memo(function IssueHeader({
+export const IssueHeader = memo(({
   issue,
   status,
   parentIssue,
@@ -35,7 +35,7 @@ export const IssueHeader = memo(function IssueHeader({
   onOpenIssue,
   onBack,
   onDelete,
-}: IssueHeaderProps) {
+}: IssueHeaderProps) => {
   return (
     <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-3" data-testid="issue-detail-header">
       <button
@@ -83,7 +83,11 @@ export const IssueHeader = memo(function IssueHeader({
           className="shrink-0 rounded-full border border-border bg-fill/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
           data-testid="issue-detail-sub-issue-progress"
         >
-          {completedSubIssueCount}/{totalSubIssueCount} done
+          {completedSubIssueCount}
+/
+{totalSubIssueCount}
+{' '}
+done
         </span>
       )}
 
@@ -99,7 +103,9 @@ export const IssueHeader = memo(function IssueHeader({
             <ChevronLeftIcon className="size-3.5" aria-hidden="true" />
           </button>
           <span className="px-1 text-[11px] tabular-nums text-muted-foreground">
-            {siblingNumber}/{siblingCount}
+            {siblingNumber}
+/
+{siblingCount}
           </span>
           <button
             type="button"

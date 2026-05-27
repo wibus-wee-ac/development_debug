@@ -18,16 +18,33 @@ export interface ChatToolEntity {
   messageId: string
   toolName: string
   state: ToolState
+  approval?: {
+    id: string
+    approved?: boolean
+    reason?: string
+  }
+  preliminary?: boolean
   argumentsText?: string
   input?: unknown
   output?: unknown
   errorText?: string
 }
 
+interface SubagentToolOutput {
+  type: 'cradle.subagent-output.v1'
+  message: UIMessage
+}
+
 export function isToolLikePart(part: MessagePart): part is MessagePart & {
   toolCallId: string
   toolName?: string
   state?: string
+  approval?: {
+    id?: unknown
+    approved?: unknown
+    reason?: unknown
+  }
+  preliminary?: boolean
   argumentsText?: string
   input?: unknown
   output?: unknown
@@ -62,6 +79,12 @@ export function toToolEntity(messageId: string, part: MessagePart & {
   toolCallId: string
   toolName?: string
   state?: string
+  approval?: {
+    id?: unknown
+    approved?: unknown
+    reason?: unknown
+  }
+  preliminary?: boolean
   argumentsText?: string
   input?: unknown
   output?: unknown
@@ -72,6 +95,8 @@ export function toToolEntity(messageId: string, part: MessagePart & {
     messageId,
     toolName: toolNameFromPart(part),
     state: (part.state as ToolState | undefined) ?? 'input-streaming',
+    approval: readToolApproval(part.approval),
+    preliminary: part.preliminary,
     argumentsText: part.argumentsText,
     input: part.input,
     output: part.output,
@@ -79,25 +104,47 @@ export function toToolEntity(messageId: string, part: MessagePart & {
   }
 }
 
+function readToolApproval(approval: {
+  id?: unknown
+  approved?: unknown
+  reason?: unknown
+} | undefined): ChatToolEntity['approval'] {
+  if (!approval || typeof approval.id !== 'string') {
+    return undefined
+  }
+  return {
+    id: approval.id,
+    ...(typeof approval.approved === 'boolean' ? { approved: approval.approved } : {}),
+    ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {}),
+  }
+}
+
 export function normalizeMessageForToolEntities(message: UIMessage): {
   message: UIMessage
   toolEntities: ChatToolEntity[]
 } {
+  return normalizeMessageForOwner(message, message.id)
+}
+
+function normalizeMessageForOwner(message: UIMessage, ownerMessageId: string): {
+  message: UIMessage
+  toolEntities: ChatToolEntity[]
+} {
   const toolEntities: ChatToolEntity[] = []
-  const parts = message.parts.map((part) => {
+  for (const part of message.parts) {
     if (!isToolLikePart(part)) {
-      return part
+      continue
     }
 
-    toolEntities.push(toToolEntity(message.id, part))
-    return toToolAnchorPart(part) as unknown as MessagePart
-  })
+    toolEntities.push(toToolEntity(ownerMessageId, part))
+    const subagentMessage = readSubagentOutputMessage(part.output)
+    if (subagentMessage) {
+      toolEntities.push(...normalizeMessageForOwner(subagentMessage, ownerMessageId).toolEntities)
+    }
+  }
 
   return {
-    message: {
-      ...message,
-      parts,
-    },
+    message,
     toolEntities,
   }
 }
@@ -107,18 +154,32 @@ export function collectToolCallIdsFromMessages(messages: UIMessage[]): string[] 
     message.parts.flatMap(part => isToolLikePart(part) ? [part.toolCallId] : []))
 }
 
-export function collectToolCallIdsFromSubagentMap(messageMap: Map<string, UIMessage[]>): string[] {
-  const toolCallIds: string[] = []
-  for (const messages of messageMap.values()) {
-    toolCallIds.push(...collectToolCallIdsFromMessages(messages))
-  }
-  return toolCallIds
-}
-
 export function readToolAnchorPart(parts: UIMessage['parts'], partIndex: number): ToolAnchorPart | null {
   const part = parts[partIndex]
   if (!part || !isToolLikePart(part)) {
     return null
   }
   return toToolAnchorPart(part)
+}
+
+export function readSubagentOutputMessage(output: unknown): UIMessage | null {
+  if (!isSubagentToolOutput(output)) {
+    return null
+  }
+  return output.message
+}
+
+function isSubagentToolOutput(output: unknown): output is SubagentToolOutput {
+  return typeof output === 'object'
+    && output !== null
+    && (output as { type?: unknown }).type === 'cradle.subagent-output.v1'
+    && isUiMessage((output as { message?: unknown }).message)
+}
+
+function isUiMessage(value: unknown): value is UIMessage {
+  return typeof value === 'object'
+    && value !== null
+    && typeof (value as { id?: unknown }).id === 'string'
+    && ((value as { role?: unknown }).role === 'assistant' || (value as { role?: unknown }).role === 'user')
+    && Array.isArray((value as { parts?: unknown }).parts)
 }

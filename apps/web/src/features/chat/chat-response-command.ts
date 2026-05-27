@@ -1,4 +1,5 @@
-import type { FileUIPart } from 'ai'
+import type { FileUIPart, UIMessage } from 'ai'
+
 import { getServerUrl } from '~/lib/electron'
 
 const SERVER_BASE = getServerUrl()
@@ -6,6 +7,7 @@ const SERVER_BASE = getServerUrl()
 export interface ChatResponseRequestBody {
   text: string
   files?: FileUIPart[]
+  messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
@@ -46,6 +48,7 @@ export function buildChatResponseRequestBody(
   return {
     text: body.text,
     files: body.files,
+    messages: body.messages,
     providerTargetId: body.providerTargetId ?? undefined,
     modelId: body.modelId ?? undefined,
     thinkingEffort: body.thinkingEffort ?? undefined,

@@ -10,9 +10,9 @@ import type { ChatSlashCommand } from './chat-capabilities'
 
 export type ChatSlashCommandSource = 'runtime' | 'cradle'
 
-export type ChatSlashCommandAction =
-  | { kind: 'insertText', text: string }
-  | { kind: 'uiAction', actionId: string }
+export type ChatSlashCommandAction
+  = | { kind: 'insertText', text: string }
+    | { kind: 'uiAction', actionId: string }
 
 export interface ChatComposerSlashCommand {
   id: string

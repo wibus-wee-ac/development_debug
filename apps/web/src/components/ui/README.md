@@ -17,5 +17,5 @@
 
 ## Inventory Notes
 
-- `button.tsx`, `input.tsx`, `dialog.tsx`, `command.tsx`, `menu.tsx`, `tabs.tsx`, `tooltip.tsx`, `switch.tsx`, `progress.tsx`, and similar files are design-system primitives.
-- `canvas-art.tsx`, `route-loading-fallback.tsx`, `icon-picker.tsx`, and `preview-card.tsx` should be reviewed before future expansion because they may be app-specific shared UI rather than universal primitives.
+- `button.tsx`, `input.tsx`, `dialog.tsx`, `command.tsx`, `menu.tsx` (including exported shortcut text support), `tabs.tsx`, `tooltip.tsx`, `switch.tsx`, `progress.tsx`, and similar files are design-system primitives.
+- `canvas-art.tsx`, `route-loading-fallback.tsx`, `icon-picker.tsx`, and `preview-card.tsx` should be reviewed before future expansion because they may be app-specific shared UI rather than universal primitives; canvas decorations that animate should expose an `active` control so retained hidden tabs can stop rAF work without unmounting DOM.

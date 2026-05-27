@@ -11,8 +11,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '~/components/ui/tooltip'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { Composer as ComposerPrimitive } from './composer'
 import type { ComposerProps } from './composer'
+import { Composer as ComposerPrimitive } from './composer'
 import type { ComposerSlashCommandActionContext } from './composer-action-context'
 
 type ComposerSendController = ComposerProps['send']

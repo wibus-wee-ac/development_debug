@@ -21,9 +21,9 @@ import {
 import { m } from 'motion/react'
 import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
 import { Children, useEffect, useMemo, useState } from 'react'
-import { z } from 'zod'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
+import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
@@ -34,7 +34,7 @@ import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, Tool
 import {
   describeToolCall,
   readToolInputPayload,
-  ToolPayloadSchema,
+  readToolPayload,
 } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
 
@@ -42,10 +42,16 @@ interface ToolCallBlockProps {
   toolName: string
   toolCallId: string
   state: ToolState
+  approval?: {
+    id: string
+    approved?: boolean
+    reason?: string
+  }
   argumentsText?: string
   input?: unknown
   output?: unknown
   errorText?: string
+  onApprovalResponse?: (approval: { id: string, approved: boolean }) => void
   children?: ReactNode
 }
 
@@ -80,21 +86,6 @@ const STATUS_LABELS: Record<ToolState, string> = {
 
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() => z.union([
-  z.string(),
-  z.number().finite(),
-  z.boolean(),
-  z.null(),
-  z.array(JsonValueSchema),
-  z.record(z.string(), JsonValueSchema),
-]))
-const DisplayValueTextSchema = z.union([
-  z.string(),
-  z.null().transform(() => ''),
-  z.undefined().transform(() => ''),
-  JsonValueSchema.transform(value => JSON.stringify(value, null, 2)),
-])
 
 function isRunning(state: ToolState): boolean {
   return state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
@@ -105,7 +96,13 @@ function isError(state: ToolState): boolean {
 }
 
 function formatValue(value: unknown): string {
-  return DisplayValueTextSchema.parse(value)
+  if (typeof value === 'string') {
+    return value
+  }
+  if (value === null || value === undefined) {
+    return ''
+  }
+  return JSON.stringify(value, null, 2)
 }
 
 function basename(value: string): string {
@@ -255,7 +252,7 @@ export function TerminalExecutionDetails({
   className?: string
 }) {
   const inputPayload = readToolInputPayload(input, argumentsText)
-  const outputPayload = ToolPayloadSchema.parse(output)
+  const outputPayload = readToolPayload(output)
   const sections = readTerminalOutputSections(outputPayload, errorText)
   const command = inputPayload.command
   const timeout = inputPayload.timeout
@@ -720,9 +717,9 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, argumentsText, input, output, errorText, children }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolName, toolCallId, state, approval, argumentsText, input, output, errorText, onApprovalResponse, children }: ToolCallBlockProps) {
   const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
-  const outputPayload = useMemo(() => ToolPayloadSchema.parse(output), [output])
+  const outputPayload = useMemo(() => readToolPayload(output), [output])
   const descriptor = useMemo(() => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',
@@ -877,6 +874,26 @@ export function ToolCallBlock({ toolName, toolCallId, state, argumentsText, inpu
         {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
           <div className="px-3 pb-3">
             <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} />
+          </div>
+        )}
+
+        {state === 'approval-requested' && approval && onApprovalResponse && (
+          <div className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="xs"
+              onClick={() => onApprovalResponse({ id: approval.id, approved: false })}
+            >
+              Deny
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              onClick={() => onApprovalResponse({ id: approval.id, approved: true })}
+            >
+              Approve
+            </Button>
           </div>
         )}
       </div>

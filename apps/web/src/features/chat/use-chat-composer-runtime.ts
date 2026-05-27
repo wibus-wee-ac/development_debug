@@ -5,7 +5,6 @@
 import { useQuery } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import { useCallback, useMemo } from 'react'
-import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
@@ -60,13 +59,11 @@ interface UseChatComposerRuntimeOptions {
   stop: () => void
 }
 
-const SessionBindingSchema = z
-  .object({
-    providerTargetId: z.string().nullable(),
-    modelId: z.string().nullable(),
-    runtimeKind: z.string().nullable().optional(),
-  })
-  .passthrough()
+interface SessionBinding {
+  providerTargetId: string | null
+  modelId: string | null
+  runtimeKind?: string | null
+}
 
 function invertContinuationMode(mode: NonNullable<SendMessageOptions['continuationMode']>): NonNullable<SendMessageOptions['continuationMode']> {
   return mode === 'queue' ? 'steer' : 'queue'
@@ -95,7 +92,7 @@ export function useChatComposerRuntime({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     enabled: !!sessionId,
     staleTime: 60_000,
-    select: data => (data ? SessionBindingSchema.parse(data) : null),
+    select: data => (data ? data as SessionBinding : null),
   })
   const boundProviderTarget = useMemo(() => {
     return sessionBinding?.providerTargetId ? { id: sessionBinding.providerTargetId } : null

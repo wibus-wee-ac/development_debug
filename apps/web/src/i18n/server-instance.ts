@@ -7,7 +7,8 @@ import resourcesToBackend from 'i18next-resources-to-backend'
 
 import enUS from '~/locales/default'
 
-import { DEFAULT_LOCALE, normalizeLocale, type SupportedLocale } from './locales'
+import type { SupportedLocale } from './locales'
+import { DEFAULT_LOCALE, normalizeLocale } from './locales'
 import { getI18nSettings } from './settings'
 
 export async function createServerI18n(locale: SupportedLocale, ns: string | string[]) {

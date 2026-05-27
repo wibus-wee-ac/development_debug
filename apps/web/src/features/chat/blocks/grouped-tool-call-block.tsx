@@ -70,14 +70,14 @@ function basename(value: string): string {
 }
 
 function getItemLabel(target: string | null, uiKind: ToolUiKind): string {
-  if (!target) return '—'
+  if (!target) { return '—' }
   return FILE_KINDS.has(uiKind) ? basename(target) : target
 }
 
 function getOverallState(items: ToolCallItem[]): ToolState {
   const states = items.map(item => item.part.state)
-  if (states.some(s => s === 'output-error' || s === 'output-denied')) return 'output-error'
-  if (states.some(s => s === 'input-streaming' || s === 'input-available' || s === 'approval-requested')) return 'input-available'
+  if (states.some(s => s === 'output-error' || s === 'output-denied')) { return 'output-error' }
+  if (states.some(s => s === 'input-streaming' || s === 'input-available' || s === 'approval-requested')) { return 'input-available' }
   return 'output-available'
 }
 
@@ -139,7 +139,8 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
       <div className={cn(
         'overflow-hidden mx-1 -px-1 rounded-lg bg-card ring-1 ring-border',
         (overallState === 'output-error' || overallState === 'output-denied') && 'ring-1 ring-destructive/30',
-      )}>
+      )}
+      >
         <div className="flex h-8 items-center gap-2 px-3">
           <Icon
             className={cn(
@@ -184,7 +185,8 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
               <div className={cn(
                 'absolute left-2 top-1/2 -translate-y-1/2 h-px w-3 bg-border/80',
                 isLast && 'top-[calc(50%-1px)]',
-              )} />
+              )}
+              />
               <button
                 type="button"
                 className={cn(

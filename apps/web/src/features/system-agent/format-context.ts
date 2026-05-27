@@ -1,6 +1,6 @@
+import { assembleContextForPrompt } from './context-assembler'
 import type { ContextEnvelope } from './context-items'
 import type { SystemAgentContext } from './context-schema'
-import { assembleContextForPrompt } from './context-assembler'
 
 const RE_CONTEXT_TAG = /<\/?cradle_context>/gi
 const RE_WHITESPACE = /\s+/g

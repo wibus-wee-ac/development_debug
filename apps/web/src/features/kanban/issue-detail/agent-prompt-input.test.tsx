@@ -43,7 +43,7 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-describe('AgentPromptInput', () => {
+describe('agentPromptInput', () => {
   it('uses the saved queue preference for a busy agent continuation', async () => {
     const onQueued = vi.fn()
     render(

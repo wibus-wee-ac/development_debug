@@ -2,7 +2,8 @@
 // Input: i18n-unused-keys-report.json and locale JSON files.
 // Position: Workflow command backing pnpm i18n:clean-unused.
 
-import { isSupportedLocale, type SupportedLocale } from '../../src/i18n/locales'
+import type { SupportedLocale } from '../../src/i18n/locales'
+import { isSupportedLocale } from '../../src/i18n/locales'
 import { localeNamespacePath, nonDefaultLocales, pathExists, readJson, resolveFromWebRoot, writeJson } from './utils'
 
 interface UnusedReport {

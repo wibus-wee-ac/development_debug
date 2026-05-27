@@ -13,6 +13,35 @@ import { BrowserPanel } from './browser-panel'
 
 const diffViewerRender = vi.hoisted(() => vi.fn())
 
+type TestWebviewPrototype = HTMLElement & {
+  loadURL?: (url: string) => Promise<void>
+  goBack?: () => void
+  goForward?: () => void
+  reload?: () => void
+  canGoBack?: () => boolean
+  canGoForward?: () => boolean
+  getURL?: () => string
+  getTitle?: () => string
+  isLoading?: () => boolean
+  getWebContentsId?: () => number
+  executeJavaScript?: (code: string) => Promise<unknown>
+}
+
+function installTestWebviewPrototype() {
+  const prototype = HTMLElement.prototype as TestWebviewPrototype
+  prototype.loadURL ??= vi.fn(() => Promise.resolve())
+  prototype.getWebContentsId ??= vi.fn(() => 1)
+  prototype.goBack ??= vi.fn()
+  prototype.goForward ??= vi.fn()
+  prototype.reload ??= vi.fn()
+  prototype.canGoBack ??= vi.fn(() => false)
+  prototype.canGoForward ??= vi.fn(() => false)
+  prototype.getURL ??= vi.fn(() => 'about:blank')
+  prototype.getTitle ??= vi.fn(() => '')
+  prototype.isLoading ??= vi.fn(() => false)
+  prototype.executeJavaScript ??= vi.fn(() => Promise.resolve(undefined))
+}
+
 vi.mock('./workspace-diff-viewer', () => ({
   WorkspaceDiffViewer: (props: { tabId: string, workspaceId: string, paths?: string[] }) => {
     diffViewerRender(props)
@@ -28,10 +57,11 @@ vi.mock('~/features/workspace/workspace-file-preview', () => ({
   WorkspaceFilePreview: () => <div data-testid="workspace-file-preview" />,
 }))
 
-describe('BrowserPanel rendering', () => {
+describe('browserPanel rendering', () => {
   beforeEach(() => {
     cleanup()
     diffViewerRender.mockClear()
+    installTestWebviewPrototype()
     useBrowserPanelStore.setState({
       tabs: [],
       activeTabId: null,

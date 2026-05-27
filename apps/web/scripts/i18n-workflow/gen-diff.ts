@@ -2,8 +2,8 @@
 // Input: Existing en-US baseline JSON, next TypeScript default resources, and non-default locale JSON files.
 // Position: Workflow command that must run before baseline regeneration.
 
-import { allNamespaces } from '../../src/locales/default'
 import { DEFAULT_LOCALE } from '../../src/i18n/locales'
+import { allNamespaces } from '../../src/locales/default'
 import { defaultNamespaceEntries, localeNamespacePath, nonDefaultLocales, pathExists, readJson, resolveFromWebRoot, writeJson } from './utils'
 
 for (const namespace of allNamespaces) {

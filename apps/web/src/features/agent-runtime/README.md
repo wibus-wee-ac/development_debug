@@ -11,8 +11,8 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 
 - **model-visibility.ts**: Shared helpers for interpreting provider model visibility config and filtering model descriptors
 - **model-visibility.test.ts**: Unit coverage for default-all, all-disabled, and explicit allow-list model visibility semantics
-- **use-agent-profiles.ts**: `useAgentProfiles` hook — legacy manual provider mutation adapter for settings surfaces that still edit manual provider records, invalidating model queries when manual config changes
-- **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities, explicit local Claude/Codex import mutation, and query success for settings readiness
+- **use-agent-profiles.ts**: `useAgentProfiles` hook — legacy manual provider mutation adapter for settings surfaces that still edit manual provider records, invalidating agent, provider-target, profile, and model queries when manual config changes
+- **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities, shared agents query key export, explicit local Claude/Codex import mutation, and query success for settings readiness
 - **use-agent-models.ts**: `useAgentModels`, `useProviderTargetModels`, `useAgentModelMap`, and `useProviderTargetModelMap` hooks — read cached visible models for manual provider records and provider targets, share stable query keys across chat, composer, and settings surfaces, and avoid automatic provider inventory refreshes
 - **use-provider-targets.ts**: `useProviderTargets` hook — reads unified manual and external provider targets for runtime selection surfaces via generated React Query options
 - **runtime-compatibility.ts**: renderer-side runtime-kind to provider-kind compatibility rules used by composer filtering.

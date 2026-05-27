@@ -9,8 +9,8 @@ import {
   listChatSessionQueue,
   reorderChatSessionQueue,
 } from '~/features/chat/chat-response-command'
-import { cn } from '~/lib/utils'
 import type { AgentActivity, AgentSession } from '~/lib/types'
+import { cn } from '~/lib/utils'
 
 import {
   kanbanKeys,
@@ -39,7 +39,7 @@ function chatQueueQueryKey(chatSessionId: string | null) {
   return ['chat', 'session-queue', chatSessionId ?? 'none'] as const
 }
 
-export const AgentSessionPanel = memo(function AgentSessionPanel({ issueId, workspaceId }: AgentSessionPanelProps) {
+export const AgentSessionPanel = memo(({ issueId, workspaceId }: AgentSessionPanelProps) => {
   const { data: sessions = [] } = useAgentSessions(issueId)
 
   const activeSession = useMemo(() => {
@@ -71,7 +71,7 @@ export const AgentSessionPanel = memo(function AgentSessionPanel({ issueId, work
   )
 })
 
-const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
+const ActiveAgentSessionPanel = memo(({
   activeSession,
   activities,
   issueId,
@@ -81,7 +81,7 @@ const ActiveAgentSessionPanel = memo(function ActiveAgentSessionPanel({
   activities: AgentActivity[]
   issueId: string
   workspaceId: string
-}) {
+}) => {
   const queryClient = useQueryClient()
   const stopSession = useStopAgentSession()
   const startSession = useStartAgentSession()

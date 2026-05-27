@@ -9,10 +9,10 @@ import type { PluginInfo } from './use-plugin-data'
 import { usePluginData } from './use-plugin-data'
 
 function formatTimeSince(ts: number | undefined): string {
-  if (!ts) return '—'
+  if (!ts) { return '—' }
   const diff = Math.floor((Date.now() - ts) / 1000)
-  if (diff < 60) return `${diff}s ago`
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
+  if (diff < 60) { return `${diff}s ago` }
+  if (diff < 3600) { return `${Math.floor(diff / 60)}m ago` }
   return `${Math.floor(diff / 3600)}h ago`
 }
 
@@ -21,8 +21,8 @@ function getPluginOwner(plugin: PluginInfo): string {
 }
 
 function getLayerStatus(plugin: PluginInfo, layer: 'server' | 'web' | 'desktop'): string {
-  const hasLayer =
-    layer === 'server' ? plugin.hasServer : layer === 'web' ? plugin.hasWeb : plugin.hasDesktop
+  const hasLayer
+    = layer === 'server' ? plugin.hasServer : layer === 'web' ? plugin.hasWeb : plugin.hasDesktop
 
   return plugin.layers?.[layer]?.status ?? (hasLayer ? 'discovered' : 'skipped')
 }
@@ -30,13 +30,13 @@ function getLayerStatus(plugin: PluginInfo, layer: 'server' | 'web' | 'desktop')
 export function PluginsPanel() {
   const { t } = useTranslation('devtool')
   const { plugins, loading, error, refresh, getActivatedAt } = usePluginData()
-  const panels = usePluginStore((s) => s.panels)
-  const commands = usePluginStore((s) => s.commands)
+  const panels = usePluginStore(s => s.panels)
+  const commands = usePluginStore(s => s.commands)
   const [expandedPlugin, setExpandedPlugin] = useState<string | null>(null)
 
-  const serverCount = plugins.filter((p) => p.hasServer).length
-  const webCount = plugins.filter((p) => p.hasWeb).length
-  const desktopCount = plugins.filter((p) => p.hasDesktop).length
+  const serverCount = plugins.filter(p => p.hasServer).length
+  const webCount = plugins.filter(p => p.hasWeb).length
+  const desktopCount = plugins.filter(p => p.hasDesktop).length
 
   return (
     <div className="h-full overflow-auto p-4 font-mono text-[11px]">
@@ -65,7 +65,11 @@ export function PluginsPanel() {
       {/* Header */}
       <div className="mb-3 flex items-center gap-2">
         <span className="text-foreground font-medium">{t('plugins.title')}</span>
-        <span className="text-muted-foreground">({plugins.length})</span>
+        <span className="text-muted-foreground">
+(
+{plugins.length}
+)
+        </span>
         <button
           type="button"
           onClick={() => void refresh()}
@@ -82,7 +86,7 @@ export function PluginsPanel() {
       {/* Plugin list */}
       {!loading && !error && (
         <div className="space-y-2">
-          {plugins.map((p) => (
+          {plugins.map(p => (
             <PluginListItem
               key={getPluginOwner(p)}
               plugin={p}
@@ -92,8 +96,8 @@ export function PluginsPanel() {
                 setExpandedPlugin(expandedPlugin === owner ? null : owner)
               }}
               activatedAt={getActivatedAt(p)}
-              panels={panels.filter((panel) => panel.owner === getPluginOwner(p))}
-              commands={commands.filter((command) => command.owner === getPluginOwner(p))}
+              panels={panels.filter(panel => panel.owner === getPluginOwner(p))}
+              commands={commands.filter(command => command.owner === getPluginOwner(p))}
             />
           ))}
           {plugins.length === 0 && (
@@ -110,7 +114,7 @@ export function PluginsPanel() {
         <div className="mb-3">
           <div className="mb-1 text-muted-foreground">{t('plugins.panels', { count: panels.length })}</div>
           {panels.length === 0 && <div className="text-muted-foreground/60">{t('plugins.none')}</div>}
-          {panels.map((panel) => (
+          {panels.map(panel => (
             <div key={panel.id} className="flex items-center gap-2 py-0.5">
               <span className="text-foreground">{panel.title}</span>
               <span className="text-muted-foreground">{panel.localId}</span>
@@ -126,7 +130,7 @@ export function PluginsPanel() {
         <div>
           <div className="mb-1 text-muted-foreground">{t('plugins.commands', { count: commands.length })}</div>
           {commands.length === 0 && <div className="text-muted-foreground/60">{t('plugins.none')}</div>}
-          {commands.map((cmd) => (
+          {commands.map(cmd => (
             <div key={cmd.id} className="flex items-center gap-2 py-0.5">
               <button
                 type="button"
@@ -157,19 +161,19 @@ function PluginListItem({
   onToggle,
   activatedAt,
   panels,
-  commands
+  commands,
 }: {
   plugin: PluginInfo
   expanded: boolean
   onToggle: () => void
   activatedAt: number | undefined
-  panels: Array<{ id: string; localId: string; title: string; owner: string }>
+  panels: Array<{ id: string, localId: string, title: string, owner: string }>
   commands: Array<{
     id: string
     localId: string
     title: string
     owner: string
-    execute(): void | Promise<void>
+    execute: () => void | Promise<void>
   }>
 }) {
   const owner = getPluginOwner(plugin)
@@ -187,7 +191,7 @@ function PluginListItem({
         <span
           className={cn(
             'inline-block size-1.5 shrink-0 rounded-full',
-            isActive ? 'bg-emerald-400' : 'bg-muted-foreground/30'
+            isActive ? 'bg-emerald-400' : 'bg-muted-foreground/30',
           )}
         />
         <span className="text-foreground">{plugin.displayName || plugin.name}</span>
@@ -271,7 +275,7 @@ function PluginListItem({
           {plugin.layers && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Layers</div>
-              {(['server', 'web', 'desktop'] as const).map((layer) => (
+              {(['server', 'web', 'desktop'] as const).map(layer => (
                 <InfoRow
                   key={layer}
                   label={layer}
@@ -284,7 +288,7 @@ function PluginListItem({
           {plugin.capabilities && plugin.capabilities.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Capabilities</div>
-              {plugin.capabilities.map((capability) => (
+              {plugin.capabilities.map(capability => (
                 <div key={capability.id} className="flex items-center gap-2">
                   <span className="text-foreground">{capability.label ?? capability.type}</span>
                   <span className="text-muted-foreground">{capability.id}</span>
@@ -299,7 +303,7 @@ function PluginListItem({
           {plugin.declaredCapabilities && plugin.declaredCapabilities.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Declared Capabilities</div>
-              {plugin.declaredCapabilities.map((capability) => (
+              {plugin.declaredCapabilities.map(capability => (
                 <div key={capability.id} className="flex items-center gap-2">
                   <span className="text-foreground">{capability.label ?? capability.type}</span>
                   <span className="text-muted-foreground">{capability.localId}</span>
@@ -314,7 +318,7 @@ function PluginListItem({
           {plugin.declaredPermissions && plugin.declaredPermissions.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Declared Permissions</div>
-              {plugin.declaredPermissions.map((permission) => (
+              {plugin.declaredPermissions.map(permission => (
                 <div key={permission.id} className="flex items-center gap-2">
                   <span className="text-foreground">{permission.label ?? permission.localId}</span>
                   <span className="text-muted-foreground">{permission.localId}</span>
@@ -329,7 +333,7 @@ function PluginListItem({
           {plugin.warnings && plugin.warnings.length > 0 && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Warnings</div>
-              {plugin.warnings.map((warning) => (
+              {plugin.warnings.map(warning => (
                 <div key={warning} className="text-amber-400">
                   {warning}
                 </div>
@@ -341,14 +345,14 @@ function PluginListItem({
           {(panels.length > 0 || commands.length > 0) && plugin.hasWeb && (
             <div className="space-y-0.5">
               <div className="text-muted-foreground font-medium">Web Contributions</div>
-              {panels.map((panel) => (
+              {panels.map(panel => (
                 <div key={panel.id} className="flex items-center gap-2">
                   <span className="text-foreground">{panel.title}</span>
                   <span className="text-muted-foreground">{panel.localId}</span>
                   <span className="rounded bg-fill px-1 text-muted-foreground">panel</span>
                 </div>
               ))}
-              {commands.map((cmd) => (
+              {commands.map(cmd => (
                 <div key={cmd.id} className="flex items-center gap-2">
                   <button
                     type="button"
@@ -372,10 +376,13 @@ function PluginListItem({
   )
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value }: { label: string, value: string }) {
   return (
     <div className="flex gap-2">
-      <span className="text-muted-foreground">{label}:</span>
+      <span className="text-muted-foreground">
+{label}
+:
+      </span>
       <span className="text-foreground break-all">{value}</span>
     </div>
   )
@@ -383,7 +390,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 
 function PlatformBadge({
   label,
-  variant
+  variant,
 }: {
   label: string
   variant: 'blue' | 'purple' | 'amber'
@@ -393,7 +400,7 @@ function PlatformBadge({
       className={cn('rounded px-1.5 py-0.5 text-[10px]', {
         'bg-blue-500/15 text-blue-400': variant === 'blue',
         'bg-purple-500/15 text-purple-400': variant === 'purple',
-        'bg-amber-500/15 text-amber-400': variant === 'amber'
+        'bg-amber-500/15 text-amber-400': variant === 'amber',
       })}
     >
       {label}

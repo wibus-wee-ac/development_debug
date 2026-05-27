@@ -1,18 +1,39 @@
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
-import { useQuery } from '@tanstack/react-query'
-import { Loader2Icon, PackageIcon, SearchIcon, XIcon } from 'lucide-react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import {
+  FilePlusIcon,
+  FolderPlusIcon,
+  Loader2Icon,
+  SearchIcon,
+  XIcon,
+} from 'lucide-react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { Button } from '~/components/ui/button'
+import { toastManager } from '~/components/ui/toast'
 import { useGitFileStatuses } from '~/features/git/use-git'
+import { isElectron, nativeIpc } from '~/lib/electron'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 import type { GitFileStatus } from '~/lib/types'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+
+import {
+  CreateWorkspaceFileDialog,
+  createWorkspaceFileEntry,
+  getWorkspaceFileDefaultView,
+  isCopyPathChordStart,
+  isCopyPathShortcut,
+  isCopyRelativePathShortcut,
+  joinWorkspacePath,
+  renameWorkspaceFilePath,
+  WorkspaceFileContextMenu,
+} from './workspace-file-menu'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
 
@@ -22,6 +43,7 @@ const WorkspaceFileListSchema = z.array(z.object({
   name: z.string(),
   path: z.string(),
 })).default([])
+
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
 }
@@ -67,6 +89,10 @@ function getTreeItemFromEvent(event: Event): { path: string, kind: 'file' | 'dir
   return null
 }
 
+function getFileTreeInputPaths(entries: z.infer<typeof WorkspaceFileListSchema>): string[] {
+  return entries.map(entry => entry.type === 'directory' ? `${entry.path}/` : entry.path)
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface FileTreeProps {
@@ -77,6 +103,11 @@ interface FileTreeProps {
 
 export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
   const { t } = useTranslation('workspace')
+  const queryClient = useQueryClient()
+  const [createDialog, setCreateDialog] = useState<{
+    kind: 'file' | 'folder'
+    parentPath: string
+  } | null>(null)
   const filesQuery = useQuery({
     queryKey: ['workspace-files', workspaceId],
     queryFn: async () => {
@@ -91,8 +122,7 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   const gitStatuses = gitStatusQuery.data
 
-  // Only pass file paths — @pierre/trees auto-creates directory nodes from path hierarchy
-  const paths = useMemo(() => (filesQuery.data ?? []).flatMap(f => f.type === 'file' ? [f.path] : []), [filesQuery.data])
+  const paths = useMemo(() => getFileTreeInputPaths(filesQuery.data ?? []), [filesQuery.data])
 
   const preparedInput = useMemo(
     () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,
@@ -103,6 +133,22 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
     () => gitStatuses ? toTreeGitStatus(gitStatuses) : undefined,
     [gitStatuses],
   )
+  const refreshWorkspaceFiles = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] })
+  }, [queryClient, workspaceId])
+  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+    if (!workspaceId) {
+      return null
+    }
+
+    return createWorkspaceFileEntry({
+      workspaceId,
+      kind: input.kind,
+      parentPath: input.parentPath,
+      name: input.name,
+      operationFailedMessage: t('fileTree.error.operationFailed'),
+    })
+  }, [t, workspaceId])
 
   if (!workspaceId) {
     return (
@@ -122,8 +168,51 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   if (!preparedInput) {
     return (
-      <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center">
         <p className="text-xs text-muted-foreground">{t('fileTree.status.empty')}</p>
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => setCreateDialog({ kind: 'file', parentPath: '' })}
+          >
+            <FilePlusIcon />
+            {t('fileTree.action.newFile')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="xs"
+            onClick={() => setCreateDialog({ kind: 'folder', parentPath: '' })}
+          >
+            <FolderPlusIcon />
+            {t('fileTree.action.newFolder')}
+          </Button>
+        </div>
+        <CreateWorkspaceFileDialog
+          request={createDialog}
+          onOpenChange={open => !open && setCreateDialog(null)}
+          onCommit={async (name) => {
+            if (!createDialog) {
+              return
+            }
+            try {
+              await commitCreate({ ...createDialog, name })
+              await refreshWorkspaceFiles()
+              setCreateDialog(null)
+            }
+            catch (error) {
+              toastManager.add({
+                type: 'error',
+                title: t('fileTree.toast.createFailed'),
+                description: error instanceof Error ? error.message : String(error),
+              })
+              void refreshWorkspaceFiles()
+            }
+          }}
+          t={t}
+        />
       </div>
     )
   }
@@ -155,6 +244,11 @@ interface FileTreeInnerProps {
 
 function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { t } = useTranslation('workspace')
+  const queryClient = useQueryClient()
+  const [createDialog, setCreateDialog] = useState<{
+    kind: 'file' | 'folder'
+    parentPath: string
+  } | null>(null)
   const activeWorkspaceFilePath = useBrowserPanelStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
     if (activeTab?.kind !== 'workspace-file' || activeTab.workspaceId !== workspaceId) {
@@ -165,6 +259,27 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const activeWorkspaceFilePathRef = useRef<string | null>(null)
+  const copyPathChordActiveRef = useRef(false)
+  const refreshWorkspaceFiles = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] })
+  }, [queryClient, workspaceId])
+  const commitRename = useEffectEvent(async (sourcePath: string, destinationPath: string) => {
+    await renameWorkspaceFilePath({
+      workspaceId,
+      sourcePath,
+      destinationPath,
+      operationFailedMessage: t('fileTree.error.operationFailed'),
+    })
+    await refreshWorkspaceFiles()
+  })
+  const handleRenameError = useEffectEvent((error: unknown) => {
+    toastManager.add({
+      type: 'error',
+      title: t('fileTree.toast.renameFailed'),
+      description: error instanceof Error ? error.message : String(error),
+    })
+    void refreshWorkspaceFiles()
+  })
 
   const { model } = useFileTree({
     preparedInput,
@@ -178,6 +293,12 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
     initialExpansion: 'closed',
     initialExpandedPaths: ['src'],
     gitStatus,
+    renaming: {
+      onError: handleRenameError,
+      onRename: (event) => {
+        void commitRename(event.sourcePath, event.destinationPath).catch(handleRenameError)
+      },
+    },
     // renderRowDecoration: ({ item }) => {
     //   if (item.kind !== 'file' || item.path !== activeWorkspaceFilePathRef.current) {
     //     return null
@@ -201,6 +322,43 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
     openWorkspaceFileTab({ workspaceId, path, view })
     setBrowserPanelOpen(true)
   }, [openWorkspaceFileTab, setBrowserPanelOpen, workspaceId])
+  const copyRelativePath = useCallback(async (path: string) => {
+    await navigator.clipboard.writeText(path)
+  }, [])
+  const copyAbsolutePath = useCallback(async (path: string) => {
+    await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, path) : path)
+  }, [workspacePath])
+  const openInDefaultApplication = useCallback(async (path: string) => {
+    if (!workspacePath || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.openPath(joinWorkspacePath(workspacePath, path))
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('fileTree.toast.openDefaultFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspacePath])
+  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+    const nextPath = await createWorkspaceFileEntry({
+      workspaceId,
+      kind: input.kind,
+      parentPath: input.parentPath,
+      name: input.name,
+      operationFailedMessage: t('fileTree.error.operationFailed'),
+    })
+    if (!nextPath) {
+      return
+    }
+
+    await refreshWorkspaceFiles()
+    model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
+  }, [model, refreshWorkspaceFiles, t, workspaceId])
   const startDragFromTree = useEffectEvent((event: DragEvent) => {
     const itemPath = getDraggedTreeItemPath(event)
     if (!itemPath || !event.dataTransfer) {
@@ -214,10 +372,26 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
     event.dataTransfer.effectAllowed = 'copy'
   })
   const openWorkspaceFileFromTree = useEffectEvent((path: string) => {
-    openWorkspaceFile(path, 'editor')
+    openWorkspaceFile(path, getWorkspaceFileDefaultView(path))
   })
   const openPeekFromTree = useEffectEvent((path: string) => {
     openWorkspaceFile(path, 'preview')
+  })
+  const revealWorkspacePath = useEffectEvent(async (path: string) => {
+    if (!workspacePath || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.showItemInFolder(joinWorkspacePath(workspacePath, path))
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('fileTree.toast.revealFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
   })
 
   useEffect(() => {
@@ -287,10 +461,28 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
     }
 
     function handleKeyDown(event: KeyboardEvent) {
+      const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0]
+      if (isCopyPathChordStart(event)) {
+        event.preventDefault()
+        copyPathChordActiveRef.current = true
+        return
+      }
+      if (copyPathChordActiveRef.current) {
+        copyPathChordActiveRef.current = false
+        if (isCopyPathShortcut(event) && selectedPath) {
+          event.preventDefault()
+          void copyAbsolutePath(selectedPath)
+        }
+        return
+      }
+      if (isCopyRelativePathShortcut(event) && selectedPath) {
+        event.preventDefault()
+        void copyRelativePath(selectedPath)
+        return
+      }
       if (event.key !== ' ' || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) {
         return
       }
-      const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0]
       if (!selectedPath) {
         return
       }
@@ -308,7 +500,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
       container.removeEventListener('dblclick', handleDoubleClick)
       container.removeEventListener('keydown', handleKeyDown)
     }
-  }, [model])
+  }, [copyAbsolutePath, copyRelativePath, model])
 
   return (
     <div
@@ -358,49 +550,53 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
           '--trees-search-bg': 'transparent',
         } as React.CSSProperties}
         renderContextMenu={(item, context) => (
-          <div className="min-w-40 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md">
-            <ContextMenuItem
-              label={t('fileTree.action.copyPath')}
-              onClick={() => {
-                const absPath = workspacePath ? `${workspacePath}/${item.path}` : item.path
-                navigator.clipboard.writeText(absPath)
-                context.close({ restoreFocus: true })
-              }}
-            />
-            <ContextMenuItem
-              label={t('fileTree.action.copyRelativePath')}
-              onClick={() => {
-                navigator.clipboard.writeText(item.path)
-                context.close({ restoreFocus: true })
-              }}
-            />
-            {workspacePath && (
-              <ContextMenuItem
-                label={t('fileTree.action.revealInFinder')}
-                onClick={() => {
-                  context.close({ restoreFocus: true })
-                }}
-              />
-            )}
-            {onPackRequested && (
-              <>
-                <div className="mx-1 my-1 h-px bg-border/60" />
-                <ContextMenuItem
-                  label={t('fileTree.action.packToAi')}
-                  icon={<PackageIcon className="size-3" />}
-                  onClick={() => {
-                    // Use current selection if it includes this item; otherwise just this item
-                    const paths: string[] = selectedPaths.length > 0 && selectedPaths.includes(item.path)
-                      ? [...selectedPaths]
-                      : [item.path]
-                    onPackRequested(paths)
-                    context.close({ restoreFocus: true })
-                  }}
-                />
-              </>
-            )}
-          </div>
+          <WorkspaceFileContextMenu
+            context={context}
+            item={item}
+            onCopyAbsolutePath={copyAbsolutePath}
+            onCopyRelativePath={copyRelativePath}
+            onCreateRequest={(kind, parentPath) => setCreateDialog({ kind, parentPath })}
+            onOpen={(path, kind) => {
+              if (kind === 'file') {
+                openWorkspaceFile(path, getWorkspaceFileDefaultView(path))
+                return
+              }
+              model.focusPath(path)
+            }}
+            onOpenDefault={openInDefaultApplication}
+            onPackRequested={onPackRequested}
+            onRename={(path) => {
+              model.startRenaming(path)
+            }}
+            onReveal={revealWorkspacePath}
+            selectedPaths={selectedPaths}
+            t={t}
+            workspacePath={workspacePath}
+          />
         )}
+      />
+
+      <CreateWorkspaceFileDialog
+        request={createDialog}
+        onOpenChange={open => !open && setCreateDialog(null)}
+        onCommit={async (name) => {
+          if (!createDialog) {
+            return
+          }
+          try {
+            await commitCreate({ ...createDialog, name })
+            setCreateDialog(null)
+          }
+          catch (error) {
+            toastManager.add({
+              type: 'error',
+              title: t('fileTree.toast.createFailed'),
+              description: error instanceof Error ? error.message : String(error),
+            })
+            void refreshWorkspaceFiles()
+          }
+        }}
+        t={t}
       />
 
       {/* Status bar */}
@@ -412,20 +608,5 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
         </div>
       )}
     </div>
-  )
-}
-
-// ── Context menu item ──────────────────────────────────────────────────────────
-
-function ContextMenuItem({ label, icon, onClick }: { label: string, icon?: React.ReactNode, onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-popover-foreground transition-colors hover:bg-accent"
-    >
-      {icon}
-      {label}
-    </button>
   )
 }

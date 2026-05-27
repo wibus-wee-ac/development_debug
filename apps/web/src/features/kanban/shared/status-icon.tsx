@@ -1,5 +1,6 @@
-import { cn } from '~/lib/cn'
 import { z } from 'zod'
+
+import { cn } from '~/lib/cn'
 
 import type { StatusCategory } from '../use-view-config'
 

@@ -24,12 +24,14 @@ function WorkspaceDetailLayoutSlots({
   const panel = useMemo(
     () => (
       <Suspense fallback={null}>
-        {hasWorkspace ? (
+        {hasWorkspace
+? (
           <BottomTerminalPanel
             ownerId={`workspace:${workspaceId}`}
             cwd={workspacePath!}
           />
-        ) : null}
+        )
+: null}
       </Suspense>
     ),
     [hasWorkspace, workspaceId, workspacePath],

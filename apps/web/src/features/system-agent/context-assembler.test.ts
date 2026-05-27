@@ -4,8 +4,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import type { ContextEnvelope, ContextItem } from './context-items'
 import { assembleContextForPrompt } from './context-assembler'
+import type { ContextEnvelope, ContextItem } from './context-items'
 
 const NOW = 1779781200000
 

@@ -1,5 +1,5 @@
-import { create } from 'zustand'
 import { z } from 'zod'
+import { create } from 'zustand'
 
 import { getServerUrl } from '~/lib/electron'
 

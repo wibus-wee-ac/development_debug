@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo } from 'react'
 
 import { Skeleton } from '~/components/ui/skeleton'
 import type { KanbanIssue } from '~/lib/types'
+
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
 import { AgentSessionPanel } from './agent-session-panel'

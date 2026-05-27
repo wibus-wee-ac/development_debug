@@ -7,7 +7,7 @@ import { z } from 'zod'
 import {
   getProviderTargetsByProviderTargetIdModelSettings,
   patchProviderTargetsByProviderTargetIdCustomModels,
-  patchProviderTargetsByProviderTargetIdModelVisibility
+  patchProviderTargetsByProviderTargetIdModelVisibility,
 } from '~/api-gen/sdk.gen'
 import { ProfileConfigSchema } from '~/features/agent-runtime/profile-config-schema'
 import type { ModelCapabilities, ProviderTarget } from '~/lib/types'
@@ -23,12 +23,11 @@ export interface ProviderTargetModelSettings {
   providerTargetId: string
   configJson: string
   customModelsJson: string
-  modelRegistryMappingsJson: string
 }
 
 export const ModelCapabilitiesSchema = z
   .object({
-    contextWindow: z.number().optional()
+    contextWindow: z.number().optional(),
   })
   .passthrough()
 
@@ -37,20 +36,20 @@ export const EditableCustomModelSchema = z
     id: z.string().trim().min(1),
     label: z.string().trim().optional(),
     capabilities: ModelCapabilitiesSchema.default({}),
-    contextWindow: z.number().optional()
+    contextWindow: z.number().optional(),
   })
-  .transform((item) => ({
+  .transform(item => ({
     id: item.id,
     label: item.label || item.id,
     capabilities:
       item.capabilities.contextWindow == null && item.contextWindow !== undefined
         ? { ...item.capabilities, contextWindow: item.contextWindow }
-        : item.capabilities
+        : item.capabilities,
   }))
 
 export const CustomModelsJsonSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(z.array(EditableCustomModelSchema))
 
 export const ProviderTargetModelSettingsSchema = z.object({
@@ -58,7 +57,6 @@ export const ProviderTargetModelSettingsSchema = z.object({
   providerTargetId: z.string(),
   configJson: z.string(),
   customModelsJson: z.string(),
-  modelRegistryMappingsJson: z.string()
 })
 
 export function providerTargetPath(target: ProviderTarget): string {
@@ -70,42 +68,41 @@ export function enabledModelsFromConfig(configJson: string): string[] {
 }
 
 export async function loadProviderTargetModelSettings(
-  target: ProviderTarget
+  target: ProviderTarget,
 ): Promise<ProviderTargetModelSettings> {
   const { data } = await getProviderTargetsByProviderTargetIdModelSettings({
     path: { providerTargetId: target.id },
-    throwOnError: true
+    throwOnError: true,
   })
   return ProviderTargetModelSettingsSchema.parse(data)
 }
 
 export async function updateProviderTargetModelVisibility(
   target: ProviderTarget,
-  enabledModels: string[]
+  enabledModels: string[],
 ): Promise<ProviderTargetModelSettings> {
   const { data } = await patchProviderTargetsByProviderTargetIdModelVisibility({
     path: { providerTargetId: target.id },
     body: { enabledModels },
-    throwOnError: true
+    throwOnError: true,
   })
   return ProviderTargetModelSettingsSchema.parse(data)
 }
 
 export async function updateProviderTargetCustomModels(
   target: ProviderTarget,
-  models: EditableCustomModel[]
+  models: EditableCustomModel[],
 ): Promise<EditableCustomModel[]> {
   const sanitized = z.array(EditableCustomModelSchema).parse(models)
   const { data } = await patchProviderTargetsByProviderTargetIdCustomModels({
     path: { providerTargetId: target.id },
     body: {
-      models: sanitized.map((model) => ({
+      models: sanitized.map(model => ({
         id: model.id,
         label: model.label !== model.id ? model.label : undefined,
-        capabilities: model.capabilities
-      }))
+      })),
     },
-    throwOnError: true
+    throwOnError: true,
   })
   return z.array(EditableCustomModelSchema).parse(data)
 }

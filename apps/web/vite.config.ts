@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto'
 import { resolve } from 'node:path'
 
+import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import tailwindcss from '@tailwindcss/vite'
-import { DevTools } from '@vitejs/devtools'
 // import { devtools } from '@tanstack/devtools-vite'
 import viteReact from '@vitejs/plugin-react'
-import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
-import { defineConfig, type Plugin } from 'vite'
+import type { Plugin } from 'vite'
+import { defineConfig } from 'vite'
 
 import packageJson from './package.json' with { type: 'json' }
 
@@ -20,7 +20,7 @@ function getVendorChunk(id: string): string | undefined {
 
   const marker = '/node_modules/'
   const index = id.lastIndexOf(marker)
-  if (index === -1) return undefined
+  if (index === -1) { return undefined }
 
   const path = id.slice(index + marker.length)
   const parts = path.split('/')
@@ -28,14 +28,14 @@ function getVendorChunk(id: string): string | undefined {
     ? `${parts[0]}/${parts[1]}`
     : parts[0]
 
-  if (packageName === 'react' || packageName === 'react-dom') return 'vendor-react'
-  if (packageName?.startsWith('@tanstack/')) return 'vendor-tanstack'
-  if (packageName?.startsWith('@tiptap/')) return 'vendor-tiptap'
-  if (packageName?.startsWith('@xterm/')) return 'vendor-xterm'
-  if (packageName === 'motion') return 'vendor-motion'
-  if (packageName === 'lucide-react' || packageName === '@mingcute/react' || packageName === 'react-icons') return 'vendor-icons'
-  if (packageName?.startsWith('@base-ui/') || packageName === 'radix-ui' || packageName === 'vaul') return 'vendor-ui'
-  if (packageName?.startsWith('@cradle/')) return packageName.replace('@cradle/', 'vendor-cradle-')
+  if (packageName === 'react' || packageName === 'react-dom') { return 'vendor-react' }
+  if (packageName?.startsWith('@tanstack/')) { return 'vendor-tanstack' }
+  if (packageName?.startsWith('@tiptap/')) { return 'vendor-tiptap' }
+  if (packageName?.startsWith('@xterm/')) { return 'vendor-xterm' }
+  if (packageName === 'motion') { return 'vendor-motion' }
+  if (packageName === 'lucide-react' || packageName === '@mingcute/react' || packageName === 'react-icons') { return 'vendor-icons' }
+  if (packageName?.startsWith('@base-ui/') || packageName === 'radix-ui' || packageName === 'vaul') { return 'vendor-ui' }
+  if (packageName?.startsWith('@cradle/')) { return packageName.replace('@cradle/', 'vendor-cradle-') }
 
   return `vendor-${packageName?.replace('@', '').replace('/', '-')}`
 }
@@ -117,12 +117,16 @@ export default defineConfig({
       polyfill: false,
     },
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        tearoff: resolve(__dirname, 'tearoff.html'),
+      },
       output: {
         manualChunks(id) {
           return getVendorChunk(id)
         },
         chunkFileNames(chunkInfo) {
-          if (chunkInfo.name === 'vendor-react') return 'assets/vendor-react.js'
+          if (chunkInfo.name === 'vendor-react') { return 'assets/vendor-react.js' }
           return 'assets/[name]-[hash].js'
         },
       },

@@ -9,17 +9,17 @@ Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负�
 
 ## Files
 
-- **agent-detail.tsx**: Agent 详情页，提供内联编辑 identity、provider/model/thinking 统一选择器、system prompt、Claude Agent SDK haiku / sonnet / opus alias、CLI TUI env 输入反馈与 agent-private Skills 管理；provider/model picker 的数据源统一为 `provider_targets`，alias 清空后直接映射主模型并打开当前 provider target 的模型列表，并确保 provider 切换时默认模型与 thinking 能力会同步到 state
+- **agent-detail.tsx**: Agent 详情页，提供内联编辑 identity、provider/model/thinking 统一选择器、system prompt、Claude Agent SDK haiku / sonnet / opus alias、CLI TUI env 输入反馈与 agent-private Skills 管理；provider/model picker 的数据源统一为兼容当前 runtime 的全部 `provider_targets`，包括 disabled external provider；选择 disabled provider 时保留配置能力并显示不可启动原因；alias 清空后直接映射主模型并打开当前 provider target 的模型列表，并确保 provider 切换时默认模型与 thinking 能力会同步到 state
 - **agent-detail.test.ts**: Agent detail 的纯函数契约测试，覆盖 CLI TUI env 解析反馈、Claude Agent SDK alias config 序列化与创建按钮禁用原因
 - **agent-batch-configuration.ts**: Settings Agents 多选批量配置 helper，生成 provider/model/thinking 批量更新 patch，并跳过非 provider-backed 的 CLI TUI Agent
 - **agent-batch-configuration.test.ts**: Agent 批量 provider 配置的纯函数回归测试，覆盖 identity/config 保留与 CLI TUI 跳过语义
 - **agent-list.tsx**: Agent 列表，显示所有 Agent 卡片；点击行导航到 agent-detail；支持显式 Import 操作，将本机 Claude/Codex allowlisted 配置导入为去重后的 Agent；如果本机配置指向 CC Switch 本地代理，则导入仍创建 Local Claude / Local Codex Agent，但 provider/model/alias 配置来自 CC Switch 当前 upstream provider；支持 Settings overlay 的一次性 Agent focus target，用于从 Smart Mention 等外部入口直接定位对应 Agent；列表行现在展示绑定的 provider target 名称，避免多个同类 provider 时无法分辨归属；支持多选批量启停、删除、provider/model/thinking 配置以及列表内 `Cmd/Ctrl+A`、`Escape`、`Delete/Backspace` 快捷键和 `Shift+click` 连续区间选择；draft row 使用即时布局挂载，避免列表高度动画；Settings Agents 首屏在 agents 与 provider targets 两条 server-backed query 成功后记录 performance gate
-- **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持单项编辑 / 删除 / 启停、多选批量操作以及列表内 `Cmd/Ctrl+A`、`Escape`、`Delete/Backspace` 快捷键和 `Shift+click` 连续区间选择；连接 App 导入的 Provider 在用户界面中按 Connected apps 分组展示，启停状态与模型偏好仍由 Cradle provider target 控制；外部分组默认折叠、搜索态强制展开、选中项所在分组自动展开；draft provider row 使用即时布局挂载，避免列表高度动画；Settings Providers 首屏在 profiles、external provider sources 与 external provider records 三条 server-backed query 成功后记录 performance gate
+- **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持单项编辑 / 删除 / 启停、多选批量操作以及列表内 `Cmd/Ctrl+A`、`Escape`、`Delete/Backspace` 快捷键和 `Shift+click` 连续区间选择；连接 App 导入的 Provider 在用户界面中按 Connected apps 分组展示，启停状态与模型偏好仍由 Cradle provider target 控制；外部 provider 启停后刷新 agents 与 provider targets query，保证绑定 agent 的 disabled 状态即时同步；外部分组默认折叠、搜索态强制展开、选中项所在分组自动展开；draft provider row 使用即时布局挂载，避免列表高度动画；Settings Providers 首屏在 profiles、external provider sources 与 external provider records 三条 server-backed query 成功后记录 performance gate
 - **agent-status-dot.tsx**: Agent Management 列表行复用的启用状态圆点，避免 Agent 列表依赖 Provider 设置页组件
 - **avatar-url.ts**: 统一生成 Agent DiceBear avatar URL，避免列表与详情页重复编码规则
 - **custom-models-editor.tsx**: Provider 自定义模型编辑器，支持手动添加模型、models.dev 匹配补全与可访问的模型操作按钮
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback
-- **external-provider-record-detail-panel.tsx**: Connected provider 详情面板，只展示用户可识别的连接来源、登录状态、应用、端点与默认模型；同步 warning 仅在开发环境以 Dev only 标记显示，同时通过 provider-target API 编辑 Cradle-owned model visibility、custom models 与 models.dev mapping
+- **external-provider-record-detail-panel.tsx**: Connected provider 详情面板，只展示用户可识别的连接来源、登录状态、应用、端点与默认模型；同步 warning 仅在开发环境以 Dev only 标记显示，同时通过 provider-target API 编辑 Cradle-owned model visibility/custom models，并通过全局 model registry API 保存 models.dev mapping；external provider 启停后刷新 agents 与 provider targets query
 - **index.ts**: Agent Management 功能模块的 barrel export
 - **provider-list-groups.ts**: Provider sidebar 的纯排序 / 分组 helper，以 external provider source 的 plugin owner 作为外部来源分组边界，并把 enabled profile 排在 disabled profile 前
 - **provider-list-groups.test.ts**: Provider sidebar 分组排序回归测试，覆盖 enabled-first 与同一 plugin owner 下多 source label 合并
@@ -29,5 +29,5 @@ Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负�
 - **settings-multi-selection.test.ts**: Shared selection helper 的回归测试，覆盖 toggle、prune、visible merge / remove 与 selected-id 收敛行为
 - **settings-selection-shortcuts.ts**: Agent Management settings 列表的局部快捷键 helper，封装可见项全选、清空选择、批量删除与输入框 / overlay 跳过语义
 - **settings-selection-shortcuts.test.ts**: Settings selection shortcuts 的回归测试，覆盖 editable target 跳过、overlay 跳过、全选、清空与删除快捷键门禁
-- **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，显示 models.dev exact / fuzzy / manual / unmatched 状态，并支持按 Available Model 行保存 registry 映射或手工 registry 条目；空列表表示没有本地缓存，用户可显式点击 Fetch Models 刷新 provider inventory
-- **profile-detail-panel.tsx**: Manual provider 详情面板，继续以 RHF 作为表单 owner，并把模型缓存读取 / 手动 inventory refresh / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；模型 registry 映射与 custom models 通过 provider-target API 保存，以便和 external runtime target 使用同一语义
+- **models-panel.tsx**: Provider 模型可见性面板，复用 Agent Runtime 的模型可见性语义，显示 models.dev exact / fuzzy / manual / alias / unmatched 状态，并支持按 Available Model 行保存全局 registry 映射或手工 registry 条目；空列表表示没有本地缓存，用户可显式点击 Fetch Models 刷新 provider inventory
+- **profile-detail-panel.tsx**: Manual provider 详情面板，继续以 RHF 作为表单 owner，并把模型缓存读取 / 手动 inventory refresh / registry 映射 / 健康检查 / 自动保存 / 删除确认等瞬时 UI 状态收口到局部 reducer，避免细碎 `useState` 级联；模型 registry 映射通过全局 model registry API 保存，custom models 通过 provider-target API 保存，以便和 external runtime target 使用同一语义

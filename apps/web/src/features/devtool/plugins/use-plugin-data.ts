@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   PluginCapabilityRecord,
   PluginDeclaredCapabilityRecord,
   PluginDeclaredPermissionRecord,
   PluginLayer,
   PluginLayerState,
-  PluginSourceDescriptor
+  PluginSourceDescriptor,
 } from '@cradle/plugin-sdk'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { getServerUrl } from '~/lib/electron'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -33,15 +33,15 @@ export interface PluginInfo {
 }
 
 export function usePluginData() {
-  const webLayerStates = usePluginStore((s) => s.webLayerStates)
+  const webLayerStates = usePluginStore(s => s.webLayerStates)
   const [serverPlugins, setServerPlugins] = useState<PluginInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const activatedAtRef = useRef<Map<string, number>>(new Map())
-  const plugins = useMemo(() => serverPlugins.map(plugin => {
+  const plugins = useMemo(() => serverPlugins.map((plugin) => {
     const owner = plugin.identity ?? plugin.name
     const webLayerState = webLayerStates[owner]
-    if (!webLayerState) return plugin
+    if (!webLayerState) { return plugin }
     return {
       ...plugin,
       layers: {
@@ -67,19 +67,22 @@ export function usePluginData() {
       const now = Date.now()
       for (const p of data) {
         const key = p.identity ?? p.name
-        const activatedAt =
-          p.layers?.web?.activatedAt ??
-          p.layers?.server?.activatedAt ??
-          p.layers?.desktop?.activatedAt
+        const activatedAt
+          = p.layers?.web?.activatedAt
+            ?? p.layers?.server?.activatedAt
+            ?? p.layers?.desktop?.activatedAt
         if (activatedAt) {
           activatedAtRef.current.set(key, Date.parse(activatedAt))
-        } else if (!activatedAtRef.current.has(key)) {
+        }
+ else if (!activatedAtRef.current.has(key)) {
           activatedAtRef.current.set(key, now)
         }
       }
-    } catch (e) {
+    }
+ catch (e) {
       setError(e instanceof Error ? e.message : 'Unknown error')
-    } finally {
+    }
+ finally {
       setLoading(false)
     }
   }, [])
@@ -100,10 +103,10 @@ export function usePluginData() {
   }, [refresh])
 
   function getActivatedAt(plugin: PluginInfo): number | undefined {
-    const activatedAt =
-      plugin.layers?.web?.activatedAt ??
-      plugin.layers?.server?.activatedAt ??
-      plugin.layers?.desktop?.activatedAt
+    const activatedAt
+      = plugin.layers?.web?.activatedAt
+        ?? plugin.layers?.server?.activatedAt
+        ?? plugin.layers?.desktop?.activatedAt
     return activatedAt ? Date.parse(activatedAt) : activatedAtRef.current.get(plugin.identity ?? plugin.name)
   }
 

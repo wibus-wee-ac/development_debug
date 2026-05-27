@@ -51,5 +51,7 @@ interface Window {
   __cradleBrowserUseGoOffScreen?: (tabId?: string) => boolean
   __cradleBrowserUseGetActiveTab?: () => string | undefined
   // eslint-disable-next-line ts/no-explicit-any
+  __CRADLE_TAB_STORE__?: any
+  // eslint-disable-next-line ts/no-explicit-any
   ipc: any
 }

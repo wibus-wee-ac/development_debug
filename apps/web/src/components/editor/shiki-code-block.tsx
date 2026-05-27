@@ -6,7 +6,8 @@ import { ReactNodeViewRenderer } from '@tiptap/react'
 import type { BundledLanguage } from 'shiki'
 
 import { CodeBlockView } from './code-block-view'
-import { DARK_THEME, getHighlighter, getLoadedHighlighter, LIGHT_THEME, normalizeLanguage, type ShikiHighlighter } from './shiki-highlighter'
+import type { ShikiHighlighter } from './shiki-highlighter'
+import { DARK_THEME, getHighlighter, getLoadedHighlighter, LIGHT_THEME, normalizeLanguage } from './shiki-highlighter'
 
 /* ─── Decoration builder ─────────────────────────────────── */
 

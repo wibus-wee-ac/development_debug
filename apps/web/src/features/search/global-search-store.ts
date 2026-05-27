@@ -13,11 +13,11 @@ interface GlobalSearchState {
   closeSearch: () => void
 }
 
-export const useGlobalSearchStore = create<GlobalSearchState>((set) => ({
+export const useGlobalSearchStore = create<GlobalSearchState>(set => ({
   open: false,
   initialQuery: '>',
-  setOpen: (open) => set({ open }),
+  setOpen: open => set({ open }),
   openPalette: (initialQuery = '>') => set({ initialQuery, open: true }),
   openSearch: () => set({ initialQuery: '>', open: true }),
-  closeSearch: () => set({ open: false })
+  closeSearch: () => set({ open: false }),
 }))

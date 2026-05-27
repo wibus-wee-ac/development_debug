@@ -932,7 +932,6 @@ const ChronicleModelResourceInstallDraftSchema = z.object({
   },
 }))
 
-
 const SecretResponseSchema = z.object({
   id: z.string().min(1),
 }).passthrough()

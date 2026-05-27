@@ -32,18 +32,18 @@ interface CustomModelsEditorState {
   searchPending: boolean
 }
 
-type CustomModelsEditorAction =
-  | { type: 'new-id/set'; value: string }
-  | { type: 'lookup/start' }
-  | { type: 'lookup/end' }
-  | { type: 'enrich/start'; modelId: string }
-  | { type: 'enrich/cancel' }
-  | { type: 'enrich/apply' }
-  | { type: 'search-query/set'; value: string }
-  | { type: 'search/start' }
-  | { type: 'search/success'; results: SearchResult[] }
-  | { type: 'search/clear' }
-  | { type: 'highlight/set'; index: number }
+type CustomModelsEditorAction
+  = | { type: 'new-id/set', value: string }
+    | { type: 'lookup/start' }
+    | { type: 'lookup/end' }
+    | { type: 'enrich/start', modelId: string }
+    | { type: 'enrich/cancel' }
+    | { type: 'enrich/apply' }
+    | { type: 'search-query/set', value: string }
+    | { type: 'search/start' }
+    | { type: 'search/success', results: SearchResult[] }
+    | { type: 'search/clear' }
+    | { type: 'highlight/set', index: number }
 
 const initialCustomModelsEditorState: CustomModelsEditorState = {
   newId: '',
@@ -52,7 +52,7 @@ const initialCustomModelsEditorState: CustomModelsEditorState = {
   searchResults: [],
   highlightIdx: 0,
   lookupPending: false,
-  searchPending: false
+  searchPending: false,
 }
 
 const ModelCapabilitiesSchema = z.object({}).passthrough()
@@ -61,12 +61,12 @@ const CustomModelEntrySchema = z
   .object({
     id: z.string().trim().min(1),
     label: z.string().trim().optional(),
-    capabilities: ModelCapabilitiesSchema.default({})
+    capabilities: ModelCapabilitiesSchema.default({}),
   })
-  .transform((model) => ({
+  .transform(model => ({
     id: model.id,
     label: model.label || model.id,
-    capabilities: model.capabilities
+    capabilities: model.capabilities,
   }))
 
 const SearchResultsSchema = z.array(CustomModelEntrySchema)
@@ -79,7 +79,7 @@ function occurrenceKey(id: string, counts: Map<string, number>): string {
 
 function customModelsEditorReducer(
   state: CustomModelsEditorState,
-  action: CustomModelsEditorAction
+  action: CustomModelsEditorAction,
 ): CustomModelsEditorState {
   switch (action.type) {
     case 'new-id/set':
@@ -95,7 +95,7 @@ function customModelsEditorReducer(
         searchQuery: action.modelId,
         searchResults: [],
         highlightIdx: 0,
-        searchPending: false
+        searchPending: false,
       }
     case 'enrich/cancel':
     case 'enrich/apply':
@@ -105,7 +105,7 @@ function customModelsEditorReducer(
         searchQuery: '',
         searchResults: [],
         highlightIdx: 0,
-        searchPending: false
+        searchPending: false,
       }
     case 'search-query/set':
       return { ...state, searchQuery: action.value }
@@ -128,7 +128,7 @@ function customModelsEditorReducer(
 async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
   const { data } = await postProvidersModelLookup({
     body: { modelId },
-    throwOnError: true
+    throwOnError: true,
   })
   return CustomModelEntrySchema.parse(data)
 }
@@ -136,14 +136,14 @@ async function lookupModel(modelId: string): Promise<CustomModelEntry | null> {
 async function searchProviderModels(query: string): Promise<SearchResult[]> {
   const { data } = await postProvidersModelSearch({
     body: { query },
-    throwOnError: true
+    throwOnError: true,
   })
   return SearchResultsSchema.parse(data)
 }
 
 export function CustomModelsEditor({
   models,
-  onChange
+  onChange,
 }: {
   models: CustomModelEntry[]
   onChange: (next: CustomModelEntry[]) => void
@@ -169,8 +169,8 @@ export function CustomModelsEditor({
     debounceRef.current = setTimeout(() => {
       dispatch({ type: 'search/start' })
       void searchProviderModels(query).then(
-        (results) => dispatch({ type: 'search/success', results }),
-        () => dispatch({ type: 'search/success', results: [] })
+        results => dispatch({ type: 'search/success', results }),
+        () => dispatch({ type: 'search/success', results: [] }),
       )
     }, 250)
 
@@ -191,7 +191,7 @@ export function CustomModelsEditor({
 
   const addModel = useCallback(async () => {
     const id = state.newId.trim()
-    if (!id || models.some((m) => m.id === id)) {
+    if (!id || models.some(m => m.id === id)) {
       return
     }
 
@@ -199,7 +199,8 @@ export function CustomModelsEditor({
     try {
       const entry = (await lookupModel(id)) ?? { id, label: id, capabilities: {} }
       onChange([...models, entry])
-    } catch {
+    }
+ catch {
       onChange([...models, { id, label: id, capabilities: {} }])
     }
     dispatch({ type: 'lookup/end' })
@@ -208,27 +209,26 @@ export function CustomModelsEditor({
 
   const removeModel = useCallback(
     (id: string) => {
-      onChange(models.filter((m) => m.id !== id))
+      onChange(models.filter(m => m.id !== id))
     },
-    [models, onChange]
+    [models, onChange],
   )
 
   const applyEnrichResult = useCallback(
     (targetModelId: string, result: SearchResult) => {
       onChange(
-        models.map((m) =>
+        models.map(m =>
           m.id === targetModelId
             ? {
                 ...m,
                 label: result.label.trim() || targetModelId,
-                capabilities: result.capabilities
+                capabilities: result.capabilities,
               }
-            : m
-        )
+            : m),
       )
       dispatch({ type: 'enrich/apply' })
     },
-    [models, onChange]
+    [models, onChange],
   )
 
   const startEnrich = useCallback((modelId: string) => {
@@ -264,7 +264,7 @@ export function CustomModelsEditor({
         applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
       }
     },
-    [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults]
+    [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults],
   )
 
   const modelKeyCounts = new Map<string, number>()
@@ -284,8 +284,8 @@ export function CustomModelsEditor({
         <Input
           ref={inputRef}
           value={state.newId}
-          onChange={(e) => dispatch({ type: 'new-id/set', value: e.target.value })}
-          onKeyDown={(e) => e.key === 'Enter' && void addModel()}
+          onChange={e => dispatch({ type: 'new-id/set', value: e.target.value })}
+          onKeyDown={e => e.key === 'Enter' && void addModel()}
           placeholder="e.g. claude-sonnet-4-20250514"
           className="h-8 flex-1 font-mono text-[12px]"
         />
@@ -305,7 +305,7 @@ export function CustomModelsEditor({
       {models.length > 0 && (
         <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
           <ul className="divide-y divide-foreground/4">
-            {models.map((m) => (
+            {models.map(m => (
               <li key={occurrenceKey(m.id, modelKeyCounts)} className="relative">
                 <div className="flex items-center gap-3 px-3 py-2">
                   <div className="min-w-0 flex-1">
@@ -323,7 +323,8 @@ export function CustomModelsEditor({
                       variant="secondary"
                       className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground"
                     >
-                      {Math.round(m.capabilities.contextWindow / 1000)}k
+                      {Math.round(m.capabilities.contextWindow / 1000)}
+k
                     </Badge>
                   )}
                   {m.capabilities.reasoning && (
@@ -370,9 +371,8 @@ export function CustomModelsEditor({
                       <Input
                         ref={searchInputRef}
                         value={state.searchQuery}
-                        onChange={(e) =>
-                          dispatch({ type: 'search-query/set', value: e.target.value })
-                        }
+                        onChange={e =>
+                          dispatch({ type: 'search-query/set', value: e.target.value })}
                         onKeyDown={handleSearchKeyDown}
                         placeholder="Search models.dev..."
                         className="h-7 font-mono text-[11px]"
@@ -394,7 +394,7 @@ export function CustomModelsEditor({
                               onMouseEnter={() => dispatch({ type: 'highlight/set', index: idx })}
                               className={cn(
                                 'flex w-full items-center gap-2 px-2.5 py-1.5 text-left',
-                                idx === state.highlightIdx && 'bg-accent'
+                                idx === state.highlightIdx && 'bg-accent',
                               )}
                             >
                               <div className="min-w-0 flex-1">
@@ -405,10 +405,11 @@ export function CustomModelsEditor({
                                   {r.id}
                                 </div>
                               </div>
-                              {r.capabilities.contextWindow != null &&
-                                r.capabilities.contextWindow > 0 && (
+                              {r.capabilities.contextWindow != null
+                                && r.capabilities.contextWindow > 0 && (
                                   <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                                    {Math.round(r.capabilities.contextWindow / 1000)}k
+                                    {Math.round(r.capabilities.contextWindow / 1000)}
+k
                                   </span>
                                 )}
                             </button>
@@ -416,9 +417,9 @@ export function CustomModelsEditor({
                         ))}
                       </ul>
                     )}
-                    {state.searchQuery.trim() &&
-                      !state.searchPending &&
-                      state.searchResults.length === 0 && (
+                    {state.searchQuery.trim()
+                      && !state.searchPending
+                      && state.searchResults.length === 0 && (
                         <p className="mt-1.5 text-[10.5px] text-muted-foreground">
                           No matches found
                         </p>

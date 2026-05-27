@@ -30,7 +30,6 @@ afterEach(() => {
     messagesMap: new Map(),
     toolCallIdsByMessageId: new Map(),
     toolEntitiesMap: new Map(),
-    subagentMessagesMap: new Map(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),

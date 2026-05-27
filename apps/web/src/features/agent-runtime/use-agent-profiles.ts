@@ -1,11 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 
+import { getProviderTargetsQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { deleteProfilesById, getProfiles, putProfilesById } from '~/api-gen/sdk.gen'
 import type { PutProfilesByIdData } from '~/api-gen/types.gen'
 import type { AgentProfile } from '~/lib/types'
 
 import { AGENT_MODELS_QUERY_KEY } from './use-agent-models'
+import { AGENTS_QUERY_KEY } from './use-agents'
 
 const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
 const AgentProfileSchema = z.object({
@@ -43,6 +45,8 @@ export function useAgentProfiles() {
     },
     onSuccess: async () => {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
         queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
       ])
@@ -59,6 +63,8 @@ export function useAgentProfiles() {
     },
     onSuccess: async () => {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
         queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
       ])
@@ -71,6 +77,8 @@ export function useAgentProfiles() {
     },
     onSuccess: async () => {
       await Promise.all([
+        queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
         queryClient.invalidateQueries({ queryKey: AGENT_PROFILES_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
       ])

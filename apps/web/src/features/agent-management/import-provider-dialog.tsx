@@ -27,18 +27,20 @@ import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 import type { ProviderKind } from '~/lib/types'
 
+import type { ParsedProvider } from './import-provider-parser'
+import { parseProviderConfig } from './import-provider-parser'
 import { buildProfileId } from './provider-settings-utils'
-import { type ParsedProvider, parseProviderConfig } from './import-provider-parser'
 
 const SecretCreateResponseSchema = z.object({ id: z.string().min(1) })
 
-const KIND_OPTIONS: { value: ProviderKind; label: string }[] = [
+const KIND_OPTIONS: { value: ProviderKind, label: string }[] = [
   { value: 'openai-compatible', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
 ]
 
 function hostnameFromUrl(url: string): string {
-  try { return new URL(url).hostname } catch { return url }
+  try { return new URL(url).hostname }
+ catch { return url }
 }
 
 export function ImportProviderDialog({
@@ -58,7 +60,7 @@ export function ImportProviderDialog({
   const prevTokenRef = useRef<string | null>(null)
 
   const parseResult = useMemo(() => {
-    if (!text.trim()) return null
+    if (!text.trim()) { return null }
     return parseProviderConfig(text)
   }, [text])
 
@@ -66,9 +68,9 @@ export function ImportProviderDialog({
   const resolvedNames = useMemo(() => {
     const parsed = parseResult?.providers ?? []
     const counts = new Map<string, number>()
-    const allExisting = new Set(profiles.map((p) => p.name.toLowerCase()))
+    const allExisting = new Set(profiles.map(p => p.name.toLowerCase()))
     return parsed.map((p) => {
-      let base = p.name
+      const base = p.name
       let candidate = base
       let n = 1
       while (allExisting.has(candidate.toLowerCase()) || counts.has(candidate.toLowerCase())) {
@@ -82,10 +84,10 @@ export function ImportProviderDialog({
   }, [parseResult, profiles])
 
   useEffect(() => {
-    if (!parseResult) return
+    if (!parseResult) { return }
     if (parseResult.token !== prevTokenRef.current) {
       prevTokenRef.current = parseResult.token
-      setKinds(parseResult.providers.map((p) => p.providerKind))
+      setKinds(parseResult.providers.map(p => p.providerKind))
       setManualUrl('')
       setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
     }
@@ -96,7 +98,7 @@ export function ImportProviderDialog({
   const showManualEntry = parseResult && !hasProviders && parseResult.urls.length === 0
 
   const handleImport = useCallback(async () => {
-    if (importing) return
+    if (importing) { return }
     const providers: ParsedProvider[] = parseResult?.providers ?? []
     const finalKinds = [...kinds]
 
@@ -111,7 +113,7 @@ export function ImportProviderDialog({
       finalKinds.push(manualKind)
     }
 
-    if (!token || providers.length === 0) return
+    if (!token || providers.length === 0) { return }
     setImporting(true)
 
     try {
@@ -121,7 +123,7 @@ export function ImportProviderDialog({
       const credentialRef = SecretCreateResponseSchema.parse(meta).id
 
       for (let i = 0; i < providers.length; i++) {
-        if (!enabledSet.has(i) && providers.length > 1) continue
+        if (!enabledSet.has(i) && providers.length > 1) { continue }
         const p = providers[i]
 
         const name = resolvedNames[i] ?? p.name
@@ -140,15 +142,17 @@ export function ImportProviderDialog({
       onOpenChange(false)
       setText('')
       setManualUrl('')
-    } catch (err) {
+    }
+ catch (err) {
       console.error('[ImportProvider]', err)
-    } finally {
+    }
+ finally {
       setImporting(false)
     }
   }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames])
 
   const handleClose = useCallback(() => {
-    if (importing) return
+    if (importing) { return }
     setText('')
     setManualUrl('')
     onOpenChange(false)
@@ -160,7 +164,7 @@ export function ImportProviderDialog({
   const canImport = !!token && providerCount > 0
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o) handleClose() }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { handleClose() } }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Import Provider</DialogTitle>
@@ -172,7 +176,7 @@ export function ImportProviderDialog({
         <div className="flex flex-col gap-4">
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={e => setText(e.target.value)}
             placeholder={`token: dHAtYzM3cXI2MGUzaXowZTdmdXRmeDcwb21paTc0bjQydnQ2aGVrdDNnY280YW1zZjNm\nhttps://api.example.com/v1\nhttps://api.example.com/anthropic`}
             className={cn(
               'w-full rounded-lg border bg-muted/40 px-3 py-2.5 font-mono text-[12px] leading-relaxed',
@@ -194,11 +198,13 @@ export function ImportProviderDialog({
                 )}
               >
                 <KeyIcon className="size-3.5 shrink-0" />
-                {token ? (
+                {token
+? (
                   <span className="truncate font-mono text-[11px]">
                     {token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token}
                   </span>
-                ) : (
+                )
+: (
                   <span>No API key detected.</span>
                 )}
               </div>
@@ -217,8 +223,8 @@ export function ImportProviderDialog({
                         onToggle={() => {
                           setEnabledSet((prev) => {
                             const next = new Set(prev)
-                            if (next.has(i)) next.delete(i)
-                            else next.add(i)
+                            if (next.has(i)) { next.delete(i) }
+                            else { next.add(i) }
                             return next
                           })
                         }}
@@ -238,7 +244,7 @@ export function ImportProviderDialog({
               {/* Manual endpoint entry */}
               {showManualEntry && (
                 <div className="flex items-center gap-2">
-                  <Select value={manualKind} onValueChange={(v) => setManualKind(v as ProviderKind)}>
+                  <Select value={manualKind} onValueChange={v => setManualKind(v as ProviderKind)}>
                     <SelectTrigger
                       className={cn(
                         'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
@@ -250,7 +256,7 @@ export function ImportProviderDialog({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {KIND_OPTIONS.map((o) => (
+                      {KIND_OPTIONS.map(o => (
                         <SelectItem key={o.value} value={o.value}>
                           {o.label}
                         </SelectItem>
@@ -261,7 +267,7 @@ export function ImportProviderDialog({
                     <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
                     <Input
                       value={manualUrl}
-                      onChange={(e) => setManualUrl(e.target.value)}
+                      onChange={e => setManualUrl(e.target.value)}
                       placeholder="https://api.example.com/v1"
                       className="h-8 flex-1 font-mono text-[12px]"
                     />
@@ -317,7 +323,7 @@ function ProviderCard({
       <Checkbox checked={enabled} onCheckedChange={onToggle} className="mt-0.5" />
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <Select value={kind} onValueChange={(v) => onKindChange(v as ProviderKind)}>
+          <Select value={kind} onValueChange={v => onKindChange(v as ProviderKind)}>
             <SelectTrigger
               className={cn(
                 'h-6 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
@@ -329,7 +335,7 @@ function ProviderCard({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {KIND_OPTIONS.map((o) => (
+              {KIND_OPTIONS.map(o => (
                 <SelectItem key={o.value} value={o.value}>
                   {o.label}
                 </SelectItem>

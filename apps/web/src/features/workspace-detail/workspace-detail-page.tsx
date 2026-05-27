@@ -20,13 +20,16 @@ import { useTranslation } from 'react-i18next'
 import { getSessions, getWorkflowRulesByWorkspaceId, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
+import { toastManager } from '~/components/ui/toast'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import type { WorkspaceSession } from '~/features/workspace/use-session'
 import { sessionsQueryKey } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { isElectron, nativeIpc } from '~/lib/electron'
 import type { Workspace } from '~/lib/types'
+import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { CapsuleComposer } from './capsule-composer'
@@ -458,6 +461,18 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     enabled: !!workspaceId,
   })
 
+  useEffect(() => {
+    if (!workspace) {
+      return
+    }
+
+    useSessionLayoutStore.getState().upsertWorkspace({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      workspacePath: workspace.path,
+    })
+  }, [workspace])
+
   const { data: gitStatus } = useQuery({
     queryKey: ['git-status', workspaceId],
     queryFn: async () => {
@@ -526,13 +541,39 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     ])
   }, [workspaceId, queryClient])
 
-  const handleOpenInFinder = useCallback(() => {
-    // Not supported in web mode
-  }, [])
+  const handleOpenInFinder = useCallback(async () => {
+    if (!workspace || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.openPath(workspace.path)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('detail.toast.openInFinderFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspace])
 
   const handleOpenInApp = useCallback(async () => {
-    // Not supported in web mode
-  }, [])
+    if (!workspace || !isElectron || !nativeIpc) {
+      return
+    }
+
+    try {
+      await nativeIpc.native.openPathInEditor(workspace.path)
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('detail.toast.openInEditorFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [t, workspace])
 
   const handleNewChat = useCallback(() => {
     openTab('new-chat')
@@ -557,6 +598,13 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       if (!session?.id) {
         return
       }
+      useSessionLayoutStore.getState().upsertSession({
+        sessionId: session.id,
+        sessionTitle: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle'),
+        workspaceId,
+        workspacePath: workspace.path,
+        runtimeKind: 'cli-tui',
+      })
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
       openTab('chat', { sessionId: session.id })
       return
@@ -568,6 +616,13 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     if (!session?.id) {
       return
     }
+    useSessionLayoutStore.getState().upsertSession({
+      sessionId: session.id,
+      sessionTitle: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle'),
+      workspaceId,
+      workspacePath: workspace.path,
+      runtimeKind: opts.runtimeKind,
+    })
     await startChatResponse({
       sessionId: session.id,
       body: { text, files, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },

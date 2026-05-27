@@ -2,9 +2,8 @@
 // Input: Cradle tab transitions and terminal panel owner id derivation.
 // Position: Tabs feature tests for the TUI lifecycle bridge.
 
-import { describe, expect, it, vi } from 'vitest'
-
 import { createTabStore, defineTab } from '@cradle/tabs-next'
+import { describe, expect, it, vi } from 'vitest'
 
 import {
   installTerminalPanelTabLifecycle,
@@ -17,13 +16,13 @@ function DummyComponent() {
 }
 
 const registry = {
-  home: defineTab({
+  'home': defineTab({
     type: 'home' as const,
     label: 'Home',
     pinned: true,
     component: DummyComponent,
   }),
-  chat: defineTab({
+  'chat': defineTab({
     type: 'chat' as const,
     label: (params: { sessionId: string }) => `Chat ${params.sessionId}`,
     component: DummyComponent,

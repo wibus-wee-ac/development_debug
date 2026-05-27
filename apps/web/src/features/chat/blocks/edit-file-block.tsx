@@ -131,10 +131,16 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
             {(stats.added > 0 || stats.removed > 0) && (
               <span className="flex shrink-0 items-center gap-1.5 font-mono text-[11px] tabular-nums">
                 {stats.added > 0 && (
-                  <span className="text-emerald-500 dark:text-emerald-400">+{stats.added}</span>
+                  <span className="text-emerald-500 dark:text-emerald-400">
++
+{stats.added}
+                  </span>
                 )}
                 {stats.removed > 0 && (
-                  <span className="text-red-400 dark:text-red-400">-{stats.removed}</span>
+                  <span className="text-red-400 dark:text-red-400">
+-
+{stats.removed}
+                  </span>
                 )}
               </span>
             )}

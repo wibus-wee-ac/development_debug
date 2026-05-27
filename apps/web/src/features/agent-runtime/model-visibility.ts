@@ -1,5 +1,6 @@
-import type { ModelDescriptor } from '~/lib/types'
 import { z } from 'zod'
+
+import type { ModelDescriptor } from '~/lib/types'
 
 export const ALL_MODELS_DISABLED_SENTINEL = '__all_disabled__'
 

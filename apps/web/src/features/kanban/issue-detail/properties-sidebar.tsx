@@ -56,11 +56,6 @@ type IssuePatch = Partial<{
 
 type AssigneeKind = 'user' | 'agent'
 
-interface HumanAssignee {
-  id: string
-  name: string
-}
-
 const CURRENT_USER_ASSIGNEE_ID = '__self__'
 
 interface PropertiesSidebarProps {

@@ -4,7 +4,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
-  XIcon
+  XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -20,8 +20,9 @@ import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { buildProfileId, type DraftProvider } from './provider-settings-utils'
 import { PROVIDER_ICONS } from './provider-icons'
+import type { DraftProvider } from './provider-settings-utils'
+import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
 
@@ -31,21 +32,21 @@ interface PresetSetupFormValues {
 }
 
 const SecretCreateResponseSchema = z.object({
-  id: z.string().min(1)
+  id: z.string().min(1),
 })
 
 export function DraftSetupPanel({
   draft,
   onSelectPreset,
   onComplete,
-  onCancel
+  onCancel,
 }: {
   draft: DraftProvider
   onSelectPreset: (presetId: string) => void
   onComplete: (newProfileId?: string) => void
   onCancel: () => void
 }) {
-  const preset = PROVIDER_PRESETS.find((p) => p.id === draft.presetId) ?? null
+  const preset = PROVIDER_PRESETS.find(p => p.id === draft.presetId) ?? null
 
   if (!preset) {
     return (
@@ -83,7 +84,7 @@ export function DraftSetupPanel({
                   'ring-1 ring-foreground/[0.07] transition-[box-shadow,ring-color] duration-150',
                   'hover:ring-foreground/15 hover:shadow-sm',
                   'active:scale-[0.97]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60'
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60',
                 )}
               >
                 <div className="flex items-center gap-2.5">
@@ -113,7 +114,7 @@ export function DraftSetupPanel({
 function PresetSetupForm({
   preset,
   onComplete,
-  onBack
+  onBack,
 }: {
   preset: ProviderPreset
   onComplete: (newProfileId?: string) => void
@@ -122,13 +123,13 @@ function PresetSetupForm({
   const Icon = PROVIDER_ICONS[preset.id] ?? PROVIDER_ICONS.custom!
   const { createProfile } = useAgentProfiles()
   const [busy, setBusy] = useState(false)
-  const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null)
+  const [status, setStatus] = useState<{ ok: boolean, text: string } | null>(null)
 
   const form = useForm<PresetSetupFormValues>({
     defaultValues: {
       name: preset.name,
-      values: {}
-    }
+      values: {},
+    },
   })
   const watchedValues = useWatch({ control: form.control }) as PresetSetupFormValues
   const name = watchedValues.name ?? ''
@@ -150,7 +151,7 @@ function PresetSetupForm({
       const apiKey = currentValues.values.apiKey
       if (apiKey) {
         const { data: meta } = await postSecrets({
-          body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey }
+          body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey },
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
@@ -170,16 +171,18 @@ function PresetSetupForm({
           providerKind: preset.providerKind,
           enabled: true,
           config,
-          credentialRef
-        }
+          credentialRef,
+        },
       })
 
       setStatus({ ok: true, text: 'Saved' })
       setTimeout(onComplete, 500, profileId)
-    } catch (err) {
+    }
+ catch (err) {
       setStatus({ ok: false, text: 'Failed to save provider' })
       console.error('[ProviderSetup]', err)
-    } finally {
+    }
+ finally {
       setBusy(false)
     }
   }, [createProfile, form, onComplete, preset, profileId])
@@ -248,9 +251,8 @@ function PresetSetupForm({
                   data-testid={testId}
                   type={field.type === 'password' ? 'password' : 'text'}
                   value={values[field.key] ?? ''}
-                  onChange={(e) =>
-                    form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
-                  }
+                  onChange={e =>
+                    form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })}
                   placeholder={field.placeholder}
                   className={cn('h-9 w-56 text-[13px]', field.mono && 'font-mono')}
                 />
@@ -279,12 +281,14 @@ function PresetSetupForm({
               'flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium ring-1',
               status.ok
                 ? 'bg-emerald-500/8 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400'
-                : 'bg-destructive/8 text-destructive ring-destructive/15'
+                : 'bg-destructive/8 text-destructive ring-destructive/15',
             )}
           >
-            {status.ok ? (
+            {status.ok
+? (
               <CircleCheckIcon className="size-3.5" />
-            ) : (
+            )
+: (
               <CircleAlertIcon className="size-3.5" />
             )}
             {status.text}

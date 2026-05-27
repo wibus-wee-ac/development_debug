@@ -3,22 +3,18 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo, useRef } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 import { z } from 'zod'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import type { MentionItem } from '~/features/chat'
-import { loadChatView } from '~/features/chat/chat-view-loader'
-import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
+import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
 import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
 import { WorkspaceSchema } from '~/features/workspace/use-workspace'
-import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
-import type { RuntimeKind } from '~/lib/types'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
-const ChatView = lazy(loadChatView)
 const BottomTerminalPanel = lazy(loadTerminalPanelView)
 const TuiView = lazy(loadTuiView)
 
@@ -74,64 +70,6 @@ function ChatTabLayoutSlots({
   }), [hasWorkspace, panel, sessionId, workspaceId]))
 
   return null
-}
-
-export function ChatRuntimeView({
-  sessionId,
-  sessionProviderTargetId,
-  runtimeKind,
-  workspaceId,
-}: {
-  sessionId: string
-  sessionProviderTargetId: string | null
-  runtimeKind: RuntimeKind | undefined
-  workspaceId: string | null
-}) {
-  const composerState = useComposerState({
-    context: 'chat',
-    boundProviderTargetId: sessionProviderTargetId ?? undefined,
-    boundRuntimeKind: runtimeKind,
-  })
-  const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
-  const availableFiles: MentionItem[] = useMemo(
-    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
-    [workspaceFiles],
-  )
-
-  // Ref to communicate per-message overrides to ChatView's internal sendMessage
-  const sendOverridesRef = useRef({
-    providerTargetId: undefined as string | undefined,
-    modelId: undefined as string | undefined,
-    thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
-  })
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
-  sendOverridesRef.current = {
-    providerTargetId: composerState.selection.profileId ?? undefined,
-    modelId: composerState.selection.modelId ?? undefined,
-    thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
-  }
-
-  const composerToolbar = useMemo(() => (
-    <ComposerToolbar context="chat" state={composerState} />
-  ), [composerState])
-
-  return (
-    <Suspense fallback={null}>
-      {/* {hasWorkspace && (
-        <div className="flex items-center gap-2 border-b border-border/50 px-4 py-1">
-          <GitBranchControl workspaceId={workspaceId} />
-        </div>
-      )} */}
-      <ChatView
-        key={sessionId}
-        sessionId={sessionId}
-        availableFiles={availableFiles}
-        composerToolbar={composerToolbar}
-        sendOverridesRef={sendOverridesRef}
-        composerModel={composerState.effectiveModel}
-      />
-    </Suspense>
-  )
 }
 
 function ChatTabContent({ params }: { params: { sessionId: string } }) {
@@ -191,6 +129,19 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   })
 
   const workspacePath = workspace?.path ?? null
+
+  useEffect(() => {
+    if (!session) {
+      return
+    }
+    useSessionLayoutStore.getState().upsertSession({
+      sessionId,
+      sessionTitle: session.title,
+      workspaceId,
+      workspacePath,
+      runtimeKind: session.runtimeKind,
+    })
+  }, [session, sessionId, workspaceId, workspacePath])
 
   useEffect(() => {
     if (workspacePath) {

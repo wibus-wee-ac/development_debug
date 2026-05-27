@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import { CircleDotIcon, ExternalLinkIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
@@ -94,7 +95,8 @@ export function AwaitsOverview() {
         <p className="text-xs text-muted-foreground">{t('overview.description')}</p>
       </div>
 
-      {awaits.length === 0 ? (
+      {awaits.length === 0
+? (
         <Empty className={cn('border-0', awaitsQuery.isError && 'text-destructive')}>
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -106,7 +108,8 @@ export function AwaitsOverview() {
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
-      ) : (
+      )
+: (
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
           <div className="mx-auto flex max-w-4xl flex-col gap-2">
             {awaits.map(item => <AwaitRow key={item.id} item={item} />)}

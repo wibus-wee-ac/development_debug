@@ -66,7 +66,11 @@ export function MilestoneBanner({
 
       <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
         <span className="tabular-nums">
-          {progress.completed}/{progress.total} done
+          {progress.completed}
+/
+{progress.total}
+{' '}
+done
         </span>
         <span className="flex min-w-0 items-center gap-1">
           <CalendarIcon className="size-3.5 shrink-0" aria-hidden="true" />

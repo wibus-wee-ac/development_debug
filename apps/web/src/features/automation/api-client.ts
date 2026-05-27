@@ -1,5 +1,6 @@
-import { getServerUrl } from '~/lib/electron'
 import { z } from 'zod'
+
+import { getServerUrl } from '~/lib/electron'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun } from './types'
 

@@ -13,16 +13,16 @@ import { TabsPanel } from './tabs/tabs-panel'
 
 type DevtoolTab = 'observability' | 'health' | 'memory' | 'tabs' | 'plugins'
 
-const DEVTOOL_TABS: { id: DevtoolTab; label: string; description: string }[] = [
+const DEVTOOL_TABS: { id: DevtoolTab, label: string, description: string }[] = [
   {
     id: 'observability',
     label: 'Observability',
-    description: 'Events, incidents, and payload inspection'
+    description: 'Events, incidents, and payload inspection',
   },
   { id: 'health', label: 'Server Health', description: 'Server heartbeat and process memory' },
   { id: 'memory', label: 'Memory', description: 'Renderer heap and web vitals trend' },
   { id: 'tabs', label: 'Tabs', description: 'Tabs-next runtime state and metrics' },
-  { id: 'plugins', label: 'Plugins', description: 'Plugin runtime graph and registrations' }
+  { id: 'plugins', label: 'Plugins', description: 'Plugin runtime graph and registrations' },
 ]
 
 function isDevtoolTabShortcut(event: KeyboardEvent): boolean {
@@ -30,19 +30,19 @@ function isDevtoolTabShortcut(event: KeyboardEvent): boolean {
 }
 
 function getShortcutIndex(event: KeyboardEvent): number | null {
-  if (!isDevtoolTabShortcut(event)) return null
+  if (!isDevtoolTabShortcut(event)) { return null }
 
   const keyMatch = event.key.match(/^[1-9]$/)
-  if (keyMatch) return Number(event.key) - 1
+  if (keyMatch) { return Number(event.key) - 1 }
 
   const codeMatch = event.code.match(/^Digit([1-9])$/)
-  if (codeMatch?.[1]) return Number(codeMatch[1]) - 1
+  if (codeMatch?.[1]) { return Number(codeMatch[1]) - 1 }
 
   return null
 }
 
 export function DevtoolPage() {
-  const loadObservability = useObservabilityDevtoolStore((s) => s.load)
+  const loadObservability = useObservabilityDevtoolStore(s => s.load)
   const [tab, setTab] = useState<DevtoolTab>('observability')
 
   useEffect(() => {
@@ -52,10 +52,10 @@ export function DevtoolPage() {
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       const index = getShortcutIndex(event)
-      if (index === null) return
+      if (index === null) { return }
 
       const nextTab = DEVTOOL_TABS[index]
-      if (!nextTab) return
+      if (!nextTab) { return }
 
       event.preventDefault()
       setTab(nextTab.id)
@@ -65,7 +65,7 @@ export function DevtoolPage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 
-  const activeTab = DEVTOOL_TABS.find((t) => t.id === tab) ?? DEVTOOL_TABS[0]
+  const activeTab = DEVTOOL_TABS.find(t => t.id === tab) ?? DEVTOOL_TABS[0]
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground antialiased">
@@ -93,7 +93,7 @@ export function DevtoolPage() {
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:scale-[0.96]',
                 tab === t.id
                   ? 'border-border bg-muted text-foreground shadow-sm'
-                  : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground'
+                  : 'border-transparent text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground',
               )}
               aria-current={tab === t.id ? 'page' : undefined}
             >

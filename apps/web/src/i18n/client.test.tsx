@@ -3,8 +3,8 @@
 // Position: i18n-owned client runtime contract tests.
 
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
 import { useTranslation } from 'react-i18next'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { I18nProvider, useI18n } from './client'
 import { LOCALE_COOKIE } from './locales'
@@ -28,7 +28,7 @@ function LocaleProbe() {
   )
 }
 
-describe('I18nProvider', () => {
+describe('i18nProvider', () => {
   it('changes language, writes cookie, and updates html attributes', async () => {
     render(
       <I18nProvider initialLocale="en-US">

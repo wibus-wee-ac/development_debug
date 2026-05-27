@@ -6,17 +6,18 @@
  * attached to the message payload.
  */
 
+import { z } from 'zod'
+
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
-import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
 import type { ContextEnvelope } from './context-items'
-import type { SystemAgentContext } from './context-schema'
 import { jarvisContextRegistry } from './context-registry'
+import type { SystemAgentContext } from './context-schema'
 import { projectLegacyContextItems } from './legacy-context-items'
 
 const MAX_RECENT_MESSAGES = 5

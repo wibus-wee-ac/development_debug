@@ -623,6 +623,8 @@ interface DitheredGradientDecorationProps {
   /** Track mouse via window listener instead of canvas-only events.
    *  Use when the canvas is a top decoration and content overlaps it. @default false */
   trackGlobal?: boolean
+  /** Whether the animation loop should run. @default true */
+  active?: boolean
   className?: string
   style?: React.CSSProperties
 }
@@ -642,6 +644,7 @@ export function DitheredGradientDecoration({
   density = 0.6,
   fadeBottom = true,
   trackGlobal = false,
+  active = true,
   className,
   style,
 }: DitheredGradientDecorationProps = {}) {
@@ -653,6 +656,10 @@ export function DitheredGradientDecoration({
   const step = cellSize + gap
 
   useEffect(() => {
+    if (!active) {
+      return
+    }
+
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
@@ -793,7 +800,7 @@ export function DitheredGradientDecoration({
       window.removeEventListener('resize', resize)
       cleanupMouse?.()
     }
-  }, [rows, cellSize, gap, radius, glowRadius, density, fadeBottom, step, trackGlobal])
+  }, [active, rows, cellSize, gap, radius, glowRadius, density, fadeBottom, step, trackGlobal])
 
   const handleMouseMove = useCallback((e: { clientX: number, clientY: number }) => {
     const rect = canvasRef.current?.getBoundingClientRect()

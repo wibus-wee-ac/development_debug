@@ -15,7 +15,7 @@ import { priorityOptions } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
-import { useBoards, useComments, useIssue, useIssues, useLinkIssue, useLinkedIssue, useStatuses, useUnlinkIssue } from './use-kanban'
+import { useBoards, useComments, useIssue, useIssues, useLinkedIssue, useLinkIssue, useStatuses, useUnlinkIssue } from './use-kanban'
 import type { StatusCategory } from './use-view-config'
 
 interface IssueAsidePanelProps {

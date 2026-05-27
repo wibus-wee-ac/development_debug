@@ -6,7 +6,8 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { describeToolCall, type RenderableToolPart } from './tool-ui-classifier'
+import type { RenderableToolPart } from './tool-ui-classifier'
+import { describeToolCall } from './tool-ui-classifier'
 
 describe('describeToolCall', () => {
   it('describes object payloads without optional file or content fields', () => {

@@ -10,14 +10,14 @@ export const locales = ['en-US', 'zh-CN', 'ja-JP', 'es-ES'] as const
 export type SupportedLocale = (typeof locales)[number]
 
 const localeMap: Record<string, SupportedLocale> = {
-  en: 'en-US',
+  'en': 'en-US',
   'en-us': 'en-US',
-  zh: 'zh-CN',
+  'zh': 'zh-CN',
   'zh-cn': 'zh-CN',
   'zh-hans': 'zh-CN',
-  ja: 'ja-JP',
+  'ja': 'ja-JP',
   'ja-jp': 'ja-JP',
-  es: 'es-ES',
+  'es': 'es-ES',
   'es-es': 'es-ES',
 }
 

@@ -8,8 +8,8 @@ import path from 'node:path'
 import fg from 'fast-glob'
 
 import { allNamespaces } from '../../src/locales/default'
-import { defaultNamespaceEntries, resolveFromWebRoot, writeJson } from './utils'
 import { protectedKeyPatterns } from './protected-patterns'
+import { defaultNamespaceEntries, resolveFromWebRoot, writeJson } from './utils'
 
 interface UnusedReport {
   generatedAt: string

@@ -1,6 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
 
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
 import { z } from 'zod'
@@ -9,6 +8,7 @@ import { getWorkflowRulesByWorkspaceId, putWorkflowRulesByWorkspaceId } from '~/
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
+
 const WorkflowRuleSchema = z.object({
   global: z.string().nullable(),
   profileSpecific: z.string().nullable(),

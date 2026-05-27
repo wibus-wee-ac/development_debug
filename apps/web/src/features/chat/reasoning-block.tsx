@@ -42,7 +42,8 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
         </span>
         <span className={cn(
           'text-[10px] not-italic opacity-0 group-hover/reason:opacity-100 transition-opacity ml-0.5',
-        )}>
+        )}
+        >
           {expanded ? '↑' : '↓'}
         </span>
       </button>

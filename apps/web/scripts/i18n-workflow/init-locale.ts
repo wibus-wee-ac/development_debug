@@ -2,8 +2,9 @@
 // Input: Locale argument and supported locale model.
 // Position: Workflow command backing pnpm i18n:init-locale.
 
+import type { SupportedLocale } from '../../src/i18n/locales'
+import { isSupportedLocale } from '../../src/i18n/locales'
 import { allNamespaces } from '../../src/locales/default'
-import { isSupportedLocale, type SupportedLocale } from '../../src/i18n/locales'
 import { localeNamespacePath, pathExists, resolveFromWebRoot, writeJson } from './utils'
 
 const locale = process.argv[2] as SupportedLocale | undefined

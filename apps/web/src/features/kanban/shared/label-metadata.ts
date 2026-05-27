@@ -58,8 +58,7 @@ export function collectWorkspaceLabelOptions(issues: KanbanIssue[]): WorkspaceLa
     }
   }
 
-  return [...labelsByKey.values()]
-    .map(option => ({
+  return Array.from(labelsByKey.values(), option => ({
       ...option,
       tone: getLabelTone(option.label),
     }))

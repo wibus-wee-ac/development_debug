@@ -6,7 +6,7 @@ import {
   XIcon,
   ZapIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useCallback, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { postWorkspacesByIdPack } from '~/api-gen'
@@ -266,7 +266,11 @@ function PackCodebaseDialogContent({
       <div className="space-y-1.5">
         <Label className="text-xs text-muted-foreground" htmlFor="pack-scope-paths">
           {t('scope.label')}
-          <span className="ml-1 opacity-50">({t('scope.wholeWorkspace')})</span>
+          <span className="ml-1 opacity-50">
+(
+{t('scope.wholeWorkspace')}
+)
+          </span>
         </Label>
         <div
           role="group"

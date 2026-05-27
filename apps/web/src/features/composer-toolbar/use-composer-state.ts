@@ -116,7 +116,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   const {
     modelsByProviderTargetId,
     loadingProviderTargetIds,
-    requestProviderTargetModels
+    requestProviderTargetModels,
   } = useProviderTargetModelMap(selectableProfiles, initialModelProfileIds)
   const modelsByProfileId = modelsByProviderTargetId
   const loadingProfileIds = loadingProviderTargetIds

@@ -5,8 +5,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { createContextRegistry } from './context-registry'
-import { projectLegacyContextItems } from './legacy-context-items'
 import type { SystemAgentContext } from './context-schema'
+import { projectLegacyContextItems } from './legacy-context-items'
 
 describe('jarvis context registry', () => {
   it('collects provider items into a typed envelope with active tab metadata', () => {

@@ -20,29 +20,29 @@ export interface ParseResult {
 
 const URL_RE = /https?:\/\/[^\s,;，；)、）"'“”‘’]+/g
 
-const ENV_VAR_DEFS: { prefix: string; providerKind: ProviderKind }[] = [
+const ENV_VAR_DEFS: { prefix: string, providerKind: ProviderKind }[] = [
   { prefix: 'ANTHROPIC_', providerKind: 'anthropic' },
   { prefix: 'OPENAI_', providerKind: 'openai-compatible' },
 ]
 
 function extractUrls(text: string): string[] {
   const matches = text.match(URL_RE)
-  if (!matches) return []
-  return [...new Set(matches.map((u) => u.replace(/[^\w\/\-:.]+$/, '')))]
+  if (!matches) { return [] }
+  return [...new Set(matches.map(u => u.replace(/[^\w/\-:.]+$/, '')))]
 }
 
 function classifyUrl(url: string): ProviderKind | 'unknown' {
   const lower = url.toLowerCase()
-  if (lower.includes('/anthropic') || lower.includes('/claude')) return 'anthropic'
-  if (lower.includes('/v1') || lower.includes('/openai') || lower.includes('/chat/completions'))
-    return 'openai-compatible'
+  if (lower.includes('/anthropic') || lower.includes('/claude')) { return 'anthropic' }
+  if (lower.includes('/v1') || lower.includes('/openai') || lower.includes('/chat/completions')) { return 'openai-compatible' }
   return 'unknown'
 }
 
 function hostnameFromUrl(url: string): string {
   try {
     return new URL(url).hostname
-  } catch {
+  }
+ catch {
     return url
   }
 }
@@ -56,11 +56,12 @@ function cleanExportValue(raw: string): string {
   // strip surrounding quotes (ASCII + Chinese)
   if (v.length >= 2) {
     const first = v[0]
-    const last = v[v.length - 1]
-    const isQuote = (c: string) => c === '"' || c === "'" || c === '“' || c === '”' || c === '‘' || c === '’' || c === '`'
+    const last = v.at(-1) ?? ''
+    const isQuote = (c: string) => c === '"' || c === '\'' || c === '“' || c === '”' || c === '‘' || c === '’' || c === '`'
     if (isQuote(first) && first === last) {
       v = v.slice(1, -1).trim()
-    } else if (isQuote(first) && isQuote(last)) {
+    }
+ else if (isQuote(first) && isQuote(last)) {
       // mismatched quotes e.g. "“...”"
       v = v.slice(1, -1).trim()
     }
@@ -80,7 +81,7 @@ function parseExportGroups(text: string): Map<ProviderKind, EnvGroup> {
   for (const [, key, value] of matches) {
     const upper = key.toUpperCase()
     for (const def of ENV_VAR_DEFS) {
-      if (!upper.startsWith(def.prefix)) continue
+      if (!upper.startsWith(def.prefix)) { continue }
       const suffix = upper.slice(def.prefix.length)
       const clean = cleanExportValue(value)
 
@@ -92,11 +93,12 @@ function parseExportGroups(text: string): Map<ProviderKind, EnvGroup> {
 
       if (suffix === 'BASE_URL' || suffix === 'ENDPOINT' || suffix === 'BASE_URL_OVERRIDE') {
         group.baseUrl = clean
-      } else if (
-        suffix === 'AUTH_TOKEN' ||
-        suffix === 'API_KEY' ||
-        suffix === 'API_SECRET' ||
-        suffix === 'SECRET_KEY'
+      }
+ else if (
+        suffix === 'AUTH_TOKEN'
+        || suffix === 'API_KEY'
+        || suffix === 'API_SECRET'
+        || suffix === 'SECRET_KEY'
       ) {
         group.apiKey = clean
       }
@@ -110,7 +112,7 @@ function parseExportGroups(text: string): Map<ProviderKind, EnvGroup> {
 // ── freetext token detection ──
 
 function isKeyLike(token: string): number {
-  if (token.length < 6) return 0
+  if (token.length < 6) { return 0 }
 
   let hasUpper = false
   let hasLower = false
@@ -119,10 +121,10 @@ function isKeyLike(token: string): number {
   const charCounts = new Map<string, number>()
 
   for (const ch of token) {
-    if (ch >= 'A' && ch <= 'Z') hasUpper = true
-    else if (ch >= 'a' && ch <= 'z') hasLower = true
-    else if (ch >= '0' && ch <= '9') hasDigit = true
-    else hasSpecial = true
+    if (ch >= 'A' && ch <= 'Z') { hasUpper = true }
+    else if (ch >= 'a' && ch <= 'z') { hasLower = true }
+    else if (ch >= '0' && ch <= '9') { hasDigit = true }
+    else { hasSpecial = true }
     charCounts.set(ch, (charCounts.get(ch) ?? 0) + 1)
   }
 
@@ -138,12 +140,49 @@ function isKeyLike(token: string): number {
 }
 
 const COMMON_WORDS = new Set([
-  'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
-  'her', 'was', 'one', 'our', 'out', 'has', 'have', 'from', 'they',
-  'this', 'that', 'with', 'your', 'which', 'their', 'them', 'about',
-  'token', 'key', 'api', 'base64', 'secret', 'http', 'https',
-  'compatible', 'interface', 'protocol', 'openai', 'anthropic',
-  'export', 'base_url', 'auth_token', 'api_key',
+  'the',
+'and',
+'for',
+'are',
+'but',
+'not',
+'you',
+'all',
+'can',
+'had',
+  'her',
+'was',
+'one',
+'our',
+'out',
+'has',
+'have',
+'from',
+'they',
+  'this',
+'that',
+'with',
+'your',
+'which',
+'their',
+'them',
+'about',
+  'token',
+'key',
+'api',
+'base64',
+'secret',
+'http',
+'https',
+  'compatible',
+'interface',
+'protocol',
+'openai',
+'anthropic',
+  'export',
+'base_url',
+'auth_token',
+'api_key',
 ])
 
 function candidateTokens(text: string): string[] {
@@ -151,8 +190,8 @@ function candidateTokens(text: string): string[] {
   const tokens = withoutUrls.split(/[\s,.;:：；，。、]+/).filter(Boolean)
   return tokens.filter((t) => {
     const cleaned = t.replace(/[^\w\-+.=/]+$/g, '')
-    if (COMMON_WORDS.has(cleaned.toLowerCase())) return false
-    if (cleaned.length < 6) return false
+    if (COMMON_WORDS.has(cleaned.toLowerCase())) { return false }
+    if (cleaned.length < 6) { return false }
     return true
   })
 }
@@ -160,10 +199,10 @@ function candidateTokens(text: string): string[] {
 function detectFreeToken(text: string): string | null {
   const tokens = candidateTokens(text)
   const scored = tokens
-    .map((t) => ({ token: t, score: isKeyLike(t) }))
+    .map(t => ({ token: t, score: isKeyLike(t) }))
     .sort((a, b) => b.score - a.score)
 
-  if (scored.length > 0 && scored[0].score > 0) return scored[0].token
+  if (scored.length > 0 && scored[0].score > 0) { return scored[0].token }
 
   return tokens.reduce<string | null>(
     (best, t) => (t.length > (best?.length ?? 0) ? t : best),
@@ -173,23 +212,24 @@ function detectFreeToken(text: string): string | null {
 
 // ── base64 detection ──
 
-const BASE64_RE = /^[A-Za-z0-9+/=_-]+$/
+const BASE64_RE = /^[\w+/=-]+$/
 
 // Common API key prefixes — keys starting with these are already plaintext
 const KNOWN_KEY_PREFIXES = ['sk-', 'sk-ant-', 'tp-', 'ak-', 'key-', 'api-']
 
 function tryDecodeBase64(token: string): string {
   const lower = token.toLowerCase()
-  if (KNOWN_KEY_PREFIXES.some((p) => lower.startsWith(p))) return token
-  if (!BASE64_RE.test(token) || token.length < 16) return token
+  if (KNOWN_KEY_PREFIXES.some(p => lower.startsWith(p))) { return token }
+  if (!BASE64_RE.test(token) || token.length < 16) { return token }
   // standardise URL-safe base64 to standard base64
   const standardised = token.replace(/-/g, '+').replace(/_/g, '/')
   try {
     const decoded = Buffer.from(standardised, 'base64').toString('utf8')
     // decoded must be printable text with no null bytes or control chars
-    if (!decoded || /[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(decoded)) return token
+    if (!decoded || /[\x00-\x08\v\f\x0E-\x1F]/.test(decoded)) { return token }
     return decoded.trim()
-  } catch {
+  }
+ catch {
     return token
   }
 }
@@ -199,7 +239,7 @@ function tryDecodeBase64(token: string): string {
 export function parseProviderConfig(text: string): ParseResult {
   const exportGroups = parseExportGroups(text)
 
-  const urls = extractUrls(text).map((url) => ({
+  const urls = extractUrls(text).map(url => ({
     url,
     kind: classifyUrl(url),
   }))
@@ -210,10 +250,10 @@ export function parseProviderConfig(text: string): ParseResult {
   const seen = new Set<string>()
 
   function addProvider(kind: ProviderKind, name: string, baseUrl: string, apiKey: string) {
-    if (!baseUrl) return
+    if (!baseUrl) { return }
     // dedupe by (baseUrl + apiKey) — same URL with different key is allowed
     const dedupeKey = `${baseUrl}\0${apiKey}`
-    if (seen.has(dedupeKey)) return
+    if (seen.has(dedupeKey)) { return }
     seen.add(dedupeKey)
     providers.push({ providerKind: kind, name, apiKey, baseUrl })
   }
@@ -227,7 +267,7 @@ export function parseProviderConfig(text: string): ParseResult {
 
   // 2. Export token + remaining URLs of matching kind
   for (const [kind, group] of exportGroups) {
-    if (!group.apiKey) continue
+    if (!group.apiKey) { continue }
     const decodedKey = tryDecodeBase64(group.apiKey)
     for (const u of urls) {
       const urlKind = u.kind === 'unknown' ? kind : u.kind
@@ -238,8 +278,8 @@ export function parseProviderConfig(text: string): ParseResult {
   }
 
   // 3. Freetext token + remaining URLs
-  const rawToken =
-    [...exportGroups.values()].find((g) => g.apiKey)?.apiKey ?? freeToken
+  const rawToken
+    = [...exportGroups.values()].find(g => g.apiKey)?.apiKey ?? freeToken
   const bestToken = rawToken ? tryDecodeBase64(rawToken) : null
 
   for (const u of urls) {

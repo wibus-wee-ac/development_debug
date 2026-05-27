@@ -14,7 +14,7 @@ interface ActivityTimelineProps {
   issueId: string
 }
 
-export const ActivityTimeline = memo(function ActivityTimeline({ issueId }: ActivityTimelineProps) {
+export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
   const { data: comments = [] } = useComments(issueId)
   const addComment = useAddComment()
@@ -88,13 +88,13 @@ const systemEventConfig: Record<string, { icon: React.ElementType }> = {
   'system': { icon: GitBranchIcon },
 }
 
-const CommentItem = memo(function CommentItem({
+const CommentItem = memo(({
   comment,
   onDeleteComment,
 }: {
   comment: KanbanIssueCommentView
   onDeleteComment?: (commentId: string) => void
-}) {
+}) => {
   const kind = comment.author.kind
   const isSystem = kind.startsWith('system')
   const handleDelete = useCallback(() => {

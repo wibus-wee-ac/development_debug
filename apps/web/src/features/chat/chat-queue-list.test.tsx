@@ -8,8 +8,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { ChatQueueItem } from './chat-response-command'
 import { ChatQueueList } from './chat-queue-list'
+import type { ChatQueueItem } from './chat-response-command'
 
 const queueItems: ChatQueueItem[] = [
   {
@@ -52,7 +52,7 @@ afterEach(() => {
   cleanup()
 })
 
-describe('ChatQueueList', () => {
+describe('chatQueueList', () => {
   it('reorders pending items with drag and drop', () => {
     const onReorder = vi.fn()
     render(<ChatQueueList items={queueItems} onCancel={vi.fn()} onReorder={onReorder} />)

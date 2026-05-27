@@ -7,10 +7,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { useShallow } from 'zustand/react/shallow'
 
-import { chatSelectors, useChatStore } from '~/store/chat'
+import { useChatStore } from '~/store/chat'
 
-import type { ChatMinimapHandle } from './chat-minimap'
 import { clearChatAttentionSnapshot, installChatContextProvider, updateChatAttentionSnapshot } from './chat-context'
+import type { ChatMinimapHandle } from './chat-minimap'
 
 export interface ChatScrollMetrics {
   offset: number

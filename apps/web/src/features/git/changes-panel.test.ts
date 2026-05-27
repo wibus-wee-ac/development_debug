@@ -1,4 +1,6 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -16,8 +18,11 @@ const treeMocks = vi.hoisted(() => {
     select,
     focusPath: vi.fn(),
     getItem: vi.fn(() => ({ select })),
+    getFocusedPath: vi.fn(() => 'src/app.tsx'),
+    getSelectedPaths: vi.fn(() => ['src/app.tsx']),
     resetPaths: vi.fn(),
     setGitStatus: vi.fn(),
+    startRenaming: vi.fn(),
   }
 })
 
@@ -33,17 +38,18 @@ vi.mock('@pierre/trees/react', async () => {
         'div',
         { 'data-testid': 'mock-pierre-tree' },
         React.createElement('button', {
-          type: 'button',
+          'type': 'button',
           'data-item-path': 'src/app.tsx',
           'data-item-type': 'file',
         }, 'src/app.tsx'),
         React.createElement('button', {
-          type: 'button',
+          'type': 'button',
           'data-item-path': 'src',
           'data-item-type': 'folder',
         }, 'src'),
       ),
     useFileTree: () => ({ model: treeMocks }),
+    useFileTreeSelection: () => ['src/app.tsx'],
   }
 })
 
@@ -68,6 +74,19 @@ beforeEach(() => {
     isSuccess: true,
   })
 })
+
+function renderWithQueryClient(children: ReactNode) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  })
+
+  return render(
+    createElement(QueryClientProvider, { client: queryClient }, children),
+  )
+}
 
 describe('groupGitFileStatuses', () => {
   it('places tests, markdown docs, and all other files into stable sections', () => {
@@ -105,9 +124,9 @@ describe('groupGitFileStatuses', () => {
   })
 })
 
-describe('ChangesPanel tree interactions', () => {
+describe('changesPanel tree interactions', () => {
   it('opens the diff tab and scrolls to the double-clicked tree file', () => {
-    render(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
+    renderWithQueryClient(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
 
     fireEvent.click(screen.getByRole('radio', { name: 'Show changes as tree' }))
     fireEvent.doubleClick(screen.getByText('src/app.tsx'))
@@ -129,7 +148,7 @@ describe('ChangesPanel tree interactions', () => {
   })
 
   it('ignores double-clicks on tree folders', () => {
-    render(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
+    renderWithQueryClient(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
 
     fireEvent.click(screen.getByRole('radio', { name: 'Show changes as tree' }))
     fireEvent.doubleClick(screen.getByText('src'))

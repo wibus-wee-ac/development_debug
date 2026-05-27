@@ -4,8 +4,8 @@ import {
   DEBUG_COMMAND_CHANNEL_NAME,
   DEBUG_STORAGE_KEY,
 } from '@cradle/tabs-next'
-import { create } from 'zustand'
 import { z } from 'zod'
+import { create } from 'zustand'
 
 interface TabsDebugStore {
   connected: boolean
@@ -18,7 +18,7 @@ interface TabsDebugStore {
 const DebugSnapshotSchema = z.object({
   tabCount: z.number(),
   contextCount: z.number(),
-  activityTabIds: z.array(z.string()),
+  activityTabIds: z.array(z.string()).default([]),
   activeTabId: z.string().nullable(),
   tabs: z.array(z.object({
     id: z.string(),
@@ -52,10 +52,6 @@ const DebugStateSchema = z.object({
   updatedAt: z.number(),
 })
 
-const DebugStateJsonSchema = z.string()
-  .transform(raw => JSON.parse(raw))
-  .pipe(DebugStateSchema)
-
 const DebugStateMessageSchema = z.object({
   type: z.literal('state'),
   state: DebugStateSchema,
@@ -77,7 +73,17 @@ function readCachedState(): DebugState | null {
   if (!cached) {
     return null
   }
-  return DebugStateJsonSchema.parse(cached) satisfies DebugState
+
+  let value: unknown
+  try {
+    value = JSON.parse(cached)
+  }
+  catch {
+    return null
+  }
+
+  const parsed = DebugStateSchema.safeParse(value)
+  return parsed.success ? parsed.data satisfies DebugState : null
 }
 
 function publishResetCommand() {
@@ -132,7 +138,11 @@ export function startTabsDebugSync(): () => void {
 
   if (channel) {
     channel.onmessage = (event: MessageEvent) => {
-      const message = DebugStateMessageSchema.parse(event.data)
+      const parsed = DebugStateMessageSchema.safeParse(event.data)
+      if (!parsed.success) {
+        return
+      }
+      const message = parsed.data
       applyDebugState(message.state satisfies DebugState, true)
     }
   }

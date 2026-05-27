@@ -10,6 +10,7 @@ import { z } from 'zod'
 import {
   getExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetOptions,
   getProvidersTargetsByProviderTargetIdModelsCacheOptions,
+  getProviderTargetsQueryKey,
   patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation,
   postProvidersModelsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
@@ -19,6 +20,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
+import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import type { ModelDescriptor } from '~/lib/types'
 
 import { SettingsRow } from '../settings/settings-row'
@@ -311,6 +313,8 @@ export function ExternalProviderRecordDetailPanel({
           body: { enabled },
         })
         setRuntimeTarget(toRuntimeTargetView(next))
+        void queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY })
+        void queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
         onUpdated?.()
       }
  catch (error) {
@@ -324,7 +328,7 @@ export function ExternalProviderRecordDetailPanel({
         setUpdatingEnabled(false)
       }
     },
-    [onUpdated, record.externalId, record.sourceKey, updateRuntimeTarget],
+    [onUpdated, queryClient, record.externalId, record.sourceKey, updateRuntimeTarget],
   )
 
   return (
@@ -469,7 +473,6 @@ export function ExternalProviderRecordDetailPanel({
           <section className="flex flex-col gap-4">
             <ModelsPanel
               loading={loadingModels || loadingTarget}
-              providerTarget={providerTarget}
               models={models}
               enabledModels={enabledModels}
               onChange={next => void handleEnabledModelsChange(next)}

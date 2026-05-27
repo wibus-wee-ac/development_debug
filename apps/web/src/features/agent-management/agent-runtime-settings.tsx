@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 import {
   getExternalProviderSourcesOptions,
   getExternalProviderSourcesRecordsOptions,
+  getProviderTargetsQueryKey,
   postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
@@ -38,6 +39,7 @@ import { Separator } from '~/components/ui/separator'
 import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile } from '~/lib/types'
@@ -236,6 +238,7 @@ ProviderRow.displayName = 'ProviderRow'
 
 export function AgentRuntimeSettings() {
   const { t } = useTranslation('agentManagement')
+  const queryClient = useQueryClient()
   const {
     profiles,
     isSuccess: profilesReady,
@@ -554,6 +557,10 @@ export function AgentRuntimeSettings() {
             updateExternalRuntimeTargetEnabled(record, enabled)),
         ])
         if (toggleableSelectedExternalRecords.length > 0) {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
+            queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
+          ])
           await refetchExternalRecords()
         }
         setSelectedIds(new Set())
@@ -568,6 +575,7 @@ export function AgentRuntimeSettings() {
       toggleableSelectedExternalRecords,
       toggleableSelectedCount,
       handleToggleProfile,
+      queryClient,
       refetchExternalRecords,
     ],
   )

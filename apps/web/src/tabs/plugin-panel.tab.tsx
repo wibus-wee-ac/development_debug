@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { defineTab, type TabParams } from '@cradle/tabs-next'
+import type { TabParams } from '@cradle/tabs-next'
+import { defineTab, useTabFrameActive } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'
 import { createElement } from 'react'
 
@@ -35,20 +36,23 @@ export function deserializePluginPanelParams(path: string): PluginPanelTabParams
 }
 
 function PluginPanelContent({ params }: { params: PluginPanelTabParams }) {
-  const panels = usePluginStore((s) => s.panels)
+  const isActive = useTabFrameActive()
+  const panels = usePluginStore(s => s.panels)
   const panel = params.routeSegment && params.localId
-    ? panels.find((item) => item.routeSegment === params.routeSegment && item.localId === params.localId)
+    ? panels.find(item => item.routeSegment === params.routeSegment && item.localId === params.localId)
     : undefined
 
   if (!panel) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground">
-        Panel not found: {params.routeSegment && params.localId ? `${params.routeSegment}/${params.localId}` : 'missing panel route'}
+        Panel not found:
+{' '}
+{params.routeSegment && params.localId ? `${params.routeSegment}/${params.localId}` : 'missing panel route'}
       </div>
     )
   }
 
-  return createElement(panel.component, { isActive: true })
+  return createElement(panel.component, { isActive })
 }
 
 export const pluginPanelTab = defineTab({

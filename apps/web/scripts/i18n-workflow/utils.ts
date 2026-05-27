@@ -5,8 +5,10 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
-import defaultResources, { allNamespaces, type Namespace } from '../../src/locales/default'
-import { DEFAULT_LOCALE, locales, type SupportedLocale } from '../../src/i18n/locales'
+import type { SupportedLocale } from '../../src/i18n/locales'
+import { DEFAULT_LOCALE, locales } from '../../src/i18n/locales'
+import type { Namespace } from '../../src/locales/default'
+import defaultResources, { allNamespaces } from '../../src/locales/default'
 import { i18nWorkflowConfig } from './config'
 
 export type InvalidEntryReason = 'placeholder_mismatch' | 'tag_mismatch' | 'non_string_value' | 'plural_mismatch'
@@ -46,9 +48,9 @@ export interface I18nCheckReport {
   reports: NamespaceReport[]
 }
 
-const PLACEHOLDER_PATTERN = /{{\s*([A-Za-z_$][\w$]*)\s*}}/g
-const TAG_PATTERN = /<\/?([A-Za-z][\w.-]*)(?:\s[^>]*)?>/g
-const SELF_CLOSING_TAG_PATTERN = /<([A-Za-z][\w.-]*)(?:\s[^>]*)?\/>/g
+const PLACEHOLDER_PATTERN = /\{\{\s*([A-Z_$][\w$]*)\s*\}\}/gi
+const TAG_PATTERN = /<\/?([A-Z][\w.-]*)(?:\s[^>]*)?>/gi
+const SELF_CLOSING_TAG_PATTERN = /<([A-Z][\w.-]*)(?:\s[^>]*)?\/>/gi
 const PLURAL_SUFFIX_PATTERN = /_(zero|one|two|few|many|other)$/
 const IGNORED_TRANS_TAGS = new Set(['br'])
 

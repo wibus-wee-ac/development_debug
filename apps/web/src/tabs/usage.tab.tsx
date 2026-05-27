@@ -2,16 +2,14 @@
 
 import { defineTab } from '@cradle/tabs-next'
 import { BarChart2Icon } from 'lucide-react'
-import { lazy, Suspense } from 'react'
+import { lazy } from 'react'
 
-const UsageDashboard = lazy(() => import('~/features/usage/usage-dashboard').then(m => ({ default: m.UsageDashboard })))
+import { loadUsageDashboard, preloadUsageDashboard } from '~/features/usage/usage-dashboard-loader'
+
+const UsageDashboard = lazy(loadUsageDashboard)
 
 function UsageTabContent({ params: _params }: { params: Record<string, never> }) {
-  return (
-    <Suspense fallback={null}>
-      <UsageDashboard />
-    </Suspense>
-  )
+  return <UsageDashboard />
 }
 
 export const usageTab = defineTab({
@@ -19,4 +17,5 @@ export const usageTab = defineTab({
   label: '用量',
   icon: BarChart2Icon,
   component: UsageTabContent,
+  preload: preloadUsageDashboard,
 })

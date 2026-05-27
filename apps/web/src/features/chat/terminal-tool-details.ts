@@ -5,7 +5,7 @@
  */
 
 import type { ToolPayload } from './tool-ui-classifier'
-import { readToolInputPayload, ToolPayloadSchema } from './tool-ui-classifier'
+import { readToolInputPayload, readToolPayload } from './tool-ui-classifier'
 
 export interface TerminalOutputSection {
   label: string
@@ -37,7 +37,7 @@ export function readTerminalOutputSections(output: ToolPayload, errorText?: stri
 
 export function hasTerminalDetails(input: unknown, output: unknown, errorText?: string, argumentsText?: string): boolean {
   const inputPayload = readToolInputPayload(input, argumentsText)
-  const outputPayload = ToolPayloadSchema.parse(output)
+  const outputPayload = readToolPayload(output)
   return inputPayload.command !== null
     || inputPayload.timeout !== null
     || outputPayload.backgroundTaskId !== null

@@ -12,6 +12,7 @@
 }
 
 @source "../../../packages/tabs-next/src/**/*.tsx";
+@source "../../../plugins/system-info/src/**/*.tsx";
 @import "@fontsource-variable/geist";
 @import "@cradle/streamdown/styles";
 

@@ -3,15 +3,22 @@
 // Position: Workspace-owned file rendering surface reused by BrowserPanel tabs.
 
 import { StaticRender } from '@cradle/streamdown'
-import { Loader2Icon } from 'lucide-react'
+import { FileQuestionIcon, ImageIcon, Loader2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { BundledLanguage } from 'shiki'
 
 import { DARK_THEME, getHighlighter, LIGHT_THEME, loadLanguage } from '~/components/editor/shiki-highlighter'
 import { cn } from '~/lib/cn'
 
-import { useWorkspaceFileContent } from './use-workspace-file-content'
-import { getShikiLanguage, isWorkspaceMarkdownFile } from './workspace-file-language'
+import type { WorkspaceFileInfo } from './use-workspace-file-content'
+import {
+  buildWorkspaceFilePdfUrl,
+  buildWorkspaceFileRawUrl,
+  useWorkspaceFileContent,
+  useWorkspaceFileInfo,
+} from './use-workspace-file-content'
+import { getShikiLanguage } from './workspace-file-language'
+import { WorkspacePdfPreview } from './workspace-pdf-preview'
 
 interface WorkspaceFilePreviewProps {
   workspaceId: string
@@ -21,8 +28,9 @@ interface WorkspaceFilePreviewProps {
 
 export function WorkspaceFilePreview({ workspaceId, path, onOpenEditor }: WorkspaceFilePreviewProps) {
   const panelRef = useRef<HTMLDivElement | null>(null)
-  const fileQuery = useWorkspaceFileContent(workspaceId, path)
-  const content = fileQuery.data?.content
+  const infoQuery = useWorkspaceFileInfo(workspaceId, path)
+  const info = infoQuery.data
+  const canOpenTextEditor = info?.previewKind === 'text' || info?.previewKind === 'markdown'
 
   useEffect(() => {
     panelRef.current?.focus()
@@ -32,9 +40,13 @@ export function WorkspaceFilePreview({ workspaceId, path, onOpenEditor }: Worksp
     <div
       ref={panelRef}
       tabIndex={-1}
-      onDoubleClick={() => onOpenEditor(path)}
+      onDoubleClick={() => {
+        if (canOpenTextEditor) {
+          onOpenEditor(path)
+        }
+      }}
       onKeyDown={(event) => {
-        if (event.key === 'Enter') {
+        if (event.key === 'Enter' && canOpenTextEditor) {
           event.preventDefault()
           onOpenEditor(path)
         }
@@ -43,21 +55,112 @@ export function WorkspaceFilePreview({ workspaceId, path, onOpenEditor }: Worksp
       data-testid="workspace-file-preview"
     >
       <div className="min-h-0 flex-1 overflow-y-auto bg-background/80">
-        {fileQuery.isLoading && (
+        {infoQuery.isLoading && (
           <div className="flex h-32 items-center justify-center">
             <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
           </div>
         )}
-        {(fileQuery.isError || content === null) && (
+        {infoQuery.isError && (
           <div className="flex h-32 items-center justify-center px-6 text-center">
-            <p className="text-sm text-muted-foreground">Unable to preview this file as text.</p>
+            <p className="text-sm text-muted-foreground">Unable to read this file.</p>
           </div>
         )}
-        {typeof content === 'string' && (
-          isWorkspaceMarkdownFile(path)
-            ? <MarkdownPreview content={content} />
-            : <CodePreview path={path} content={content} />
+        {info && <WorkspaceFilePreviewContent workspaceId={workspaceId} path={path} info={info} />}
+      </div>
+    </div>
+  )
+}
+
+function WorkspaceFilePreviewContent({ workspaceId, path, info }: { workspaceId: string, path: string, info: WorkspaceFileInfo }) {
+  if (info.previewKind === 'markdown') {
+    return <TextBackedPreview workspaceId={workspaceId} path={path} kind="markdown" />
+  }
+
+  if (info.previewKind === 'text') {
+    return <TextBackedPreview workspaceId={workspaceId} path={path} kind="code" />
+  }
+
+  if (info.previewKind === 'image') {
+    return <ImagePreview src={buildWorkspaceFileRawUrl(workspaceId, path)} info={info} />
+  }
+
+  if (info.previewKind === 'pdf') {
+    return <WorkspacePdfPreview url={buildWorkspaceFileRawUrl(workspaceId, path)} title={path} />
+  }
+
+  if (info.previewKind === 'office') {
+    return <WorkspacePdfPreview url={buildWorkspaceFilePdfUrl(workspaceId, path)} title={path} />
+  }
+
+  return <UnsupportedPreview info={info} />
+}
+
+function TextBackedPreview({ workspaceId, path, kind }: { workspaceId: string, path: string, kind: 'markdown' | 'code' }) {
+  const query = useWorkspaceFileContent(workspaceId, path)
+  const content = query.data?.content
+
+  if (query.isLoading) {
+    return (
+      <div className="flex h-32 items-center justify-center">
+        <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
+      </div>
+    )
+  }
+
+  if (query.isError || content === null || content === undefined) {
+    return (
+      <div className="flex h-32 items-center justify-center px-6 text-center">
+        <p className="text-sm text-muted-foreground">Unable to preview this file as text.</p>
+      </div>
+    )
+  }
+
+  return kind === 'markdown'
+    ? <MarkdownPreview content={content} />
+    : <CodePreview path={path} content={content} />
+}
+
+function ImagePreview({ src, info }: { src: string, info: WorkspaceFileInfo }) {
+  const [naturalSize, setNaturalSize] = useState<{ width: number, height: number } | null>(null)
+
+  return (
+    <div className="flex min-h-full flex-col bg-fill/30">
+      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-border/60 bg-background/80 px-3 text-[11px] text-muted-foreground">
+        <ImageIcon className="size-3.5" aria-hidden="true" />
+        <span className="min-w-0 truncate font-mono">{info.name}</span>
+        {naturalSize && (
+          <span className="ml-auto shrink-0 tabular-nums">
+            {naturalSize.width}
+{' '}
+x
+{naturalSize.height}
+          </span>
         )}
+      </div>
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto p-5">
+        <img
+          src={src}
+          alt={info.name}
+          onLoad={(event) => {
+            setNaturalSize({
+              width: event.currentTarget.naturalWidth,
+              height: event.currentTarget.naturalHeight,
+            })
+          }}
+          className="max-h-full max-w-full rounded object-contain shadow-[0_0_0_1px_rgba(0,0,0,0.1),0_10px_28px_rgba(0,0,0,0.14)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_10px_28px_rgba(0,0,0,0.28)]"
+        />
+      </div>
+    </div>
+  )
+}
+
+function UnsupportedPreview({ info }: { info: WorkspaceFileInfo }) {
+  return (
+    <div className="flex h-40 items-center justify-center px-6 text-center">
+      <div className="flex max-w-md flex-col items-center gap-2">
+        <FileQuestionIcon className="size-5 text-muted-foreground/70" aria-hidden="true" />
+        <p className="text-sm text-muted-foreground">No preview is available for this file type.</p>
+        <p className="font-mono text-[11px] text-muted-foreground/80">{info.mimeType}</p>
       </div>
     </div>
   )
