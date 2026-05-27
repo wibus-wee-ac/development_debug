@@ -41,4 +41,34 @@ describe('usePluginStore', () => {
 
     expect(usePluginStore.getState().panels).toEqual([])
   })
+
+  it('stores owner-scoped web command registrations and clears them on dispose', () => {
+    const execute = () => undefined
+
+    const dispose = usePluginStore.getState().registerCommand('@cradle/system-info', {
+      id: 'show-snapshot',
+      title: 'Show System Info Snapshot',
+      description: 'Fetch the latest host system snapshot.',
+      keywords: ['system', 'host', 'snapshot'],
+      category: 'System Info',
+      keybinding: 'ctrl+shift+i',
+      execute,
+    })
+
+    expect(usePluginStore.getState().commands).toMatchObject([{
+      id: '@cradle/system-info:show-snapshot',
+      owner: '@cradle/system-info',
+      localId: 'show-snapshot',
+      title: 'Show System Info Snapshot',
+      description: 'Fetch the latest host system snapshot.',
+      keywords: ['system', 'host', 'snapshot'],
+      category: 'System Info',
+      keybinding: 'ctrl+shift+i',
+    }])
+    expect(usePluginStore.getState().commands[0]?.execute).toBe(execute)
+
+    dispose()
+
+    expect(usePluginStore.getState().commands).toEqual([])
+  })
 })

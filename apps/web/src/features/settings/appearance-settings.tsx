@@ -2,9 +2,10 @@ import { CheckIcon } from 'lucide-react'
 import { startTransition, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { cn } from '~/lib/cn'
 import { useI18n } from '~/i18n/client'
-import { localeOptions, normalizeLocale, type SupportedLocale } from '~/i18n/locales'
+import type { SupportedLocale } from '~/i18n/locales'
+import { localeOptions, normalizeLocale } from '~/i18n/locales'
+import { cn } from '~/lib/cn'
 import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
@@ -214,7 +215,7 @@ function LanguageSettings() {
       description={pendingLocale ? t('appearance.language.pending') : t('appearance.language.description')}
     >
       <div className="flex gap-1 rounded-lg border border-border p-0.5">
-        {localeOptions.map(option => {
+        {localeOptions.map((option) => {
           const selected = activeLocale === option.value
           return (
             <button

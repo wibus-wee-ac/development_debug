@@ -6,20 +6,17 @@ import { getPreferencesChatOptions, getPreferencesChatQueryKey } from '~/api-gen
 import { putPreferencesChat } from '~/api-gen/sdk.gen'
 
 export type ContinuationBehavior = 'queue' | 'steer'
-export type ApprovalMode = 'ask' | 'allowAll'
 
 export interface ChatPreferences {
   modelId: string | null
   configSelections: Record<string, unknown>
   continuationBehavior: ContinuationBehavior
-  approvalMode: ApprovalMode
 }
 
 const ChatPreferencesSchema = z.object({
   modelId: z.unknown().nullable().transform(value => typeof value === 'string' ? value : null),
   configSelections: z.record(z.string(), z.unknown()).default({}),
   continuationBehavior: z.enum(['queue', 'steer']).default('queue'),
-  approvalMode: z.enum(['ask', 'allowAll']).default('ask'),
 })
 
 export const CHAT_PREFS_QUERY_KEY = getPreferencesChatQueryKey()

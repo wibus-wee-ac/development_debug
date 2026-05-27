@@ -6,7 +6,8 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
-import { type DesktopUpdateStatus, isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
+import type { DesktopUpdateStatus } from '~/lib/electron'
+import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 

@@ -79,7 +79,7 @@ export interface ModelCapabilities {
   family?: string
   knowledgeCutoff?: string
   releaseDate?: string
-  registryMatch?: 'exact' | 'fuzzy' | 'manual' | 'unmatched'
+  registryMatch?: 'exact' | 'fuzzy' | 'manual' | 'alias' | 'unmatched'
   registryModelId?: string
   registryModelLabel?: string
 }

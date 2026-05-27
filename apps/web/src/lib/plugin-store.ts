@@ -1,6 +1,6 @@
-import { create } from 'zustand'
 import type { PluginLayerState, PluginLayerStatus } from '@cradle/plugin-sdk'
-import type { PanelRegistration, CommandRegistration } from '@cradle/plugin-sdk/web'
+import type { CommandRegistration, PanelRegistration } from '@cradle/plugin-sdk/web'
+import { create } from 'zustand'
 
 export type WebPanelRegistration = PanelRegistration & {
   id: string
@@ -24,10 +24,10 @@ interface PluginStoreState {
 }
 
 interface PluginStoreActions {
-  registerPanel(owner: string, routeSegment: string, panel: PanelRegistration): () => void
-  registerCommand(owner: string, cmd: CommandRegistration): () => void
-  setWebLayerState(owner: string, status: PluginLayerStatus, error?: string): void
-  clearWebLayerState(owner: string): void
+  registerPanel: (owner: string, routeSegment: string, panel: PanelRegistration) => () => void
+  registerCommand: (owner: string, cmd: CommandRegistration) => () => void
+  setWebLayerState: (owner: string, status: PluginLayerStatus, error?: string) => void
+  clearWebLayerState: (owner: string) => void
 }
 
 function toScopedContributionId(owner: string, localId: string): string {
@@ -38,12 +38,12 @@ function toLocalContributionId(owner: string, id: string): string {
   return id.startsWith(`${owner}:`) ? id.slice(owner.length + 1) : id
 }
 
-export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set) => ({
+export const usePluginStore = create<PluginStoreState & PluginStoreActions>(set => ({
   panels: [],
   commands: [],
   webLayerStates: {},
   setWebLayerState(owner, status, error) {
-    set((s) => ({
+    set(s => ({
       webLayerStates: {
         ...s.webLayerStates,
         [owner]: {
@@ -75,21 +75,21 @@ export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set
     }
 
     set((s) => {
-      if (s.panels.some((existing) => existing.id === id)) {
+      if (s.panels.some(existing => existing.id === id)) {
         throw new Error(`Duplicate web panel id "${localId}" registered by ${owner}.`)
       }
       return {
         panels: [...s.panels, registeredPanel].toSorted((a, b) => {
           const locationOrder = (a.location ?? 'main').localeCompare(b.location ?? 'main')
-          if (locationOrder !== 0) return locationOrder
+          if (locationOrder !== 0) { return locationOrder }
           const orderDelta = (a.order ?? 0) - (b.order ?? 0)
-          if (orderDelta !== 0) return orderDelta
+          if (orderDelta !== 0) { return orderDelta }
           return a.id.localeCompare(b.id)
         }),
       }
     })
 
-    return () => set((s) => ({ panels: s.panels.filter((p) => p.id !== id) }))
+    return () => set(s => ({ panels: s.panels.filter(p => p.id !== id) }))
   },
   registerCommand(owner, cmd) {
     const localId = toLocalContributionId(owner, cmd.id)
@@ -103,7 +103,7 @@ export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set
     }
 
     set((s) => {
-      if (s.commands.some((existing) => existing.id === id)) {
+      if (s.commands.some(existing => existing.id === id)) {
         throw new Error(`Duplicate web command id "${localId}" registered by ${owner}.`)
       }
       return {
@@ -111,6 +111,6 @@ export const usePluginStore = create<PluginStoreState & PluginStoreActions>((set
       }
     })
 
-    return () => set((s) => ({ commands: s.commands.filter((c) => c.id !== id) }))
+    return () => set(s => ({ commands: s.commands.filter(c => c.id !== id) }))
   },
 }))

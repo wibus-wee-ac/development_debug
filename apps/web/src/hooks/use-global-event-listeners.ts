@@ -33,9 +33,12 @@ function deriveVisibleChatSessionId(args: {
 export function useGlobalEventListeners() {
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
-  const activeTabId = useCradleTabStore(s => s.activeTabId)
-  const tabs = useCradleTabStore(s => s.tabs)
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const visibleSessionId = useCradleTabStore(s => deriveVisibleChatSessionId({
+    activeTabId: s.activeTabId,
+    settingsTabId,
+    tabs: s.tabs,
+  }))
 
   // Panel + tab keyboard shortcuts
   useEffect(() => {
@@ -120,13 +123,8 @@ export function useGlobalEventListeners() {
   }, [])
 
   useEffect(() => {
-    const visibleSessionId = deriveVisibleChatSessionId({
-      activeTabId,
-      settingsTabId,
-      tabs,
-    })
     useSessionActivityStore.getState().setVisibleSession(visibleSessionId)
-  }, [activeTabId, settingsTabId, tabs])
+  }, [visibleSessionId])
 
   useEffect(() => {
     return onAnyChatRunEvent(({ chatSessionId }) => {

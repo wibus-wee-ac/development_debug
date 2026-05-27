@@ -70,7 +70,8 @@ function sampleMemory() {
     if (consecutiveIncreases >= LEAK_THRESHOLD) {
       console.warn('[perf] possible memory leak detected')
     }
-  } else {
+  }
+ else {
     consecutiveIncreases = 0
   }
   lastHeapUsed = snap.heapUsed

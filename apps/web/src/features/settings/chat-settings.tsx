@@ -1,11 +1,10 @@
 // Chat settings for default continuation behavior.
 import { useTranslation } from 'react-i18next'
 
-import { Switch } from '~/components/ui/switch'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
-import type { ApprovalMode, ContinuationBehavior } from './use-chat-preferences'
+import type { ContinuationBehavior } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
 
 export function ChatSettings() {
@@ -21,11 +20,6 @@ export function ChatSettings() {
       return
     }
     void savePrefs({ continuationBehavior: value as ContinuationBehavior })
-  }
-
-  const handleApprovalModeChange = (checked: boolean) => {
-    const approvalMode: ApprovalMode = checked ? 'allowAll' : 'ask'
-    void savePrefs({ approvalMode })
   }
 
   return (
@@ -57,22 +51,6 @@ export function ChatSettings() {
             {t('chat.continuation.steer')}
           </ToggleGroupItem>
         </ToggleGroup>
-      </SettingsRow>
-
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('chat.approval.label')}
-        description={t('chat.approval.description')}
-      >
-        <Switch
-          size="sm"
-          checked={prefs.approvalMode === 'allowAll'}
-          onCheckedChange={handleApprovalModeChange}
-          disabled={isSaving}
-          aria-label={t('chat.approval.label')}
-          data-testid="chat-approval-mode"
-        />
       </SettingsRow>
     </div>
   )

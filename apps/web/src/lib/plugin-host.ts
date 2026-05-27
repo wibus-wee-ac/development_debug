@@ -1,8 +1,17 @@
-import type { Disposable } from '@cradle/plugin-sdk'
-import type { WebPlugin, WebPluginContext, WebPluginRouteClient, WebPluginStorage } from '@cradle/plugin-sdk/web'
-import { derivePluginRouteSegment, type PluginDescriptor } from '@cradle/plugin-sdk'
+import type { Disposable, PluginDescriptor } from '@cradle/plugin-sdk'
+import { derivePluginRouteSegment } from '@cradle/plugin-sdk'
 import { evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
+import type {
+  PluginNotification,
+  WebPlugin,
+  WebPluginContext,
+  WebPluginRouteClient,
+  WebPluginStorage,
+} from '@cradle/plugin-sdk/web'
 import { z } from 'zod'
+
+import { toastManager } from '~/components/ui/toast'
+
 import { getServerUrl } from './electron'
 import { usePluginStore } from './plugin-store'
 
@@ -24,7 +33,7 @@ const WebPluginModuleWithDefaultSchema = z.union([
   z.object({ default: WebPluginModuleSchema }).passthrough().transform(mod => mod.default),
 ])
 
-const activeWebPlugins = new Map<string, { deactivate?: () => void | Promise<void>; subscriptions: Disposable[] }>()
+const activeWebPlugins = new Map<string, { deactivate?: () => void | Promise<void>, subscriptions: Disposable[] }>()
 
 interface WebRuntimeCapabilityRegistration {
   type: string
@@ -40,7 +49,8 @@ function disposeSubscriptions(owner: string, subscriptions: Disposable[]): void 
   for (const subscription of [...subscriptions].reverse()) {
     try {
       subscription.dispose()
-    } catch (err) {
+    }
+ catch (err) {
       console.error(`[plugin-host] failed to dispose ${owner} web subscription:`, err)
     }
   }
@@ -79,7 +89,8 @@ function normalizePluginRoutePath(path: string): string {
   if (segments.some((segment) => {
     try {
       return decodeURIComponent(segment) === '..'
-    } catch {
+    }
+ catch {
       return segment === '..'
     }
   })) {
@@ -102,11 +113,26 @@ function createWebPluginRouteClient(pluginName: string, descriptor?: PluginDescr
   }
 }
 
+function notifyFromPlugin(pluginName: string, notification: PluginNotification): void {
+  const title = notification.title.trim()
+  if (!title) {
+    throw new Error('Plugin notification title must not be empty.')
+  }
+
+  toastManager.add({
+    id: notification.id ? `${pluginName}:${notification.id}` : undefined,
+    title,
+    description: notification.description,
+    type: notification.type ?? 'info',
+    timeout: notification.timeout,
+  })
+}
+
 function validateWebRuntimeCapability(
   descriptor: PluginDescriptor | undefined,
   registration: WebRuntimeCapabilityRegistration,
 ): void {
-  if (!descriptor) return
+  if (!descriptor) { return }
   const policy = evaluatePluginRuntimeCapabilityPolicy(descriptor, {
     type: registration.type,
     layer: 'web',
@@ -138,6 +164,11 @@ function createWebPluginContext(pluginName: string, descriptor?: PluginDescripto
 
   return {
     routes: createWebPluginRouteClient(pluginName, descriptor),
+    notifications: {
+      show(notification) {
+        notifyFromPlugin(pluginName, notification)
+      },
+    },
     subscriptions,
     panels: {
       register(panel) {
@@ -186,7 +217,8 @@ export async function activateWebPluginModule(
   const ctx = createWebPluginContext(owner, descriptor)
   try {
     await mod.activate(ctx)
-  } catch (err) {
+  }
+ catch (err) {
     setWebLayerState(owner, 'failed', err instanceof Error ? err.message : String(err))
     disposeSubscriptions(owner, ctx.subscriptions)
     throw err
@@ -201,13 +233,15 @@ export async function activateWebPluginModule(
 
 export async function deactivateWebPlugin(owner: string): Promise<void> {
   const plugin = activeWebPlugins.get(owner)
-  if (!plugin) return
+  if (!plugin) { return }
   activeWebPlugins.delete(owner)
   try {
     await plugin.deactivate?.()
-  } catch (err) {
+  }
+ catch (err) {
     console.error(`[plugin-host] failed to deactivate ${owner}:`, err)
-  } finally {
+  }
+ finally {
     disposeSubscriptions(owner, plugin.subscriptions)
     setWebLayerState(owner, 'discovered')
   }
@@ -248,7 +282,8 @@ export async function loadWebPlugins(): Promise<void> {
 
         await activateWebPluginModule(owner, mod, plugin)
         console.log(`[plugin-host] activated: ${owner}`)
-      } catch (err) {
+      }
+ catch (err) {
         setWebLayerState(owner, 'failed', err instanceof Error ? err.message : String(err))
         console.error(`[plugin-host] failed to activate ${owner}:`, err)
       }

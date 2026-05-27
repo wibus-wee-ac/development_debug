@@ -1,12 +1,10 @@
 import type { UIMessage } from 'ai'
-import { z } from 'zod'
 import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
 
 import type { ChatToolEntity } from '~/features/chat/chat-tool-entities'
 import {
   collectToolCallIdsFromMessages,
-  collectToolCallIdsFromSubagentMap,
   normalizeMessageForToolEntities,
 } from '~/features/chat/chat-tool-entities'
 
@@ -45,9 +43,6 @@ interface ChatState {
   messagesMap: Map<string, UIMessage[]>
   toolCallIdsByMessageId: Map<string, string[]>
   toolEntitiesMap: Map<string, ChatToolEntity>
-
-  // --- Subagent Messages (keyed by parent message ID -> parent tool call ID -> messages) ---
-  subagentMessagesMap: Map<string, Map<string, UIMessage[]>>
 
   // --- Streaming State ---
   generatingMessageIds: Set<string>
@@ -100,43 +95,13 @@ interface ChatState {
   clearSession: (sessionId: string) => void
   clearError: (messageId: string) => void
 
-  // --- Actions: Subagent Messages ---
-  setSubagentMessages: (messageId: string, messages: Map<string, UIMessage[]>) => void
-  upsertSubagentMessage: (messageId: string, parentToolCallId: string, message: UIMessage) => void
 }
 
 // ── Server Base ─────────────────────────────────────────────
 
 type MessagePart = UIMessage['parts'][number]
-type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue }
 const EMPTY_MESSAGES: UIMessage[] = []
 const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
-const JsonValueSchema: z.ZodType<JsonValue> = z.lazy((): z.ZodType<JsonValue> =>
-  z.union([
-    z.string(),
-    z.number().finite(),
-    z.boolean(),
-    z.null(),
-    z.array(JsonValueSchema),
-    z.record(z.string(), JsonValueSchema),
-  ]))
-const TextMessagePartSchema = z.object({
-  type: z.literal('text'),
-  text: z.string(),
-}).passthrough()
-const ReasoningMessagePartSchema = z.object({
-  text: z.string().optional(),
-  reasoning: z.string().optional(),
-  state: z.string().optional(),
-}).passthrough()
-const DynamicToolMessagePartSchema = z.object({
-  toolCallId: z.string().optional(),
-  toolName: z.string().optional(),
-  state: z.string().optional(),
-  input: JsonValueSchema.optional(),
-  output: JsonValueSchema.optional(),
-  errorText: z.string().optional(),
-}).passthrough()
 
 // ── Store ───────────────────────────────────────────────────
 
@@ -146,7 +111,6 @@ export const useChatStore = create<ChatState>()(
       messagesMap: new Map(),
       toolCallIdsByMessageId: new Map(),
       toolEntitiesMap: new Map(),
-      subagentMessagesMap: new Map(),
       generatingMessageIds: new Set(),
       passiveStreamingMessageIds: new Set(),
       activeAbortControllers: new Map(),
@@ -217,14 +181,23 @@ export const useChatStore = create<ChatState>()(
             return state
           }
 
-          const updatedMessage = updater(messages[idx])
+          const normalizedMessage = normalizeMessageForToolEntities(updater(messages[idx]))
+          const updatedMessage = normalizedMessage.message
           const updated = [...messages]
           updated[idx] = updatedMessage
 
+          const toolState = withToolEntitiesForMessages(
+            state.toolCallIdsByMessageId,
+            state.toolEntitiesMap,
+            [updatedMessage],
+            normalizedMessage.toolEntities,
+          )
           const next = new Map(state.messagesMap)
           next.set(sessionId, updated)
           return {
             messagesMap: next,
+            toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
+            toolEntitiesMap: toolState.toolEntitiesMap,
           }
         })
       },
@@ -643,7 +616,6 @@ export const useChatStore = create<ChatState>()(
           const nextMsg = new Map(state.messagesMap)
           const nextMeta = new Map(state.sessionMetaMap)
           nextMeta.delete(sessionId)
-          const nextSubagents = new Map(state.subagentMessagesMap)
           const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
           const nextToolEntitiesMap = new Map(state.toolEntitiesMap)
           const nextRunDisplayMetaMap = new Map(state.runDisplayMetaMap)
@@ -651,7 +623,6 @@ export const useChatStore = create<ChatState>()(
           nextMsg.delete(sessionId)
           for (const message of removedMessages) {
             nextRunDisplayMetaMap.delete(message.id)
-            nextSubagents.delete(message.id)
             const toolCallIds = nextToolCallIdsByMessageId.get(message.id) ?? []
             nextToolCallIdsByMessageId.delete(message.id)
             for (const toolCallId of toolCallIds) {
@@ -661,7 +632,6 @@ export const useChatStore = create<ChatState>()(
           return {
             messagesMap: nextMsg,
             sessionMetaMap: nextMeta,
-            subagentMessagesMap: nextSubagents,
             toolCallIdsByMessageId: nextToolCallIdsByMessageId,
             toolEntitiesMap: nextToolEntitiesMap,
             runDisplayMetaMap: nextRunDisplayMetaMap,
@@ -680,54 +650,6 @@ export const useChatStore = create<ChatState>()(
         })
       },
 
-      // --- Subagent Messages ---
-
-      setSubagentMessages: (messageId, messages) => {
-        set((state) => {
-          const next = new Map(state.subagentMessagesMap)
-          next.set(messageId, messages)
-          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
-          const nextToolEntitiesMap = new Map(state.toolEntitiesMap)
-          const staleToolCallIds = collectToolCallIdsFromSubagentMap(state.subagentMessagesMap.get(messageId) ?? new Map())
-          for (const toolCallId of staleToolCallIds) {
-            nextToolEntitiesMap.delete(toolCallId)
-          }
-          for (const subMessages of messages.values()) {
-            for (const subMessage of subMessages) {
-              const normalizedSubMessage = normalizeMessageForToolEntities(subMessage)
-              nextToolCallIdsByMessageId.set(
-                normalizedSubMessage.message.id,
-                collectToolCallIdsFromMessages([normalizedSubMessage.message]),
-              )
-              for (const entity of normalizedSubMessage.toolEntities) {
-                nextToolEntitiesMap.set(entity.toolCallId, entity)
-              }
-            }
-          }
-          return {
-            subagentMessagesMap: next,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-            toolEntitiesMap: nextToolEntitiesMap,
-          }
-        })
-      },
-
-      upsertSubagentMessage: (messageId, parentToolCallId, message) => {
-        set((state) => {
-          const next = new Map(state.subagentMessagesMap)
-          const messageMap = new Map(next.get(messageId) ?? new Map())
-          const currentMessages = messageMap.get(parentToolCallId) ?? []
-          const existingIndex = currentMessages.findIndex(item => item.id === message.id)
-          const nextMessages = existingIndex === -1
-            ? [...currentMessages, message]
-            : currentMessages.map(item => item.id === message.id ? message : item)
-          messageMap.set(parentToolCallId, nextMessages)
-          next.set(messageId, messageMap)
-          return {
-            subagentMessagesMap: next,
-          }
-        })
-      },
     }),
   ),
 )
@@ -802,10 +724,6 @@ export const chatSelectors = {
     return meta.passiveStatus
   },
 
-  /** Subagent messages for a message, keyed by parentToolCallId */
-  subagentMessages: (messageId: string) => (s: ChatState) =>
-    s.subagentMessagesMap.get(messageId),
-
   toolCallIds: (messageId: string) => (s: ChatState) =>
     s.toolCallIdsByMessageId.get(messageId) ?? [],
 
@@ -845,6 +763,10 @@ function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMes
 function areMessagesEqual(currentMessage: UIMessage, incomingMessage: UIMessage): boolean {
   return currentMessage.id === incomingMessage.id
     && currentMessage.role === incomingMessage.role
+    && areJsonValuesEqual(
+      (currentMessage as { metadata?: unknown }).metadata ?? null,
+      (incomingMessage as { metadata?: unknown }).metadata ?? null,
+    )
     && areMessagePartsEqual(currentMessage.parts, incomingMessage.parts)
 }
 
@@ -875,17 +797,17 @@ function areMessagePartsStructurallyEqual(currentPart: MessagePart, incomingPart
 
   switch (currentPart.type) {
     case 'text':
-      return currentPart.text === TextMessagePartSchema.parse(incomingPart).text
+      return readPartText(currentPart) === readPartText(incomingPart)
     case 'reasoning': {
-      const currentReasoning = ReasoningMessagePartSchema.parse(currentPart)
-      const incomingReasoning = ReasoningMessagePartSchema.parse(incomingPart)
+      const currentReasoning = readReasoningPart(currentPart)
+      const incomingReasoning = readReasoningPart(incomingPart)
       return currentReasoning.text === incomingReasoning.text
         && currentReasoning.reasoning === incomingReasoning.reasoning
         && currentReasoning.state === incomingReasoning.state
     }
     case 'dynamic-tool': {
-      const currentTool = DynamicToolMessagePartSchema.parse(currentPart) as DynamicToolMessagePart
-      const incomingTool = DynamicToolMessagePartSchema.parse(incomingPart) as DynamicToolMessagePart
+      const currentTool = readDynamicToolPart(currentPart)
+      const incomingTool = readDynamicToolPart(incomingPart)
       return currentTool.toolCallId === incomingTool.toolCallId
         && currentTool.toolName === incomingTool.toolName
         && currentTool.state === incomingTool.state
@@ -899,6 +821,36 @@ interface DynamicToolMessagePart {
   toolCallId?: string
   toolName?: string
   state?: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function readPartText(part: MessagePart): string | undefined {
+  if (!isRecord(part)) {
+    return undefined
+  }
+  const record = part as Record<string, unknown>
+  return typeof record.text === 'string' ? record.text : undefined
+}
+
+function readReasoningPart(part: MessagePart): { text?: string, reasoning?: string, state?: string } {
+  const record = isRecord(part) ? part as Record<string, unknown> : {}
+  return {
+    text: typeof record.text === 'string' ? record.text : undefined,
+    reasoning: typeof record.reasoning === 'string' ? record.reasoning : undefined,
+    state: typeof record.state === 'string' ? record.state : undefined,
+  }
+}
+
+function readDynamicToolPart(part: MessagePart): DynamicToolMessagePart {
+  const record = isRecord(part) ? part as Record<string, unknown> : {}
+  return {
+    toolCallId: typeof record.toolCallId === 'string' ? record.toolCallId : undefined,
+    toolName: typeof record.toolName === 'string' ? record.toolName : undefined,
+    state: typeof record.state === 'string' ? record.state : undefined,
+  }
 }
 
 function withToolEntitiesForMessages(
@@ -997,6 +949,8 @@ function areToolEntitiesEqual(left: ChatToolEntity, right: ChatToolEntity): bool
     && left.messageId === right.messageId
     && left.toolName === right.toolName
     && left.state === right.state
+    && areJsonValuesEqual(left.approval, right.approval)
+    && left.preliminary === right.preliminary
     && left.argumentsText === right.argumentsText
     && left.errorText === right.errorText
     && areJsonValuesEqual(left.input, right.input)
@@ -1056,5 +1010,5 @@ function areJsonValuesEqual(currentValue: unknown, incomingValue: unknown): bool
   if (currentValue === undefined || incomingValue === undefined) {
     return false
   }
-  return JSON.stringify(JsonValueSchema.parse(currentValue)) === JSON.stringify(JsonValueSchema.parse(incomingValue))
+  return JSON.stringify(currentValue) === JSON.stringify(incomingValue)
 }

@@ -70,12 +70,27 @@ interface NativeServiceMethods {
   }) => Promise<{ canceled: boolean, filePath?: string }>
 
   openExternal: (url: string) => Promise<void>
+  openPath: (fullPath: string) => Promise<void>
   showItemInFolder: (fullPath: string) => Promise<void>
+  openPathInEditor: (fullPath: string) => Promise<{ editor: string }>
   getCradleDataPaths: () => Promise<{
     userDataPath: string
     serverDataPath: string
     databasePath: string
     serverLogPath: string
+  }>
+  scanExternalWorkImportFiles: (options?: {
+    limitPerSource?: number
+    workspacePaths?: string[]
+  }) => Promise<{
+    files: Array<{
+      sourceApp: 'claude' | 'codex'
+      path: string
+      content: string
+      workspacePath: string | null
+      modifiedAt: number | null
+    }>
+    warnings: string[]
   }>
 }
 
@@ -119,6 +134,29 @@ interface DesktopUpdateServiceMethods {
   checkForUpdates: () => Promise<DesktopUpdateStatus>
   downloadUpdate: () => Promise<DesktopUpdateStatus>
   applyUpdate: () => Promise<void>
+}
+
+export type BrowserTabScriptRunAt = 'document-start' | 'document-end' | 'document-idle'
+
+export interface BrowserTabScriptPayload {
+  id: string
+  label?: string
+  runAt: BrowserTabScriptRunAt
+  source: string
+}
+
+interface BrowserTabScriptsServiceMethods {
+  setScripts: (input: {
+    webContentsId: number
+    scripts: BrowserTabScriptPayload[]
+  }) => Promise<{ scriptIds: string[] }>
+  runScript: (input: {
+    webContentsId: number
+    script: BrowserTabScriptPayload
+  }) => Promise<{ result: unknown }>
+  clearScripts: (input: {
+    webContentsId: number
+  }) => Promise<void>
 }
 
 export interface MacBridgeRuntimeStatus {
@@ -343,6 +381,7 @@ interface CradleIpcServices {
   native: NativeServiceMethods
   window: WindowServiceMethods
   desktopUpdate: DesktopUpdateServiceMethods
+  browserTabScripts: BrowserTabScriptsServiceMethods
   macCapture: MacCaptureServiceMethods
 }
 
