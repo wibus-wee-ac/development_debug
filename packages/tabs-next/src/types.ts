@@ -57,6 +57,7 @@ export interface TabRouteDefinition<
   matchLocation?: (location: TabLocation) => TParams | null
   serialize?: (params: TParams) => string
   deserialize?: (path: string) => TParams | null
+  preload?: (params: TParams) => void | Promise<void>
   loader?: (params: TParams) => Promise<TLoaderData>
   loaderFallback?: ReactNode
   capabilities?: TabRouteCapabilities<TParams>

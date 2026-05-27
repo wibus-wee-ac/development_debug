@@ -15,8 +15,8 @@
 //   This is acceptable because the pushState-for-everything alternative causes 120+ entry
 //   bloat that makes browser Back unusable.
 
-import type { StoreApi, UseBoundStore } from 'zustand'
 import { z } from 'zod'
+import type { StoreApi, UseBoundStore } from 'zustand'
 
 import type { TabStoreState } from './store'
 import type { TabParams, TabRegistry } from './types'

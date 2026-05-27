@@ -4,18 +4,15 @@
   "version": "0.1.0",
   "private": true,
   "description": "Multi-route tab runtime prototype for React desktop apps",
-  "scripts": {
-    "test": "vitest run src/__tests__",
-    "test:watch": "vitest src/__tests__",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
-  },
   "exports": {
     ".": "./src/index.ts"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "dependencies": {
-    "zod": "^4.4.3"
+  "scripts": {
+    "test": "vitest run src/__tests__",
+    "test:watch": "vitest src/__tests__",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "@dnd-kit/core": ">=6.0.0",
@@ -26,5 +23,8 @@
     "react-dom": ">=19.0.0",
     "tailwind-merge": ">=2.0.0",
     "zustand": ">=5.0.0"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

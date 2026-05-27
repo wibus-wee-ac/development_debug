@@ -1,6 +1,6 @@
+import { z } from 'zod'
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { z } from 'zod'
 
 import { installDebug, notifyDebugStateChanged, recordTabAction } from './debug'
 import { installPersistedStoreSync } from './persisted-store-sync'
@@ -257,6 +257,20 @@ function fillMissingContexts(
   return [...contexts, ...contextsFromTabs(missingTabs, registry)]
 }
 
+function preloadTabRoute(registry: TabRegistry, type: string, params: TabParams): void {
+  const route = registry[type]
+  if (!route?.preload) {
+    return
+  }
+
+  try {
+    Promise.resolve(route.preload(params)).catch(() => {})
+  }
+  catch {
+    // Preload is best-effort; the route render path still owns user-visible errors.
+  }
+}
+
 function sanitizePersisted(value: unknown, registry: TabRegistry): Pick<TabStoreState, 'tabs' | 'contexts' | 'activeTabId'> {
   const persisted = PersistedTabsNextStateSchema.parse(value)
   const tabs = selectRegisteredTabs(persisted.tabs, registry)
@@ -309,6 +323,7 @@ export function createTabStore(registry: TabRegistry, options?: TabStoreOptions)
 
         openTab: (type, params = {}, opts) => {
           recordTabAction('open')
+          preloadTabRoute(registry, type, params)
           const route = registry[type]
           const pinned = opts?.pinned ?? route?.pinned ?? false
           const dedupe = opts?.dedupe ?? (pinned || Object.keys(params).length > 0)
@@ -321,6 +336,7 @@ export function createTabStore(registry: TabRegistry, options?: TabStoreOptions)
               return tab.pinned || pinned || paramsMatch(tab.params, params)
             })
             if (existing) {
+              preloadTabRoute(registry, existing.type, existing.params)
               get().setActiveTab(existing.id)
               return existing.id
             }
@@ -331,6 +347,7 @@ export function createTabStore(registry: TabRegistry, options?: TabStoreOptions)
 
         createTab: (type, params = {}, opts) => {
           recordTabAction('create')
+          preloadTabRoute(registry, type, params)
           const { entry, label, pinned: routePinned, keepAlive } = createEntry(registry, type, params, opts?.label)
           const id = makeId()
           const pinned = opts?.pinned ?? routePinned
@@ -372,19 +389,21 @@ export function createTabStore(registry: TabRegistry, options?: TabStoreOptions)
         },
 
         setActiveTab: (tabId) => {
-          recordTabAction('activate')
-          if (!get().tabs.some(t => t.id === tabId)) {
+          const current = get()
+          if (current.activeTabId === tabId || !current.tabs.some(t => t.id === tabId)) {
             return
           }
-          const timestamp = now()
-          set(s => ({
-            activeTabId: tabId,
-            contexts: s.contexts.map(context => context.id === tabId ? { ...context, lastActiveAt: timestamp } : context),
-          }))
+          const tab = current.tabs.find(t => t.id === tabId)
+          if (tab) {
+            preloadTabRoute(registry, tab.type, tab.params)
+          }
+          recordTabAction('activate')
+          set({ activeTabId: tabId })
         },
 
         navigateTab: (tabId, location, options) => {
           recordTabAction('navigate')
+          preloadTabRoute(registry, location.routeId, location.params)
           set((s) => {
             const context = s.contexts.find(item => item.id === tabId)
             if (!context) {

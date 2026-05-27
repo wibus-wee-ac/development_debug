@@ -41,7 +41,7 @@ function renderLink(children: ReactNode, store = createStore()) {
   return { store, ...view }
 }
 
-describe('Link', () => {
+describe('link', () => {
   it('renders a browser-readable href from the route registry and params', () => {
     renderLink(<Link to="chat" params={{ sessionId: 'one' }}>Open chat</Link>)
 

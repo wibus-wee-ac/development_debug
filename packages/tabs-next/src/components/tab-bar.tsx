@@ -2,7 +2,7 @@ import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
 import { closestCenter, DndContext, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useCallback, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { cn } from '../cn'
 import { useTabsContext } from '../context'
@@ -46,7 +46,7 @@ interface TabPillProps {
 }
 
 function renderIconSlot(slot: React.ReactNode | (() => React.ReactNode) | undefined) {
-  return slot instanceof Function ? slot() : slot
+  return typeof slot === 'function' ? slot() : slot
 }
 
 const SortableTabPill = memo(({
@@ -141,19 +141,18 @@ export const TabBar = memo(({
   const tabs = store(s => s.tabs)
   const activeTabId = store(s => s.activeTabId)
   const pointerRef = useRef<ScreenCoordinates | null>(null)
-  const activeDragIdRef = useRef<string | number | null>(null)
   const dragWasTornOffRef = useRef(false)
   const dragCleanupRef = useRef<(() => void) | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
   )
+  const sortableTabIds = useMemo(() => tabs.map(tab => tab.id), [tabs])
 
   const releaseCurrentDrag = useCallback(() => {
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
     pointerRef.current = null
-    activeDragIdRef.current = null
     dragWasTornOffRef.current = false
   }, [])
 
@@ -174,7 +173,6 @@ export const TabBar = memo(({
   const checkTearOff = useCallback((activeId: string | number) => {
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
-    activeDragIdRef.current = null
 
     if (!onTabTearOff) {
       return false
@@ -198,17 +196,12 @@ export const TabBar = memo(({
   }, [onTabTearOff, store])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    pointerRef.current = getEventScreenCoordinates(event.activatorEvent)
-    activeDragIdRef.current = event.active.id
+    pointerRef.current = getEventScreenCoordinates(event.activatorEvent, window)
     dragWasTornOffRef.current = false
     dragCleanupRef.current?.()
 
     const onMove = (moveEvent: MouseEvent | PointerEvent | TouchEvent) => {
-      pointerRef.current = getEventScreenCoordinates(moveEvent)
-      const activeDragId = activeDragIdRef.current
-      if (activeDragId !== null && isPointerOutsideWindow(pointerRef.current, window)) {
-        checkTearOff(activeDragId)
-      }
+      pointerRef.current = getEventScreenCoordinates(moveEvent, window)
     }
 
     window.addEventListener('mousemove', onMove, true)
@@ -219,7 +212,7 @@ export const TabBar = memo(({
       window.removeEventListener('pointermove', onMove, true)
       window.removeEventListener('touchmove', onMove, true)
     }
-  }, [checkTearOff])
+  }, [])
 
   useEffect(() => {
     return releaseCurrentDrag
@@ -235,27 +228,26 @@ export const TabBar = memo(({
       return
     }
     if (!over || active.id === over.id) {
+      releaseCurrentDrag()
       return
     }
     const currentTabs = store.getState().tabs
     const oldIndex = currentTabs.findIndex(tab => tab.id === active.id)
     const newIndex = currentTabs.findIndex(tab => tab.id === over.id)
     if (oldIndex === -1 || newIndex === -1) {
+      releaseCurrentDrag()
       return
     }
     const reordered = [...currentTabs]
     const [moved] = reordered.splice(oldIndex, 1)
     reordered.splice(newIndex, 0, moved)
     store.getState().reorderTabs(reordered.map(tab => tab.id))
+    releaseCurrentDrag()
   }, [checkTearOff, releaseCurrentDrag, store])
 
-  const handleDragCancel = useCallback((event: { active: { id: string | number } }) => {
-    if (dragWasTornOffRef.current) {
-      releaseCurrentDrag()
-      return
-    }
-    checkTearOff(event.active.id)
-  }, [checkTearOff, releaseCurrentDrag])
+  const handleDragCancel = useCallback(() => {
+    releaseCurrentDrag()
+  }, [releaseCurrentDrag])
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
@@ -264,7 +256,7 @@ export const TabBar = memo(({
         style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
         data-testid="tab-bar"
       >
-        <SortableContext items={tabs.map(tab => tab.id)} strategy={horizontalListSortingStrategy}>
+        <SortableContext items={sortableTabIds} strategy={horizontalListSortingStrategy}>
           {tabs.map(tab => (
             <SortableTabPill
               key={tab.id}

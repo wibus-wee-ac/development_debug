@@ -11,7 +11,8 @@
 - `createTabStore(registry)` owns runtime tab contexts and exposes a compatibility surface for the current Cradle app.
 - Persisted store sync keeps same-key tab stores in different renderer windows aligned through `BroadcastChannel` plus `storage` event fallback.
 - `createUrlSync({ store, registry })` projects the active tab context into browser history and restores tab-local history on `popstate`.
-- `<TabRenderer>` renders every valid tab context inside React 19 `<Activity>` boundaries. Tab switches set inactive tabs to Activity `hidden` mode and restore the active tab to `visible` mode without a package-owned mounted pool.
+- `<TabRenderer>` renders every valid default tab context as an overlaid retained frame and switches visibility with CSS so already-loaded content remains mounted, stays out of the document flow while inactive, and does not return to fallback placeholders during tab switches. Routes marked `keepAlive: 'discardable'` still use React 19 `<Activity>` hidden mode for effect cleanup semantics.
+- Route-owned `preload(params)` hooks 允许 tab 定义在 open、activate、navigate 提交前预热延迟 route code，同时不把页面数据所有权移动到 tab runtime。
 - Route loaders are isolated behind a reducer-managed boundary so async loader transitions stay tied to the route params that triggered them.
 - `<TabBar>` exposes a single `TabBarCustomization` surface for chrome slots: close icon, new-tab icon, per-tab icon, and optional tooltip wrapper.
 - `<Link>` preserves anchor semantics while routing primary activation through the active tab and modifier or middle-click activation through a new tab.
@@ -34,27 +35,28 @@ The package does not own business data, route semantics, or domain state. Those 
 ## Files
 
 - **src/index.ts**: Public package exports.
-- **src/types.ts**: Runtime contracts for locations, contexts, route definitions, and persistence.
+- **src/types.ts**: Runtime contracts for locations, contexts, route definitions, route preload hooks, and persistence.
 - **src/route-definition.ts**: `defineTab()` migration helper plus route-title/location utilities.
-- **src/store.ts**: Zustand runtime store for tab contexts, history, restore validation, and compatibility actions.
+- **src/store.ts**: Zustand runtime store for tab contexts, history, route preload intent, restore validation, and compatibility actions.
 - **src/persisted-store-sync.ts**: Key-scoped cross-window synchronization helper for persisted Zustand slices.
 - **src/url-sync.ts**: Hash-mode browser history projection and `popstate` restore coordination.
 - **src/context.ts**: React context and `useTabsContext()`.
 - **src/provider.tsx**: Provider component for store and registry injection.
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
 - **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params and new-tab activation gestures.
-- **src/components/tab-renderer.tsx**: React Activity renderer with retained tab frames and reducer-managed loader state.
-- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, tear-off hooks, per-tab presentation, and shared chrome customization slots.
+- **src/components/tab-renderer.tsx**: Overlaid retained-frame renderer with optional `useTabFrameActive()` state, React Activity support for discardable routes, and reducer-managed loader state.
+- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, and shared chrome customization slots.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
 - **src/debug.ts**: Debug channel, storage keys, metrics, and snapshot utilities.
 - **src/cn.ts**: Package-local class name merge helper.
 - **src/__tests__/store.test.ts**: Store lifecycle and history tests.
-- **src/__tests__/renderer-lifecycle.test.tsx**: React Activity renderer lifecycle tests.
+- **src/__tests__/renderer-lifecycle.test.tsx**: Retained renderer lifecycle, active-state, Suspense fallback, and discardable Activity tests.
+- **src/__tests__/runtime-stress-harness.tsx**: Browser-only retained renderer stress harness for collecting frame, commit, lifecycle, and fallback metrics.
 - **src/__tests__/tab-link.test.tsx**: Link href and tab navigation gesture tests.
 - **src/__tests__/use-tab-navigation.test.tsx**: Hook tests for current-tab and new-tab navigation helpers.
 - **src/__tests__/url-sync.test.ts**: Browser history and `popstate` URL sync tests.
 - **src/__tests__/persisted-contexts.test.ts**: Persisted context repair tests.
-- **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility, drag cleanup, and tear-off trigger tests.
+- **src/__tests__/tab-bar.test.tsx**: Tab bar accessibility, drag cleanup, and release-only tear-off trigger tests.
 - **src/__tests__/cross-window-sync.test.ts**: Cross-window store synchronization and remote storage repair tests.
 
 ## Migration Notes
