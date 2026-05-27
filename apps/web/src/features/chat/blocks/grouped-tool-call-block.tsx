@@ -21,13 +21,12 @@ import { m } from 'motion/react'
 import type { ComponentType } from 'react'
 import { useState } from 'react'
 
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
 import { hasTerminalDetails } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall } from '../tool-ui-classifier'
-import { TerminalExecutionDetails } from './tool-call-block'
+import { LazyTooltip, TerminalExecutionDetails } from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
 
@@ -81,27 +80,27 @@ function getOverallState(items: ToolCallItem[]): ToolState {
   return 'output-available'
 }
 
-function ItemStatusIcon({ state }: { state: ToolState }) {
+function ItemStatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
   if (state === 'output-error' || state === 'output-denied') {
     return <CircleAlertIcon className="size-3 text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
     return <CheckCircle2Icon className="size-3 text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className={cn('size-3 text-muted-foreground/60', 'animate-pulse')} aria-hidden />
+  return <ClockIcon className={cn('size-3 text-muted-foreground/60', animated && 'animate-pulse')} aria-hidden />
 }
 
-function OverallStatusIcon({ state }: { state: ToolState }) {
+function OverallStatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
   if (state === 'output-error' || state === 'output-denied') {
     return <CircleAlertIcon className="size-3.5 text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
     return <CheckCircle2Icon className="size-3.5 text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className="size-3.5 animate-pulse text-amber-500 dark:text-amber-400" aria-hidden />
+  return <ClockIcon className={cn('size-3.5 text-amber-500 dark:text-amber-400', animated && 'animate-pulse')} aria-hidden />
 }
 
-export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[], uiKind: ToolUiKind }) {
+export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items: ToolCallItem[], uiKind: ToolUiKind, animated?: boolean }) {
   const firstDescriptor = describeToolCall(items[0].part)
   const Icon = TOOL_ICON_MAP[uiKind]
   const overallState = getOverallState(items)
@@ -128,13 +127,8 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
     })
   }
 
-  return (
-    <m.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-      className="py-1.5"
-    >
+  const content = (
+    <>
       {/* Group header card */}
       <div className={cn(
         'overflow-hidden mx-1 -px-1 rounded-lg bg-card ring-1 ring-border',
@@ -155,15 +149,19 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
           <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
             {items.length}
           </span>
-          <OverallStatusIcon state={overallState} />
+          <OverallStatusIcon state={overallState} animated={animated} />
         </div>
         {isRunning && (
           <div className="h-px overflow-hidden bg-muted">
-            <m.div
-              className="h-full w-1/3 rounded-full bg-muted-foreground/25"
-              animate={{ x: ['-100%', '400%'] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-            />
+            {animated
+              ? (
+                  <m.div
+                    className="h-full w-1/3 rounded-full bg-muted-foreground/25"
+                    animate={{ x: ['-100%', '400%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                  />
+                )
+              : <div className="h-full w-1/3 rounded-full bg-muted-foreground/25" />}
           </div>
         )}
       </div>
@@ -200,25 +198,37 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
                 {expandable && (
                   <ChevronRightIcon
                     className={cn(
-                      'size-3 shrink-0 text-muted-foreground/40 transition-transform duration-200',
+                      'size-3 shrink-0 text-muted-foreground/40',
+                      animated && 'transition-transform duration-200',
                       expanded && 'rotate-90',
                     )}
                     aria-hidden
                   />
                 )}
-                <Tooltip delayDuration={600}>
-                  <TooltipTrigger asChild>
-                    <span className="min-w-0 flex-1 cursor-default truncate font-mono text-foreground/70">
-                      {label}
-                    </span>
-                  </TooltipTrigger>
-                  {descriptor.target && (
-                    <TooltipContent side="bottom" className="font-mono text-[11px]">
-                      {descriptor.target}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-                <ItemStatusIcon state={item.part.state} />
+                {animated && descriptor.target
+                  ? (
+                      <LazyTooltip
+                        delayDuration={600}
+                        side="bottom"
+                        content={descriptor.target}
+                        contentClassName="font-mono text-[11px]"
+                        title={descriptor.target}
+                      >
+                        <span className="min-w-0 flex-1 cursor-default truncate font-mono text-foreground/70">
+                          {label}
+                        </span>
+                      </LazyTooltip>
+                    )
+                  : (
+                      <span className={cn(
+                        'min-w-0 flex-1 cursor-default font-mono text-foreground/70',
+                        animated ? 'truncate' : 'whitespace-normal break-all',
+                      )}
+                      >
+                        {label}
+                      </span>
+                    )}
+                <ItemStatusIcon state={item.part.state} animated={animated} />
               </button>
               {expandable && expanded && (
                 <div className="mt-1 pr-1.5">
@@ -234,6 +244,21 @@ export function GroupedToolCallBlock({ items, uiKind }: { items: ToolCallItem[],
           )
         })}
       </div>
+    </>
+  )
+
+  if (!animated) {
+    return <div className="py-1.5">{content}</div>
+  }
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+      className="py-1.5"
+    >
+      {content}
     </m.div>
   )
 }

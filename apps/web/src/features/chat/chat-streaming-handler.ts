@@ -37,6 +37,7 @@ export class ChatStreamingHandler {
       })
       return
     }
+    this.appendLocalPlaceholder()
     store.startGeneration(this.sessionId, this.messageId, controller)
   }
 
@@ -66,6 +67,9 @@ export class ChatStreamingHandler {
     const messageId = this.activeMessageId ?? this.messageId
     const store = useChatStore.getState()
     store.finishGeneration(messageId)
+    if (this.mode === 'local' && this.activeMessageId === null) {
+      store.removeMessage(this.sessionId, this.messageId)
+    }
     if (this.mode === 'passive') {
       store.setPassiveStreamingMessage(this.sessionId, messageId, false)
       store.setSessionMeta(this.sessionId, { passiveStatus: 'idle' })
@@ -88,6 +92,19 @@ export class ChatStreamingHandler {
 
   dispose(): void {}
 
+  private appendLocalPlaceholder(): void {
+    const store = useChatStore.getState()
+    const existing = store.messagesMap.get(this.sessionId)?.some(message => message.id === this.messageId) ?? false
+    if (existing) {
+      return
+    }
+    store.appendMessage(this.sessionId, {
+      id: this.messageId,
+      role: 'assistant',
+      parts: [],
+    })
+  }
+
   private applyMessageSnapshot(message: UIMessage): void {
     const receivedAtMs = performance.now()
     this.activateServerMessage(message.id)
@@ -106,7 +123,18 @@ export class ChatStreamingHandler {
 
     const store = useChatStore.getState()
     const existing = store.messagesMap.get(this.sessionId)?.some(message => message.id === messageId) ?? false
-    if (!existing) {
+    const canReplaceLocalPlaceholder = this.mode === 'local'
+      && this.activeMessageId === null
+      && !existing
+      && (store.messagesMap.get(this.sessionId)?.some(message => message.id === this.messageId) ?? false)
+
+    if (canReplaceLocalPlaceholder) {
+      store.updateMessage(this.sessionId, this.messageId, message => ({
+        ...message,
+        id: messageId,
+      }))
+    }
+    else if (!existing) {
       store.appendMessage(this.sessionId, {
         id: messageId,
         role: 'assistant',
@@ -114,7 +142,7 @@ export class ChatStreamingHandler {
       })
     }
 
-    if (this.activeMessageId === null) {
+    if (this.activeMessageId === null && messageId !== this.messageId) {
       if (this.mode === 'passive') {
         store.moveRunDisplayMeta(this.messageId, messageId)
         store.setPassiveStreamingMessage(this.sessionId, this.messageId, false)

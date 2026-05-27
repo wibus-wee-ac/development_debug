@@ -1,5 +1,5 @@
 // Output: Chat-owned PNG export dialog for sharing a full session or selected messages.
-// Input: UIMessage arrays rendered by ChatView.
+// Input: Chat session id and UI messages read at the export boundary.
 // Position: Feature UI that owns conversation-share presentation and DOM-to-PNG export.
 
 import type { UIMessage } from 'ai'
@@ -20,6 +20,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { MessageBubble } from './message-bubble'
 
@@ -27,7 +28,6 @@ type ExportScope = 'all' | 'selected'
 
 interface ChatShareExportProps {
   sessionId: string | null
-  messages: UIMessage[]
   disabled?: boolean
 }
 
@@ -37,6 +37,7 @@ const MAX_CANVAS_SIZE = 32_767
 const WHITESPACE_RE = /\s+/g
 const FILENAME_TIMESTAMP_RE = /[:.]/g
 const TRANSPARENT_COLOR_RE = /^rgba\(0,\s*0,\s*0,\s*0\)$/i
+const EMPTY_MESSAGES: UIMessage[] = []
 
 function formatRole(role: UIMessage['role']): string {
   switch (role) {
@@ -138,12 +139,14 @@ async function copyPngDataUrl(dataUrl: string): Promise<void> {
   ])
 }
 
-export function ChatShareExport({ sessionId, messages, disabled }: ChatShareExportProps) {
+export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
   const [open, setOpen] = useState(false)
   const [scope, setScope] = useState<ExportScope>('all')
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => new Set())
   const [busyAction, setBusyAction] = useState<'download' | 'copy' | null>(null)
   const exportSurfaceRef = useRef<HTMLDivElement>(null)
+  const messageCount = useChatStore(chatSelectors.messageCount(sessionId ?? ''))
+  const messages = useChatStore(open ? chatSelectors.messages(sessionId ?? '') : () => EMPTY_MESSAGES)
 
   const exportMessages = useMemo(() => {
     if (scope === 'all') {
@@ -259,7 +262,7 @@ export function ChatShareExport({ sessionId, messages, disabled }: ChatShareExpo
             type="button"
             variant="ghost"
             size="icon-sm"
-            disabled={disabled || messages.length === 0}
+            disabled={disabled || messageCount === 0}
             onClick={() => setOpen(true)}
             aria-label="Export conversation PNG"
             data-testid="chat-share-export-open"

@@ -18,6 +18,7 @@ import type {
   ResumeChatSessionInput,
   RuntimeSession,
   RuntimeSlashCommand,
+  SetPermissionModeInput,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
@@ -201,7 +202,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
         })
 
         const result = await mapClaudeAgentMessageToChunks(message, mapperState)
-        mapperState.assistantStarted = result.assistantStarted
 
         recordChatStreamTrace({
           chatSessionId: input.runtimeSession.chatSessionId,
@@ -215,7 +215,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
             chunks: result.chunks,
             sessionId: result.sessionId ?? null,
             usage: result.usage ?? null,
-            assistantStarted: result.assistantStarted,
+            assistantStarted: mapperState.assistantStarted,
           },
         })
 
@@ -297,6 +297,15 @@ export class ClaudeAgentProvider implements ChatRuntime {
     entry.query.close()
     entry.inputStream.close()
     this.releaseQuery(sessionId, entry)
+  }
+
+  async setPermissionMode(input: SetPermissionModeInput): Promise<void> {
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeQueries.get(sessionId)
+    if (!entry) {
+      return
+    }
+    entry.query.setPermissionMode(input.mode)
   }
 }
 

@@ -42,6 +42,7 @@ interface WebContentsScriptState {
   documentStartScripts: Map<string, RegisteredDocumentStartScript>
   deferredScripts: Map<string, BrowserTabScript>
   listenersBound: boolean
+  listenerDisposers: Array<() => void>
 }
 
 const stateByWebContentsId = new Map<number, WebContentsScriptState>()
@@ -64,10 +65,22 @@ function readScriptState(webContentsId: number): WebContentsScriptState {
       documentStartScripts: new Map(),
       deferredScripts: new Map(),
       listenersBound: false,
+      listenerDisposers: [],
     }
     stateByWebContentsId.set(webContentsId, state)
   }
   return state
+}
+
+function isMissingDocumentStartScriptError(error: unknown): boolean {
+  return error instanceof Error && error.message.includes('Script not found')
+}
+
+function disposeScriptStateListeners(state: WebContentsScriptState): void {
+  for (const dispose of state.listenerDisposers.splice(0)) {
+    dispose()
+  }
+  state.listenersBound = false
 }
 
 function prepareDebuggerSession(wc: Electron.WebContents): void {
@@ -114,10 +127,19 @@ async function removeDocumentStartScript(
   }
 
   prepareDebuggerSession(wc)
-  await wc.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', {
-    identifier: current.identifier,
-  })
-  state.documentStartScripts.delete(scriptId)
+  try {
+    await wc.debugger.sendCommand('Page.removeScriptToEvaluateOnNewDocument', {
+      identifier: current.identifier,
+    })
+  }
+  catch (error) {
+    if (!isMissingDocumentStartScriptError(error)) {
+      throw error
+    }
+  }
+  finally {
+    state.documentStartScripts.delete(scriptId)
+  }
 }
 
 async function runScript(wc: Electron.WebContents, script: BrowserTabScript): Promise<unknown> {
@@ -134,7 +156,7 @@ function bindDeferredScriptListeners(
   }
   state.listenersBound = true
 
-  wc.on('dom-ready', () => {
+  const handleDomReady = () => {
     const currentState = stateByWebContentsId.get(webContentsId)
     if (!currentState || wc.isDestroyed()) {
       return
@@ -147,9 +169,9 @@ function bindDeferredScriptListeners(
         console.warn(`[browser-tab-scripts] document-end script ${script.id} failed:`, error)
       })
     }
-  })
+  }
 
-  wc.on('did-finish-load', () => {
+  const handleDidFinishLoad = () => {
     const currentState = stateByWebContentsId.get(webContentsId)
     if (!currentState || wc.isDestroyed()) {
       return
@@ -162,11 +184,21 @@ function bindDeferredScriptListeners(
         console.warn(`[browser-tab-scripts] document-idle script ${script.id} failed:`, error)
       })
     }
-  })
+  }
 
-  wc.once('destroyed', () => {
+  const handleDestroyed = () => {
+    disposeScriptStateListeners(state)
     stateByWebContentsId.delete(webContentsId)
-  })
+  }
+
+  wc.on('dom-ready', handleDomReady)
+  wc.on('did-finish-load', handleDidFinishLoad)
+  wc.once('destroyed', handleDestroyed)
+  state.listenerDisposers.push(
+    () => wc.removeListener('dom-ready', handleDomReady),
+    () => wc.removeListener('did-finish-load', handleDidFinishLoad),
+    () => wc.removeListener('destroyed', handleDestroyed),
+  )
 }
 
 export class BrowserTabScriptsService extends IpcService {
@@ -218,6 +250,7 @@ export class BrowserTabScriptsService extends IpcService {
     }
     const wc = webContents.fromId(request.webContentsId)
     if (!wc || wc.isDestroyed()) {
+      disposeScriptStateListeners(state)
       stateByWebContentsId.delete(request.webContentsId)
       return
     }
@@ -225,6 +258,7 @@ export class BrowserTabScriptsService extends IpcService {
       await removeDocumentStartScript(wc, state, scriptId)
     }
     state.deferredScripts.clear()
+    disposeScriptStateListeners(state)
     stateByWebContentsId.delete(request.webContentsId)
   }
 }

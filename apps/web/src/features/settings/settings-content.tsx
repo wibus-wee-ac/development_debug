@@ -26,7 +26,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   support: SupportSettings,
 }
 
-const FIXED_HEIGHT_SECTIONS = new Set(['import'])
+const FIXED_HEIGHT_SECTIONS = new Set(['import', 'registry'])
 
 interface SettingsContentProps {
   section: string

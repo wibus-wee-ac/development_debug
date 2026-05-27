@@ -94,6 +94,7 @@ interface ActiveRun {
   modelId: string | null
   chunkBuffer: UIMessageChunk[]
   finalMessage: UIMessage
+  startChunkPublished?: boolean
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
@@ -1806,6 +1807,44 @@ async function tryApplyLiveSteer(input: {
   return toQueueItemDto(updated)
 }
 
+export async function setSessionPermissionMode(input: {
+  sessionId: string
+  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+}): Promise<boolean> {
+  const runId = activeRunIdsBySession.get(input.sessionId)
+  if (!runId) {
+    return false
+  }
+
+  const activeRun = activeRuns.get(runId)
+  if (!activeRun?.runtime.setPermissionMode || activeRun.terminalStatus) {
+    return false
+  }
+
+  const context = getSessionRunContext(input.sessionId)
+  if (!context) {
+    return false
+  }
+
+  try {
+    await activeRun.runtime.setPermissionMode({
+      runtimeSession: activeRun.runtimeSession,
+      profile: context.profile,
+      mode: input.mode,
+    })
+    return true
+  }
+  catch (error) {
+    chatLogger.warn('set permission mode failed', {
+      error,
+      sessionId: input.sessionId,
+      runId,
+      mode: input.mode,
+    })
+    return false
+  }
+}
+
 export function cancelSessionQueueItem(
   sessionId: string,
   queueItemId: string,
@@ -1975,6 +2014,12 @@ async function executeRun(
         finalChunk = chunk
       }
  else {
+        if (chunk.type === 'start' && activeRun.startChunkPublished) {
+          continue
+        }
+        if (chunk.type !== 'start') {
+          publishRunStartChunk(activeRun)
+        }
         publishUIMessageChunk(activeRun, chunk, false)
       }
     }
@@ -2103,6 +2148,10 @@ function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
 }
 
 function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, terminal: boolean): void {
+  if (chunk.type === 'start') {
+    activeRun.startChunkPublished = true
+  }
+
   recordChatStreamTrace({
     chatSessionId: activeRun.sessionId,
     runId: activeRun.runId,
@@ -2142,7 +2191,15 @@ function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, term
   }
 }
 
+function publishRunStartChunk(activeRun: ActiveRun): void {
+  if (activeRun.startChunkPublished) {
+    return
+  }
+  publishUIMessageChunk(activeRun, { type: 'start', messageId: activeRun.messageId }, false)
+}
+
 async function publishTerminalChunk(activeRun: ActiveRun, chunk: UIMessageChunk): Promise<void> {
+  publishRunStartChunk(activeRun)
   const status = readTerminalStatus(chunk)
   const errorText = chunk.type === 'error' ? chunk.errorText : null
   await finalizeActiveRun(activeRun, status, errorText)

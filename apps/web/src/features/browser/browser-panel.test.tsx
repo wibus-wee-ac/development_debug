@@ -29,17 +29,19 @@ type TestWebviewPrototype = HTMLElement & {
 
 function installTestWebviewPrototype() {
   const prototype = HTMLElement.prototype as TestWebviewPrototype
-  prototype.loadURL ??= vi.fn(() => Promise.resolve())
-  prototype.getWebContentsId ??= vi.fn(() => 1)
-  prototype.goBack ??= vi.fn()
-  prototype.goForward ??= vi.fn()
-  prototype.reload ??= vi.fn()
-  prototype.canGoBack ??= vi.fn(() => false)
-  prototype.canGoForward ??= vi.fn(() => false)
-  prototype.getURL ??= vi.fn(() => 'about:blank')
-  prototype.getTitle ??= vi.fn(() => '')
-  prototype.isLoading ??= vi.fn(() => false)
-  prototype.executeJavaScript ??= vi.fn(() => Promise.resolve(undefined))
+  const loadURL = vi.fn(() => Promise.resolve())
+  prototype.loadURL = loadURL
+  prototype.getWebContentsId = vi.fn(() => 1)
+  prototype.goBack = vi.fn()
+  prototype.goForward = vi.fn()
+  prototype.reload = vi.fn()
+  prototype.canGoBack = vi.fn(() => false)
+  prototype.canGoForward = vi.fn(() => false)
+  prototype.getURL = vi.fn(() => 'about:blank')
+  prototype.getTitle = vi.fn(() => '')
+  prototype.isLoading = vi.fn(() => false)
+  prototype.executeJavaScript = vi.fn(() => Promise.resolve(undefined))
+  return { loadURL }
 }
 
 vi.mock('./workspace-diff-viewer', () => ({
@@ -125,5 +127,41 @@ describe('browserPanel rendering', () => {
     render(<BrowserPanel activeSessionId="session-b" activeSessionTitle="Session B" />)
 
     expect(screen.queryByLabelText(/From /)).toBeNull()
+  })
+
+  it('does not reload a browser webview after unrelated tab state updates', () => {
+    const webview = installTestWebviewPrototype()
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+
+    render(<BrowserPanel />)
+
+    expect(webview.loadURL).toHaveBeenCalledTimes(1)
+    expect(webview.loadURL).toHaveBeenCalledWith('https://example.com')
+
+    act(() => {
+      useBrowserPanelStore.getState().updateTab(tabId, { loading: true })
+    })
+
+    expect(webview.loadURL).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not imperatively reload the initial about blank webview', () => {
+    const webview = installTestWebviewPrototype()
+    useBrowserPanelStore.getState().createTab('about:blank')
+
+    render(<BrowserPanel />)
+
+    expect(webview.loadURL).not.toHaveBeenCalled()
+  })
+
+  it('does not imperatively reload an equivalent current webview URL', () => {
+    const webview = installTestWebviewPrototype()
+    const prototype = HTMLElement.prototype as TestWebviewPrototype
+    prototype.getURL = vi.fn(() => 'https://www.baidu.com/')
+    useBrowserPanelStore.getState().createTab('https://www.baidu.com')
+
+    render(<BrowserPanel />)
+
+    expect(webview.loadURL).not.toHaveBeenCalled()
   })
 })

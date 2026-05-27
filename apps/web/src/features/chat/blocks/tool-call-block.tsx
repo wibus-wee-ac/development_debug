@@ -19,8 +19,8 @@ import {
   SquareTerminalIcon,
 } from 'lucide-react'
 import { m } from 'motion/react'
-import type { ComponentType, KeyboardEvent, ReactNode } from 'react'
-import { Children, useEffect, useMemo, useState } from 'react'
+import type { ComponentType, FocusEvent, KeyboardEvent, PointerEvent, ReactElement, ReactNode } from 'react'
+import { Activity, Children, cloneElement, useEffect, useMemo, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -42,6 +42,7 @@ interface ToolCallBlockProps {
   toolName: string
   toolCallId: string
   state: ToolState
+  animated?: boolean
   approval?: {
     id: string
     approved?: boolean
@@ -682,14 +683,78 @@ function DetailSection({ title, children }: { title: string, children: ReactNode
   )
 }
 
-function StatusIcon({ state }: { state: ToolState }) {
+function StatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
   if (isError(state)) {
     return <CircleAlertIcon className="size-3.5 text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
     return <CheckCircle2Icon className="size-3.5 text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className={cn('size-3.5 text-muted-foreground', isRunning(state) && 'animate-pulse')} aria-hidden />
+  return <ClockIcon className={cn('size-3.5 text-muted-foreground', animated && isRunning(state) && 'animate-pulse')} aria-hidden />
+}
+
+type LazyTooltipTriggerProps = {
+  onPointerEnter?: (event: PointerEvent<HTMLElement>) => void
+  onPointerLeave?: (event: PointerEvent<HTMLElement>) => void
+  onFocus?: (event: FocusEvent<HTMLElement>) => void
+  onBlur?: (event: FocusEvent<HTMLElement>) => void
+  title?: string
+}
+
+export function LazyTooltip({
+  children,
+  content,
+  delayDuration,
+  side,
+  contentClassName,
+  title,
+}: {
+  children: ReactElement<LazyTooltipTriggerProps>
+  content: ReactNode
+  delayDuration?: number
+  side?: React.ComponentProps<typeof TooltipContent>['side']
+  contentClassName?: string
+  title?: string
+}) {
+  const [active, setActive] = useState(false)
+  const [open, setOpen] = useState(false)
+
+  const trigger = cloneElement(children, {
+    title: active ? undefined : title,
+    onPointerEnter: (event: PointerEvent<HTMLElement>) => {
+      children.props.onPointerEnter?.(event)
+      setActive(true)
+      setOpen(true)
+    },
+    onPointerLeave: (event: PointerEvent<HTMLElement>) => {
+      children.props.onPointerLeave?.(event)
+      setOpen(false)
+    },
+    onFocus: (event: FocusEvent<HTMLElement>) => {
+      children.props.onFocus?.(event)
+      setActive(true)
+      setOpen(true)
+    },
+    onBlur: (event: FocusEvent<HTMLElement>) => {
+      children.props.onBlur?.(event)
+      setOpen(false)
+    },
+  })
+
+  if (!active) {
+    return trigger
+  }
+
+  return (
+    <Tooltip open={open} onOpenChange={setOpen} delayDuration={delayDuration}>
+      <TooltipTrigger asChild>
+        {trigger}
+      </TooltipTrigger>
+      <TooltipContent side={side} className={contentClassName}>
+        {content}
+      </TooltipContent>
+    </Tooltip>
+  )
 }
 
 function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output: ToolPayload, errorText?: string): boolean {
@@ -717,7 +782,7 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, approval, argumentsText, input, output, errorText, onApprovalResponse, children }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, onApprovalResponse, children }: ToolCallBlockProps) {
   const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
   const outputPayload = useMemo(() => readToolPayload(output), [output])
   const descriptor = useMemo(() => {
@@ -740,12 +805,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, approval, arguments
     || outputPayload.backgroundTaskId !== null
     || readTerminalOutputSections(outputPayload, errorText).length > 0
   )
-  const hasChildren = Children.toArray(children).length > 0
+  const hasChildren = Children.count(children) > 0
   const expandable = hasTerminalPanel || hasChildren
   const [expanded, setExpanded] = useState(() => isError(state) && hasTerminalPanel)
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
+  const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
 
   useEffect(() => {
     if (errored && hasTerminalPanel) {
@@ -769,16 +835,8 @@ export function ToolCallBlock({ toolName, toolCallId, state, approval, arguments
     }
   }
 
-  return (
-    <m.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
-      className="py-1.5"
-      data-testid={`chat-tool-call-${toolCallId}`}
-      data-tool-name={toolName}
-      data-tool-kind={descriptor.kind}
-    >
+  const frameContent = (
+    <>
       <div
         className={cn(
           'overflow-hidden rounded-lg mx-1 -px-1 bg-card border-border border',
@@ -806,62 +864,97 @@ export function ToolCallBlock({ toolName, toolCallId, state, approval, arguments
             {descriptor.title}
           </span>
           {(descriptor.target || descriptor.summary) && (
-            <span className="flex min-w-0 max-w-48 shrink-0 items-center gap-1 text-[11px] text-muted-foreground/50">
-              {descriptor.target && (
-                <Tooltip delayDuration={600}>
-                  <TooltipTrigger asChild>
-                    <span className="cursor-default truncate font-mono">
+            <span className={cn(
+              'flex min-w-0 shrink-0 items-center gap-1 text-[11px] text-muted-foreground/50',
+              animated ? 'max-w-48' : 'max-w-none flex-wrap justify-end text-right',
+            )}
+            >
+              {descriptor.target && (animated
+                ? (
+                    <LazyTooltip
+                      delayDuration={600}
+                      side="bottom"
+                      content={descriptor.target}
+                      contentClassName="font-mono text-[11px]"
+                      title={descriptor.target}
+                    >
+                      <span className="cursor-default truncate font-mono">
+                        {descriptor.kind === 'terminal' ? descriptor.target : basename(descriptor.target)}
+                      </span>
+                    </LazyTooltip>
+                  )
+                : (
+                    <span className="cursor-default break-all font-mono">
                       {descriptor.kind === 'terminal' ? descriptor.target : basename(descriptor.target)}
                     </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom" className="font-mono text-[11px]">{descriptor.target}</TooltipContent>
-                </Tooltip>
-              )}
+                  ))}
               {descriptor.summary && descriptor.target && (
                 <span className="text-muted-foreground/30">·</span>
               )}
               {descriptor.summary && (
-                <span className="truncate">{descriptor.summary}</span>
+                <span className={cn(animated ? 'truncate' : 'whitespace-normal break-words')}>{descriptor.summary}</span>
               )}
             </span>
           )}
           {expandable && (
             <ChevronDownIcon
               className={cn(
-                'size-3 shrink-0 text-muted-foreground/40 transition-transform duration-200',
+                'size-3 shrink-0 text-muted-foreground/40',
+                animated && 'transition-transform duration-200',
                 expanded && 'rotate-180',
               )}
               aria-hidden
             />
           )}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={cn(
-                'flex shrink-0 items-center',
-                isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
-                (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
+          {animated
+            ? (
+                <LazyTooltip
+                  content={(
+                    <>
+                      {descriptor.displayName}
+                      {' '}
+                      ·
+                      {' '}
+                      {STATUS_LABELS[state]}
+                    </>
+                  )}
+                  title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
+                >
+                  <span className={cn(
+                    'flex shrink-0 items-center',
+                    isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
+                    (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
+                  )}
+                  >
+                    <StatusIcon state={state} animated={animated} />
+                  </span>
+                </LazyTooltip>
+              )
+            : (
+                <span
+                  className={cn(
+                    'flex shrink-0 items-center',
+                    isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
+                    (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
+                  )}
+                  title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
+                >
+                  <StatusIcon state={state} animated={animated} />
+                </span>
               )}
-              >
-                <StatusIcon state={state} />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              {descriptor.displayName}
-              {' '}
-              ·
-              {' '}
-              {STATUS_LABELS[state]}
-            </TooltipContent>
-          </Tooltip>
         </div>
 
         {running && (
           <div className="h-px overflow-hidden bg-muted">
-            <m.div
-              className="h-full w-1/3 rounded-full bg-muted-foreground/25"
-              animate={{ x: ['-100%', '400%'] }}
-              transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-            />
+            {animated
+              ? (
+                  <m.div
+                    className="h-full w-1/3 rounded-full bg-muted-foreground/25"
+                    animate={{ x: ['-100%', '400%'] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+                  />
+                )
+              : <div className="h-full w-1/3 rounded-full bg-muted-foreground/25" />}
           </div>
         )}
 
@@ -898,9 +991,37 @@ export function ToolCallBlock({ toolName, toolCallId, state, approval, arguments
         )}
       </div>
 
-      {hasChildren && expanded && (
-        <div className={cn('ml-3 mt-0.5  overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
-      )}
+      {hasChildren && (retainNestedActivity
+        ? (
+            <Activity name={`tool:${toolCallId}:nested-activity`} mode={expanded ? 'visible' : 'hidden'}>
+              <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
+            </Activity>
+          )
+        : expanded
+          ? <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
+          : null)}
+    </>
+  )
+
+  const frameProps = {
+    className: 'py-1.5',
+    'data-testid': `chat-tool-call-${toolCallId}`,
+    'data-tool-name': toolName,
+    'data-tool-kind': descriptor.kind,
+  }
+
+  if (!animated) {
+    return <div {...frameProps}>{frameContent}</div>
+  }
+
+  return (
+    <m.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, ease: [0.25, 0.1, 0.25, 1] }}
+      {...frameProps}
+    >
+      {frameContent}
     </m.div>
   )
 }

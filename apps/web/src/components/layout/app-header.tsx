@@ -18,9 +18,10 @@ interface AppHeaderProps {
   hasAside?: boolean
   hasBrowserPanel?: boolean
   hasPanel?: boolean
+  sessionScoped?: boolean
 }
 
-export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel = false }: AppHeaderProps) {
+export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel = false, sessionScoped = false }: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
   const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
@@ -119,9 +120,9 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
       <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
         <TabBar
           className="h-full"
-          onNewTab={handleNewTab}
+          onNewTab={sessionScoped ? undefined : handleNewTab}
           onTabActivated={handleTabActivated}
-          onTabTearOff={handleTabTearOff}
+          onTabTearOff={sessionScoped ? undefined : handleTabTearOff}
           customization={tabBarCustomization}
           tabPresentation={tabPresentation}
         />

@@ -53,14 +53,13 @@ export function deriveActiveLayoutContract({
     const activeSlots = sessionId && slots.asideSessionId === sessionId ? slots : {}
     const workspaceId = sessionLayout?.workspaceId ?? activeSlots.asideWorkspaceId ?? null
     const hasWorkspace = !!workspaceId
-    const hasInteractiveWorkspace = hasWorkspace && sessionLayout?.runtimeKind !== 'cli-tui'
 
     return {
       asideSessionId: sessionId,
       asideWorkspaceId: workspaceId,
       hasAside: true,
-      hasBrowserPanel: deriveCapability(hasInteractiveWorkspace, activeSlots.hasBrowserPanel, explicitHasBrowserPanel),
-      hasPanel: deriveCapability(hasInteractiveWorkspace, activeSlots.hasPanel, explicitHasPanel),
+      hasBrowserPanel: deriveCapability(hasWorkspace, activeSlots.hasBrowserPanel, explicitHasBrowserPanel),
+      hasPanel: deriveCapability(hasWorkspace, activeSlots.hasPanel, explicitHasPanel),
       panel: activeSlots.panel ?? explicitPanel,
     }
   }

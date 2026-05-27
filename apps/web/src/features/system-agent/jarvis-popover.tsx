@@ -19,6 +19,7 @@ import { Switch } from '~/components/ui/switch'
 import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
+import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { projectJarvisMessageForDisplay } from './display-context'
 import {
@@ -79,13 +80,14 @@ export function JarvisPopover({
   }, [])
 
   const {
-    messages,
+    messageCount,
     status,
     error,
     sendMessage,
     stop,
     isReady: chatReady,
   } = useChatSession(activeSessionId)
+  const messages = useChatStore(chatSelectors.messages(activeSessionId ?? ''))
   const isStreaming = status === 'streaming'
   const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
   const displayMessages = React.useMemo(
@@ -128,7 +130,6 @@ export function JarvisPopover({
   }, [open, onOpenChange, jarvisExpanded, setJarvisExpanded])
 
   // Auto-scroll on new messages
-  const messageCount = messages.length
   const lastPartCount = messages.at(-1)?.parts?.length ?? 0
   React.useEffect(() => {
     if (viewportRef.current) {

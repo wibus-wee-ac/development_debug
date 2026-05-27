@@ -88,6 +88,21 @@ describe('ChatStreamingHandler', () => {
     expect(useChatStore.getState().passiveStreamingMessageIds.has('assistant-1')).toBe(false)
   })
 
+  it('keeps a local placeholder streaming when a provider stream omits the start chunk', async () => {
+    const controller = new AbortController()
+    const handler = new ChatStreamingHandler('session-1', 'assistant-temp', 0)
+    handler.start(controller)
+
+    await handler.consume(chunkStream([
+      { type: 'reasoning-start', id: 'thinking-1' },
+      { type: 'reasoning-delta', id: 'thinking-1', delta: 'working' },
+    ]))
+
+    const state = useChatStore.getState()
+    expect(state.generatingMessageIds.has('assistant-temp')).toBe(true)
+    expect(state.runDisplayMetaMap.get('assistant-temp')?.completedAtMs).toBeNull()
+  })
+
   it('marks a passive session failed when replay stream errors', () => {
     useChatStore.getState().setMessages('session-1', [{
       id: 'assistant-1',

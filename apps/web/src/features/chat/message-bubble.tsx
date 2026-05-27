@@ -185,11 +185,11 @@ function renderSubagentItem(
       return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
     case 'tool-call': {
       return (
-        <ToolCallBlockFromStore key={item.key} toolCallId={item.toolCallId} />
+        <ToolCallBlockFromStore key={item.key} toolCallId={item.toolCallId} animated={false} />
       )
     }
     case 'tool-group':
-      return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} />
+      return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} animated={false} />
     case 'file-attachment':
       return <FileAttachmentBlock key={item.key} part={item.part} />
     default:
@@ -197,14 +197,10 @@ function renderSubagentItem(
   }
 }
 
-function renderSubagentMessage(
-  message: UIMessage,
-  isStreaming: boolean,
-  streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean },
-) {
-  const groupedParts = groupMessageParts({
-    parts: message.parts,
-    messageId: message.id,
+function groupSubagentMessageParts(messageId: string, parts: UIMessage['parts']) {
+  return groupMessageParts({
+    parts,
+    messageId,
     describeToolKind: (toolCallId) => {
       const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
       if (!tool) {
@@ -222,6 +218,28 @@ function renderSubagentMessage(
       }).kind
     },
   })
+}
+
+function SubagentMessageContent({
+  message,
+  isStreaming,
+  animationPreset,
+  animateMode,
+  showCursor,
+}: {
+  message: UIMessage
+  isStreaming: boolean
+  animationPreset: string
+  animateMode: 'char' | 'word'
+  showCursor: boolean
+}) {
+  const groupedParts = groupSubagentMessageParts(message.id, message.parts)
+  const streamdownSettings = {
+    animationPreset,
+    animateMode,
+    showCursor,
+  }
+
   return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, streamdownSettings))
 }
 
@@ -278,10 +296,12 @@ function ToolCallBlockFromStore({
   toolCallId,
   onToolApprovalResponse,
   children,
+  animated,
 }: {
   toolCallId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   children?: React.ReactNode
+  animated?: boolean
 }) {
   const tool = useChatStore(chatSelectors.toolEntity(toolCallId))
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
@@ -301,6 +321,7 @@ function ToolCallBlockFromStore({
       input={tool.input}
       output={tool.output}
       errorText={tool.errorText}
+      animated={animated}
       onApprovalResponse={tool.approval && onToolApprovalResponse
         ? approval => onToolApprovalResponse({
             messageId: tool.messageId,
@@ -310,7 +331,15 @@ function ToolCallBlockFromStore({
         : undefined}
     >
       {subagentMessage
-        ? renderSubagentMessage(subagentMessage, tool.preliminary === true, { animationPreset, animateMode, showCursor })
+        ? (
+            <SubagentMessageContent
+              message={subagentMessage}
+              isStreaming={tool.preliminary === true}
+              animationPreset={animationPreset}
+              animateMode={animateMode}
+              showCursor={showCursor}
+            />
+          )
         : null}
       {children}
     </ToolCallBlock>
@@ -320,9 +349,11 @@ function ToolCallBlockFromStore({
 function GroupedToolCallBlockFromStore({
   items,
   uiKind,
+  animated,
 }: {
   items: Array<{ key: string, messageId: string, toolCallId: string }>
   uiKind: ReturnType<typeof describeToolCall>['kind']
+  animated?: boolean
 }) {
   const selectedToolState = useChatStore(useShallow(state =>
     items.map(item => state.toolEntitiesMap.get(item.toolCallId))))
@@ -351,7 +382,7 @@ function GroupedToolCallBlockFromStore({
     return null
   }
 
-  return <GroupedToolCallBlock items={tools} uiKind={uiKind} />
+  return <GroupedToolCallBlock items={tools} uiKind={uiKind} animated={animated} />
 }
 
 function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
@@ -419,6 +450,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     () => isStreaming ? null : splitExecutionPhase(groupedItems),
     [groupedItems, isStreaming],
   )
+  const showThinkingPlaceholder = isAssistant && isStreaming && (groupedItems.length === 0 || streamTextIdle)
 
   useEffect(() => {
     return () => {
@@ -546,7 +578,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
           )}
         >
           {renderContent()}
-          {isAssistant && isStreaming && streamTextIdle && <ThinkingPlaceholder />}
+          {showThinkingPlaceholder && <ThinkingPlaceholder />}
         </div>
 
         {isAssistant && <RunDebugCaption messageId={message.id} />}

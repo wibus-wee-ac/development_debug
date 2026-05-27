@@ -88,6 +88,12 @@ export interface GetCapabilitiesInput {
   systemPrompt?: string
 }
 
+export interface SetPermissionModeInput {
+  runtimeSession: RuntimeSession
+  profile: RuntimeProviderTargetProfile
+  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+}
+
 export interface TokenUsage {
   promptTokens: number
   completionTokens: number
@@ -108,4 +114,5 @@ export interface ChatRuntime {
   streamTurn: (input: StreamTurnInput) => AsyncGenerator<UIMessageChunk, void, void>
   steerTurn?: (input: SteerTurnInput) => Promise<void>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
+  setPermissionMode?: (input: SetPermissionModeInput) => Promise<void>
 }

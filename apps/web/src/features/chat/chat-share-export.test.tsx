@@ -9,6 +9,7 @@ import type { UIMessage } from 'ai'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { useChatStore } from '~/store/chat'
 
 import { ChatShareExport } from './chat-share-export'
 
@@ -65,12 +66,14 @@ beforeAll(() => {
 afterEach(() => {
   cleanup()
   domToPngMock.mockClear()
+  useChatStore.getState().clearSession('session-export-test')
 })
 
 function renderShareExport() {
+  useChatStore.getState().setMessages('session-export-test', messages)
   render(
     <TooltipProvider>
-      <ChatShareExport sessionId="session-export-test" messages={messages} />
+      <ChatShareExport sessionId="session-export-test" />
     </TooltipProvider>,
   )
 
@@ -81,12 +84,13 @@ function renderShareExport() {
 describe('chat share export', () => {
   it('previews all current session messages by default', () => {
     const surface = renderShareExport()
+    const exportedMessages = surface.getAllByTestId('exported-message')
 
-    expect(surface.getAllByTestId('exported-message')).toHaveLength(3)
+    expect(exportedMessages).toHaveLength(3)
     expect(surface.queryByText('execution-open')).toBeNull()
-    expect(surface.getByText('First user message')).toBeTruthy()
-    expect(surface.getByText('Assistant reply')).toBeTruthy()
-    expect(surface.getByText('Second user message')).toBeTruthy()
+    expect(exportedMessages[0].textContent).toContain('First user message')
+    expect(exportedMessages[1].textContent).toContain('Assistant reply')
+    expect(exportedMessages[2].textContent).toContain('Second user message')
   })
 
   it('previews only selected messages in selected scope', () => {

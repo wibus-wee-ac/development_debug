@@ -32,6 +32,19 @@ interface AppServerItem {
   arguments?: unknown
   result?: { content?: unknown } | null
   error?: { message?: string } | null
+  // dynamicToolCall fields
+  namespace?: string | null
+  success?: boolean | null
+  contentItems?: Array<{ type: string; text?: string; imageUrl?: string }> | null
+  // collabAgentToolCall fields
+  senderThreadId?: string
+  receiverThreadIds?: string[]
+  agentsStates?: Record<string, { status: string; message?: string | null }>
+  prompt?: string | null
+  model?: string | null
+  // webSearch fields
+  query?: string
+  action?: { type: string; query?: string | null; url?: string | null; pattern?: string | null } | null
 }
 
 interface ItemNotificationParams {
@@ -124,6 +137,45 @@ function mapStartedItem(item: AppServerItem | null, state: CodexAppServerMapperS
         { type: 'tool-input-start', toolCallId: item.id, toolName: `${item.server ?? 'mcp'}/${item.tool ?? 'tool'}` },
         ...(item.arguments ? [{ type: 'tool-input-available' as const, toolCallId: item.id, toolName: `${item.server ?? 'mcp'}/${item.tool ?? 'tool'}`, input: item.arguments }] : []),
       ]
+    case 'dynamicToolCall': {
+      const toolName = item.namespace ? `${item.namespace}/${item.tool ?? 'tool'}` : (item.tool ?? 'dynamic_tool')
+      return [
+        ...closeOpenAgentMessageSegments(state),
+        { type: 'tool-input-start', toolCallId: item.id, toolName },
+        { type: 'tool-input-available', toolCallId: item.id, toolName, input: item.arguments ?? {} },
+      ]
+    }
+    case 'collabAgentToolCall': {
+      const toolName = item.tool ?? 'collab_agent'
+      return [
+        ...closeOpenAgentMessageSegments(state),
+        { type: 'tool-input-start', toolCallId: item.id, toolName },
+        {
+          type: 'tool-input-available',
+          toolCallId: item.id,
+          toolName,
+          input: {
+            tool: item.tool,
+            prompt: item.prompt,
+            model: item.model,
+            senderThreadId: item.senderThreadId,
+            receiverThreadIds: item.receiverThreadIds,
+          },
+        },
+      ]
+    }
+    case 'webSearch':
+      return [
+        ...closeOpenAgentMessageSegments(state),
+        { type: 'tool-input-start', toolCallId: item.id, toolName: 'web_search' },
+        { type: 'tool-input-available', toolCallId: item.id, toolName: 'web_search', input: { query: item.query ?? '', action: item.action } },
+      ]
+    case 'plan':
+      return [
+        ...closeOpenAgentMessageSegments(state),
+        { type: 'tool-input-start', toolCallId: item.id, toolName: 'plan' },
+        { type: 'tool-input-available', toolCallId: item.id, toolName: 'plan', input: { text: item.text ?? '' } },
+      ]
     default:
       return []
   }
@@ -155,6 +207,42 @@ function mapCompletedItem(item: AppServerItem | null, state: CodexAppServerMappe
         return [{ type: 'tool-output-error', toolCallId: item.id, errorText: item.error.message }]
       }
       return [{ type: 'tool-output-available', toolCallId: item.id, output: item.result?.content ? JSON.stringify(item.result.content) : '' }]
+    case 'dynamicToolCall':
+      if (item.status === 'failed') {
+        return [{ type: 'tool-output-error', toolCallId: item.id, errorText: item.error?.message ?? 'Dynamic tool call failed' }]
+      }
+      return [{
+        type: 'tool-output-available',
+        toolCallId: item.id,
+        output: item.contentItems
+          ? JSON.stringify(item.contentItems)
+          : item.success === false
+            ? 'Tool call failed'
+            : '',
+      }]
+    case 'collabAgentToolCall':
+      return [{
+        type: 'tool-output-available',
+        toolCallId: item.id,
+        output: JSON.stringify({
+          tool: item.tool,
+          status: item.status,
+          agentsStates: item.agentsStates,
+          receiverThreadIds: item.receiverThreadIds,
+        }),
+      }]
+    case 'webSearch':
+      return [{
+        type: 'tool-output-available',
+        toolCallId: item.id,
+        output: JSON.stringify({ query: item.query, action: item.action }),
+      }]
+    case 'plan':
+      return [{
+        type: 'tool-output-available',
+        toolCallId: item.id,
+        output: JSON.stringify({ plan: item.text }),
+      }]
     default:
       return []
   }

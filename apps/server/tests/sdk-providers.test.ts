@@ -875,6 +875,67 @@ describe('sdk-backed providers in unified chat runtime', () => {
 })
 
 describe('claude-agent mapper: input_json_delta streaming', () => {
+  it('keeps subagent text projection isolated from the parent assistant stream', async () => {
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+
+    const state: MapperState = {
+      textItemId: 'parent-text-1',
+      assistantStarted: false,
+      hadToolCallSinceLastText: false,
+      emittedTextByTextItemId: new Map(),
+      emittedToolStateByToolCallId: new Map(),
+      activeToolBlockIds: new Map(),
+      subagentStreams: new Map(),
+    }
+
+    const subagentResult = await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'sess-1',
+      parent_tool_use_id: 'toolu_parent',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Child text' }],
+      },
+    } as any, state)
+
+    expect(subagentResult.chunks).toEqual([
+      expect.objectContaining({
+        type: 'tool-output-available',
+        toolCallId: 'toolu_parent',
+        preliminary: true,
+      }),
+    ])
+    expect(state.assistantStarted).toBe(false)
+    expect(state.emittedTextByTextItemId.size).toBe(0)
+
+    const parentDelta = await mapClaudeAgentMessageToChunks({
+      type: 'stream_event',
+      session_id: 'sess-1',
+      event: {
+        type: 'content_block_delta',
+        index: 0,
+        delta: { type: 'text_delta', text: 'Parent text' },
+      },
+    } as any, state)
+
+    expect(parentDelta.chunks).toEqual([
+      { type: 'text-start', id: 'parent-text-1' },
+      { type: 'text-delta', id: 'parent-text-1', delta: 'Parent text' },
+    ])
+
+    const parentSnapshot = await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'sess-1',
+      message: {
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Parent text' }],
+      },
+    } as any, state)
+
+    expect(parentSnapshot.chunks).toEqual([])
+  })
+
   it('maps content_block_delta with input_json_delta to tool-input-delta chunks', async () => {
     const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
     type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState

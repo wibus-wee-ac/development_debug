@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart, UIMessage } from 'ai'
 import { lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import {
   getChatSessionsBySessionIdMessagesOptions,
@@ -147,18 +148,16 @@ export function useChatSession(chatSessionId: string | null) {
 
   // ── Selectors (fine-grained subscriptions) ──
 
-  const messages = useChatStore(
-    chatSelectors.messages(chatSessionId ?? ''),
+  const messageIds = useChatStore(
+    useShallow(chatSelectors.messageIds(chatSessionId ?? '')),
   )
   const visibleStatus = useChatStore(
     chatSelectors.visibleStatus(chatSessionId ?? ''),
   )
 
-  // Derive error from the last assistant message
-  const lastAssistantId = useMemo(() => {
-    const last = [...messages].reverse().find(m => m.role === 'assistant')
-    return last?.id
-  }, [messages])
+  const lastAssistantId = useChatStore(
+    chatSelectors.lastAssistantId(chatSessionId ?? ''),
+  )
 
   const lastError = useChatStore(
     lastAssistantId ? chatSelectors.error(lastAssistantId) : () => undefined,
@@ -593,10 +592,12 @@ export function useChatSession(chatSessionId: string | null) {
 
   // ── isReady (always true once hydrated) ──
 
-  const isReady = messages.length > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
+  const messageCount = messageIds.length
+  const isReady = messageCount > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
 
   return {
-    messages,
+    messageIds,
+    messageCount,
     status: visibleStatus,
     error: lastError?.message,
     sendMessage,

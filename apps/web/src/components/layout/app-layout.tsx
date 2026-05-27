@@ -113,21 +113,29 @@ interface AppLayoutProps {
   hasPanel?: boolean
   /** Bottom panel content */
   panel?: ReactNode
+  /** Limit tab chrome actions to the current session window. */
+  sessionScoped?: boolean
   /** Show the main-window footer surface. */
   showFooter?: boolean
 }
 
-export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, showFooter = true }: AppLayoutProps) {
+export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, sessionScoped = false, showFooter = true }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
-      <AppLayoutContent hasBrowserPanel={hasBrowserPanel} hasPanel={hasPanel} panel={panel} showFooter={showFooter}>
+      <AppLayoutContent
+        hasBrowserPanel={hasBrowserPanel}
+        hasPanel={hasPanel}
+        panel={panel}
+        sessionScoped={sessionScoped}
+        showFooter={showFooter}
+      >
         {children}
       </AppLayoutContent>
     </LayoutGeometryProvider>
   )
 }
 
-function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFooter = true }: AppLayoutProps) {
+function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionScoped = false, showFooter = true }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
@@ -215,7 +223,12 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, showFoot
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
-      <AppHeader hasAside={resolvedHasAside} hasBrowserPanel={resolvedHasBrowserPanel} hasPanel={resolvedHasPanel} />
+      <AppHeader
+        hasAside={resolvedHasAside}
+        hasBrowserPanel={resolvedHasBrowserPanel}
+        hasPanel={resolvedHasPanel}
+        sessionScoped={sessionScoped}
+      />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden min-h-0">

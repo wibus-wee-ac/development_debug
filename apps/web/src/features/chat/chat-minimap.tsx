@@ -1,13 +1,16 @@
 import type { UIMessage } from 'ai'
 import type { Ref } from 'react'
-import { memo, useCallback, useImperativeHandle, useMemo, useReducer, useRef } from 'react'
+import { memo, useCallback, useImperativeHandle, useReducer, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { cn } from '~/lib/cn'
+import { chatSelectors, useChatStore } from '~/store/chat'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ChatMinimapProps {
-  messages: UIMessage[]
+  sessionId: string | null
+  messageIds: string[]
   scrollHeight: number
   viewportHeight: number
   onScrollToIndex: (index: number) => void
@@ -88,6 +91,24 @@ function extractText(msg: UIMessage): string {
   return texts.join('\n').trim() || (msg.role === 'user' ? '用户消息' : '助手回复')
 }
 
+interface ChatMinimapBarData {
+  role: 'user' | 'assistant'
+  width: number
+  preview: string
+}
+
+function readBarData(message: UIMessage | undefined): ChatMinimapBarData | null {
+  if (!message) {
+    return null
+  }
+  const text = extractText(message)
+  return {
+    role: message.role as 'user' | 'assistant',
+    width: barWidth(text),
+    preview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
+  }
+}
+
 /** Compute bar width — normalized to 50%~100% range */
 function barWidth(text: string): number {
   const normalized = Math.sqrt(Math.min(text.length / 300, 1))
@@ -101,7 +122,8 @@ function clamp01(value: number): number {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 function ChatMinimapInner({
-  messages,
+  sessionId,
+  messageIds,
   scrollHeight,
   viewportHeight,
   onScrollToIndex,
@@ -114,30 +136,17 @@ function ChatMinimapInner({
   const activeIndexRef = useRef(0)
   const [uiState, dispatch] = useReducer(chatMinimapUiReducer, initialChatMinimapUiState)
 
-  // Precompute bar data
-  const bars = useMemo(
-    () => messages.map((msg) => {
-      const text = extractText(msg)
-      return {
-        role: msg.role as 'user' | 'assistant',
-        width: barWidth(text),
-        preview: text.length > 120 ? `${text.slice(0, 120)}…` : text,
-      }
-    }),
-    [messages],
-  )
-
-  const hoveredBar = uiState.hoverIdx !== null ? bars[uiState.hoverIdx] : null
   const scrollable = Math.max(scrollHeight - viewportHeight, 1)
+  const messageCount = messageIds.length
 
   const setScrollProgress = useCallback((progress: number) => {
     const nextProgress = clamp01(progress)
-    const visualPosition = nextProgress * bars.length
-    const activeIndex = nextProgress >= 1 ? bars.length - 1 : Math.floor(visualPosition)
+    const visualPosition = nextProgress * messageCount
+    const activeIndex = nextProgress >= 1 ? messageCount - 1 : Math.floor(visualPosition)
     const activeProgress = nextProgress >= 1 ? 1 : visualPosition - activeIndex
     activeIndexRef.current = Math.max(0, activeIndex)
 
-    for (let index = 0; index < bars.length; index++) {
+    for (let index = 0; index < messageCount; index++) {
       const fill = barProgressRef.current[index]
       if (!fill) {
         continue
@@ -156,20 +165,20 @@ function ChatMinimapInner({
       barProgressValuesRef.current[index] = scale
       fill.style.transform = `scaleX(${scale})`
     }
-  }, [bars.length])
+  }, [messageCount])
 
   useImperativeHandle(ref, () => ({ setScrollProgress }), [setScrollProgress])
 
   // Map mouse Y → message index
   const yToIndex = useCallback(
     (y: number, height: number) => {
-      if (bars.length === 0 || height === 0) {
+      if (messageCount === 0 || height === 0) {
         return 0
       }
       const ratio = Math.max(0, Math.min(1, y / height))
-      return Math.min(Math.floor(ratio * bars.length), bars.length - 1)
+      return Math.min(Math.floor(ratio * messageCount), messageCount - 1)
     },
-    [bars.length],
+    [messageCount],
   )
 
   // Map mouse Y → scroll offset
@@ -247,10 +256,10 @@ function ChatMinimapInner({
   )
 
   const scrollToKeyboardMessage = useCallback(() => {
-    onScrollToIndex(uiState.hoverIdx ?? Math.min(activeIndexRef.current, bars.length - 1))
-  }, [bars.length, onScrollToIndex, uiState.hoverIdx])
+    onScrollToIndex(uiState.hoverIdx ?? Math.min(activeIndexRef.current, messageCount - 1))
+  }, [messageCount, onScrollToIndex, uiState.hoverIdx])
 
-  if (messages.length === 0) {
+  if (messageIds.length === 0) {
     return null
   }
 
@@ -280,62 +289,121 @@ function ChatMinimapInner({
         onClick={e => scrollToEventMessage(e.clientY)}
         className="relative flex w-full cursor-pointer flex-col items-center gap-1 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
-        {bars.map((bar, i) => {
+        {messageIds.map((messageId, i) => {
           return (
-            <span
-              key={messages[i].id}
-              className={cn(
-                'relative h-1.5 overflow-hidden rounded-full transition-colors duration-100',
-                bar.role === 'user'
-                  ? 'bg-foreground/10'
-                  : 'bg-foreground/5',
-                uiState.hoverIdx === i && 'bg-accent/30',
-              )}
-              style={{ width: `${bar.width}%` }}
-            >
-              <span
-                ref={(node) => {
-                  barProgressRef.current[i] = node
-                }}
-                className={cn(
-                  'absolute inset-y-0 left-0 w-full origin-left rounded-full transform-gpu',
-                  uiState.hoverIdx === i
-                    ? 'bg-accent'
-                    : bar.role === 'user'
-                      ? 'bg-foreground/30'
-                      : 'bg-foreground/15',
-                )}
-                style={{ transform: 'scaleX(0)' }}
-              />
-            </span>
+            <ChatMinimapBar
+              key={messageId}
+              sessionId={sessionId}
+              messageId={messageId}
+              index={i}
+              hovered={uiState.hoverIdx === i}
+              progressRefs={barProgressRef}
+            />
           )
         })}
       </button>
 
       {/* Hover peek popover */}
-      {hoveredBar && uiState.hoverIdx !== null && (
-        <div
-          className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md"
-          style={{
-            top: peekTop,
-          }}
-        >
-          <div className="mb-1 flex items-center gap-1.5">
-            <div
-              className={cn(
-                'size-1.5 rounded-full',
-                hoveredBar.role === 'user' ? 'bg-foreground/50' : 'bg-accent/70',
-              )}
-            />
-            <span className="text-[10px] font-medium text-muted-foreground">
-              {`${hoveredBar.role === 'user' ? '用户' : '助手'} · #${uiState.hoverIdx + 1}`}
-            </span>
-          </div>
-          <p className="text-xs/relaxed text-foreground line-clamp-4">
-            {hoveredBar.preview}
-          </p>
-        </div>
+      {uiState.hoverIdx !== null && (
+        <ChatMinimapHoverPreview
+          sessionId={sessionId}
+          messageId={messageIds[uiState.hoverIdx]}
+          index={uiState.hoverIdx}
+          top={peekTop}
+        />
       )}
+    </div>
+  )
+}
+
+function ChatMinimapBar({
+  sessionId,
+  messageId,
+  index,
+  hovered,
+  progressRefs,
+}: {
+  sessionId: string | null
+  messageId: string
+  index: number
+  hovered: boolean
+  progressRefs: React.RefObject<Array<HTMLSpanElement | null>>
+}) {
+  const bar = useChatStore(useShallow(state =>
+    readBarData(chatSelectors.message(sessionId ?? '', messageId)(state))))
+
+  if (!bar) {
+    return null
+  }
+
+  return (
+    <span
+      className={cn(
+        'relative h-1.5 overflow-hidden rounded-full transition-colors duration-100',
+        bar.role === 'user'
+          ? 'bg-foreground/10'
+          : 'bg-foreground/5',
+        hovered && 'bg-accent/30',
+      )}
+      style={{ width: `${bar.width}%` }}
+    >
+      <span
+        ref={(node) => {
+          progressRefs.current[index] = node
+        }}
+        className={cn(
+          'absolute inset-y-0 left-0 w-full origin-left rounded-full transform-gpu',
+          hovered
+            ? 'bg-accent'
+            : bar.role === 'user'
+              ? 'bg-foreground/30'
+              : 'bg-foreground/15',
+        )}
+        style={{ transform: 'scaleX(0)' }}
+      />
+    </span>
+  )
+}
+
+function ChatMinimapHoverPreview({
+  sessionId,
+  messageId,
+  index,
+  top,
+}: {
+  sessionId: string | null
+  messageId: string | undefined
+  index: number
+  top: number
+}) {
+  const bar = useChatStore(useShallow(state =>
+    messageId ? readBarData(chatSelectors.message(sessionId ?? '', messageId)(state)) : null))
+
+  if (!bar) {
+    return null
+  }
+
+  return (
+    <div
+      className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md"
+      style={{
+        top,
+      }}
+    >
+      <div className="mb-1 flex items-center gap-1.5">
+        <div
+          className={cn(
+            'size-1.5 rounded-full',
+            bar.role === 'user' ? 'bg-foreground/50' : 'bg-accent/70',
+          )}
+        />
+        <span className="text-[10px] font-medium text-muted-foreground">
+          {`${bar.role === 'user' ? '用户' : '助手'} · #${index + 1}`}
+        </span>
+      </div>
+      <p className="text-xs/relaxed text-foreground line-clamp-4">
+        {bar.preview}
+      </p>
     </div>
   )
 }

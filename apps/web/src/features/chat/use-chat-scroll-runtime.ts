@@ -1,8 +1,7 @@
 // Output: Chat scroll runtime hook for viewport refs, minimap sync, and chat attention snapshots.
-// Input: Chat session id, rendered UI messages, and chat generation status.
+// Input: Chat session id, rendered message ids, and chat generation status.
 // Position: Owned by features/chat as the scroll controller boundary consumed by ChatView.
 
-import type { UIMessage } from 'ai'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { useShallow } from 'zustand/react/shallow'
@@ -33,7 +32,7 @@ export interface ChatScrollRuntime {
 
 interface UseChatScrollRuntimeOptions {
   sessionId: string | null
-  messages: UIMessage[]
+  messageIds: string[]
   status: string
 }
 
@@ -55,7 +54,7 @@ function readIsAtBottom(metrics: ChatScrollMetrics): boolean {
 
 export function useChatScrollRuntime({
   sessionId,
-  messages,
+  messageIds,
   status,
 }: UseChatScrollRuntimeOptions): ChatScrollRuntime {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -64,13 +63,13 @@ export function useChatScrollRuntime({
   const minimapRef = useRef<ChatMinimapHandle>(null)
   const isAtBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
-  const messagesRef = useRef(messages)
+  const messageIdsRef = useRef(messageIds)
   const sessionIdRef = useRef(sessionId)
   const [metrics, setMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   useEffect(() => {
-    messagesRef.current = messages
-  }, [messages])
+    messageIdsRef.current = messageIds
+  }, [messageIds])
 
   useEffect(() => {
     sessionIdRef.current = sessionId
@@ -102,13 +101,13 @@ export function useChatScrollRuntime({
     }
 
     const indices: number[] = []
-    for (let i = 0; i < messages.length; i++) {
-      if (streamingMessageIds.has(messages[i].id)) {
+    for (let i = 0; i < messageIds.length; i++) {
+      if (streamingMessageIds.has(messageIds[i])) {
         indices.push(i)
       }
     }
     return indices.length > 0 ? indices : undefined
-  }, [streamingMessageIds, messages])
+  }, [streamingMessageIds, messageIds])
 
   const readScrollMetrics = useCallback((): ChatScrollMetrics | null => {
     const viewport = viewportRef.current
@@ -125,22 +124,22 @@ export function useChatScrollRuntime({
 
   const writeChatAttentionSnapshot = useCallback((nextMetrics: ChatScrollMetrics | null) => {
     const currentSessionId = sessionIdRef.current
-    const currentMessages = messagesRef.current
-    if (!currentSessionId || currentMessages.length === 0 || !nextMetrics) {
+    const currentMessageIds = messageIdsRef.current
+    if (!currentSessionId || currentMessageIds.length === 0 || !nextMetrics) {
       clearChatAttentionSnapshot(currentSessionId)
       return
     }
 
     const virtualizer = virtualizerRef.current
     const firstVisibleIndex = virtualizer
-      ? Math.max(0, Math.min(currentMessages.length - 1, virtualizer.findItemIndex(nextMetrics.offset)))
+      ? Math.max(0, Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset)))
       : null
     const lastVisibleIndex = virtualizer
-      ? Math.max(0, Math.min(currentMessages.length - 1, virtualizer.findItemIndex(nextMetrics.offset + nextMetrics.viewportHeight)))
+      ? Math.max(0, Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset + nextMetrics.viewportHeight)))
       : null
 
     updateChatAttentionSnapshot(currentSessionId, {
-      messageCount: currentMessages.length,
+      messageCount: currentMessageIds.length,
       firstVisibleIndex,
       lastVisibleIndex,
       scrollRatio: readScrollRatio(nextMetrics),
@@ -150,9 +149,9 @@ export function useChatScrollRuntime({
   }, [])
 
   const writeMinimapProgress = useCallback((nextMetrics?: ChatScrollMetrics | null) => {
-    const currentMessages = messagesRef.current
+    const currentMessageIds = messageIdsRef.current
     const currentMetrics = nextMetrics ?? readScrollMetrics()
-    if (currentMessages.length === 0 || !currentMetrics) {
+    if (currentMessageIds.length === 0 || !currentMetrics) {
       return
     }
 
@@ -184,12 +183,12 @@ export function useChatScrollRuntime({
   }, [])
 
   useEffect(() => {
-    if (initialScrollDoneRef.current || messages.length === 0) {
+    if (initialScrollDoneRef.current || messageIds.length === 0) {
       return
     }
 
     initialScrollDoneRef.current = true
-    virtualizerRef.current?.scrollToIndex(messages.length - 1, { align: 'end' })
+    virtualizerRef.current?.scrollToIndex(messageIds.length - 1, { align: 'end' })
     requestAnimationFrame(() => {
       const viewport = viewportRef.current
       if (viewport) {
@@ -197,7 +196,7 @@ export function useChatScrollRuntime({
       }
       refreshScrollMetrics()
     })
-  }, [messages.length, refreshScrollMetrics])
+  }, [messageIds.length, refreshScrollMetrics])
 
   useEffect(() => {
     if (!isAtBottomRef.current) {
@@ -206,7 +205,7 @@ export function useChatScrollRuntime({
 
     scrollToBottom()
     requestAnimationFrame(refreshScrollMetrics)
-  }, [messages, status, refreshScrollMetrics, scrollToBottom])
+  }, [messageIds.length, status, refreshScrollMetrics, scrollToBottom])
 
   const handleVirtualScroll = useCallback((offset: number) => {
     const viewport = viewportRef.current
@@ -225,9 +224,16 @@ export function useChatScrollRuntime({
     const syncScrollObservers = () => {
       const viewport = viewportRef.current
       if (viewport) {
-        const scrollTop = viewport.scrollTop
-        const scrollHeight = viewport.scrollHeight
+        const wasAtBottom = isAtBottomRef.current
+        let scrollTop = viewport.scrollTop
+        let scrollHeight = viewport.scrollHeight
         const viewportHeight = viewport.offsetHeight
+
+        if (wasAtBottom && lastScrollHeight >= 0 && scrollHeight > lastScrollHeight) {
+          viewport.scrollTop = viewport.scrollHeight
+          scrollTop = viewport.scrollTop
+          scrollHeight = viewport.scrollHeight
+        }
 
         if (
           scrollTop !== lastScrollTop
@@ -267,7 +273,7 @@ export function useChatScrollRuntime({
   useEffect(() => {
     const frame = requestAnimationFrame(refreshScrollMetrics)
     return () => cancelAnimationFrame(frame)
-  }, [messages.length, refreshScrollMetrics])
+  }, [messageIds.length, refreshScrollMetrics])
 
   const scrollToMessageIndex = useCallback((index: number) => {
     const virtualizer = virtualizerRef.current

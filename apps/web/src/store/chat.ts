@@ -60,6 +60,7 @@ interface ChatState {
   setMessages: (sessionId: string, messages: UIMessage[]) => void
   updateMessage: (sessionId: string, messageId: string, updater: (msg: UIMessage) => UIMessage) => void
   appendMessage: (sessionId: string, message: UIMessage) => void
+  removeMessage: (sessionId: string, messageId: string) => void
   upsertToolEntity: (entity: ChatToolEntity) => void
   patchToolEntity: (
     messageId: string,
@@ -218,6 +219,60 @@ export const useChatStore = create<ChatState>()(
             messagesMap: next,
             toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
             toolEntitiesMap: toolState.toolEntitiesMap,
+          }
+        })
+      },
+
+      removeMessage: (sessionId, messageId) => {
+        set((state) => {
+          const messages = state.messagesMap.get(sessionId)
+          if (!messages?.some(message => message.id === messageId)) {
+            return state
+          }
+
+          const nextMessages = new Map(state.messagesMap)
+          nextMessages.set(sessionId, messages.filter(message => message.id !== messageId))
+
+          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
+          const toolCallIds = nextToolCallIdsByMessageId.get(messageId) ?? []
+          nextToolCallIdsByMessageId.delete(messageId)
+
+          const nextToolEntities = new Map(state.toolEntitiesMap)
+          for (const toolCallId of toolCallIds) {
+            nextToolEntities.delete(toolCallId)
+          }
+
+          const nextGenerating = new Set(state.generatingMessageIds)
+          nextGenerating.delete(messageId)
+          const nextPassiveStreaming = new Set(state.passiveStreamingMessageIds)
+          nextPassiveStreaming.delete(messageId)
+          const nextControllers = new Map(state.activeAbortControllers)
+          nextControllers.delete(messageId)
+          const nextRunDisplayMeta = new Map(state.runDisplayMetaMap)
+          nextRunDisplayMeta.delete(messageId)
+          const nextError = new Map(state.errorMap)
+          nextError.delete(messageId)
+
+          const currentMeta = state.sessionMetaMap.get(sessionId)
+          const nextSessionMeta = new Map(state.sessionMetaMap)
+          if (currentMeta?.localDriverMessageId === messageId) {
+            nextSessionMeta.set(sessionId, {
+              ...currentMeta,
+              locallyDriving: false,
+              localDriverMessageId: undefined,
+            })
+          }
+
+          return {
+            messagesMap: nextMessages,
+            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
+            toolEntitiesMap: nextToolEntities,
+            generatingMessageIds: nextGenerating,
+            passiveStreamingMessageIds: nextPassiveStreaming,
+            activeAbortControllers: nextControllers,
+            runDisplayMetaMap: nextRunDisplayMeta,
+            errorMap: nextError,
+            sessionMetaMap: nextSessionMeta,
           }
         })
       },
@@ -665,9 +720,22 @@ export const chatSelectors = {
   messageIds: (sessionId: string) => (s: ChatState) =>
     (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).map(m => m.id),
 
+  messageCount: (sessionId: string) => (s: ChatState) =>
+    s.messagesMap.get(sessionId)?.length ?? 0,
+
   /** Single message by ID */
   message: (sessionId: string, messageId: string) => (s: ChatState) =>
     (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).find(m => m.id === messageId),
+
+  lastAssistantId: (sessionId: string) => (s: ChatState) => {
+    const messages = s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'assistant') {
+        return messages[i].id
+      }
+    }
+    return undefined
+  },
 
   /** Is a specific message actively generating? */
   isGenerating: (messageId: string) => (s: ChatState) =>

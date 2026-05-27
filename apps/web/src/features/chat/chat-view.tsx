@@ -1,4 +1,3 @@
-import type { UIMessage } from 'ai'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
@@ -56,14 +55,18 @@ interface ChatViewProps {
 const EMPTY_FILES: MentionItem[] = []
 
 function ChatMessageListPane({
-  messages,
+  sessionId,
+  messageIds,
+  messageCount,
   status,
   error,
   isReady,
   scrollRuntime,
   onToolApprovalResponse,
 }: {
-  messages: ReturnType<typeof useChatSession>['messages']
+  sessionId: string | null
+  messageIds: ReturnType<typeof useChatSession>['messageIds']
+  messageCount: ReturnType<typeof useChatSession>['messageCount']
   status: ReturnType<typeof useChatSession>['status']
   error: ReturnType<typeof useChatSession>['error']
   isReady: boolean
@@ -79,7 +82,7 @@ function ChatMessageListPane({
         className="h-full **:data-[slot=scroll-area-scrollbar]:hidden"
       >
         <div className="mx-auto max-w-208 px-4 pt-4">
-          {messages.length === 0 && !isReady && (
+          {messageCount === 0 && !isReady && (
             <div className="space-y-6 py-4">
               {['loading-left-1', 'loading-right', 'loading-left-2'].map((skeletonId, i) => (
                 <div key={skeletonId} className={cn('flex gap-3', i % 2 !== 0 && 'justify-end')}>
@@ -92,7 +95,7 @@ function ChatMessageListPane({
               ))}
             </div>
           )}
-          {messages.length === 0 && isReady && (
+          {messageCount === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">
                 {t('empty.startConversation')}
@@ -107,10 +110,11 @@ function ChatMessageListPane({
             keepMounted={scrollRuntime.keepMountedIndices}
             onScroll={scrollRuntime.handleVirtualScroll}
           >
-            {messages.map(message => (
-              <MessageBubbleWithStreamState
-                key={message.id}
-                message={message}
+            {messageIds.map(messageId => (
+              <MessageBubbleById
+                key={messageId}
+                sessionId={sessionId}
+                messageId={messageId}
                 onToolApprovalResponse={onToolApprovalResponse}
               />
             ))}
@@ -138,7 +142,8 @@ function ChatMessageListPane({
 
       <ChatMinimap
         ref={scrollRuntime.minimapRef}
-        messages={messages}
+        sessionId={sessionId}
+        messageIds={messageIds}
         scrollHeight={scrollRuntime.metrics.scrollHeight}
         viewportHeight={scrollRuntime.metrics.viewportHeight}
         onScrollToIndex={scrollRuntime.scrollToMessageIndex}
@@ -265,7 +270,8 @@ export function ChatView({
   placeholder,
 }: ChatViewProps) {
   const {
-    messages,
+    messageIds,
+    messageCount,
     status,
     error,
     sendMessage,
@@ -282,7 +288,7 @@ export function ChatView({
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
-    messageCount: messages.length,
+    messageCount,
     isReady,
     isAwaiting,
     composerModel,
@@ -290,7 +296,7 @@ export function ChatView({
     sendMessage,
     stop,
   })
-  const scrollRuntime = useChatScrollRuntime({ sessionId, messages, status })
+  const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
@@ -352,12 +358,14 @@ export function ChatView({
     >
       <div className="pointer-events-none absolute right-4 top-3 z-20 flex items-center gap-1">
         <div className="pointer-events-auto rounded-lg bg-background/75 p-0.5 shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm">
-          <ChatShareExport sessionId={sessionId} messages={messages} disabled={!isReady} />
+          <ChatShareExport sessionId={sessionId} disabled={!isReady} />
         </div>
       </div>
 
       <ChatMessageListPane
-        messages={messages}
+        sessionId={sessionId}
+        messageIds={messageIds}
+        messageCount={messageCount}
         status={status}
         error={error}
         isReady={isReady}
@@ -384,14 +392,20 @@ export function ChatView({
   )
 }
 
-function MessageBubbleWithStreamState({
-  message,
+function MessageBubbleById({
+  sessionId,
+  messageId,
   onToolApprovalResponse,
 }: {
-  message: UIMessage
+  sessionId: string | null
+  messageId: string
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
 }) {
-  const isStreaming = useChatStore(chatSelectors.isStreamingMessage(message.id))
+  const message = useChatStore(chatSelectors.message(sessionId ?? '', messageId))
+  const isStreaming = useChatStore(chatSelectors.isStreamingMessage(messageId))
+  if (!message) {
+    return null
+  }
   return (
     <MessageBubble
       message={message}

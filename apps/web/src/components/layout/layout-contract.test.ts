@@ -129,7 +129,7 @@ describe('deriveActiveLayoutContract', () => {
     })
   })
 
-  it('does not infer browser or bottom panel capability for cached cli-tui sessions', () => {
+  it('keeps browser and bottom panel capability for cached cli-tui workspace sessions', () => {
     const contract = deriveActiveLayoutContract({
       activeTab: chatTab('session-b'),
       slots: {},
@@ -146,7 +146,7 @@ describe('deriveActiveLayoutContract', () => {
     expect(contract.asideSessionId).toBe('session-b')
     expect(contract.asideWorkspaceId).toBe('workspace-b')
     expect(contract.hasAside).toBe(true)
-    expect(contract.hasBrowserPanel).toBeUndefined()
-    expect(contract.hasPanel).toBeUndefined()
+    expect(contract.hasBrowserPanel).toBe(true)
+    expect(contract.hasPanel).toBe(true)
   })
 })

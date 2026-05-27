@@ -43,6 +43,8 @@ type WebviewElement = HTMLElement & {
   removeEventListener: (event: string, handler: (...args: unknown[]) => void) => void
 }
 
+type WebviewRefCallback = (el: WebviewElement | null) => void
+
 const MAX_TABS = 5
 const WEBVIEW_PARTITION = 'persist:browser'
 const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
@@ -55,6 +57,37 @@ const CUSTOM_SCRIPT_RUN_AT_OPTIONS: BrowserPanelScriptRunAt[] = ['document-start
 
 function isElectronWebview(el: WebviewElement): boolean {
   return typeof el.loadURL === 'function' && typeof el.getWebContentsId === 'function'
+}
+
+function areBrowserUrlsEquivalent(left: string, right: string): boolean {
+  if (left === right) {
+    return true
+  }
+  try {
+    return new URL(left).href === new URL(right).href
+  }
+  catch {
+    return false
+  }
+}
+
+function isAbortedNavigationError(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && (error as { code?: unknown }).code === 'ERR_ABORTED'
+}
+
+function loadBrowserTabUrl(webview: WebviewElement, url: string): void {
+  if (areBrowserUrlsEquivalent(webview.getURL(), url)) {
+    return
+  }
+  void webview.loadURL(url).catch((error) => {
+    if (isAbortedNavigationError(error)) {
+      return
+    }
+    console.warn('[browser-panel] Failed to load browser tab URL:', error)
+  })
 }
 
 interface ElectronWebviewProps {
@@ -118,7 +151,9 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
   const activeWorkspaceDiffTab = activeTab?.kind === 'workspace-diff' ? activeTab : null
   const browserTabCount = tabs.filter(tab => tab.kind === 'browser').length
   const [urlInput, setUrlInput] = useState('')
+  const [domReadyCount, setDomReadyCount] = useState(0)
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
+  const webviewRefCallbacksRef = useRef<Map<string, WebviewRefCallback>>(new Map())
   const loadedWebviewTabIdsRef = useRef<Set<string>>(new Set())
   const scriptSyncKeysRef = useRef<Map<string, string>>(new Map())
 
@@ -146,6 +181,9 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       }
       // eslint-disable-next-line ts/no-explicit-any
       const handleDidNavigate = (e: any) => {
+        if (!loadedWebviewTabIdsRef.current.has(tabId)) {
+          return
+        }
         updateTab(tabId, {
           url: e.url,
           canGoBack: el.canGoBack(),
@@ -176,6 +214,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
 
       const handleDomReady = () => {
         el.__webContentsId = el.getWebContentsId()
+        setDomReadyCount(c => c + 1)
       }
       el.addEventListener('dom-ready', handleDomReady)
 
@@ -192,29 +231,39 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
     [updateTab],
   )
 
-  // Ref callback factory for each webview
-  const webviewRef = useCallback(
-    (tabId: string) => (el: WebviewElement | null) => {
-      if (el && !webviewMapRef.current.has(tabId)) {
-        webviewMapRef.current.set(tabId, el)
-        el.__cleanup = attachWebviewListeners(tabId, el)
+  const getWebviewRef = useCallback(
+    (tabId: string) => {
+      const existing = webviewRefCallbacksRef.current.get(tabId)
+      if (existing) {
+        return existing
       }
- else if (!el) {
-        const prev = webviewMapRef.current.get(tabId)
-        if (prev) {
-          prev.__cleanup?.()
-          webviewMapRef.current.delete(tabId)
-          loadedWebviewTabIdsRef.current.delete(tabId)
-          scriptSyncKeysRef.current.delete(tabId)
-          if (prev.__webContentsId != null) {
-            void nativeIpc?.browserTabScripts.clearScripts({
-              webContentsId: prev.__webContentsId,
-            }).catch((error) => {
-              console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
-            })
+
+      const refCallback: WebviewRefCallback = (el) => {
+        if (el && !webviewMapRef.current.has(tabId)) {
+          webviewMapRef.current.set(tabId, el)
+          el.__cleanup = attachWebviewListeners(tabId, el)
+        }
+        else if (!el) {
+          const prev = webviewMapRef.current.get(tabId)
+          if (prev) {
+            prev.__cleanup?.()
+            webviewMapRef.current.delete(tabId)
+            loadedWebviewTabIdsRef.current.delete(tabId)
+            scriptSyncKeysRef.current.delete(tabId)
+            if (prev.__webContentsId != null) {
+              void nativeIpc?.browserTabScripts.clearScripts({
+                webContentsId: prev.__webContentsId,
+              }).catch((error) => {
+                console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
+              })
+            }
+            webviewRefCallbacksRef.current.delete(tabId)
           }
         }
       }
+
+      webviewRefCallbacksRef.current.set(tabId, refCallback)
+      return refCallback
     },
     [attachWebviewListeners],
   )
@@ -255,7 +304,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           continue
         }
         loadedWebviewTabIdsRef.current.add(tab.id)
-        void webview.loadURL(tab.url)
+        loadBrowserTabUrl(webview, tab.url)
       }
       return
     }
@@ -328,13 +377,13 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           if (!webviewMapRef.current.has(tab.id)) {
             return
           }
-          void webview.loadURL(tab.url)
+          loadBrowserTabUrl(webview, tab.url)
         }).catch((error) => {
           console.warn('[browser-panel] Failed to load browser tab URL:', error)
         })
       }
     }
-  }, [tabs])
+  }, [tabs, domReadyCount])
 
   const handleToggleScript = useCallback(
     (scriptId: string) => {
@@ -383,7 +432,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       }
       const wv = webviewMapRef.current.get(activeBrowserTab.id)
       if (wv) {
-        wv.loadURL(url)
+        loadBrowserTabUrl(wv, url)
         navigateTo(activeBrowserTab.id, url)
       }
     },
@@ -680,7 +729,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
               <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
                 <ElectronWebview
                   url="about:blank"
-                  webviewRef={webviewRef(tab.id)}
+                  webviewRef={getWebviewRef(tab.id)}
                 />
               </Activity>
             )

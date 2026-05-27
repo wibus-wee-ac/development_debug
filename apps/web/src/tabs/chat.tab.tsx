@@ -37,14 +37,12 @@ function ChatTabLayoutSlots({
   sessionId,
   workspaceId,
   workspacePath,
-  enabled,
 }: {
   sessionId: string
   workspaceId: string | null
   workspacePath: string | null
-  enabled: boolean
 }) {
-  const hasWorkspace = enabled && !!(workspaceId && workspacePath)
+  const hasWorkspace = !!(workspaceId && workspacePath)
 
   const panel = useMemo(
     () => hasWorkspace
@@ -158,7 +156,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   if (isCliTui) {
     return (
       <>
-        <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} enabled={false} />
+        <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
         <Suspense fallback={null}>
           <TuiView sessionId={sessionId} />
         </Suspense>
@@ -168,7 +166,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   return (
     <>
-      <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} enabled />
+      <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
       <ChatRuntimeView
         sessionId={sessionId}
         sessionProviderTargetId={sessionProviderTargetId}

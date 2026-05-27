@@ -1,34 +1,24 @@
-// Output: Minimal renderer entry for session tear-off windows.
+// Output: Session-scoped renderer entry for chat tear-off windows.
 // Input: Electron preload session id and server URL.
-// Position: Web-owned tear-off surface that bypasses the main app shell.
+// Position: Web-owned tear-off surface that reuses the app layout runtime without the main sidebar/footer.
 
 import './styles.css'
 
-import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { TabRenderer, TabsProvider } from '@cradle/tabs-next'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
-import { lazy, Suspense, useEffect } from 'react'
+import { useEffect } from 'react'
 import * as ReactDOMClient from 'react-dom/client'
-import { z } from 'zod'
 
-import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
 import { AppErrorBoundary } from '~/components/common/app-error-boundary'
-import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
-import { loadTuiView } from '~/features/tui/tui-view-loader'
+import { AppLayout } from '~/components/layout/app-layout'
+import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
 import { resolveInitialLocale } from '~/i18n/browser-locale'
 import { I18nProvider } from '~/i18n/client'
-import { platform, tearoffSessionId } from '~/lib/electron'
-
-const TuiView = lazy(loadTuiView)
-
-const RuntimeKindSchema = z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'])
-const TearoffSessionMetadataSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  workspaceId: z.string().nullable(),
-  providerTargetId: z.string().nullable(),
-  runtimeKind: RuntimeKindSchema,
-}).passthrough()
+import { tearoffSessionId } from '~/lib/electron'
+import { CHAT_TAB_FALLBACK_LABEL } from '~/tabs/chat.tab'
+import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -59,39 +49,33 @@ function TearoffRuntime() {
 function TearoffSession({ sessionId }: { sessionId: string }) {
   'use no memo'
 
-  const { data: session } = useQuery({
-    ...getSessionsByIdOptions({ path: { id: sessionId } }),
-    select: data => data ? TearoffSessionMetadataSchema.parse(data) : undefined,
-  })
-  const reserveTrafficLightSpace = platform === 'darwin'
+  useEffect(() => {
+    useCradleTabStore.getState().restoreTabs({
+      tabs: [{
+        id: 'tearoff-session',
+        type: 'chat',
+        params: { sessionId },
+        label: CHAT_TAB_FALLBACK_LABEL,
+        pinned: true,
+      }],
+      activeTabId: 'tearoff-session',
+    })
+  }, [sessionId])
 
   return (
     <AppEnvironmentProviders>
-      <div className="flex h-screen w-screen flex-col overflow-hidden bg-sidebar text-foreground">
-        <header
-          className="flex h-11 shrink-0 items-center gap-2 bg-sidebar px-3 text-xs font-medium text-sidebar-foreground/70"
-          style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
-        >
-          {reserveTrafficLightSpace && <div aria-hidden="true" className="h-full w-16 shrink-0" />}
-          <span className="truncate">{session?.title ?? 'Chat'}</span>
-        </header>
-        <main className="m-1 mt-0 min-h-0 flex-1 overflow-hidden rounded-xl bg-background shadow-[var(--shadow-sm)]">
-          {session?.runtimeKind === 'cli-tui'
-            ? (
-                <Suspense fallback={null}>
-                  <TuiView sessionId={sessionId} />
-                </Suspense>
-              )
-            : (
-                <ChatRuntimeView
-                  sessionId={sessionId}
-                  sessionProviderTargetId={session?.providerTargetId ?? null}
-                  runtimeKind={session?.runtimeKind}
-                  workspaceId={session?.workspaceId ?? null}
-                />
-              )}
-        </main>
-      </div>
+      <LayoutSlotsProvider activeSlotId={sessionId} validSlotIds={[sessionId]}>
+        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+            <AppLayout sessionScoped showFooter={false}>
+              <TabRenderer
+                fallback={null}
+                className="h-full flex overflow-hidden w-full"
+              />
+            </AppLayout>
+          </div>
+        </TabsProvider>
+      </LayoutSlotsProvider>
     </AppEnvironmentProviders>
   )
 }

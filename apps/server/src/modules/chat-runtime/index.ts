@@ -204,3 +204,18 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.cancelResponse },
   })
+  // POST /chat/sessions/:sessionId/permission-mode → switch runtime permission mode (plan/edit/default)
+  .post('/sessions/:sessionId/permission-mode', async ({ params, body }) => {
+    const ok = await ChatRuntime.setSessionPermissionMode({
+      sessionId: params.sessionId,
+      mode: body.mode,
+    })
+    return { ok }
+  }, {
+    detail: {
+      'summary': 'Switch runtime permission mode (e.g. plan ↔ acceptEdits)',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.permissionModeBody,
+    response: { 200: ChatRuntimeModel.permissionModeResponse },
+  })

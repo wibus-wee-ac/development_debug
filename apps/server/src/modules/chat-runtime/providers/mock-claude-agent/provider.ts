@@ -131,7 +131,6 @@ export class MockClaudeAgentProvider implements ChatRuntime {
 
           const message = JSON.parse(jsonStr) as SDKMessage
           const result = await mapClaudeAgentMessageToChunks(message, mapperState)
-          mapperState.assistantStarted = result.assistantStarted
           for (const chunk of result.chunks) {
             yield chunk
           }
