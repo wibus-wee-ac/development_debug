@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { access, chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
-import { dirname, resolve } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { access, chmod, copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -355,7 +355,7 @@ function assertMacAppUpdateUrl(appBundlePath, updateUrl) {
 }
 
 function validateVersion(version) {
-  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?$/i.test(version)) {
     throw new Error(`Velopack requires a SemVer2-compatible version, got: ${version}`)
   }
   if (/^\d+\.\d+\.\d+\.\d+/.test(version)) {
@@ -364,7 +364,7 @@ function validateVersion(version) {
 }
 
 function quoteForPostinstallScript(value) {
-  return `'${String(value).replaceAll("'", "'\\''")}'`
+  return `'${String(value).replaceAll('\'', '\'\\\'\'')}'`
 }
 
 function resolveReleaseFile(releaseOutputDir, fileName) {

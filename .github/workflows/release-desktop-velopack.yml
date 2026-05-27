@@ -10,7 +10,7 @@ on:
         description: 'Release version without leading v, for example 1.2.3'
         required: true
       update_url:
-        description: 'Velopack feed URL embedded into the Desktop app'
+        description: Velopack feed URL embedded into the Desktop app
         required: true
 
 permissions:
@@ -61,7 +61,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.x'
+          dotnet-version: 8.x
 
       - name: Install Velopack CLI
         shell: bash

@@ -8,8 +8,8 @@ import { app, dialog } from 'electron'
 import getPort from 'get-port'
 import { z } from 'zod'
 
-import { getPluginEnvVars } from './plugin-loader'
 import { resolveDesktopInstalledPluginsDir } from './plugin-install-links'
+import { getPluginEnvVars } from './plugin-loader'
 import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
 let serverProcess: ChildProcess | null = null

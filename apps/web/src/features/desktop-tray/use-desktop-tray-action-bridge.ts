@@ -1,54 +1,27 @@
 import { useCallback, useEffect } from 'react'
-import { z } from 'zod'
 
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useCradleTabStore } from '~/tabs/registry'
 
+import type { TrayActionRequest } from './types'
+
 interface DesktopTrayActionBridgeOptions {
   onOpenGlobalSearch: () => void
 }
-
-const TrayActionIdSchema = z.enum([
-  'open-app',
-  'open-chat',
-  'new-chat',
-  'global-search',
-  'open-resident',
-  'open-running',
-  'open-approvals',
-  'open-awaits',
-  'open-automation',
-  'open-workspaces',
-  'open-agents',
-  'open-providers',
-  'open-chronicle',
-  'open-usage',
-  'open-plugins',
-  'open-desktop-settings',
-  'quit',
-])
-
-const TrayActionRequestSchema = z.object({
-  actionId: TrayActionIdSchema,
-  payload: z.unknown().optional(),
-}).passthrough()
-
-const TrayActionRequestsSchema = z.array(TrayActionRequestSchema)
-
-const ChatPayloadSchema = z.object({
-  sessionId: z.string().min(1),
-}).passthrough()
 
 function openHome(): void {
   useCradleTabStore.getState().openTab('home', {})
 }
 
 function openChatFromPayload(payload: unknown): boolean {
-  if (payload === undefined) {
+  if (!payload || typeof payload !== 'object') {
     return false
   }
-  const { sessionId } = ChatPayloadSchema.parse(payload)
+  const { sessionId } = payload as { sessionId?: unknown }
+  if (typeof sessionId !== 'string' || sessionId.length === 0) {
+    return false
+  }
   useCradleTabStore.getState().openTab('chat', { sessionId })
   return true
 }
@@ -80,7 +53,7 @@ function openFirstPluginPanel(): boolean {
 
 export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayActionBridgeOptions): void {
   const handleRequest = useCallback((rawRequest: unknown) => {
-    const request = TrayActionRequestSchema.parse(rawRequest)
+    const request = rawRequest as TrayActionRequest
 
     switch (request.actionId) {
       case 'open-chat':
@@ -97,9 +70,6 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         if (!openChatFromPayload(request.payload)) {
           openHome()
         }
-        return
-      case 'open-approvals':
-        useCradleTabStore.getState().openTab('approvals', {})
         return
       case 'open-awaits':
         useCradleTabStore.getState().openTab('awaits', {})
@@ -129,10 +99,9 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         return
       case 'open-desktop-settings':
         openSettingsSection('desktop')
-        return
+
       case 'open-app':
       case 'quit':
-        return
     }
   }, [onOpenGlobalSearch])
 
@@ -140,7 +109,7 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
     const unsubscribe = window.cradle?.desktopTray?.onActionRequested(handleRequest)
 
     void window.cradle?.desktopTray?.consumePendingActionRequests?.().then((requests) => {
-      for (const request of TrayActionRequestsSchema.parse(requests)) {
+      for (const request of requests as TrayActionRequest[]) {
         handleRequest(request)
       }
     })

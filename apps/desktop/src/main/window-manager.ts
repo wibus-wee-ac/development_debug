@@ -1,6 +1,15 @@
-import { BrowserWindow } from 'electron'
+import { join } from 'node:path'
 
-import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
+import { app, BrowserWindow, screen } from 'electron'
+
+import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath, resolveDesktopRendererTearoffPath } from './desktop-assets'
+import { readStoredWindowSize, resolveWindowBoundsNearPoint, resolveWindowSize, writeStoredWindowSize } from './window-state'
+
+const TEAROFF_WINDOW_DEFAULT_WIDTH = 720
+const TEAROFF_WINDOW_DEFAULT_HEIGHT = 640
+const TEAROFF_WINDOW_MIN_WIDTH = 520
+const TEAROFF_WINDOW_MIN_HEIGHT = 420
+const TEAROFF_WINDOW_SIZE_FILE = 'tearoff-window-size.json'
 
 export class WindowManager {
   private mainWindow: BrowserWindow | null = null
@@ -31,11 +40,24 @@ export class WindowManager {
       return existing
     }
 
+    const releasePoint = resolveTearoffReleasePoint(x, y)
+    const targetDisplay = screen.getDisplayNearestPoint(releasePoint)
+    const targetSize = resolveWindowSize(
+      readStoredWindowSize(join(app.getPath('userData'), TEAROFF_WINDOW_SIZE_FILE)),
+      {
+        defaultWidth: TEAROFF_WINDOW_DEFAULT_WIDTH,
+        defaultHeight: TEAROFF_WINDOW_DEFAULT_HEIGHT,
+        minWidth: TEAROFF_WINDOW_MIN_WIDTH,
+        minHeight: TEAROFF_WINDOW_MIN_HEIGHT,
+      },
+      targetDisplay.workArea,
+    )
+    const targetBounds = resolveWindowBoundsNearPoint(targetSize, releasePoint, targetDisplay.workArea)
+
     const win = new BrowserWindow({
-      width: 720,
-      height: 640,
-      x: Math.round(x - 360),
-      y: Math.round(y - 40),
+      ...targetBounds,
+      minWidth: TEAROFF_WINDOW_MIN_WIDTH,
+      minHeight: TEAROFF_WINDOW_MIN_HEIGHT,
       titleBarStyle: 'hiddenInset',
       trafficLightPosition: { x: 16, y: 18 },
       webPreferences: {
@@ -53,16 +75,32 @@ export class WindowManager {
       show: false,
     })
 
+    let lastTearoffWindowSize = { width: targetBounds.width, height: targetBounds.height }
+    const writeTearoffWindowSize = (): void => {
+      if (win.isDestroyed()) {
+        writeStoredWindowSize(join(app.getPath('userData'), TEAROFF_WINDOW_SIZE_FILE), lastTearoffWindowSize)
+        return
+      }
+      const { width, height } = win.getBounds()
+      lastTearoffWindowSize = { width, height }
+      writeStoredWindowSize(join(app.getPath('userData'), TEAROFF_WINDOW_SIZE_FILE), lastTearoffWindowSize)
+    }
+
+    win.on('resize', writeTearoffWindowSize)
+    win.on('close', writeTearoffWindowSize)
+
     win.once('ready-to-show', () => {
       win.show()
     })
 
-    // Load the same renderer but with session query param
     if (process.env.ELECTRON_RENDERER_URL) {
-      await win.loadURL(`${process.env.ELECTRON_RENDERER_URL}?session=${sessionId}&tearoff=true`)
+      const url = new URL('/tearoff.html', process.env.ELECTRON_RENDERER_URL)
+      url.searchParams.set('session', sessionId)
+      url.searchParams.set('tearoff', 'true')
+      await win.loadURL(url.toString())
     }
     else {
-      await win.loadFile(resolveDesktopRendererIndexPath(), {
+      await win.loadFile(resolveDesktopRendererTearoffPath(), {
         query: { session: sessionId, tearoff: 'true' },
       })
     }
@@ -70,6 +108,7 @@ export class WindowManager {
     this.sessionWindows.set(sessionId, win)
 
     win.on('closed', () => {
+      writeTearoffWindowSize()
       this.sessionWindows.delete(sessionId)
       const mainWindow = this.mainWindow
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -159,4 +198,12 @@ export class WindowManager {
 
     return win
   }
+}
+
+function resolveTearoffReleasePoint(x: number, y: number): { x: number, y: number } {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || (x === 0 && y === 0)) {
+    return screen.getCursorScreenPoint()
+  }
+
+  return { x: Math.round(x), y: Math.round(y) }
 }

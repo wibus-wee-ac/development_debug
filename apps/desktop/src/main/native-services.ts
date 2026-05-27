@@ -1,15 +1,18 @@
-import { createServices, getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
-import { app, BrowserWindow, dialog, screen, shell } from 'electron'
-import { readFile, realpath, stat } from 'node:fs/promises'
+import { readdir, readFile, realpath, stat } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { extname, isAbsolute, join, relative } from 'node:path'
 
+import { createServices, getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
+import { app, BrowserWindow, dialog, screen, shell as nativeLauncher } from 'electron'
+
+import { BrowserTabScriptsService } from './browser-tab-scripts'
 import type { MacBridgeManager } from './mac-bridge-manager'
 import type {
   MacAppshotAnimationTarget,
   MacAppshotCaptureFrontmostWindowResult,
   MacAppshotFrontmostContext,
-  MacCaptureWindowTarget,
   MacCaptureFrontmostWindowResult,
+  MacCaptureWindowTarget,
   MacPermissionSettingsRequest,
   MacPermissionSettingsResult,
   MacPermissionsRequest,
@@ -25,6 +28,7 @@ import {
   readScreenPointAppshotAnimationTarget,
   readScreenPointAppshotDestinationFrame,
 } from './native-appshot-target'
+import { launchPathInEditor } from './native-editor-launcher'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
 
@@ -44,6 +48,99 @@ const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
 ]
 
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
+const MAX_EXTERNAL_WORK_IMPORT_BYTES = 8 * 1024 * 1024
+const TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS = new Set(['.md', '.json', '.toml'])
+
+type ExternalWorkImportSourceApp = 'claude' | 'codex'
+
+interface ExternalWorkImportFile {
+  sourceApp: ExternalWorkImportSourceApp
+  path: string
+  content: string
+  workspacePath: string | null
+  modifiedAt: number | null
+}
+
+async function readExternalWorkImportFile(
+  sourceApp: ExternalWorkImportSourceApp,
+  path: string,
+  workspacePath: string | null = null,
+): Promise<ExternalWorkImportFile | null> {
+  try {
+    const fileStat = await stat(path)
+    if (!fileStat.isFile() || fileStat.size > MAX_EXTERNAL_WORK_IMPORT_BYTES) {
+      return null
+    }
+    return {
+      sourceApp,
+      path,
+      content: await readFile(path, 'utf8'),
+      workspacePath,
+      modifiedAt: Math.floor(fileStat.mtimeMs / 1000),
+    }
+  }
+  catch {
+    return null
+  }
+}
+
+async function collectExternalWorkImportFiles(input: {
+  sourceApp: ExternalWorkImportSourceApp
+  root: string
+  extensions: string | Set<string>
+  limit: number
+  workspacePath?: string | null
+}): Promise<ExternalWorkImportFile[]> {
+  const allowedExtensions = typeof input.extensions === 'string' ? new Set([input.extensions]) : input.extensions
+  const found: Array<{ path: string, modifiedAt: number }> = []
+
+  async function visit(dir: string, depth: number): Promise<void> {
+    if (depth > 4 || found.length > input.limit * 8) {
+      return
+    }
+    let children: Array<{ name: string, isDirectory: () => boolean, isFile: () => boolean }>
+    try {
+      children = await readdir(dir, { withFileTypes: true })
+    }
+    catch {
+      return
+    }
+
+    await Promise.all(children.map(async (entry) => {
+      const childPath = join(dir, entry.name)
+      if (entry.isDirectory()) {
+        await visit(childPath, depth + 1)
+        return
+      }
+      if (!entry.isFile() || !allowedExtensions.has(extname(childPath).toLowerCase())) {
+        return
+      }
+      try {
+        const fileStat = await stat(childPath)
+        found.push({ path: childPath, modifiedAt: Math.floor(fileStat.mtimeMs / 1000) })
+      }
+      catch {
+        // Ignore unreadable candidates.
+      }
+    }))
+  }
+
+  await visit(input.root, 0)
+  const files = await Promise.all(
+    found
+      .sort((left, right) => right.modifiedAt - left.modifiedAt)
+      .slice(0, input.limit)
+      .map(entry => readExternalWorkImportFile(input.sourceApp, entry.path, input.workspacePath ?? null)),
+  )
+  return files.filter((file): file is ExternalWorkImportFile => Boolean(file))
+}
+
+async function validateNativePath(targetPath: string): Promise<string> {
+  if (!targetPath || !isAbsolute(targetPath)) {
+    throw new Error('Native file actions require an absolute path')
+  }
+  return realpath(targetPath)
+}
 
 // ── Native File System Service ────────────────────────────────────────────────
 
@@ -86,12 +183,29 @@ class NativeService extends IpcService {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:' && parsed.protocol !== 'mailto:') {
       throw new Error(`Unsupported external URL scheme: ${parsed.protocol}`)
     }
-    await shell.openExternal(url)
+    await nativeLauncher.openExternal(url)
+  }
+
+  @IpcMethod()
+  async openPath(fullPath: string): Promise<void> {
+    const resolvedPath = await validateNativePath(fullPath)
+    const errorMessage = await nativeLauncher.openPath(resolvedPath)
+    if (errorMessage) {
+      throw new Error(errorMessage)
+    }
   }
 
   @IpcMethod()
   async showItemInFolder(fullPath: string): Promise<void> {
-    shell.showItemInFolder(fullPath)
+    const resolvedPath = await validateNativePath(fullPath)
+    nativeLauncher.showItemInFolder(resolvedPath)
+  }
+
+  @IpcMethod()
+  async openPathInEditor(fullPath: string): Promise<{ editor: string }> {
+    const resolvedPath = await validateNativePath(fullPath)
+    const editor = await launchPathInEditor(resolvedPath)
+    return { editor }
   }
 
   @IpcMethod()
@@ -109,6 +223,169 @@ class NativeService extends IpcService {
       databasePath: join(serverDataPath, 'cradle.db'),
       serverLogPath: join(serverDataPath, 'server.log'),
     }
+  }
+
+  @IpcMethod()
+  async scanExternalWorkImportFiles(options: {
+    limitPerSource?: number
+    workspacePaths?: string[]
+  } = {}): Promise<{ files: ExternalWorkImportFile[], warnings: string[] }> {
+    const limit = Math.min(Math.max(options.limitPerSource ?? 500, 1), 500)
+    const home = homedir()
+    const files: ExternalWorkImportFile[] = []
+    const warnings: string[] = []
+    const fixedCandidates: Array<{ sourceApp: ExternalWorkImportSourceApp, path: string }> = [
+      { sourceApp: 'claude', path: join(home, '.claude', 'settings.json') },
+      { sourceApp: 'claude', path: join(home, '.claude', 'settings.local.json') },
+      { sourceApp: 'claude', path: join(home, '.claude', 'config.json') },
+      { sourceApp: 'codex', path: join(home, '.codex', 'config.toml') },
+      { sourceApp: 'codex', path: join(home, '.codex', 'AGENTS.md') },
+      { sourceApp: 'codex', path: join(home, '.codex', 'history.jsonl') },
+    ]
+
+    for (const candidate of fixedCandidates) {
+      const file = await readExternalWorkImportFile(candidate.sourceApp, candidate.path)
+      if (file) {
+        files.push(file)
+      }
+    }
+
+    for (const workspacePath of options.workspacePaths ?? []) {
+      const agentsFile = await readExternalWorkImportFile(
+        'codex',
+        join(workspacePath, 'AGENTS.md'),
+        workspacePath,
+      )
+      if (agentsFile) {
+        files.push(agentsFile)
+      }
+      const claudeFile = await readExternalWorkImportFile(
+        'claude',
+        join(workspacePath, 'CLAUDE.md'),
+        workspacePath,
+      )
+      if (claudeFile) {
+        files.push(claudeFile)
+      }
+    }
+
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'claude',
+      root: join(home, '.claude', 'projects'),
+      extensions: '.jsonl',
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'claude',
+      root: join(home, '.claude', 'commands'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'claude',
+      root: join(home, '.claude', 'hooks'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'claude',
+      root: join(home, '.claude', 'agents'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'claude',
+      root: join(home, '.claude', 'skills'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'archived_sessions'),
+      extensions: '.jsonl',
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'commands'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'hooks'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'subagents'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'skills'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+    files.push(...await collectExternalWorkImportFiles({
+      sourceApp: 'codex',
+      root: join(home, '.codex', 'plugins'),
+      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+      limit,
+    }))
+
+    for (const workspacePath of options.workspacePaths ?? []) {
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'codex',
+        root: join(workspacePath, '.codex', 'commands'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'codex',
+        root: join(workspacePath, '.codex', 'hooks'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'codex',
+        root: join(workspacePath, '.codex', 'subagents'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'claude',
+        root: join(workspacePath, '.claude', 'commands'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'claude',
+        root: join(workspacePath, '.claude', 'hooks'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+      files.push(...await collectExternalWorkImportFiles({
+        sourceApp: 'claude',
+        root: join(workspacePath, '.claude', 'agents'),
+        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
+        limit,
+        workspacePath,
+      }))
+    }
+
+    if (files.length === 0) {
+      warnings.push('No supported Claude or Codex work files were found on this device.')
+    }
+
+    return { files, warnings }
   }
 }
 
@@ -686,5 +963,5 @@ function readCaptureMimeType(filePath: string): MacAppshotImageAsset['mimeType']
 
 export function createNativeServices(context: NativeServicesContext) {
   nativeServicesContext = context
-  return createServices([NativeService, WindowService, DesktopUpdateService, MacCaptureService] as const)
+  return createServices([NativeService, WindowService, DesktopUpdateService, MacCaptureService, BrowserTabScriptsService] as const)
 }

@@ -1,10 +1,15 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 import { z } from 'zod'
 
 export interface WindowBounds {
   x?: number
   y?: number
+  width?: number
+  height?: number
+}
+
+export interface WindowSize {
   width?: number
   height?: number
 }
@@ -16,6 +21,11 @@ export interface DisplayWorkArea {
   height: number
 }
 
+export interface WindowPoint {
+  x: number
+  y: number
+}
+
 export interface WindowBoundsPolicy {
   defaultWidth: number
   defaultHeight: number
@@ -23,11 +33,21 @@ export interface WindowBoundsPolicy {
   minHeight: number
 }
 
+const POINT_ANCHOR_MAX_LEFT_OFFSET = 360
+const POINT_ANCHOR_TOP_OFFSET = 40
+
 const StoredWindowBoundsJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
   .pipe(z.object({
     x: z.number().finite().optional(),
     y: z.number().finite().optional(),
+    width: z.number().finite().positive().optional(),
+    height: z.number().finite().positive().optional(),
+  }))
+
+const StoredWindowSizeJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(z.object({
     width: z.number().finite().positive().optional(),
     height: z.number().finite().positive().optional(),
   }))
@@ -46,6 +66,11 @@ const DisplayWorkAreaSchema = z.object({
   height: z.number().finite().positive(),
 })
 
+const WindowPointSchema = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+})
+
 const WindowBoundsPolicySchema = z.object({
   defaultWidth: z.number().finite().positive(),
   defaultHeight: z.number().finite().positive(),
@@ -59,6 +84,87 @@ export function readStoredWindowBounds(filePath: string): WindowBounds | null {
   }
 
   return StoredWindowBoundsJsonSchema.parse(readFileSync(filePath, 'utf8'))
+}
+
+export function readStoredWindowSize(filePath: string): WindowSize | null {
+  if (!existsSync(filePath)) {
+    return null
+  }
+
+  return StoredWindowSizeJsonSchema.parse(readFileSync(filePath, 'utf8'))
+}
+
+export function writeStoredWindowSize(filePath: string, size: Required<WindowSize>): void {
+  writeFileSync(filePath, `${JSON.stringify({
+    width: Math.round(size.width),
+    height: Math.round(size.height),
+  }, null, 2)}\n`)
+}
+
+export function resolveWindowSize(
+  storedSize: WindowSize | null | undefined,
+  policy: WindowBoundsPolicy,
+  maxSize?: WindowSize,
+): Required<WindowSize> {
+  const input = z.object({
+    storedSize: z.object({
+      width: z.number().finite().positive().optional(),
+      height: z.number().finite().positive().optional(),
+    }).nullable().optional(),
+    policy: WindowBoundsPolicySchema,
+    maxSize: z.object({
+      width: z.number().finite().positive().optional(),
+      height: z.number().finite().positive().optional(),
+    }).optional(),
+  }).parse({ storedSize, policy, maxSize })
+
+  const maxWidth = input.maxSize?.width ?? Number.POSITIVE_INFINITY
+  const maxHeight = input.maxSize?.height ?? Number.POSITIVE_INFINITY
+  const width = z.number()
+    .finite()
+    .positive()
+    .optional()
+    .default(input.policy.defaultWidth)
+    .transform(Math.round)
+    .transform(value => Math.min(Math.max(value, Math.min(input.policy.minWidth, maxWidth)), maxWidth))
+    .parse(input.storedSize?.width)
+  const height = z.number()
+    .finite()
+    .positive()
+    .optional()
+    .default(input.policy.defaultHeight)
+    .transform(Math.round)
+    .transform(value => Math.min(Math.max(value, Math.min(input.policy.minHeight, maxHeight)), maxHeight))
+    .parse(input.storedSize?.height)
+
+  return { width, height }
+}
+
+export function resolveWindowBoundsNearPoint(
+  size: Required<WindowSize>,
+  point: WindowPoint,
+  workArea: DisplayWorkArea,
+): Required<WindowBounds> {
+  const input = z.object({
+    size: z.object({
+      width: z.number().finite().positive(),
+      height: z.number().finite().positive(),
+    }),
+    point: WindowPointSchema,
+    workArea: DisplayWorkAreaSchema,
+  }).parse({ size, point, workArea })
+
+  const width = Math.round(input.size.width)
+  const height = Math.round(input.size.height)
+  const targetX = Math.round(input.point.x - Math.min(width / 2, POINT_ANCHOR_MAX_LEFT_OFFSET))
+  const targetY = Math.round(input.point.y - POINT_ANCHOR_TOP_OFFSET)
+
+  return {
+    x: clampPosition(targetX, input.workArea.x, input.workArea.x + input.workArea.width - width),
+    y: clampPosition(targetY, input.workArea.y, input.workArea.y + input.workArea.height - height),
+    width,
+    height,
+  }
 }
 
 export function resolveVisibleWindowBounds(

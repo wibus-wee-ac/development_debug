@@ -1,9 +1,9 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import tailwindcss from '@tailwindcss/vite'
 import viteReact from '@vitejs/plugin-react'
-import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -61,7 +61,10 @@ export default defineConfig({
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
       rollupOptions: {
-        input: resolve(webRoot, 'index.html'),
+        input: {
+          main: resolve(webRoot, 'index.html'),
+          tearoff: resolve(webRoot, 'tearoff.html'),
+        },
       },
     },
   },

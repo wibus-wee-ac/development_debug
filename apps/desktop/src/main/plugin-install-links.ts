@@ -1,13 +1,13 @@
 /* Parses and installs Cradle Marketplace plugin links for the desktop runtime. */
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+
+import type { CradlePluginMeta, PluginDeclaredCapabilityRecord, PluginDeclaredPermissionRecord } from '@cradle/plugin-sdk'
 import {
   projectCradlePluginContributions,
-  type CradlePluginMeta,
-  type PluginDeclaredCapabilityRecord,
-  type PluginDeclaredPermissionRecord,
 } from '@cradle/plugin-sdk'
-import { parseCradlePluginPackageJsonText, type ParsedCradlePluginPackage } from '@cradle/plugin-sdk/manifest'
+import type { ParsedCradlePluginPackage } from '@cradle/plugin-sdk/manifest'
+import { parseCradlePluginPackageJsonText } from '@cradle/plugin-sdk/manifest'
 import * as tar from 'tar'
 
 const PLUGIN_INSTALL_PROTOCOL = 'cradle:'
@@ -105,7 +105,7 @@ function rejectUnsupportedParams(url: URL): void {
 }
 
 function validateGitHubRepository(repository: string): void {
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository)) {
+  if (!/^[\w.-]+\/[\w.-]+$/.test(repository)) {
     throw new PluginInstallLinkError('GitHub repository must use owner/name syntax')
   }
   if (repository !== FIRST_PARTY_REPOSITORY) {
@@ -133,13 +133,13 @@ function validatePluginPackageName(packageName: string): void {
 }
 
 function validatePluginVersion(version: string): void {
-  if (!/^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$/.test(version)) {
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?$/i.test(version)) {
     throw new PluginInstallLinkError('Plugin version must be a semantic version')
   }
 }
 
 function validateGitHubRef(ref: string): void {
-  if (!/^[A-Za-z0-9._/-]+$/.test(ref)) {
+  if (!/^[\w./-]+$/.test(ref)) {
     throw new PluginInstallLinkError('GitHub ref contains unsupported characters')
   }
   const segments = ref.split('/')
@@ -152,7 +152,8 @@ export function parsePluginInstallUrl(rawUrl: string): PluginInstallRequest {
   let url: URL
   try {
     url = new URL(rawUrl)
-  } catch {
+  }
+ catch {
     throw new PluginInstallLinkError('Plugin install link is not a valid URL')
   }
 
@@ -213,14 +214,15 @@ export function createInstalledPluginPackageDirName(packageName: string): string
   return packageName
     .replace(/^@/, '')
     .replace(/\//g, '-')
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/[^\w.-]/g, '-')
 }
 
 async function pathExists(path: string): Promise<boolean> {
   try {
     await access(path)
     return true
-  } catch {
+  }
+ catch {
     return false
   }
 }
@@ -242,7 +244,7 @@ function createGitHubTarballUrl(request: PluginInstallRequest): string {
 async function downloadTarball(request: PluginInstallRequest, archivePath: string, fetchImpl: typeof fetch): Promise<void> {
   const response = await fetchImpl(createGitHubTarballUrl(request), {
     headers: {
-      accept: 'application/vnd.github+json',
+      'accept': 'application/vnd.github+json',
       'user-agent': 'Cradle-Desktop-Plugin-Installer',
     },
   })
@@ -266,7 +268,7 @@ async function extractPluginPath(archivePath: string, request: PluginInstallRequ
     filter(entryPath) {
       const normalized = entryPath.replace(/\\/g, '/')
       const slashIndex = normalized.indexOf('/')
-      if (slashIndex < 0) return false
+      if (slashIndex < 0) { return false }
       const relativePath = normalized.slice(slashIndex + 1).replace(/\/$/, '')
       const include = relativePath === requestedPath || relativePath.startsWith(`${requestedPath}/`)
       matched ||= include
@@ -311,7 +313,7 @@ async function validatePluginRuntimeEntries(
   ] as const
 
   for (const [layer, entry] of entries) {
-    if (entry === undefined) continue
+    if (entry === undefined) { continue }
     if (!RunnablePluginEntryPattern.test(entry)) {
       throw new Error(`Installed package ${request.packageName} declares non-runnable ${layer} entry: ${entry}`)
     }
@@ -356,7 +358,8 @@ async function publishPluginInstall(stagingDir: string, packageDir: string): Pro
   await rm(backupDir, { recursive: true, force: true })
   try {
     await rename(packageDir, backupDir)
-  } catch (err) {
+  }
+ catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
       throw err
     }
@@ -365,11 +368,13 @@ async function publishPluginInstall(stagingDir: string, packageDir: string): Pro
   try {
     await rename(stagingDir, packageDir)
     await rm(backupDir, { recursive: true, force: true })
-  } catch (err) {
+  }
+ catch (err) {
     await rm(packageDir, { recursive: true, force: true })
     try {
       await rename(backupDir, packageDir)
-    } catch {
+    }
+ catch {
       // The previous install may not have existed.
     }
     throw err
@@ -490,7 +495,8 @@ export async function installPluginFromRequest(
       packageDir,
       receiptPath,
     }
-  } finally {
+  }
+ finally {
     await rm(archivePath, { force: true })
     await rm(stagingDir, { recursive: true, force: true })
   }

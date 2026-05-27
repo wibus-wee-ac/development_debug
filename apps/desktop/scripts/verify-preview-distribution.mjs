@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Verifies whether preview artifacts are ready for signed and notarized macOS distribution.
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs'
-import { createHash } from 'node:crypto'
-import { dirname, isAbsolute, normalize, resolve } from 'node:path'
-import { tmpdir } from 'node:os'
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, isAbsolute, normalize, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -751,7 +751,7 @@ function checkAssetsFeedEntries({ assets, releaseDir, expectedEntries }) {
   }
 
   const failures = []
-  const entries = assets.map((asset) => ({
+  const entries = assets.map(asset => ({
     fileName: asset?.RelativeFileName,
     type: asset?.Type,
   }))

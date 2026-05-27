@@ -320,7 +320,7 @@ export async function startDesktopApp(): Promise<void> {
   macBridgeManager = new MacBridgeManager({
     moduleDir: __dirname,
   })
-  macBridgeManager.on('hotkeyTriggered', event => {
+  macBridgeManager.on('hotkeyTriggered', (event) => {
     console.log('[mac-bridge] forwarding Appshot hotkey to renderer:', event)
     if (!mainWindow || mainWindow.isDestroyed()) {
       console.warn('[mac-bridge] Appshot hotkey ignored because the main window is not available.')

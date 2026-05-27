@@ -1,10 +1,13 @@
 import { delimiter, resolve } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+
 import type { Disposable, PluginCapabilityRecord, PluginDescriptor, PluginManifest } from '@cradle/plugin-sdk'
-import { evaluatePluginPermissionPolicy, evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
 import type { DesktopPluginContext, DesktopWebview } from '@cradle/plugin-sdk/desktop'
+import { evaluatePluginPermissionPolicy, evaluatePluginRuntimeCapabilityPolicy } from '@cradle/plugin-sdk/permissions'
+import { app, BrowserWindow } from 'electron'
 import { z } from 'zod'
-import { discoverDesktopPlugins, type DesktopPluginSource } from './plugin-discovery'
+
+import type { DesktopPluginSource } from './plugin-discovery'
+import { discoverDesktopPlugins } from './plugin-discovery'
 import { resolveDesktopInstalledPluginsDir } from './plugin-install-links'
 import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind } from './plugin-paths'
 
@@ -12,7 +15,7 @@ import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind
 const pluginSharedConfig = new Map<string, string>()
 
 /** Active plugin deactivators */
-const activePlugins = new Map<string, { deactivate?: () => void | Promise<void>; subscriptions: Disposable[] }>()
+const activePlugins = new Map<string, { deactivate?: () => void | Promise<void>, subscriptions: Disposable[] }>()
 
 /** Webview creation listeners from plugins */
 const webviewListeners: Array<(webview: DesktopWebview, tabId: string) => void> = []
@@ -85,7 +88,8 @@ export function notifyWebviewCreated(wc: Electron.WebContents, tabId: string): v
   for (const listener of webviewListeners) {
     try {
       listener(webview, tabId)
-    } catch (err) {
+    }
+ catch (err) {
       console.error('[plugin-loader] webview listener error:', err)
     }
   }
@@ -189,7 +193,8 @@ function registerDesktopCapability(
   const existing = descriptor.capabilities.find(capability => capability.id === registration.capabilityId)
   if (existing) {
     Object.assign(existing, record)
-  } else {
+  }
+ else {
     descriptor.capabilities.push(record)
   }
   return record
@@ -199,7 +204,8 @@ function disposeSubscriptions(name: string, subscriptions: Disposable[]): void {
   for (const subscription of [...subscriptions].reverse()) {
     try {
       subscription.dispose()
-    } catch (err) {
+    }
+ catch (err) {
       console.error(`[plugins] error disposing ${name} desktop subscription:`, err)
     }
   }
@@ -308,7 +314,7 @@ function createDesktopPluginContext(manifest: PluginManifest): DesktopPluginCont
         return track({
           dispose() {
             const idx = webviewListeners.indexOf(listener)
-            if (idx >= 0) webviewListeners.splice(idx, 1)
+            if (idx >= 0) { webviewListeners.splice(idx, 1) }
             if (descriptor) {
               removeCapabilityRecord(descriptor, capabilityId)
             }
@@ -433,7 +439,8 @@ export async function activateDesktopPlugins(): Promise<void> {
   for (const descriptor of descriptors) {
     if (!descriptor.identity || isRejectedDescriptor(descriptor)) {
       invalidDesktopPluginDescriptors.push(descriptor)
-    } else {
+    }
+ else {
       desktopPluginDescriptors.set(descriptor.identity, descriptor)
     }
   }
@@ -473,7 +480,8 @@ export async function activateDesktopPlugins(): Promise<void> {
         setDesktopLayerStatus(descriptor, 'active')
       }
       console.log(`[plugins] desktop activated: ${manifest.name}`)
-    } catch (err) {
+    }
+ catch (err) {
       disposeSubscriptions(manifest.name, subscriptions)
       if (descriptor) {
         setDesktopLayerStatus(descriptor, 'failed', formatError(err))
@@ -488,9 +496,11 @@ export async function deactivateDesktopPlugins(): Promise<void> {
   for (const [name, plugin] of activePlugins) {
     try {
       await plugin.deactivate?.()
-    } catch (err) {
+    }
+ catch (err) {
       console.error(`[plugins] error deactivating ${name}:`, err)
-    } finally {
+    }
+ finally {
       disposeSubscriptions(name, plugin.subscriptions)
     }
   }

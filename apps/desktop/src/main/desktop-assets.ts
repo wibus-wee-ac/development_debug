@@ -17,3 +17,7 @@ export function resolveDesktopPreloadPath(moduleDir: string): string {
 export function resolveDesktopRendererIndexPath(): string {
   return join(app.getAppPath(), 'dist/renderer/index.html')
 }
+
+export function resolveDesktopRendererTearoffPath(): string {
+  return join(app.getAppPath(), 'dist/renderer/tearoff.html')
+}

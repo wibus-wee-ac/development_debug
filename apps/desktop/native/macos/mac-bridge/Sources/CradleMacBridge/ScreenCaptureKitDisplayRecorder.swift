@@ -1053,8 +1053,7 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
             }
             semaphore.signal()
         }
-        let timeoutSeconds = max(Int(ceil(target.discoveryTimeoutSeconds)) + 8, 8)
-        if semaphore.wait(timeout: .now() + .seconds(timeoutSeconds)) == .timedOut {
+        if semaphore.wait(timeout: .now() + .seconds(8)) == .timedOut {
             throw BridgeError("screen-window-recording-finish-timeout", "ScreenCaptureKit window recording finish timed out.")
         }
         if let finishError {
@@ -1099,6 +1098,9 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
             }
             let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
             if let window = selectWindow(from: content.windows) {
+                if stopped || Task.isCancelled {
+                    return
+                }
                 try await startStream(window: window)
                 return
             }
@@ -1115,6 +1117,10 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
     }
 
     private func startStream(window: SCWindow) async throws {
+        if stopped || Task.isCancelled {
+            return
+        }
+
         let filter = SCContentFilter(desktopIndependentWindow: window)
         let scale: CGFloat
         if #available(macOS 14.0, *) {
@@ -1153,6 +1159,9 @@ private final class ScreenCaptureKitWindowRecorder: NSObject, SCStreamOutput, Di
         }
         selectedWriter.add(selectedInput)
 
+        if stopped || Task.isCancelled {
+            return
+        }
         writer = selectedWriter
         input = selectedInput
         stream = selectedStream

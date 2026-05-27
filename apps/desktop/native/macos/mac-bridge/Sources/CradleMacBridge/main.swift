@@ -966,9 +966,15 @@ func writeAppshotTransitionSnapshotImage(
         throw BridgeError("appshot-transition-snapshot-context-unavailable", "Could not create Appshot transition snapshot graphics context.")
     }
 
+    let snapshotBodyBounds = CGRect(
+        x: 0,
+        y: 0,
+        width: pointSize.width,
+        height: min(CGFloat(AppshotLayerMetrics.transitionSnapshotBaseHeight), pointSize.height)
+    )
     let drawRect = aspectFitRect(
         sourceSize: screenshot.size,
-        targetBounds: CGRect(origin: .zero, size: pointSize),
+        targetBounds: snapshotBodyBounds,
         verticalAlignment: .center
     )
 
@@ -1059,6 +1065,7 @@ func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPr
     )
     let sampleCount = max(readInteger(params["sampleCount"]) ?? 12, 1)
     let sampleIntervalSeconds = readPositiveProbeDouble(params["sampleIntervalSeconds"]) ?? 0.2
+    let captureImages = (params["captureImages"] as? Bool) ?? true
     let sourceWindow = params["sourceWindow"] as? [String: Any]
     let calibration = AppshotTransitionCalibration.from(
         params: params,
@@ -1079,7 +1086,8 @@ func probeAppshotTransitionVisibility(params: [String: Any], appshotTransitionPr
         appTitle: appshotDisplayTitle,
         bundleIdentifier: sourceWindow?["bundleId"] as? String,
         sampleCount: sampleCount,
-        sampleIntervalSeconds: sampleIntervalSeconds
+        sampleIntervalSeconds: sampleIntervalSeconds,
+        captureImages: captureImages
     )
 }
 
@@ -1095,6 +1103,7 @@ func probeAppshotTransitionPresentation(params: [String: Any], appshotTransition
             "screenshotPath": screenshotPath,
         ])
     }
+    let transitionSnapshotPath = params["transitionSnapshotPath"] as? String
 
     let fallbackWindowBounds = readProbeWindowBounds(raw: params["sourceWindow"])
     let target = AppshotTransitionTarget.from(
@@ -1119,6 +1128,7 @@ func probeAppshotTransitionPresentation(params: [String: Any], appshotTransition
 
     return try appshotTransitionPresenter.probePresentation(
         screenshotPath: screenshotPath,
+        transitionSnapshotPath: transitionSnapshotPath,
         outputDir: outputDir,
         target: target,
         calibration: calibration,

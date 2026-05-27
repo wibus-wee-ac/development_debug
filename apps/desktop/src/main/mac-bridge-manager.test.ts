@@ -381,7 +381,7 @@ describe('resolveMacBridgeBinaryPath', () => {
   })
 })
 
-describe('MacBridgeManager', () => {
+describe('macBridgeManager', () => {
   let manager: MacBridgeManager | null = null
 
   afterEach(async () => {

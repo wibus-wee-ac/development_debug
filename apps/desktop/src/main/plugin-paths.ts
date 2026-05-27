@@ -1,6 +1,7 @@
 /* Resolves desktop plugin directories across dev, bundled, and operator-configured runtimes. */
 import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
+
 import { z } from 'zod'
 
 const WORKSPACE_MARKER_FILE = 'pnpm-workspace.yaml'
@@ -32,7 +33,7 @@ function findWorkspacePluginsDir(anchors: string[]): string | undefined {
       }
 
       const parent = dirname(current)
-      if (parent === current) break
+      if (parent === current) { break }
       current = parent
     }
   }
@@ -49,7 +50,7 @@ export function readConfiguredPrimaryPluginsDir(
 export function resolveDesktopPrimaryPluginsDir(options: DesktopPluginDirOptions): string {
   const env = options.env ?? process.env
   const configuredDir = readConfiguredPrimaryPluginsDir(env)
-  if (configuredDir) return configuredDir
+  if (configuredDir) { return configuredDir }
 
   if (!options.isDev) {
     const resourcesPath = options.resourcesPath ?? (process as { resourcesPath?: string }).resourcesPath
@@ -67,6 +68,6 @@ export function resolveDesktopPrimaryPluginsSourceKind(
   options: Pick<DesktopPluginDirOptions, 'env' | 'isDev'>,
 ): 'workspaceDev' | 'bundledResource' | 'externalLocal' {
   const env = options.env ?? process.env
-  if (readConfiguredPrimaryPluginsDir(env)) return 'externalLocal'
+  if (readConfiguredPrimaryPluginsDir(env)) { return 'externalLocal' }
   return options.isDev ? 'workspaceDev' : 'bundledResource'
 }

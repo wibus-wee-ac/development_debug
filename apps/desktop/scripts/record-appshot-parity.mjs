@@ -9,8 +9,8 @@ import { createHash } from 'node:crypto'
 import {
   copyFile,
   mkdir,
-  readFile,
   readdir,
+  readFile,
   realpath,
   stat,
   writeFile,
@@ -26,6 +26,8 @@ const workspaceRoot = resolve(desktopRoot, '../..')
 const packageRoot = resolve(desktopRoot, 'native/macos/mac-bridge')
 const codexResearchResourceRoot = resolve(workspaceRoot, '../safe-research/codex-app-resources-20260525')
 const codexTmpRoot = resolve(tmpdir(), 'com.openai.sky.CUAService')
+const codexSystemTmpRoot = resolve('/tmp', 'com.openai.sky.CUAService')
+const codexTmpRootNames = new Set(['com.openai.sky.CUAService'])
 const maxAssetBytes = 25 * 1024 * 1024
 const codexComputerUseBinaryCandidates = [
   '/Applications/Codex.app/Contents/Resources/plugins/openai-bundled/plugins/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseService',
@@ -40,6 +42,9 @@ const codexFrontendAppshotOrchestrationBundleCandidates = [
 const cradleFrontendAppshotSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/appshot-attachment.tsx')
 const cradleComposerActionContextSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer-action-context.ts')
 const cradleComposerAttachmentsSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer-attachments.tsx')
+const cradleComposerAttachmentStateSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer-attachment-state.ts')
+const cradleComposerSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/composer.tsx')
+const cradleComposerAppshotCaptureSourcePath = resolve(workspaceRoot, 'apps/web/src/features/chat/use-composer-appshot-capture.ts')
 const codexBareModifierHotkeys = new Set(['DoubleCommand', 'DoubleOption', 'DoubleShift'])
 const codexNativeAppshotSymbols = [
   'Appshot.AppshotCaptureTransitionOverlayWindow',
@@ -136,7 +141,7 @@ function parseArgs(argv) {
     codexSource: 'observe',
     cradleOnly: false,
     observeSeconds: 8,
-    observePollIntervalMs: 250,
+    observePollIntervalMs: 40,
     alignmentConsecutiveFrameCount: 2,
     alignmentSsimThreshold: 0.985,
     recordingBackend: 'auto',
@@ -261,8 +266,8 @@ function parseArgs(argv) {
   if (!Number.isFinite(options.observeSeconds) || options.observeSeconds <= 0) {
     throw new Error('--observe-seconds must be a positive number.')
   }
-  if (!Number.isInteger(options.observePollIntervalMs) || options.observePollIntervalMs < 50) {
-    throw new Error('--observe-poll-interval-ms must be an integer greater than or equal to 50.')
+  if (!Number.isInteger(options.observePollIntervalMs) || options.observePollIntervalMs < 20) {
+    throw new Error('--observe-poll-interval-ms must be an integer greater than or equal to 20.')
   }
   if (!Number.isFinite(options.alignmentSsimThreshold) || options.alignmentSsimThreshold <= 0 || options.alignmentSsimThreshold >= 1) {
     throw new Error('--alignment-ssim-threshold must be greater than 0 and less than 1.')
@@ -314,7 +319,7 @@ function printUsage() {
     '  --observe-seconds <seconds>',
     '                        Window for observing Codex temp assets. Default: 8.',
     '  --observe-poll-interval-ms <ms>',
-    '                        Poll interval for stopping observe after Codex temp assets appear. Default: 250.',
+    '                        Poll interval for stopping observe after Codex temp assets appear. Default: 40.',
     '  --alignment-ssim-threshold <number>',
     '                        SSIM threshold for detecting transition onset from extracted frames. Default: 0.985.',
     '  --alignment-consecutive-frame-count <number>',
@@ -492,10 +497,13 @@ class BridgeClient {
 
 async function copyCodexAssetPath(sourcePath, reportDir, label) {
   const resolvedSourcePath = await realpath(sourcePath)
-  const resolvedRootPath = await realpath(codexTmpRoot)
-  const unsafeRelativePath = relative(resolvedRootPath, resolvedSourcePath)
-  if (unsafeRelativePath.startsWith('..') || isAbsolute(unsafeRelativePath)) {
-    throw new Error(`Refusing to read Codex asset outside ${codexTmpRoot}: ${sourcePath}`)
+  const rootPaths = await readCodexTmpRootPaths()
+  const matchedRootPath = rootPaths.find((rootPath) => {
+    const unsafeRelativePath = relative(rootPath, resolvedSourcePath)
+    return !unsafeRelativePath.startsWith('..') && !isAbsolute(unsafeRelativePath)
+  })
+  if (!matchedRootPath) {
+    throw new Error(`Refusing to read Codex asset outside known Codex temp roots: ${sourcePath}`)
   }
   const metadata = await stat(resolvedSourcePath)
   if (!metadata.isFile()) {
@@ -713,7 +721,7 @@ function summarizePresentationProbeSamples(samples) {
     .map(sample => sample.snapshotFrame)
     .filter(Boolean)
   const firstSnapshotFrame = snapshotFrames[0] ?? null
-  const lastSnapshotFrame = snapshotFrames[snapshotFrames.length - 1] ?? null
+  const lastSnapshotFrame = snapshotFrames.at(-1) ?? null
   const changedSnapshotFrameCount = snapshotFrames.filter(frame => !areSameRect(frame, firstSnapshotFrame)).length
   const appshotOverlayShadowFrameChangeCount = countChangedRects(samples.map(sample => sample.shadowFrame).filter(Boolean))
   const whiteLayerEvidence = summarizeWhiteLayerEvidence(samples)
@@ -723,6 +731,7 @@ function summarizePresentationProbeSamples(samples) {
   const layerTypeEvidence = summarizeLayerTypeEvidence(samples)
   const transitionOwnerEvidence = summarizeTransitionOwnerEvidence(samples)
   const opacitySamples = samples.map(sample => ({
+    contentLayerOpacity: readFiniteProbeNumber(sample.contentLayerOpacity),
     transitionBackgroundOpacity: readFiniteProbeNumber(sample.transitionBackgroundOpacity),
     shutterOpacity: readFiniteProbeNumber(sample.shutterOpacity),
     snapshotImageOpacity: readFiniteProbeNumber(sample.snapshotImageOpacity),
@@ -730,6 +739,7 @@ function summarizePresentationProbeSamples(samples) {
     titleOpacity: readFiniteProbeNumber(sample.titleOpacity),
   }))
   const opacityKeys = [
+    'contentLayerOpacity',
     'transitionBackgroundOpacity',
     'shutterOpacity',
     'snapshotImageOpacity',
@@ -802,8 +812,7 @@ function summarizeTransitionOwnerEvidence(samples) {
       || sample.transitionControllerOwner !== null
       || sample.transitionController !== null
       || sample.transitionLayerHost !== null
-      || sample.transitionPhase !== null,
-    )
+      || sample.transitionPhase !== null)
   const phases = [
     ...new Set(ownerSamples.flatMap(sample => [
       ...sample.transitionPhaseHistory,
@@ -888,8 +897,7 @@ function summarizeMagicMoveFadeEvidence(samples) {
     sample.shutterOpacity > 0.05
     && sample.shutterOpacity < 0.95
     && sample.snapshotImageOpacity > 0.05
-    && sample.snapshotImageOpacity < 0.95,
-  )
+    && sample.snapshotImageOpacity < 0.95)
   return {
     sampleCount: fadeSamples.length,
     readyForMagicMoveProgress: fadeSamples.find(sample => sample.readyForMagicMoveProgress !== null)?.readyForMagicMoveProgress ?? null,
@@ -964,7 +972,7 @@ function areEqualStringArrays(left, right) {
 
 function summarizeNativePresentationGeometryEvidence(samples) {
   const first = samples[0] ?? null
-  const last = samples[samples.length - 1] ?? null
+  const last = samples.at(-1) ?? null
   const expectedEndBounds = last?.expectedEndFrame
     ? {
         x: 0,
@@ -973,6 +981,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
         height: last.expectedEndFrame.height,
       }
     : null
+  const expectedComposerImageFrame = last?.expectedSnapshotImageEndFrame ?? expectedEndBounds
   return {
     firstShutterMatchesSourceContentBounds: areSameRect(first?.shutterFrame, first?.expectedStartContentBounds),
     firstShadowMatchesSourceContentFrame: areSameRect(first?.shadowFrame, first?.expectedStartContentFrame),
@@ -980,7 +989,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
     lastShutterMatchesDestinationBounds: areSameRect(last?.shutterFrame, expectedEndBounds),
     lastSnapshotMatchesDestinationBounds: areSameRect(last?.snapshotFrame, expectedEndBounds),
     lastSnapshotImageMatchesExpectedEndFrame: areSameRect(last?.snapshotImageFrame, last?.expectedSnapshotImageEndFrame),
-    lastSnapshotImageMatchesComposerImageFrame: areSameRect(last?.snapshotImageFrame, expectedEndBounds),
+    lastSnapshotImageMatchesComposerImageFrame: areSameRect(last?.snapshotImageFrame, expectedComposerImageFrame),
     lastShadowMatchesDestinationFrame: areSameRect(last?.shadowFrame, last?.expectedEndFrame),
     transitionSnapshotHeightDoesNotAffectNativeTarget: last?.transitionSnapshotHeightAffectsNativeTarget === false,
     firstShutterFrame: first?.shutterFrame ?? null,
@@ -993,7 +1002,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
     lastSnapshotFrame: last?.snapshotFrame ?? null,
     lastSnapshotImageFrame: last?.snapshotImageFrame ?? null,
     lastExpectedSnapshotImageEndFrame: last?.expectedSnapshotImageEndFrame ?? null,
-    lastExpectedComposerImageFrame: expectedEndBounds,
+    lastExpectedComposerImageFrame: expectedComposerImageFrame,
     lastShadowFrame: last?.shadowFrame ?? null,
     lastExpectedEndFrame: last?.expectedEndFrame ?? null,
     transitionSnapshotHeight: last?.transitionSnapshotHeight ?? null,
@@ -1004,8 +1013,7 @@ function summarizeNativePresentationGeometryEvidence(samples) {
 function summarizeWhiteLayerEvidence(samples) {
   const visibleSamples = samples.filter(sample =>
     readFiniteProbeNumber(sample.coverOpacity) !== null
-    || readFiniteProbeNumber(sample.shutterOpacity) !== null,
-  )
+    || readFiniteProbeNumber(sample.shutterOpacity) !== null)
   const firstVisible = visibleSamples[0] ?? null
   const coverOpacityValues = visibleSamples
     .map(sample => readFiniteProbeNumber(sample.coverOpacity))
@@ -1043,9 +1051,17 @@ function summarizeSnapshotContentEvidence(samples) {
   const scaleValues = samples
     .map(sample => readFiniteProbeNumber(sample.snapshotImageContentsScale))
     .filter(value => value !== null)
+  const sources = [
+    ...new Set(samples
+      .map(sample => typeof sample.snapshotImageSource === 'string' ? sample.snapshotImageSource : null)
+      .filter(Boolean)),
+  ]
   return {
     hasContents: samples.some(sample => sample.snapshotImageHasContents === true),
     contentsScale: scaleValues[0] ?? null,
+    source: sources[0] ?? null,
+    sourceIsScreenshot: sources.length === 1 && sources[0] === 'screenshot',
+    sources,
     backgroundIsWhite: samples.some(sample => isOpaqueWhiteColor(sample.snapshotBackgroundColor)),
   }
 }
@@ -1274,9 +1290,12 @@ async function readCradleFrontendAppshotEvidence() {
     const source = await readFile(cradleFrontendAppshotSourcePath, 'utf8')
     const actionContextSource = await readFile(cradleComposerActionContextSourcePath, 'utf8')
     const composerAttachmentsSource = await readFile(cradleComposerAttachmentsSourcePath, 'utf8')
+    const composerAttachmentStateSource = await readFile(cradleComposerAttachmentStateSourcePath, 'utf8')
+    const composerSource = await readFile(cradleComposerSourcePath, 'utf8')
+    const composerAppshotCaptureSource = await readFile(cradleComposerAppshotCaptureSourcePath, 'utf8')
     const composerBranch = source.match(/variant === 'composer'[\s\S]*?\)\s*: \(/)?.[0] ?? ''
     const threadBranch = source.match(/variant === 'thread'[\s\S]*?data-testid="chat-appshot-identity"/)?.[0] ?? ''
-    const composerTransitionImage = source.match(/function ComposerAppshotTransitionImage[\s\S]*?function AppshotImageFrame/)?.[0] ?? ''
+    const composerTransitionImage = source.match(/function ComposerAppshotTransitionImage[\s\S]*?(?=\nfunction AppshotImageFrame)/)?.[0] ?? ''
     const imageFrame = source.match(/function AppshotImageFrame[\s\S]*?function readThreadImageHeight/)?.[0] ?? ''
     const appIconComponent = source.match(/function AppshotAppIcon[\s\S]*?function readThreadImageHeight/)?.[0] ?? ''
     const patterns = {
@@ -1284,11 +1303,15 @@ async function readCradleFrontendAppshotEvidence() {
       cardWidth232: /const APPSHOT_CARD_WIDTH = 232/.test(source),
       composerUsesTransitionSnapshot: /imageDataUrl=\{metadata\.transitionSnapshotDataUrl\}/.test(composerBranch),
       composerRendersPlaceholderWithoutSnapshot: /data-testid="chat-appshot-empty-snapshot"/.test(source),
-      composerShowsTransitionSnapshotOnly: !/<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(composerTransitionImage)
-        && !/className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(composerTransitionImage),
+      composerTransitionTargetIsImageSlot: /data-chat-appshot-transition-target/.test(composerTransitionImage)
+        && /style=\{\{ height: imageHeight \}\}/.test(composerTransitionImage),
+      composerOmitsFinalIdentity: !/<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(composerTransitionImage)
+        && !/APPSHOT_COMPOSER_TITLE_TOP_MARGIN/.test(source),
       finalCardUsesMotionWithHandoffSuppressedInitial: /<m\.div/.test(source) && /initial=\{variant === 'composer' \? false : \{ opacity: 0, y: 4 \}\}/.test(source),
-      composerHeightAddsSnapshotPadding: /snapshotHeight \+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(source)
-        && !/APPSHOT_TITLE_HEIGHT/.test(source),
+      composerHeightAddsSnapshotPadding: /snapshotHeight\s*\+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(source),
+      pendingHeightMatchesTransitionSnapshotSlot: /\(pending\.transitionSnapshotHeight \?\? APPSHOT_FALLBACK_HEIGHT\)\s*\+ APPSHOT_COMPOSER_VERTICAL_PADDING/.test(composerAttachmentsSource),
+      fallbackGrowthUsesSnapshotPadding: /const APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING = 8/.test(actionContextSource)
+        && /transitionSnapshotLayoutHeight \+ APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING/.test(actionContextSource),
       composerImageUsesFixedTargetStyle: /style=\{\{ height: imageHeight, width: APPSHOT_CARD_WIDTH \}\}/.test(source),
       threadUsesCaptureImage: /imageDataUrl=\{metadata\.imageDataUrl\}/.test(threadBranch),
       threadVisualWidth256: /const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256/.test(source),
@@ -1297,14 +1320,23 @@ async function readCradleFrontendAppshotEvidence() {
       iconOverlayBottomCentered: /absolute bottom-0 left-1\/2[^"]*size-6[^"]*-translate-x-1\/2/.test(appIconComponent),
       iconOverlayIsMaskSibling: /<AppshotAppIcon appIconDataUrl=\{appIconDataUrl\} \/>/.test(imageFrame),
       threadCaptionOnly: /variant === 'thread' && \(/.test(source)
-        && /className="mt-1 w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(source),
+        && /className="mt-1 h-\[17px\] w-full truncate text-center text-\[13px\] font-medium leading-\[17px\]/.test(source),
       composerAnimationTargetWidth232: /const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232/.test(actionContextSource),
       composerAnimationTargetHeight140: /const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140/.test(actionContextSource),
       composerAnimationTargetCornerRadiusZero: /const APPSHOT_ANIMATION_TARGET_CORNER_RADIUS = 0/.test(actionContextSource),
+      composerAnimationTargetImageAttachmentStep88: /const APPSHOT_IMAGE_ATTACHMENT_STEP = 88/.test(actionContextSource)
+        && /imageAttachmentCount \* APPSHOT_IMAGE_ATTACHMENT_STEP/.test(actionContextSource),
+      composerAnimationTargetAppshotStep240: /const APPSHOT_ATTACHMENT_SLOT_STEP = 240/.test(actionContextSource)
+        && /appshotContextCount \* APPSHOT_ATTACHMENT_SLOT_STEP/.test(actionContextSource)
+        && /pendingIndex \* APPSHOT_ATTACHMENT_SLOT_STEP/.test(actionContextSource),
       composerTrayUsesHorizontalScroll: /className="w-full overflow-x-auto/.test(composerAttachmentsSource),
       composerTrayHidesScrollbar: /\[-ms-overflow-style:none\] \[scrollbar-width:none\] \[&::-webkit-scrollbar\]:hidden/.test(composerAttachmentsSource),
       composerTrayUsesMinWidthRail: /className="flex min-w-max items-end gap-2"/.test(composerAttachmentsSource),
       composerTrayAvoidsWrapping: !/flex-wrap items-start/.test(composerAttachmentsSource) && !/overflow-y-auto/.test(composerAttachmentsSource),
+      pendingAppshotsRenderBeforeAttachments: /pendingAppshots\.map[\s\S]*attachments\.map/.test(composerAttachmentsSource),
+      pendingAppshotsInsertAtFront: /setPendingAppshots\(current => \[createPendingAppshot\(requestId\), \.\.\.current\]\)/.test(composerAppshotCaptureSource),
+      finalAppshotFilePartsInsertAtFront: /setAttachments\(current => \[\.\.\.fileParts, \.\.\.current\]\)/.test(composerAttachmentStateSource)
+        && /attachmentController\.appendFileParts\(appendExternalFileParts\)/.test(composerSource),
       composerPlaceholderSpringResponse035: /visualDuration: pending\.transitionSpringResponse \?\? 0\.35/.test(composerAttachmentsSource),
       composerPlaceholderSpringDamping073: /bounce: 1 - \(pending\.transitionSpringDampingFraction \?\? 0\.73\)/.test(composerAttachmentsSource),
     }
@@ -1368,7 +1400,7 @@ async function readCodexFrontendBundleEvidence(bundlePath) {
     iconBottomOverlay: /absolute bottom-0 left-1\/2 size-6 -translate-x-1\/2/.test(source),
     composerPendingHeightAddsEight: /function S\(e\)\{return\(e\?\?140\)\+8\}/.test(source),
     composerUsesTransitionSnapshot: /hasTransitionSnapshot|transitionSnapshotSrc|transitionSnapshotHeight/.test(source),
-    finalCardUsesNormalDiv: /role:K,\"aria-label\":q,tabIndex:J,onKeyDown:Y/.test(source),
+    finalCardUsesNormalDiv: /role:K,"aria-label":q,tabIndex:J,onKeyDown:Y/.test(source),
   }
   return {
     bundlePath,
@@ -1410,8 +1442,7 @@ function readCodexClassIvars(otoolOutput, classNeedle) {
   }
   const nextClassIndex = otoolOutput.indexOf('\n000000', classIndex + classNeedle.length)
   const section = otoolOutput.slice(classIndex, nextClassIndex < 0 ? otoolOutput.length : nextClassIndex)
-  return [...section.matchAll(/\n\s+name\s+0x[0-9a-f]+\s+([A-Za-z_][A-Za-z0-9_]*)/g)]
-    .map(match => match[1])
+  return Array.from(section.matchAll(/\n\s+name\s+0x[0-9a-f]+\s+([A-Za-z_]\w*)/g), match => match[1])
     .filter(name => !name.startsWith('_Tt'))
 }
 
@@ -1467,13 +1498,21 @@ async function resolveCodexBareModifierHotkey(option) {
     return {
       requested: option,
       resolved: option,
+      candidates: [option],
       detection: null,
     }
   }
   const detected = await readCodexBareModifierHotkey()
+  const fallbackCandidates = ['DoubleOption', 'DoubleCommand', 'DoubleShift']
+  const candidates = [
+    detected.modifier,
+    ...fallbackCandidates,
+  ].filter(Boolean)
+  const uniqueCandidates = [...new Set(candidates)]
   return {
     requested: option,
-    resolved: detected.modifier ?? 'DoubleCommand',
+    resolved: uniqueCandidates[0] ?? 'DoubleOption',
+    candidates: uniqueCandidates.length > 0 ? uniqueCandidates : ['DoubleOption'],
     detection: detected.detection,
   }
 }
@@ -1518,7 +1557,7 @@ function readParityStatus({
     missingEvidence.push('Codex frontend AppShot orchestration bundle must prove the composer animation target geometry: 232x140, cornerRadius 0, scale, and slot offsets.')
   }
   if (!cradleFrontendEvidence?.available || !cradleFrontendEvidence?.allRequiredPatternsPresent) {
-    missingEvidence.push('Cradle frontend AppShot source must match Codex composer/thread semantics: composer transition snapshot only, thread capture image with icon overlay.')
+    missingEvidence.push('Cradle frontend AppShot source must keep the Codex 232x140 composer transition snapshot slot while reserving the final Cradle app icon and title identity.')
   }
   if (!codexAppshotEvidence?.occurred) {
     missingEvidence.push('Codex AppShot must be proven to have occurred during the Codex recording window.')
@@ -1575,12 +1614,15 @@ function readParityStatus({
   if (!transitionSnapshotEvidence?.canvasMatchesTransitionSnapshot) {
     missingEvidence.push('Cradle AppShot transition snapshot PNG canvas must match the renderer transitionSnapshotHeight and destination width.')
   }
-  if (!transitionSnapshotEvidence?.targetBodyIsShorterThanCanvas) {
-    missingEvidence.push('Cradle AppShot transition snapshot must preserve the native 232x140 target body inside any titled snapshot canvas.')
+  if (!transitionSnapshotEvidence?.nativeTargetBodyFitsCanvas) {
+    missingEvidence.push('Cradle AppShot transition snapshot must preserve the native 232x140 target body inside the composer transition snapshot canvas.')
   }
   const snapshotContentEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.snapshotContentEvidence
   if (!snapshotContentEvidence?.hasContents) {
     missingEvidence.push('Cradle native AppShot snapshot layer must contain the captured window image.')
+  }
+  if (!snapshotContentEvidence?.sourceIsScreenshot) {
+    missingEvidence.push('Cradle native AppShot moving snapshot layer must use the original captured screenshot, not the composer transition snapshot asset.')
   }
   const layerTypeEvidence = cradleAppshotEvidence?.nativePresentationEvidence?.layerTypeEvidence
   if (!layerTypeEvidence?.transitionBackgroundIsGradientLayer || !layerTypeEvidence?.titleIsTextLayer || !layerTypeEvidence?.snapshotMaskIsShapeLayer) {
@@ -1613,8 +1655,8 @@ function readParityStatus({
   if (!sourceFrameEvidence?.matchesCaptureImageSize) {
     missingEvidence.push('Cradle native AppShot source frame must match the captured image point size.')
   }
-  if (!cradleAppshotEvidence?.videoTransitionEvidence?.detected) {
-    missingEvidence.push('Cradle native AppShot transition must be visible in the Cradle recording before recorder output can prove visual parity.')
+  if (!cradleAppshotEvidence?.runtimeTransitionEvidence?.detected) {
+    missingEvidence.push('Cradle native AppShot transition must be proven visible or moving by recorded video, native visibility probe, or native presentation probe.')
   }
 
   if (!sound.codex || !sound.cradle) {
@@ -1678,9 +1720,9 @@ function readTargetLockEvidence(context, targetWindow, capture) {
   const capturedWindow = capture?.window ?? null
   const matched = Boolean(
     capturedWindow
-      && capturedWindow.windowId === targetWindow.windowId
-      && capturedWindow.processId === targetWindow.processId
-      && (!targetWindow.bundleId || capturedWindow.bundleId === targetWindow.bundleId),
+    && capturedWindow.windowId === targetWindow.windowId
+    && capturedWindow.processId === targetWindow.processId
+    && (!targetWindow.bundleId || capturedWindow.bundleId === targetWindow.bundleId),
   )
   return {
     matched,
@@ -1716,13 +1758,13 @@ function readRecordingComparisonWindow(leftRecording, rightRecording) {
 }
 
 function readJpegDimensions(data) {
-  if (data[0] !== 0xff || data[1] !== 0xd8) {
+  if (data[0] !== 0xFF || data[1] !== 0xD8) {
     return null
   }
 
   let offset = 2
   while (offset + 9 < data.length) {
-    if (data[offset] !== 0xff) {
+    if (data[offset] !== 0xFF) {
       offset += 1
       continue
     }
@@ -1731,7 +1773,7 @@ function readJpegDimensions(data) {
     if (length < 2) {
       return null
     }
-    if (marker >= 0xc0 && marker <= 0xc3) {
+    if (marker >= 0xC0 && marker <= 0xC3) {
       return {
         format: 'jpeg',
         width: data.readUInt16BE(offset + 7),
@@ -1821,8 +1863,12 @@ function readCradleAppshotEvidence({
   recording,
   transitionFrameAlignment,
   presentationProbe,
+  visibilityProbe,
   transitionSnapshotAsset,
 }) {
+  const videoTransitionEvidence = readVideoTransitionEvidence(transitionFrameAlignment?.cradleStart)
+  const nativeVisibilityEvidence = readNativeVisibilityEvidence(visibilityProbe)
+  const nativePresentationEvidence = readNativePresentationEvidence(presentationProbe)
   return {
     captured: Boolean(capture?.filePath),
     captureBackend: capture?.captureBackend ?? null,
@@ -1836,22 +1882,51 @@ function readCradleAppshotEvidence({
     recordingBackend: recording?.recordingBackend ?? null,
     recordingError: recording?.recordingError ?? null,
     triggerError: recording?.triggerError ?? null,
-    videoTransitionEvidence: readVideoTransitionEvidence(transitionFrameAlignment?.cradleStart),
-    nativePresentationEvidence: {
-      motionDetected: Boolean(presentationProbe?.summary?.motionDetected),
-      sampleCount: presentationProbe?.summary?.sampleCount ?? 0,
-      imageWrittenCount: presentationProbe?.summary?.imageWrittenCount ?? 0,
-      uniqueImageHashCount: presentationProbe?.summary?.uniqueImageHashCount ?? 0,
-      changedSnapshotFrameCount: presentationProbe?.summary?.changedSnapshotFrameCount ?? 0,
-      appshotOverlayShadowFrameChangeCount: presentationProbe?.summary?.appshotOverlayShadowFrameChangeCount ?? 0,
-      whiteLayerEvidence: presentationProbe?.summary?.whiteLayerEvidence ?? null,
-      magicMoveFadeEvidence: presentationProbe?.summary?.magicMoveFadeEvidence ?? null,
-      nativeGeometryEvidence: presentationProbe?.summary?.nativeGeometryEvidence ?? null,
-      snapshotContentEvidence: presentationProbe?.summary?.snapshotContentEvidence ?? null,
-      layerTypeEvidence: presentationProbe?.summary?.layerTypeEvidence ?? null,
-      transitionOwnerEvidence: presentationProbe?.summary?.transitionOwnerEvidence ?? null,
-      changedOpacityKeys: presentationProbe?.summary?.changedOpacityKeys ?? [],
+    videoTransitionEvidence,
+    nativeVisibilityEvidence,
+    nativePresentationEvidence,
+    runtimeTransitionEvidence: {
+      detected: Boolean(videoTransitionEvidence.detected || nativeVisibilityEvidence.motionDetected || nativePresentationEvidence.motionDetected),
+      sources: [
+        ...(videoTransitionEvidence.detected ? ['recorded-video-transition'] : []),
+        ...(nativeVisibilityEvidence.motionDetected ? ['native-visibility-probe'] : []),
+        ...(nativePresentationEvidence.motionDetected ? ['native-presentation-probe'] : []),
+      ],
     },
+  }
+}
+
+function readNativeVisibilityEvidence(visibilityProbe) {
+  const summary = visibilityProbe?.summary
+  const panelFoundCount = summary?.panelFoundCount ?? 0
+  const uniqueImageHashCount = summary?.uniqueImageHashCount ?? 0
+  return {
+    detected: panelFoundCount > 0,
+    motionDetected: panelFoundCount > 0 && uniqueImageHashCount > 1,
+    sampleCount: summary?.sampleCount ?? 0,
+    panelFoundCount,
+    imageWrittenCount: summary?.imageWrittenCount ?? 0,
+    uniqueImageHashCount,
+    firstImageHash: summary?.firstImageHash ?? null,
+    lastImageHash: summary?.lastImageHash ?? null,
+  }
+}
+
+function readNativePresentationEvidence(presentationProbe) {
+  return {
+    motionDetected: Boolean(presentationProbe?.summary?.motionDetected),
+    sampleCount: presentationProbe?.summary?.sampleCount ?? 0,
+    imageWrittenCount: presentationProbe?.summary?.imageWrittenCount ?? 0,
+    uniqueImageHashCount: presentationProbe?.summary?.uniqueImageHashCount ?? 0,
+    changedSnapshotFrameCount: presentationProbe?.summary?.changedSnapshotFrameCount ?? 0,
+    appshotOverlayShadowFrameChangeCount: presentationProbe?.summary?.appshotOverlayShadowFrameChangeCount ?? 0,
+    whiteLayerEvidence: presentationProbe?.summary?.whiteLayerEvidence ?? null,
+    magicMoveFadeEvidence: presentationProbe?.summary?.magicMoveFadeEvidence ?? null,
+    nativeGeometryEvidence: presentationProbe?.summary?.nativeGeometryEvidence ?? null,
+    snapshotContentEvidence: presentationProbe?.summary?.snapshotContentEvidence ?? null,
+    layerTypeEvidence: presentationProbe?.summary?.layerTypeEvidence ?? null,
+    transitionOwnerEvidence: presentationProbe?.summary?.transitionOwnerEvidence ?? null,
+    changedOpacityKeys: presentationProbe?.summary?.changedOpacityKeys ?? [],
   }
 }
 
@@ -1876,14 +1951,15 @@ function readTransitionSnapshotEvidence({ animationTarget, capture, transitionSn
     : null
   const canvasMatchesTransitionSnapshot = Boolean(
     image
-      && expectedCanvas
-      && image.width === expectedCanvas.width
-      && image.height === expectedCanvas.height,
+    && expectedCanvas
+    && image.width === expectedCanvas.width
+    && image.height === expectedCanvas.height,
   )
-  const targetBodyIsShorterThanCanvas = Boolean(
+  const nativeTargetBodyFitsCanvas = Boolean(
     expectedCanvas
-      && expectedNativeTargetBody
-      && expectedNativeTargetBody.height <= expectedCanvas.height,
+    && expectedNativeTargetBody
+    && expectedNativeTargetBody.width === expectedCanvas.width
+    && expectedNativeTargetBody.height <= expectedCanvas.height,
   )
   return {
     available: Boolean(transitionSnapshotAsset),
@@ -1893,7 +1969,7 @@ function readTransitionSnapshotEvidence({ animationTarget, capture, transitionSn
     scale: scale ?? null,
     transitionSnapshotHeight: transitionSnapshotHeight ?? null,
     canvasMatchesTransitionSnapshot,
-    targetBodyIsShorterThanCanvas,
+    nativeTargetBodyFitsCanvas,
   }
 }
 
@@ -1928,6 +2004,10 @@ function readCaptureSourceFrameEvidence(capture) {
     widthDelta,
     heightDelta,
   }
+}
+
+function readObservedAssetKey(asset) {
+  return `${asset.sourcePath}:${asset.observedMtimeMs}:${asset.size}`
 }
 
 function readCodexAppshotEvidence({
@@ -1988,30 +2068,135 @@ function sleep(ms) {
 
 async function readCodexTmpAssetInventory() {
   const inventory = new Map()
-  let rootPath
-  try {
-    rootPath = await realpath(codexTmpRoot)
-  }
-  catch {
-    return inventory
-  }
-  const files = await listImageFiles(rootPath)
-  await Promise.all(files.map(async (filePath) => {
-    try {
-      const metadata = await stat(filePath)
-      if (!metadata.isFile() || metadata.size > maxAssetBytes) {
-        return
+  const rootPaths = await readCodexTmpRootPaths()
+  await Promise.all(rootPaths.map(async (rootPath) => {
+    const files = await listImageFiles(rootPath)
+    await Promise.all(files.map(async (filePath) => {
+      try {
+        const metadata = await stat(filePath)
+        if (!metadata.isFile() || metadata.size > maxAssetBytes) {
+          return
+        }
+        inventory.set(filePath, {
+          mtimeMs: metadata.mtimeMs,
+          rootPath,
+          size: metadata.size,
+        })
       }
-      inventory.set(filePath, {
-        mtimeMs: metadata.mtimeMs,
-        size: metadata.size,
-      })
-    }
-    catch {
-      // The Codex service can rotate temp files while we observe them.
-    }
+      catch {
+        // The Codex service can rotate temp files while we observe them.
+      }
+    }))
   }))
   return inventory
+}
+
+async function readCodexTmpRootPaths() {
+  const rootPathByValue = new Map()
+  async function addRoot(rootPath) {
+    try {
+      const resolvedRootPath = await realpath(rootPath)
+      const metadata = await stat(resolvedRootPath)
+      if (metadata.isDirectory()) {
+        rootPathByValue.set(resolvedRootPath, resolvedRootPath)
+      }
+    }
+    catch {
+      // Codex temp roots are optional and can disappear between polls.
+    }
+  }
+
+  await addRoot(codexTmpRoot)
+  await addRoot(codexSystemTmpRoot)
+  try {
+    const children = await readdir(tmpdir(), { withFileTypes: true })
+    await Promise.all(children.map(async (child) => {
+      if (!child.isDirectory()) {
+        return
+      }
+      if (!codexTmpRootNames.has(child.name) && !child.name.startsWith('.com.openai.codex.')) {
+        return
+      }
+      await addRoot(resolve(tmpdir(), child.name))
+    }))
+  }
+  catch {
+    // Temporary directory enumeration can fail under sandboxed runners.
+  }
+
+  return [...rootPathByValue.values()].sort()
+}
+
+async function readCodexTmpDirectorySnapshot(maxEntries = 40) {
+  const rootPaths = await readCodexTmpRootPaths()
+  if (rootPaths.length === 0) {
+    return {
+      rootPath: codexTmpRoot,
+      rootPaths: [],
+      exists: false,
+      imageFileCount: 0,
+      entryCount: 0,
+      sampledEntries: [],
+      error: null,
+    }
+  }
+
+  const sampledEntries = []
+  let entryCount = 0
+  let imageFileCount = 0
+  async function visit(rootPath, directory, depth) {
+    let children
+    try {
+      children = await readdir(directory, { withFileTypes: true })
+    }
+    catch {
+      return
+    }
+    for (const child of children) {
+      const childPath = resolve(directory, child.name)
+      const relativePath = relative(rootPath, childPath)
+      let metadata = null
+      try {
+        metadata = await stat(childPath)
+      }
+      catch {
+        metadata = null
+      }
+      const kind = child.isDirectory()
+        ? 'directory'
+        : child.isFile()
+          ? 'file'
+          : child.isSocket()
+            ? 'socket'
+            : 'other'
+      entryCount += 1
+      if (child.isFile() && isSupportedImagePath(childPath)) {
+        imageFileCount += 1
+      }
+      if (sampledEntries.length < maxEntries) {
+        sampledEntries.push({
+          rootPath,
+          relativePath,
+          kind,
+          size: metadata?.size ?? null,
+          mtimeMs: metadata?.mtimeMs ?? null,
+        })
+      }
+      if (child.isDirectory() && depth < 3) {
+        await visit(rootPath, childPath, depth + 1)
+      }
+    }
+  }
+  await Promise.all(rootPaths.map(rootPath => visit(rootPath, rootPath, 0)))
+  return {
+    rootPath: rootPaths[0] ?? codexTmpRoot,
+    rootPaths,
+    exists: true,
+    imageFileCount,
+    entryCount,
+    sampledEntries,
+    error: null,
+  }
 }
 
 async function listImageFiles(rootPath) {
@@ -2041,6 +2226,10 @@ async function listImageFiles(rootPath) {
 
 async function collectObservedCodexAssets({ baseline, reportDir, startedAtMs }) {
   const current = await readCodexTmpAssetInventory()
+  return copyObservedCodexAssets({ baseline, current, reportDir, startedAtMs })
+}
+
+async function copyObservedCodexAssets({ baseline, current, reportDir, startedAtMs }) {
   const candidates = []
   for (const [filePath, metadata] of current.entries()) {
     const previous = baseline.get(filePath)
@@ -2060,12 +2249,12 @@ async function collectObservedCodexAssets({ baseline, reportDir, startedAtMs }) 
   const assets = []
   for (let index = 0; index < candidates.length; index += 1) {
     const candidate = candidates[index]
-    const copied = await copyCodexAssetPath(
-      candidate.filePath,
-      reportDir,
-      `codex-observed-${String(index + 1).padStart(2, '0')}`,
-    )
-    if (copied) {
+    try {
+      const copied = await copyCodexAssetPath(
+        candidate.filePath,
+        reportDir,
+        `codex-observed-${String(index + 1).padStart(2, '0')}`,
+      )
       assets.push({
         kind: 'observedTempAsset',
         observedIndex: index,
@@ -2073,27 +2262,54 @@ async function collectObservedCodexAssets({ baseline, reportDir, startedAtMs }) 
         ...copied,
       })
     }
+    catch {
+      // Codex temp assets can be deleted while AppShot finalizes; keep polling.
+    }
   }
   return assets
 }
 
-async function waitForObservedCodexAssets({ baseline, startedAtMs, timeoutMs, pollIntervalMs }) {
+async function waitForObservedCodexAssets({ baseline, reportDir, startedAtMs, timeoutMs, pollIntervalMs }) {
   const deadlineMs = Date.now() + timeoutMs
+  const settleDeadlineAfterFirstCopyMs = 240
+  let firstDetectedAtMs = null
+  let changedCount = 0
+  const copiedAssetByKey = new Map()
   while (Date.now() < deadlineMs) {
     const current = await readCodexTmpAssetInventory()
-    const changedCount = countNewOrChangedCodexAssets({ baseline, current, startedAtMs })
-    if (changedCount > 0) {
-      return {
-        reason: 'asset-detected',
-        changedCount,
-        waitedMs: timeoutMs - Math.max(0, deadlineMs - Date.now()),
+    const currentChangedCount = countNewOrChangedCodexAssets({ baseline, current, startedAtMs })
+    changedCount = Math.max(changedCount, currentChangedCount)
+    if (currentChangedCount > 0) {
+      firstDetectedAtMs ??= Date.now()
+      const copiedAssets = await copyObservedCodexAssets({ baseline, current, reportDir, startedAtMs })
+      for (const asset of copiedAssets) {
+        copiedAssetByKey.set(readObservedAssetKey(asset), asset)
       }
     }
+    if (
+      firstDetectedAtMs !== null
+      && copiedAssetByKey.size > 0
+      && Date.now() - firstDetectedAtMs >= settleDeadlineAfterFirstCopyMs
+    ) {
+      break
+    }
     await sleep(Math.min(pollIntervalMs, Math.max(0, deadlineMs - Date.now())))
+  }
+  if (changedCount > 0) {
+    const copiedAssets = [...copiedAssetByKey.values()]
+    return {
+      reason: copiedAssets.length > 0 ? 'asset-detected' : 'asset-detected-copy-missed',
+      changedCount,
+      copiedAssetCount: copiedAssets.length,
+      copiedAssets,
+      waitedMs: timeoutMs - Math.max(0, deadlineMs - Date.now()),
+    }
   }
   return {
     reason: 'timeout',
     changedCount: 0,
+    copiedAssetCount: 0,
+    copiedAssets: [],
     waitedMs: timeoutMs,
   }
 }
@@ -2116,7 +2332,8 @@ function countNewOrChangedCodexAssets({ baseline, current, startedAtMs }) {
 async function recordTransitionVideo(outputPath, seconds, trigger, recordingBackend, client, options = {}) {
   await mkdir(dirname(outputPath), { recursive: true })
   const attempts = []
-  for (const backend of readRecordingBackendOrder(recordingBackend)) {
+  const backendOrder = options.recordingBackendOrder ?? readRecordingBackendOrder(recordingBackend)
+  for (const backend of backendOrder) {
     const attempt = await recordTransitionVideoWithBackend(outputPath, seconds, trigger, backend, client, options)
     attempts.push(...attempt.recordingAttempts)
     if (attempt.recordingError && (!attempt.triggered || options.retryAfterTriggeredRecordingFailure)) {
@@ -2172,7 +2389,7 @@ async function recordTransitionVideoWithBackend(outputPath, seconds, trigger, ba
     stdio: ['ignore', 'ignore', 'pipe'],
   })
   let stderr = ''
-  recording.stderr.on('data', data => {
+  recording.stderr.on('data', (data) => {
     stderr += data.toString()
   })
   const recordingFinished = readRecordingFinished(recording, backend, () => stderr)
@@ -2207,6 +2424,12 @@ async function recordTransitionVideoWithBackend(outputPath, seconds, trigger, ba
     return readFailedRecording(outputPath, backend, attempt, triggerError, true)
   }
   const media = await readVideoEvidence(outputPath)
+  const qualityError = readRecordingQualityError(media, options.frameRate)
+  if (qualityError) {
+    attempt.status = 'failed-after-trigger'
+    attempt.error = serializeError(qualityError)
+    return readFailedRecording(outputPath, backend, attempt, triggerError, true)
+  }
   attempt.status = 'succeeded'
   return {
     path: outputPath,
@@ -2223,9 +2446,16 @@ async function recordTransitionVideoWithBackend(outputPath, seconds, trigger, ba
 
 function readRecordingBackendOrder(recordingBackend) {
   if (recordingBackend === 'auto') {
-    return ['screen-capture-kit-window', 'core-graphics-window-polling', 'screen-capture-kit-display', 'screencapture', 'ffmpeg-avfoundation']
+    return ['core-graphics-window-polling', 'screen-capture-kit-display', 'screencapture', 'ffmpeg-avfoundation']
   }
   return [recordingBackend]
+}
+
+function filterRecordingBackendOrderForDiagnostics(backendOrder, screenCaptureKit) {
+  if (screenCaptureKit?.status === 'available' && screenCaptureKit?.displayCount !== 0) {
+    return backendOrder
+  }
+  return backendOrder.filter(backend => backend !== 'screen-capture-kit-display')
 }
 
 function readCodexWindowRecordingTarget(animationTarget, seconds) {
@@ -2256,6 +2486,20 @@ function readWindowRecordingTarget({ bundleIdentifier, processId, animationTarge
   }
 }
 
+function readCodexRecordingBackendOrder(recordingBackend) {
+  if (recordingBackend !== 'auto') {
+    return readRecordingBackendOrder(recordingBackend)
+  }
+  return ['screen-capture-kit-display', 'screencapture', 'ffmpeg-avfoundation']
+}
+
+function readDisplayRecordingTarget(animationTarget) {
+  const displayId = animationTarget?.codexDisplay?.id
+  return Number.isInteger(displayId) && displayId > 0
+    ? { displayId }
+    : {}
+}
+
 async function recordTransitionVideoWithMacBridge(outputPath, seconds, trigger, attempt, client, options) {
   if (!client) {
     attempt.status = 'unavailable'
@@ -2271,6 +2515,7 @@ async function recordTransitionVideoWithMacBridge(outputPath, seconds, trigger, 
         recordingId,
         outputPath,
         frameRate: 30,
+        ...(options.displayRecordingTarget ?? {}),
       }]
   let start
   try {
@@ -2313,6 +2558,12 @@ async function recordTransitionVideoWithMacBridge(outputPath, seconds, trigger, 
     return readFailedRecording(outputPath, attempt.backend, attempt, triggerError, true)
   }
   const media = await readVideoEvidence(outputPath)
+  const qualityError = readRecordingQualityError(media, options.frameRate)
+  if (qualityError) {
+    attempt.status = 'failed-after-trigger'
+    attempt.error = serializeError(qualityError)
+    return readFailedRecording(outputPath, attempt.backend, attempt, triggerError, true)
+  }
   attempt.status = 'succeeded'
   attempt.input = {
     start,
@@ -2421,7 +2672,7 @@ function parseAvfoundationVideoDevices(output) {
     if (!readingVideoDevices) {
       continue
     }
-    const match = line.match(/\[(\d+)]\s+(.+)$/)
+    const match = line.match(/\[(\d+)\]\s+(.+)$/)
     if (match) {
       devices.push({
         index: match[1],
@@ -2491,6 +2742,25 @@ function readFailedRecording(outputPath, backend, attempt, triggerError, trigger
   }
 }
 
+function readRecordingQualityError(media, targetFrameRate) {
+  const actualFrameRate = readPositiveFiniteNumber(media?.averageFrameRate)
+  const expectedFrameRate = readPositiveFiniteNumber(targetFrameRate)
+  if (!actualFrameRate || !expectedFrameRate) {
+    return null
+  }
+  const minimumFrameRate = Math.max(1, expectedFrameRate * 0.55)
+  if (actualFrameRate >= minimumFrameRate) {
+    return null
+  }
+  const error = new Error(`Recording average frame rate ${actualFrameRate.toFixed(2)} fps is below the parity threshold ${minimumFrameRate.toFixed(2)} fps.`)
+  error.details = {
+    actualFrameRate,
+    expectedFrameRate,
+    minimumFrameRate,
+  }
+  return error
+}
+
 async function extractVideoFrames(videoPath, outputDir, frameRate, comparisonWindow = null) {
   await mkdir(outputDir, { recursive: true })
   const pattern = resolve(outputDir, 'frame-%04d.png')
@@ -2517,13 +2787,20 @@ async function extractVideoFrames(videoPath, outputDir, frameRate, comparisonWin
 }
 
 async function compareVideos(codexVideoPath, cradleVideoPath, comparisonWindow = null) {
+  const codexMedia = await readVideoEvidence(codexVideoPath)
+  const cradleMedia = await readVideoEvidence(cradleVideoPath)
+  const comparisonWidth = readPositiveFiniteNumber(codexMedia.width) ?? readPositiveFiniteNumber(cradleMedia.width)
+  const comparisonHeight = readPositiveFiniteNumber(codexMedia.height) ?? readPositiveFiniteNumber(cradleMedia.height)
+  const normalizeFilter = comparisonWidth && comparisonHeight
+    ? `scale=${comparisonWidth}:${comparisonHeight}:flags=bicubic,setsar=1,`
+    : ''
   const durationSeconds = readPositiveFiniteNumber(comparisonWindow?.durationSeconds)
   const codexFilter = durationSeconds
-    ? `[0:v]trim=duration=${formatFfmpegNumber(durationSeconds)},setpts=PTS-STARTPTS,format=yuv420p[codex]`
-    : '[0:v]setpts=PTS-STARTPTS,format=yuv420p[codex]'
+    ? `[0:v]trim=duration=${formatFfmpegNumber(durationSeconds)},setpts=PTS-STARTPTS,${normalizeFilter}format=yuv420p[codex]`
+    : `[0:v]setpts=PTS-STARTPTS,${normalizeFilter}format=yuv420p[codex]`
   const cradleFilter = durationSeconds
-    ? `[1:v]trim=duration=${formatFfmpegNumber(durationSeconds)},setpts=PTS-STARTPTS,format=yuv420p[cradle]`
-    : '[1:v]setpts=PTS-STARTPTS,format=yuv420p[cradle]'
+    ? `[1:v]trim=duration=${formatFfmpegNumber(durationSeconds)},setpts=PTS-STARTPTS,${normalizeFilter}format=yuv420p[cradle]`
+    : `[1:v]setpts=PTS-STARTPTS,${normalizeFilter}format=yuv420p[cradle]`
   const comparisonFilter = `${codexFilter};${cradleFilter};[codex][cradle]`
   const ssimOutput = await runProcessWithOutput('ffmpeg', [
     '-hide_banner',
@@ -2553,6 +2830,13 @@ async function compareVideos(codexVideoPath, cradleVideoPath, comparisonWindow =
   ])
   return {
     comparisonWindow,
+    normalizedSize: comparisonWidth && comparisonHeight
+      ? { width: comparisonWidth, height: comparisonHeight }
+      : null,
+    sourceMedia: {
+      codex: codexMedia,
+      cradle: cradleMedia,
+    },
     ssim: parseSsimOutput(ssimOutput),
     psnr: parsePsnrOutput(psnrOutput),
   }
@@ -2736,7 +3020,7 @@ async function readFrameDirectoryEvidence(directory) {
     .filter(entry => entry.toLowerCase().endsWith('.png'))
     .sort()
   const first = entries[0] ? await readFrameEvidence(resolve(directory, entries[0])) : null
-  const last = entries.length > 0 ? await readFrameEvidence(resolve(directory, entries[entries.length - 1])) : null
+  const last = entries.length > 0 ? await readFrameEvidence(resolve(directory, entries.at(-1))) : null
   return {
     frameCount: entries.length,
     frames: await Promise.all(entries.map(async (entry, index) => ({
@@ -2820,9 +3104,13 @@ function parseFrameRate(value) {
 function hasUsableRecording(recording) {
   return Boolean(
     recording
-      && !recording.recordingError
-      && recording.path
-      && recording.size > 0,
+    && !recording.recordingError
+    && recording.path
+    && recording.size > 0
+    && readPositiveFiniteNumber(recording.media?.durationSeconds)
+    && readPositiveFiniteNumber(recording.media?.averageFrameRate)
+    && readPositiveFiniteNumber(recording.media?.width)
+    && readPositiveFiniteNumber(recording.media?.height),
   )
 }
 
@@ -3171,10 +3459,10 @@ function readWorstMetric(values) {
 function areSameImageDimensions(left, right) {
   return Boolean(
     left
-      && right
-      && left.width === right.width
-      && left.height === right.height
-      && left.format === right.format,
+    && right
+    && left.width === right.width
+    && left.height === right.height
+    && left.format === right.format,
   )
 }
 
@@ -3252,7 +3540,7 @@ function formatMarkdownReport(report) {
   const formatImage = image => image ? `${image.width}x${image.height} ${image.format}` : 'unknown image'
   const formatHash = value => value ? ` sha256=${value.slice(0, 16)}...` : ''
   const formatAsset = asset => `- ${asset.kind}: \`${asset.relativePath}\` (${asset.size} bytes, ${formatImage(asset.image)},${formatHash(asset.sha256)})`
-  const formatRecording = recording => {
+  const formatRecording = (recording) => {
     if (!recording) {
       return null
     }
@@ -3271,7 +3559,7 @@ function formatMarkdownReport(report) {
     const errorSuffix = errors.length > 0 ? `, ${errors.join(', ')}` : ''
     return `\`${recording.relativePath}\` (${recording.size} bytes${details}${backend}${attempts}${errorSuffix})`
   }
-  const formatFrames = frames => {
+  const formatFrames = (frames) => {
     if (!frames) {
       return null
     }
@@ -3280,7 +3568,7 @@ function formatMarkdownReport(report) {
       : ''
     return `\`${frames.relativePath}\` (${frames.frameCount} frames at ${frames.frameRate} fps${windowSuffix}, first=${frames.firstFrame?.sha256?.slice(0, 16) ?? 'none'}, last=${frames.lastFrame?.sha256?.slice(0, 16) ?? 'none'})`
   }
-  const formatComparisonWindow = window => {
+  const formatComparisonWindow = (window) => {
     if (!window) {
       return '- Not available'
     }
@@ -3378,6 +3666,10 @@ function formatMarkdownReport(report) {
         `- Video transition detected: ${report.cradle.appshotEvidence.videoTransitionEvidence?.detected ?? false}`,
         `- Video transition start index: ${report.cradle.appshotEvidence.videoTransitionEvidence?.startIndex ?? 'none'}`,
         `- Video transition detection status: ${report.cradle.appshotEvidence.videoTransitionEvidence?.status ?? 'not-evaluated'}`,
+        `- Runtime transition detected: ${report.cradle.appshotEvidence.runtimeTransitionEvidence?.detected ?? false}`,
+        `- Runtime transition sources: ${report.cradle.appshotEvidence.runtimeTransitionEvidence?.sources?.join(', ') || 'none'}`,
+        `- Native visibility motion detected: ${report.cradle.appshotEvidence.nativeVisibilityEvidence?.motionDetected ?? false}`,
+        `- Native visibility panel found: ${report.cradle.appshotEvidence.nativeVisibilityEvidence?.panelFoundCount ?? 0}/${report.cradle.appshotEvidence.nativeVisibilityEvidence?.sampleCount ?? 0}`,
         `- Native presentation motion detected: ${report.cradle.appshotEvidence.nativePresentationEvidence?.motionDetected ?? false}`,
         `- Native presentation samples: ${report.cradle.appshotEvidence.nativePresentationEvidence?.sampleCount ?? 0}`,
         `- Native presentation image hashes: ${report.cradle.appshotEvidence.nativePresentationEvidence?.uniqueImageHashCount ?? 0}`,
@@ -3442,9 +3734,15 @@ function formatMarkdownReport(report) {
     ? [
         `- Window: ${report.codex.observe.seconds}s`,
         `- Poll interval: ${report.codex.observe.pollIntervalMs}ms`,
+        `- Auto trigger: ${report.codex.observe.autoTriggerCodexHotkey}`,
+        `- Requested hotkey: ${report.codex.observe.codexHotkey}`,
+        `- Resolved hotkey: ${report.codex.observe.resolvedCodexHotkey ?? 'none'}`,
+        `- Hotkey detection: ${report.codex.observe.codexHotkeyDetection?.status ?? 'none'}`,
         `- Wait reason: ${report.codex.observe.wait?.reason ?? 'not-run'}`,
         `- Changed assets detected: ${report.codex.observe.wait?.changedCount ?? 0}`,
         `- Waited: ${report.codex.observe.wait?.waitedMs ?? 0}ms`,
+        `- Temp before: ${formatCodexTmpSnapshot(report.codex.observe.tempSnapshotBefore)}`,
+        `- Temp after: ${formatCodexTmpSnapshot(report.codex.observe.tempSnapshotAfter)}`,
       ].join('\n')
     : '- Not used'
   const imageComparisons = report.imageComparisons.length > 0
@@ -3691,7 +3989,7 @@ function formatTransitionFrameAlignment(alignment) {
 }
 
 function formatSoundComparison(sound) {
-  const formatAudio = asset => {
+  const formatAudio = (asset) => {
     if (!asset) {
       return 'missing'
     }
@@ -3706,6 +4004,27 @@ function formatSoundComparison(sound) {
     `- Byte identical: ${sound.byteIdentical}`,
     `- Metadata identical: ${sound.metadataIdentical}`,
   ].join('\n')
+}
+
+function formatCodexTmpSnapshot(snapshot) {
+  if (!snapshot) {
+    return 'not-captured'
+  }
+  if (!snapshot.exists) {
+    return `exists=false, root=${snapshot.rootPath}, error=${snapshot.error?.message ?? 'none'}`
+  }
+  const samples = Array.isArray(snapshot.sampledEntries)
+    ? snapshot.sampledEntries
+        .slice(0, 5)
+        .map(entry => `${entry.relativePath}:${entry.kind}`)
+        .join(', ')
+    : ''
+  return [
+    'exists=true',
+    `entries=${snapshot.entryCount}`,
+    `images=${snapshot.imageFileCount}`,
+    `samples=${samples || 'none'}`,
+  ].join(', ')
 }
 
 function formatCaptureImageSize(size) {
@@ -3757,7 +4076,7 @@ function formatTransitionSnapshotEvidence(evidence) {
     `expectedCanvas=${expectedCanvas}`,
     `targetBody=${expectedNativeTargetBody}`,
     `canvasMatches=${evidence.canvasMatchesTransitionSnapshot}`,
-    `bodyWithinCanvas=${evidence.targetBodyIsShorterThanCanvas}`,
+    `bodyWithinCanvas=${evidence.nativeTargetBodyFitsCanvas}`,
   ].join(', ')
 }
 
@@ -3816,6 +4135,7 @@ function formatSnapshotContentEvidence(evidence) {
   return [
     `hasContents=${evidence.hasContents}`,
     `contentsScale=${evidence.contentsScale ?? 'none'}`,
+    `source=${evidence.source ?? 'none'}`,
     `backgroundWhite=${evidence.backgroundIsWhite}`,
   ].join(', ')
 }
@@ -3998,9 +4318,11 @@ async function run() {
     let codexObserveStartedAtMs = null
     let codexRecording = null
     let codexObserveWait = null
+    let codexTempSnapshotBefore = null
+    let codexTempSnapshotAfter = null
     let codexHotkey = null
     const start = null
-    let codex = { updates: [], assets: [] }
+    const codex = { updates: [], assets: [] }
     const direct = {
       status: 'removed',
       error: null,
@@ -4008,16 +4330,21 @@ async function run() {
 
     if (shouldObserve) {
       codexBaseline = await readCodexTmpAssetInventory()
+      codexTempSnapshotBefore = await readCodexTmpDirectorySnapshot()
       codexObserveStartedAtMs = Date.now()
       logStage('codex-observe-begin', {
         seconds: options.observeSeconds,
         baselineCount: codexBaseline.size,
+        tempRootExists: codexTempSnapshotBefore.exists,
+        tempRootEntryCount: codexTempSnapshotBefore.entryCount,
+        tempRootImageFileCount: codexTempSnapshotBefore.imageFileCount,
         autoTriggerCodexHotkey: options.autoTriggerCodexHotkey,
         codexHotkey: options.codexHotkey,
       })
       const observeCodexAppshot = async () => {
         const waitForAssets = waitForObservedCodexAssets({
           baseline: codexBaseline,
+          reportDir: outputDir,
           startedAtMs: codexObserveStartedAtMs,
           timeoutMs: options.observeSeconds * 1000,
           pollIntervalMs: options.observePollIntervalMs,
@@ -4027,14 +4354,38 @@ async function run() {
           logStage('codex-observe-synthetic-hotkey-begin', {
             requestedModifier: codexHotkey.requested,
             resolvedModifier: codexHotkey.resolved,
+            candidates: codexHotkey.candidates,
             holdMilliseconds: options.codexHotkeyHoldMs,
             detectionStatus: codexHotkey.detection?.status ?? 'explicit',
           })
-          const hotkey = await client.request('mac.input.syntheticBareModifier', {
-            modifier: codexHotkey.resolved,
-            holdMilliseconds: options.codexHotkeyHoldMs,
-          }, 5_000)
-          logStage('codex-observe-synthetic-hotkey-end', hotkey)
+          const startedAtMs = Date.now()
+          const postedHotkeys = []
+          const candidates = codexHotkey.candidates?.length > 0
+            ? codexHotkey.candidates
+            : [codexHotkey.resolved]
+          for (let index = 0; index < candidates.length; index += 1) {
+            if (Date.now() - startedAtMs >= options.observeSeconds * 1000) {
+              break
+            }
+            const modifier = candidates[index]
+            const hotkey = await client.request('mac.input.syntheticBareModifier', {
+              modifier,
+              holdMilliseconds: options.codexHotkeyHoldMs,
+            }, 5_000)
+            postedHotkeys.push(hotkey)
+            logStage('codex-observe-synthetic-hotkey-posted', {
+              candidateIndex: index,
+              candidateCount: candidates.length,
+              ...hotkey,
+            })
+            if (index < candidates.length - 1) {
+              await sleep(Math.max(options.codexHotkeyHoldMs + 220, 320))
+            }
+          }
+          logStage('codex-observe-synthetic-hotkey-end', {
+            postedEventCount: postedHotkeys.reduce((count, hotkey) => count + (hotkey.postedEventCount ?? 0), 0),
+            postedHotkeys,
+          })
         }
         else if (options.codexSource === 'observe') {
           console.log('Trigger Codex AppShot from the Codex UI now; Cradle will observe Codex temp assets and video.')
@@ -4050,7 +4401,13 @@ async function run() {
           options.recordingBackend,
           client,
           {
+            recordingBackendOrder: filterRecordingBackendOrderForDiagnostics(
+              readCodexRecordingBackendOrder(options.recordingBackend),
+              screenCaptureKit,
+            ),
+            displayRecordingTarget: readDisplayRecordingTarget(animationTarget),
             windowRecordingTarget: readCodexWindowRecordingTarget(animationTarget, options.observeSeconds),
+            retryAfterTriggeredRecordingFailure: true,
             postTriggerDelayMs: () => Math.max(
               0,
               options.observeSeconds * 1000 - (codexObserveWait?.waitedMs ?? options.observeSeconds * 1000),
@@ -4064,6 +4421,16 @@ async function run() {
         if (recording.recordingError) {
           logStage('codex-observe-recording-failed', recording.recordingError)
         }
+        if (!recording.triggered && recording.recordingError) {
+          logStage('codex-observe-recording-fallback-trigger-begin', {
+            reason: 'recording-failed-before-trigger',
+          })
+          await observeCodexAppshot()
+          logStage('codex-observe-recording-fallback-trigger-end', {
+            observedAssetCount: codexObserveWait?.copiedAssets?.length ?? 0,
+            waitedMs: codexObserveWait?.waitedMs ?? null,
+          })
+        }
         if (recording.triggerError) {
           logStage('codex-observe-trigger-failed', recording.triggerError)
         }
@@ -4074,14 +4441,22 @@ async function run() {
     }
 
     const observedAssets = shouldObserve
-      ? await collectObservedCodexAssets({
-          baseline: codexBaseline,
-          reportDir: outputDir,
-          startedAtMs: codexObserveStartedAtMs,
-        })
+      ? codexObserveWait?.copiedAssets?.length > 0
+        ? codexObserveWait.copiedAssets
+        : await collectObservedCodexAssets({
+            baseline: codexBaseline,
+            reportDir: outputDir,
+            startedAtMs: codexObserveStartedAtMs,
+          })
       : []
     if (shouldObserve) {
-      logStage('codex-observe-end', { observedAssetCount: observedAssets.length })
+      codexTempSnapshotAfter = await readCodexTmpDirectorySnapshot()
+      logStage('codex-observe-end', {
+        observedAssetCount: observedAssets.length,
+        tempRootExists: codexTempSnapshotAfter.exists,
+        tempRootEntryCount: codexTempSnapshotAfter.entryCount,
+        tempRootImageFileCount: codexTempSnapshotAfter.imageFileCount,
+      })
     }
 
     const appliedCalibration = {}
@@ -4111,6 +4486,10 @@ async function run() {
         options.recordingBackend,
         client,
         {
+          recordingBackendOrder: filterRecordingBackendOrderForDiagnostics(
+            readRecordingBackendOrder(options.recordingBackend),
+            screenCaptureKit,
+          ),
           windowRecordingTarget: readCradleWindowRecordingTarget(bridge, animationTarget, options.recordingSeconds),
           retryAfterTriggeredRecordingFailure: true,
         },
@@ -4154,6 +4533,7 @@ async function run() {
         soundEnabled: false,
         sampleCount: 14,
         sampleIntervalSeconds: 0.12,
+        captureImages: false,
         animationDuration: nativeProbeAnimationDuration,
         ...appliedCalibration,
       }, 30_000)
@@ -4174,6 +4554,7 @@ async function run() {
       const rawPresentationProbe = await client.request('mac.appshot.probeTransitionPresentation', {
         outputDir: resolve(artifactsDir, 'cradle-native-presentation-probe'),
         screenshotPath: cradleCapture.filePath,
+        transitionSnapshotPath: cradleCapture.appshot?.transitionSnapshotPath,
         sourceWindow: cradleCapture.window,
         animationTarget,
         soundEnabled: false,
@@ -4200,6 +4581,7 @@ async function run() {
       const rawPresentationFrameProbe = await client.request('mac.appshot.probeTransitionPresentation', {
         outputDir: resolve(artifactsDir, 'cradle-native-presentation-frame-probe'),
         screenshotPath: cradleCapture.filePath,
+        transitionSnapshotPath: cradleCapture.appshot?.transitionSnapshotPath,
         sourceWindow: cradleCapture.window,
         animationTarget,
         soundEnabled: false,
@@ -4228,22 +4610,32 @@ async function run() {
       if (hasUsableRecording(codexRecording) || hasUsableRecording(cradleRecording)) {
         logStage('frames-extract-begin')
         if (hasUsableRecording(codexRecording)) {
-          codexFrames = await extractVideoFrames(
-            codexRecording.path,
-            resolve(frameDir, 'codex'),
-            options.frameRate,
-            comparisonWindow,
-          )
-          codexFrames.relativePath = relative(outputDir, codexFrames.directory)
+          try {
+            codexFrames = await extractVideoFrames(
+              codexRecording.path,
+              resolve(frameDir, 'codex'),
+              options.frameRate,
+              comparisonWindow,
+            )
+            codexFrames.relativePath = relative(outputDir, codexFrames.directory)
+          }
+          catch (error) {
+            logStage('codex-frames-extract-failed', serializeError(error))
+          }
         }
         if (hasUsableRecording(cradleRecording)) {
-          cradleFrames = await extractVideoFrames(
-            cradleRecording.path,
-            resolve(frameDir, 'cradle'),
-            options.frameRate,
-            comparisonWindow,
-          )
-          cradleFrames.relativePath = relative(outputDir, cradleFrames.directory)
+          try {
+            cradleFrames = await extractVideoFrames(
+              cradleRecording.path,
+              resolve(frameDir, 'cradle'),
+              options.frameRate,
+              comparisonWindow,
+            )
+            cradleFrames.relativePath = relative(outputDir, cradleFrames.directory)
+          }
+          catch (error) {
+            logStage('cradle-frames-extract-failed', serializeError(error))
+          }
         }
         logStage('frames-extract-end', {
           codexFrameCount: codexFrames?.frameCount ?? 0,
@@ -4262,8 +4654,13 @@ async function run() {
     if (options.analyzeVideo) {
       if (hasUsableRecording(codexRecording) && hasUsableRecording(cradleRecording)) {
         logStage('video-analysis-begin')
-        videoComparison = await compareVideos(codexRecording.path, cradleRecording.path, comparisonWindow)
-        logStage('video-analysis-end', videoComparison)
+        try {
+          videoComparison = await compareVideos(codexRecording.path, cradleRecording.path, comparisonWindow)
+          logStage('video-analysis-end', videoComparison)
+        }
+        catch (error) {
+          logStage('video-analysis-failed', serializeError(error))
+        }
       }
       else {
         logStage('video-analysis-skipped', {
@@ -4340,6 +4737,7 @@ async function run() {
       recording: cradleRecording,
       transitionFrameAlignment,
       presentationProbe: cradlePresentationProbe,
+      visibilityProbe: cradleVisibilityProbe,
       transitionSnapshotAsset: cradleTransitionSnapshotAsset,
     })
     const parityStatus = readParityStatus({
@@ -4387,6 +4785,8 @@ async function run() {
               resolvedCodexHotkey: codexHotkey?.resolved ?? null,
               codexHotkeyDetection: codexHotkey?.detection ?? null,
               codexHotkeyHoldMs: options.codexHotkeyHoldMs,
+              tempSnapshotBefore: codexTempSnapshotBefore,
+              tempSnapshotAfter: codexTempSnapshotAfter,
               wait: codexObserveWait,
             }
           : null,

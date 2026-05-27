@@ -1,19 +1,15 @@
 import { existsSync, unlinkSync } from 'node:fs'
-import { createServer, type Server, type Socket } from 'node:net'
+import type { Server, Socket } from 'node:net'
+import { createServer } from 'node:net'
 import { join } from 'node:path'
-
-import { app, webContents } from 'electron'
 
 import {
   buildDocumentReadyExpression,
-  buildElementClickExpression,
-  buildEditableSelectionExpression,
   buildElementCenterExpression,
+  buildElementClickExpression,
   buildFocusedEditableStateExpression,
   buildKeyboardTextFallbackExpression,
   buildScrollActionExpression,
-  buildScrollStateExpression,
-  buildScrollWaitExpression,
   buildTextReplacementExpression,
   createKeyEventPayload,
   isRecoverableNavigationAbort,
@@ -39,11 +35,12 @@ import type {
   WaitForSelectorResult,
 } from '@cradle/browser-use/protocol'
 import { encodeFrame, FrameDecoder } from '@cradle/browser-use/protocol'
+import { app, webContents } from 'electron'
 
 let server: Server | null = null
 let socketPath = ''
 
-interface WebviewEntry { wc: Electron.WebContents; attached: boolean }
+interface WebviewEntry { wc: Electron.WebContents, attached: boolean }
 
 /** Tracked webview webContents by tab ID */
 const webviewRegistry = new Map<string, WebviewEntry>()
@@ -87,7 +84,7 @@ function getActiveWebview(): WebviewEntry | undefined {
     }
     return undefined
   }
-  return entries[entries.length - 1][1]
+  return entries.at(-1)?.[1]
 }
 
 function getWebview(tabId?: string): WebviewEntry | undefined {
@@ -144,7 +141,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           expression: buildElementClickExpression(cmd.selector),
           returnByValue: true,
         })
-        if (!click?.found) throw new Error(`Element not found: ${cmd.selector}`)
+        if (!click?.found) { throw new Error(`Element not found: ${cmd.selector}`) }
         const data: ClickResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -159,8 +156,8 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           expression: buildTextReplacementExpression(cmd.selector, cmd.text),
           returnByValue: true,
         })
-        if (!replacement?.found) throw new Error(`Element not found: ${cmd.selector}`)
-        if (!replacement.editable) throw new Error(`Element is not editable: ${cmd.selector}`)
+        if (!replacement?.found) { throw new Error(`Element not found: ${cmd.selector}`) }
+        if (!replacement.editable) { throw new Error(`Element is not editable: ${cmd.selector}`) }
         const data: TypeResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -192,8 +189,8 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           expression: buildScrollActionExpression(cmd.selector, cmd.direction, amount),
           returnByValue: true,
         })
-        if (!scroll?.found) throw new Error(`Element not found: ${cmd.selector}`)
-        if (scroll.canMove && !scroll.moved) throw new Error(`Scroll did not move: ${cmd.direction}`)
+        if (!scroll?.found) { throw new Error(`Element not found: ${cmd.selector}`) }
+        if (scroll.canMove && !scroll.moved) { throw new Error(`Scroll did not move: ${cmd.direction}`) }
         const data: ScrollResult = { success: true }
         return { id: cmd.id, ok: true, data }
       }
@@ -208,9 +205,11 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
           expression: buildElementCenterExpression(cmd.selector),
           returnByValue: true,
         })
-        if (!box) throw new Error(`Element not found: ${cmd.selector}`)
+        if (!box) { throw new Error(`Element not found: ${cmd.selector}`) }
         await entry.wc.debugger.sendCommand('Input.dispatchMouseEvent', {
-          type: 'mouseMoved', x: box.x, y: box.y,
+          type: 'mouseMoved',
+x: box.x,
+y: box.y,
         })
         const data: HoverResult = { success: true }
         return { id: cmd.id, ok: true, data }
@@ -248,14 +247,14 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
             expression: `!!document.querySelector(${JSON.stringify(cmd.selector)})`,
             returnByValue: true,
           })
-          if (value) break
+          if (value) { break }
           await new Promise(r => setTimeout(r, 100))
         }
         const { result: { value: found } } = await entry.wc.debugger.sendCommand('Runtime.evaluate', {
           expression: `!!document.querySelector(${JSON.stringify(cmd.selector)})`,
           returnByValue: true,
         })
-        if (!found) throw new Error(`Timeout waiting for selector: ${cmd.selector}`)
+        if (!found) { throw new Error(`Timeout waiting for selector: ${cmd.selector}`) }
         const data: WaitForSelectorResult = { found: true }
         return { id: cmd.id, ok: true, data }
       }

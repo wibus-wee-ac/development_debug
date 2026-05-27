@@ -2,10 +2,12 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+
 import * as tar from 'tar'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
+import type { PluginInstallOptions } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
   createInstalledPluginPackageDirName,
@@ -13,7 +15,6 @@ import {
   parsePluginInstallUrl,
   PluginInstallLinkError,
   resolveDesktopInstalledPluginsDir,
-  type PluginInstallOptions,
 } from './plugin-install-links'
 
 const tempRoots: string[] = []
@@ -145,7 +146,7 @@ describe('installPluginFromRequest', () => {
     })
 
     expect(result).toBeDefined()
-    if (!result) throw new Error('Expected plugin install result')
+    if (!result) { throw new Error('Expected plugin install result') }
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(result).toMatchObject({
       mode: 'alreadyAvailable',
@@ -178,7 +179,7 @@ describe('installPluginFromRequest', () => {
     })
 
     expect(result).toBeDefined()
-    if (!result) throw new Error('Expected plugin install result')
+    if (!result) { throw new Error('Expected plugin install result') }
     expect(fetchImpl).toHaveBeenCalledOnce()
     expect(result).toMatchObject({
       mode: 'downloaded',

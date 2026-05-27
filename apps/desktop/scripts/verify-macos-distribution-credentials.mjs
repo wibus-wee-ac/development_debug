@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Verifies local macOS signing and notarization credentials before preview distribution packaging.
+import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -73,8 +73,8 @@ function readYamlScalar(raw, key, fallback) {
 }
 
 function readMacIdentityConfig(raw) {
-  const macSection = raw.match(/^mac:\n(?<body>(?:  .*\n?)*)/m)?.groups?.body ?? ''
-  const identity = macSection.match(/^  identity:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? null
+  const macSection = raw.match(/^mac:\n(?<body>(?: {2}.*\n?)*)/m)?.groups?.body ?? ''
+  const identity = macSection.match(/^ {2}identity:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? null
   return identity
 }
 
@@ -313,19 +313,23 @@ function main() {
     shouldCheckInstallerSigning ? checkXcrunTool('pkgutil', 'pkgutil') : null,
     shouldCheckNotaryProfile ? checkCommand('xcrun', ['--find', 'notarytool'], 'notarytool') : null,
     shouldCheckStapler ? checkCommand('xcrun', ['--find', 'stapler'], 'stapler') : null,
-    shouldCheckAppSigning ? checkDeveloperIdentity({
+    shouldCheckAppSigning
+? checkDeveloperIdentity({
       identities,
       expected: appIdentity,
       certificatePrefix: 'Developer ID Application',
       label: 'Developer ID Application',
       allowDeferredImport: canDeferAppIdentityImport,
-    }) : null,
-    shouldCheckInstallerSigning ? checkDeveloperIdentity({
+    })
+: null,
+    shouldCheckInstallerSigning
+? checkDeveloperIdentity({
       identities,
       expected: installerIdentity,
       certificatePrefix: 'Developer ID Installer',
       label: 'Developer ID Installer',
-    }) : null,
+    })
+: null,
     shouldCheckAppSigning ? checkElectronBuilderSigning({ appIdentity, builderIdentity, identities }) : null,
     shouldCheckNotaryProfile ? checkNotaryProfile({ profile: notaryProfile, skipAuthCheck: skipNotaryAuthCheck }) : null,
   ].filter(Boolean)

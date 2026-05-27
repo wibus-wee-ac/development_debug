@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { z } from 'zod'
 
-const MenuItemSchema: z.ZodType<Record<string, unknown>> = z.lazy(() =>
-  z.object({
-    submenu: z.array(MenuItemSchema).optional(),
-  }).passthrough(),
-)
-const MenuItemsSchema = z.array(MenuItemSchema).optional().default([])
+type MenuTreeItem = Record<string, unknown> & {
+  submenu?: MenuTreeItem[]
+}
+
+function readMenuItems(value: unknown): MenuTreeItem[] {
+  return Array.isArray(value) ? value as MenuTreeItem[] : []
+}
 
 const electronMocks = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void
@@ -32,19 +32,23 @@ const electronMocks = vi.hoisted(() => {
     setBounds = vi.fn((bounds: unknown) => {
       this.bounds = bounds
     })
+
     show = vi.fn(() => {
       this.visible = true
       this.hidden = false
     })
+
     focus = vi.fn()
     hide = vi.fn(() => {
       this.visible = false
       this.hidden = true
     })
+
     destroy = vi.fn(() => {
       this.destroyed = true
       this.emit('closed')
     })
+
     restore = vi.fn(() => {
       this.minimized = false
     })
@@ -214,7 +218,7 @@ function findMenuItem(
     if (item.label === label) {
       return item
     }
-    const childItems = MenuItemsSchema.parse(item.submenu)
+    const childItems = readMenuItems(item.submenu)
     if (childItems.length > 0) {
       const child = findMenuItem(childItems, label)
       if (child) {
@@ -230,10 +234,10 @@ function submenuItems(
   label: string,
 ): Array<Record<string, unknown>> {
   const item = findMenuItem(items, label)
-  return MenuItemsSchema.parse(item?.submenu)
+  return readMenuItems(item?.submenu)
 }
 
-describe('TrayManager', () => {
+describe('trayManager', () => {
   const originalRendererUrl = process.env.ELECTRON_RENDERER_URL
 
   beforeEach(() => {
@@ -252,7 +256,6 @@ describe('TrayManager', () => {
       metrics: [
         { label: 'Running', value: '1', tone: 'active' },
         { label: 'Resident', value: '1', tone: 'active' },
-        { label: 'Approvals', value: '2', tone: 'warning' },
         { label: 'Awaits', value: '3', tone: 'warning' },
         { label: 'Automations', value: '1 active', tone: 'active' },
         { label: 'Chronicle', value: 'Running', tone: 'active' },
@@ -316,14 +319,6 @@ describe('TrayManager', () => {
           description: 'Focus the most recent active agent run.',
           accelerator: null,
           badge: '1',
-          enabled: true,
-        },
-        {
-          id: 'open-approvals',
-          label: 'Approvals',
-          description: 'Review pending tool approvals.',
-          accelerator: null,
-          badge: '2',
           enabled: true,
         },
         {
@@ -471,12 +466,6 @@ describe('TrayManager', () => {
       checked: true,
       enabled: false,
       toolTip: 'Running is 1',
-    }))
-    expect(findMenuItem(template, 'Approvals: 2')).toEqual(expect.objectContaining({
-      type: 'checkbox',
-      checked: true,
-      enabled: false,
-      toolTip: 'Approvals is 2',
     }))
     expect(findMenuItem(template, 'Active run')).toEqual(expect.objectContaining({
       sublabel: 'Cradle',

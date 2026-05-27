@@ -6,11 +6,9 @@ import {
   workspaces,
 } from '@cradle/db'
 import { desc, eq, inArray, or, sql } from 'drizzle-orm'
-import { z } from 'zod'
 
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
-import * as Approval from '../approval/service'
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Chronicle from '../chronicle/service'
 
@@ -66,11 +64,9 @@ const DEFAULT_SESSION_TITLE = 'Waiting session'
 const RUNNING_LIMIT = 8
 const RESIDENT_LIMIT = 10
 const AWAIT_LIMIT = 20
-const WorkspaceIdsSchema = z.array(z.string().nullable())
-  .transform(workspaceIds => [...new Set(workspaceIds.flatMap(id => id ? [id] : []))])
 
 function readWorkspaceNames(workspaceIds: Array<string | null>): Map<string, string> {
-  const ids = WorkspaceIdsSchema.parse(workspaceIds)
+  const ids = [...new Set(workspaceIds.flatMap(id => id ? [id] : []))]
   if (ids.length === 0) {
     return new Map()
   }
@@ -168,13 +164,15 @@ function readAutomationCounts(): { enabled: number, running: number } {
     .select({ count: sql<number>`count(*)` })
     .from(automationDefinitions)
     .where(eq(automationDefinitions.enabled, true))
-    .get()?.count ?? 0
+    .get()
+?.count ?? 0
 
   const running = db()
     .select({ count: sql<number>`count(*)` })
     .from(automationRuns)
     .where(or(eq(automationRuns.status, 'queued'), eq(automationRuns.status, 'running')))
-    .get()?.count ?? 0
+    .get()
+?.count ?? 0
 
   return { enabled, running }
 }
@@ -184,7 +182,8 @@ function readAwaitCount(): number {
     .select({ count: sql<number>`count(*)` })
     .from(sessionAwaits)
     .where(eq(sessionAwaits.status, 'pending'))
-    .get()?.count ?? 0
+    .get()
+?.count ?? 0
 }
 
 export function getTrayAwaits(): TrayAwaitItem[] {
@@ -214,7 +213,8 @@ function readWorkspaceCount(): number {
   return db()
     .select({ count: sql<number>`count(*)` })
     .from(workspaces)
-    .get()?.count ?? 0
+    .get()
+?.count ?? 0
 }
 
 async function readChronicleMetric(): Promise<TrayMetric> {
@@ -240,7 +240,6 @@ async function readChronicleMetric(): Promise<TrayMetric> {
 function buildQuickActions(input: {
   runningCount: number
   residentCount: number
-  pendingApprovalCount: number
   pendingAwaitCount: number
   enabledAutomationCount: number
   runningAutomationCount: number
@@ -286,14 +285,6 @@ function buildQuickActions(input: {
       accelerator: null,
       badge: input.runningCount > 0 ? String(input.runningCount) : null,
       enabled: input.runningCount > 0,
-    },
-    {
-      id: 'open-approvals',
-      label: 'Approvals',
-      description: 'Review pending tool approvals.',
-      accelerator: null,
-      badge: input.pendingApprovalCount > 0 ? String(input.pendingApprovalCount) : null,
-      enabled: true,
     },
     {
       id: 'open-awaits',
@@ -374,7 +365,6 @@ export async function getTraySnapshot(): Promise<TraySnapshot> {
   const running = readRunningItems()
   const activeSessionIds = new Set(running.map(item => item.sessionId))
   const resident = readResidentItems(activeSessionIds)
-  const pendingApprovalCount = Approval.listPending().length
   const pendingAwaitCount = readAwaitCount()
   const automationCounts = readAutomationCounts()
   const workspaceCount = readWorkspaceCount()
@@ -392,12 +382,6 @@ export async function getTraySnapshot(): Promise<TraySnapshot> {
       label: 'Resident',
       value: String(resident.length),
       tone: resident.length > 0 ? 'active' : 'neutral',
-    },
-    {
-      id: 'approvals',
-      label: 'Approvals',
-      value: String(pendingApprovalCount),
-      tone: pendingApprovalCount > 0 ? 'warning' : 'neutral',
     },
     {
       id: 'awaits',
@@ -424,7 +408,6 @@ export async function getTraySnapshot(): Promise<TraySnapshot> {
     quickActions: buildQuickActions({
       runningCount: running.length,
       residentCount: resident.length,
-      pendingApprovalCount,
       pendingAwaitCount,
       enabledAutomationCount: automationCounts.enabled,
       runningAutomationCount: automationCounts.running,

@@ -4,7 +4,7 @@
  * Position: Desktop main owns read-only projection of Codex private Appshot artifacts into Cradle IPC data.
  */
 import { createHash } from 'node:crypto'
-import { readFile, readdir, realpath, stat } from 'node:fs/promises'
+import { readdir, readFile, realpath, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { extname, isAbsolute, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

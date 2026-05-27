@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Verifies that a preview Velopack feed exposes a delta-backed update path.
-import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { dirname, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { UpdateManager } from 'velopack'

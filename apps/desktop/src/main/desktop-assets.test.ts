@@ -3,6 +3,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 const electronMocks = vi.hoisted(() => ({
@@ -30,7 +31,8 @@ function createDesktopDistFixture(): { chunkDir: string, preloadPath: string } {
 afterEach(() => {
   if (previousRendererUrl === undefined) {
     delete process.env.ELECTRON_RENDERER_URL
-  } else {
+  }
+ else {
     process.env.ELECTRON_RENDERER_URL = previousRendererUrl
   }
 
@@ -53,5 +55,11 @@ describe('resolveDesktopPreloadPath', () => {
     const { resolveDesktopPreloadPath } = await import('./desktop-assets')
 
     expect(resolveDesktopPreloadPath('/unused')).toBe('/Applications/Cradle.app/Contents/Resources/app.asar/dist/preload/index.js')
+  })
+
+  it('resolves the packaged tear-off renderer entry', async () => {
+    const { resolveDesktopRendererTearoffPath } = await import('./desktop-assets')
+
+    expect(resolveDesktopRendererTearoffPath()).toBe('/Applications/Cradle.app/Contents/Resources/app.asar/dist/renderer/tearoff.html')
   })
 })

@@ -1,6 +1,7 @@
 import type { Dirent } from 'node:fs'
 import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+
 import type {
   PluginDescriptor,
   PluginLayer,
@@ -12,6 +13,7 @@ import type {
 } from '@cradle/plugin-sdk'
 import { derivePluginRouteSegment, projectCradlePluginContributions } from '@cradle/plugin-sdk'
 import { parseCradlePluginPackageJsonText } from '@cradle/plugin-sdk/manifest'
+
 import { readPluginInstallProvenance } from './plugin-install-receipt'
 
 export interface DesktopPluginSource {
@@ -149,7 +151,7 @@ function rejectDuplicateIdentities(discovered: DiscoveredPlugin[]): Set<PluginDe
   }
 
   for (const [identity, matches] of byIdentity) {
-    if (matches.length <= 1) continue
+    if (matches.length <= 1) { continue }
     for (const plugin of matches) {
       markInvalid(plugin.descriptor, `Duplicate package.json#name '${identity}'`)
       invalidDescriptors.add(plugin.descriptor)
@@ -157,7 +159,7 @@ function rejectDuplicateIdentities(discovered: DiscoveredPlugin[]): Set<PluginDe
   }
 
   for (const [routeSegment, matches] of byRouteSegment) {
-    if (matches.length <= 1) continue
+    if (matches.length <= 1) { continue }
     for (const plugin of matches) {
       markInvalid(plugin.descriptor, `Route segment collision '${routeSegment}'`)
       invalidDescriptors.add(plugin.descriptor)
@@ -212,12 +214,13 @@ async function discoverDesktopPluginsFromSource(
   let entries: Dirent[]
   try {
     entries = await readdir(pluginsDir, { withFileTypes: true })
-  } catch {
+  }
+ catch {
     return
   }
 
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue
+    if (!entry.isDirectory()) { continue }
     const directoryName = String(entry.name)
     const packageDir = resolve(pluginsDir, directoryName)
     const pkgPath = resolve(packageDir, 'package.json')
@@ -239,7 +242,8 @@ async function discoverDesktopPluginsFromSource(
         manifest,
         descriptor: createDescriptor(manifest, source, provenance),
       })
-    } catch (err) {
+    }
+ catch (err) {
       diagnostics.push(createInvalidDescriptor(
         packageDir,
         source,

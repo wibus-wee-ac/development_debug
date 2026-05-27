@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Runs the macOS preview distribution pipeline up to the non-installing distribution gate.
+import { spawn } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))

@@ -1,12 +1,12 @@
+import { spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 
 import { electronRebuildPackages } from '../../server/runtime-packages.mjs'
 
 const electronVersion = process.env.CRADLE_ELECTRON_VERSION ?? '39.8.10'
-const targetArch =
-  process.env.CRADLE_ELECTRON_REBUILD_ARCH ?? process.env.npm_config_arch ?? process.arch
+const targetArch
+  = process.env.CRADLE_ELECTRON_REBUILD_ARCH ?? process.env.npm_config_arch ?? process.arch
 const serverRuntimeDir = '../server/dist'
 
 const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
@@ -22,11 +22,11 @@ const result = spawnSync(
     '--which-module',
     electronRebuildPackages.join(','),
     '--arch',
-    targetArch
+    targetArch,
   ],
   {
-    stdio: 'inherit'
-  }
+    stdio: 'inherit',
+  },
 )
 
 if (result.error) {
@@ -44,7 +44,7 @@ const betterSqliteDefaultBinding = join(betterSqliteBuildRelease, 'better_sqlite
 
 if (existsSync(betterSqliteBinRoot)) {
   const binaryDir = readdirSync(betterSqliteBinRoot)
-    .filter((entry) => entry.startsWith(`${process.platform}-${targetArch}-`))
+    .filter(entry => entry.startsWith(`${process.platform}-${targetArch}-`))
     .sort((left, right) => Number(left.split('-').at(-1)) - Number(right.split('-').at(-1)))
     .at(-1)
   const rebuiltBinding = binaryDir

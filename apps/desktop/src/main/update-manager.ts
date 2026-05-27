@@ -1,10 +1,10 @@
-import type { UpdateInfo } from 'velopack'
 import { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 
 import { app } from 'electron'
+import type { UpdateInfo } from 'velopack'
 import { UpdateManager as VelopackUpdateManager } from 'velopack'
 
 const BACKGROUND_CHECK_INTERVAL_MS = 5 * 60 * 1000
@@ -68,7 +68,7 @@ function readErrorMessage(error: unknown): string {
 
 function readUpdateFeedUrl(): string | null {
   const url = (process.env.CRADLE_DESKTOP_UPDATE_URL ?? __CRADLE_DESKTOP_UPDATE_URL__).trim()
-  return url ? url : null
+  return url || null
 }
 
 function readRestartArgs(): string[] {
@@ -205,8 +205,7 @@ export class DesktopUpdateManager {
       await retryWithBackoff(() =>
         this.updater!.downloadUpdateAsync(this.statusSnapshot.updateInfo!, (progress) => {
           this.setStatus({ downloadingProgress: progress })
-        }),
-      )
+        }))
       this.setStatus({
         isDownloadingUpdate: false,
         updateDownloaded: true,
