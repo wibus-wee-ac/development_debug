@@ -7,14 +7,14 @@ import {
   getCachedModelsForTarget,
   isCacheStale,
   setCachedModels,
-  setCachedModelsForTarget
+  setCachedModelsForTarget,
 } from './model-cache'
 import { lookupModel, searchModels } from './model-info-registry'
 import * as Providers from './service'
 
 export const providers = new Elysia({
   prefix: '/providers',
-  detail: { tags: ['providers'] }
+  detail: { tags: ['providers'] },
 })
   .post(
     '/models',
@@ -25,11 +25,12 @@ export const providers = new Elysia({
         setCachedModelsForTarget(
           {
             ...(request.providerTargetKind ? { kind: request.providerTargetKind } : {}),
-            id: request.providerTargetId
+            id: request.providerTargetId,
           },
-          models
+          models,
         )
-      } else if (request.profileId) {
+      }
+ else if (request.profileId) {
         setCachedModelsForTarget({ kind: 'manual', id: request.profileId }, models)
         setCachedModels(request.profileId, models)
       }
@@ -37,14 +38,14 @@ export const providers = new Elysia({
     },
     {
       detail: {
-        summary: 'List models for a provider',
+        'summary': 'List models for a provider',
         'x-cradle-cli': {
-          command: ['provider', 'models']
-        }
+          command: ['provider', 'models'],
+        },
       },
       body: ProvidersModel.providerBody,
-      response: { 200: t.Array(ProvidersModel.modelDescriptor) }
-    }
+      response: { 200: t.Array(ProvidersModel.modelDescriptor) },
+    },
   )
   .get(
     '/targets/:providerTargetId/models-cache',
@@ -59,25 +60,25 @@ export const providers = new Elysia({
         models: cached.models,
         cached: true,
         stale: isCacheStale(cached.fetchedAt),
-        providerLabel: resolved.label
+        providerLabel: resolved.label,
       }
     },
     {
       detail: {
-        summary: 'Get cached models for a provider target'
+        summary: 'Get cached models for a provider target',
       },
       params: t.Object({
-        providerTargetId: t.String({ minLength: 1 })
+        providerTargetId: t.String({ minLength: 1 }),
       }),
       response: {
         200: t.Object({
           models: t.Array(ProvidersModel.modelDescriptor),
           cached: t.Boolean(),
           stale: t.Boolean(),
-          providerLabel: t.String()
-        })
-      }
-    }
+          providerLabel: t.String(),
+        }),
+      },
+    },
   )
   .get(
     '/:profileId/models-cache',
@@ -90,19 +91,19 @@ export const providers = new Elysia({
     },
     {
       detail: {
-        summary: 'Get cached models for a provider profile'
+        summary: 'Get cached models for a provider profile',
       },
       params: t.Object({
-        profileId: t.String({ minLength: 1 })
+        profileId: t.String({ minLength: 1 }),
       }),
       response: {
         200: t.Object({
           models: t.Array(ProvidersModel.modelDescriptor),
           cached: t.Boolean(),
-          stale: t.Boolean()
-        })
-      }
-    }
+          stale: t.Boolean(),
+        }),
+      },
+    },
   )
   .post(
     '/model-lookup',
@@ -111,22 +112,22 @@ export const providers = new Elysia({
     },
     {
       detail: {
-        summary: 'Look up model metadata from registry'
+        summary: 'Look up model metadata from registry',
       },
       body: t.Object({
-        modelId: t.String({ minLength: 1 })
+        modelId: t.String({ minLength: 1 }),
       }),
       response: {
         200: t.Union([
           t.Object({
             id: t.String(),
             label: t.String(),
-            capabilities: ProvidersModel.modelCapabilities
+            capabilities: ProvidersModel.modelCapabilities,
           }),
-          t.Null()
-        ])
-      }
-    }
+          t.Null(),
+        ]),
+      },
+    },
   )
   .post(
     '/model-search',
@@ -135,19 +136,19 @@ export const providers = new Elysia({
     },
     {
       detail: {
-        summary: 'Search models from models.dev registry'
+        summary: 'Search models from models.dev registry',
       },
       body: t.Object({
-        query: t.String({ minLength: 1 })
+        query: t.String({ minLength: 1 }),
       }),
       response: {
         200: t.Array(
           t.Object({
             id: t.String(),
             label: t.String(),
-            capabilities: ProvidersModel.modelCapabilities
-          })
-        )
-      }
-    }
+            capabilities: ProvidersModel.modelCapabilities,
+          }),
+        ),
+      },
+    },
   )

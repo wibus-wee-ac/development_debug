@@ -2,9 +2,8 @@ import type { AgentProfile, ProviderTarget } from '@cradle/db'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
-import type { ModelCapabilities, ProviderKind } from '../providers/types'
 import * as ProviderTargets from '../provider-targets/service'
+import type { ModelCapabilities, ProviderKind } from '../providers/types'
 
 // ── types ──
 
@@ -53,7 +52,7 @@ const ModelCapabilitiesSchema = z.object({
   family: z.string().optional(),
   knowledgeCutoff: z.string().optional(),
   releaseDate: z.string().optional(),
-  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'alias', 'unmatched']).optional(),
   registryModelId: z.string().optional(),
   registryModelLabel: z.string().optional(),
 })
@@ -141,18 +140,4 @@ export async function updateCustomModels(
     })
   }
   return ProviderTargets.updateProviderTargetCustomModels(profileId, parsedModels)
-}
-
-// ── available model registry mappings ──
-
-export async function updateModelRegistryMapping(
-  profileId: string,
-  input: { modelId: string, registryModelId?: string, model?: ModelsDevModel },
-): Promise<ModelRegistryMappingEntry[]> {
-  const profile = getProfile(profileId)
-  if (!profile) {
-    return []
-  }
-
-  return ProviderTargets.updateProviderTargetModelRegistryMapping(profileId, input)
 }

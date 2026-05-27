@@ -5,9 +5,9 @@
 import type { ProviderKind, RuntimeKind } from './types'
 
 const RUNTIME_PROVIDER_KINDS: Record<RuntimeKind, readonly ProviderKind[]> = {
-  standard: ['openai-compatible'],
+  'standard': ['openai-compatible'],
   'claude-agent': ['anthropic'],
-  codex: ['openai-compatible'],
+  'codex': ['openai-compatible'],
   'jar-core': ['openai-compatible', 'anthropic'],
   'acp-chat': ['openai-compatible', 'anthropic'],
   'cli-tui': [],

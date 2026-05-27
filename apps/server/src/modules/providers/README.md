@@ -10,6 +10,5 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 - `model-capabilities.ts` — projects provider-owned default model capability metadata, including Anthropic text+image input defaults used by Composer attachment gating.
 - `provider-base.ts` — shared Zod-backed config parsing and API-key helpers, including Claude Agent SDK-owned alias configuration from effective runtime `config.claudeAgent`.
 - `runtime-compatibility.ts` — runtime-kind to provider-kind compatibility rules shared by Session creation and Chat Runtime profile overrides.
-- `model-info-registry.ts` — best-effort `models.dev` enrichment plus exact/fuzzy/manual/unmatched status projection.
-- `model-registry-mappings.ts` — normalizes provider profile `configJson.modelRegistryMappings`, keeping Available Model overrides separate from custom models.
+- `model-info-registry.ts` — best-effort `models.dev` enrichment plus exact/fuzzy/manual/alias/unmatched status projection; global mappings are applied before models.dev fallback.
 - `types.ts` — shared provider taxonomy and metadata response types.

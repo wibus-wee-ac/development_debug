@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto'
 
+import type { ProviderTarget as ProviderTargetRow } from '@cradle/db'
 import {
-  agentSessions,
   agents,
+  agentSessions,
   backendCapabilitySnapshots,
   backendSessionBindings,
   externalProviderRecords,
@@ -10,27 +11,20 @@ import {
   providerTargetModelCache,
   providerTargets,
   runtimeAuditLog,
-  usageLogs
+  usageLogs,
 } from '@cradle/db'
-import type { ProviderTarget as ProviderTargetRow } from '@cradle/db'
 import { and, eq, inArray } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
-import { enrichModelsFromRegistry, lookupModelRawExact } from '../providers/model-info-registry'
-import {
-  ModelRegistryMappingsJsonSchema,
-  serializeModelRegistryMappings
-} from '../providers/model-registry-mappings'
 import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../providers/types'
 import * as Session from '../session/service'
 
 const ProviderTargetRefSchema = z.object({
   id: z.string().trim().min(1),
-  kind: z.enum(['manual', 'external']).optional()
+  kind: z.enum(['manual', 'external']).optional(),
 })
 
 export type ProviderTarget = z.infer<typeof ProviderTargetRefSchema>
@@ -60,7 +54,6 @@ export interface ResolvedProviderTarget {
   credentialRef: string | null
   enabledModelsJson: string
   customModelsJson: string
-  modelRegistryMappingsJson: string
   iconSlug: string | null
   sourceMetadata: {
     sourceKey: string
@@ -75,7 +68,6 @@ export interface ProviderTargetModelSettings {
   connectionConfigJson: string
   enabledModelsJson: string
   customModelsJson: string
-  modelRegistryMappingsJson: string
   providerTargetKind?: 'manual' | 'external'
 }
 
@@ -87,49 +79,17 @@ export interface CustomModelEntry {
 
 const JsonObjectTextSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(z.record(z.string(), z.unknown()).default({}))
 
 const EnabledModelsJsonSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(z.array(z.string().min(1)).default([]))
-
-const ModelCapabilitiesSchema = z.object({
-  contextWindow: z.number().optional(),
-  maxOutput: z.number().optional(),
-  inputModalities: z.array(z.string()).optional(),
-  outputModalities: z.array(z.string()).optional(),
-  reasoning: z.boolean().optional(),
-  toolCall: z.boolean().optional(),
-  temperature: z.boolean().optional(),
-  structuredOutput: z.boolean().optional(),
-  cost: z
-    .object({
-      input: z.number().optional(),
-      output: z.number().optional(),
-      cacheRead: z.number().optional(),
-      cacheWrite: z.number().optional()
-    })
-    .optional(),
-  family: z.string().optional(),
-  knowledgeCutoff: z.string().optional(),
-  releaseDate: z.string().optional(),
-  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
-  registryModelId: z.string().optional(),
-  registryModelLabel: z.string().optional()
-})
 
 const CustomModelInputSchema = z.object({
   id: z.string().trim().min(1),
   label: z.string().trim().optional(),
-  capabilities: ModelCapabilitiesSchema.default({})
-})
-
-const ModelRegistryMappingInputSchema = z.object({
-  modelId: z.string().trim().min(1),
-  registryModelId: z.string().trim().min(1).optional(),
-  model: z.custom<ModelsDevModel>().optional()
 })
 
 function nowUnix(): number {
@@ -145,19 +105,19 @@ function parseTargetId(input: ProviderTarget | string): string {
 
 function mergeConnectionConfigWithEnabledModels(
   connectionConfigJson: string,
-  enabledModelsJson: string
+  enabledModelsJson: string,
 ): string {
   const config = JsonObjectTextSchema.parse(connectionConfigJson)
   const enabledModels = EnabledModelsJsonSchema.parse(enabledModelsJson)
   return JSON.stringify({
     ...config,
-    enabledModels
+    enabledModels,
   })
 }
 
 function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarget {
-  const sourceMetadata =
-    row.kind === 'external' && row.sourceKey && row.externalRecordId
+  const sourceMetadata
+    = row.kind === 'external' && row.sourceKey && row.externalRecordId
       ? (() => {
           const record = db()
             .select()
@@ -165,14 +125,14 @@ function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarge
             .where(
               and(
                 eq(externalProviderRecords.sourceKey, row.sourceKey),
-                eq(externalProviderRecords.externalId, row.externalRecordId)
-              )
+                eq(externalProviderRecords.externalId, row.externalRecordId),
+              ),
             )
             .get()
           return {
             sourceKey: row.sourceKey,
             externalRecordId: row.externalRecordId,
-            app: record?.app ?? 'external'
+            app: record?.app ?? 'external',
           }
         })()
       : null
@@ -180,7 +140,7 @@ function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarge
   return {
     target: {
       id: row.id,
-      kind: row.kind
+      kind: row.kind,
     },
     id: row.id,
     kind: row.kind,
@@ -190,19 +150,30 @@ function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarge
     connectionConfigJson: row.connectionConfigJson,
     configJson: mergeConnectionConfigWithEnabledModels(
       row.connectionConfigJson,
-      row.enabledModelsJson
+      row.enabledModelsJson,
     ),
     credentialRef: row.credentialRef ?? null,
     enabledModelsJson: row.enabledModelsJson,
     customModelsJson: row.customModelsJson,
-    modelRegistryMappingsJson: row.modelRegistryMappingsJson,
     iconSlug: row.iconSlug ?? null,
-    sourceMetadata
+    sourceMetadata,
   }
 }
 
+type ProviderTargetWriteDb = Pick<ReturnType<typeof db>, 'update'>
+
+function disableAgentsForProviderTargetInDb(providerTargetId: string, d: ProviderTargetWriteDb): void {
+  d.update(agents)
+    .set({
+      enabled: false,
+      updatedAt: nowUnix(),
+    })
+    .where(eq(agents.providerTargetId, providerTargetId))
+    .run()
+}
+
 export function providerTargetFromLegacyProfileId(
-  profileId: string | null | undefined
+  profileId: string | null | undefined,
 ): ProviderTarget | null {
   if (!profileId) {
     return null
@@ -230,14 +201,14 @@ export function resolveProviderTarget(input: ProviderTarget | string): ResolvedP
       code: 'provider_target_not_found',
       status: 404,
       message: 'Provider target not found',
-      details: { providerTargetId: id }
+      details: { providerTargetId: id },
     })
   }
   return toResolvedProviderTarget(row)
 }
 
 export function upsertManualProviderTarget(
-  input: UpsertManualProviderTargetInput
+  input: UpsertManualProviderTargetInput,
 ): ProviderTargetRow {
   const id = input.id?.trim() || randomUUID()
   const now = nowUnix()
@@ -247,47 +218,52 @@ export function upsertManualProviderTarget(
       code: 'invalid_provider_target',
       status: 400,
       message: 'External provider targets cannot be overwritten as manual targets',
-      details: { providerTargetId: id }
+      details: { providerTargetId: id },
     })
   }
 
-  db()
-    .insert(providerTargets)
-    .values({
-      id,
-      kind: 'manual',
-      providerKind: input.providerKind,
-      displayName: input.displayName,
-      enabled: input.enabled ?? true,
-      connectionConfigJson: input.connectionConfigJson,
-      credentialRef: input.credentialRef ?? null,
-      iconSlug: input.iconSlug ?? null,
-      enabledModelsJson: existing?.enabledModelsJson ?? '[]',
-      customModelsJson: existing?.customModelsJson ?? '[]',
-      modelRegistryMappingsJson: existing?.modelRegistryMappingsJson ?? '[]',
-      createdAt: now,
-      updatedAt: now
-    })
-    .onConflictDoUpdate({
-      target: providerTargets.id,
-      set: {
+  const nextEnabled = input.enabled ?? existing?.enabled ?? true
+  const d = db()
+  d.transaction((tx) => {
+    tx.insert(providerTargets)
+      .values({
+        id,
+        kind: 'manual',
         providerKind: input.providerKind,
         displayName: input.displayName,
-        enabled: input.enabled ?? existing?.enabled ?? true,
+        enabled: nextEnabled,
         connectionConfigJson: input.connectionConfigJson,
         credentialRef: input.credentialRef ?? null,
-        ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
-        updatedAt: now
-      }
-    })
-    .run()
+        iconSlug: input.iconSlug ?? null,
+        enabledModelsJson: existing?.enabledModelsJson ?? '[]',
+        customModelsJson: existing?.customModelsJson ?? '[]',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: providerTargets.id,
+        set: {
+          providerKind: input.providerKind,
+          displayName: input.displayName,
+          enabled: nextEnabled,
+          connectionConfigJson: input.connectionConfigJson,
+          credentialRef: input.credentialRef ?? null,
+          ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
+          updatedAt: now,
+        },
+      })
+      .run()
+    if (!nextEnabled) {
+      disableAgentsForProviderTargetInDb(id, tx)
+    }
+  })
 
   return getProviderTarget(id)!
 }
 
 export function updateProviderTargetIcon(
   providerTargetId: string,
-  iconSlug: string | null
+  iconSlug: string | null,
 ): ProviderTargetRow {
   const target = resolveProviderTarget(providerTargetId)
   db()
@@ -300,14 +276,19 @@ export function updateProviderTargetIcon(
 
 export function updateProviderTargetEnabled(
   providerTargetId: string,
-  enabled: boolean
+  enabled: boolean,
 ): ProviderTargetRow {
   const target = resolveProviderTarget(providerTargetId)
-  db()
-    .update(providerTargets)
-    .set({ enabled, updatedAt: nowUnix() })
-    .where(eq(providerTargets.id, target.id))
-    .run()
+  const d = db()
+  d.transaction((tx) => {
+    tx.update(providerTargets)
+      .set({ enabled, updatedAt: nowUnix() })
+      .where(eq(providerTargets.id, target.id))
+      .run()
+    if (!enabled) {
+      disableAgentsForProviderTargetInDb(target.id, tx)
+    }
+  })
   return getProviderTarget(target.id)!
 }
 
@@ -342,7 +323,7 @@ export function removeProviderTarget(providerTargetId: string): void {
 
 export function assertProviderTargetCompatibleWithRuntime(
   target: ProviderTarget | string,
-  runtimeKind: RuntimeKind
+  runtimeKind: RuntimeKind,
 ): void {
   const resolved = resolveProviderTarget(target)
   if (!runtimeSupportsProviderKind(runtimeKind, resolved.providerKind)) {
@@ -353,14 +334,14 @@ export function assertProviderTargetCompatibleWithRuntime(
       details: {
         providerTargetId: resolved.id,
         runtimeKind,
-        providerKind: resolved.providerKind
-      }
+        providerKind: resolved.providerKind,
+      },
     })
   }
 }
 
 export function getProviderTargetModelSettings(
-  input: ProviderTarget | string
+  input: ProviderTarget | string,
 ): ProviderTargetModelSettings {
   const resolved = resolveProviderTarget(input)
   return {
@@ -370,13 +351,12 @@ export function getProviderTargetModelSettings(
     connectionConfigJson: resolved.connectionConfigJson,
     enabledModelsJson: resolved.enabledModelsJson,
     customModelsJson: resolved.customModelsJson,
-    modelRegistryMappingsJson: resolved.modelRegistryMappingsJson
   }
 }
 
 export function updateProviderTargetModelVisibility(
   input: ProviderTarget | string,
-  enabledModels: string[]
+  enabledModels: string[],
 ): ProviderTargetModelSettings {
   const providerTargetId = parseTargetId(input)
   resolveProviderTarget(providerTargetId)
@@ -385,7 +365,7 @@ export function updateProviderTargetModelVisibility(
     .update(providerTargets)
     .set({
       enabledModelsJson,
-      updatedAt: nowUnix()
+      updatedAt: nowUnix(),
     })
     .where(eq(providerTargets.id, providerTargetId))
     .run()
@@ -395,74 +375,25 @@ export function updateProviderTargetModelVisibility(
 
 export async function updateProviderTargetCustomModels(
   input: ProviderTarget | string,
-  models: Array<{ id: string; label?: string; capabilities?: ModelCapabilities }>
+  models: Array<{ id: string, label?: string }>,
 ): Promise<CustomModelEntry[]> {
   const providerTargetId = parseTargetId(input)
-  const resolved = resolveProviderTarget(providerTargetId)
+  resolveProviderTarget(providerTargetId)
   const parsedModels = z.array(CustomModelInputSchema).parse(models)
-  const descriptors = parsedModels.map((model) => ({
+  const entries: CustomModelEntry[] = parsedModels.map(model => ({
     id: model.id,
     label: model.label ?? model.id,
-    providerKind: resolved.providerKind,
-    capabilities: model.capabilities
+    capabilities: {},
   }))
-  const modelsWithoutContext = descriptors.filter(
-    (model) => model.capabilities.contextWindow == null
-  )
-  const enriched =
-    modelsWithoutContext.length > 0 ? await enrichModelsFromRegistry(modelsWithoutContext) : []
-  const enrichedById = new Map(enriched.map((model) => [model.id, model]))
-  const entries: CustomModelEntry[] = descriptors.map((model) => {
-    if (model.capabilities.contextWindow != null) {
-      return { id: model.id, label: model.label, capabilities: model.capabilities }
-    }
-    const enrichedModel = enrichedById.get(model.id)
-    return {
-      id: model.id,
-      label: enrichedModel?.label ?? model.label,
-      capabilities: enrichedModel?.capabilities ?? model.capabilities
-    }
-  })
 
   db()
     .update(providerTargets)
     .set({
-      customModelsJson: JSON.stringify(entries),
-      updatedAt: nowUnix()
+      customModelsJson: JSON.stringify(entries.map(({ id, label }) => ({ id, label }))),
+      updatedAt: nowUnix(),
     })
     .where(eq(providerTargets.id, providerTargetId))
     .run()
 
   return entries
-}
-
-export async function updateProviderTargetModelRegistryMapping(
-  input: ProviderTarget | string,
-  rawInput: { modelId: string; registryModelId?: string; model?: ModelsDevModel }
-): Promise<ModelRegistryMappingEntry[]> {
-  const providerTargetId = parseTargetId(input)
-  const resolved = resolveProviderTarget(providerTargetId)
-  const parsedInput = ModelRegistryMappingInputSchema.parse(rawInput)
-  const registryModelId = parsedInput.registryModelId?.trim() || parsedInput.model?.id
-  if (!registryModelId) {
-    return ModelRegistryMappingsJsonSchema.parse(resolved.modelRegistryMappingsJson)
-  }
-
-  const registryModel = parsedInput.model ?? (await lookupModelRawExact(registryModelId))
-  const mapping: ModelRegistryMappingEntry = {
-    modelId: parsedInput.modelId,
-    registryModelId,
-    ...(registryModel === null ? {} : { model: registryModel }),
-    updatedAt: nowUnix()
-  }
-  const next = serializeModelRegistryMappings(resolved.modelRegistryMappingsJson, mapping)
-  db()
-    .update(providerTargets)
-    .set({
-      modelRegistryMappingsJson: next.mappingsJson,
-      updatedAt: nowUnix()
-    })
-    .where(eq(providerTargets.id, providerTargetId))
-    .run()
-  return next.mappings
 }

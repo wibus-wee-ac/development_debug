@@ -12,7 +12,7 @@ export const runtimeKinds = [
   'codex',
   'jar-core',
   'acp-chat',
-  'cli-tui'
+  'cli-tui',
 ] as const
 
 export type RuntimeKind = (typeof runtimeKinds)[number]
@@ -45,7 +45,7 @@ export interface ModelCapabilities {
   family?: string
   knowledgeCutoff?: string
   releaseDate?: string
-  registryMatch?: 'exact' | 'fuzzy' | 'manual' | 'unmatched'
+  registryMatch?: 'exact' | 'fuzzy' | 'manual' | 'alias' | 'unmatched'
   registryModelId?: string
   registryModelLabel?: string
 }

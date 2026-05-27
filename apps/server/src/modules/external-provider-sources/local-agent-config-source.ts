@@ -12,7 +12,7 @@ import type {
   ExternalProviderSource,
   ExternalProviderSourceReadContext,
   ExternalProviderSourceSnapshot,
-  ExternalProviderWarning
+  ExternalProviderWarning,
 } from '@cradle/plugin-sdk/server'
 import { parse as parseToml } from 'smol-toml'
 import { z } from 'zod'
@@ -36,22 +36,22 @@ const ClaudeEnvSchema = z.object({
   ANTHROPIC_MODEL: OptionalStringSchema,
   ANTHROPIC_DEFAULT_HAIKU_MODEL: OptionalStringSchema,
   ANTHROPIC_DEFAULT_SONNET_MODEL: OptionalStringSchema,
-  ANTHROPIC_DEFAULT_OPUS_MODEL: OptionalStringSchema
+  ANTHROPIC_DEFAULT_OPUS_MODEL: OptionalStringSchema,
 }).catchall(z.unknown())
 
 const ClaudeSettingsSchema = z.object({
-  env: ClaudeEnvSchema.optional().default({})
+  env: ClaudeEnvSchema.optional().default({}),
 }).passthrough()
 
 const CodexAuthSchema = z.object({
   OPENAI_API_KEY: OptionalStringSchema,
   apiKey: OptionalStringSchema,
-  api_key: OptionalStringSchema
+  api_key: OptionalStringSchema,
 }).catchall(z.unknown())
 
 const CodexModelProviderSchema = z.object({
   base_url: OptionalStringSchema,
-  wire_api: OptionalStringSchema
+  wire_api: OptionalStringSchema,
 }).passthrough()
 
 const CodexTomlSchema = z.object({
@@ -61,7 +61,7 @@ const CodexTomlSchema = z.object({
   approval_policy: OptionalStringSchema,
   sandbox_mode: OptionalStringSchema,
   openai_base_url: OptionalStringSchema,
-  model_providers: z.record(z.string(), CodexModelProviderSchema).default({})
+  model_providers: z.record(z.string(), CodexModelProviderSchema).default({}),
 }).passthrough()
 
 const ReasoningEffortSchema = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh'])
@@ -136,7 +136,7 @@ export function resolveLocalAgentConfigSourceConfig(ctx: ExternalProviderSourceR
     codexDir,
     codexConfigPath: sourceConfigValue(ctx, 'LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', join(codexDir, 'config.toml')),
     codexAuthPath: sourceConfigValue(ctx, 'LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', join(codexDir, 'auth.json')),
-    includeProcessEnv: sourceConfigFlag(ctx, 'LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', true)
+    includeProcessEnv: sourceConfigFlag(ctx, 'LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', true),
   }
 }
 
@@ -149,20 +149,21 @@ function readJsonFile<T>(path: string, schema: z.ZodType<T>, warningCode: string
     return {
       found: true,
       value: z.string()
-        .transform((raw) => JSON.parse(raw))
+        .transform(raw => JSON.parse(raw))
         .pipe(schema)
         .parse(readFileSync(path, 'utf8')),
-      warning: null
+      warning: null,
     }
-  } catch (error) {
+  }
+ catch (error) {
     return {
       found: true,
       value: null,
       warning: {
         code: warningCode,
         message: `${label} could not be parsed. ${errorMessage(error)}`,
-        severity: 'warning'
-      }
+        severity: 'warning',
+      },
     }
   }
 }
@@ -176,17 +177,18 @@ function readTomlFile<T>(path: string, schema: z.ZodType<T>, warningCode: string
     return {
       found: true,
       value: schema.parse(parseToml(readFileSync(path, 'utf8'))),
-      warning: null
+      warning: null,
     }
-  } catch (error) {
+  }
+ catch (error) {
     return {
       found: true,
       value: null,
       warning: {
         code: warningCode,
         message: `${label} could not be parsed. ${errorMessage(error)}`,
-        severity: 'warning'
-      }
+        severity: 'warning',
+      },
     }
   }
 }
@@ -197,7 +199,7 @@ function readClaudeConfig(config: LocalAgentConfigSourceConfig): ClaudeConfigRea
     config.claudeLocalSettingsPath,
     ClaudeSettingsSchema,
     'local-claude-local-settings-invalid',
-    'Claude local settings'
+    'Claude local settings',
   )
 
   const processEnv = config.includeProcessEnv
@@ -206,7 +208,7 @@ function readClaudeConfig(config: LocalAgentConfigSourceConfig): ClaudeConfigRea
   const env = ClaudeEnvSchema.parse({
     ...settings.value?.env,
     ...localSettings.value?.env,
-    ...processEnv
+    ...processEnv,
   })
   const warnings = [settings.warning, localSettings.warning].filter((warning): warning is ExternalProviderWarning => Boolean(warning))
 
@@ -216,7 +218,7 @@ function readClaudeConfig(config: LocalAgentConfigSourceConfig): ClaudeConfigRea
     settingsFound: settings.found,
     localSettingsFound: localSettings.found,
     env,
-    warnings
+    warnings,
   }
 }
 
@@ -236,9 +238,9 @@ function readCodexConfig(config: LocalAgentConfigSourceConfig): CodexConfigReadR
     config: CodexTomlSchema.parse(codexConfig.value ?? {}),
     auth: CodexAuthSchema.parse({
       ...codexAuth.value,
-      ...processAuth
+      ...processAuth,
     }),
-    warnings
+    warnings,
   }
 }
 
@@ -256,7 +258,7 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
   const modelAliases = compactRecord({
     haiku: input.env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
     sonnet: input.env.ANTHROPIC_DEFAULT_SONNET_MODEL,
-    opus: input.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+    opus: input.env.ANTHROPIC_DEFAULT_OPUS_MODEL,
   })
   const hasAlias = Object.keys(modelAliases).length > 0
   const hasSignal = input.settingsFound
@@ -278,7 +280,7 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
     config: compactRecord({
       baseUrl: input.env.ANTHROPIC_BASE_URL,
       model: input.env.ANTHROPIC_MODEL,
-      claudeAgent: hasAlias ? { modelAliases } : undefined
+      claudeAgent: hasAlias ? { modelAliases } : undefined,
     }),
     credential: apiKey ? { kind: 'api-key', value: apiKey, label: 'Local Claude' } : undefined,
     current: true,
@@ -292,16 +294,16 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
         baseUrl: input.env.ANTHROPIC_BASE_URL,
         model: input.env.ANTHROPIC_MODEL,
         modelAliases,
-        hasCredential: Boolean(apiKey)
-      })
+        hasCredential: Boolean(apiKey),
+      }),
     }),
     warnings: apiKey
       ? []
       : [{
           code: 'local-claude-credential-missing',
           message: 'No Claude API key was found in the allowlisted local config or process environment.',
-          severity: 'info'
-        }]
+          severity: 'info',
+        }],
   }
 }
 
@@ -337,7 +339,7 @@ function codexRecord(input: CodexConfigReadResult): ExternalProviderRecord | nul
       apiMode,
       reasoningEffort: maybeEnum(ReasoningEffortSchema, input.config.model_reasoning_effort),
       approvalPolicy: maybeEnum(ApprovalPolicySchema, input.config.approval_policy),
-      sandboxMode: maybeEnum(SandboxModeSchema, input.config.sandbox_mode)
+      sandboxMode: maybeEnum(SandboxModeSchema, input.config.sandbox_mode),
     }),
     credential: apiKey ? { kind: 'api-key', value: apiKey, label: 'Local Codex' } : undefined,
     current: true,
@@ -355,21 +357,21 @@ function codexRecord(input: CodexConfigReadResult): ExternalProviderRecord | nul
         reasoningEffort: input.config.model_reasoning_effort,
         approvalPolicy: input.config.approval_policy,
         sandboxMode: input.config.sandbox_mode,
-        hasCredential: Boolean(apiKey)
-      })
+        hasCredential: Boolean(apiKey),
+      }),
     }),
     warnings: apiKey
       ? []
       : [{
           code: 'local-codex-credential-missing',
           message: 'No Codex API key was found in the allowlisted local config or process environment.',
-          severity: 'info'
-        }]
+          severity: 'info',
+        }],
   }
 }
 
 export function readLocalAgentConfigExternalProviderSnapshot(
-  config: LocalAgentConfigSourceConfig
+  config: LocalAgentConfigSourceConfig,
 ): ExternalProviderSourceSnapshot {
   const claude = readClaudeConfig(config)
   const codex = readCodexConfig(config)
@@ -379,7 +381,7 @@ export function readLocalAgentConfigExternalProviderSnapshot(
 
   return {
     source: {
-      status: warnings.some((warning) => warning.severity === 'error')
+      status: warnings.some(warning => warning.severity === 'error')
         ? 'error'
         : warnings.length > 0
           ? 'warning'
@@ -387,16 +389,16 @@ export function readLocalAgentConfigExternalProviderSnapshot(
       message: providers.length > 0
         ? `Detected ${providers.length} local agent config ${providers.length === 1 ? 'record' : 'records'}.`
         : 'No local Claude or Codex config records were detected.',
-      observedAt: new Date().toISOString()
+      observedAt: new Date().toISOString(),
     },
     providers,
     inventory: {},
-    warnings
+    warnings,
   }
 }
 
 export async function readLocalAgentConfigExternalProviderSnapshotFromContext(
-  ctx: ExternalProviderSourceReadContext
+  ctx: ExternalProviderSourceReadContext,
 ): Promise<ExternalProviderSourceSnapshot> {
   return readLocalAgentConfigExternalProviderSnapshot(resolveLocalAgentConfigSourceConfig(ctx))
 }
@@ -407,6 +409,6 @@ export function createLocalAgentConfigExternalProviderSource(): ExternalProvider
     label: DEFAULT_SOURCE_LABEL,
     description: 'Reads local Claude and Codex configuration for onboarding.',
     capabilities: { refresh: true },
-    readSnapshot: readLocalAgentConfigExternalProviderSnapshotFromContext
+    readSnapshot: readLocalAgentConfigExternalProviderSnapshotFromContext,
   }
 }

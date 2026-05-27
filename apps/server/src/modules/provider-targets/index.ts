@@ -1,4 +1,4 @@
-// Output: Provider-target preference routes for model visibility, custom models, and registry mappings.
+// Output: Provider-target preference routes for model visibility and custom model IDs.
 // Input: Provider target path params plus model preference request bodies.
 // Position: Exposes Cradle-owned runtime target preferences without writing to external source namespaces.
 
@@ -92,18 +92,5 @@ export const providerTargets = new Elysia({
       params: ProviderTargetsModel.idParams,
       body: ProviderTargetsModel.customModelsBody,
       response: { 200: ProviderTargetsModel.customModelEntryList },
-    },
-  )
-  .patch(
-    '/:providerTargetId/model-registry-mappings',
-    ({ params, body }) =>
-      ProviderTargets.updateProviderTargetModelRegistryMapping(params.providerTargetId, body),
-    {
-      detail: {
-        summary: 'Update model registry mapping for a provider target',
-      },
-      params: ProviderTargetsModel.idParams,
-      body: ProviderTargetsModel.modelRegistryMappingBody,
-      response: { 200: ProviderTargetsModel.modelRegistryMappingEntryList },
     },
   )

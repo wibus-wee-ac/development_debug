@@ -202,6 +202,27 @@ const CreateAgentInputSchema = z
 
 type ParsedAgentInput = z.infer<typeof CreateAgentInputSchema>
 
+function canRunProviderBackedAgent(input: {
+  runtimeKind: ParsedAgentInput['runtimeKind']
+  providerTargetId: string | null
+}): boolean {
+  if (input.runtimeKind === 'cli-tui') {
+    return true
+  }
+  if (!input.providerTargetId) {
+    return false
+  }
+  return getProviderTarget(input.providerTargetId)?.enabled ?? false
+}
+
+function normalizeAgentEnabled(input: {
+  requestedEnabled: boolean
+  runtimeKind: ParsedAgentInput['runtimeKind']
+  providerTargetId: string | null
+}): boolean {
+  return input.requestedEnabled && canRunProviderBackedAgent(input)
+}
+
 export function list(filters: AgentListFilters = {}): Agent[] {
   const clauses: SQL[] = []
   if (filters.enabled !== undefined) {
@@ -244,7 +265,11 @@ export function create(input: CreateAgentInput): Agent {
         thinkingEffort: parsed.thinkingEffort,
         runtimeKind: parsed.runtimeKind,
         configJson: parsed.configJson,
-        enabled: true,
+        enabled: normalizeAgentEnabled({
+          requestedEnabled: true,
+          runtimeKind: parsed.runtimeKind,
+          providerTargetId: parsed.providerTargetId,
+        }),
       })
       .returning()
       .get()
@@ -667,8 +692,16 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
     if (patch.configJson !== undefined) {
       updatePatch.configJson = parsed.configJson
     }
-    if (patch.enabled !== undefined) {
-      updatePatch.enabled = patch.enabled
+    if (
+      patch.enabled !== undefined
+      || patch.providerTargetId !== undefined
+      || patch.runtimeKind !== undefined
+    ) {
+      updatePatch.enabled = normalizeAgentEnabled({
+        requestedEnabled: patch.enabled ?? current.enabled,
+        runtimeKind: parsed.runtimeKind,
+        providerTargetId: parsed.providerTargetId,
+      })
     }
     if (patch.avatarStyle !== undefined || patch.avatarSeed !== undefined) {
       updatePatch.avatarUrl = buildAgentAvatarUrl(parsed.avatarStyle, parsed.avatarSeed)

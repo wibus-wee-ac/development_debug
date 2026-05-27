@@ -63,7 +63,6 @@ export const externalProviderRuntimeTargets = sqliteTable('external_provider_run
   configJson: text('config_json').notNull().default('{}'),
   credentialRef: text('credential_ref'),
   customModelsJson: text('custom_models_json').notNull().default('[]'),
-  modelRegistryMappingsJson: text('model_registry_mappings_json').notNull().default('[]'),
   iconSlug: text('icon_slug'),
   lastResolvedFingerprint: text('last_resolved_fingerprint').notNull(),
   ...timestamps(),

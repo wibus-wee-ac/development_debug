@@ -23,6 +23,7 @@ export interface ModelsDevModel {
 export interface ModelRegistryMappingEntry {
   modelId: string
   registryModelId?: string
+  matchType?: 'manual' | 'alias'
   model?: ModelsDevModel
   updatedAt?: number
 }
@@ -49,7 +50,7 @@ const MEM_TTL_MS = 1000 * 60 * 10 // 10 min in-memory to avoid repeated DB reads
 const DATE_SUFFIX_RE = /-\d{8}$/
 const VERSION_SUFFIX_RE = /-\d{4}-\d{2}-\d{2}$/
 
-const ModelsDevModelSchema = z.object({
+export const ModelsDevModelSchema: z.ZodType<ModelsDevModel> = z.object({
   id: z.string(),
   name: z.string().optional(),
   limit: z.object({
@@ -325,15 +326,20 @@ export function enrichModelsWithRegistryData(
 
   return models.map((model) => {
     const mapping = mappingsByModelId.get(model.id)
-    const mappedModel = mapping
-      ? mapping.model ?? (data && mapping.registryModelId ? findModelWithProvider(data, mapping.registryModelId)?.model : null)
+    const mappedResult = mapping
+      ? (() => {
+          const mappedModel
+            = mapping.model
+              ?? (data && mapping.registryModelId
+              ? findModelWithProvider(data, mapping.registryModelId)?.model
+              : null)
+          const mappedModelId = mapping.model?.id ?? mapping.registryModelId
+          return mappedModel && mappedModelId
+            ? { id: mappedModelId, model: mappedModel, matchType: mapping.matchType ?? 'manual' }
+            : null
+        })()
       : null
-    const mappedModelId = mapping?.model?.id ?? mapping?.registryModelId
-    const result = mappedModel && mappedModelId
-      ? { id: mappedModelId, model: mappedModel, matchType: 'manual' as const }
-      : data
-        ? findModelFuzzyWithId(data, model.id)
-        : null
+    const result = mappedResult ?? (data ? findModelFuzzyWithId(data, model.id) : null)
 
     if (!result) {
       return {

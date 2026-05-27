@@ -1,28 +1,29 @@
-import { AppError } from '../../errors/app-error'
 import { z } from 'zod'
-import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema } from './provider-base'
+
+import { AppError } from '../../errors/app-error'
 import { readProviderDefaultModelCapabilities } from './model-capabilities'
+import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema } from './provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from './types'
 
 export interface ProviderMetadataProvider {
   readonly providerKind: ProviderKind
   listModels: (
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string }
+    deps: { readSecret: (secretRef: string) => string },
   ) => Promise<ModelDescriptor[]>
 }
 
 const TRAILING_SLASH_RE = /\/$/
-const VERSIONED_API_PATH_RE = /\/v\d+(?:\/)?$/i
+const VERSIONED_API_PATH_RE = /\/v\d+\/?$/i
 const ANTHROPIC_VERSION = '2023-06-01'
 const OpenAICompatibleModelsResponseSchema = z.object({
   data: z
     .array(
       z.object({
-        id: z.string()
-      })
+        id: z.string(),
+      }),
     )
-    .min(1)
+    .min(1),
 })
 
 const AnthropicModelsResponseSchema = z.object({
@@ -30,20 +31,20 @@ const AnthropicModelsResponseSchema = z.object({
     .array(
       z.object({
         id: z.string(),
-        display_name: z.string().optional()
-      })
+        display_name: z.string().optional(),
+      }),
     )
-    .min(1)
+    .min(1),
 })
 const AnthropicProviderConfigJsonSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(
     z
       .object({
-        baseUrl: z.string().default('https://api.anthropic.com/v1')
+        baseUrl: z.string().default('https://api.anthropic.com/v1'),
       })
-      .passthrough()
+      .passthrough(),
   )
 
 interface ModelsRequestOption {
@@ -73,7 +74,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
 
   async listModels(
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string }
+    deps: { readSecret: (secretRef: string) => string },
   ): Promise<ModelDescriptor[]> {
     const config = OpenAICompatibleConfigJsonSchema.parse(input.configJson)
     if (!config.baseUrl) {
@@ -87,17 +88,18 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
       const payload = OpenAICompatibleModelsResponseSchema.parse(
         await fetchModelsPayload(
           this.providerKind,
-          modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined)
-        )
+          modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined),
+        ),
       )
 
-      return payload.data.map((item) => ({
+      return payload.data.map(item => ({
         id: item.id,
         label: item.id,
         providerKind: 'openai-compatible' as const,
-        capabilities: {}
+        capabilities: {},
       }))
-    } catch (error) {
+    }
+ catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
   }
@@ -108,7 +110,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
 
   async listModels(
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string }
+    deps: { readSecret: (secretRef: string) => string },
   ): Promise<ModelDescriptor[]> {
     const config = AnthropicProviderConfigJsonSchema.parse(input.configJson)
 
@@ -121,18 +123,19 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
           this.providerKind,
           modelRequestOptions(baseUrl, {
             'anthropic-version': ANTHROPIC_VERSION,
-            ...(apiKey ? { 'x-api-key': apiKey } : {})
-          })
-        )
+            ...(apiKey ? { 'x-api-key': apiKey } : {}),
+          }),
+        ),
       )
 
-      return payload.data.map((item) => ({
+      return payload.data.map(item => ({
         id: item.id,
         label: item.display_name ?? item.id,
         providerKind: 'anthropic' as const,
-        capabilities: readProviderDefaultModelCapabilities('anthropic')
+        capabilities: readProviderDefaultModelCapabilities('anthropic'),
       }))
-    } catch (error) {
+    }
+ catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
   }
@@ -142,7 +145,7 @@ function invalidProviderRequest(message: string): AppError {
   return new AppError({
     code: 'invalid_provider_request',
     status: 400,
-    message
+    message,
   })
 }
 
@@ -151,7 +154,7 @@ function providerModelsUnavailable(providerKind: ProviderKind, message: string):
     code: 'provider_models_unavailable',
     status: 502,
     message,
-    details: { providerKind }
+    details: { providerKind },
   })
 }
 
@@ -169,12 +172,12 @@ function modelRequestOptions(baseUrl: string, headers?: HeadersInit): ModelsRequ
     ? [`${normalized}/models`]
     : [`${normalized}/v1/models`, `${normalized}/models`]
 
-  return urls.map((url) => ({ url, headers }))
+  return urls.map(url => ({ url, headers }))
 }
 
 async function fetchModelsPayload(
   providerKind: ProviderKind,
-  options: ModelsRequestOption[]
+  options: ModelsRequestOption[],
 ): Promise<unknown> {
   let lastError: unknown = null
 
@@ -186,9 +189,10 @@ async function fetchModelsPayload(
       }
       lastError = providerModelsUnavailable(
         providerKind,
-        `Provider models request failed at ${option.url} with status ${response.status}`
+        `Provider models request failed at ${option.url} with status ${response.status}`,
       )
-    } catch (error) {
+    }
+ catch (error) {
       lastError = error
     }
   }

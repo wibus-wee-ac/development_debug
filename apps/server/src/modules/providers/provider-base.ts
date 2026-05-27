@@ -99,18 +99,69 @@ export interface SecretRefCarrier {
   secretRef?: string | null
 }
 
-const SecretRefCarrierSchema = z.object({
-  credentialRef: z.string().nullable().optional(),
-  secretRef: z.string().nullable().optional(),
-}).transform((input) => {
-  if (input.secretRef !== undefined) {
-    return { secretRef: input.secretRef }
+function readTrustedRecord(raw: string): Record<string, unknown> {
+  return JSON.parse(raw) as Record<string, unknown>
+}
+
+export function readTrustedOpenAICompatibleConfig(raw: string): OpenAICompatibleConfig {
+  const config = readTrustedRecord(raw) as Partial<OpenAICompatibleConfig>
+  return {
+    baseUrl: config.baseUrl ?? null,
+    model: config.model ?? null,
+    enabledModels: config.enabledModels ?? [],
+    maxMessages: config.maxMessages ?? 50,
+    apiMode: config.apiMode,
   }
-  if (input.credentialRef !== undefined) {
-    return { secretRef: input.credentialRef }
+}
+
+export function readTrustedCodexConfig(raw: string): CodexConfig {
+  const config = readTrustedRecord(raw) as Partial<CodexConfig>
+  return {
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: config.apiKey,
+    enabledModels: config.enabledModels ?? [],
+    skillPaths: config.skillPaths ?? [],
+    additionalDirectories: config.additionalDirectories ?? [],
+    approvalPolicy: config.approvalPolicy ?? 'on-failure',
+    sandboxMode: config.sandboxMode ?? 'workspace-write',
+    reasoningEffort: config.reasoningEffort ?? 'high',
   }
-  return { secretRef: null }
-})
+}
+
+export function readTrustedClaudeAgentConfig(raw: string): ClaudeAgentConfig {
+  const config = readTrustedRecord(raw) as Partial<ClaudeAgentConfig>
+  return {
+    baseUrl: config.baseUrl,
+    model: config.model,
+    apiKey: config.apiKey,
+    enabledModels: config.enabledModels ?? [],
+    skillPaths: config.skillPaths ?? [],
+    additionalDirectories: config.additionalDirectories ?? [],
+    claudeAgent: config.claudeAgent,
+    permissionMode: config.permissionMode ?? 'acceptEdits',
+    allowDangerouslySkipPermissions: config.allowDangerouslySkipPermissions,
+    skills: config.skills,
+    tools: config.tools,
+    disallowedTools: config.disallowedTools,
+    maxTurns: config.maxTurns ?? 100,
+  }
+}
+
+export function readTrustedSystemAgentConfig(raw: string): SystemAgentConfig {
+  const config = readTrustedRecord(raw) as Partial<SystemAgentConfig>
+  return {
+    provider: config.provider ?? null,
+    model: config.model ?? null,
+    baseUrl: config.baseUrl ?? null,
+    apiKey: config.apiKey ?? null,
+    api: config.api ?? null,
+    headers: config.headers ?? {},
+    compat: config.compat ?? {},
+    thinkingLevel: config.thinkingLevel ?? 'medium',
+    maxTurns: config.maxTurns ?? 20,
+  }
+}
 
 export function resolveApiKey(
   rawInput: SecretRefCarrier,
@@ -118,7 +169,7 @@ export function resolveApiKey(
   envVar: string,
   deps: ProviderDeps,
 ): string | null {
-  const { secretRef } = SecretRefCarrierSchema.parse(rawInput)
+  const secretRef = rawInput.secretRef ?? rawInput.credentialRef ?? null
   if (secretRef) {
     return deps.readSecret(secretRef)
   }

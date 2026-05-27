@@ -1,14 +1,15 @@
 import { createHash } from 'node:crypto'
 
 import {
+  agents,
   externalProviderRecords,
   externalProviderSources,
-  providerTargets
+  providerTargets,
 } from '@cradle/db'
 import type {
   ExternalProviderSource,
   ExternalProviderSourceReadContext,
-  ExternalProviderWarning
+  ExternalProviderWarning,
 } from '@cradle/plugin-sdk/server'
 import { and, eq, inArray } from 'drizzle-orm'
 import stringify from 'safe-stable-stringify'
@@ -19,7 +20,7 @@ import { db } from '../../infra'
 import {
   deriveExternalProviderSourceKey,
   getExternalProviderSource,
-  listExternalProviderSources as listRegisteredExternalProviderSources
+  listExternalProviderSources as listRegisteredExternalProviderSources,
 } from '../../plugins/external-provider-source-registry'
 import { upsertSecretInDb } from '../secrets/service'
 
@@ -95,7 +96,7 @@ const JsonRecordSchema = z.record(z.string(), JsonValueSchema)
 const ExternalProviderWarningSchema = z.object({
   code: z.string(),
   message: z.string(),
-  severity: z.enum(['info', 'warning', 'error'])
+  severity: z.enum(['info', 'warning', 'error']),
 })
 
 const ExternalProviderWarningsSchema = z.array(ExternalProviderWarningSchema).default([])
@@ -104,14 +105,14 @@ const ExternalProviderSourceCapabilitiesSchema = z
   .object({
     refresh: z.boolean().optional(),
     revealSourceFile: z.boolean().optional(),
-    importAsNative: z.boolean().optional()
+    importAsNative: z.boolean().optional(),
   })
   .default({})
 
 const ExternalProviderCredentialSchema = z.object({
   kind: z.literal('api-key'),
   value: z.string(),
-  label: z.string().optional()
+  label: z.string().optional(),
 })
 
 const ExternalProviderRecordSchema = z.object({
@@ -124,25 +125,25 @@ const ExternalProviderRecordSchema = z.object({
   current: z.boolean().default(false),
   readonly: z.boolean().default(false),
   metadata: JsonRecordSchema.default({}),
-  warnings: ExternalProviderWarningsSchema
+  warnings: ExternalProviderWarningsSchema,
 })
 
 const RegisteredExternalProviderSourceSchema = z.object({
   id: z.string(),
   label: z.string(),
   description: z.string().nullable().default(null),
-  capabilities: ExternalProviderSourceCapabilitiesSchema
+  capabilities: ExternalProviderSourceCapabilitiesSchema,
 })
 
 const ExternalProviderSnapshotSchema = z.object({
   source: z.object({
     status: z.enum(['ok', 'warning', 'error']),
     message: z.string().optional(),
-    observedAt: z.string().optional()
+    observedAt: z.string().optional(),
   }),
   providers: z.array(ExternalProviderRecordSchema),
   inventory: JsonRecordSchema.default({}),
-  warnings: ExternalProviderWarningsSchema
+  warnings: ExternalProviderWarningsSchema,
 })
 
 type ParsedExternalProviderRecord = z.infer<typeof ExternalProviderRecordSchema>
@@ -156,17 +157,17 @@ const ExternalProviderRecordFingerprintSchema = z.object({
   current: z.boolean(),
   readonly: z.boolean(),
   metadata: JsonRecordSchema,
-  warnings: ExternalProviderWarningsSchema
+  warnings: ExternalProviderWarningsSchema,
 })
 
 const JsonRecordTextSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(JsonRecordSchema.default({}))
 
 const WarningListTextSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(ExternalProviderWarningsSchema)
 
 function nowUnix(): number {
@@ -195,14 +196,14 @@ function recordFingerprint(record: ParsedExternalProviderRecord): string {
     current: record.current,
     readonly: record.readonly,
     metadata: record.metadata,
-    warnings: record.warnings
+    warnings: record.warnings,
   })
 
   return hashText(stringify(payload))
 }
 
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {
-  return warnings.some((warning) => warning.severity === 'error')
+  return warnings.some(warning => warning.severity === 'error')
     ? 'error'
     : warnings.length > 0
       ? 'warning'
@@ -211,7 +212,7 @@ function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | '
 
 function toPersistedSourceView(
   row: typeof externalProviderSources.$inferSelect,
-  registeredAt: number
+  registeredAt: number,
 ): ExternalProviderSourceView {
   return {
     id: row.id,
@@ -227,7 +228,7 @@ function toPersistedSourceView(
     lastSyncMessage: row.lastSyncMessage,
     lastSyncError: row.lastSyncError,
     lastSyncAt: row.lastSyncAt,
-    registeredAt
+    registeredAt,
   }
 }
 
@@ -251,13 +252,13 @@ function toRegisteredSourceView(input: {
     lastSyncMessage: null,
     lastSyncError: null,
     lastSyncAt: null,
-    registeredAt: input.registeredAt
+    registeredAt: input.registeredAt,
   }
 }
 
 function toRecordView(
   row: typeof externalProviderRecords.$inferSelect,
-  target: typeof providerTargets.$inferSelect | null
+  target: typeof providerTargets.$inferSelect | null,
 ): ExternalProviderRecordView {
   return {
     id: row.id,
@@ -274,12 +275,12 @@ function toRecordView(
     warnings: WarningListTextSchema.parse(row.warningsJson),
     lastSeenAt: row.lastSeenAt,
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt
+    updatedAt: row.updatedAt,
   }
 }
 
 function toRuntimeTargetView(
-  row: typeof providerTargets.$inferSelect
+  row: typeof providerTargets.$inferSelect,
 ): ExternalRuntimeTargetView {
   return {
     id: row.id,
@@ -292,7 +293,7 @@ function toRuntimeTargetView(
     iconSlug: row.iconSlug,
     lastResolvedFingerprint: row.sourceFingerprint ?? '',
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt
+    updatedAt: row.updatedAt,
   }
 }
 
@@ -307,7 +308,7 @@ function syncSourceRow(
   snapshot: z.infer<typeof ExternalProviderSnapshotSchema>,
   status: 'ok' | 'warning' | 'error',
   message?: string,
-  error?: string
+  error?: string,
 ): void {
   const now = nowUnix()
   database
@@ -327,7 +328,7 @@ function syncSourceRow(
       lastSyncError: error ?? null,
       lastSyncAt: now,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: externalProviderSources.id,
@@ -344,8 +345,8 @@ function syncSourceRow(
         lastSyncMessage: message ?? snapshot.source.message ?? null,
         lastSyncError: error ?? null,
         lastSyncAt: now,
-        updatedAt: now
-      }
+        updatedAt: now,
+      },
     })
     .run()
 }
@@ -354,7 +355,7 @@ function syncRecordRow(
   database: Tx,
   sourceKey: string,
   record: ParsedExternalProviderRecord,
-  status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
+  status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error',
 ): string {
   const now = nowUnix()
   const id = deriveRuntimeTargetId(sourceKey, record.externalId)
@@ -373,7 +374,7 @@ function syncRecordRow(
       warningsJson: JSON.stringify(record.warnings),
       lastSeenAt: now,
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [externalProviderRecords.sourceKey, externalProviderRecords.externalId],
@@ -386,8 +387,8 @@ function syncRecordRow(
         metadataJson: JSON.stringify(record.metadata),
         warningsJson: JSON.stringify(record.warnings),
         lastSeenAt: now,
-        updatedAt: now
-      }
+        updatedAt: now,
+      },
     })
     .run()
   return id
@@ -396,7 +397,7 @@ function syncRecordRow(
 function syncRuntimeTarget(
   database: Tx,
   sourceKey: string,
-  record: ParsedExternalProviderRecord
+  record: ParsedExternalProviderRecord,
 ): string {
   const id = deriveRuntimeTargetId(sourceKey, record.externalId)
   const existing = database
@@ -405,8 +406,8 @@ function syncRuntimeTarget(
     .where(
       and(
         eq(providerTargets.sourceKey, sourceKey),
-        eq(providerTargets.externalRecordId, record.externalId)
-      )
+        eq(providerTargets.externalRecordId, record.externalId),
+      ),
     )
     .get()
   const credentialRef = record.credential
@@ -414,7 +415,7 @@ function syncRuntimeTarget(
         id: deriveCredentialId(sourceKey, record.externalId),
         kind: record.credential.kind,
         label: record.credential.label ?? record.name,
-        secret: record.credential.value
+        secret: record.credential.value,
       }).id
     : (existing?.credentialRef ?? null)
   const now = nowUnix()
@@ -433,11 +434,10 @@ function syncRuntimeTarget(
       credentialRef,
       enabledModelsJson: existing?.enabledModelsJson ?? '[]',
       customModelsJson: existing?.customModelsJson ?? '[]',
-      modelRegistryMappingsJson: existing?.modelRegistryMappingsJson ?? '[]',
       iconSlug: existing?.iconSlug ?? null,
       sourceFingerprint: recordFingerprint(record),
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [providerTargets.sourceKey, providerTargets.externalRecordId],
@@ -447,8 +447,8 @@ function syncRuntimeTarget(
         connectionConfigJson: JSON.stringify(record.config),
         credentialRef,
         sourceFingerprint: recordFingerprint(record),
-        updatedAt: now
-      }
+        updatedAt: now,
+      },
     })
     .run()
 
@@ -458,7 +458,7 @@ function syncRuntimeTarget(
 export function listExternalProviderSources(): ExternalProviderSourceView[] {
   const registered = listRegisteredExternalProviderSources()
   const rows = db().select().from(externalProviderSources).all()
-  const byId = new Map(rows.map((row) => [row.id, row]))
+  const byId = new Map(rows.map(row => [row.id, row]))
   return registered.map((source) => {
     const registeredSource = RegisteredExternalProviderSourceSchema.parse(source.source)
     const row = byId.get(source.key)
@@ -469,7 +469,7 @@ export function listExternalProviderSources(): ExternalProviderSourceView[] {
       id: source.key,
       pluginName: source.owner,
       registeredAt: source.registeredAt,
-      source: registeredSource
+      source: registeredSource,
     })
   })
 }
@@ -478,24 +478,23 @@ export function listExternalProviderRecords(): ExternalProviderRecordView[] {
   const runtimeTargets = db().select().from(providerTargets).where(eq(providerTargets.kind, 'external')).all()
   const targetBySourceRecord = new Map(
     runtimeTargets
-      .filter((target) => target.sourceKey && target.externalRecordId)
-      .map((target) => [`${target.sourceKey}\0${target.externalRecordId}`, target])
+      .filter(target => target.sourceKey && target.externalRecordId)
+      .map(target => [`${target.sourceKey}\0${target.externalRecordId}`, target]),
   )
   return db()
     .select()
     .from(externalProviderRecords)
     .all()
-    .map((record) =>
+    .map(record =>
       toRecordView(
         record,
-        targetBySourceRecord.get(`${record.sourceKey}\0${record.externalId}`) ?? null
-      )
-    )
+        targetBySourceRecord.get(`${record.sourceKey}\0${record.externalId}`) ?? null,
+      ))
 }
 
 export function getExternalRuntimeTarget(
   sourceKey: string,
-  externalRecordId: string
+  externalRecordId: string,
 ): ExternalRuntimeTargetView | null {
   const row = db()
     .select()
@@ -503,8 +502,8 @@ export function getExternalRuntimeTarget(
     .where(
       and(
         eq(providerTargets.sourceKey, sourceKey),
-        eq(providerTargets.externalRecordId, externalRecordId)
-      )
+        eq(providerTargets.externalRecordId, externalRecordId),
+      ),
     )
     .get()
   return row ? toRuntimeTargetView(row) : null
@@ -513,20 +512,29 @@ export function getExternalRuntimeTarget(
 export function updateExternalRuntimeTargetEnabled(
   sourceKey: string,
   externalRecordId: string,
-  enabled: boolean
+  enabled: boolean,
 ): ExternalRuntimeTargetView | null {
   const now = nowUnix()
-  const updated = db()
-    .update(providerTargets)
-    .set({ enabled, updatedAt: now })
-    .where(
-      and(
-        eq(providerTargets.sourceKey, sourceKey),
-        eq(providerTargets.externalRecordId, externalRecordId)
+  const updated = db().transaction((tx) => {
+    const row = tx
+      .update(providerTargets)
+      .set({ enabled, updatedAt: now })
+      .where(
+        and(
+          eq(providerTargets.sourceKey, sourceKey),
+          eq(providerTargets.externalRecordId, externalRecordId),
+        ),
       )
-    )
-    .returning()
-    .get()
+      .returning()
+      .get()
+    if (row && !enabled) {
+      tx.update(agents)
+        .set({ enabled: false, updatedAt: now })
+        .where(eq(agents.providerTargetId, row.id))
+        .run()
+    }
+    return row
+  })
   return updated ? toRuntimeTargetView(updated) : null
 }
 
@@ -535,7 +543,7 @@ async function refreshSourceSnapshot(
   owner: string,
   registeredSource: z.infer<typeof RegisteredExternalProviderSourceSchema>,
   source: ExternalProviderSource,
-  sharedConfig: ReadonlyMap<string, string>
+  sharedConfig: ReadonlyMap<string, string>,
 ): Promise<ExternalProviderRefreshResult> {
   try {
     const readContext: ExternalProviderSourceReadContext = {
@@ -544,12 +552,12 @@ async function refreshSourceSnapshot(
         info() {},
         warn() {},
         error() {},
-        debug() {}
+        debug() {},
       },
-      sharedConfig
+      sharedConfig,
     }
     const snapshot = ExternalProviderSnapshotSchema.parse(
-      await source.readSnapshot(readContext)
+      await source.readSnapshot(readContext),
     )
 
     const status = sourceStatusFromWarnings(snapshot.warnings)
@@ -567,7 +575,7 @@ async function refreshSourceSnapshot(
         registeredSource.capabilities,
         snapshot,
         status,
-        snapshot.source.message
+        snapshot.source.message,
       )
 
       for (const record of snapshot.providers) {
@@ -584,25 +592,28 @@ async function refreshSourceSnapshot(
         .all()
 
       const missing = existing
-        .filter((row) => !seenRecordIds.has(row.externalId))
-        .map((row) => row.externalId)
+        .filter(row => !seenRecordIds.has(row.externalId))
+        .map(row => row.externalId)
       missingCount = missing.length
       if (missing.length > 0) {
-        const missingTargetIds = missing.map((externalId) =>
-          deriveRuntimeTargetId(sourceKey, externalId)
-        )
+        const missingTargetIds = missing.map(externalId =>
+          deriveRuntimeTargetId(sourceKey, externalId))
         tx.update(externalProviderRecords)
           .set({ status: 'missing', updatedAt: nowUnix() })
           .where(
             and(
               eq(externalProviderRecords.sourceKey, sourceKey),
-              inArray(externalProviderRecords.externalId, missing)
-            )
+              inArray(externalProviderRecords.externalId, missing),
+            ),
           )
           .run()
         tx.update(providerTargets)
           .set({ enabled: false, updatedAt: nowUnix() })
           .where(inArray(providerTargets.id, missingTargetIds))
+          .run()
+        tx.update(agents)
+          .set({ enabled: false, updatedAt: nowUnix() })
+          .where(inArray(agents.providerTargetId, missingTargetIds))
           .run()
       }
     })
@@ -613,9 +624,10 @@ async function refreshSourceSnapshot(
       recordsSeen: snapshot.providers.length,
       recordsProjected: snapshot.providers.length,
       recordsMissing: missingCount,
-      message: snapshot.source.message
+      message: snapshot.source.message,
     }
-  } catch (error) {
+  }
+ catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     const now = nowUnix()
     db()
@@ -635,7 +647,7 @@ async function refreshSourceSnapshot(
         lastSyncError: message,
         lastSyncAt: now,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
       })
       .onConflictDoUpdate({
         target: externalProviderSources.id,
@@ -644,8 +656,8 @@ async function refreshSourceSnapshot(
           lastSyncMessage: null,
           lastSyncError: message,
           lastSyncAt: now,
-          updatedAt: now
-        }
+          updatedAt: now,
+        },
       })
       .run()
 
@@ -655,13 +667,13 @@ async function refreshSourceSnapshot(
       recordsSeen: 0,
       recordsProjected: 0,
       recordsMissing: 0,
-      message
+      message,
     }
   }
 }
 
 export async function refreshDirectExternalProviderSource(
-  input: RefreshSourceInput
+  input: RefreshSourceInput,
 ): Promise<ExternalProviderRefreshResult> {
   const registeredSource = RegisteredExternalProviderSourceSchema.parse(input.source)
   return refreshSourceSnapshot(
@@ -669,12 +681,12 @@ export async function refreshDirectExternalProviderSource(
     input.owner,
     registeredSource,
     input.source,
-    input.sharedConfig ?? new Map()
+    input.sharedConfig ?? new Map(),
   )
 }
 
 export async function refreshExternalProviderSource(
-  sourceKey: string
+  sourceKey: string,
 ): Promise<ExternalProviderRefreshResult> {
   const registered = getExternalProviderSource(sourceKey)
   if (!registered) {
@@ -682,7 +694,7 @@ export async function refreshExternalProviderSource(
       code: 'external_source_not_found',
       status: 404,
       message: 'External provider source not found',
-      details: { sourceKey }
+      details: { sourceKey },
     })
   }
   const registeredSource = RegisteredExternalProviderSourceSchema.parse(registered.source)
@@ -692,7 +704,7 @@ export async function refreshExternalProviderSource(
     registered.owner,
     registeredSource,
     registered.source,
-    new Map()
+    new Map(),
   )
 }
 

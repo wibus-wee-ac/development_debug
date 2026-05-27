@@ -34,7 +34,7 @@ const ModelCapabilitiesSchema = z.object({
   family: z.string().optional(),
   knowledgeCutoff: z.string().optional(),
   releaseDate: z.string().optional(),
-  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'unmatched']).optional(),
+  registryMatch: z.enum(['exact', 'fuzzy', 'manual', 'alias', 'unmatched']).optional(),
   registryModelId: z.string().optional(),
   registryModelLabel: z.string().optional(),
 })

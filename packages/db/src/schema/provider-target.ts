@@ -23,7 +23,6 @@ export const providerTargets = sqliteTable('provider_targets', {
   credentialRef: text('credential_ref'),
   enabledModelsJson: text('enabled_models_json').notNull().default('[]'),
   customModelsJson: text('custom_models_json').notNull().default('[]'),
-  modelRegistryMappingsJson: text('model_registry_mappings_json').notNull().default('[]'),
   sourceKey: text('source_key'),
   externalRecordId: text('external_record_id'),
   sourceFingerprint: text('source_fingerprint'),

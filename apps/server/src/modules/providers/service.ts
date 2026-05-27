@@ -3,14 +3,11 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import * as ModelRegistry from '../model-registry/service'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { projectProviderModelListCapabilities } from './model-capabilities'
 import { enrichModelsFromRegistryMappings } from './model-info-registry'
-import {
-  ModelRegistryMappingsJsonSchema,
-  ProfileConfigWithModelRegistryJsonSchema
-} from './model-registry-mappings'
 import { getProviderCatalog } from './provider-catalog'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from './types'
 
@@ -36,51 +33,46 @@ export const ProviderRequestSchema = z
     secretRef: NullableProviderRefSchema,
     profileId: NullableProviderRefSchema,
     providerTargetKind: z.enum(['manual', 'external']).nullable().optional(),
-    providerTargetId: NullableProviderRefSchema
+    providerTargetId: NullableProviderRefSchema,
   })
-  .transform((parsed) => ({
+  .transform(parsed => ({
     providerKind: parsed.providerKind,
     label: parsed.label,
     configJson: JSON.stringify(parsed.config),
     secretRef: parsed.secretRef,
     profileId: parsed.profileId,
     providerTargetKind: parsed.providerTargetKind ?? null,
-    providerTargetId: parsed.providerTargetId
+    providerTargetId: parsed.providerTargetId,
   }))
 
 const CustomModelSchema = z
   .object({
     id: z.string().min(1),
     label: z.string().min(1),
-    contextWindow: z.number().finite().nullable().optional(),
-    capabilities: z.record(z.string(), z.unknown()).optional().default({})
   })
-  .transform(({ contextWindow, capabilities, ...model }) => ({
+  .transform(model => ({
     ...model,
-    capabilities:
-      contextWindow != null && capabilities.contextWindow === undefined
-        ? { ...capabilities, contextWindow }
-        : capabilities
+    capabilities: {},
   }))
 
 const CustomModelsJsonSchema = z
   .string()
-  .transform((raw) => JSON.parse(raw))
+  .transform(raw => JSON.parse(raw))
   .pipe(z.array(CustomModelSchema))
 
 const RuntimeAuditProfileInputSchema = z.object({
   profileId: z.string().nullable().default(null),
   providerTargetKind: z.enum(['manual', 'external']).nullable().default(null),
-  providerTargetId: z.string().nullable().default(null)
+  providerTargetId: z.string().nullable().default(null),
 })
 
 function requestedProviderTarget(
-  input: Pick<ProviderRequest, 'providerTargetKind' | 'providerTargetId' | 'profileId'>
+  input: Pick<ProviderRequest, 'providerTargetKind' | 'providerTargetId' | 'profileId'>,
 ) {
   if (input.providerTargetId) {
     return {
       id: input.providerTargetId,
-      ...(input.providerTargetKind ? { kind: input.providerTargetKind } : {})
+      ...(input.providerTargetKind ? { kind: input.providerTargetKind } : {}),
     }
   }
   return input.profileId ? { id: input.profileId, kind: 'manual' as const } : null
@@ -92,7 +84,7 @@ function resolveEffectiveProviderRequest(input: ProviderRequest) {
     return {
       target: null,
       resolved: null,
-      request: input
+      request: input,
     }
   }
 
@@ -107,8 +99,8 @@ function resolveEffectiveProviderRequest(input: ProviderRequest) {
       secretRef: resolved.credentialRef,
       profileId: resolved.id,
       providerTargetKind: resolved.target.kind,
-      providerTargetId: resolved.target.id
-    } satisfies ProviderRequest
+      providerTargetId: resolved.target.id,
+    } satisfies ProviderRequest,
   }
 }
 
@@ -121,7 +113,7 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
   let models: ModelDescriptor[] = []
   try {
     models = await provider.listModels(effective.request, {
-      readSecret: (secretRef) => Secrets.readSecret(secretRef)
+      readSecret: secretRef => Secrets.readSecret(secretRef),
     })
     recordModelList({
       profileId: effective.request.profileId,
@@ -129,9 +121,10 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
       providerTargetId: effective.target?.id ?? null,
       providerKind: effective.request.providerKind,
       subject: effective.request.label,
-      count: models.length
+      count: models.length,
     })
-  } catch (error) {
+  }
+ catch (error) {
     if (!effective.resolved) {
       throw mapOperationalError(error)
     }
@@ -142,24 +135,20 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
 
   if (effective.resolved?.customModelsJson) {
     const customModels = CustomModelsJsonSchema.parse(effective.resolved.customModelsJson)
-    const upstreamIds = new Set(models.map((m) => m.id))
+    const upstreamIds = new Set(models.map(m => m.id))
     for (const cm of customModels) {
       if (!upstreamIds.has(cm.id)) {
         models.push({
           id: cm.id,
           label: cm.label,
           providerKind: effective.request.providerKind,
-          capabilities: cm.capabilities
+          capabilities: cm.capabilities,
         })
       }
     }
   }
 
-  const mappings = effective.resolved
-    ? ModelRegistryMappingsJsonSchema.parse(effective.resolved.modelRegistryMappingsJson)
-    : ProfileConfigWithModelRegistryJsonSchema.parse(effective.request.configJson)
-        .modelRegistryMappings
-  models = await enrichModelsFromRegistryMappings(models, mappings)
+  models = await enrichModelsFromRegistryMappings(models, ModelRegistry.listMappingEntries())
 
   return projectProviderModelListCapabilities(models)
 }
@@ -182,7 +171,7 @@ function recordModelList(input: {
       providerKind: input.providerKind,
       action: 'listModels',
       subject: input.subject,
-      details: JSON.stringify({ count: input.count })
+      details: JSON.stringify({ count: input.count }),
     })
     .run()
 }
@@ -197,7 +186,7 @@ function requireProvider(providerKind: ProviderKind) {
       code: 'provider_not_available',
       status: 501,
       message: `Provider is not available: ${providerKind}`,
-      details: { providerKind }
+      details: { providerKind },
     })
   }
   return provider
@@ -212,7 +201,7 @@ function mapOperationalError(error: unknown): Error {
     return new AppError({
       code: 'secret_not_configured',
       status: 500,
-      message: 'CRADLE_CREDENTIAL_SECRET is required to manage secrets'
+      message: 'CRADLE_CREDENTIAL_SECRET is required to manage secrets',
     })
   }
   return error instanceof Error ? error : new Error(message)
