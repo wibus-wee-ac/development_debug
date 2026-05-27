@@ -8,17 +8,17 @@ interface DevMiddlewareRequest {
 }
 
 interface DevMiddlewareResponse {
-  setHeader(name: string, value: string): void
-  end(body?: string): void
+  setHeader: (name: string, value: string) => void
+  end: (body?: string) => void
 }
 
 interface DevServerLike {
   middlewares: {
-    use(handler: (
+    use: (handler: (
       req: DevMiddlewareRequest,
       res: DevMiddlewareResponse,
       next: () => void,
-    ) => void): void
+    ) => void) => void
   }
 }
 
@@ -35,10 +35,10 @@ interface HtmlTagDescriptor {
 
 interface CradlePluginImportMapVitePlugin {
   name: string
-  configureServer(server: DevServerLike): Promise<void>
+  configureServer: (server: DevServerLike) => Promise<void>
   transformIndexHtml: {
     order: 'pre'
-    handler(html: string, ctx: TransformIndexHtmlContext): HtmlTagDescriptor[]
+    handler: (html: string, ctx: TransformIndexHtmlContext) => HtmlTagDescriptor[]
   }
 }
 
@@ -86,7 +86,8 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
           const mod = await import(packageName)
           const exports = Object.keys(mod)
           wrapperModules[fileName] = buildWrapper(exports, registryKeys[fileName]!)
-        } catch {
+        }
+ catch {
           wrapperModules[fileName] = `const __mod = window[${registryAccessor}]['${registryKeys[fileName]}'];\nexport default __mod;\n`
         }
       }

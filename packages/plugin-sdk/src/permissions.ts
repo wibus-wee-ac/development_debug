@@ -53,7 +53,7 @@ function requiredPermissionsForLayer(descriptor: PluginDescriptor, layer: Plugin
     }
   }
   for (const capability of descriptor.declaredCapabilities) {
-    if (capability.layer !== undefined && capability.layer !== layer) continue
+    if (capability.layer !== undefined && capability.layer !== layer) { continue }
     for (const permission of capability.permissions) {
       required.add(permission)
     }
@@ -116,8 +116,7 @@ export function evaluatePluginRuntimeCapabilityPolicy(
     ...parsedRegistration.candidateDeclaredLocalIds,
   ])
   const declaredByTypeAndLayer = descriptor.declaredCapabilities.filter(capability =>
-    capability.type === parsedRegistration.type && isDeclaredCapabilityInLayer(capability.layer, parsedRegistration.layer),
-  )
+    capability.type === parsedRegistration.type && isDeclaredCapabilityInLayer(capability.layer, parsedRegistration.layer))
   const exactMatch = declaredByTypeAndLayer.find(capability => candidates.has(capability.localId))
   if (exactMatch) {
     return {

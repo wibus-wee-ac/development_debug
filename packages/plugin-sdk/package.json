@@ -1,11 +1,8 @@
 {
   "name": "@cradle/plugin-sdk",
+  "type": "module",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
-  "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
-  },
   "exports": {
     ".": "./src/index.ts",
     "./server": "./src/server.ts",
@@ -16,13 +13,16 @@
     "./vite-plugin-import-map": "./src/vite-plugin-import-map.ts"
   },
   "files": ["src"],
-  "dependencies": {
-    "zod": "^4.4.3"
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "peerDependencies": {
     "react": "^19.0.0"
   },
   "peerDependenciesMeta": {
     "react": { "optional": true }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

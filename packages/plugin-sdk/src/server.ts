@@ -44,7 +44,7 @@ export type ServerPluginRouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE
 export interface ServerPluginRouteContext<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
 > {
   body: TBody
   params: TParams
@@ -59,13 +59,13 @@ export interface ServerPluginRouteContext<
 export type ServerPluginRouteHandler<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
 > = (context: ServerPluginRouteContext<TBody, TParams, TQuery>) => unknown | Promise<unknown>
 
 export interface ServerPluginRouteRegistration<
   TBody = unknown,
   TParams extends Record<string, string> = Record<string, string>,
-  TQuery extends Record<string, unknown> = Record<string, unknown>
+  TQuery extends Record<string, unknown> = Record<string, unknown>,
 > {
   method: ServerPluginRouteMethod
   /** Path below /api/plugins/{routeSegment}; must start with '/'. */
@@ -77,7 +77,7 @@ export interface ServerPluginRouteRegistration<
 
 export interface ServerPluginRouteRegistry {
   /** Register a plugin-owned HTTP route below /api/plugins/{routeSegment}. */
-  register(route: ServerPluginRouteRegistration): Disposable
+  register: (route: ServerPluginRouteRegistration) => Disposable
 }
 
 export interface McpServerConfig {
@@ -95,7 +95,7 @@ export interface McpServerConfig {
 
 export interface ServerPluginMcpRegistry {
   /** Register an MCP server for agent runtime */
-  registerServer(config: McpServerConfig): Disposable | Promise<Disposable | undefined> | undefined
+  registerServer: (config: McpServerConfig) => Disposable | Promise<Disposable | undefined> | undefined
 }
 
 export interface SkillDefinition {
@@ -109,7 +109,7 @@ export interface SkillDefinition {
 
 export interface ServerPluginSkillRegistry {
   /** Register a skill for agent discovery */
-  register(skill: SkillDefinition): Disposable
+  register: (skill: SkillDefinition) => Disposable
 }
 
 export interface ServerPluginProviderRegistries {
@@ -118,7 +118,7 @@ export interface ServerPluginProviderRegistries {
 }
 
 export interface ExternalProviderSourceRegistry {
-  register(source: ExternalProviderSource): Disposable
+  register: (source: ExternalProviderSource) => Disposable
 }
 
 export interface ExternalProviderSource {
@@ -126,7 +126,7 @@ export interface ExternalProviderSource {
   label: string
   description?: string
   capabilities?: ExternalProviderSourceCapabilities
-  readSnapshot(ctx: ExternalProviderSourceReadContext): Promise<ExternalProviderSourceSnapshot>
+  readSnapshot: (ctx: ExternalProviderSourceReadContext) => Promise<ExternalProviderSourceSnapshot>
 }
 
 export interface ExternalProviderSourceCapabilities {
@@ -196,9 +196,9 @@ export interface ExternalProviderWarning {
 }
 
 export interface PluginStorage {
-  get(key: string): Promise<string | null>
-  set(key: string, value: string): Promise<void>
-  delete(key: string): Promise<void>
+  get: (key: string) => Promise<string | null>
+  set: (key: string, value: string) => Promise<void>
+  delete: (key: string) => Promise<void>
 }
 
 /** Chat lifecycle hooks — intercept/observe agent queries */
@@ -209,18 +209,18 @@ export interface ServerPluginHooks {
 
 export interface ServerPluginChatHooks {
   /** Called before an agent query is executed. Can modify the query context. */
-  onBeforeQuery(handler: BeforeQueryHandler): Disposable
+  onBeforeQuery: (handler: BeforeQueryHandler) => Disposable
   /** Called after an agent response is received (observation only). */
-  onAfterResponse(handler: AfterResponseHandler): Disposable
+  onAfterResponse: (handler: AfterResponseHandler) => Disposable
 }
 
 export type BeforeQueryHandler = (
-  ctx: QueryHookContext
+  ctx: QueryHookContext,
 ) => QueryHookContext | Promise<QueryHookContext>
 
 export interface QueryHookContext {
   /** Messages to send to the agent */
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string, content: string }>
   /** Model being used */
   model: string
   /** Thread ID */
@@ -237,7 +237,7 @@ export interface ResponseHookContext {
   /** Model used */
   model: string
   /** Usage stats if available */
-  usage?: { inputTokens: number; outputTokens: number }
+  usage?: { inputTokens: number, outputTokens: number }
   /** Duration in ms */
   durationMs: number
 }
@@ -245,13 +245,13 @@ export interface ResponseHookContext {
 /** Event bus for plugin-to-host communication */
 export interface PluginEventBus {
   /** Subscribe to a host event */
-  on(event: string, handler: (data: unknown) => void): Disposable
+  on: (event: string, handler: (data: unknown) => void) => Disposable
   /** Emit an event (other plugins and host can listen) */
-  emit(event: string, data: unknown): void
+  emit: (event: string, data: unknown) => void
 }
 
 /** Server plugin module shape */
 export interface ServerPlugin {
-  activate(ctx: ServerPluginContext): void | Promise<void>
-  deactivate?(): void | Promise<void>
+  activate: (ctx: ServerPluginContext) => void | Promise<void>
+  deactivate?: () => void | Promise<void>
 }

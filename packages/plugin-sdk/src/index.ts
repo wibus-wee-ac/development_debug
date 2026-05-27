@@ -1,6 +1,6 @@
 /** Disposable subscription — call dispose() to unregister */
 export interface Disposable {
-  dispose(): void
+  dispose: () => void
 }
 
 /** Plugin manifest as parsed from package.json */
@@ -62,25 +62,25 @@ export interface CradlePluginPermissionContribution {
 
 /** Plugin-scoped logger */
 export interface Logger {
-  info(msg: string, ...args: unknown[]): void
-  warn(msg: string, ...args: unknown[]): void
-  error(msg: string, ...args: unknown[]): void
-  debug(msg: string, ...args: unknown[]): void
+  info: (msg: string, ...args: unknown[]) => void
+  warn: (msg: string, ...args: unknown[]) => void
+  error: (msg: string, ...args: unknown[]) => void
+  debug: (msg: string, ...args: unknown[]) => void
 }
 
 export type PluginSourceKind = 'workspaceDev' | 'bundledResource' | 'externalLocal'
 
 export type PluginLayer = 'server' | 'web' | 'desktop'
 
-export type PluginLayerStatus =
-  | 'discovered'
-  | 'invalid'
-  | 'skipped'
-  | 'disabled'
-  | 'activating'
-  | 'active'
-  | 'failed'
-  | 'partial'
+export type PluginLayerStatus
+  = | 'discovered'
+    | 'invalid'
+    | 'skipped'
+    | 'disabled'
+    | 'activating'
+    | 'active'
+    | 'failed'
+    | 'partial'
 
 export interface PluginSourceDescriptor {
   kind: PluginSourceKind
@@ -179,10 +179,10 @@ export function derivePluginRouteSegment(identity: string): string {
   if (identity.startsWith('@')) {
     const [scope, name] = identity.slice(1).split('/')
     if (scope && name) {
-      return `scope-${scope}--${name}`.replace(/[^a-zA-Z0-9._~-]/g, '-')
+      return `scope-${scope}--${name}`.replace(/[^\w.~-]/g, '-')
     }
   }
-  return identity.replace(/[^a-zA-Z0-9._~-]/g, '-')
+  return identity.replace(/[^\w.~-]/g, '-')
 }
 
 export function derivePluginCapabilityId(owner: string, localId: string): string {

@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+
 import type { Disposable, Logger } from './index'
 
 export type { Disposable, Logger } from './index'
@@ -7,6 +8,9 @@ export type { Disposable, Logger } from './index'
 export interface WebPluginContext {
   /** Plugin-owned server route client */
   routes: WebPluginRouteClient
+
+  /** Host notification bridge */
+  notifications: WebPluginNotificationBridge
 
   /** Panel registrations */
   panels: WebPluginPanelRegistry
@@ -26,14 +30,14 @@ export interface WebPluginContext {
 
 export interface WebPluginRouteClient {
   /** Build an absolute URL for this plugin's server route. */
-  url(path: string): string
+  url: (path: string) => string
   /** Fetch this plugin's server route. */
-  fetch(path: string, init?: RequestInit): Promise<Response>
+  fetch: (path: string, init?: RequestInit) => Promise<Response>
 }
 
 export interface WebPluginPanelRegistry {
   /** Register a panel in the workspace */
-  register(panel: PanelRegistration): Disposable
+  register: (panel: PanelRegistration) => Disposable
 }
 
 export interface PanelRegistration {
@@ -58,7 +62,27 @@ export interface PanelProps {
 
 export interface WebPluginCommandRegistry {
   /** Register a command (accessible via command palette / keyboard shortcut) */
-  register(cmd: CommandRegistration): Disposable
+  register: (cmd: CommandRegistration) => Disposable
+}
+
+export type PluginNotificationType = 'info' | 'success' | 'warning' | 'error'
+
+export interface PluginNotification {
+  /** Toast title */
+  title: string
+  /** Optional toast body */
+  description?: string
+  /** Visual intent */
+  type?: PluginNotificationType
+  /** Optional stable id for upsert-style notifications */
+  id?: string
+  /** Auto-dismiss timeout in milliseconds; host default applies when omitted */
+  timeout?: number
+}
+
+export interface WebPluginNotificationBridge {
+  /** Show a toast through the host UI notification system */
+  show: (notification: PluginNotification) => void
 }
 
 export interface CommandRegistration {
@@ -66,22 +90,28 @@ export interface CommandRegistration {
   id: string
   /** Display title in command palette */
   title: string
+  /** Optional description displayed by host command surfaces */
+  description?: string
+  /** Optional extra search terms */
+  keywords?: string | string[]
+  /** Optional command category displayed by host command surfaces */
+  category?: string
   /** Icon name or component */
   icon?: ComponentType<{ className?: string }> | string
   /** Keyboard shortcut (e.g. 'ctrl+shift+b') */
   keybinding?: string
   /** Execute the command */
-  execute(): void | Promise<void>
+  execute: () => void | Promise<void>
 }
 
 export interface WebPluginStorage {
-  get(key: string): string | null
-  set(key: string, value: string): void
-  delete(key: string): void
+  get: (key: string) => string | null
+  set: (key: string, value: string) => void
+  delete: (key: string) => void
 }
 
 /** Web plugin module shape */
 export interface WebPlugin {
-  activate(ctx: WebPluginContext): void | Promise<void>
-  deactivate?(): void | Promise<void>
+  activate: (ctx: WebPluginContext) => void | Promise<void>
+  deactivate?: () => void | Promise<void>
 }

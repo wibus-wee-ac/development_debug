@@ -541,15 +541,41 @@ Register a command accessible via the command palette:
 ctx.commands.register({
   id: 'my-plugin.doThing',
   title: 'Do Something Useful',
-  icon: MyIcon,             // Optional
+  description: 'Runs the plugin action through the host command palette',
+  keywords: ['plugin', 'action'],
+  category: 'My Plugin',
+  icon: MyIcon,               // Optional
   keybinding: 'ctrl+shift+m', // Optional
   async execute() {
     const res = await ctx.routes.fetch('/action')
     const data = await res.json()
     ctx.logger.info('Action result:', data)
+    ctx.notifications.show({
+      type: 'success',
+      title: 'Action completed',
+      description: String(data.status),
+    })
   },
 })
 ```
+
+The host owns command palette rendering, matching, recent command ordering, and error fallback toasts. Plugins own only the command metadata and `execute()` handler. Command ids are plugin-local; the host scopes them as `{pluginIdentity}:{commandId}` before storing them in the renderer command registry.
+
+### `ctx.notifications.show(notification)` — Host Toast Bridge
+
+Show a notification through Cradle's host toast surface:
+
+```ts
+ctx.notifications.show({
+  id: 'sync-finished',
+  type: 'success',
+  title: 'Sync finished',
+  description: '12 records refreshed',
+  timeout: 5000,
+})
+```
+
+Notification ids are plugin-local. When an `id` is provided, the host scopes it by plugin identity so one plugin cannot update another plugin's toast. `type` supports `info`, `success`, `warning`, and `error`; omitted types render as `info`.
 
 ### `ctx.storage` — localStorage-backed KV
 
@@ -1010,6 +1036,7 @@ interface PluginEventBus {
 ```ts
 interface WebPluginContext {
   routes: WebPluginRouteClient
+  notifications: WebPluginNotificationBridge
   panels: WebPluginPanelRegistry
   commands: WebPluginCommandRegistry
   subscriptions: Disposable[]
@@ -1030,6 +1057,20 @@ interface WebPluginCommandRegistry {
   register(cmd: CommandRegistration): Disposable
 }
 
+interface WebPluginNotificationBridge {
+  show(notification: PluginNotification): void
+}
+
+type PluginNotificationType = 'info' | 'success' | 'warning' | 'error'
+
+interface PluginNotification {
+  title: string
+  description?: string
+  type?: PluginNotificationType
+  id?: string
+  timeout?: number
+}
+
 interface PanelRegistration {
   id: string
   title: string
@@ -1046,6 +1087,9 @@ interface PanelProps {
 interface CommandRegistration {
   id: string
   title: string
+  description?: string
+  keywords?: string | string[]
+  category?: string
   icon?: ComponentType<{ className?: string }> | string
   keybinding?: string
   execute(): void | Promise<void>

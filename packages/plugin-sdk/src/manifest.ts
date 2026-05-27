@@ -118,7 +118,8 @@ function formatManifestParseError(error: unknown): string {
 export function parseCradlePluginPackageJson(value: unknown): ParsedCradlePluginPackage {
   try {
     return CradlePluginPackageJsonSchema.parse(value)
-  } catch (error) {
+  }
+ catch (error) {
     throw new CradlePluginManifestError(formatManifestParseError(error), { cause: error })
   }
 }
@@ -126,7 +127,8 @@ export function parseCradlePluginPackageJson(value: unknown): ParsedCradlePlugin
 export function parseCradlePluginPackageJsonText(value: string): ParsedCradlePluginPackage {
   try {
     return CradlePluginPackageJsonTextSchema.parse(value)
-  } catch (error) {
+  }
+ catch (error) {
     throw new CradlePluginManifestError(formatManifestParseError(error), { cause: error })
   }
 }
