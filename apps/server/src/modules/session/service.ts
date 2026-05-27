@@ -8,12 +8,13 @@ import { z } from 'zod'
 import { AppError } from '../../errors/app-error'
 import {
   AgentRuntimeConfigJsonSchema,
-  buildSessionRuntimeConfigJson
+  buildSessionRuntimeConfigJson,
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import type { RuntimeKind } from '../providers/types'
 import { runtimeKinds } from '../providers/types'
+import * as Workspace from '../workspace/service'
 
 export type SessionView = Session & { modelId: string | null }
 
@@ -27,7 +28,7 @@ const SessionCreateInputSchema = z.object({
   runtimeKind: RuntimeKindSchema.optional(),
   agentId: z.string().nullable().optional(),
   linkedIssueId: z.string().nullable().default(null),
-  configJson: z.string().optional()
+  configJson: z.string().optional(),
 })
 
 function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, string | null> {
@@ -38,21 +39,21 @@ function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, stri
   const bindings = db()
     .select({
       chatSessionId: backendSessionBindings.chatSessionId,
-      requestedModelId: backendSessionBindings.requestedModelId
+      requestedModelId: backendSessionBindings.requestedModelId,
     })
     .from(backendSessionBindings)
     .where(inArray(backendSessionBindings.chatSessionId, sessionIds))
     .all()
 
   return new Map(
-    bindings.map((binding) => [binding.chatSessionId, binding.requestedModelId ?? null])
+    bindings.map(binding => [binding.chatSessionId, binding.requestedModelId ?? null]),
   )
 }
 
 function toSessionView(session: Session, modelId: string | null): SessionView {
   return {
     ...session,
-    modelId
+    modelId,
   }
 }
 
@@ -62,13 +63,14 @@ function assertTargetCompatibleWithRuntime(input: {
 }): void {
   try {
     assertProviderTargetCompatibleWithRuntime(input.providerTargetId, input.runtimeKind)
-  } catch (error) {
+  }
+ catch (error) {
     if (error instanceof AppError && error.code === 'invalid_provider_target') {
       throw new AppError({
         code: 'invalid_session_input',
         status: 400,
         message: 'Session provider target is not compatible with the selected runtime',
-        details: error.details
+        details: error.details,
       })
     }
     throw error
@@ -83,8 +85,8 @@ export function list(workspaceId: string): SessionView[] {
     .orderBy(desc(sessions.updatedAt))
     .all()
 
-  const modelsBySessionId = listRequestedModelsBySessionIds(rows.map((row) => row.id))
-  return rows.map((row) => toSessionView(row, modelsBySessionId.get(row.id) ?? null))
+  const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
+  return rows.map(row => toSessionView(row, modelsBySessionId.get(row.id) ?? null))
 }
 
 export function get(id: string): SessionView | null {
@@ -93,10 +95,10 @@ export function get(id: string): SessionView | null {
     return null
   }
 
-  const binding =
-    db()
+  const binding
+    = db()
       .select({
-        requestedModelId: backendSessionBindings.requestedModelId
+        requestedModelId: backendSessionBindings.requestedModelId,
       })
       .from(backendSessionBindings)
       .where(eq(backendSessionBindings.chatSessionId, id))
@@ -117,22 +119,23 @@ export function create(input: {
 }): SessionView {
   const parsed = SessionCreateInputSchema.parse(input)
   const resolved = resolveSessionCreateInput(parsed)
+  const workspaceId = parsed.workspaceId ?? Workspace.createAdHocWorkspace().id
   const rowInput = z
     .object({
-      configJson: z.string().default(() => resolved.configJson)
+      configJson: z.string().default(() => resolved.configJson),
     })
     .parse(parsed)
   const created = db()
     .insert(sessions)
     .values({
       id: parsed.id,
-      workspaceId: parsed.workspaceId,
+      workspaceId,
       title: parsed.title,
       providerTargetId: resolved.providerTargetId,
       runtimeKind: resolved.runtimeKind,
       agentId: resolved.agentId,
       configJson: rowInput.configJson,
-      linkedIssueId: parsed.linkedIssueId
+      linkedIssueId: parsed.linkedIssueId,
     })
     .returning()
     .get()
@@ -157,7 +160,7 @@ function resolveSessionCreateInput(input: {
         code: 'agent_not_found',
         status: 404,
         message: 'Agent not found',
-        details: { agentId: input.agentId }
+        details: { agentId: input.agentId },
       })
     }
 
@@ -169,8 +172,17 @@ function resolveSessionCreateInput(input: {
         details: {
           agentId: input.agentId,
           runtimeKind: input.runtimeKind,
-          agentRuntimeKind: agent.runtimeKind
-        }
+          agentRuntimeKind: agent.runtimeKind,
+        },
+      })
+    }
+
+    if (!agent.enabled) {
+      throw new AppError({
+        code: 'invalid_session_input',
+        status: 409,
+        message: 'Agent is disabled',
+        details: { agentId: input.agentId },
       })
     }
 
@@ -181,14 +193,14 @@ function resolveSessionCreateInput(input: {
           code: 'invalid_session_input',
           status: 400,
           message: 'CLI TUI session requires launch configuration on the selected agent',
-          details: { agentId: input.agentId }
+          details: { agentId: input.agentId },
         })
       }
       return {
         providerTargetId: null,
         runtimeKind: agent.runtimeKind,
         agentId: agent.id,
-        configJson: buildSessionRuntimeConfigJson({ cliTuiLaunch: launch })
+        configJson: buildSessionRuntimeConfigJson({ cliTuiLaunch: launch }),
       }
     }
 
@@ -197,20 +209,29 @@ function resolveSessionCreateInput(input: {
         code: 'invalid_session_input',
         status: 400,
         message: 'Provider-backed agent requires a provider target',
-        details: { agentId: input.agentId }
+        details: { agentId: input.agentId },
       })
     }
 
     assertTargetCompatibleWithRuntime({
       providerTargetId: agent.providerTargetId,
-      runtimeKind: agent.runtimeKind
+      runtimeKind: agent.runtimeKind,
     })
+    const providerTarget = resolveProviderTarget(agent.providerTargetId)
+    if (!providerTarget.enabled) {
+      throw new AppError({
+        code: 'invalid_session_input',
+        status: 409,
+        message: 'Provider target is disabled',
+        details: { agentId: input.agentId, providerTargetId: agent.providerTargetId },
+      })
+    }
 
     return {
       providerTargetId: agent.providerTargetId,
       runtimeKind: agent.runtimeKind,
       agentId: agent.id,
-      configJson: '{}'
+      configJson: '{}',
     }
   }
 
@@ -219,7 +240,7 @@ function resolveSessionCreateInput(input: {
     throw new AppError({
       code: 'invalid_session_input',
       status: 400,
-      message: 'CLI TUI sessions must be created from an agent'
+      message: 'CLI TUI sessions must be created from an agent',
     })
   }
 
@@ -227,21 +248,21 @@ function resolveSessionCreateInput(input: {
     throw new AppError({
       code: 'invalid_session_input',
       status: 400,
-      message: 'Session requires a provider target or an agent'
+      message: 'Session requires a provider target or an agent',
     })
   }
 
   resolveProviderTarget(input.providerTargetId)
   assertTargetCompatibleWithRuntime({
     providerTargetId: input.providerTargetId,
-    runtimeKind
+    runtimeKind,
   })
 
   return {
     providerTargetId: input.providerTargetId,
     runtimeKind,
     agentId: null,
-    configJson: '{}'
+    configJson: '{}',
   }
 }
 
@@ -269,7 +290,7 @@ export function update(input: {
   return get(input.id)
 }
 
-export function updateTitle(input: { id: string; title: string }): void {
+export function updateTitle(input: { id: string, title: string }): void {
   update(input)
 }
 
@@ -284,7 +305,8 @@ function cleanupSessionResources(id: string): void {
   for (const handler of cleanupHandlers) {
     try {
       handler(id)
-    } catch {
+    }
+ catch {
       // cleanup handlers must not break the delete flow
     }
   }
@@ -313,7 +335,7 @@ export function deleteByProviderTargetInDb(providerTargetId: string, d: SessionD
     .from(sessions)
     .where(eq(sessions.providerTargetId, providerTargetId))
     .all()
-    .map((row) => row.id)
+    .map(row => row.id)
 
   deleteSessionIdsInDb(ids, d)
 }
@@ -328,7 +350,7 @@ export function deleteByAgentIdsInDb(agentIds: string[], d: SessionDeleteDb): vo
     .from(sessions)
     .where(inArray(sessions.agentId, agentIds))
     .all()
-    .map((row) => row.id)
+    .map(row => row.id)
 
   deleteSessionIdsInDb(ids, d)
 }
@@ -343,7 +365,7 @@ export function getMessages(sessionId: string): Message[] {
 }
 
 export function getMessagesWithRunIds(
-  sessionId: string
+  sessionId: string,
 ): Array<Message & { runId: string | null }> {
   const d = db()
   const rows = d
@@ -353,7 +375,7 @@ export function getMessagesWithRunIds(
     .orderBy(messages.createdAt)
     .all()
 
-  const assistantIds = rows.filter((row) => row.role === 'assistant').map((row) => row.id)
+  const assistantIds = rows.filter(row => row.role === 'assistant').map(row => row.id)
   const latestRunByMessageId = new Map<string, string>()
 
   if (assistantIds.length > 0) {
@@ -361,7 +383,7 @@ export function getMessagesWithRunIds(
       .select({
         id: backendRuns.id,
         messageId: backendRuns.messageId,
-        startedAt: backendRuns.startedAt
+        startedAt: backendRuns.startedAt,
       })
       .from(backendRuns)
       .where(inArray(backendRuns.messageId, assistantIds))
@@ -376,13 +398,13 @@ export function getMessagesWithRunIds(
     }
   }
 
-  return rows.map((row) => ({
+  return rows.map(row => ({
     ...row,
-    runId: row.role === 'assistant' ? (latestRunByMessageId.get(row.id) ?? null) : null
+    runId: row.role === 'assistant' ? (latestRunByMessageId.get(row.id) ?? null) : null,
   }))
 }
 
-export function getRunMessageContents(runIds: string[]): { runId: string; content: string }[] {
+export function getRunMessageContents(runIds: string[]): { runId: string, content: string }[] {
   if (runIds.length === 0) {
     return []
   }
@@ -390,14 +412,14 @@ export function getRunMessageContents(runIds: string[]): { runId: string; conten
   const rows = db()
     .select({
       runId: backendRuns.id,
-      content: messages.content
+      content: messages.content,
     })
     .from(backendRuns)
     .innerJoin(messages, eq(backendRuns.messageId, messages.id))
     .where(inArray(backendRuns.id, runIds))
     .all()
 
-  return rows.map((row) => ({ runId: row.runId, content: row.content }))
+  return rows.map(row => ({ runId: row.runId, content: row.content }))
 }
 
 export function exportMarkdown(sessionId: string): string {
@@ -424,7 +446,7 @@ export function exportMarkdown(sessionId: string): string {
   lines.push(`# ${session.title}`)
   lines.push('')
   lines.push(
-    `> Model: ${binding?.requestedModelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`
+    `> Model: ${binding?.requestedModelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`,
   )
   lines.push('')
 
