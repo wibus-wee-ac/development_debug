@@ -1,12 +1,14 @@
-import { RootProvider } from 'fumadocs-ui/provider/next';
-import './global.css';
-import { Inter } from 'next/font/google';
-import { appName } from '@/lib/shared';
-import type { Metadata } from 'next';
+import './global.css'
+
+import { RootProvider } from 'fumadocs-ui/provider/next'
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+
+import { appName } from '@/lib/shared'
 
 const inter = Inter({
   subsets: ['latin'],
-});
+})
 
 export const metadata: Metadata = {
   title: {
@@ -14,7 +16,7 @@ export const metadata: Metadata = {
     template: `%s | ${appName}`,
   },
   description: 'Cradle product and developer documentation.',
-};
+}
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
@@ -23,5 +25,5 @@ export default function Layout({ children }: LayoutProps<'/'>) {
         <RootProvider>{children}</RootProvider>
       </body>
     </html>
-  );
+  )
 }

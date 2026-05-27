@@ -4,26 +4,29 @@
  * Position: Server component mounted from MDX on the documentation map page.
  */
 
-import { buildDocsGraph, type DocsGraphPageScore } from '@/lib/docs-graph';
-import { cn } from '@/lib/cn';
-import { AlertTriangle, ArrowRight, ChartNetwork, Link2, Route, ScanSearch } from 'lucide-react';
-import { GraphView } from './graph-view';
+import { AlertTriangle, ArrowRight, ChartNetwork, Link2, Route, ScanSearch } from 'lucide-react'
+
+import { cn } from '@/lib/cn'
+import type { DocsGraphPageScore } from '@/lib/docs-graph'
+import { buildDocsGraph } from '@/lib/docs-graph'
+
+import { GraphView } from './graph-view'
 
 const sectionLabels = {
-  agents: 'Agent',
-  automation: 'Automation',
-  chat: 'Chat',
-  chronicle: 'Chronicle',
-  developers: '开发者',
+  'agents': 'Agent',
+  'automation': 'Automation',
+  'chat': 'Chat',
+  'chronicle': 'Chronicle',
+  'developers': '开发者',
   'getting-started': '入门',
-  home: '首页',
-  integrations: '集成',
-  kanban: 'Kanban',
-  map: '地图',
-  operations: '运维',
-  troubleshooting: 'Troubleshooting',
-  workspace: 'Workspace',
-} satisfies Record<string, string>;
+  'home': '首页',
+  'integrations': '集成',
+  'kanban': 'Kanban',
+  'map': '地图',
+  'operations': '运维',
+  'troubleshooting': 'Troubleshooting',
+  'workspace': 'Workspace',
+} satisfies Record<string, string>
 
 const statItems = [
   {
@@ -47,13 +50,13 @@ const statItems = [
     icon: AlertTriangle,
   },
 ] satisfies Array<{
-  key: 'pageCount' | 'internalLinkCount' | 'rawReferenceCount' | 'unresolvedReferenceCount';
-  label: string;
-  icon: typeof Route;
-}>;
+  key: 'pageCount' | 'internalLinkCount' | 'rawReferenceCount' | 'unresolvedReferenceCount'
+  label: string
+  icon: typeof Route
+}>
 
 function sectionLabel(section: string) {
-  return sectionLabels[section as keyof typeof sectionLabels] ?? section;
+  return sectionLabels[section as keyof typeof sectionLabels] ?? section
 }
 
 function MetricCard({
@@ -62,10 +65,10 @@ function MetricCard({
   icon: Icon,
   muted = false,
 }: {
-  label: string;
-  value: number;
-  icon: typeof Route;
-  muted?: boolean;
+  label: string
+  value: number
+  icon: typeof Route
+  muted?: boolean
 }) {
   return (
     <div
@@ -82,7 +85,7 @@ function MetricCard({
       </div>
       <p className="m-0 mt-2 text-2xl font-semibold tabular-nums">{value}</p>
     </div>
-  );
+  )
 }
 
 function PageScoreList({
@@ -90,16 +93,17 @@ function PageScoreList({
   title,
   empty,
 }: {
-  pages: DocsGraphPageScore[];
-  title: string;
-  empty: string;
+  pages: DocsGraphPageScore[]
+  title: string
+  empty: string
 }) {
   return (
     <section className="rounded-lg border border-fd-border bg-fd-card p-4 shadow-sm">
       <h3 className="m-0 text-sm font-medium leading-6 text-fd-foreground">{title}</h3>
       <div className="mt-3 flex flex-col gap-2">
-        {pages.length > 0 ? (
-          pages.map((page) => (
+        {pages.length > 0
+? (
+          pages.map(page => (
             <a
               key={page.url}
               href={page.url}
@@ -112,20 +116,24 @@ function PageScoreList({
                 </span>
               </span>
               <span className="tabular-nums text-xs leading-5 text-fd-muted-foreground">
-                {page.inboundCount} / {page.outboundCount}
+                {page.inboundCount}
+{' '}
+/
+{page.outboundCount}
               </span>
             </a>
           ))
-        ) : (
+        )
+: (
           <p className="m-0 text-sm leading-6 text-fd-muted-foreground">{empty}</p>
         )}
       </div>
     </section>
-  );
+  )
 }
 
 export function DocsLinkGraph() {
-  const graph = buildDocsGraph();
+  const graph = buildDocsGraph()
 
   return (
     <div className="not-prose my-8 space-y-4">
@@ -154,7 +162,7 @@ export function DocsLinkGraph() {
         </div>
 
         <div className="grid gap-3 border-b border-fd-border p-4 sm:grid-cols-2 xl:grid-cols-4">
-          {statItems.map((item) => (
+          {statItems.map(item => (
             <MetricCard
               key={item.key}
               label={item.label}
@@ -183,11 +191,12 @@ export function DocsLinkGraph() {
         />
       </div>
 
-      {graph.unresolvedReferences.length > 0 ? (
+      {graph.unresolvedReferences.length > 0
+? (
         <section className="rounded-lg border border-amber-500/25 bg-amber-500/10 p-4 text-amber-950 shadow-sm dark:text-amber-100">
           <h3 className="m-0 text-sm font-medium leading-6">未解析的本地引用</h3>
           <div className="mt-3 flex flex-col gap-2">
-            {graph.unresolvedReferences.map((reference) => (
+            {graph.unresolvedReferences.map(reference => (
               <div
                 key={`${reference.sourceUrl}:${reference.href}`}
                 className="grid gap-2 rounded-md bg-fd-background/70 px-3 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center"
@@ -201,7 +210,8 @@ export function DocsLinkGraph() {
             ))}
           </div>
         </section>
-      ) : null}
+      )
+: null}
     </div>
-  );
+  )
 }

@@ -28,4 +28,7 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0041_keen_maggott.sql**: Drizzle Kit 生成的 provider-target foundation migration，新增 external runtime target、provider-target model cache 与 provider-target 引用列，并移除旧 external profile link 的 profile FK
 - **0042_bitter_mimic.sql**: Drizzle Kit 生成的 nullable runtime profile migration，让 backend binding/capability snapshot 可以记录 external-record target 而不伪造 profile FK
 - **0043_serious_stature.sql**: Drizzle Kit 生成的 external profile link cleanup migration，删除已废弃的 `external_provider_profile_links` 表
+- **0046_workspace_pinned.sql**: Drizzle Kit 生成的 workspace pinning migration，为 `workspaces` 增加 app sidebar-owned `pinned` 状态列
+- **0047_remarkable_nico_minoru.sql**: Drizzle Kit 生成并补充数据提升的 global model registry migration，新增 `model_registry_mappings` 表，并把旧 profile/provider-target JSON mappings 提升到全局 namespace
+- **0048_curvy_nextwave.sql**: Drizzle Kit 生成并补充数据清理的 model registry cleanup migration，把 custom model JSON 压缩为 `id/label`，并删除 provider-target runtime tables 上已提升到全局 namespace 的旧 mapping JSON 列
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

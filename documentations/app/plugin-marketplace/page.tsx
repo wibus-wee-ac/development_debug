@@ -4,16 +4,17 @@
  * Position: Public marketplace route for browsing plugins and preparing install links.
  */
 
-import { PluginMarketplace } from '@/components/plugin-marketplace';
-import { pluginMarketplaceEntries } from '@/lib/plugin-marketplace';
-import { ArrowRight, BookOpen, Braces, FileJson, Plug, ShieldCheck } from 'lucide-react';
-import Link from 'next/link';
-import type { Metadata } from 'next';
+import { ArrowRight, BookOpen, Braces, FileJson, Plug, ShieldCheck } from 'lucide-react'
+import type { Metadata } from 'next'
+import Link from 'next/link'
+
+import { PluginMarketplace } from '@/components/plugin-marketplace'
+import { pluginMarketplaceEntries } from '@/lib/plugin-marketplace'
 
 export const metadata: Metadata = {
   title: 'Plugin Marketplace',
   description: 'Browse Cradle plugins, runtime layers, trust notes, and install links.',
-};
+}
 
 const marketplaceStats = [
   {
@@ -22,13 +23,13 @@ const marketplaceStats = [
   },
   {
     label: 'Runtime layers',
-    value: new Set(pluginMarketplaceEntries.flatMap((plugin) => plugin.layers)).size,
+    value: new Set(pluginMarketplaceEntries.flatMap(plugin => plugin.layers)).size,
   },
   {
     label: 'Install protocol',
     value: 'cradle://',
   },
-] satisfies Array<{ label: string; value: number | string }>;
+] satisfies Array<{ label: string, value: number | string }>
 
 export default function PluginMarketplacePage() {
   return (
@@ -97,7 +98,7 @@ export default function PluginMarketplacePage() {
           </div>
 
           <aside className="grid gap-3 rounded-lg border border-fd-border bg-fd-card p-4 shadow-sm">
-            {marketplaceStats.map((stat) => (
+            {marketplaceStats.map(stat => (
               <div
                 key={stat.label}
                 className="flex min-h-20 items-center justify-between gap-4 rounded-md bg-fd-muted px-4"
@@ -116,5 +117,5 @@ export default function PluginMarketplacePage() {
         <PluginMarketplace className="my-0" />
       </section>
     </main>
-  );
+  )
 }

@@ -1,10 +1,10 @@
-import Link from 'next/link';
-import type { Metadata } from 'next';
+import type { Metadata } from 'next'
+import Link from 'next/link'
 
 export const metadata: Metadata = {
   title: 'Cradle Docs',
   description: 'Learn how to set up Cradle, configure agents, and extend the local workspace runtime.',
-};
+}
 
 export default function HomePage() {
   return (
@@ -40,5 +40,5 @@ export default function HomePage() {
         </div>
       </div>
     </div>
-  );
+  )
 }

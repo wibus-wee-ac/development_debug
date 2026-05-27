@@ -4,14 +4,12 @@
  * Position: Documentation-only UI helpers used by MDX pages to improve system comprehension.
  */
 
-import { cn } from '@/lib/cn';
-import Link from 'next/link';
 import {
   ArrowRight,
   BookOpen,
   Bot,
-  Brain,
   Boxes,
+  Brain,
   ChartNetwork,
   Code,
   Database,
@@ -34,54 +32,57 @@ import {
   Waypoints,
   Workflow,
   Zap,
-} from 'lucide-react';
-import type { ComponentType, SVGProps } from 'react';
+} from 'lucide-react'
+import Link from 'next/link'
+import type { ComponentType, SVGProps } from 'react'
 
-type VisualTone = 'neutral' | 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'cyan';
-type VisualIcon =
-  | 'agent'
-  | 'api'
-  | 'automation'
-  | 'book'
-  | 'chronicle'
-  | 'cli'
-  | 'code'
-  | 'database'
-  | 'desktop'
-  | 'docs'
-  | 'git'
-  | 'graph'
-  | 'hardDrive'
-  | 'integration'
-  | 'layer'
-  | 'message'
-  | 'model'
-  | 'monitoring'
-  | 'plugin'
-  | 'route'
-  | 'search'
-  | 'server'
-  | 'settings'
-  | 'shield'
-  | 'terminal'
-  | 'workspace'
-  | 'zap';
+import { cn } from '@/lib/cn'
 
-type IconComponent = ComponentType<SVGProps<SVGSVGElement>>;
+type VisualTone = 'neutral' | 'blue' | 'emerald' | 'amber' | 'rose' | 'violet' | 'cyan'
+type VisualIcon
+  = | 'agent'
+    | 'api'
+    | 'automation'
+    | 'book'
+    | 'chronicle'
+    | 'cli'
+    | 'code'
+    | 'database'
+    | 'desktop'
+    | 'docs'
+    | 'git'
+    | 'graph'
+    | 'hardDrive'
+    | 'integration'
+    | 'layer'
+    | 'message'
+    | 'model'
+    | 'monitoring'
+    | 'plugin'
+    | 'route'
+    | 'search'
+    | 'server'
+    | 'settings'
+    | 'shield'
+    | 'terminal'
+    | 'workspace'
+    | 'zap'
+
+type IconComponent = ComponentType<SVGProps<SVGSVGElement>>
 
 interface VisualCardItem {
-  title: string;
-  description: string;
-  href?: string;
-  icon: VisualIcon;
-  tone?: VisualTone;
+  title: string
+  description: string
+  href?: string
+  icon: VisualIcon
+  tone?: VisualTone
 }
 
 interface FlowItem {
-  title: string;
-  description: string;
-  icon: VisualIcon;
-  tone?: VisualTone;
+  title: string
+  description: string
+  icon: VisualIcon
+  tone?: VisualTone
 }
 
 const iconMap = {
@@ -112,7 +113,7 @@ const iconMap = {
   terminal: Terminal,
   workspace: FolderGit2,
   zap: Zap,
-} satisfies Record<VisualIcon, IconComponent>;
+} satisfies Record<VisualIcon, IconComponent>
 
 const toneClasses = {
   neutral: 'border-fd-border bg-fd-card text-fd-foreground',
@@ -122,7 +123,7 @@ const toneClasses = {
   rose: 'border-rose-500/25 bg-rose-500/10 text-rose-950 dark:text-rose-100',
   violet: 'border-violet-500/25 bg-violet-500/10 text-violet-950 dark:text-violet-100',
   cyan: 'border-cyan-500/25 bg-cyan-500/10 text-cyan-950 dark:text-cyan-100',
-} satisfies Record<VisualTone, string>;
+} satisfies Record<VisualTone, string>
 
 const mutedToneClasses = {
   neutral: 'bg-fd-muted text-fd-muted-foreground',
@@ -132,7 +133,7 @@ const mutedToneClasses = {
   rose: 'bg-rose-500/15 text-rose-700 dark:text-rose-200',
   violet: 'bg-violet-500/15 text-violet-700 dark:text-violet-200',
   cyan: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-200',
-} satisfies Record<VisualTone, string>;
+} satisfies Record<VisualTone, string>
 
 const productNodes = [
   {
@@ -177,7 +178,7 @@ const productNodes = [
     icon: 'plugin',
     tone: 'cyan',
   },
-] satisfies VisualCardItem[];
+] satisfies VisualCardItem[]
 
 const readerPaths = [
   {
@@ -225,12 +226,12 @@ const readerPaths = [
     ],
   },
 ] satisfies Array<{
-  title: string;
-  description: string;
-  icon: VisualIcon;
-  tone: VisualTone;
-  links: Array<[string, string]>;
-}>;
+  title: string
+  description: string
+  icon: VisualIcon
+  tone: VisualTone
+  links: Array<[string, string]>
+}>
 
 const docsGraphClusters = [
   {
@@ -306,12 +307,12 @@ const docsGraphClusters = [
     ],
   },
 ] satisfies Array<{
-  title: string;
-  relation: string;
-  icon: VisualIcon;
-  tone: VisualTone;
-  links: Array<[string, string]>;
-}>;
+  title: string
+  relation: string
+  icon: VisualIcon
+  tone: VisualTone
+  links: Array<[string, string]>
+}>
 
 const developerLayers = [
   {
@@ -338,7 +339,7 @@ const developerLayers = [
     icon: 'plugin',
     tone: 'cyan',
   },
-] satisfies FlowItem[];
+] satisfies FlowItem[]
 
 const agentRuntimeFlow = [
   {
@@ -371,7 +372,7 @@ const agentRuntimeFlow = [
     icon: 'message',
     tone: 'rose',
   },
-] satisfies FlowItem[];
+] satisfies FlowItem[]
 
 const chronicleFlow = [
   {
@@ -404,7 +405,7 @@ const chronicleFlow = [
     icon: 'search',
     tone: 'violet',
   },
-] satisfies FlowItem[];
+] satisfies FlowItem[]
 
 const slackBridgeFlow = [
   {
@@ -437,7 +438,7 @@ const slackBridgeFlow = [
     icon: 'zap',
     tone: 'emerald',
   },
-] satisfies FlowItem[];
+] satisfies FlowItem[]
 
 const diagnosticRoutes = [
   {
@@ -482,10 +483,10 @@ const diagnosticRoutes = [
     icon: 'shield',
     tone: 'blue',
   },
-] satisfies VisualCardItem[];
+] satisfies VisualCardItem[]
 
-function IconBadge({ icon, tone = 'neutral' }: { icon: VisualIcon; tone?: VisualTone }) {
-  const Icon = iconMap[icon];
+function IconBadge({ icon, tone = 'neutral' }: { icon: VisualIcon, tone?: VisualTone }) {
+  const Icon = iconMap[icon]
 
   return (
     <span
@@ -496,11 +497,11 @@ function IconBadge({ icon, tone = 'neutral' }: { icon: VisualIcon; tone?: Visual
     >
       <Icon className="size-4" aria-hidden="true" />
     </span>
-  );
+  )
 }
 
 function VisualCard({ item }: { item: VisualCardItem }) {
-  const tone = item.tone ?? 'neutral';
+  const tone = item.tone ?? 'neutral'
   const body = (
     <>
       <IconBadge icon={item.icon} tone={tone} />
@@ -511,7 +512,7 @@ function VisualCard({ item }: { item: VisualCardItem }) {
         </span>
       </span>
     </>
-  );
+  )
 
   if (item.href) {
     return (
@@ -524,14 +525,14 @@ function VisualCard({ item }: { item: VisualCardItem }) {
       >
         {body}
       </a>
-    );
+    )
   }
 
   return (
     <div className={cn('flex min-h-32 gap-3 rounded-lg border p-4 shadow-sm', toneClasses[tone])}>
       {body}
     </div>
-  );
+  )
 }
 
 function FlowLane({ items }: { items: FlowItem[] }) {
@@ -553,32 +554,34 @@ function FlowLane({ items }: { items: FlowItem[] }) {
               </p>
             </div>
           </div>
-          {index < items.length - 1 ? (
+          {index < items.length - 1
+? (
             <div className="hidden items-center md:flex">
               <ArrowRight className="size-4 text-fd-muted-foreground" aria-hidden="true" />
             </div>
-          ) : null}
+          )
+: null}
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 export function CradleSystemMap() {
   return (
     <div className="not-prose my-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {productNodes.map((item) => (
+      {productNodes.map(item => (
         <VisualCard key={item.title} item={item} />
       ))}
     </div>
-  );
+  )
 }
 
 export function ReaderPath() {
   return (
     <div className="not-prose my-8 grid gap-3 lg:grid-cols-4">
       {readerPaths.map((path) => {
-        const Icon = iconMap[path.icon];
+        const Icon = iconMap[path.icon]
 
         return (
           <section
@@ -609,14 +612,14 @@ export function ReaderPath() {
               ))}
             </div>
           </section>
-        );
+        )
       })}
     </div>
-  );
+  )
 }
 
 export function DocsKnowledgeGraph({ mode = 'full' }: { mode?: 'full' | 'preview' }) {
-  const showsMapLink = mode === 'preview';
+  const showsMapLink = mode === 'preview'
 
   return (
     <div className="not-prose my-8">
@@ -634,18 +637,20 @@ export function DocsKnowledgeGraph({ mode = 'full' }: { mode?: 'full' | 'preview
                 </p>
               </div>
             </div>
-            {showsMapLink ? (
+            {showsMapLink
+? (
               <Link
                 href="/docs/map"
                 className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-md bg-fd-primary px-3 text-sm font-medium text-fd-primary-foreground no-underline transition-[background-color,transform] duration-150 hover:bg-fd-primary/90 active:scale-[0.96]"
               >
                 打开完整地图
               </Link>
-            ) : null}
+            )
+: null}
           </div>
         </div>
         <div className="divide-y divide-fd-border">
-          {docsGraphClusters.map((cluster) => (
+          {docsGraphClusters.map(cluster => (
             <section
               key={cluster.title}
               className="grid gap-3 p-4 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start"
@@ -682,33 +687,33 @@ export function DocsKnowledgeGraph({ mode = 'full' }: { mode?: 'full' | 'preview
         </div>
       </section>
     </div>
-  );
+  )
 }
 
 export function DeveloperArchitectureMap() {
-  return <FlowLane items={developerLayers} />;
+  return <FlowLane items={developerLayers} />
 }
 
 export function AgentRuntimeMap() {
-  return <FlowLane items={agentRuntimeFlow} />;
+  return <FlowLane items={agentRuntimeFlow} />
 }
 
 export function ChroniclePipelineMap() {
-  return <FlowLane items={chronicleFlow} />;
+  return <FlowLane items={chronicleFlow} />
 }
 
 export function SlackBridgeFlow() {
-  return <FlowLane items={slackBridgeFlow} />;
+  return <FlowLane items={slackBridgeFlow} />
 }
 
 export function DiagnosticRouter() {
   return (
     <div className="not-prose my-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-      {diagnosticRoutes.map((item) => (
+      {diagnosticRoutes.map(item => (
         <VisualCard key={item.title} item={item} />
       ))}
     </div>
-  );
+  )
 }
 
 export function OwnerContractMatrix() {
@@ -719,7 +724,7 @@ export function OwnerContractMatrix() {
     ['接口', 'HTTP routes、CLI commands、plugin APIs、events 和 environment variables。'],
     ['验证', '哪些 tests、type checks、builds 和 smoke checks 能证明行为。'],
     ['边界', '这个能力负责什么、连接什么，以及哪些事情应该交给相邻 owner。'],
-  ] satisfies Array<[string, string]>;
+  ] satisfies Array<[string, string]>
 
   return (
     <div className="not-prose my-8 overflow-hidden rounded-lg border border-fd-border shadow-sm">
@@ -737,7 +742,7 @@ export function OwnerContractMatrix() {
         </div>
       ))}
     </div>
-  );
+  )
 }
 
 export function ApiToCliFlow() {
@@ -766,9 +771,9 @@ export function ApiToCliFlow() {
       icon: 'cli',
       tone: 'violet',
     },
-  ] satisfies FlowItem[];
+  ] satisfies FlowItem[]
 
-  return <FlowLane items={items} />;
+  return <FlowLane items={items} />
 }
 
 export function PluginLayerMap() {
@@ -797,9 +802,9 @@ export function PluginLayerMap() {
       icon: 'plugin',
       tone: 'violet',
     },
-  ] satisfies FlowItem[];
+  ] satisfies FlowItem[]
 
-  return <FlowLane items={items} />;
+  return <FlowLane items={items} />
 }
 
 export function LocalFirstBoundaryMap() {
@@ -825,13 +830,13 @@ export function LocalFirstBoundaryMap() {
       icon: 'shield',
       tone: 'emerald',
     },
-  ] satisfies VisualCardItem[];
+  ] satisfies VisualCardItem[]
 
   return (
     <div className="not-prose my-8 grid gap-3 md:grid-cols-3">
-      {items.map((item) => (
+      {items.map(item => (
         <VisualCard key={item.title} item={item} />
       ))}
     </div>
-  );
+  )
 }

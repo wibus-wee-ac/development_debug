@@ -1,4 +1,4 @@
-'use client';
+'use client'
 
 /*
  * Output: Interactive Plugin Marketplace cards for documentation pages.
@@ -6,8 +6,6 @@
  * Position: Documentation UI component rendered from MDX.
  */
 
-import { cn } from '@/lib/cn';
-import Link from 'next/link';
 import {
   Check,
   Copy,
@@ -19,24 +17,25 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
-} from 'lucide-react';
-import { useMemo, useState } from 'react';
+} from 'lucide-react'
+import Link from 'next/link'
+import { useMemo, useState } from 'react'
+
+import { cn } from '@/lib/cn'
+import type { PluginMarketplaceCategory, PluginMarketplaceEntry, PluginMarketplaceLayer } from '@/lib/plugin-marketplace'
 import {
   createPluginInstallUrl,
   pluginMarketplaceEntries,
-  type PluginMarketplaceCategory,
-  type PluginMarketplaceEntry,
-  type PluginMarketplaceLayer,
-} from '@/lib/plugin-marketplace';
+} from '@/lib/plugin-marketplace'
 
-type CategoryFilter = 'all' | PluginMarketplaceCategory;
+type CategoryFilter = 'all' | PluginMarketplaceCategory
 
 const categoryFilters = [
   { id: 'all', label: 'All' },
   { id: 'automation', label: 'Automation' },
   { id: 'diagnostics', label: 'Diagnostics' },
   { id: 'provider', label: 'Provider' },
-] satisfies Array<{ id: CategoryFilter; label: string }>;
+] satisfies Array<{ id: CategoryFilter, label: string }>
 
 const layerLabels = {
   server: 'Server',
@@ -44,18 +43,18 @@ const layerLabels = {
   desktop: 'Desktop',
   mcp: 'MCP',
   skill: 'Skill',
-} satisfies Record<PluginMarketplaceLayer, string>;
+} satisfies Record<PluginMarketplaceLayer, string>
 
 const statusLabels = {
   bundled: 'Bundled',
   beta: 'Beta',
-} satisfies Record<PluginMarketplaceEntry['status'], string>;
+} satisfies Record<PluginMarketplaceEntry['status'], string>
 
 const statusClasses = {
   bundled:
     'border-emerald-500/25 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200',
   beta: 'border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-200',
-} satisfies Record<PluginMarketplaceEntry['status'], string>;
+} satisfies Record<PluginMarketplaceEntry['status'], string>
 
 const categorySummary = {
   all: 'Every plugin currently listed in the Cradle Marketplace.',
@@ -63,11 +62,11 @@ const categorySummary = {
   diagnostics: 'Plugins that inspect host, runtime, or operational state.',
   provider: 'Plugins that project model or provider metadata into Cradle.',
   workspace: 'Plugins that extend local workspace workflows.',
-} satisfies Record<CategoryFilter, string>;
+} satisfies Record<CategoryFilter, string>
 
 function matchesSearch(plugin: PluginMarketplaceEntry, query: string) {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length === 0) return true;
+  const normalizedQuery = query.trim().toLowerCase()
+  if (normalizedQuery.length === 0) { return true }
 
   const searchableText = [
     plugin.displayName,
@@ -81,9 +80,9 @@ function matchesSearch(plugin: PluginMarketplaceEntry, query: string) {
     ...plugin.capabilities,
   ]
     .join(' ')
-    .toLowerCase();
+    .toLowerCase()
 
-  return searchableText.includes(normalizedQuery);
+  return searchableText.includes(normalizedQuery)
 }
 
 function MarketplaceHeader({
@@ -92,10 +91,10 @@ function MarketplaceHeader({
   onQueryChange,
   onCategoryChange,
 }: {
-  query: string;
-  category: CategoryFilter;
-  onQueryChange: (value: string) => void;
-  onCategoryChange: (value: CategoryFilter) => void;
+  query: string
+  category: CategoryFilter
+  onQueryChange: (value: string) => void
+  onCategoryChange: (value: CategoryFilter) => void
 }) {
   return (
     <section className="overflow-hidden rounded-lg border border-fd-border bg-fd-card shadow-sm">
@@ -134,13 +133,13 @@ function MarketplaceHeader({
           <span className="sr-only">Search plugins</span>
           <input
             value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
+            onChange={event => onQueryChange(event.target.value)}
             placeholder="Search plugins, layers, capabilities..."
             className="h-11 w-full rounded-md border border-fd-border bg-fd-background pl-10 pr-3 text-sm text-fd-foreground outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-fd-muted-foreground focus:border-fd-primary focus:ring-2 focus:ring-fd-primary/20"
           />
         </label>
         <div className="flex flex-wrap gap-2">
-          {categoryFilters.map((item) => (
+          {categoryFilters.map(item => (
             <button
               key={item.id}
               type="button"
@@ -162,13 +161,13 @@ function MarketplaceHeader({
         {categorySummary[category]}
       </div>
     </section>
-  );
+  )
 }
 
 function LayerBadges({ layers }: { layers: PluginMarketplaceLayer[] }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {layers.map((layer) => (
+      {layers.map(layer => (
         <span
           key={layer}
           className="inline-flex min-h-7 items-center rounded-md bg-fd-muted px-2 text-xs font-medium text-fd-muted-foreground"
@@ -177,17 +176,17 @@ function LayerBadges({ layers }: { layers: PluginMarketplaceLayer[] }) {
         </span>
       ))}
     </div>
-  );
+  )
 }
 
 function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
-  const installUrl = createPluginInstallUrl(plugin);
-  const [copied, setCopied] = useState(false);
+  const installUrl = createPluginInstallUrl(plugin)
+  const [copied, setCopied] = useState(false)
 
   async function copyInstallUrl() {
-    await navigator.clipboard.writeText(installUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1600);
+    await navigator.clipboard.writeText(installUrl)
+    setCopied(true)
+    window.setTimeout(setCopied, 1600, false)
   }
 
   return (
@@ -238,7 +237,7 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
               Capabilities
             </div>
             <ul className="m-0 grid list-none gap-1 p-0">
-              {plugin.capabilities.map((capability) => (
+              {plugin.capabilities.map(capability => (
                 <li key={capability} className="flex min-w-0 items-start gap-2 text-sm leading-6 text-fd-muted-foreground">
                   <Check className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
                   <span>{capability}</span>
@@ -252,7 +251,7 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
               Trust notes
             </div>
             <ul className="m-0 grid list-none gap-1 p-0">
-              {plugin.trustNotes.map((note) => (
+              {plugin.trustNotes.map(note => (
                 <li key={note} className="flex min-w-0 items-start gap-2 text-sm leading-6 text-fd-muted-foreground">
                   <Check className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
                   <span>{note}</span>
@@ -293,9 +292,11 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
             onClick={copyInstallUrl}
             className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md bg-fd-background px-3 text-sm font-medium text-fd-foreground shadow-sm transition-[background-color,transform] duration-150 hover:bg-fd-accent active:scale-[0.96]"
           >
-            {copied ? (
+            {copied
+? (
               <Check className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
-            ) : (
+            )
+: (
               <Copy className="size-4" aria-hidden="true" />
             )}
             {copied ? 'Copied' : 'Copy link'}
@@ -310,20 +311,20 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
         </div>
       </aside>
     </article>
-  );
+  )
 }
 
 export function PluginMarketplace({ className }: { className?: string }) {
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState<CategoryFilter>('all');
+  const [query, setQuery] = useState('')
+  const [category, setCategory] = useState<CategoryFilter>('all')
   const filteredPlugins = useMemo(
     () =>
       pluginMarketplaceEntries.filter((plugin) => {
-        const categoryMatches = category === 'all' || plugin.category === category;
-        return categoryMatches && matchesSearch(plugin, query);
+        const categoryMatches = category === 'all' || plugin.category === category
+        return categoryMatches && matchesSearch(plugin, query)
       }),
     [category, query],
-  );
+  )
 
   return (
     <div className={cn('not-prose my-8 flex flex-col gap-4', className)}>
@@ -338,7 +339,8 @@ export function PluginMarketplace({ className }: { className?: string }) {
         <span>
           <span className="font-medium tabular-nums text-fd-foreground">
             {filteredPlugins.length}
-          </span>{' '}
+          </span>
+{' '}
           plugins
         </span>
         <Link
@@ -350,17 +352,19 @@ export function PluginMarketplace({ className }: { className?: string }) {
         </Link>
       </div>
 
-      {filteredPlugins.length > 0 ? (
+      {filteredPlugins.length > 0
+? (
         <div className="grid items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filteredPlugins.map((plugin) => (
+          {filteredPlugins.map(plugin => (
             <PluginCard key={plugin.id} plugin={plugin} />
           ))}
         </div>
-      ) : (
+      )
+: (
         <div className="rounded-lg border border-dashed border-fd-border bg-fd-card p-6 text-center text-sm leading-6 text-fd-muted-foreground">
           No plugins match the current filters.
         </div>
       )}
     </div>
-  );
+  )
 }

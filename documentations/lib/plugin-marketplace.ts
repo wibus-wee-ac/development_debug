@@ -4,40 +4,40 @@
  * Position: Documentation-owned marketplace data shared by MDX UI and JSON routes.
  */
 
-export type PluginMarketplaceLayer = 'server' | 'web' | 'desktop' | 'mcp' | 'skill';
-export type PluginMarketplaceCategory =
-  | 'automation'
-  | 'diagnostics'
-  | 'provider'
-  | 'workspace';
-export type PluginMarketplaceStatus = 'bundled' | 'beta';
+export type PluginMarketplaceLayer = 'server' | 'web' | 'desktop' | 'mcp' | 'skill'
+export type PluginMarketplaceCategory
+  = | 'automation'
+    | 'diagnostics'
+    | 'provider'
+    | 'workspace'
+export type PluginMarketplaceStatus = 'bundled' | 'beta'
 
 export interface PluginMarketplaceEntry {
-  id: string;
-  packageName: string;
-  displayName: string;
-  summary: string;
-  description: string;
-  version: string;
-  status: PluginMarketplaceStatus;
-  category: PluginMarketplaceCategory;
-  layers: PluginMarketplaceLayer[];
-  capabilities: string[];
-  owner: string;
-  namespace: string;
-  repositoryPath: string;
-  docsHref: string;
-  trustNotes: string[];
+  id: string
+  packageName: string
+  displayName: string
+  summary: string
+  description: string
+  version: string
+  status: PluginMarketplaceStatus
+  category: PluginMarketplaceCategory
+  layers: PluginMarketplaceLayer[]
+  capabilities: string[]
+  owner: string
+  namespace: string
+  repositoryPath: string
+  docsHref: string
+  trustNotes: string[]
   install: {
-    source: 'github';
-    repository: string;
-    path: string;
-    channel: 'bundled';
-  };
+    source: 'github'
+    repository: string
+    path: string
+    channel: 'bundled'
+  }
 }
 
-export const marketplaceInstallProtocol = 'cradle://plugins/install';
-export const marketplaceWebFallbackPath = '/plugin-marketplace';
+export const marketplaceInstallProtocol = 'cradle://plugins/install'
+export const marketplaceWebFallbackPath = '/plugin-marketplace'
 
 export const pluginMarketplaceEntries = [
   {
@@ -133,7 +133,7 @@ export const pluginMarketplaceEntries = [
       channel: 'bundled',
     },
   },
-] satisfies PluginMarketplaceEntry[];
+] satisfies PluginMarketplaceEntry[]
 
 export function createPluginInstallUrl(plugin: PluginMarketplaceEntry) {
   const params = new URLSearchParams({
@@ -143,13 +143,13 @@ export function createPluginInstallUrl(plugin: PluginMarketplaceEntry) {
     package: plugin.packageName,
     version: plugin.version,
     channel: plugin.install.channel,
-  });
+  })
 
-  return `${marketplaceInstallProtocol}?${params.toString()}`;
+  return `${marketplaceInstallProtocol}?${params.toString()}`
 }
 
 export function createPluginMarketplaceWebUrl(plugin: PluginMarketplaceEntry) {
-  return `${marketplaceWebFallbackPath}?plugin=${encodeURIComponent(plugin.id)}`;
+  return `${marketplaceWebFallbackPath}?plugin=${encodeURIComponent(plugin.id)}`
 }
 
 export function getPluginMarketplacePayload() {
@@ -158,10 +158,10 @@ export function getPluginMarketplacePayload() {
     generatedFrom: 'documentations/lib/plugin-marketplace.ts',
     installProtocol: marketplaceInstallProtocol,
     webFallbackPath: marketplaceWebFallbackPath,
-    plugins: pluginMarketplaceEntries.map((plugin) => ({
+    plugins: pluginMarketplaceEntries.map(plugin => ({
       ...plugin,
       installUrl: createPluginInstallUrl(plugin),
       webUrl: createPluginMarketplaceWebUrl(plugin),
     })),
-  };
+  }
 }

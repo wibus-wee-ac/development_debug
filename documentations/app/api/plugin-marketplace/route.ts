@@ -4,8 +4,8 @@
  * Position: Documentation API route for future Cradle desktop install discovery.
  */
 
-import { getPluginMarketplacePayload } from '@/lib/plugin-marketplace';
+import { getPluginMarketplacePayload } from '@/lib/plugin-marketplace'
 
 export function GET() {
-  return Response.json(getPluginMarketplacePayload());
+  return Response.json(getPluginMarketplacePayload())
 }
