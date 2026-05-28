@@ -38,11 +38,8 @@ const filePartSchema = t.Object({
 
 const queueModeSchema = t.Union([t.Literal('queue'), t.Literal('steer')])
 const permissionModeSchema = t.Union([
-  t.Literal('default'),
-  t.Literal('acceptEdits'),
   t.Literal('bypassPermissions'),
   t.Literal('plan'),
-  t.Literal('dontAsk'),
 ])
 const queueStatusSchema = t.Union([
   t.Literal('pending'),
@@ -79,11 +76,8 @@ const queueItemSchema = t.Object({
   modelId: t.Union([t.String(), t.Null()]),
   thinkingEffort: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Null()]),
   permissionMode: t.Union([
-    t.Literal('default'),
-    t.Literal('acceptEdits'),
     t.Literal('bypassPermissions'),
     t.Literal('plan'),
-    t.Literal('dontAsk'),
     t.Null(),
   ]),
   position: t.Number(),
@@ -137,11 +131,8 @@ const runtimeSessionRunSchema = t.Object({
   providerSessionId: t.Union([t.String(), t.Null()]),
   queueItemId: t.Union([t.String(), t.Null()]),
   permissionMode: t.Union([
-    t.Literal('default'),
-    t.Literal('acceptEdits'),
     t.Literal('bypassPermissions'),
     t.Literal('plan'),
-    t.Literal('dontAsk'),
     t.Null(),
   ]),
 })
@@ -196,11 +187,8 @@ export const ChatRuntimeModel = {
     providerSessionId: t.Union([t.String(), t.Null()]),
     modelId: t.Union([t.String(), t.Null()]),
     permissionMode: t.Union([
-      t.Literal('default'),
-      t.Literal('acceptEdits'),
       t.Literal('bypassPermissions'),
       t.Literal('plan'),
-      t.Literal('dontAsk'),
       t.Null(),
     ]),
     pendingQueueItemId: t.Union([t.String(), t.Null()]),

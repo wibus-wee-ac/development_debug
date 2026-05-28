@@ -28,6 +28,8 @@ export interface ChatRuntimeCapabilities {
   skills: string[]
 }
 
+export type ChatPermissionMode = 'bypassPermissions' | 'plan'
+
 export interface RuntimeSession {
   id: string
   chatSessionId: string
@@ -63,7 +65,7 @@ export interface StreamTurnInput {
   workspacePath?: string
   providerOptions?: {
     thinkingEffort?: 'low' | 'medium' | 'high'
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+    permissionMode?: ChatPermissionMode
   }
   systemPrompt?: string
   history?: UIMessage[]
@@ -92,7 +94,7 @@ export interface GetCapabilitiesInput {
 export interface SetPermissionModeInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
-  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  mode: ChatPermissionMode
 }
 
 export interface TokenUsage {

@@ -40,6 +40,7 @@ import {
 } from './message-snapshots'
 import { readProviderStateSnapshot } from './providers/provider-state-snapshot'
 import type {
+  ChatPermissionMode,
   ChatRuntime,
   ChatRuntimeCapabilities,
   RuntimeProviderTargetProfile,
@@ -56,6 +57,13 @@ function parseTrustedJsonObject(json: string): Record<string, unknown> {
   return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
     ? parsed as Record<string, unknown>
     : {}
+}
+
+function normalizeChatPermissionMode(value: unknown): ChatPermissionMode | null {
+  if (value === 'bypassPermissions' || value === 'plan') {
+    return value
+  }
+  return null
 }
 
 // ── types ──
@@ -98,7 +106,7 @@ interface ActiveRun {
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  permissionMode?: ChatPermissionMode
 }
 
 export interface ActiveRunSummary {
@@ -138,7 +146,7 @@ export interface RuntimeSessionRunDto {
   modelId: string | null
   providerSessionId: string | null
   queueItemId: string | null
-  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
+  permissionMode: ChatPermissionMode | null
 }
 
 export interface ChatRuntimeSessionStatusDto {
@@ -148,7 +156,7 @@ export interface ChatRuntimeSessionStatusDto {
   providerTargetId: string | null
   providerSessionId: string | null
   modelId: string | null
-  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
+  permissionMode: ChatPermissionMode | null
   pendingQueueItemId: string | null
   activeRun: RuntimeSessionRunDto | null
   latestRun: RuntimeSessionRunDto | null
@@ -195,7 +203,7 @@ export interface ChatSessionQueueItemDto {
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
-  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
+  permissionMode: ChatPermissionMode | null
   position: number
   sourceRunId: string | null
   startedRunId: string | null
@@ -212,7 +220,7 @@ export interface EnqueueSessionQueueItemInput {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  permissionMode?: ChatPermissionMode
 }
 
 // ── in-memory run state ──
@@ -821,7 +829,7 @@ function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSes
     providerTargetId: row.providerTargetId,
     modelId: row.modelId,
     thinkingEffort: row.thinkingEffort as ChatSessionQueueItemDto['thinkingEffort'],
-    permissionMode: row.permissionMode as ChatSessionQueueItemDto['permissionMode'],
+    permissionMode: normalizeChatPermissionMode(row.permissionMode),
     position: row.position,
     sourceRunId: row.sourceRunId,
     startedRunId: row.startedRunId,
@@ -1177,7 +1185,7 @@ export async function createRun(input: {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  permissionMode?: ChatPermissionMode
   continuationMode?: ChatSessionQueueMode
   queueItemId?: string
 }) {
@@ -1475,7 +1483,7 @@ export async function streamResponse(input: {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
-  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  permissionMode?: ChatPermissionMode
 }): Promise<{
   runId: string
   assistantMessageId: string
@@ -1933,7 +1941,7 @@ async function tryApplyLiveSteer(input: {
 
 export async function setSessionPermissionMode(input: {
   sessionId: string
-  mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+  mode: ChatPermissionMode
 }): Promise<boolean> {
   const runId = activeRunIdsBySession.get(input.sessionId)
   if (!runId) {
@@ -2084,7 +2092,7 @@ async function executeRun(
     profile: RuntimeProviderTargetProfile
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high'
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+    permissionMode?: ChatPermissionMode
     systemPrompt?: string
     history?: UIMessage[]
     originalMessages?: UIMessage[]
@@ -2607,7 +2615,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
           providerTargetId: claimed.providerTargetId ?? undefined,
           modelId: claimed.modelId ?? undefined,
           thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | undefined,
-          permissionMode: claimed.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | undefined,
+          permissionMode: normalizeChatPermissionMode(claimed.permissionMode) ?? undefined,
           continuationMode: claimed.mode,
           queueItemId: claimed.id,
         })
