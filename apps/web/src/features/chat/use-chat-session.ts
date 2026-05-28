@@ -13,7 +13,7 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { createContinuationUserMessage } from './chat-continuation-metadata'
-import type { ChatContinuationMode } from './chat-response-command'
+import type { ChatContinuationMode, ChatPermissionMode } from './chat-response-command'
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
@@ -22,6 +22,7 @@ import {
   reorderChatSessionQueue,
   startChatResponse,
   subscribeChatSessionStream,
+  switchChatPermissionMode,
 } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { buildUIMessageChunkStreamFromResponse } from './sse-chat-transport'
@@ -77,11 +78,13 @@ export interface ChatSessionMessageRow {
   depth: number
 }
 export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
+export type { ChatPermissionMode } from './chat-response-command'
 
 export interface SendMessageOptions {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined
+  permissionMode?: ChatPermissionMode
   continuationMode?: ChatContinuationMode
 }
 
@@ -376,6 +379,7 @@ export function useChatSession(chatSessionId: string | null) {
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+          permissionMode: opts?.permissionMode,
         },
       })
       if (queueItem.mode === 'steer' && queueItem.status === 'completed') {
@@ -419,6 +423,7 @@ export function useChatSession(chatSessionId: string | null) {
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+          permissionMode: opts?.permissionMode,
         },
         signal: controller.signal,
       })
@@ -563,6 +568,13 @@ export function useChatSession(chatSessionId: string | null) {
     void queryClient.invalidateQueries({ queryKey: queueQueryKey })
   }, [chatSessionId, queryClient, queueQueryKey])
 
+  const setPermissionMode = useCallback(async (mode: ChatPermissionMode) => {
+    if (!chatSessionId) {
+      return false
+    }
+    return await switchChatPermissionMode({ sessionId: chatSessionId, mode })
+  }, [chatSessionId])
+
   // ── Stop ──
 
   const stop = useCallback(async () => {
@@ -607,5 +619,6 @@ export function useChatSession(chatSessionId: string | null) {
     queueItems: queueQuery.data?.items ?? [],
     cancelQueueItem,
     reorderQueueItems,
+    setPermissionMode,
   }
 }

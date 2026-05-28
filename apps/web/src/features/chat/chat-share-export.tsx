@@ -4,6 +4,7 @@
 
 import type { UIMessage } from 'ai'
 import { ClipboardIcon, DownloadIcon, ImageDownIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
+import { domToPng } from 'modern-screenshot'
 import { useCallback, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -188,7 +189,6 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
     }
 
     await document.fonts.ready
-    const { domToPng } = await import('modern-screenshot')
     return domToPng(node, {
       width: SHARE_SURFACE_WIDTH,
       backgroundColor: readExportBackgroundColor(node),

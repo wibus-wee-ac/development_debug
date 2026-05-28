@@ -30,7 +30,7 @@ const skillsInventoryQueryKey = (context?: SkillQueryContext) =>
   ['skills', 'inventory', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent'] as const
 const skillDocumentQueryKey = (context: SkillQueryContext | undefined, scope: SkillScope, name: string | null) =>
   ['skills', 'document', context?.workspaceId ?? 'global', context?.agentId ?? 'no-agent', scope, name ?? ''] as const
-const SkillScopeSchema = z.enum(['builtin', 'legacy', 'global', 'workspace', 'agent'])
+const SkillScopeSchema = z.enum(['builtin', 'legacy', 'global', 'repository', 'workspace', 'agent'])
 const SkillDocumentSchema = z.object({
   name: z.string(),
   description: z.string(),

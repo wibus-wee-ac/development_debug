@@ -4,10 +4,19 @@
 
 import type { UIMessageChunk } from 'ai'
 
+import type { CodexAppServerItem } from './app-server-tool-payload'
+import {
+  buildCodexToolInput,
+  buildCodexToolOutput,
+  readCodexToolError,
+  readCodexToolName,
+} from './app-server-tool-payload'
+
 export interface CodexAppServerMapperState {
   openReasoningItemIds: Set<string>
   itemTextById: Map<string, string>
   commandOutputById: Map<string, string>
+  commandById: Map<string, string>
   startedAgentMessageIds: Set<string>
 }
 
@@ -16,39 +25,8 @@ export interface CodexAppServerNotification {
   params?: unknown
 }
 
-interface AppServerItem {
-  type: string
-  id: string
-  text?: string
-  summary?: string[]
-  content?: string[]
-  command?: string
-  aggregatedOutput?: string | null
-  exitCode?: number | null
-  changes?: Array<{ path: string }>
-  status?: string
-  server?: string
-  tool?: string
-  arguments?: unknown
-  result?: { content?: unknown } | null
-  error?: { message?: string } | null
-  // dynamicToolCall fields
-  namespace?: string | null
-  success?: boolean | null
-  contentItems?: Array<{ type: string; text?: string; imageUrl?: string }> | null
-  // collabAgentToolCall fields
-  senderThreadId?: string
-  receiverThreadIds?: string[]
-  agentsStates?: Record<string, { status: string; message?: string | null }>
-  prompt?: string | null
-  model?: string | null
-  // webSearch fields
-  query?: string
-  action?: { type: string; query?: string | null; url?: string | null; pattern?: string | null } | null
-}
-
 interface ItemNotificationParams {
-  item?: AppServerItem
+  item?: CodexAppServerItem
 }
 
 interface DeltaNotificationParams {
@@ -62,6 +40,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
     openReasoningItemIds: new Set(),
     itemTextById: new Map(),
     commandOutputById: new Map(),
+    commandById: new Map(),
     startedAgentMessageIds: new Set(),
   }
 }
@@ -106,7 +85,7 @@ export function closeOpenCodexAppServerText(state: CodexAppServerMapperState): U
   return chunks
 }
 
-function mapStartedItem(item: AppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapStartedItem(item: CodexAppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
   if (!item) {
     return []
   }
@@ -120,68 +99,32 @@ function mapStartedItem(item: AppServerItem | null, state: CodexAppServerMapperS
         ...mapReasoningSnapshotText(item).map(delta => ({ type: 'reasoning-delta' as const, id: item.id, delta })),
       ]
     case 'commandExecution':
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName: 'command_execution' },
-        { type: 'tool-input-available', toolCallId: item.id, toolName: 'command_execution', input: { command: item.command ?? '' } },
-      ]
     case 'fileChange':
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName: 'file_change' },
-        { type: 'tool-input-available', toolCallId: item.id, toolName: 'file_change', input: { paths: item.changes?.map(change => change.path) ?? [] } },
-      ]
     case 'mcpToolCall':
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName: `${item.server ?? 'mcp'}/${item.tool ?? 'tool'}` },
-        ...(item.arguments ? [{ type: 'tool-input-available' as const, toolCallId: item.id, toolName: `${item.server ?? 'mcp'}/${item.tool ?? 'tool'}`, input: item.arguments }] : []),
-      ]
-    case 'dynamicToolCall': {
-      const toolName = item.namespace ? `${item.namespace}/${item.tool ?? 'tool'}` : (item.tool ?? 'dynamic_tool')
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName },
-        { type: 'tool-input-available', toolCallId: item.id, toolName, input: item.arguments ?? {} },
-      ]
-    }
-    case 'collabAgentToolCall': {
-      const toolName = item.tool ?? 'collab_agent'
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName },
-        {
-          type: 'tool-input-available',
-          toolCallId: item.id,
-          toolName,
-          input: {
-            tool: item.tool,
-            prompt: item.prompt,
-            model: item.model,
-            senderThreadId: item.senderThreadId,
-            receiverThreadIds: item.receiverThreadIds,
-          },
-        },
-      ]
-    }
+    case 'dynamicToolCall':
+    case 'collabAgentToolCall':
     case 'webSearch':
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName: 'web_search' },
-        { type: 'tool-input-available', toolCallId: item.id, toolName: 'web_search', input: { query: item.query ?? '', action: item.action } },
-      ]
     case 'plan':
-      return [
-        ...closeOpenAgentMessageSegments(state),
-        { type: 'tool-input-start', toolCallId: item.id, toolName: 'plan' },
-        { type: 'tool-input-available', toolCallId: item.id, toolName: 'plan', input: { text: item.text ?? '' } },
-      ]
+      return mapStartedToolItem(item, state)
     default:
       return []
   }
 }
 
-function mapCompletedItem(item: AppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapStartedToolItem(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
+  const toolName = readCodexToolName(item)
+  const input = buildCodexToolInput(item)
+  if (item.type === 'commandExecution') {
+    state.commandById.set(item.id, item.command ?? '')
+  }
+  return [
+    ...closeOpenAgentMessageSegments(state),
+    { type: 'tool-input-start', toolCallId: item.id, toolName },
+    { type: 'tool-input-available', toolCallId: item.id, toolName, input },
+  ]
+}
+
+function mapCompletedItem(item: CodexAppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
   if (!item) {
     return []
   }
@@ -196,56 +139,33 @@ function mapCompletedItem(item: AppServerItem | null, state: CodexAppServerMappe
       }
       return chunks
     }
-    case 'commandExecution': {
-      const output = item.aggregatedOutput ?? state.commandOutputById.get(item.id) ?? `exit_code: ${item.exitCode ?? 'unknown'}`
-      return [{ type: 'tool-output-available', toolCallId: item.id, output }]
-    }
+    case 'commandExecution':
     case 'fileChange':
-      return [{ type: 'tool-output-available', toolCallId: item.id, output: JSON.stringify({ paths: item.changes?.map(change => change.path) ?? [], status: item.status ?? 'completed' }) }]
     case 'mcpToolCall':
-      if (item.error?.message) {
-        return [{ type: 'tool-output-error', toolCallId: item.id, errorText: item.error.message }]
-      }
-      return [{ type: 'tool-output-available', toolCallId: item.id, output: item.result?.content ? JSON.stringify(item.result.content) : '' }]
     case 'dynamicToolCall':
-      if (item.status === 'failed') {
-        return [{ type: 'tool-output-error', toolCallId: item.id, errorText: item.error?.message ?? 'Dynamic tool call failed' }]
-      }
-      return [{
-        type: 'tool-output-available',
-        toolCallId: item.id,
-        output: item.contentItems
-          ? JSON.stringify(item.contentItems)
-          : item.success === false
-            ? 'Tool call failed'
-            : '',
-      }]
     case 'collabAgentToolCall':
-      return [{
-        type: 'tool-output-available',
-        toolCallId: item.id,
-        output: JSON.stringify({
-          tool: item.tool,
-          status: item.status,
-          agentsStates: item.agentsStates,
-          receiverThreadIds: item.receiverThreadIds,
-        }),
-      }]
     case 'webSearch':
-      return [{
-        type: 'tool-output-available',
-        toolCallId: item.id,
-        output: JSON.stringify({ query: item.query, action: item.action }),
-      }]
     case 'plan':
-      return [{
-        type: 'tool-output-available',
-        toolCallId: item.id,
-        output: JSON.stringify({ plan: item.text }),
-      }]
+      return mapCompletedToolItem(item, state)
     default:
       return []
   }
+}
+
+function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
+  const errorText = readCodexToolError(item)
+  if (errorText) {
+    return [{ type: 'tool-output-error', toolCallId: item.id, errorText }]
+  }
+  return [{
+    type: 'tool-output-available',
+    toolCallId: item.id,
+    output: buildCodexToolOutput(
+      item,
+      state.commandOutputById.get(item.id),
+      state.commandById.get(item.id),
+    ),
+  }]
 }
 
 function mapAgentMessageDelta(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
@@ -288,7 +208,7 @@ function mapCommandOutputDelta(rawParams: unknown, state: CodexAppServerMapperSt
   return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: params.delta }]
 }
 
-function mapAgentMessageSnapshot(item: AppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
   const text = item.text ?? ''
   const previousText = state.itemTextById.get(item.id) ?? ''
   if (text.length <= previousText.length) {
@@ -305,7 +225,7 @@ function mapAgentMessageSnapshot(item: AppServerItem, state: CodexAppServerMappe
   return chunks
 }
 
-function mapReasoningSnapshotText(item: AppServerItem): string[] {
+function mapReasoningSnapshotText(item: CodexAppServerItem): string[] {
   if (item.content?.length) {
     return item.content
   }
@@ -315,7 +235,7 @@ function mapReasoningSnapshotText(item: AppServerItem): string[] {
   return []
 }
 
-function getItem(notification: CodexAppServerNotification): AppServerItem | null {
+function getItem(notification: CodexAppServerNotification): CodexAppServerItem | null {
   return ((notification.params as ItemNotificationParams | undefined)?.item ?? null)
 }
 

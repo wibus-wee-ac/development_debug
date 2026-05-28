@@ -6,6 +6,7 @@ const skillScope = t.Union([
   t.Literal('builtin'),
   t.Literal('legacy'),
   t.Literal('global'),
+  t.Literal('repository'),
   t.Literal('workspace'),
   t.Literal('agent'),
 ])

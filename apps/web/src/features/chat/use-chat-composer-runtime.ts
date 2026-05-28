@@ -54,6 +54,7 @@ interface UseChatComposerRuntimeOptions {
   isReady: boolean
   isAwaiting: boolean
   composerModel?: ModelDescriptor | null
+  permissionMode?: SendMessageOptions['permissionMode']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
   sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[]) => void | Promise<void>
   stop: () => void
@@ -76,6 +77,7 @@ export function useChatComposerRuntime({
   isReady,
   isAwaiting,
   composerModel,
+  permissionMode,
   sendOverridesRef,
   sendMessage,
   stop,
@@ -161,9 +163,9 @@ export function useChatComposerRuntime({
       const continuationMode = options?.invertContinuationMode
         ? invertContinuationMode(defaultContinuationMode)
         : defaultContinuationMode
-      void sendMessage(text, { ...overrides, continuationMode }, files)
+      void sendMessage(text, { ...overrides, permissionMode, continuationMode }, files)
     },
-    [chatPreferences?.continuationBehavior, isReady, sendMessage, sendOverridesRef],
+    [chatPreferences?.continuationBehavior, isReady, permissionMode, sendMessage, sendOverridesRef],
   )
 
   return {

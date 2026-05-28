@@ -17,8 +17,9 @@ const SCOPE_PRIORITY: Record<SkillScope, number> = {
   builtin: 0,
   legacy: 1,
   global: 2,
-  workspace: 3,
-  agent: 4,
+  repository: 3,
+  workspace: 4,
+  agent: 5,
 }
 
 const SkillFrontmatterSchema = z.object({
@@ -306,6 +307,7 @@ function scanAllScopes(context: SkillContext): Array<{ scope: SkillScope, entrie
   }
 
   if (context.workspacePath) {
+    results.push({ scope: 'repository', entries: scanDirectory(resolveScopeRoot('repository', context), 'repository') })
     results.push({ scope: 'workspace', entries: scanDirectory(resolveScopeRoot('workspace', context), 'workspace') })
   }
   if (context.agentId) {

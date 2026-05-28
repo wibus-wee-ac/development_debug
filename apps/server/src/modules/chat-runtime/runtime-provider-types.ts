@@ -63,6 +63,7 @@ export interface StreamTurnInput {
   workspacePath?: string
   providerOptions?: {
     thinkingEffort?: 'low' | 'medium' | 'high'
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
   }
   systemPrompt?: string
   history?: UIMessage[]

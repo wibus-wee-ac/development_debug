@@ -71,6 +71,7 @@ function mapError(error: unknown): Error {
 
   if (
     message.startsWith('Invalid ID:')
+    || message === 'workspacePath is required for repository skills'
     || message === 'workspacePath is required for workspace skills'
     || message === 'agentId is required for agent skills'
     || message === 'Skill name is required'

@@ -55,6 +55,7 @@ export function ChatRuntimeView({
       <ChatView
         key={sessionId}
         sessionId={sessionId}
+        runtimeKind={runtimeKind}
         availableFiles={availableFiles}
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}

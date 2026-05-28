@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-export type SkillScope = 'builtin' | 'legacy' | 'global' | 'workspace' | 'agent'
+export type SkillScope = 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent'
 
 export interface SkillContext {
   workspacePath?: string
@@ -20,6 +20,11 @@ export function resolveScopeRoot(scope: SkillScope, context: SkillContext): stri
       return path.join(os.homedir(), '.agents', 'skills')
     case 'global':
       return path.join(os.homedir(), ...CRADLE_DIR_PARTS, 'skills')
+    case 'repository':
+      if (!context.workspacePath) {
+        throw new Error('workspacePath is required for repository skills')
+      }
+      return path.join(context.workspacePath, '.agents', 'skills')
     case 'workspace':
       if (!context.workspacePath) {
         throw new Error('workspacePath is required for workspace skills')
@@ -43,7 +48,7 @@ export function assertAgentId(agentId: string): void {
 }
 
 export function assertWritableScope(scope: SkillScope): void {
-  if (scope === 'builtin' || scope === 'legacy') {
+  if (scope === 'builtin' || scope === 'legacy' || scope === 'repository') {
     throw new Error(`${scope} skills are read-only`)
   }
 }

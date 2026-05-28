@@ -1,6 +1,5 @@
-import { randomUUID } from 'node:crypto'
-
 import type { Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
+import { query } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
@@ -25,8 +24,7 @@ import type {
 } from '../../runtime-provider-types'
 import { recordChatStreamTrace } from '../../stream-trace'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
-import type { ClaudeAgentChunkMapperState } from './mapper'
-import { mapClaudeAgentMessageToChunks } from './mapper'
+import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './mapper'
 
 interface ClaudeAgentProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -99,7 +97,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async getCapabilities(input: GetCapabilitiesInput): Promise<ChatRuntimeCapabilities> {
-    const { query } = await import('@anthropic-ai/claude-agent-sdk')
     const abortController = new AbortController()
     const queryOptions = buildClaudeQueryOptions({
       deps: this.deps,
@@ -124,8 +121,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
-    const { query } = await import('@anthropic-ai/claude-agent-sdk')
-
     const abortController = new AbortController()
     const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
     const userContent = buildClaudeAgentTurnContent({
@@ -133,7 +128,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
       history: input.runtimeSession.providerSessionId ? undefined : input.history,
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
-    const textItemId = randomUUID()
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
     const effectiveModel = readClaudeAgentModelId(input, config)
     const queryOptions = buildClaudeQueryOptions({
@@ -151,15 +145,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     this._lastUsage = null
     const traceMessageId = input.responseMessageId ?? input.message.id
 
-    const mapperState: ClaudeAgentChunkMapperState = {
-      textItemId,
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map(),
-      subagentStreams: new Map(),
-    }
+    const mapperState = createClaudeAgentChunkMapperState()
 
     // Langfuse tracing via @langfuse/tracing SDK
     let generation: LangfuseGeneration | null = null
@@ -561,6 +547,9 @@ function buildClaudeQueryOptions(input: {
   const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
   const effectiveModel = readClaudeAgentModelId(input.input, config)
+  const permissionMode = ('providerOptions' in input.input
+    ? input.input.providerOptions?.permissionMode
+    : undefined) ?? config.permissionMode
 
   if (!apiKey) {
     throw new Error('Claude Agent provider requires an API key')
@@ -570,8 +559,8 @@ function buildClaudeQueryOptions(input: {
   const queryOptions: Options = {
     abortController: input.abortController,
     cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
-    permissionMode: config.permissionMode,
-    allowDangerouslySkipPermissions: config.permissionMode === 'bypassPermissions'
+    permissionMode,
+    allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions'
       ? true
       : config.allowDangerouslySkipPermissions,
     maxTurns: config.maxTurns,

@@ -641,10 +641,142 @@ describe('codexProvider app-server integration', () => {
       { type: 'text-end', id: 'assistant-message-1' },
       { type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'command_execution' },
       { type: 'tool-input-available', toolCallId: 'tool-1', toolName: 'command_execution', input: { command: 'pwd' } },
-      { type: 'tool-output-available', toolCallId: 'tool-1', output: '/tmp' },
+      { type: 'tool-output-available', toolCallId: 'tool-1', output: { command: 'pwd', output: '/tmp', exitCode: 0, code: 0 } },
       { type: 'text-start', id: 'assistant-message-2' },
       { type: 'text-delta', id: 'assistant-message-2', delta: 'After tool' },
       { type: 'text-end', id: 'assistant-message-2' },
+    ])
+  })
+
+  it('emits Codex plan items as structured tool output', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-plan',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Plan the task'),
+      workspaceId: 'workspace-1',
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'plan-1', type: 'plan', text: '1. Inspect\n2. Patch' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'plan-1', type: 'plan', text: '1. Inspect\n2. Patch' },
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'plan-1', toolName: 'plan' },
+      { type: 'tool-input-available', toolCallId: 'plan-1', toolName: 'plan', input: { text: '1. Inspect\n2. Patch' } },
+      { type: 'tool-output-available', toolCallId: 'plan-1', output: { plan: '1. Inspect\n2. Patch' } },
+    ])
+  })
+
+  it('emits Codex app-server tools as structured outputs', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-tools',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Use tools'),
+      workspaceId: 'workspace-1',
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'file-1', type: 'fileChange', changes: [{ path: 'src/app.ts' }] },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'file-1', type: 'fileChange', changes: [{ path: 'src/app.ts' }], status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'mcp-1', type: 'mcpToolCall', server: 'github', tool: 'search', arguments: { query: 'cradle' } },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'mcp-1', type: 'mcpToolCall', server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] } },
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'web-1', type: 'webSearch', query: 'Cradle', action: { type: 'search', query: 'Cradle' } },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'web-1', type: 'webSearch', query: 'Cradle', action: { type: 'search', query: 'Cradle' } },
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'file-1', toolName: 'file_change' },
+      { type: 'tool-input-available', toolCallId: 'file-1', toolName: 'file_change', input: { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' } },
+      { type: 'tool-output-available', toolCallId: 'file-1', output: { filenames: ['src/app.ts'], status: 'completed', type: 'fileChange' } },
+      { type: 'tool-input-start', toolCallId: 'mcp-1', toolName: 'github/search' },
+      { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github/search', input: { query: 'cradle' } },
+      { type: 'tool-output-available', toolCallId: 'mcp-1', output: { server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] }, content: [{ type: 'text', text: 'ok' }] } },
+      { type: 'tool-input-start', toolCallId: 'web-1', toolName: 'web_search' },
+      { type: 'tool-input-available', toolCallId: 'web-1', toolName: 'web_search', input: { query: 'Cradle', action: { type: 'search', query: 'Cradle' } } },
+      { type: 'tool-output-available', toolCallId: 'web-1', output: { query: 'Cradle', action: { type: 'search', query: 'Cradle' } } },
     ])
   })
 })

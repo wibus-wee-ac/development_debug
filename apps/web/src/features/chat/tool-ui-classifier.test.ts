@@ -69,4 +69,73 @@ describe('describeToolCall', () => {
       target: '/tmp/story.html',
     })
   })
+
+  it('classifies Claude Agent task tools as todo updates', () => {
+    const part: RenderableToolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'task-create-1',
+      toolName: 'TaskCreate',
+      state: 'output-available',
+      input: {
+        task: 'Inspect the chat runtime mapper',
+        status: 'pending',
+      },
+      output: {
+        tasks: [
+          { id: 'task-1', title: 'Inspect the chat runtime mapper', status: 'completed' },
+          { id: 'task-2', title: 'Wire task tool UI', status: 'in_progress' },
+        ],
+      },
+    }
+
+    expect(describeToolCall(part)).toMatchObject({
+      kind: 'todo',
+      title: 'Update todos',
+      target: '2 items',
+      summary: '1/2 done',
+    })
+  })
+
+  it('describes Codex app-server plan items from structured output', () => {
+    const part: RenderableToolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'plan-1',
+      toolName: 'plan',
+      state: 'output-available',
+      input: {
+        text: '1. Inspect the mapper\n2. Patch the UI',
+      },
+      output: {
+        plan: '1. Inspect the mapper\n2. Patch the UI',
+      },
+    }
+
+    expect(describeToolCall(part)).toMatchObject({
+      kind: 'plan',
+      title: 'Submit plan',
+      summary: 'Plan ready',
+    })
+  })
+
+  it('describes Codex app-server file changes from structured filenames', () => {
+    const part: RenderableToolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'file-1',
+      toolName: 'file_change',
+      state: 'output-available',
+      input: {
+        filenames: ['src/app.ts'],
+      },
+      output: {
+        filenames: ['src/app.ts'],
+        status: 'completed',
+      },
+    }
+
+    expect(describeToolCall(part)).toMatchObject({
+      kind: 'file-diff',
+      title: 'Edit file',
+      target: 'src/app.ts',
+    })
+  })
 })

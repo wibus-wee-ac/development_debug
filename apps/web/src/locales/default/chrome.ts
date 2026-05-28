@@ -13,6 +13,7 @@ export default {
   'rightAside.tab.files': 'Files',
   'rightAside.tab.changes': 'Changes',
   'rightAside.tab.issue': 'Issue',
+  'rightAside.tab.runtime': 'Runtime',
   'rightAside.tab.await': 'Feed',
   'rightAside.issue.empty': 'No session selected',
   'dev.action.hardReload': 'Hard reload',

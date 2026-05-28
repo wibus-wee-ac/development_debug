@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessageChunk } from 'ai'
 
@@ -14,8 +12,7 @@ import type {
   StreamTurnInput,
 } from '../../runtime-provider-types'
 import { projectTextOnlyInput } from '../../ui-message-input'
-import type { ClaudeAgentChunkMapperState } from '../claude-agent/mapper'
-import { mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
+import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 
 const RUNTIME_KIND = 'claude-agent' as RuntimeKind
@@ -76,16 +73,7 @@ export class MockClaudeAgentProvider implements ChatRuntime {
     this.activeAbortControllers.set(sessionId, abortController)
     this._lastUsage = null
 
-    const textItemId = randomUUID()
-    const mapperState: ClaudeAgentChunkMapperState = {
-      textItemId,
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map(),
-      subagentStreams: new Map(),
-    }
+    const mapperState = createClaudeAgentChunkMapperState()
 
     try {
       const queryUrl = `${baseUrl.replace(TRAILING_SLASH_RE, '')}/v1/claude-agent/query`

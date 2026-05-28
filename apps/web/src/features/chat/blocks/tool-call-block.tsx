@@ -29,6 +29,7 @@ import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
+import { projectChatTodos, readTodoCompletion } from '../chat-todo-projection'
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
@@ -363,7 +364,9 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
     case 'subagent':
       return <SubagentSummary output={output} />
     case 'todo':
-      return <TodoSummary output={output} />
+      return <TodoSummary input={input} output={output} />
+    case 'plan':
+      return <PlanSummary input={input} output={output} />
     case 'question':
       return <QuestionSummary output={output} />
     default:
@@ -530,18 +533,18 @@ function SubagentSummary({ output }: { output: ToolPayload }) {
   )
 }
 
-function TodoSummary({ output }: { output: ToolPayload }) {
-  const todos = output.newTodos
+function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayload }) {
+  const todos = projectChatTodos(input, output)
   if (todos.length === 0) {
-    return <RawValue value={output} />
+    return <RawValue value={output.rawText ?? input.rawText ?? output} />
   }
-  const completed = todos.filter(todo => todo.status === 'completed').length
+  const { completed } = readTodoCompletion(todos)
   return (
     <div className="grid gap-2">
       <Progress value={safePercent(completed, todos.length)} className="h-1.5" />
       <div className="grid gap-1">
         {todos.map(todo => (
-          <div key={todo.content ?? todo.activeForm ?? JSON.stringify(todo)} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+          <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">
             <CheckCircle2Icon
               className={cn(
                 'mt-0.5 size-3.5 shrink-0',
@@ -549,9 +552,32 @@ function TodoSummary({ output }: { output: ToolPayload }) {
               )}
               aria-hidden
             />
-            <span className="text-xs text-foreground/85">{todo.content}</span>
+            <span className={cn(
+              'min-w-0 flex-1 text-xs text-foreground/85',
+              todo.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
+            )}
+            >
+              {todo.content}
+            </span>
+            <span className="shrink-0 rounded bg-background/60 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+              {todo.status}
+            </span>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function PlanSummary({ input, output }: { input: ToolPayload, output: ToolPayload }) {
+  const text = output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText
+  if (!text) {
+    return null
+  }
+  return (
+    <div className="rounded-md bg-muted/30 px-2.5 py-2">
+      <div className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/85">
+        {text}
       </div>
     </div>
   )
@@ -774,6 +800,10 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
       return output.results.some(item => item.content.length > 0)
     case 'subagent':
       return !!(output.status || output.contentBlocks.length > 0)
+    case 'todo':
+      return projectChatTodos(input, output).length > 0 || output.rawText !== null || input.rawText !== null
+    case 'plan':
+      return !!(output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText)
     default:
       return output.rawText !== null
         || output.outputText !== null

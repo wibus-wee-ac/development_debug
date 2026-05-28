@@ -2,8 +2,10 @@
 // Input: Route preload intent from session links, search results, and tray actions.
 // Position: Owned by chat so tab registration can defer chat rendering without eager implementation imports.
 
+import { ChatView } from './chat-view'
+
 export function loadChatView() {
-  return import('~/features/chat/chat-view').then(module => ({ default: module.ChatView }))
+  return Promise.resolve({ default: ChatView })
 }
 
 export function preloadChatView(): void {

@@ -108,6 +108,9 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   thinkingEffort: text('thinking_effort', {
     enum: ['low', 'medium', 'high'],
   }),
+  permissionMode: text('permission_mode', {
+    enum: ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'dontAsk'],
+  }),
   position: int('position').notNull(),
   sourceRunId: text('source_run_id'),
   startedRunId: text('started_run_id'),

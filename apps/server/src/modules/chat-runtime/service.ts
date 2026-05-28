@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 
-import type { BackendRun, BackendSessionBinding, Message } from '@cradle/db'
+import type { BackendRun, BackendSessionBinding, Message, Session } from '@cradle/db'
 import {
   agents,
   backendRuns,
@@ -77,7 +77,7 @@ export interface ChatMessageSnapshotRow {
 }
 
 interface SessionRunContext {
-  session: import('@cradle/db').Session
+  session: Session
   workspacePath: string
   profile: RuntimeProviderTargetProfile
   providerTarget: { id: string, kind: 'manual' | 'external' }
@@ -98,6 +98,7 @@ interface ActiveRun {
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 }
 
 export interface ActiveRunSummary {
@@ -124,6 +125,37 @@ export interface ChatRunTraceDto {
 export interface ChatSessionTraceDto {
   sessionId: string
   traces: ChatRunTraceDto[]
+}
+
+export type RuntimeSessionStatusKind = 'idle' | 'pending' | 'streaming' | 'cancelling'
+
+export interface RuntimeSessionRunDto {
+  runId: string
+  messageId: string | null
+  status: ChatMessageStatus
+  startedAt: number
+  finishedAt: number | null
+  modelId: string | null
+  providerSessionId: string | null
+  queueItemId: string | null
+  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
+}
+
+export interface ChatRuntimeSessionStatusDto {
+  sessionId: string
+  status: RuntimeSessionStatusKind
+  runtimeKind: RuntimeKind
+  providerTargetId: string | null
+  providerSessionId: string | null
+  modelId: string | null
+  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
+  pendingQueueItemId: string | null
+  activeRun: RuntimeSessionRunDto | null
+  latestRun: RuntimeSessionRunDto | null
+  queue: {
+    pending: number
+    running: number
+  }
 }
 
 type RunSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
@@ -163,6 +195,7 @@ export interface ChatSessionQueueItemDto {
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
+  permissionMode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | null
   position: number
   sourceRunId: string | null
   startedRunId: string | null
@@ -179,6 +212,7 @@ export interface EnqueueSessionQueueItemInput {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 }
 
 // ── in-memory run state ──
@@ -609,6 +643,90 @@ export function getActiveSessionRun(sessionId: string): ActiveRunSummary | null 
     : null
 }
 
+export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionStatusDto {
+  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
+  if (!session) {
+    throw new AppError({
+      code: 'chat_session_not_found',
+      status: 404,
+      message: 'Chat session not found',
+      details: { sessionId },
+    })
+  }
+
+  const binding = getBinding(sessionId)
+  const activeRunId = activeRunIdsBySession.get(sessionId)
+  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
+  const pendingState = pendingRunSessions.get(sessionId)
+  const latestRun = db()
+    .select()
+    .from(backendRuns)
+    .where(eq(backendRuns.chatSessionId, sessionId))
+    .orderBy(desc(backendRuns.startedAt))
+    .get()
+  const queueRows = db()
+    .select({
+      status: chatSessionQueueItems.status,
+    })
+    .from(chatSessionQueueItems)
+    .where(eq(chatSessionQueueItems.sessionId, sessionId))
+    .all()
+  const queue = queueRows.reduce((counts, row) => {
+    if (row.status === 'pending') {
+      return { ...counts, pending: counts.pending + 1 }
+    }
+    if (row.status === 'running') {
+      return { ...counts, running: counts.running + 1 }
+    }
+    return counts
+  }, { pending: 0, running: 0 })
+
+  const runtimeKind = activeRun?.runtimeSession.runtimeKind
+    ?? binding?.runtimeKind as RuntimeKind | undefined
+    ?? session.runtimeKind
+  const providerTargetId = activeRun?.providerTargetId ?? binding?.providerTargetId ?? session.providerTargetId
+  const providerSessionId = activeRun?.runtimeSession.providerSessionId ?? binding?.backendSessionId ?? null
+  const modelId = activeRun?.modelId ?? binding?.requestedModelId ?? null
+  const permissionMode = activeRun?.permissionMode ?? null
+
+  return {
+    sessionId,
+    status: activeRun
+      ? activeRun.cancelRequested ? 'cancelling' : 'streaming'
+      : pendingState ? 'pending' : 'idle',
+    runtimeKind,
+    providerTargetId,
+    providerSessionId,
+    modelId,
+    permissionMode,
+    pendingQueueItemId: pendingState?.queueItemId ?? null,
+    activeRun: activeRun ? toRuntimeSessionRunDto(activeRun, getRun(activeRun.runId)) : null,
+    latestRun: latestRun ? toRuntimeSessionRunDto(null, latestRun, {
+      modelId: binding?.requestedModelId ?? null,
+      providerSessionId: binding?.backendSessionId ?? null,
+    }) : null,
+    queue,
+  }
+}
+
+function toRuntimeSessionRunDto(
+  activeRun: ActiveRun | null,
+  run: BackendRun | undefined,
+  fallback: { modelId?: string | null, providerSessionId?: string | null } = {},
+): RuntimeSessionRunDto {
+  return {
+    runId: activeRun?.runId ?? run?.id ?? '',
+    messageId: activeRun?.messageId ?? run?.messageId ?? null,
+    status: activeRun?.terminalStatus ?? run?.status as ChatMessageStatus | undefined ?? 'streaming',
+    startedAt: run?.startedAt ?? currentUnixSeconds(),
+    finishedAt: run?.finishedAt ?? null,
+    modelId: activeRun?.modelId ?? fallback.modelId ?? null,
+    providerSessionId: activeRun?.runtimeSession.providerSessionId ?? fallback.providerSessionId ?? null,
+    queueItemId: activeRun?.queueItemId ?? null,
+    permissionMode: activeRun?.permissionMode ?? null,
+  }
+}
+
 function toRunTraceDto(run: BackendRun): ChatRunTraceDto {
   const trace = readChatRunTrace(run.id)
   return {
@@ -703,6 +821,7 @@ function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSes
     providerTargetId: row.providerTargetId,
     modelId: row.modelId,
     thinkingEffort: row.thinkingEffort as ChatSessionQueueItemDto['thinkingEffort'],
+    permissionMode: row.permissionMode as ChatSessionQueueItemDto['permissionMode'],
     position: row.position,
     sourceRunId: row.sourceRunId,
     startedRunId: row.startedRunId,
@@ -828,7 +947,7 @@ interface ChatTurnContext {
 }
 
 function resolveSessionSystemPrompt(
-  session: import('@cradle/db').Session | null | undefined,
+  session: Session | null | undefined,
 ): string | undefined {
   let systemPrompt: string | undefined
   if (session?.agentId) {
@@ -1058,6 +1177,7 @@ export async function createRun(input: {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
   continuationMode?: ChatSessionQueueMode
   queueItemId?: string
 }) {
@@ -1261,6 +1381,7 @@ export async function createRun(input: {
         ? lastRequestMessage
         : createAssistantMessage(draft.assistantMessageId),
       queueItemId: input.queueItemId,
+      permissionMode: input.permissionMode,
     }
     activeRuns.set(run.id, activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
@@ -1312,6 +1433,7 @@ export async function createRun(input: {
       profile: context.profile,
       modelId: input.modelId,
       thinkingEffort: input.thinkingEffort,
+      permissionMode: input.permissionMode,
       systemPrompt: turnContext.systemPrompt,
       history: turnContext.history?.length ? turnContext.history : undefined,
       originalMessages: requestMessages,
@@ -1353,6 +1475,7 @@ export async function streamResponse(input: {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
+  permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 }): Promise<{
   runId: string
   assistantMessageId: string
@@ -1640,6 +1763,7 @@ export async function enqueueSessionQueueItem(
       providerTargetId: input.providerTargetId?.trim() || null,
       modelId: input.modelId?.trim() || null,
       thinkingEffort: input.thinkingEffort ?? null,
+      permissionMode: input.permissionMode ?? null,
       position,
       sourceRunId: getSourceRunId(input.sessionId),
       startedRunId: null,
@@ -1832,6 +1956,7 @@ export async function setSessionPermissionMode(input: {
       profile: context.profile,
       mode: input.mode,
     })
+    activeRun.permissionMode = input.mode
     return true
   }
   catch (error) {
@@ -1959,6 +2084,7 @@ async function executeRun(
     profile: RuntimeProviderTargetProfile
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high'
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
     systemPrompt?: string
     history?: UIMessage[]
     originalMessages?: UIMessage[]
@@ -1990,8 +2116,11 @@ async function executeRun(
       modelId: input.modelId,
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
-      providerOptions: input.thinkingEffort
-        ? { thinkingEffort: input.thinkingEffort }
+      providerOptions: input.thinkingEffort || input.permissionMode
+        ? {
+            ...(input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : {}),
+            ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
+          }
         : undefined,
       systemPrompt: input.systemPrompt,
       history: input.history,
@@ -2478,6 +2607,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
           providerTargetId: claimed.providerTargetId ?? undefined,
           modelId: claimed.modelId ?? undefined,
           thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | undefined,
+          permissionMode: claimed.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk' | undefined,
           continuationMode: claimed.mode,
           queueItemId: claimed.id,
         })

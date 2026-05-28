@@ -19,6 +19,7 @@ const spec = {
         "builtin",
         "legacy",
         "global",
+        "repository",
         "workspace",
         "agent"
       ]

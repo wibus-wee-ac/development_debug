@@ -1,5 +1,7 @@
+import type { AcpChatConfig } from '../../../../helpers/provider-config-schemas'
+
 export type AcpDistributionType = 'binary' | 'npx' | 'uvx'
-export type AcpRuntimeConfig = import('../../../../helpers/provider-config-schemas').AcpChatConfig
+export type AcpRuntimeConfig = AcpChatConfig
 
 export interface AcpConnectionRecord {
   distributionType: AcpDistributionType

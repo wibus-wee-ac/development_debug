@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
+import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
 import { LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import { RuntimeSessionPanel } from '~/features/chat/runtime-session-panel'
 import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
@@ -14,6 +15,7 @@ import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialo
 import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
 import { cn } from '~/lib/cn'
+import type { RuntimeKind, Workspace } from '~/lib/types'
 import { useLayoutStore } from '~/store/layout'
 
 interface Tab {
@@ -23,6 +25,7 @@ interface Tab {
   | 'rightAside.tab.changes'
   | 'rightAside.tab.issue'
   | 'rightAside.tab.await'
+  | 'rightAside.tab.runtime'
   icon: typeof FolderTreeIcon
 }
 
@@ -31,6 +34,7 @@ const TABS: Tab[] = [
   { id: 'changes', labelKey: 'rightAside.tab.changes', icon: FileDiffIcon },
   // { id: 'git', label: 'Git', icon: GitBranchIcon },
   { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon },
+  { id: 'runtime', labelKey: 'rightAside.tab.runtime', icon: ActivityIcon },
   { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon },
 ]
 
@@ -97,8 +101,12 @@ export function RightAside({
   // Derive workspaceId from session
   const { data: sessionMeta } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
-    select: s => ({ workspaceId: s?.workspaceId as string | null }),
-    enabled: !!sessionId && !explicitWorkspaceId,
+    select: s => ({
+      workspaceId: s?.workspaceId as string | null,
+      runtimeKind: s?.runtimeKind as RuntimeKind | null,
+      providerTargetId: s?.providerTargetId as string | null,
+    }),
+    enabled: !!sessionId,
     staleTime: 60_000,
   })
   const workspaceId = explicitWorkspaceId ?? sessionMeta?.workspaceId ?? null
@@ -108,7 +116,7 @@ export function RightAside({
     queryKey: ['workspace-detail', workspaceId],
     queryFn: async () => {
       const { data } = await getWorkspacesById({ path: { id: workspaceId! } })
-      return data as import('~/lib/types').Workspace | undefined
+      return data as Workspace | undefined
     },
     enabled: !!workspaceId && (!explicitWorkspaceName || !explicitWorkspacePath),
     staleTime: 60_000,
@@ -271,6 +279,18 @@ export function RightAside({
             data-testid="right-aside-panel-await"
           >
             <AwaitPanel sessionId={sessionId ?? null} workspaceId={workspaceId} />
+          </div>
+        )}
+        {activeTab === 'runtime' && (
+          <div
+            className="flex flex-1 flex-col overflow-hidden"
+            data-testid="right-aside-panel-runtime"
+          >
+            <RuntimeSessionPanel
+              sessionId={sessionId ?? null}
+              runtimeKind={sessionMeta?.runtimeKind ?? null}
+              providerTargetId={sessionMeta?.providerTargetId ?? null}
+            />
           </div>
         )}
       </div>

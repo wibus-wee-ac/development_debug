@@ -14,5 +14,6 @@
   "rightAside.tab.await": "动态",
   "rightAside.tab.changes": "变更",
   "rightAside.tab.files": "文件",
-  "rightAside.tab.issue": "事项"
+  "rightAside.tab.issue": "事项",
+  "rightAside.tab.runtime": "运行时"
 }

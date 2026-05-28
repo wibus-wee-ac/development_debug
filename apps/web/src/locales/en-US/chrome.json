@@ -14,5 +14,6 @@
   "rightAside.tab.await": "Feed",
   "rightAside.tab.changes": "Changes",
   "rightAside.tab.files": "Files",
-  "rightAside.tab.issue": "Issue"
+  "rightAside.tab.issue": "Issue",
+  "rightAside.tab.runtime": "Runtime"
 }

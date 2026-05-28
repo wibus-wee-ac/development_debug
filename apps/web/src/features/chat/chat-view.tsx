@@ -1,14 +1,15 @@
-import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
+import { AlertCircleIcon, ExternalLinkIcon, ListTodoIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { Progress } from '~/components/ui/progress'
 import { Skeleton } from '~/components/ui/skeleton'
 import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
@@ -16,21 +17,25 @@ import { useLayoutStore } from '~/store/layout'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
+import type { SessionTodoSnapshot } from './chat-todo-projection'
+import { readTodoCompletion } from './chat-todo-projection'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
 import { MessageBubble } from './message-bubble'
+import { PermissionModeControl } from './permission-mode-control'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
-import type { ChatQueueItem } from './use-chat-session'
+import type { ChatPermissionMode, ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 import { useSessionAwaitSummary } from './use-session-await'
+import { useSessionTodos } from './use-session-todos'
 
 interface ChatViewProps {
   sessionId: string | null
@@ -50,6 +55,7 @@ interface ChatViewProps {
   composerContextBar?: React.ReactNode
   /** Placeholder text for composer */
   placeholder?: string
+  runtimeKind?: RuntimeKind
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -183,6 +189,7 @@ function ChatAwaitBanner({
 }
 
 function ChatComposerSection({
+  todoSnapshot,
   awaitSummary,
   queueItems,
   onCancelQueueItem,
@@ -190,6 +197,7 @@ function ChatComposerSection({
   onSlashCommandAction,
   composerRuntime,
   appshotRuntime,
+  permissionModeControl,
   placeholder,
   availableFiles,
   toolbar,
@@ -197,6 +205,7 @@ function ChatComposerSection({
   droppedPath,
   onComposerFocusChange,
 }: {
+  todoSnapshot: SessionTodoSnapshot | null
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
@@ -204,6 +213,7 @@ function ChatComposerSection({
   onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   composerRuntime: ChatComposerRuntime
   appshotRuntime: ComposerAppshotRuntime
+  permissionModeControl?: React.ReactNode
   placeholder?: string
   availableFiles: MentionItem[]
   toolbar?: React.ReactNode
@@ -214,6 +224,7 @@ function ChatComposerSection({
   return (
     <div className="shrink-0 bg-background/80 px-4 py-3 backdrop-blur-sm">
       <div className="mx-auto max-w-208">
+        <TodoProgress snapshot={todoSnapshot} />
         <ChatAwaitBanner awaitSummary={awaitSummary} />
         <ChatQueueList
           items={queueItems}
@@ -241,7 +252,12 @@ function ChatComposerSection({
           }}
           slots={{
             toolbar,
-            contextBar,
+            contextBar: (
+              <>
+                {permissionModeControl}
+                {contextBar}
+              </>
+            ),
           }}
           externalSignals={{
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
@@ -260,6 +276,37 @@ function ChatComposerSection({
   )
 }
 
+function TodoProgress({ snapshot }: { snapshot: SessionTodoSnapshot | null }) {
+  if (!snapshot || snapshot.todos.length === 0) {
+    return null
+  }
+
+  const completion = readTodoCompletion(snapshot.todos)
+  const activeTodo = snapshot.todos.find(todo => todo.status === 'processing')
+    ?? snapshot.todos.find(todo => todo.status === 'todo')
+    ?? snapshot.todos[snapshot.todos.length - 1]
+
+  const label = completion.completed === completion.total
+    ? 'Todos complete'
+    : activeTodo.content
+
+  return (
+    <div className="mb-2 px-1">
+      <div className="flex h-6 min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
+        <ListTodoIcon className="size-3.5 shrink-0" aria-hidden="true" />
+        <span className="shrink-0 font-medium text-foreground/75">Todo</span>
+        <span className="min-w-0 flex-1 truncate text-foreground/80">
+          {label}
+        </span>
+        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
+          {completion.completed}/{completion.total}
+        </span>
+      </div>
+      <Progress value={safePercent(completion.completed, completion.total)} className="h-0.5 bg-muted/60" />
+    </div>
+  )
+}
+
 export function ChatView({
   sessionId,
   availableFiles = EMPTY_FILES,
@@ -268,6 +315,7 @@ export function ChatView({
   sendOverridesRef,
   composerModel,
   placeholder,
+  runtimeKind,
 }: ChatViewProps) {
   const {
     messageIds,
@@ -281,10 +329,14 @@ export function ChatView({
     queueItems,
     cancelQueueItem,
     reorderQueueItems,
+    setPermissionMode,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const todoSnapshot = useSessionTodos(sessionId)
   const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [permissionMode, setPermissionModeState] = useState<ChatPermissionMode>('acceptEdits')
+  const [permissionModePending, setPermissionModePending] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
@@ -292,6 +344,7 @@ export function ChatView({
     isReady,
     isAwaiting,
     composerModel,
+    permissionMode: runtimeKind === 'claude-agent' ? permissionMode : undefined,
     sendOverridesRef,
     sendMessage,
     stop,
@@ -300,6 +353,44 @@ export function ChatView({
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
+
+  const handlePermissionModeChange = useCallback((nextMode: ChatPermissionMode) => {
+    setPermissionModeState(nextMode)
+    if (status !== 'streaming') {
+      return
+    }
+
+    setPermissionModePending(true)
+    void setPermissionMode(nextMode)
+      .then((ok) => {
+        if (ok) {
+          return
+        }
+        toastManager.add({
+          type: 'error',
+          title: 'Mode switch unavailable',
+          description: 'The active runtime did not accept the mode switch.',
+        })
+      })
+      .catch((error) => {
+        toastManager.add({
+          type: 'error',
+          title: 'Mode switch failed',
+          description: error instanceof Error ? error.message : 'Unknown permission mode error.',
+        })
+      })
+      .finally(() => setPermissionModePending(false))
+  }, [setPermissionMode, status])
+
+  const permissionModeControl = runtimeKind === 'claude-agent'
+    ? (
+        <PermissionModeControl
+          mode={permissionMode}
+          pending={permissionModePending}
+          onModeChange={handlePermissionModeChange}
+        />
+      )
+    : null
 
   const handleSlashCommandAction = useCallback(async (
     command: ChatComposerSlashCommand,
@@ -374,6 +465,7 @@ export function ChatView({
       />
 
       <ChatComposerSection
+        todoSnapshot={todoSnapshot}
         awaitSummary={awaitSummary}
         queueItems={queueItems}
         onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
@@ -381,6 +473,7 @@ export function ChatView({
         onSlashCommandAction={handleSlashCommandAction}
         composerRuntime={composerRuntime}
         appshotRuntime={appshotRuntime}
+        permissionModeControl={permissionModeControl}
         placeholder={placeholder}
         availableFiles={availableFiles}
         toolbar={composerToolbar}
@@ -390,6 +483,13 @@ export function ChatView({
       />
     </div>
   )
+}
+
+function safePercent(value: number, total: number): number {
+  if (total <= 0) {
+    return 0
+  }
+  return Math.round((value / total) * 100)
 }
 
 function MessageBubbleById({

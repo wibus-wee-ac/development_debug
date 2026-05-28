@@ -62,6 +62,19 @@ const spec = {
         "medium",
         "high"
       ]
+    },
+    {
+      "name": "permissionMode",
+      "required": false,
+      "target": "body.permissionMode",
+      "type": "string",
+      "values": [
+        "default",
+        "acceptEdits",
+        "bypassPermissions",
+        "plan",
+        "dontAsk"
+      ]
     }
   ],
   "method": "post",

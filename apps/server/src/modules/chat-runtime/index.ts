@@ -17,6 +17,7 @@ export const chatRuntime = new Elysia({
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
+      permissionMode: body.permissionMode,
     })
     return new Response(response.stream, {
       headers: {
@@ -102,6 +103,7 @@ export const chatRuntime = new Elysia({
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: body.thinkingEffort,
+      permissionMode: body.permissionMode,
     })
   }, {
     detail: {
@@ -150,6 +152,16 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.capabilities },
+  })
+  // GET /chat/sessions/:sessionId/runtime-status → server-owned runtime session/run status
+  .get('/sessions/:sessionId/runtime-status', ({ params }) => {
+    return ChatRuntime.getRuntimeSessionStatus(params.sessionId)
+  }, {
+    detail: {
+      summary: 'Get chat runtime session status',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.runtimeStatus },
   })
   // GET /chat/sessions/:sessionId/messages → historical message snapshot rows
   .get('/sessions/:sessionId/messages', ({ params }) => {

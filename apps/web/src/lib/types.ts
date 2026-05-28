@@ -239,7 +239,7 @@ export interface ChronicleSearchHit {
 
 // ── Skills types ────────────────────────────────────────────────────────────
 
-export type SkillScope = 'builtin' | 'legacy' | 'global' | 'workspace' | 'agent'
+export type SkillScope = 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent'
 
 interface SkillContext {
   workspacePath?: string

@@ -11,10 +11,12 @@ export interface ChatResponseRequestBody {
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
+  permissionMode?: ChatPermissionMode
 }
 
 export type ChatContinuationMode = 'queue' | 'steer'
 export type ChatQueueItemStatus = 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
+export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
 
 export interface ChatQueueItem {
   id: string
@@ -26,6 +28,7 @@ export interface ChatQueueItem {
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
+  permissionMode: ChatPermissionMode | null
   position: number
   sourceRunId: string | null
   startedRunId: string | null
@@ -52,6 +55,7 @@ export function buildChatResponseRequestBody(
     providerTargetId: body.providerTargetId ?? undefined,
     modelId: body.modelId ?? undefined,
     thinkingEffort: body.thinkingEffort ?? undefined,
+    permissionMode: body.permissionMode ?? undefined,
   }
 }
 
@@ -150,4 +154,23 @@ export async function cancelChatResponse(sessionId: string): Promise<void> {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to cancel chat response: ${res.status} ${body}`)
   }
+}
+
+export async function switchChatPermissionMode(args: {
+  sessionId: string
+  mode: ChatPermissionMode
+}): Promise<boolean> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/permission-mode`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mode: args.mode }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to switch chat permission mode: ${res.status} ${body}`)
+  }
+
+  const result = await res.json() as { ok?: boolean }
+  return result.ok === true
 }

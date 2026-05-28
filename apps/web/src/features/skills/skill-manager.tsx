@@ -50,7 +50,7 @@ interface SelectedSkillRef {
 
 const GROUP_ORDER: Record<'global' | 'workspace' | 'agent', SkillScope[]> = {
   global: ['global', 'legacy', 'builtin'],
-  workspace: ['workspace', 'global', 'legacy', 'builtin'],
+  workspace: ['workspace', 'repository', 'global', 'legacy', 'builtin'],
   agent: ['agent', 'global', 'legacy', 'builtin'],
 }
 
@@ -58,6 +58,7 @@ const GROUP_LABELS: Record<SkillScope, string> = {
   builtin: 'Built-in',
   legacy: 'Standard',
   global: 'Cradle only',
+  repository: 'Repository',
   workspace: 'Workspace',
   agent: 'Agent',
 }
@@ -66,6 +67,7 @@ const SCOPE_ICONS: Record<SkillScope, typeof BotIcon> = {
   builtin: BotIcon,
   legacy: GlobeIcon,
   global: GlobeIcon,
+  repository: FolderTreeIcon,
   workspace: FolderTreeIcon,
   agent: BotIcon,
 }
@@ -74,6 +76,7 @@ const SCOPE_ACCENT: Record<SkillScope, string> = {
   builtin: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
   legacy: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   global: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  repository: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
   workspace: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   agent: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
 }
@@ -485,7 +488,7 @@ export function SkillManager({
       entries = entries.filter(e =>
         e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q))
     }
-    const order = { agent: 0, workspace: 1, global: 2, legacy: 3, builtin: 4 } as const
+    const order = { agent: 0, workspace: 1, repository: 2, global: 3, legacy: 4, builtin: 5 } as const
     return entries.toSorted((a, b) => {
       const aDist = a.scope === editableScope ? -1 : order[a.scope]
       const bDist = b.scope === editableScope ? -1 : order[b.scope]

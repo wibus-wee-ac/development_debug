@@ -5,6 +5,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
 
 import type { TokenUsage } from '../../engine/ai-sdk-engine'
+import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './todo-plugin-state'
 
 interface BetaContentBlock {
   type: string
@@ -43,6 +44,12 @@ export interface ClaudeAgentChunkMapperState {
   emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean }>
   /** Maps content block index → tool_use block ID for streaming tool input deltas */
   activeToolBlockIds: Map<number, string>
+  /** Tracks tool names by call ID so result messages can read adapter-owned semantics. */
+  toolNamesByToolCallId: Map<string, string>
+  /** Accumulates streaming JSON input for tool_use blocks until a full snapshot arrives. */
+  toolInputTextByToolCallId: Map<string, string>
+  /** Caches TodoWrite args by tool call until tool_result arrives and pluginState can be synthesized. */
+  todoWriteInputs: Map<string, unknown>
   /** Accumulated child-agent chunk state keyed by parent tool call. */
   subagentStreams: Map<string, ClaudeAgentSubagentStreamState>
 }
@@ -85,7 +92,7 @@ export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: Clau
   return mapClaudeAgentMessageToChunksWithoutParentProjection(msg, state)
 }
 
-function freshClaudeAgentChunkMapperState(textItemId: string = randomUUID()): ClaudeAgentChunkMapperState {
+export function createClaudeAgentChunkMapperState(textItemId: string = randomUUID()): ClaudeAgentChunkMapperState {
   return {
     textItemId,
     assistantStarted: false,
@@ -93,6 +100,9 @@ function freshClaudeAgentChunkMapperState(textItemId: string = randomUUID()): Cl
     emittedTextByTextItemId: new Map(),
     emittedToolStateByToolCallId: new Map(),
     activeToolBlockIds: new Map(),
+    toolNamesByToolCallId: new Map(),
+    toolInputTextByToolCallId: new Map(),
+    todoWriteInputs: new Map(),
     subagentStreams: new Map(),
   }
 }
@@ -106,7 +116,7 @@ function subagentStreamState(parentToolUseId: string, state: ClaudeAgentChunkMap
   const next: ClaudeAgentSubagentStreamState = {
     chunks: [],
     message: null,
-    mapperState: freshClaudeAgentChunkMapperState(`subagent-text-${parentToolUseId}`),
+    mapperState: createClaudeAgentChunkMapperState(`subagent-text-${parentToolUseId}`),
   }
   state.subagentStreams.set(parentToolUseId, next)
   return next
@@ -231,12 +241,17 @@ function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Claud
       if (typeof block === 'object' && block !== null && 'type' in block) {
         const b = block as { type: string, tool_use_id?: string, content?: unknown, is_error?: boolean }
         if (b.type === 'tool_result' && b.tool_use_id) {
-          const output = normalizeToolResultContent(b.content)
+          const normalizedOutput = normalizeToolResultContent(b.content)
           if (b.is_error) {
-            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: normalizeToolErrorText(output) })
+            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: normalizeToolErrorText(normalizedOutput) })
           }
           else {
             const subagentState = state.subagentStreams.get(b.tool_use_id)
+            const output = attachTodoWritePluginState(
+              b.tool_use_id,
+              normalizedOutput,
+              state,
+            )
             chunks.push({
               type: 'tool-output-available',
               toolCallId: b.tool_use_id,
@@ -319,6 +334,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
         const partialJson = (deltaEvent.delta as { type: 'input_json_delta', partial_json: string }).partial_json
         const toolId = state.activeToolBlockIds.get(deltaEvent.index)
         if (toolId && partialJson) {
+          appendToolInputText(state, toolId, partialJson)
           chunks.push({ type: 'tool-input-delta', toolCallId: toolId, inputTextDelta: partialJson })
         }
       }
@@ -473,6 +489,7 @@ function emitToolUseChunks(
 ): { chunks: UIMessageChunk[] } {
   const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
   const chunks: UIMessageChunk[] = []
+  state.toolNamesByToolCallId.set(toolCallId, toolName)
 
   if (!current.started) {
     chunks.push({ type: 'tool-input-start', toolCallId, toolName })
@@ -480,12 +497,84 @@ function emitToolUseChunks(
   }
 
   if (input !== undefined && !current.inputAvailable) {
+    cacheTodoWriteInput(state, toolCallId, toolName, input)
     chunks.push({ type: 'tool-input-available', toolCallId, toolName, input })
     current.inputAvailable = true
   }
 
   state.emittedToolStateByToolCallId.set(toolCallId, current)
   return { chunks }
+}
+
+function cacheTodoWriteInput(
+  state: ClaudeAgentChunkMapperState,
+  toolCallId: string,
+  toolName: string,
+  input: unknown,
+): void {
+  if (isTodoWriteToolName(toolName)) {
+    state.todoWriteInputs.set(toolCallId, input)
+  }
+}
+
+function appendToolInputText(
+  state: ClaudeAgentChunkMapperState,
+  toolCallId: string,
+  inputTextDelta: string,
+): void {
+  const current = state.toolInputTextByToolCallId.get(toolCallId) ?? ''
+  state.toolInputTextByToolCallId.set(toolCallId, `${current}${inputTextDelta}`)
+}
+
+function attachTodoWritePluginState(
+  toolCallId: string,
+  output: unknown,
+  state: ClaudeAgentChunkMapperState,
+): unknown {
+  const toolName = state.toolNamesByToolCallId.get(toolCallId)
+  if (!toolName || !isTodoWriteToolName(toolName)) {
+    return output
+  }
+
+  const input = state.todoWriteInputs.get(toolCallId) ?? parseToolInputText(state.toolInputTextByToolCallId.get(toolCallId))
+  const pluginState = synthesizeTodoWritePluginState(input)
+  if (!pluginState) {
+    return output
+  }
+
+  if (isRecord(output)) {
+    const existingPluginState = isRecord(output.pluginState) ? output.pluginState : {}
+    return {
+      ...output,
+      pluginState: {
+        ...existingPluginState,
+        todos: pluginState.todos,
+      },
+    }
+  }
+
+  return {
+    result: output,
+    pluginState: {
+      todos: pluginState.todos,
+    },
+  }
+}
+
+function parseToolInputText(inputText: string | undefined): unknown {
+  if (!inputText) {
+    return undefined
+  }
+  try {
+    return JSON.parse(inputText)
+  }
+  catch {
+    return undefined
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 /**

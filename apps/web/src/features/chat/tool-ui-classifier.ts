@@ -93,7 +93,8 @@ interface ToolPatchHunk {
   lines: string[]
 }
 
-interface ToolTodo {
+export interface ToolTodo {
+  id: string | null
   content: string | null
   activeForm: string | null
   status: string | null
@@ -108,6 +109,9 @@ interface ToolObjectPayload {
   description: string | null
   explanation: string | null
   goal: string | null
+  title: string | null
+  task: string | null
+  active_form: string | null
   type: string | null
   file_path: string | null
   filePath: string | null
@@ -175,6 +179,8 @@ interface ToolObjectPayload {
   outputFile: string | null
   newTodos: ToolTodo[]
   todos: ToolTodo[]
+  tasks: ToolTodo[]
+  items: ToolTodo[]
   questions: unknown[]
   allowedPrompts: unknown[]
   answers: Record<string, unknown> | null
@@ -277,11 +283,20 @@ function readTodos(value: unknown): ToolTodo[] {
   return value.map((item) => {
     const record = isRecord(item) ? item : {}
     return {
-      content: readNullableString(record.content),
-      activeForm: readNullableString(record.activeForm),
+      id: readNullableString(record.id) ?? readNullableString(record.task_id),
+      content: readNullableString(record.content) ?? readNullableString(record.title) ?? readNullableString(record.task) ?? readNullableString(record.description),
+      activeForm: readNullableString(record.activeForm) ?? readNullableString(record.active_form),
       status: readNullableString(record.status),
     }
   })
+}
+
+function readSingleTodo(value: unknown): ToolTodo[] {
+  if (!isRecord(value)) {
+    return []
+  }
+  const todo = readTodos([value])[0]
+  return todo.content || todo.activeForm ? [todo] : []
 }
 
 function readWebResults(value: unknown): ToolWebResult[] {
@@ -309,6 +324,9 @@ function readToolObjectPayload(value: unknown): ToolObjectPayload {
     description: readNullableString(record.description),
     explanation: readNullableString(record.explanation),
     goal: readNullableString(record.goal),
+    title: readNullableString(record.title),
+    task: readNullableString(record.task),
+    active_form: readNullableString(record.active_form),
     type: readNullableString(record.type),
     file_path: readNullableString(record.file_path),
     filePath: readNullableString(record.filePath),
@@ -376,6 +394,8 @@ function readToolObjectPayload(value: unknown): ToolObjectPayload {
     outputFile: readNullableString(record.outputFile),
     newTodos: readTodos(record.newTodos),
     todos: readTodos(record.todos),
+    tasks: readTodos(record.tasks),
+    items: readTodos(record.items),
     questions: readUnknownList(record.questions),
     allowedPrompts: readUnknownList(record.allowedPrompts),
     answers: readAnswers(record.answers),
@@ -440,6 +460,8 @@ export interface ToolPayload {
   outputFile: string | null
   todos: ToolTodo[]
   newTodos: ToolTodo[]
+  tasks: ToolTodo[]
+  items: ToolTodo[]
   questions: unknown[]
   allowedPrompts: unknown[]
   answers: Record<string, unknown> | null
@@ -450,7 +472,7 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
   return {
     rawText: null,
     inputText: value.input,
-    description: value.description ?? value.explanation ?? value.goal,
+    description: value.description ?? value.explanation ?? value.goal ?? value.title ?? value.task,
     type: value.type,
     filePath: value.file_path ?? value.filePath ?? value.path ?? value.file.path ?? value.filename,
     notebookPath: value.notebook_path,
@@ -502,8 +524,15 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
     contentBlocks: value.content.blocks,
     contents: value.contents,
     outputFile: value.outputFile,
-    todos: value.todos,
+    todos: value.todos.length > 0 ? value.todos : readSingleTodo({
+      id: value.task_id,
+      content: value.content.text ?? value.title ?? value.task ?? value.input,
+      activeForm: value.active_form,
+      status: value.status,
+    }),
     newTodos: value.newTodos,
+    tasks: value.tasks,
+    items: value.items,
     questions: value.questions,
     allowedPrompts: value.allowedPrompts,
     answers: value.answers,
@@ -855,6 +884,13 @@ export function formatToolName(toolName: string): string {
 }
 
 function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload, output: ToolPayload): string {
+  if (kind === 'todo') {
+    return 'Update todos'
+  }
+  if (kind === 'plan') {
+    return 'Submit plan'
+  }
+
   const description = input.description
   if (description) {
     return description
@@ -877,10 +913,6 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload
       return 'Run subagent'
     case 'task-control':
       return displayName.includes('Stop') ? 'Stop task' : 'Read task output'
-    case 'todo':
-      return 'Update todos'
-    case 'plan':
-      return 'Submit plan'
     case 'question':
       return 'Ask user'
     case 'mcp':
@@ -896,7 +928,7 @@ function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayloa
   switch (kind) {
     case 'file-read':
     case 'file-diff':
-      return input.filePath ?? output.filePath
+      return input.filePath ?? output.filePath ?? input.filenames[0] ?? output.filenames[0] ?? null
     case 'notebook-diff':
       return input.notebookPath ?? output.notebookPath
     case 'terminal':
@@ -914,7 +946,9 @@ function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayloa
       return count === null ? null : `${count} item${count === 1 ? '' : 's'}`
     }
     case 'plan':
-      return output.filePath
+      return input.mode === 'plan' || output.mode === 'plan'
+        ? 'plan'
+        : output.filePath
     case 'question': {
       const count = readQuestionCount(input, output)
       return count === null ? null : `${count} question${count === 1 ? '' : 's'}`
@@ -937,7 +971,7 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
     case 'notebook-diff':
       return output.editMode ?? output.cellType
     case 'terminal':
-      return null
+      return readTerminalSummary(output)
     case 'search':
       return readSearchSummary(output)
     case 'web':
@@ -949,7 +983,11 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
     case 'todo':
       return readTodoSummary(input, output)
     case 'plan':
-      return output.filePath ? 'Plan saved' : null
+      return output.filePath
+        ? 'Plan saved'
+        : output.plan || output.text || input.plan || input.text || output.rawText
+          ? 'Plan ready'
+          : null
     case 'question':
       return output.answers ? 'Answered' : null
     case 'mcp':
@@ -983,10 +1021,12 @@ function isDiffTool(toolName: string, input: ToolPayload, output: ToolPayload): 
     || toolName === 'multi_edit'
     || toolName === 'multi_edit_file'
     || toolName === 'multi_file_edit'
+    || toolName === 'file_change'
     || output.structuredPatch.length > 0
     || output.gitDiff.additions !== 0
     || output.gitDiff.deletions !== 0
     || output.gitDiff.patch.length > 0
+    || input.filenames.length > 0
     || input.oldString !== null
     || input.newString !== null
     || input.contentText !== null
@@ -1054,12 +1094,23 @@ function isTaskControlTool(toolName: string, input: ToolPayload, output: ToolPay
 function isTodoTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'todowrite'
     || toolName === 'todo_write'
+    || toolName === 'taskcreate'
+    || toolName === 'task_create'
+    || toolName === 'taskupdate'
+    || toolName === 'task_update'
+    || toolName === 'tasklist'
+    || toolName === 'task_list'
+    || toolName === 'taskget'
+    || toolName === 'task_get'
     || readTodoCount(input, output) !== null
 }
 
 function isPlanTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'exitplanmode'
+  return toolName === 'plan'
+    || toolName === 'exitplanmode'
     || toolName === 'exit_plan_mode'
+    || input.mode === 'plan'
+    || output.mode === 'plan'
     || output.plan !== null
     || input.allowedPrompts.length > 0
 }
@@ -1170,6 +1221,19 @@ function readWebSummary(output: ToolPayload): string | null {
   return null
 }
 
+function readTerminalSummary(output: ToolPayload): string | null {
+  if (output.stderr !== null) {
+    return 'stderr available'
+  }
+  if (output.stdout !== null) {
+    return 'stdout available'
+  }
+  if (output.outputText !== null || output.rawText !== null) {
+    return 'output available'
+  }
+  return null
+}
+
 function readSubagentSummary(output: ToolPayload): string | null {
   const status = output.status
   if (status === 'async_launched') {
@@ -1184,19 +1248,45 @@ function readSubagentSummary(output: ToolPayload): string | null {
 }
 
 function readTodoCount(input: ToolPayload, output: ToolPayload): number | null {
-  return output.newTodos.length > 0
-    ? output.newTodos.length
-    : input.todos.length > 0
-      ? input.todos.length
-      : null
+  const todos = readPrimaryTodos(input, output)
+  return todos.length > 0 ? todos.length : null
 }
 
 function readTodoSummary(input: ToolPayload, output: ToolPayload): string | null {
-  const count = readTodoCount(input, output)
-  if (count === null) {
+  const todos = readPrimaryTodos(input, output)
+  if (todos.length === 0) {
     return null
   }
-  return `${count} todo${count === 1 ? '' : 's'}`
+  const completed = todos.filter(todo => todo.status === 'completed').length
+  if (completed > 0) {
+    return `${completed}/${todos.length} done`
+  }
+  return `${todos.length} todo${todos.length === 1 ? '' : 's'}`
+}
+
+export function readPrimaryTodos(input: ToolPayload, output: ToolPayload): ToolTodo[] {
+  if (output.newTodos.length > 0) {
+    return output.newTodos
+  }
+  if (output.todos.length > 0) {
+    return output.todos
+  }
+  if (output.tasks.length > 0) {
+    return output.tasks
+  }
+  if (output.items.length > 0) {
+    return output.items
+  }
+  if (input.newTodos.length > 0) {
+    return input.newTodos
+  }
+  if (input.todos.length > 0) {
+    return input.todos
+  }
+  if (input.tasks.length > 0) {
+    return input.tasks
+  }
+  return input.items
 }
 
 function readQuestionCount(input: ToolPayload, output: ToolPayload): number | null {

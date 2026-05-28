@@ -51,6 +51,8 @@ describe('skills capability', () => {
     process.env.HOME = homeDir
 
     writeSkillPackage(join(homeDir, '.agents', 'skills'), 'legacy-skill', 'legacy-skill', 'Legacy skill', 'legacy body')
+    writeSkillPackage(join(workspaceRoot, '.agents', 'skills'), 'repository-skill', 'repository-skill', 'Repository skill', 'repository body')
+    writeSkillPackage(join(workspaceRoot, '.agents', 'skills'), 'shared-skill', 'shared-skill', 'Repository shared skill', 'repository shared body')
     writeSkillPackage(fetchSourceRoot, 'alpha-fetch', 'alpha-fetch', 'Alpha fetched skill', 'alpha body')
     writeSkillPackage(join(fetchSourceRoot, 'nested'), 'bravo-fetch', 'bravo-fetch', 'Bravo fetched skill', 'bravo body')
 
@@ -108,16 +110,22 @@ describe('skills capability', () => {
 
       const globalEntry = inventory.find(entry => entry.scope === 'global' && entry.name === 'shared-skill')
       const workspaceEntry = inventory.find(entry => entry.scope === 'workspace' && entry.name === 'shared-skill')
+      const repositoryEntry = inventory.find(entry => entry.scope === 'repository' && entry.name === 'shared-skill')
+      const repositoryOnlyEntry = inventory.find(entry => entry.scope === 'repository' && entry.name === 'repository-skill')
       const agentEntry = inventory.find(entry => entry.scope === 'agent' && entry.name === 'agent-secret')
       const legacyEntry = inventory.find(entry => entry.scope === 'legacy' && entry.name === 'legacy-skill')
 
       expect(globalEntry).toEqual(expect.objectContaining({ active: false, shadowedBy: 'workspace' }))
+      expect(repositoryEntry).toEqual(expect.objectContaining({ active: false, shadowedBy: 'workspace' }))
+      expect(repositoryOnlyEntry).toEqual(expect.objectContaining({ active: true, shadowedBy: null }))
       expect(workspaceEntry).toEqual(expect.objectContaining({ active: true, shadowedBy: null }))
       expect(agentEntry).toEqual(expect.objectContaining({ active: true, shadowedBy: null }))
       expect(legacyEntry).toEqual(expect.objectContaining({ active: true }))
+      expect(repositoryEntry?.rootDir).toBe(join(workspaceRoot, '.agents', 'skills'))
+      expect(repositoryEntry?.skillDir).toBe(join(workspaceRoot, '.agents', 'skills', 'shared-skill'))
       expect(workspaceEntry?.rootDir).toBe(join(workspaceRoot, '.cradle', 'skills'))
       expect(workspaceEntry?.skillDir).toBe(join(workspaceRoot, '.cradle', 'skills', 'shared-skill'))
-      expect(existsSync(join(workspaceRoot, '.agents', 'skills'))).toBe(false)
+      expect(existsSync(join(workspaceRoot, '.agents', 'skills', 'repository-skill', 'SKILL.md'))).toBe(true)
 
       const getWorkspaceDoc = await app.handle(new Request('http://localhost/skills/document?scope=workspace&name=shared-skill&workspaceId=workspace-1'))
       expect(getWorkspaceDoc.status).toBe(200)
@@ -126,6 +134,15 @@ describe('skills capability', () => {
         description: 'Workspace override',
         body: 'workspace body',
         scope: 'workspace',
+      }))
+
+      const getRepositoryDoc = await app.handle(new Request('http://localhost/skills/document?scope=repository&name=repository-skill&workspaceId=workspace-1'))
+      expect(getRepositoryDoc.status).toBe(200)
+      expect(await getRepositoryDoc.json()).toEqual(expect.objectContaining({
+        name: 'repository-skill',
+        description: 'Repository skill',
+        body: expect.stringContaining('repository body'),
+        scope: 'repository',
       }))
 
       const updateWorkspace = await app.handle(new Request('http://localhost/skills/document', {
@@ -150,7 +167,7 @@ describe('skills capability', () => {
         rootDir: join(workspaceRoot, '.cradle', 'skills'),
         skillDir: join(workspaceRoot, '.cradle', 'skills', 'workspace-tools'),
       }))
-      expect(existsSync(join(workspaceRoot, '.agents', 'skills'))).toBe(false)
+      expect(existsSync(join(workspaceRoot, '.agents', 'skills', 'shared-skill', 'SKILL.md'))).toBe(true)
 
       const rejectedExport = await app.handle(new Request('http://localhost/skills/export', {
         method: 'POST',
@@ -295,6 +312,19 @@ describe('skills capability', () => {
       }))
       expect(readonlyCreate.status).toBe(400)
       expect((await readonlyCreate.json()).code).toBe('skills_scope_read_only')
+
+      const readonlyRepositoryCreate = await app.handle(new Request('http://localhost/skills', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          scope: 'repository',
+          name: 'nope',
+          description: 'Nope',
+          body: 'Should fail',
+        }),
+      }))
+      expect(readonlyRepositoryCreate.status).toBe(400)
+      expect((await readonlyRepositoryCreate.json()).code).toBe('skills_scope_read_only')
 
       const missingWorkspace = await app.handle(new Request('http://localhost/skills?workspaceId=missing-workspace'))
       expect(missingWorkspace.status).toBe(404)
