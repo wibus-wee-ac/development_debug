@@ -22,6 +22,7 @@ import {
   getSessionAwaitsOptions,
   getSessionAwaitsQueryKey,
   getSessionAwaitsSummaryQueryKey,
+  postSessionAwaitsByIdCancelMutation,
   postSessionAwaitsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
@@ -172,7 +173,7 @@ function useSessionAwaits(sessionId: string | null) {
 function useLiveCIStatus(awaitId: string | null) {
   return useQuery({
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
-    ...queryRefreshPolicy('interactive', { refetchInterval: 20_000 }),
+    ...queryRefreshPolicy('active', { refetchInterval: 20_000 }),
     enabled: !!awaitId,
   })
 }
@@ -196,6 +197,27 @@ function useCreateGitHubAwait(sessionId: string | null, workspaceId: string | nu
       })
     },
     meta: { sessionId, workspaceId },
+  })
+}
+
+function useCancelAwait(sessionId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    ...postSessionAwaitsByIdCancelMutation(),
+    onSuccess: () => {
+      if (sessionId) {
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId } }) })
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId } }) })
+      }
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Failed to cancel await',
+        description: error instanceof Error ? error.message : 'Session await could not be cancelled',
+      })
+    },
   })
 }
 
@@ -487,15 +509,19 @@ function TreeLevel({
         />
       </svg>
 
-      {nodes.map((node, i) => (
-        <TreeItem
-          key={node.id}
-          node={node}
-          isLast={i === nodes.length - 1}
-          expandedNodeIds={expandedNodeIds}
-          onToggleNode={onToggleNode}
-        />
-      ))}
+      <div className="ml-1.25">
+        {
+          nodes.map((node, i) => (
+            <TreeItem
+              key={node.id}
+              node={node}
+              isLast={i === nodes.length - 1}
+              expandedNodeIds={expandedNodeIds}
+              onToggleNode={onToggleNode}
+            />
+          ))
+        }
+      </div>
     </div>
   )
 }
@@ -549,24 +575,24 @@ function TreeItem({
     <div>
       {isExpandableJob
         ? (
-            <button
-              type="button"
-              className={cn(
-                'flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 text-left',
-                'transition-colors duration-150 hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-              )}
-              style={{ height: ROW_H }}
-              aria-expanded={isExpanded}
-              onClick={() => onToggleNode(node.id)}
-            >
-              {content}
-            </button>
-          )
+          <button
+            type="button"
+            className={cn(
+              'flex w-full min-w-0 items-center gap-1.5 rounded-sm px-1 text-left',
+              'transition-colors duration-150 hover:bg-primary/[0.08] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
+            )}
+            style={{ height: ROW_H }}
+            aria-expanded={isExpanded}
+            onClick={() => onToggleNode(node.id)}
+          >
+            {content}
+          </button>
+        )
         : (
-            <div className={cn('flex min-w-0 items-center gap-1.5', node.step && 'ml-0.5')} style={{ height: ROW_H }}>
-              {content}
-            </div>
-          )}
+          <div className={cn('flex min-w-0 items-center gap-1.5', node.step && 'ml-0.5')} style={{ height: ROW_H }}>
+            {content}
+          </div>
+        )}
 
       <AnimatePresence initial={false}>
         {hasChildren && isExpanded && (
@@ -588,8 +614,9 @@ function TreeItem({
 
 // ── Card ──
 
-function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
+function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: string | null }) {
   const queryClient = useQueryClient()
+  const cancelMutation = useCancelAwait(sessionId)
   const invalidatedRef = useRef(false)
   const supportsLiveStatus = awaitRow.status === 'pending' && (awaitRow.source === 'github-ci' || awaitRow.source === 'github-review')
   const { data: rawData } = useLiveCIStatus(supportsLiveStatus ? awaitRow.id : null)
@@ -611,13 +638,25 @@ function SourceCard({ awaitRow }: { awaitRow: AwaitRow }) {
     const errorText = data?.error?.message ?? (awaitRow.lastErrorText as string | null) ?? null
     const statusText = errorText ?? (awaitRow.reason as string | null) ?? 'Waiting...'
     const hasError = !!errorText || awaitRow.status === 'failed'
+    const isPending = awaitRow.status === 'pending'
 
     return (
       <div className={cn(
-        'rounded-md border p-3',
+        'relative rounded-md border p-3',
         hasError ? 'border-red-500/35 bg-red-500/[0.04]' : 'border-border',
       )}
       >
+        {isPending && (
+          <button
+            type="button"
+            onClick={() => cancelMutation.mutate({ path: { id: awaitRow.id } })}
+            disabled={cancelMutation.isPending}
+            className="absolute right-1.5 top-1.5 rounded p-0.5 text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground"
+            aria-label="Cancel await"
+          >
+            <XIcon className="size-3" />
+          </button>
+        )}
         <div className="space-y-1.5 text-xs">
           <div className={cn(
             'flex items-center gap-2',
@@ -684,11 +723,11 @@ function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
         <div className="min-w-0 flex-1">
           <span className="text-[11px] font-medium text-foreground/90 truncate block">
             {ci.prNumber && (
-<span className="text-muted-foreground/60">
-#
-{ci.prNumber}
-</span>
-)}
+              <span className="text-muted-foreground/60">
+                #
+                {ci.prNumber}
+              </span>
+            )}
             {ci.prNumber && ' '}
             {ci.prTitle ?? `${ci.owner}/${ci.repo}`}
             {targetLabel && (
@@ -1099,14 +1138,14 @@ export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
         <div className="space-y-2">
           <span className="text-[10px] text-muted-foreground/50">Active</span>
           {activeAwaits.map(a => (
-            <SourceCard key={a.id} awaitRow={a} />
+            <SourceCard key={a.id} awaitRow={a} sessionId={sessionId} />
           ))}
         </div>
       )}
       {pastAwaits.length > 0 && (
         <div className="space-y-2">
           {pastAwaits.map(a => (
-            <SourceCard key={a.id} awaitRow={a} />
+            <SourceCard key={a.id} awaitRow={a} sessionId={sessionId} />
           ))}
         </div>
       )}

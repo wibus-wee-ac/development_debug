@@ -16,4 +16,5 @@ export const awaitsTab = defineTab({
   icon: CircleDotIcon,
   component: AwaitsTabContent,
   preload: preloadAwaitsOverview,
+  keepAlive: 'always',
 })
