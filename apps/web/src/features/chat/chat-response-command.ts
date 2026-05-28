@@ -16,7 +16,7 @@ export interface ChatResponseRequestBody {
 
 export type ChatContinuationMode = 'queue' | 'steer'
 export type ChatQueueItemStatus = 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
-export type ChatPermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+export type ChatPermissionMode = 'bypassPermissions' | 'plan'
 
 export interface ChatQueueItem {
   id: string

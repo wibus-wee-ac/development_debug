@@ -8,7 +8,7 @@ import { getServerUrl } from '~/lib/electron'
 const SERVER_BASE = getServerUrl()
 
 export type RuntimeSessionStatusKind = 'idle' | 'pending' | 'streaming' | 'cancelling'
-export type RuntimePermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'dontAsk'
+export type RuntimePermissionMode = 'bypassPermissions' | 'plan'
 export type RuntimeRunStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
 export interface RuntimeSessionRunStatus {

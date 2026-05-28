@@ -52,7 +52,6 @@ interface UseChatComposerRuntimeOptions {
   status: string
   messageCount: number
   isReady: boolean
-  isAwaiting: boolean
   composerModel?: ModelDescriptor | null
   permissionMode?: SendMessageOptions['permissionMode']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
@@ -75,7 +74,6 @@ export function useChatComposerRuntime({
   status,
   messageCount,
   isReady,
-  isAwaiting,
   composerModel,
   permissionMode,
   sendOverridesRef,
@@ -169,7 +167,7 @@ export function useChatComposerRuntime({
   )
 
   return {
-    disabled: !isReady || isAwaiting,
+    disabled: !isReady,
     isStreaming: status === 'streaming',
     send,
     stop,

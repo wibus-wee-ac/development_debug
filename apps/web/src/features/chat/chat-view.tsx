@@ -333,16 +333,14 @@ export function ChatView({
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
-  const isAwaiting = awaitSummary?.awaiting ?? false
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
-  const [permissionMode, setPermissionModeState] = useState<ChatPermissionMode>('acceptEdits')
+  const [permissionMode, setPermissionModeState] = useState<ChatPermissionMode>('bypassPermissions')
   const [permissionModePending, setPermissionModePending] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
     messageCount,
     isReady,
-    isAwaiting,
     composerModel,
     permissionMode: runtimeKind === 'claude-agent' ? permissionMode : undefined,
     sendOverridesRef,
