@@ -38,6 +38,7 @@ function createAsyncQuery(
     close: vi.fn(),
     interrupt: vi.fn(),
     setModel: vi.fn().mockResolvedValue(undefined),
+    setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue(commands),
   }
 }
@@ -69,8 +70,15 @@ function createPendingQuery() {
     }),
     interrupt: vi.fn().mockResolvedValue(undefined),
     setModel: vi.fn().mockResolvedValue(undefined),
+    setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue([]),
   }
+}
+
+function readQueryOptions(callIndex: number): Record<string, unknown> {
+  const call = sdkMocks.query.mock.calls[callIndex]?.[0] as { options?: Record<string, unknown> } | undefined
+  expect(call?.options).toBeDefined()
+  return call!.options!
 }
 
 function createModelSwitchQuery(items: unknown[]) {
@@ -214,6 +222,62 @@ describe('claudeAgentProvider MCP integration', () => {
       }),
     }))
     await expect(readPromptText(0)).resolves.toBe('Open the browser')
+  })
+
+  it('defaults Claude Agent runs to bypass permissions', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-default-permissions',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-default-permissions',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({ permissionMode: undefined }),
+      message: createUserMessage('Use the default mode'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+    }))
+  })
+
+  it('normalizes removed Claude Agent permission modes to bypass permissions', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-legacy-permissions',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-legacy-permissions',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({ permissionMode: 'acceptEdits' }),
+      message: createUserMessage('Use a legacy mode'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+    }))
   })
 
   it('discovers SDK slash commands and forwards slash prompt text unchanged', async () => {
