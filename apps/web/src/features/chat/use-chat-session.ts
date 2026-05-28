@@ -13,7 +13,7 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { createContinuationUserMessage } from './chat-continuation-metadata'
-import type { ChatContinuationMode, ChatPermissionMode } from './chat-response-command'
+import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './chat-response-command'
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
@@ -135,6 +135,7 @@ function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: st
 // ── Hook ────────────────────────────────────────────────────
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
+const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 
 export function useChatSession(chatSessionId: string | null) {
   const queryClient = useQueryClient()
@@ -616,7 +617,7 @@ export function useChatSession(chatSessionId: string | null) {
     respondToToolApproval,
     stop,
     isReady,
-    queueItems: queueQuery.data?.items ?? [],
+    queueItems: queueQuery.data?.items ?? EMPTY_QUEUE_ITEMS,
     cancelQueueItem,
     reorderQueueItems,
     setPermissionMode,

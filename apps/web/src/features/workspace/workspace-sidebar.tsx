@@ -1041,15 +1041,6 @@ function WorkspaceGroup({
   )
 }
 
-function getWorkspaceInitial(workspaceName: string): string {
-  const trimmedName = workspaceName.trim()
-  if (!trimmedName) {
-    return '?'
-  }
-
-  return trimmedName[0].toLocaleUpperCase()
-}
-
 function CollapsedWorkspaceItem({
   workspace,
   onDelete,
@@ -1063,7 +1054,6 @@ function CollapsedWorkspaceItem({
   const closeTimerRef = useRef<number | null>(null)
   const workspacePinned = Boolean(workspace.pinned)
   const isActive = useIsActiveTab('workspace-detail', { workspaceId: workspace.id })
-  const workspaceInitial = getWorkspaceInitial(workspace.name)
 
   const cancelClose = useCallback(() => {
     if (closeTimerRef.current === null) {
@@ -1090,35 +1080,40 @@ function CollapsedWorkspaceItem({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={(
-          <button
-            type="button"
-            className={cn(
-              'relative flex size-10 items-center justify-center rounded-lg text-sm font-semibold',
-              'bg-background text-sidebar-foreground shadow-[0_1px_2px_rgba(0,0,0,0.06)] ring-1 ring-foreground/10',
-              'transition-[background-color,color,box-shadow,scale] duration-150 ease-out active:scale-[0.96]',
-              'hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-              isActive && 'bg-accent text-accent-foreground ring-ring/35',
-            )}
-            aria-label={workspace.name}
-            data-testid={`workspace-avatar-${workspace.id}`}
-            onPointerEnter={() => {
-              cancelClose()
-              setOpen(true)
-            }}
-            onPointerLeave={scheduleClose}
-            onFocus={() => {
-              cancelClose()
-              setOpen(true)
-            }}
-            onBlur={scheduleClose}
-          >
-            {workspaceInitial}
-            {workspacePinned && (
-              <span className="absolute -right-0.5 -top-0.5 flex size-3 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-sidebar">
-                <PinIcon className="size-2" aria-hidden="true" />
-              </span>
-            )}
-          </button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={cn(
+                  'relative flex size-10 items-center justify-center rounded-lg',
+                  'text-muted-foreground/70 transition-colors duration-150',
+                  'hover:bg-accent/50 hover:text-sidebar-foreground',
+                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                  isActive && 'bg-accent/80 text-sidebar-foreground',
+                )}
+                aria-label={workspace.name}
+                data-testid={`workspace-avatar-${workspace.id}`}
+                onPointerEnter={() => {
+                  cancelClose()
+                  setOpen(true)
+                }}
+                onPointerLeave={scheduleClose}
+                onFocus={() => {
+                  cancelClose()
+                  setOpen(true)
+                }}
+                onBlur={scheduleClose}
+              >
+                <FolderOpenIcon className="size-5 text-muted-foreground/70" aria-hidden="true" />
+                {workspacePinned && (
+                  <span className="absolute -right-0.5 -top-0.5 flex size-3 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-sidebar">
+                    <PinIcon className="size-2" aria-hidden="true" />
+                  </span>
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="right" sideOffset={8}>{workspace.name}</TooltipContent>
+          </Tooltip>
         )}
       />
       <PopoverContent
@@ -1342,13 +1337,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       >
         {collapsed
           ? (
-            <CollapsedWorkspaceRail
-              workspaces={sortedWorkspaces}
-              onAddWorkspace={addFromPicker}
-              adding={adding}
-              onDelete={handleDelete}
-              onTogglePin={handleToggleWorkspacePin}
-            />
+            <></>
           )
           : (
             <>

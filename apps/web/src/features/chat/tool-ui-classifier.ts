@@ -291,13 +291,6 @@ function readTodos(value: unknown): ToolTodo[] {
   })
 }
 
-function readSingleTodo(value: unknown): ToolTodo[] {
-  if (!isRecord(value)) {
-    return []
-  }
-  const todo = readTodos([value])[0]
-  return todo.content || todo.activeForm ? [todo] : []
-}
 
 function readWebResults(value: unknown): ToolWebResult[] {
   if (!Array.isArray(value)) {
@@ -524,12 +517,7 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
     contentBlocks: value.content.blocks,
     contents: value.contents,
     outputFile: value.outputFile,
-    todos: value.todos.length > 0 ? value.todos : readSingleTodo({
-      id: value.task_id,
-      content: value.content.text ?? value.title ?? value.task ?? value.input,
-      activeForm: value.active_form,
-      status: value.status,
-    }),
+    todos: value.todos,
     newTodos: value.newTodos,
     tasks: value.tasks,
     items: value.items,
