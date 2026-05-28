@@ -24,11 +24,14 @@ const importCandidateSourceKindEnum = t.Union([
 const importedRuntimeKindEnum = t.Union([
   t.Literal('claude-agent'),
   t.Literal('codex'),
+  t.Literal('cli-tui'),
 ])
 
 const importAppEnum = t.Union([
   t.Literal('claude'),
   t.Literal('codex'),
+  t.Literal('gemini'),
+  t.Literal('pi'),
 ])
 
 const importSourceRefresh = t.Object({

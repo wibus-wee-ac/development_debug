@@ -26,8 +26,8 @@ const AgentSchema = z.object({
 const AgentListSchema = z.array(AgentSchema).default([])
 const LocalConfigImportCandidateSchema = z.object({
   id: z.string(),
-  app: z.enum(['claude', 'codex']),
-  runtimeKind: z.enum(['claude-agent', 'codex']),
+  app: z.enum(['claude', 'codex', 'gemini', 'pi']),
+  runtimeKind: z.enum(['claude-agent', 'codex', 'cli-tui']),
   sourceKind: z.enum(['cc-switch', 'local-config']),
   sourceLabel: z.string(),
   externalRecordId: z.string(),
@@ -57,12 +57,12 @@ const PreviewLocalConfigImportResultSchema = z.object({
   sourceRefreshes: z.array(LocalConfigImportSourceRefreshSchema),
 })
 const ImportedAgentResultSchema = z.object({
-  app: z.enum(['claude', 'codex']),
+  app: z.enum(['claude', 'codex', 'gemini', 'pi']),
   candidateId: z.string(),
   sourceKind: z.enum(['cc-switch', 'local-config']),
   externalRecordId: z.string(),
   providerTargetId: z.string().nullable(),
-  runtimeKind: z.enum(['claude-agent', 'codex']),
+  runtimeKind: z.enum(['claude-agent', 'codex', 'cli-tui']),
   status: z.enum(['created', 'existing', 'skipped']),
   reason: z.string().nullable(),
   agent: AgentSchema.nullable(),

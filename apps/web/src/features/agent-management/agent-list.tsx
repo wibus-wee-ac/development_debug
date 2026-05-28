@@ -444,7 +444,7 @@ function AgentImportDialog({
         <DialogHeader>
           <DialogTitle>Import Agents</DialogTitle>
           <DialogDescription>
-            Review detected Claude, Codex, and CC Switch mappings before creating Agents.
+            Review detected Claude, Codex, Gemini, Pi, and CC Switch mappings before creating Agents.
           </DialogDescription>
         </DialogHeader>
 
@@ -463,7 +463,7 @@ function AgentImportDialog({
 
           {preview && preview.candidates.length === 0 && (
             <div className="rounded-md border border-foreground/8 px-3 py-6 text-center text-[12.5px] text-muted-foreground">
-              No Claude, Codex, or CC Switch mappings found
+              No Claude, Codex, Gemini, Pi, or CC Switch mappings found
             </div>
           )}
 

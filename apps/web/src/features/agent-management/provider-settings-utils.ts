@@ -15,6 +15,7 @@ export const ALL_DISABLED_SENTINEL = ALL_MODELS_DISABLED_SENTINEL
 export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
   'anthropic': 'Anthropic',
+  'cli-tool': 'CLI Tool',
 }
 
 export interface DraftProvider {

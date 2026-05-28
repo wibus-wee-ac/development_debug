@@ -1,7 +1,8 @@
-// Output: Local Claude and Codex config reader for onboarding external provider snapshots.
-// Input: Allowlisted local config files and optional process environment values.
+// Output: Local agent config reader for onboarding external provider snapshots.
+// Input: Allowlisted local config files, optional process environment values, and PATH-based CLI tool detection.
 // Position: External provider source utilities owned by Cradle onboarding/provider integration.
 
+import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -63,6 +64,18 @@ const CodexTomlSchema = z.object({
   openai_base_url: OptionalStringSchema,
   model_providers: z.record(z.string(), CodexModelProviderSchema).default({}),
 }).passthrough()
+
+const GeminiSettingsSchema = z.object({
+  apiKey: OptionalStringSchema,
+  model: OptionalStringSchema,
+  theme: OptionalStringSchema,
+}).catchall(z.unknown())
+
+const PiSettingsSchema = z.object({
+  apiKey: OptionalStringSchema,
+  model: OptionalStringSchema,
+  endpoint: OptionalStringSchema,
+}).catchall(z.unknown())
 
 const ReasoningEffortSchema = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh'])
 const ApprovalPolicySchema = z.enum(['never', 'on-request', 'on-failure', 'untrusted'])
@@ -244,6 +257,145 @@ function readCodexConfig(config: LocalAgentConfigSourceConfig): CodexConfigReadR
   }
 }
 
+// --- PATH-based CLI tool detection ---
+
+interface CliToolConfig {
+  command: string
+  settingsDir: string
+  settingsFile: string
+  envKeyVars: string[]
+  envBaseUrlVars: string[]
+  envModelVars: string[]
+}
+
+interface DetectedCliTool {
+  tool: CliToolConfig
+  executablePath: string
+  settings: JsonObject | null
+  settingsFound: boolean
+  warnings: ExternalProviderWarning[]
+}
+
+const CLI_TOOLS: CliToolConfig[] = [
+  {
+    command: 'gemini',
+    settingsDir: join(homedir(), '.gemini'),
+    settingsFile: join(homedir(), '.gemini', 'settings.json'),
+    envKeyVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
+    envBaseUrlVars: ['GEMINI_BASE_URL', 'GOOGLE_BASE_URL'],
+    envModelVars: ['GEMINI_MODEL'],
+  },
+  {
+    command: 'pi',
+    settingsDir: join(homedir(), '.pi'),
+    settingsFile: join(homedir(), '.pi', 'config.json'),
+    envKeyVars: ['PI_API_KEY'],
+    envBaseUrlVars: ['PI_BASE_URL'],
+    envModelVars: ['PI_MODEL'],
+  },
+]
+
+function detectCliExecutable(command: string): string | null {
+  try {
+    return execSync(`which ${command}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim() || null
+  }
+ catch {
+    return null
+  }
+}
+
+function detectCliTools(): DetectedCliTool[] {
+  const results: DetectedCliTool[] = []
+  for (const tool of CLI_TOOLS) {
+    const executablePath = detectCliExecutable(tool.command)
+    if (!executablePath) {
+      continue
+    }
+
+    const settingsResult = readJsonFile(tool.settingsFile, GeminiSettingsSchema, `local-${tool.command}-settings-invalid`, `${tool.command} settings`)
+    const settings = settingsResult.found ? (settingsResult.value as JsonObject ?? {}) : {}
+    const warnings = settingsResult.warning ? [settingsResult.warning] : []
+
+    results.push({
+      tool,
+      executablePath,
+      settings: settingsResult.found ? settings : null,
+      settingsFound: settingsResult.found,
+      warnings,
+    })
+  }
+  return results
+}
+
+function cliToolRecord(detected: DetectedCliTool): ExternalProviderRecord | null {
+  const envApiKey = detected.tool.envKeyVars
+    .map(key => process.env[key])
+    .find(val => val && val.trim().length > 0)
+
+  const settingsApiKey = detected.settings
+    ? (detected.settings.apiKey as string | undefined)
+    : undefined
+  const apiKey = settingsApiKey ?? envApiKey
+
+  const envBaseUrl = detected.tool.envBaseUrlVars
+    .map(key => process.env[key])
+    .find(val => val && val.trim().length > 0)
+
+  const settingsModel = detected.settings
+    ? (detected.settings.model as string | undefined)
+    : undefined
+  const envModel = detected.tool.envModelVars
+    .map(key => process.env[key])
+    .find(val => val && val.trim().length > 0)
+  const model = settingsModel ?? envModel
+
+  const settingsEndpoint = detected.settings
+    ? (detected.settings.endpoint as string | undefined)
+    : undefined
+  const baseUrl = settingsEndpoint ?? envBaseUrl
+
+  const hasSignal = detected.settingsFound || Boolean(apiKey) || Boolean(baseUrl) || Boolean(model)
+  if (!hasSignal) {
+    return null
+  }
+
+  const app = detected.tool.command as 'gemini' | 'pi'
+
+  return {
+    externalId: `${detected.tool.command}:local-current`,
+    app,
+    name: `Local ${detected.tool.command.charAt(0).toUpperCase()}${detected.tool.command.slice(1)}`,
+    providerKind: 'cli-tool',
+    config: compactRecord({
+      executable: detected.executablePath,
+      baseUrl,
+      model,
+    }),
+    credential: apiKey ? { kind: 'api-key', value: apiKey, label: `Local ${detected.tool.command}` } : undefined,
+    current: true,
+    metadata: compactRecord({
+      executable: detected.executablePath,
+      baseUrl,
+      model,
+      apiFormat: 'cli-tool',
+      rawFingerprintHint: hashText({
+        executable: detected.executablePath,
+        settingsFound: detected.settingsFound,
+        baseUrl,
+        model,
+        hasCredential: Boolean(apiKey),
+      }),
+    }),
+    warnings: apiKey
+      ? []
+      : [{
+          code: `local-${detected.tool.command}-credential-missing`,
+          message: `No ${detected.tool.command} API key was found in local config or environment.`,
+          severity: 'info' as const,
+        }],
+  }
+}
+
 function compactRecord(value: JsonObject): JsonObject {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined))
 }
@@ -375,9 +527,18 @@ export function readLocalAgentConfigExternalProviderSnapshot(
 ): ExternalProviderSourceSnapshot {
   const claude = readClaudeConfig(config)
   const codex = readCodexConfig(config)
-  const providers = [claudeRecord(claude), codexRecord(codex)]
+  const cliTools = detectCliTools()
+  const cliRecords = cliTools
+    .map(detected => cliToolRecord(detected))
     .filter((record): record is ExternalProviderRecord => Boolean(record))
-  const warnings = [...claude.warnings, ...codex.warnings]
+
+  const providers = [claudeRecord(claude), codexRecord(codex), ...cliRecords]
+    .filter((record): record is ExternalProviderRecord => Boolean(record))
+  const warnings = [
+    ...claude.warnings,
+    ...codex.warnings,
+    ...cliTools.flatMap(t => t.warnings),
+  ]
 
   return {
     source: {
@@ -388,7 +549,7 @@ export function readLocalAgentConfigExternalProviderSnapshot(
           : 'ok',
       message: providers.length > 0
         ? `Detected ${providers.length} local agent config ${providers.length === 1 ? 'record' : 'records'}.`
-        : 'No local Claude or Codex config records were detected.',
+        : 'No local agent config records were detected.',
       observedAt: new Date().toISOString(),
     },
     providers,
@@ -407,7 +568,7 @@ export function createLocalAgentConfigExternalProviderSource(): ExternalProvider
   return {
     id: DEFAULT_SOURCE_ID,
     label: DEFAULT_SOURCE_LABEL,
-    description: 'Reads local Claude and Codex configuration for onboarding.',
+    description: 'Reads local agent configuration and detects CLI tools on PATH for onboarding.',
     capabilities: { refresh: true },
     readSnapshot: readLocalAgentConfigExternalProviderSnapshotFromContext,
   }

@@ -37,7 +37,7 @@ export type KanbanIssueCommentView = DbKanbanIssueComment & {
 
 // ── Provider / Runtime types ───────────────────────────────────────────────
 
-export type ProviderKind = 'openai-compatible' | 'anthropic'
+export type ProviderKind = 'openai-compatible' | 'anthropic' | 'cli-tool'
 
 export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
 

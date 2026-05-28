@@ -176,8 +176,8 @@ export class CodexProvider implements ChatRuntime {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
-    const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile)
-    const client = this.createAppServerClient({ apiKey, baseUrl: config.baseUrl, config: codexConfig })
+    const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile, effectiveModel)
+    const client = this.createAppServerClient({ apiKey, config: codexConfig })
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
     this._lastUsage = null
@@ -427,6 +427,7 @@ function buildCodexConfig(
   workspacePath: string,
   resolveSkillPaths: (workspacePath: string) => string[],
   systemPromptFile: string | null,
+  effectiveModel?: string | null,
 ): Record<string, unknown> {
   const skillPaths = config.skillPaths.length > 0
     ? config.skillPaths
@@ -439,6 +440,13 @@ function buildCodexConfig(
   }
   if (instructionPaths.length > 0) {
     codexConfig.instructions_paths = instructionPaths
+  }
+  if (config.baseUrl) {
+    codexConfig.model_provider = 'openai'
+    codexConfig.openai_base_url = config.baseUrl
+  }
+  if (effectiveModel) {
+    codexConfig.model = effectiveModel
   }
   return codexConfig
 }

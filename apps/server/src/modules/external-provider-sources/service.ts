@@ -48,7 +48,7 @@ export interface ExternalProviderRecordView {
   externalId: string
   app: string
   name: string
-  providerKind: 'anthropic' | 'openai-compatible'
+  providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool'
   status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
   runtimeTargetEnabled: boolean
   fingerprint: string
@@ -63,7 +63,7 @@ export interface ExternalRuntimeTargetView {
   id: string
   sourceKey: string
   externalRecordId: string
-  providerKind: 'anthropic' | 'openai-compatible'
+  providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool'
   displayName: string
   enabled: boolean
   credentialRef: string | null
@@ -119,7 +119,7 @@ const ExternalProviderRecordSchema = z.object({
   externalId: z.string(),
   app: z.string(),
   name: z.string(),
-  providerKind: z.enum(['anthropic', 'openai-compatible']),
+  providerKind: z.enum(['anthropic', 'openai-compatible', 'cli-tool']),
   config: JsonRecordSchema,
   credential: ExternalProviderCredentialSchema.optional(),
   current: z.boolean().default(false),
@@ -151,7 +151,7 @@ type ParsedExternalProviderRecord = z.infer<typeof ExternalProviderRecordSchema>
 const ExternalProviderRecordFingerprintSchema = z.object({
   app: z.string(),
   name: z.string(),
-  providerKind: z.enum(['anthropic', 'openai-compatible']),
+  providerKind: z.enum(['anthropic', 'openai-compatible', 'cli-tool']),
   config: JsonRecordSchema,
   credential: ExternalProviderCredentialSchema.optional(),
   current: z.boolean(),
@@ -398,7 +398,10 @@ function syncRuntimeTarget(
   database: Tx,
   sourceKey: string,
   record: ParsedExternalProviderRecord,
-): string {
+): string | null {
+  if (record.providerKind === 'cli-tool') {
+    return null
+  }
   const id = deriveRuntimeTargetId(sourceKey, record.externalId)
   const existing = database
     .select()

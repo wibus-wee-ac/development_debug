@@ -67,6 +67,7 @@ import type { EditableCustomModel } from './provider-target-model-settings'
 import {
   CustomModelsJsonSchema,
   updateProviderTargetCustomModels,
+  updateProviderTargetModelVisibility,
 } from './provider-target-model-settings'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
@@ -199,14 +200,12 @@ function buildProfileConfig(
   values: ProfileDetailFormValues,
   currentConfig: Record<string, unknown>,
 ): Record<string, unknown> {
-  const cleanEnabled = values.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
-  const allDisabledNow = values.enabledModels[0] === ALL_DISABLED_SENTINEL
+  const { enabledModels: _, ...rest } = currentConfig
   return {
-    ...currentConfig,
+    ...rest,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
-    enabledModels: cleanEnabled.length > 0 ? cleanEnabled : allDisabledNow ? [] : undefined,
   }
 }
 
@@ -392,6 +391,19 @@ export function ProfileDetailPanel({
     dispatch({ type: 'save/set', state: 'saving' })
 
     try {
+      // Update model visibility via dedicated endpoint (not through profile config)
+      const cleanEnabledModels = currentValues.enabledModels.filter(id => id !== ALL_DISABLED_SENTINEL)
+      const allDisabledNow = currentValues.enabledModels[0] === ALL_DISABLED_SENTINEL
+      const effectiveEnabledModels = allDisabledNow ? [ALL_DISABLED_SENTINEL] : cleanEnabledModels
+      const previousValues = JSON.parse(savedSignatureRef.current) as { enabledModels?: string[] }
+      const previousEnabledModels = previousValues.enabledModels ?? []
+      if (JSON.stringify(effectiveEnabledModels) !== JSON.stringify(previousEnabledModels)) {
+        await updateProviderTargetModelVisibility(
+          providerTarget,
+          effectiveEnabledModels,
+        )
+      }
+
       let credentialRef = profile.credentialRef ?? null
       if (currentValues.apiKey && supportsModels) {
         const { data: meta } = await postSecrets({
@@ -428,6 +440,7 @@ export function ProfileDetailPanel({
       }
       savedSignatureRef.current = createProfileSignature(savedValues)
       form.reset(savedValues)
+      void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       clearSavedClearTimer()
       savedClearTimerRef.current = setTimeout(() => {
         if (requestId === saveRequestRef.current) {

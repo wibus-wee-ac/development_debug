@@ -23,7 +23,6 @@ export interface CodexAppServerMessage {
 export interface CodexAppServerClientOptions {
   codexPath?: string
   apiKey?: string
-  baseUrl?: string
   config?: Record<string, unknown>
 }
 
@@ -46,9 +45,6 @@ export class CodexAppServerClient {
       for (const override of serializeConfigOverrides(options.config)) {
         args.push('--config', override)
       }
-    }
-    if (options.baseUrl) {
-      args.push('--config', `openai_base_url=${toTomlValue(options.baseUrl)}`)
     }
 
     const env = { ...process.env }

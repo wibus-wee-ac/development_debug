@@ -111,7 +111,26 @@ function useNewChatPageOwner(active: boolean) {
   const [quickActionText, setQuickActionText] = useState<string | undefined>(undefined)
   const [quickActionKey, setQuickActionKey] = useState(0)
   const [sending, setSending] = useState(false)
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null)
+  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('cradle:lastWorkspaceId')
+    }
+    catch {
+      return null
+    }
+  })
+
+  useEffect(() => {
+    try {
+      if (selectedWorkspaceId) {
+        localStorage.setItem('cradle:lastWorkspaceId', selectedWorkspaceId)
+      }
+      else {
+        localStorage.removeItem('cradle:lastWorkspaceId')
+      }
+    }
+    catch {}
+  }, [selectedWorkspaceId])
 
   const selectedProjectWorkspaceId = useMemo(() => {
     if (selectedWorkspaceId && workspaces.some(w => w.id === selectedWorkspaceId)) {

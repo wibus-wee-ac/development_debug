@@ -1,6 +1,8 @@
 // Chat-runtime-owned filesystem trace writer for inspecting provider-to-SSE stream flow.
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { createWriteStream } from 'node:fs'
 import { dirname, join } from 'node:path'
+import type { WriteStream } from 'node:fs'
 
 export type ChatStreamTracePhase
   = | 'run_started'
@@ -43,6 +45,13 @@ export interface ChatRunTrace {
 }
 
 const traceSeqByRunId = new Map<string, number>()
+const streamByRunId = new Map<string, WriteStream>()
+
+const TERMINAL_PHASES: ReadonlySet<ChatStreamTracePhase> = new Set([
+  'run_completed',
+  'run_failed',
+  'run_aborted',
+])
 
 export function isChatStreamTraceEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   if (env.CRADLE_CHAT_STREAM_TRACE === '0' || env.CRADLE_CHAT_STREAM_TRACE === 'false') {
@@ -68,6 +77,29 @@ export function resolveChatStreamTracePath(runId: string, env: NodeJS.ProcessEnv
   return join(resolveChatStreamTraceDir(env), `${encodeURIComponent(runId)}.jsonl`)
 }
 
+function getOrCreateStream(runId: string): WriteStream {
+  const existing = streamByRunId.get(runId)
+  if (existing) {
+    return existing
+  }
+
+  const path = resolveChatStreamTracePath(runId)
+  mkdirSync(dirname(path), { recursive: true })
+  const stream = createWriteStream(path, { encoding: 'utf8', flags: 'a' })
+  streamByRunId.set(runId, stream)
+  return stream
+}
+
+function closeStream(runId: string): void {
+  const stream = streamByRunId.get(runId)
+  if (!stream) {
+    return
+  }
+  streamByRunId.delete(runId)
+  traceSeqByRunId.delete(runId)
+  stream.end()
+}
+
 export function recordChatStreamTrace(input: ChatStreamTraceContext & {
   phase: ChatStreamTracePhase
   payload: unknown
@@ -76,8 +108,7 @@ export function recordChatStreamTrace(input: ChatStreamTraceContext & {
     return
   }
 
-  const path = resolveChatStreamTracePath(input.runId)
-  mkdirSync(dirname(path), { recursive: true })
+  const stream = getOrCreateStream(input.runId)
 
   const seq = traceSeqByRunId.get(input.runId) ?? 0
   traceSeqByRunId.set(input.runId, seq + 1)
@@ -96,7 +127,11 @@ export function recordChatStreamTrace(input: ChatStreamTraceContext & {
     payload: input.payload,
   }
 
-  appendFileSync(path, `${JSON.stringify(record)}\n`, 'utf8')
+  stream.write(`${JSON.stringify(record)}\n`)
+
+  if (TERMINAL_PHASES.has(input.phase)) {
+    closeStream(input.runId)
+  }
 }
 
 export function readChatRunTrace(runId: string): ChatRunTrace {
@@ -112,4 +147,10 @@ export function readChatRunTrace(runId: string): ChatRunTrace {
     .map(line => JSON.parse(line) as ChatStreamTraceRecord)
 
   return { runId, path, recordCount: records.length, records }
+}
+
+export function shutdownTraceStreams(): void {
+  for (const [runId] of streamByRunId) {
+    closeStream(runId)
+  }
 }

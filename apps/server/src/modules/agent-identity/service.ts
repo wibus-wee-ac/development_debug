@@ -60,8 +60,8 @@ export interface ImportLocalConfigInput {
 
 export interface LocalConfigImportCandidate {
   id: string
-  app: 'claude' | 'codex'
-  runtimeKind: 'claude-agent' | 'codex'
+  app: 'claude' | 'codex' | 'gemini' | 'pi'
+  runtimeKind: 'claude-agent' | 'codex' | 'cli-tui'
   sourceKind: 'cc-switch' | 'local-config'
   sourceLabel: string
   externalRecordId: string
@@ -92,12 +92,12 @@ export interface PreviewLocalConfigImportResult {
 }
 
 export interface ImportedAgentResult {
-  app: 'claude' | 'codex'
+  app: 'claude' | 'codex' | 'gemini' | 'pi'
   candidateId: string
   sourceKind: 'cc-switch' | 'local-config'
   externalRecordId: string
   providerTargetId: string | null
-  runtimeKind: 'claude-agent' | 'codex'
+  runtimeKind: 'claude-agent' | 'codex' | 'cli-tui'
   status: 'created' | 'existing' | 'skipped'
   reason: string | null
   agent: Agent | null
@@ -288,6 +288,12 @@ function localAgentApp(app: string): LocalConfigImportCandidate['app'] | null {
   if (app === 'codex') {
     return 'codex'
   }
+  if (app === 'gemini') {
+    return 'gemini'
+  }
+  if (app === 'pi') {
+    return 'pi'
+  }
   return null
 }
 
@@ -295,17 +301,28 @@ function runtimeKindForLocalApp(app: LocalConfigImportCandidate['app']): LocalCo
   if (app === 'claude') {
     return 'claude-agent'
   }
-  return 'codex'
+  if (app === 'codex') {
+    return 'codex'
+  }
+  return 'cli-tui'
 }
 
 function agentNameForLocalApp(app: ImportedAgentResult['app']): string {
-  return app === 'claude' ? 'Local Claude' : 'Local Codex'
+  switch (app) {
+    case 'claude': return 'Local Claude'
+    case 'codex': return 'Local Codex'
+    case 'gemini': return 'Local Gemini'
+    case 'pi': return 'Local Pi'
+  }
 }
 
 function importedAgentDescription(app: ImportedAgentResult['app']): string {
-  return app === 'claude'
-    ? 'Imported from local Claude configuration.'
-    : 'Imported from local Codex configuration.'
+  switch (app) {
+    case 'claude': return 'Imported from local Claude configuration.'
+    case 'codex': return 'Imported from local Codex configuration.'
+    case 'gemini': return 'Imported from local Gemini CLI.'
+    case 'pi': return 'Imported from local Pi CLI.'
+  }
 }
 
 function agentConfigObject(agent: Agent): Record<string, unknown> {
@@ -413,7 +430,8 @@ function candidateFromRecord(input: {
 }): LocalConfigImportCandidate {
   const runtimeKind = runtimeKindForLocalApp(input.app)
   const agent = findAgentForLocalImport(input.app, runtimeKind)
-  const importable = Boolean(input.providerTargetId) && !input.reason
+  const needsProviderTarget = runtimeKind !== 'cli-tui'
+  const importable = (needsProviderTarget ? Boolean(input.providerTargetId) : true) && !input.reason
   const agentName = agentNameForLocalApp(input.app)
   return {
     id: `${input.sourceKind}:${input.app}:${input.sourceKey}:${input.externalRecordId}`,
@@ -440,7 +458,7 @@ function selectedCcSwitchRecords(sourceKeys: Set<string>) {
   return listExternalProviderRecords()
     .filter(record => record.status === 'active')
     .filter(record => sourceKeys.has(record.sourceKey))
-    .filter(record => record.app === 'claude' || record.app === 'codex')
+    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini')
     .filter(record => record.metadata.current === true)
 }
 
@@ -456,7 +474,7 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
   const localRecords = allRecords
     .filter(record => record.sourceKey === localSourceKey)
     .filter(record => record.status === 'active')
-    .filter(record => record.app === 'claude' || record.app === 'codex')
+    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini' || record.app === 'pi')
   const ccSwitchCurrentRecords = selectedCcSwitchRecords(ccSwitchSourceKeys)
 
   const localProxyApps = new Set(
@@ -543,6 +561,17 @@ function buildAgentRuntimeConfig(candidate: LocalConfigImportCandidate): string 
     },
   }
 
+  if (candidate.runtimeKind === 'cli-tui') {
+    const executable = targetConfig.executable ?? candidate.endpoint ?? candidate.app
+    return JSON.stringify(compactRuntimeConfig({
+      ...common,
+      cliTui: {
+        executable,
+        args: [],
+      },
+    }))
+  }
+
   if (candidate.runtimeKind === 'claude-agent') {
     const claudeAgent = targetConfig.claudeAgent
     return JSON.stringify(compactRuntimeConfig({
@@ -568,7 +597,8 @@ export async function importLocalConfig(input: ImportLocalConfigInput = {}): Pro
   const results: ImportedAgentResult[] = []
 
   for (const candidate of preview.candidates.filter(candidate => selectedIds.has(candidate.id))) {
-    if (!candidate.providerTargetId || !candidate.importable) {
+    const needsProviderTarget = candidate.runtimeKind !== 'cli-tui'
+    if ((needsProviderTarget && !candidate.providerTargetId) || !candidate.importable) {
       results.push({
         app: candidate.app,
         candidateId: candidate.id,

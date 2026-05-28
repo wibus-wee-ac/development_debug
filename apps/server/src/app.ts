@@ -7,6 +7,7 @@ import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
 import { createRequestLoggerPlugin } from './http/request-logger'
 import { shutdownInfra } from './infra'
+import { shutdownTraceStreams } from './modules/chat-runtime/stream-trace'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { automation } from './modules/automation'
@@ -134,6 +135,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     () => chronicleStopActivityPipelineScheduler(),
     () => chronicleStopSlackBackgroundSync(),
     () => chronicleCleanup(),
+    () => shutdownTraceStreams(),
     () => shutdownInfra(),
   ])
 
