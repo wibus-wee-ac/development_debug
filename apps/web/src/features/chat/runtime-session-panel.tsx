@@ -2,9 +2,8 @@
 // Input: Session metadata, visible chat status, run display metadata, and tool entities.
 // Position: Chat feature panel rendered inside the app right aside.
 
-import type { UIMessage } from 'ai'
 import { ActivityIcon, CircleIcon, ListTodoIcon, TimerIcon, WrenchIcon } from 'lucide-react'
-import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { Progress } from '~/components/ui/progress'
 import type { RuntimeKind } from '~/lib/types'
@@ -35,7 +34,6 @@ const TOOL_STATE_LABELS: Record<ToolState, string> = {
   'output-denied': 'Denied',
 }
 
-const EMPTY_MESSAGES: UIMessage[] = []
 const EMPTY_TOOLS: ChatToolEntity[] = []
 
 export function RuntimeSessionPanel({
@@ -43,26 +41,21 @@ export function RuntimeSessionPanel({
   runtimeKind,
   providerTargetId,
 }: RuntimeSessionPanelProps) {
-  const messages = useChatStore(state => sessionId ? (state.messagesMap.get(sessionId) ?? EMPTY_MESSAGES) : EMPTY_MESSAGES)
   const visibleStatus = useChatStore(sessionId ? chatSelectors.visibleStatus(sessionId) : () => 'idle' as const)
   const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
-  const latestAssistantMessage = useMemo(
-    () => messages.slice().reverse().find(message => message.role === 'assistant') ?? null,
-    [messages],
+  const lastAssistantId = useChatStore(
+    sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined,
   )
-  const toolCallIdsByMessageId = useChatStore(state => state.toolCallIdsByMessageId)
-  const toolEntitiesMap = useChatStore(state => state.toolEntitiesMap)
-  const tools = useMemo(
-    () => readSessionTools(messages, toolCallIdsByMessageId, toolEntitiesMap),
-    [messages, toolCallIdsByMessageId, toolEntitiesMap],
+  const tools = useChatStore(
+    useShallow(sessionId ? chatSelectors.sessionToolEntities(sessionId) : () => EMPTY_TOOLS),
   )
   const runMeta = useChatStore(
-    latestAssistantMessage
-      ? chatSelectors.runDisplayMeta(latestAssistantMessage.id)
+    lastAssistantId
+      ? chatSelectors.runDisplayMeta(lastAssistantId)
       : () => undefined,
   )
-  const toolCounts = useMemo(() => countToolStates(tools), [tools])
+  const toolCounts = countToolStates(tools)
   const recentTools = tools.slice(-6).reverse()
   const status = runtimeStatus?.status ?? visibleStatus
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
@@ -98,7 +91,7 @@ export function RuntimeSessionPanel({
           <KeyValue label="Model" value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'} />
           <KeyValue label="First event" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
           <KeyValue label="First content" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
-          <KeyValue label="Total" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.completedAtMs ?? Date.now())} />
+          <KeyValue label="Total" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
           <KeyValue label="Queue" value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`} />
         </div>
       </section>
@@ -112,7 +105,7 @@ export function RuntimeSessionPanel({
         </div>
         <div className="space-y-1.5">
           {recentTools.length === 0 && (
-            <p className="rounded-md bg-muted/30 px-2 py-2 text-[11px] text-muted-foreground">
+            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
               No tool calls for this session
             </p>
           )}
@@ -157,7 +150,7 @@ export function RuntimeSessionPanel({
         <PanelHeading icon={ListTodoIcon} label="Todos" />
         {!todoSnapshot || todoSnapshot.todos.length === 0
           ? (
-              <p className="rounded-md bg-muted/30 px-2 py-2 text-[11px] text-muted-foreground">
+              <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
                 No TODO state for this session
               </p>
             )
@@ -203,28 +196,6 @@ export function RuntimeSessionPanel({
       </section>
     </div>
   )
-}
-
-function readSessionTools(
-  messages: UIMessage[],
-  toolCallIdsByMessageId: Map<string, string[]>,
-  toolEntitiesMap: Map<string, ChatToolEntity>,
-): ChatToolEntity[] {
-  if (messages.length === 0) {
-    return EMPTY_TOOLS
-  }
-
-  const tools: ChatToolEntity[] = []
-  for (const message of messages) {
-    const toolCallIds = toolCallIdsByMessageId.get(message.id) ?? []
-    for (const toolCallId of toolCallIds) {
-      const tool = toolEntitiesMap.get(toolCallId)
-      if (tool) {
-        tools.push(tool)
-      }
-    }
-  }
-  return tools
 }
 
 function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon, label: string }) {
@@ -294,7 +265,7 @@ function formatStatus(status: RuntimeSessionStatusKind | 'error'): string {
 
 function formatMode(mode: string | null | undefined): string {
   if (!mode) {
-    return 'default'
+    return 'bypassPermissions'
   }
   return mode
 }
