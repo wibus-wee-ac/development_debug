@@ -1,6 +1,7 @@
 import type { UIMessage } from 'ai'
-import { create } from 'zustand'
 import { subscribeWithSelector } from 'zustand/middleware'
+import { shallow } from 'zustand/shallow'
+import { createWithEqualityFn } from 'zustand/traditional'
 
 import type { ChatToolEntity } from '~/features/chat/chat-tool-entities'
 import {
@@ -102,11 +103,13 @@ interface ChatState {
 
 type MessagePart = UIMessage['parts'][number]
 const EMPTY_MESSAGES: UIMessage[] = []
+const EMPTY_TOOL_CALL_IDS: string[] = []
+const EMPTY_TOOL_ENTITIES: ChatToolEntity[] = []
 const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
 
 // ── Store ───────────────────────────────────────────────────
 
-export const useChatStore = create<ChatState>()(
+export const useChatStore = createWithEqualityFn<ChatState>()(
   subscribeWithSelector(
     (set, get) => ({
       messagesMap: new Map(),
@@ -707,6 +710,7 @@ export const useChatStore = create<ChatState>()(
 
     }),
   ),
+  shallow,
 )
 
 // ── Selectors ───────────────────────────────────────────────
@@ -793,7 +797,7 @@ export const chatSelectors = {
   },
 
   toolCallIds: (messageId: string) => (s: ChatState) =>
-    s.toolCallIdsByMessageId.get(messageId) ?? [],
+    s.toolCallIdsByMessageId.get(messageId) ?? EMPTY_TOOL_CALL_IDS,
 
   toolEntity: (toolCallId: string) => (s: ChatState) =>
     s.toolEntitiesMap.get(toolCallId),
@@ -802,6 +806,25 @@ export const chatSelectors = {
     (s.toolCallIdsByMessageId.get(messageId) ?? [])
       .map(toolCallId => s.toolEntitiesMap.get(toolCallId))
       .filter((entity): entity is ChatToolEntity => entity !== undefined),
+
+  sessionToolEntities: (sessionId: string) => (s: ChatState) => {
+    const messages = s.messagesMap.get(sessionId)
+    if (!messages || messages.length === 0) {
+      return EMPTY_TOOL_ENTITIES
+    }
+
+    const entities: ChatToolEntity[] = []
+    for (const message of messages) {
+      const toolCallIds = s.toolCallIdsByMessageId.get(message.id) ?? EMPTY_TOOL_CALL_IDS
+      for (const toolCallId of toolCallIds) {
+        const entity = s.toolEntitiesMap.get(toolCallId)
+        if (entity) {
+          entities.push(entity)
+        }
+      }
+    }
+    return entities.length > 0 ? entities : EMPTY_TOOL_ENTITIES
+  },
 
   runDisplayMeta: (messageId: string) => (s: ChatState) =>
     s.runDisplayMetaMap.get(messageId),

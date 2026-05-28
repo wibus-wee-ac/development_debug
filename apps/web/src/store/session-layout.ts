@@ -2,7 +2,8 @@
 // Input: Session list rows, session detail queries, and newly created sessions.
 // Position: Store-owned bridge from chat/session data to layout identity derivation.
 
-import { create } from 'zustand'
+import { shallow } from 'zustand/shallow'
+import { createWithEqualityFn } from 'zustand/traditional'
 
 import type { RuntimeKind } from '~/lib/types'
 
@@ -53,7 +54,7 @@ function mergeWorkspaceLayoutRecord(
   }
 }
 
-export const useSessionLayoutStore = create<SessionLayoutState>()(set => ({
+export const useSessionLayoutStore = createWithEqualityFn<SessionLayoutState>()(set => ({
   sessions: {},
   workspaces: {},
 
@@ -102,4 +103,4 @@ export const useSessionLayoutStore = create<SessionLayoutState>()(set => ({
       return { workspaces }
     })
   },
-}))
+}), shallow)
