@@ -48,7 +48,7 @@ export async function listFiles(workspacePath: string): Promise<WorkspaceFileEnt
 
   const entries = await fg('**/*', {
     cwd: workspacePath,
-    dot: false,
+    dot: true,
     onlyFiles: false,
     markDirectories: true,
   })

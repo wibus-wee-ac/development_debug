@@ -53,6 +53,7 @@ export class CodexAppServerClient {
     const env = { ...process.env }
     env.CODEX_HOME = prepareCodexAppServerHome()
     if (options.apiKey) {
+      env.CRADLE_CODEX_API_KEY = options.apiKey
       env.CODEX_API_KEY = options.apiKey
       env.OPENAI_API_KEY = options.apiKey
     }

@@ -102,6 +102,8 @@ type CodexUserInput = { type: 'text', text: string, text_elements: [] }
   | { type: 'localImage', detail?: 'high' | 'original', path: string }
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
+const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
+const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 const MAX_EVENT_SAMPLES = 20
 const MAX_DIAGNOSTIC_STRING_LENGTH = 2_000
 const MAX_DIAGNOSTIC_ARRAY_ITEMS = 20
@@ -442,8 +444,16 @@ function buildCodexConfig(
     codexConfig.instructions_paths = instructionPaths
   }
   if (config.baseUrl) {
-    codexConfig.model_provider = 'openai'
-    codexConfig.openai_base_url = config.baseUrl
+    codexConfig.model_provider = CRADLE_CODEX_MODEL_PROVIDER
+    codexConfig.model_providers = {
+      [CRADLE_CODEX_MODEL_PROVIDER]: {
+        name: 'Cradle OpenAI Compatible',
+        base_url: config.baseUrl,
+        env_key: CRADLE_CODEX_API_KEY_ENV,
+        wire_api: 'responses',
+        requires_openai_auth: true,
+      },
+    }
   }
   if (effectiveModel) {
     codexConfig.model = effectiveModel

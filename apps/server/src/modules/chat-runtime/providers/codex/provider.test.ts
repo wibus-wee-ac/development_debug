@@ -194,6 +194,76 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
+  it('passes external OpenAI-compatible targets as explicit Codex model providers', async () => {
+    let client: FakeCodexAppServerClient | null = null
+    let appServerOptions: CodexAppServerClientOptions | null = null
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions = options
+        client = new FakeCodexAppServerClient(options)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({
+        baseUrl: 'https://example.test/v1',
+        model: 'gpt-test',
+      }),
+      message: createUserMessage('Use external target'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    expect(client).not.toBeNull()
+    const createdClient = client
+
+    expect(appServerOptions?.apiKey).toBe('sk-test')
+    expect(appServerOptions?.config).toEqual(expect.objectContaining({
+      model: 'gpt-test',
+      model_provider: 'cradle-openai-compatible',
+      model_providers: {
+        'cradle-openai-compatible': {
+          name: 'Cradle OpenAI Compatible',
+          base_url: 'https://example.test/v1',
+          env_key: 'CRADLE_CODEX_API_KEY',
+          wire_api: 'responses',
+          requires_openai_auth: true,
+        },
+      },
+    }))
+
+    createdClient.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    createdClient.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
   it('streams app-server notifications and applies live steer to the active turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
