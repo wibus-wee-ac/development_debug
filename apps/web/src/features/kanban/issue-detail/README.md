@@ -11,7 +11,7 @@ Issue detail owns focused subviews for editing issue metadata, reading activity,
 - **agent-prompt-input.test.tsx**: Regression tests for Agent Session continuation preference handling and one-message `Shift+Meta+Enter` mode inversion.
 - **agent-session-panel.tsx**: Agent session status, activity feed, stop/rerun/open-chat controls with decorative action icons, Chat Runtime queue projection with drag/drop and button reorder controls, and prompt input composition; active-session rendering is split into a memoized inner panel with stable stop and rerun handlers.
 - **index.tsx**: Issue detail 组合入口，解析父/子 issue 上下文、子 issue 进度、同级导航和 milestone 横幅进度。
-- **issue-description.tsx**: Editable issue description surface with Smart Mention candidate aggregation for Issue, Session, Workspace, Agent, Milestone, and File references plus owner-scoped navigation behavior.
+- **issue-description.tsx**: Editable issue description surface with issue-scoped Markdown document identity, Smart Mention candidate aggregation for Issue, Session, Workspace, Agent, Milestone, and File references plus owner-scoped navigation behavior.
 - **issue-header.tsx**: Issue header content, parent breadcrumb navigation, sibling switching controls, sub-issue progress, and high-level destructive issue actions; header rendering keeps a memo boundary.
 - **issue-title.tsx**: Editable issue title surface.
 - **milestone-banner.tsx**: 可点击的 issue milestone 横幅，展示 status、due date 和 progress，并用于打开聚焦的 milestone filter。

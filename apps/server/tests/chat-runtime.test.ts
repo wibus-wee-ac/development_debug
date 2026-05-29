@@ -654,6 +654,89 @@ describe('chat runtime capability', () => {
     }
   })
 
+  it('replays buffered AI SDK chunks when joining an active session stream', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Hello "},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"joined stream"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-3","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n',
+        ], [0, 80, 0, 0])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-replay',
+        name: 'Workspace Chat Replay',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-replay', {
+        providerTargetId: 'provider-target-chat-replay',
+        sessionId: 'session-chat-replay',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-replay/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Replay active stream', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      const runChunksPromise = collectSseChunks(runRes)
+
+      await waitForCondition(async () => {
+        const rows = await getChatMessages(app!, 'session-chat-replay')
+        expect(rows.find(row => row.role === 'assistant')?.status).toBe('streaming')
+      }, 'active assistant stream row')
+
+      const joinRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-replay/stream'))
+      expect(joinRes.status).toBe(200)
+
+      const chunks = await collectSseChunks(joinRes)
+      const textDeltas = chunks
+        .filter((chunk): chunk is UIMessageChunk & { type: 'text-delta', delta: string } => chunk.type === 'text-delta')
+        .map(chunk => chunk.delta)
+
+      expect(chunks[0]).toEqual(expect.objectContaining({ type: 'start' }))
+      expect(textDeltas.join('')).toBe('Hello joined stream')
+      expect(chunks.at(-1)).toEqual(expect.objectContaining({ type: 'finish' }))
+
+      await runChunksPromise
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      vi.restoreAllMocks()
+    }
+  })
+
   it('supports abort and returns structured input errors', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

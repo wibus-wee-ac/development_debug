@@ -75,12 +75,8 @@ export async function startChatResponse(args: {
 export async function subscribeChatSessionStream(args: {
   sessionId: string
   signal?: AbortSignal
-  skipReplay?: boolean
 }): Promise<Response> {
   const url = new URL(`${SERVER_BASE}/chat/sessions/${args.sessionId}/stream`)
-  if (args.skipReplay) {
-    url.searchParams.set('skipReplay', 'true')
-  }
   return fetch(url.toString(), {
     method: 'GET',
     signal: args.signal,

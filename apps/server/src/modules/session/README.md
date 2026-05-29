@@ -11,4 +11,4 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 - **index.ts**: Elysia route surface for CRUD, message listing, export, and linked-issue helpers.
 - **model.ts**: Session HTTP params/body/response schemas.
-- **service.ts**: Module semantics (CRUD + export + cleanup), no-project chat workspace binding, provider-backed default agent binding and launchability checks, and a transaction-friendly profile cleanup entrypoint used by profile deletion.
+- **service.ts**: Module semantics (CRUD + export + cleanup), no-project chat workspace binding, provider-backed default agent binding and launchability checks, and session-owned delete hooks.

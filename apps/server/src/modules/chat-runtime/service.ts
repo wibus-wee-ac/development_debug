@@ -13,7 +13,7 @@ import {
   workspaces,
 } from '@cradle/db'
 import type { FileUIPart, UIMessage, UIMessageChunk } from 'ai'
-import { readUIMessageStream } from 'ai'
+import { createUIMessageStream } from 'ai'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
@@ -1497,7 +1497,7 @@ export async function streamResponse(input: {
   }
 }
 
-export function openSessionRunStream(sessionId: string, options?: { skipReplay?: boolean }): ReadableStream<Uint8Array> {
+export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
   assertRunnableSession(sessionId)
 
   const runId = activeRunIdsBySession.get(sessionId)
@@ -1505,7 +1505,7 @@ export function openSessionRunStream(sessionId: string, options?: { skipReplay?:
     return openIdleRunStream()
   }
 
-  return openRunEventStream(runId, { replayBufferedEvents: !options?.skipReplay })
+  return openRunEventStream(runId)
 }
 
 export async function abortRun(runId: string): Promise<void> {
@@ -1592,13 +1592,10 @@ export async function abortAllRuns(): Promise<void> {
 }
 
 export function openRunStream(runId: string): ReadableStream<Uint8Array> {
-  return openRunEventStream(runId, { replayBufferedEvents: true })
+  return openRunEventStream(runId)
 }
 
-function openRunEventStream(
-  runId: string,
-  options: { replayBufferedEvents: boolean },
-): ReadableStream<Uint8Array> {
+function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
   const run = getRun(runId)
   if (!run) {
     throw new AppError({
@@ -1623,30 +1620,15 @@ function openRunEventStream(
         }
       }
 
-      if (options.replayBufferedEvents) {
-        for (const chunk of active?.chunkBuffer ?? []) {
-          const terminal = isTerminalUIMessageChunk(chunk)
-          writeChunk(chunk, terminal)
-          if (terminal) {
-            return
-          }
+      for (const chunk of active?.chunkBuffer ?? []) {
+        const terminal = isTerminalUIMessageChunk(chunk)
+        writeChunk(chunk, terminal)
+        if (terminal) {
+          return
         }
       }
 
       if (run.status !== 'streaming' || !active) {
-        // When skipping replay, late subscribers still need the terminal chunk
-        // if the run already finished, so they don't hang waiting for live events
-        // that will never arrive.
-        if (!options.replayBufferedEvents && active?.terminalStatus) {
-          const terminalChunk: UIMessageChunk
-            = active.terminalStatus === 'complete'
-              ? { type: 'finish', finishReason: 'stop' }
-              : active.terminalStatus === 'aborted'
-                ? { type: 'abort', reason: 'user' }
-                : { type: 'error', errorText: 'Chat run failed' }
-          writeChunk(terminalChunk, true)
-          return
-        }
         controller.close()
         return
       }
@@ -2352,30 +2334,36 @@ async function publishTerminalChunk(activeRun: ActiveRun, chunk: UIMessageChunk)
   publishRunStartChunk(activeRun)
   const status = readTerminalStatus(chunk)
   const errorText = chunk.type === 'error' ? chunk.errorText : null
-  await finalizeActiveRun(activeRun, status, errorText)
+  await finalizeActiveRun(activeRun, status, errorText, chunk)
   publishUIMessageChunk(activeRun, chunk, true)
 }
 
-async function projectFinalMessage(activeRun: ActiveRun): Promise<UIMessage> {
-  const stream = new ReadableStream<UIMessageChunk>({
-    start(controller) {
+async function readFinalMessageFromAiSdkStream(
+  activeRun: ActiveRun,
+  terminalChunk: UIMessageChunk,
+): Promise<UIMessage> {
+  let responseMessage = activeRun.finalMessage
+
+  const stream = createUIMessageStream<UIMessage>({
+    originalMessages: [activeRun.finalMessage],
+    generateId: () => activeRun.messageId,
+    execute({ writer }) {
       for (const chunk of activeRun.chunkBuffer) {
-        controller.enqueue(chunk)
+        writer.write(chunk)
       }
-      controller.close()
+      writer.write(terminalChunk)
+    },
+    onFinish(event) {
+      responseMessage = event.responseMessage
+    },
+    onError(error) {
+      return error instanceof Error ? error.message : String(error)
     },
   })
 
-  let latestMessage = activeRun.finalMessage
-  for await (const message of readUIMessageStream<UIMessage>({
-    message: activeRun.finalMessage,
-    stream,
-    terminateOnError: false,
-  })) {
-    latestMessage = message
-  }
+  await stream.pipeTo(new WritableStream<UIMessageChunk>())
 
-  return latestMessage
+  return responseMessage
 }
 
 function readTerminalStatus(chunk: UIMessageChunk): TerminalChatMessageStatus {
@@ -2396,6 +2384,7 @@ async function finalizeActiveRun(
   activeRun: ActiveRun,
   status: ChatMessageStatus,
   errorText: string | null,
+  terminalChunk: UIMessageChunk,
 ): Promise<void> {
   if (status === 'streaming' || activeRun.terminalStatus) {
     return
@@ -2403,7 +2392,7 @@ async function finalizeActiveRun(
 
   activeRun.terminalStatus = status
 
-  activeRun.finalMessage = await projectFinalMessage(activeRun)
+  activeRun.finalMessage = await readFinalMessageFromAiSdkStream(activeRun, terminalChunk)
   persistMessageSnapshot({
     sessionId: activeRun.sessionId,
     messageId: activeRun.messageId,

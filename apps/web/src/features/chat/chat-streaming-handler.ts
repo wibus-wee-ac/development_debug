@@ -13,6 +13,7 @@ export class ChatStreamingHandler {
   private terminated = false
   private pendingMessages = new Map<string, { message: UIMessage, receivedAtMs: number }>()
   private rafId: number | null = null
+  private microtaskFlushQueued = false
 
   constructor(
     sessionId: string,
@@ -102,12 +103,15 @@ export class ChatStreamingHandler {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
+    this.microtaskFlushQueued = false
     this.pendingMessages.clear()
   }
 
   private flushPendingMessages(): void {
     if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId)
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.rafId)
+      }
       this.rafId = null
     }
     if (this.pendingMessages.size === 0) {
@@ -143,6 +147,17 @@ export class ChatStreamingHandler {
 
     // Batch: store the latest snapshot per message, flush on next rAF
     this.pendingMessages.set(message.id, { message, receivedAtMs })
+
+    if (typeof requestAnimationFrame !== 'function') {
+      if (!this.microtaskFlushQueued) {
+        this.microtaskFlushQueued = true
+        queueMicrotask(() => {
+          this.microtaskFlushQueued = false
+          this.flushPendingMessages()
+        })
+      }
+      return
+    }
 
     if (this.rafId === null) {
       this.rafId = requestAnimationFrame(() => {

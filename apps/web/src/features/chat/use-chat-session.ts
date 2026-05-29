@@ -308,7 +308,7 @@ export function useChatSession(chatSessionId: string | null) {
       chatSessionId,
       streamingMessageId,
       performance.now(),
-      { mode: 'passive', useStoredMessageSnapshot: true },
+      { mode: 'passive', useStoredMessageSnapshot: false },
     )
     handler.start(controller)
     passiveStreamRef.current = {
@@ -323,7 +323,6 @@ export function useChatSession(chatSessionId: string | null) {
         const res = await subscribeChatSessionStream({
           sessionId: chatSessionId,
           signal: controller.signal,
-          skipReplay: true,
         })
         if (!res.ok) {
           const body = await res.text().catch(() => '')

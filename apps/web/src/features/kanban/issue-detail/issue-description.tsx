@@ -389,6 +389,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
   return (
     <MarkdownEditor
       content={issue.description ?? ''}
+      documentId={issue.id}
       onSave={(md) => {
         if (md !== (issue.description ?? '')) {
           onUpdate({ description: md || null })

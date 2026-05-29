@@ -158,6 +158,58 @@ interface UnsupportedLiveAwaitStatus {
   }
 }
 
+interface LiveAwaitStatusCacheEntry {
+  version: 1
+  capturedAt: number
+  status: LiveAwaitStatus
+}
+
+const LIVE_AWAIT_STATUS_CACHE_PREFIX = 'cradle:session-await:live-status:'
+
+function isLiveAwaitStatus(value: unknown): value is LiveAwaitStatus {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as { supported?: unknown, kind?: unknown }
+  return candidate.supported === true && (candidate.kind === 'github-ci' || candidate.kind === 'github-review')
+}
+
+function readCachedLiveAwaitStatus(awaitId: string | null): LiveAwaitStatus | undefined {
+  if (!awaitId || typeof globalThis.localStorage === 'undefined') {
+    return undefined
+  }
+
+  try {
+    const raw = globalThis.localStorage.getItem(`${LIVE_AWAIT_STATUS_CACHE_PREFIX}${awaitId}`)
+    if (!raw) {
+      return undefined
+    }
+    const entry = JSON.parse(raw) as Partial<LiveAwaitStatusCacheEntry>
+    return entry.version === 1 && isLiveAwaitStatus(entry.status) ? entry.status : undefined
+  }
+  catch {
+    return undefined
+  }
+}
+
+function writeCachedLiveAwaitStatus(awaitId: string | null, status: LiveAwaitStatus | UnsupportedLiveAwaitStatus | undefined): void {
+  if (!awaitId || !isLiveAwaitStatus(status) || typeof globalThis.localStorage === 'undefined') {
+    return
+  }
+
+  try {
+    const entry: LiveAwaitStatusCacheEntry = {
+      version: 1,
+      capturedAt: Date.now(),
+      status,
+    }
+    globalThis.localStorage.setItem(`${LIVE_AWAIT_STATUS_CACHE_PREFIX}${awaitId}`, JSON.stringify(entry))
+  }
+  catch {
+    // Cache failure should never block live status rendering.
+  }
+}
+
 // ── Hooks ──
 
 function useSessionAwaits(sessionId: string | null) {
@@ -169,11 +221,18 @@ function useSessionAwaits(sessionId: string | null) {
 }
 
 function useLiveCIStatus(awaitId: string | null, active: boolean) {
-  return useQuery({
+  const query = useQuery({
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
     ...queryRefreshPolicy(active ? 'active' : 'static', active ? { refetchInterval: 20_000 } : { staleTime: 60_000 }),
+    initialData: () => readCachedLiveAwaitStatus(awaitId),
     enabled: !!awaitId,
   })
+
+  useEffect(() => {
+    writeCachedLiveAwaitStatus(awaitId, query.data as LiveAwaitStatus | UnsupportedLiveAwaitStatus | undefined)
+  }, [awaitId, query.data])
+
+  return query
 }
 
 function useCreateGitHubAwait(sessionId: string | null, workspaceId: string | null) {
@@ -468,6 +527,17 @@ function buildRunTree(runs: LiveCheckRun[], workflowRuns: LiveWorkflowRun[]): Tr
   }
 
   return root
+}
+
+function collectExpandableNodeIds(nodes: TreeNode[]): string[] {
+  const ids: string[] = []
+  for (const node of nodes) {
+    if (isExpandableJobNode(node)) {
+      ids.push(node.id)
+    }
+    ids.push(...collectExpandableNodeIds(node.children))
+  }
+  return ids
 }
 
 // ── Tree rendering with rounded connectors ──
@@ -836,7 +906,26 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
 }
 
 function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: string, sessionId: string | null }) {
-  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set())
+  const tree = useMemo(() => buildRunTree(ci.checkRuns, ci.workflowRuns), [ci.checkRuns, ci.workflowRuns])
+  const defaultExpandedNodeIds = useMemo(() => collectExpandableNodeIds(tree), [tree])
+  const initializedExpandedNodeIdsRef = useRef(new Set(defaultExpandedNodeIds))
+  const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set(defaultExpandedNodeIds))
+
+  useEffect(() => {
+    const unseenNodeIds = defaultExpandedNodeIds.filter(nodeId => !initializedExpandedNodeIdsRef.current.has(nodeId))
+    if (unseenNodeIds.length === 0) {
+      return
+    }
+
+    setExpandedNodeIds((current) => {
+      const next = new Set(current)
+      for (const nodeId of unseenNodeIds) {
+        next.add(nodeId)
+        initializedExpandedNodeIdsRef.current.add(nodeId)
+      }
+      return next
+    })
+  }, [defaultExpandedNodeIds])
 
   if (!ci.hasToken) {
     return (
@@ -849,7 +938,6 @@ function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: s
     )
   }
 
-  const tree = buildRunTree(ci.checkRuns, ci.workflowRuns)
   const targetLabel = ci.prNumber ? null : ci.ref.slice(0, 12)
   const summaryText = (() => {
     if (ci.noCIConfigured || ci.totalCount === 0) {

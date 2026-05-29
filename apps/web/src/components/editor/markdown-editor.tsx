@@ -1,3 +1,7 @@
+// Output: Shared Tiptap Markdown editor with guarded document synchronization.
+// Input: Markdown content, save callback, readonly state, placeholder, and Smart Mention providers.
+// Position: Editor-owned rendering and lifecycle boundary reused by Kanban and workspace surfaces.
+
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -6,7 +10,7 @@ import TaskList from '@tiptap/extension-task-list'
 import Typography from '@tiptap/extension-typography'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Markdown } from 'tiptap-markdown'
 
 import { cn } from '~/lib/cn'
@@ -25,6 +29,7 @@ function getMarkdownContent(storage: unknown): string {
 
 interface MarkdownEditorProps {
   content: string | null
+  documentId?: string
   onSave?: (markdown: string) => void
   readonly?: boolean
   placeholder?: string
@@ -37,6 +42,7 @@ interface MarkdownEditorProps {
 
 export function MarkdownEditor({
   content,
+  documentId,
   onSave,
   readonly = false,
   placeholder = '开始编写...',
@@ -44,10 +50,30 @@ export function MarkdownEditor({
   smartMentions,
 }: MarkdownEditorProps) {
   const onSaveRef = useRef(onSave)
+  const readonlyRef = useRef(readonly)
+  const smartMentionsRef = useRef(smartMentions)
+  const documentIdRef = useRef(documentId)
+  const externalContentRef = useRef(content ?? '')
 
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
+
+  useEffect(() => {
+    readonlyRef.current = readonly
+  }, [readonly])
+
+  useEffect(() => {
+    smartMentionsRef.current = smartMentions
+  }, [smartMentions])
+
+  const getSmartMentionItems = useCallback((query: string) => {
+    return smartMentionsRef.current?.getItems(query) ?? []
+  }, [])
+
+  const handleSmartMentionOpen = useCallback((attrs: SmartMentionAttrs) => {
+    smartMentionsRef.current?.onOpen?.(attrs)
+  }, [])
 
   const smartMentionsEnabled = !!smartMentions
 
@@ -81,8 +107,8 @@ export function MarkdownEditor({
       ...(smartMentionsEnabled
         ? [
             SmartMention.configure({
-              getItems: smartMentions.getItems,
-              onOpen: smartMentions.onOpen,
+              getItems: getSmartMentionItems,
+              onOpen: handleSmartMentionOpen,
             }),
           ]
         : []),
@@ -96,21 +122,45 @@ export function MarkdownEditor({
     },
     // Auto-save on blur
     onBlur: ({ editor: e }) => {
-      if (!readonly && onSaveRef.current) {
+      if (!readonlyRef.current && onSaveRef.current) {
         const md = getMarkdownContent(e.storage)
         onSaveRef.current(md)
       }
     },
-  }, [readonly, smartMentionsEnabled, smartMentions?.getItems, smartMentions?.onOpen])
+  }, [getSmartMentionItems, handleSmartMentionOpen, placeholder, smartMentionsEnabled])
 
-  // Update content when external content changes (initial load)
-  const initialSetRef = useRef(false)
   useEffect(() => {
-    if (editor && content !== null && !initialSetRef.current) {
-      editor.commands.setContent(content)
-      initialSetRef.current = true
+    editor?.setEditable(!readonly)
+  }, [editor, readonly])
+
+  useEffect(() => {
+    if (!editor) {
+      return
     }
-  }, [editor, content])
+
+    const nextContent = content ?? ''
+    const currentContent = getMarkdownContent(editor.storage)
+    const documentChanged = documentIdRef.current !== documentId
+    const hasLocalEdits = currentContent !== externalContentRef.current
+
+    if (documentChanged) {
+      documentIdRef.current = documentId
+      externalContentRef.current = nextContent
+      if (currentContent !== nextContent) {
+        editor.commands.setContent(nextContent)
+      }
+      return
+    }
+
+    if (nextContent === externalContentRef.current) {
+      return
+    }
+
+    externalContentRef.current = nextContent
+    if (!hasLocalEdits && currentContent !== nextContent) {
+      editor.commands.setContent(nextContent)
+    }
+  }, [content, documentId, editor])
 
   // Keyboard shortcut: Cmd+S to save
   useEffect(() => {

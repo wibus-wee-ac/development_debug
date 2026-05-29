@@ -2,7 +2,16 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agents, sessions } from '@cradle/db'
+import {
+  agents,
+  backendCapabilitySnapshots,
+  backendSessionBindings,
+  chatSessionQueueItems,
+  messages,
+  runtimeAuditLog,
+  sessions,
+  usageLogs,
+} from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -173,7 +182,7 @@ describe('profiles capability', () => {
     }
   })
 
-  it('deletes profile-owned agents even when older sessions reference the agent only', async () => {
+  it('preserves chats and detaches runtime references when deleting a profile', async () => {
     const dataDir = makeTempDir('cradle-profile-delete-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
@@ -206,8 +215,6 @@ describe('profiles capability', () => {
           avatarUrl: null,
           avatarStyle: 'bottts-neutral',
           avatarSeed: 'cleanup',
-          agentProfileId: 'profile-cleanup',
-          providerTargetKind: 'manual-profile',
           providerTargetId: 'profile-cleanup',
           runtimeKind: 'standard',
           configJson: '{}',
@@ -220,12 +227,75 @@ describe('profiles capability', () => {
           id: 'session-agent-only-cleanup',
           workspaceId: null,
           title: 'Legacy Agent Session',
-          agentProfileId: null,
-          providerTargetKind: 'manual-profile',
           providerTargetId: 'profile-cleanup',
           runtimeKind: 'standard',
           agentId: 'agent-cleanup',
           configJson: '{}',
+        })
+        .run()
+      db()
+        .insert(messages)
+        .values({
+          id: 'message-cleanup-user',
+          sessionId: 'session-agent-only-cleanup',
+          role: 'user',
+          content: 'keep this chat',
+          messageJson: JSON.stringify({ id: 'message-cleanup-user', role: 'user', parts: [] }),
+        })
+        .run()
+      db()
+        .insert(backendSessionBindings)
+        .values({
+          id: 'binding-cleanup',
+          chatSessionId: 'session-agent-only-cleanup',
+          providerTargetId: 'profile-cleanup',
+          runtimeKind: 'standard',
+          requestedModelId: 'gpt-4o',
+        })
+        .run()
+      db()
+        .insert(usageLogs)
+        .values({
+          id: 'usage-cleanup',
+          sessionId: 'session-agent-only-cleanup',
+          messageId: 'message-cleanup-user',
+          providerTargetId: 'profile-cleanup',
+          modelId: 'gpt-4o',
+          promptTokens: 1,
+          completionTokens: 2,
+          totalTokens: 3,
+        })
+        .run()
+      db()
+        .insert(chatSessionQueueItems)
+        .values({
+          id: 'queue-cleanup',
+          sessionId: 'session-agent-only-cleanup',
+          mode: 'queue',
+          status: 'pending',
+          text: 'queued',
+          providerTargetId: 'profile-cleanup',
+          position: 0,
+        })
+        .run()
+      db()
+        .insert(backendCapabilitySnapshots)
+        .values({
+          id: 'capability-cleanup',
+          providerTargetId: 'profile-cleanup',
+          runtimeKind: 'standard',
+          source: 'session_start',
+          capabilitiesJson: '{}',
+          recordedAt: 1,
+        })
+        .run()
+      db()
+        .insert(runtimeAuditLog)
+        .values({
+          providerTargetId: 'profile-cleanup',
+          providerKind: 'openai-compatible',
+          action: 'test',
+          details: '{}',
         })
         .run()
 
@@ -233,10 +303,38 @@ describe('profiles capability', () => {
         new Request('http://localhost/profiles/profile-cleanup', { method: 'DELETE' }),
       )
       expect(deleteProfile.status).toBe(200)
-      expect(db().select().from(agents).where(eq(agents.id, 'agent-cleanup')).all()).toEqual([])
+      expect(db().select().from(agents).where(eq(agents.id, 'agent-cleanup')).all()).toEqual([
+        expect.objectContaining({
+          id: 'agent-cleanup',
+          enabled: false,
+          providerTargetId: null,
+        }),
+      ])
+      expect(db().select().from(sessions).where(eq(sessions.id, 'session-agent-only-cleanup')).all()).toEqual([
+        expect.objectContaining({
+          id: 'session-agent-only-cleanup',
+          providerTargetId: null,
+          agentId: 'agent-cleanup',
+        }),
+      ])
+      expect(db().select().from(messages).where(eq(messages.id, 'message-cleanup-user')).all()).toEqual([
+        expect.objectContaining({ content: 'keep this chat' }),
+      ])
       expect(
-        db().select().from(sessions).where(eq(sessions.id, 'session-agent-only-cleanup')).all(),
-      ).toEqual([])
+        db().select().from(backendSessionBindings).where(eq(backendSessionBindings.id, 'binding-cleanup')).all(),
+      ).toEqual([expect.objectContaining({ providerTargetId: null })])
+      expect(db().select().from(usageLogs).where(eq(usageLogs.id, 'usage-cleanup')).all()).toEqual([
+        expect.objectContaining({ providerTargetId: null }),
+      ])
+      expect(
+        db().select().from(chatSessionQueueItems).where(eq(chatSessionQueueItems.id, 'queue-cleanup')).all(),
+      ).toEqual([expect.objectContaining({ providerTargetId: null })])
+      expect(
+        db().select().from(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.id, 'capability-cleanup')).all(),
+      ).toEqual([expect.objectContaining({ providerTargetId: null })])
+      expect(
+        db().select().from(runtimeAuditLog).where(eq(runtimeAuditLog.action, 'test')).all(),
+      ).toEqual([expect.objectContaining({ providerTargetId: null })])
     }
  finally {
       shutdownInfra()

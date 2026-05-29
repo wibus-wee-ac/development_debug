@@ -6,11 +6,13 @@ import {
   agentSessions,
   backendCapabilitySnapshots,
   backendSessionBindings,
+  chatSessionQueueItems,
   externalProviderRecords,
   providerModelCache,
   providerTargetModelCache,
   providerTargets,
   runtimeAuditLog,
+  sessions,
   usageLogs,
 } from '@cradle/db'
 import { and, eq, inArray } from 'drizzle-orm'
@@ -20,7 +22,6 @@ import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../providers/types'
-import * as Session from '../session/service'
 
 const ProviderTargetRefSchema = z.object({
   id: z.string().trim().min(1),
@@ -296,6 +297,7 @@ export function removeProviderTarget(providerTargetId: string): void {
   const target = resolveProviderTarget(providerTargetId)
   const d = db()
   d.transaction((tx) => {
+    const now = nowUnix()
     const ownedAgentIds = tx
       .select({ id: agents.id })
       .from(agents)
@@ -303,19 +305,42 @@ export function removeProviderTarget(providerTargetId: string): void {
       .all()
       .map(row => row.id)
 
-    Session.deleteByProviderTargetInDb(target.id, tx)
-    Session.deleteByAgentIdsInDb(ownedAgentIds, tx)
-
-    tx.delete(backendSessionBindings).where(eq(backendSessionBindings.providerTargetId, target.id)).run()
-    tx.delete(backendCapabilitySnapshots).where(eq(backendCapabilitySnapshots.providerTargetId, target.id)).run()
-    tx.delete(runtimeAuditLog).where(eq(runtimeAuditLog.providerTargetId, target.id)).run()
-    tx.delete(usageLogs).where(eq(usageLogs.providerTargetId, target.id)).run()
+    tx.update(sessions)
+      .set({ providerTargetId: null, updatedAt: now })
+      .where(eq(sessions.providerTargetId, target.id))
+      .run()
+    tx.update(backendSessionBindings)
+      .set({ providerTargetId: null, updatedAt: now })
+      .where(eq(backendSessionBindings.providerTargetId, target.id))
+      .run()
+    tx.update(backendCapabilitySnapshots)
+      .set({ providerTargetId: null })
+      .where(eq(backendCapabilitySnapshots.providerTargetId, target.id))
+      .run()
+    tx.update(runtimeAuditLog)
+      .set({ providerTargetId: null })
+      .where(eq(runtimeAuditLog.providerTargetId, target.id))
+      .run()
+    tx.update(usageLogs)
+      .set({ providerTargetId: null })
+      .where(eq(usageLogs.providerTargetId, target.id))
+      .run()
+    tx.update(chatSessionQueueItems)
+      .set({ providerTargetId: null, updatedAt: now })
+      .where(eq(chatSessionQueueItems.providerTargetId, target.id))
+      .run()
     tx.delete(providerModelCache).where(eq(providerModelCache.providerTargetId, target.id)).run()
     tx.delete(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, target.id)).run()
     tx.delete(agentSessions).where(eq(agentSessions.providerTargetId, target.id)).run()
     if (ownedAgentIds.length > 0) {
-      tx.delete(agentSessions).where(inArray(agentSessions.agentId, ownedAgentIds)).run()
-      tx.delete(agents).where(inArray(agents.id, ownedAgentIds)).run()
+      tx.update(agents)
+        .set({
+          providerTargetId: null,
+          enabled: false,
+          updatedAt: now,
+        })
+        .where(inArray(agents.id, ownedAgentIds))
+        .run()
     }
     tx.delete(providerTargets).where(eq(providerTargets.id, target.id)).run()
   })
