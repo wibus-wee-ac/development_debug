@@ -113,6 +113,35 @@ function normalizeDirectoryPath(path: string): string {
   return path.replace(/\/+$/g, '')
 }
 
+function toTreeDirectoryPath(path: string): string {
+  return path.endsWith('/') ? path : `${path}/`
+}
+
+function readExpandedTreePaths(model: ReturnType<typeof useFileTree>['model'], paths: string[]): string[] {
+  const expandedPaths: string[] = []
+  for (const path of paths) {
+    if (!path.endsWith('/')) {
+      continue
+    }
+    const item = model.getItem(path)
+    if (item?.isDirectory() && 'isExpanded' in item && item.isExpanded()) {
+      expandedPaths.push(path)
+    }
+  }
+  return expandedPaths
+}
+
+function resetFileTreePaths(
+  model: ReturnType<typeof useFileTree>['model'],
+  paths: string[],
+  preparedInput: ReturnType<typeof prepareFileTreeInput>,
+): void {
+  model.resetPaths(paths, {
+    preparedInput,
+    initialExpandedPaths: readExpandedTreePaths(model, paths),
+  })
+}
+
 async function fetchWorkspaceFileChildren(workspaceId: string, path: string): Promise<WorkspaceFileEntry[]> {
   const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}/files/children`, getServerUrl())
   if (path.length > 0) {
@@ -527,7 +556,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   })
 
   useEffect(() => {
-    model.resetPaths(paths, { preparedInput })
+    resetFileTreePaths(model, paths, preparedInput)
   }, [model, paths, preparedInput])
 
   // Update git status when it changes
@@ -539,7 +568,6 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
     activeWorkspaceFilePathRef.current = activeWorkspaceFilePath
 
     if (!activeWorkspaceFilePath) {
-      model.resetPaths(paths, { preparedInput })
       return
     }
 
@@ -735,7 +763,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
                 openWorkspaceFile(path, getWorkspaceFileDefaultView(path))
                 return
               }
-              model.focusPath(path)
+              model.focusPath(toTreeDirectoryPath(path))
             }}
             onOpenDefault={openInDefaultApplication}
             onPackRequested={onPackRequested}
