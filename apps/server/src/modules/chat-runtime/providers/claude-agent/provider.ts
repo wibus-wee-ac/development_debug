@@ -646,6 +646,7 @@ function readClaudeAgentModelId(
 }
 
 function buildClaudeAgentModelEnv(config: {
+  // The main model config, used as a fallback for all roles and subagentModel if specific aliases aren't set
   model: string | undefined
   modelAliases?: {
     haiku?: string
@@ -656,10 +657,10 @@ function buildClaudeAgentModelEnv(config: {
 } | undefined): Record<string, string> {
   const env: Record<string, string> = {}
   const aliases = config?.modelAliases
-  const haiku = readNonEmptyEnvValue(aliases?.haiku)
-  const sonnet = readNonEmptyEnvValue(aliases?.sonnet)
-  const opus = readNonEmptyEnvValue(aliases?.opus)
-  const subagentModel = readNonEmptyEnvValue(config?.subagentModel)
+  const haiku = readNonEmptyEnvValue(aliases?.haiku) || config?.model
+  const sonnet = readNonEmptyEnvValue(aliases?.sonnet) || config?.model
+  const opus = readNonEmptyEnvValue(aliases?.opus) || config?.model
+  const subagentModel = readNonEmptyEnvValue(config?.subagentModel) || config?.model
 
   if (haiku) {
     env.ANTHROPIC_DEFAULT_HAIKU_MODEL = haiku
