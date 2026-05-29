@@ -28,11 +28,11 @@ export function ChatRuntimeView({
     boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundRuntimeKind: runtimeKind,
   })
-  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
+  const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!workspaceId) {
       return []
     }
-    return searchWorkspaceFiles({ workspaceId, query, limit: 30 })
+    return searchWorkspaceFiles({ workspaceId, query, limit: 30, signal })
   }, [workspaceId])
 
   const sendOverridesRef = useRef({

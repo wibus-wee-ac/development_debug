@@ -149,11 +149,11 @@ function useNewChatPageOwner(active: boolean) {
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
     [selection.runtimeKind],
   )
-  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
+  const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!selectedProjectWorkspaceId) {
       return []
     }
-    return searchWorkspaceFiles({ workspaceId: selectedProjectWorkspaceId, query, limit: 30 })
+    return searchWorkspaceFiles({ workspaceId: selectedProjectWorkspaceId, query, limit: 30, signal })
   }, [selectedProjectWorkspaceId])
   const sessionsReady = selectedProjectWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading

@@ -12,6 +12,7 @@ export interface WorkspaceFileChangeEvent {
   type: 'directory-changed'
   workspaceId: string
   path: string
+  reason: 'direct' | 'ancestor'
   timestamp: number
 }
 
@@ -62,13 +63,13 @@ function getOrCreateWatchRecord(workspaceId: string, workspacePath: string): Wor
     refCount: 0,
     watcher: watch(workspacePath, { recursive: true }, (_eventType, filename) => {
       invalidateWorkspaceFileList(workspacePath)
-      queueDirectoryChanged(record, readChangedDirectoryPath(workspacePath, filename))
+      queueDirectoryChanged(record, readChangedDirectoryPath(workspacePath, filename), 'direct')
     }),
     workspaceId,
     workspacePath,
   }
   record.watcher.on('error', () => {
-    queueDirectoryChanged(record, '')
+    queueDirectoryChanged(record, '', 'direct')
   })
   watchRecords.set(workspaceId, record)
   return record
@@ -90,14 +91,19 @@ function readChangedDirectoryPath(workspacePath: string, filename: string | Buff
   return normalizeRelativePath(relative(workspacePath, parent))
 }
 
-function queueDirectoryChanged(record: WorkspaceWatchRecord, path: string): void {
+function queueDirectoryChanged(record: WorkspaceWatchRecord, path: string, reason: WorkspaceFileChangeEvent['reason']): void {
   const event = {
     type: 'directory-changed',
     workspaceId: record.workspaceId,
     path,
+    reason,
     timestamp: Date.now(),
   } satisfies WorkspaceFileChangeEvent
   pendingEventsByKey.set(`${record.workspaceId}\0${path}`, event)
+  const parentPath = readParentDirectoryPath(path)
+  if (parentPath !== path) {
+    queueDirectoryChanged(record, parentPath, 'ancestor')
+  }
   if (flushTimer) {
     return
   }
@@ -121,4 +127,12 @@ function flushWorkspaceFileChangeEvents(): void {
 
 function normalizeRelativePath(path: string): string {
   return path.split(sep).join('/').replace(/^\/+|\/+$/g, '')
+}
+
+function readParentDirectoryPath(path: string): string {
+  if (!path) {
+    return path
+  }
+  const index = path.lastIndexOf('/')
+  return index < 0 ? '' : path.slice(0, index)
 }

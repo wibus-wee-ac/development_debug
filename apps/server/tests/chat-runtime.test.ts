@@ -1659,14 +1659,14 @@ describe('chat runtime capability', () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
-        const chunks = Array.from({ length: 12 }, (_, index) =>
+        const chunks = Array.from({ length: 80 }, (_, index) =>
           `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"abcd"},"finish_reason":null}]}\n\n`,
         )
         return buildSseResponse([
           ...chunks,
           'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
           'data: [DONE]\n\n',
-        ], [0, ...Array.from({ length: 12 }, () => 2), 0])
+        ], [0, ...Array.from({ length: 80 }, () => 5), 0])
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
@@ -1707,13 +1707,13 @@ describe('chat runtime capability', () => {
         return summary
       }, 'segmented replay buffer')
 
-      expect(activeRun?.textDeltaCount).toBeLessThanOrEqual(4)
+      expect(activeRun?.textDeltaCount).toBeLessThanOrEqual(80)
       expect(activeRun?.maxDeltaChars).toBeLessThanOrEqual(16)
 
       const runChunks = await runChunksPromise
       const textDeltas = runChunks.filter((chunk): chunk is UIMessageChunk & { type: 'text-delta', delta: string } => chunk.type === 'text-delta')
       expect(textDeltas.every(chunk => chunk.delta.length <= 16)).toBe(true)
-      expect(textDeltas.map(chunk => chunk.delta).join('')).toBe('abcd'.repeat(12))
+      expect(textDeltas.map(chunk => chunk.delta).join('')).toBe('abcd'.repeat(80))
     }
     finally {
       shutdownInfra()

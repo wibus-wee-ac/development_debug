@@ -16,7 +16,7 @@ export interface MentionItem {
 interface MentionPanelProps {
   items: MentionItem[]
   query: string
-  searchItems?: (query: string) => Promise<MentionItem[]>
+  searchItems?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
   onSelect: (item: MentionItem) => void
   onClose: () => void
   visible: boolean
@@ -67,6 +67,7 @@ export function MentionPanel({ items, query, searchItems, onSelect, onClose, vis
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   const previousQueryRef = useRef(query)
   const requestSeqRef = useRef(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const effectiveItems = searchItems ? remoteItems : items
 
   // Build the fzf index once per items change; reuse for each query.
@@ -92,6 +93,8 @@ export function MentionPanel({ items, query, searchItems, onSelect, onClose, vis
 
   useEffect(() => {
     if (!visible || !searchItems) {
+      abortControllerRef.current?.abort()
+      abortControllerRef.current = null
       setRemoteItems([])
       setRemoteLoading(false)
       return
@@ -99,17 +102,21 @@ export function MentionPanel({ items, query, searchItems, onSelect, onClose, vis
 
     const requestSeq = requestSeqRef.current + 1
     requestSeqRef.current = requestSeq
+    abortControllerRef.current?.abort()
+    const abortController = new AbortController()
+    abortControllerRef.current = abortController
     setRemoteLoading(true)
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         try {
-          const nextItems = await searchItems(query)
+          const nextItems = await searchItems(query, abortController.signal)
           if (requestSeqRef.current === requestSeq) {
             setRemoteItems(nextItems)
           }
         }
-        catch {
-          if (requestSeqRef.current === requestSeq) {
+        catch (error) {
+          if (requestSeqRef.current === requestSeq && !abortController.signal.aborted) {
+            console.error('[MentionPanel] failed to search workspace files:', error)
             setRemoteItems([])
           }
         }
@@ -123,6 +130,7 @@ export function MentionPanel({ items, query, searchItems, onSelect, onClose, vis
 
     return () => {
       window.clearTimeout(timeoutId)
+      abortController.abort()
     }
   }, [query, searchItems, visible])
 

@@ -92,7 +92,7 @@ export interface ComposerExternalSignals {
 export interface ComposerViewOptions {
   placeholder?: string
   availableFiles?: MentionItem[]
-  searchFiles?: (query: string) => Promise<MentionItem[]>
+  searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
   className?: string
   cardClassName?: string
   textareaClassName?: string

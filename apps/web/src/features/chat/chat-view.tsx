@@ -41,7 +41,7 @@ interface ChatViewProps {
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
   /** Lazy workspace file search for @ mention */
-  searchFiles?: (query: string) => Promise<MentionItem[]>
+  searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
@@ -218,7 +218,7 @@ function ChatComposerSection({
   permissionModeControl?: React.ReactNode
   placeholder?: string
   availableFiles: MentionItem[]
-  searchFiles?: (query: string) => Promise<MentionItem[]>
+  searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null

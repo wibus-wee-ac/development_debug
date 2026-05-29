@@ -29,10 +29,10 @@ import {
   CommandSeparator,
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
-import { Spinner } from '~/components/ui/spinner'
+import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
-import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
+import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -351,15 +351,12 @@ function useCommands(close: () => void): CommandAction[] {
 // ── File search hook ──────────────────────────────────────────────────────────
 
 function useFileSearch(query: string, enabled: boolean, workspaceId: string | null | undefined) {
-  const { data: files = [], isFetching } = useQuery({
-    queryKey: ['workspace-file-search', workspaceId, query, 10],
-    queryFn: async () => {
-      const data = await searchWorkspaceFiles({ workspaceId: workspaceId!, query, limit: 10 })
-      return GlobalSearchFileListSchema.parse(data) satisfies GlobalSearchFile[]
-    },
-    enabled: enabled && !!workspaceId && !!query.trim(),
-    staleTime: 30_000,
+  const { files: rawFiles, isPending: searchDebouncing } = useWorkspaceFiles(workspaceId ?? null, {
+    query,
+    limit: 10,
+    enabled: enabled && !!query.trim(),
   })
+  const files = GlobalSearchFileListSchema.parse(rawFiles) satisfies GlobalSearchFile[]
 
   const trimmed = query.trim().toLowerCase()
 
@@ -378,7 +375,7 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
   return {
     files: filtered,
     workspaceId,
-    isPending: enabled && !!trimmed && !!workspaceId && isFetching,
+    isPending: enabled && !!trimmed && !!workspaceId && searchDebouncing,
   }
 }
 
@@ -603,7 +600,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
                   <div className="truncate text-[11px] text-muted-foreground">{t(paletteMode.descriptionKey)}</div>
                 </div>
               </div>
-              {isPending && <Spinner className="size-3.5 shrink-0" />}
+              <DelayedSpinner active={isPending} className="size-3.5 shrink-0" />
             </div>
             <CommandInput
               placeholder={t(paletteMode.placeholderKey)}
@@ -827,7 +824,7 @@ function LoadingState() {
 
   return (
     <div className="flex flex-col items-center gap-2">
-      <Spinner className="size-4" />
+      <DelayedSpinner active className="size-4" />
       <span className="text-xs text-muted-foreground">{t('state.loading')}</span>
     </div>
   )

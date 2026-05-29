@@ -4,7 +4,7 @@ import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@
 import { useQueryClient } from '@tanstack/react-query'
 import { FileDiffIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getWorkspacesByIdGitStatusQueryKey } from '~/api-gen/@tanstack/react-query.gen'
@@ -34,7 +34,6 @@ import { resolveTreeItemFromEvent } from './tree-event-target'
 import { useGitFileStatuses } from './use-git'
 
 type ChangesViewMode = 'type' | 'tree'
-type TreeGitStatus = { path: string, status: GitFileStatus['status'] }
 
 function formatErrorDescription(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
@@ -49,7 +48,7 @@ interface ChangesPanelProps {
 export function ChangesPanel({ workspaceId, workspacePath, onPackRequested }: ChangesPanelProps) {
   const [viewMode, setViewMode] = useState<ChangesViewMode>('type')
   const { data: files, isLoading, isError, isSuccess } = useGitFileStatuses(workspaceId)
-  const sections = useMemo(() => groupGitFileStatuses(files ?? []), [files])
+  const sections = groupGitFileStatuses(files ?? [])
   const changedFiles = files ?? []
   const changedFileCount = files?.length ?? 0
 
@@ -58,25 +57,22 @@ export function ChangesPanel({ workspaceId, workspacePath, onPackRequested }: Ch
 
   const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
 
-  const handleReviewAll = useCallback(() => {
+  const handleReviewAll = () => {
     if (!workspaceId) {
       return
     }
     openDiffTab({ workspaceId, title: 'All Changes' })
     setBrowserPanelOpen(true)
-  }, [workspaceId, openDiffTab, setBrowserPanelOpen])
+  }
 
-  const handleReviewFile = useCallback(
-    (path: string) => {
-      if (!workspaceId) {
-        return
-      }
-      const tabId = openDiffTab({ workspaceId, title: 'All Changes' })
-      setBrowserPanelOpen(true)
-      requestScrollToFilePath({ path, tabId })
-    },
-    [workspaceId, openDiffTab, setBrowserPanelOpen, requestScrollToFilePath],
-  )
+  const handleReviewFile = (path: string) => {
+    if (!workspaceId) {
+      return
+    }
+    const tabId = openDiffTab({ workspaceId, title: 'All Changes' })
+    setBrowserPanelOpen(true)
+    requestScrollToFilePath({ path, tabId })
+  }
 
   let changesContent: ReactNode = (
     <ChangesTypeView sections={sections} onFileClick={handleReviewFile} />
@@ -243,14 +239,13 @@ function ChangeSectionView({
           {section.files.length}
         </span>
       </div>
-      <div
+      <menu
         className="overflow-hidden rounded-md border border-border/35 bg-background/30"
-        role="list"
       >
         {section.files.map(file => (
           <ChangeFileRow key={file.path} file={file} onClick={onFileClick} />
         ))}
-      </div>
+      </menu>
     </section>
   )
 }
@@ -277,26 +272,20 @@ function ChangesTreeView({
   const copyPathChordActiveRef = useRef(false)
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
-  const paths = useMemo(() => files.map(file => file.path), [files])
-  const filePathSet = useMemo(() => new Set(paths), [paths])
-  const preparedInput = useMemo(
-    () => prepareFileTreeInput(paths, { flattenEmptyDirectories: true }),
-    [paths],
-  )
-  const gitStatus = useMemo<TreeGitStatus[]>(
-    () => files.map(file => ({ path: file.path, status: file.status })),
-    [files],
-  )
-  const refreshChangedFiles = useCallback(async () => {
+  const paths = files.map(file => file.path)
+  const filePathSet = new Set(paths)
+  const preparedInput = prepareFileTreeInput(paths, { flattenEmptyDirectories: true })
+  const gitStatus = files.map(file => ({ path: file.path, status: file.status }))
+  const refreshChangedFiles = async () => {
     if (!workspaceId) {
       return
     }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: getWorkspacesByIdGitStatusQueryKey({ path: { id: workspaceId } }) }),
-      queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] }),
+      queryClient.invalidateQueries({ queryKey: ['workspace-file-search', workspaceId] }),
     ])
-  }, [queryClient, workspaceId])
-  const commitRename = useEffectEvent(async (sourcePath: string, destinationPath: string) => {
+  }
+  const commitRename = async (sourcePath: string, destinationPath: string) => {
     if (!workspaceId) {
       return
     }
@@ -308,7 +297,7 @@ function ChangesTreeView({
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
     await refreshChangedFiles()
-  })
+  }
 
   const { model } = useFileTree({
     preparedInput,
@@ -350,7 +339,7 @@ function ChangesTreeView({
   })
   const selectedPaths = useFileTreeSelection(model)
 
-  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+  const commitCreate = async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
     if (!workspaceId) {
       return null
     }
@@ -369,21 +358,21 @@ function ChangesTreeView({
     await refreshChangedFiles()
     model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
     return nextPath
-  }, [model, refreshChangedFiles, t, workspaceId])
-  const copyRelativePath = useCallback(async (path: string) => {
+  }
+  const copyRelativePath = async (path: string) => {
     await navigator.clipboard.writeText(path)
-  }, [])
-  const copyAbsolutePath = useCallback(async (path: string) => {
+  }
+  const copyAbsolutePath = async (path: string) => {
     await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, path) : path)
-  }, [workspacePath])
-  const openWorkspaceFile = useCallback((path: string) => {
+  }
+  const openWorkspaceFile = (path: string) => {
     if (!workspaceId) {
       return
     }
     openWorkspaceFileTab({ workspaceId, path, view: getWorkspaceFileDefaultView(path) })
     setBrowserPanelOpen(true)
-  }, [openWorkspaceFileTab, setBrowserPanelOpen, workspaceId])
-  const openInDefaultApplication = useCallback(async (path: string) => {
+  }
+  const openInDefaultApplication = async (path: string) => {
     if (!workspacePath || !isElectron || !nativeIpc) {
       return
     }
@@ -398,8 +387,8 @@ function ChangesTreeView({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [t, workspacePath])
-  const revealWorkspacePath = useEffectEvent(async (path: string) => {
+  }
+  const revealWorkspacePath = async (path: string) => {
     if (!workspacePath || !isElectron || !nativeIpc) {
       return
     }
@@ -414,28 +403,25 @@ function ChangesTreeView({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  })
+  }
 
   useEffect(() => {
     model.resetPaths(paths, { preparedInput })
     model.setGitStatus(gitStatus)
   }, [model, paths, preparedInput, gitStatus])
 
-  const handleTreeDoubleClick = useCallback(
-    (event: ReactMouseEvent<HTMLElement>) => {
-      const item = resolveTreeItemFromEvent(event.nativeEvent)
-      if (!item || item.kind !== 'file' || !filePathSet.has(item.path)) {
-        return
-      }
-      event.preventDefault()
-      model.focusPath(item.path)
-      model.getItem(item.path)?.select()
-      onFileClick(item.path)
-    },
-    [filePathSet, model, onFileClick],
-  )
+  const handleTreeDoubleClick = (event: ReactMouseEvent<HTMLElement>) => {
+    const item = resolveTreeItemFromEvent(event.nativeEvent)
+    if (!item || item.kind !== 'file' || !filePathSet.has(item.path)) {
+      return
+    }
+    event.preventDefault()
+    model.focusPath(item.path)
+    model.getItem(item.path)?.select()
+    onFileClick(item.path)
+  }
 
-  const handleTreeKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
+  const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLElement>) => {
     const selectedPath = model.getFocusedPath() ?? model.getSelectedPaths()[0]
     if (isCopyPathChordStart(event.nativeEvent)) {
       event.preventDefault()
@@ -454,7 +440,7 @@ function ChangesTreeView({
       event.preventDefault()
       void copyRelativePath(selectedPath)
     }
-  }, [copyAbsolutePath, copyRelativePath, model])
+  }
 
   return (
     <div
@@ -462,6 +448,7 @@ function ChangesTreeView({
       data-testid="changes-panel-tree"
       onDoubleClick={handleTreeDoubleClick}
       onKeyDown={handleTreeKeyDown}
+      role="tree"
     >
       <PierreFileTree
         model={model}

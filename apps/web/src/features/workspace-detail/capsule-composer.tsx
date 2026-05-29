@@ -43,8 +43,8 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
     [selection.runtimeKind],
   )
-  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
-    return searchWorkspaceFiles({ workspaceId, query, limit: 30 })
+  const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
+    return searchWorkspaceFiles({ workspaceId, query, limit: 30, signal })
   }, [workspaceId])
   const sendDisabled = selection.runtimeKind === 'cli-tui'
     ? !effectiveAgent || sending

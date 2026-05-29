@@ -46,6 +46,7 @@ const WorkspaceFileEventSchema = z.object({
   type: z.enum(['ready', 'directory-changed']),
   workspaceId: z.string(),
   path: z.string().optional(),
+  reason: z.enum(['direct', 'ancestor']).optional(),
   timestamp: z.number(),
 })
 

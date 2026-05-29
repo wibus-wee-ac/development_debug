@@ -18,7 +18,7 @@ Also owns the sidebar interaction contract between workspace groups and the laun
 - **workspace-file-language.ts**: Shared workspace file language helpers mapping file names/extensions to Monaco and Shiki language ids.
 - **use-workspace-file-content.ts**: Hooks and URL builders for workspace file text content, preview metadata, raw bytes, and PDF renditions through workspace-owned APIs.
 - **workspace-sidebar.test.tsx**: Regression tests locking workspace header navigation, folder-only collapse behavior, accessible session menu triggers, long-title sidebar truncation classes, and shared session actions across button/context menus
-- **use-workspace-files.ts**: Hook for listing workspace files for composer mentions, using the shared active query refresh policy.
+- **use-workspace-files.ts**: Workspace file search helper/hook for composer mentions, smart mentions, and quick open, using the bounded workspace file search API instead of preloading recursive inventories.
 - **use-workspace.ts**: Hooks for listing, adding (via native directory picker), pin toggling, and deleting workspaces; exposes list readiness for interaction-level performance gates that depend on workspace names.
 - **use-session.ts**: Hook for listing sessions under a workspace
 - **use-cli-agents.ts**: Transitional hook for listing CLI-TUI Agent Profiles from the unified Agent Runtime

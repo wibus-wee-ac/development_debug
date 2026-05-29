@@ -806,7 +806,7 @@ function WorkspaceGroup({
         return
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspace.id] })
+      await queryClient.invalidateQueries({ queryKey: ['workspace-file-search', workspace.id] })
       setCreateRequest(null)
     }
     catch (error) {
