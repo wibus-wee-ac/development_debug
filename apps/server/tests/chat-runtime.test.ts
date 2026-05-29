@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
 
 interface ChatMessageRow {
   messageId: string
@@ -118,12 +119,11 @@ async function getChatMessages(app: ElysiaApp, sessionId: string): Promise<ChatM
   return await response.json() as ChatMessageRow[]
 }
 
-async function waitForCondition(assertion: () => void | Promise<void>, label: string): Promise<void> {
+async function waitForCondition<T>(assertion: () => T | Promise<T>, label: string): Promise<T> {
   let lastError: unknown
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
-      await assertion()
-      return
+      return await assertion()
     }
     catch (error) {
       lastError = error
@@ -131,6 +131,30 @@ async function waitForCondition(assertion: () => void | Promise<void>, label: st
     }
   }
   throw new Error(`Timed out waiting for ${label}: ${lastError instanceof Error ? lastError.message : String(lastError)}`)
+}
+
+async function waitForBackendRunStatus(
+  sessionId: string,
+  expectedStatus: 'streaming' | 'complete' | 'aborted' | 'failed',
+): Promise<typeof backendRuns.$inferSelect> {
+  return await waitForCondition(() => {
+    const run = db()
+      .select()
+      .from(backendRuns)
+      .where(eq(backendRuns.chatSessionId, sessionId))
+      .get()
+    expect(run?.status).toBe(expectedStatus)
+    return run!
+  }, `${sessionId} backend run ${expectedStatus}`)
+}
+
+function restoreEnv(name: string, previousValue: string | undefined): void {
+  if (previousValue === undefined) {
+    delete process.env[name]
+  }
+  else {
+    process.env[name] = previousValue
+  }
 }
 
 async function listChatQueue(app: ElysiaApp, sessionId: string): Promise<ChatQueueItemView[]> {
@@ -348,6 +372,341 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('keeps chat history and queue readable after deleting the provider target', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-provider-deleted',
+        name: 'Workspace Chat Provider Deleted',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-provider-deleted', {
+        providerTargetId: 'provider-target-chat-deleted',
+        sessionId: 'session-chat-provider-deleted',
+      })
+
+      const now = Math.floor(Date.now() / 1000)
+      const userMessage: UIMessage = {
+        id: 'message-provider-deleted-user',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Keep this history readable.' }],
+      }
+      const assistantMessage: UIMessage = {
+        id: 'message-provider-deleted-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'History remains available.' }],
+      }
+
+      db().insert(messages).values([
+        {
+          id: userMessage.id,
+          sessionId: 'session-chat-provider-deleted',
+          role: 'user',
+          status: 'complete',
+          content: 'Keep this history readable.',
+          messageJson: JSON.stringify(userMessage),
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: assistantMessage.id,
+          sessionId: 'session-chat-provider-deleted',
+          role: 'assistant',
+          status: 'complete',
+          content: 'History remains available.',
+          messageJson: JSON.stringify(assistantMessage),
+          createdAt: now + 1,
+          updatedAt: now + 1,
+        },
+      ]).run()
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-provider-deleted',
+        sessionId: 'session-chat-provider-deleted',
+        mode: 'queue',
+        status: 'pending',
+        text: 'Queued before provider deletion.',
+        providerTargetId: 'provider-target-chat-deleted',
+        position: 1,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const deleteRes = await app.handle(new Request('http://localhost/provider-targets/provider-target-chat-deleted', {
+        method: 'DELETE',
+      }))
+      expect(deleteRes.status).toBe(200)
+
+      const session = db().select().from(sessions).where(eq(sessions.id, 'session-chat-provider-deleted')).get()
+      expect(session?.providerTargetId).toBeNull()
+
+      const messagesRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-provider-deleted/messages'))
+      expect(messagesRes.status).toBe(200)
+      const messageRows = await messagesRes.json() as ChatMessageRow[]
+      expect(messageRows).toEqual([
+        expect.objectContaining({ messageId: userMessage.id, content: 'Keep this history readable.' }),
+        expect.objectContaining({ messageId: assistantMessage.id, content: 'History remains available.' }),
+      ])
+
+      const queueRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-provider-deleted/queue'))
+      expect(queueRes.status).toBe(200)
+      expect(await queueRes.json()).toEqual({
+        items: [
+          expect.objectContaining({
+            id: 'queue-provider-deleted',
+            providerTargetId: null,
+            text: 'Queued before provider deletion.',
+          }),
+        ],
+      })
+
+      const capabilitiesRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-provider-deleted/capabilities'))
+      expect(capabilitiesRes.status).toBe(200)
+      expect(await capabilitiesRes.json()).toEqual({
+        runtimeKind: 'standard',
+        slashCommands: [],
+        skills: [],
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('builds provider turn history from bounded content instead of parsing large stored snapshots', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousMaxMessages = process.env.CRADLE_CHAT_TURN_CONTEXT_MAX_MESSAGES
+    const previousMaxChars = process.env.CRADLE_CHAT_TURN_CONTEXT_MAX_CHARS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    process.env.CRADLE_CHAT_TURN_CONTEXT_MAX_MESSAGES = '2'
+    process.env.CRADLE_CHAT_TURN_CONTEXT_MAX_CHARS = '80'
+    const completionPayloads: ChatCompletionRequestBody[] = []
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const payload = parseChatCompletionRequestBody(init?.body)
+        completionPayloads.push(payload)
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"bounded"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":1,"total_tokens":8}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-bounded-history',
+        name: 'Workspace Chat Bounded History',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-bounded-history', {
+        providerTargetId: 'provider-target-chat-bounded-history',
+        sessionId: 'session-chat-bounded-history',
+      })
+
+      const hugeSnapshot = JSON.stringify({
+        id: 'message-bounded-history-old',
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'x'.repeat(250_000) },
+          { type: 'text', text: 'Old large snapshot text should not be parsed.' },
+        ],
+      })
+      db().insert(messages).values([
+        {
+          id: 'message-bounded-history-old',
+          sessionId: 'session-chat-bounded-history',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'assistant',
+          status: 'complete',
+          content: 'Old content outside the bounded message window.',
+          messageJson: hugeSnapshot,
+          errorText: null,
+          createdAt: 1700000000,
+          updatedAt: 1700000000,
+        },
+        {
+          id: 'message-bounded-history-user',
+          sessionId: 'session-chat-bounded-history',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: 'Recent user content from row cache.',
+          messageJson: '{',
+          errorText: null,
+          createdAt: 1700000001,
+          updatedAt: 1700000001,
+        },
+        {
+          id: 'message-bounded-history-assistant',
+          sessionId: 'session-chat-bounded-history',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'assistant',
+          status: 'complete',
+          content: 'Recent assistant content from row cache.',
+          messageJson: '{',
+          errorText: null,
+          createdAt: 1700000002,
+          updatedAt: 1700000002,
+        },
+      ]).run()
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-bounded-history/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Use bounded history now.', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      await waitForBackendRunStatus('session-chat-bounded-history', 'complete')
+
+      const payload = completionPayloads[0]
+      expect(payload?.messages.slice(-3)).toEqual([
+        { role: 'user', content: 'Recent user content from row cache.' },
+        { role: 'assistant', content: 'Recent assistant content from row cache.' },
+        { role: 'user', content: 'Use bounded history now.' },
+      ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      restoreEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_MESSAGES', previousMaxMessages)
+      restoreEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_CHARS', previousMaxChars)
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('repairs oversized stored snapshots after message hydration', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousRepairMin = process.env.CRADLE_CHAT_STORED_MESSAGE_REPAIR_MIN_CHARS
+    const previousTextLimit = process.env.CRADLE_CHAT_STORED_TEXT_MAX_CHARS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    process.env.CRADLE_CHAT_STORED_MESSAGE_REPAIR_MIN_CHARS = '1'
+    process.env.CRADLE_CHAT_STORED_TEXT_MAX_CHARS = '24'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-repair-snapshot',
+        name: 'Workspace Chat Repair Snapshot',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-repair-snapshot', {
+        providerTargetId: 'provider-target-chat-repair-snapshot',
+        sessionId: 'session-chat-repair-snapshot',
+      })
+
+      const originalSnapshot = JSON.stringify({
+        id: 'message-repair-snapshot-assistant',
+        role: 'assistant',
+        parts: [{ type: 'text', text: `oversized assistant text ${'x'.repeat(2_000)}` }],
+      })
+      db().insert(messages).values({
+        id: 'message-repair-snapshot-assistant',
+        sessionId: 'session-chat-repair-snapshot',
+        parentMessageId: null,
+        parentToolCallId: null,
+        taskId: null,
+        depth: 0,
+        role: 'assistant',
+        status: 'complete',
+        content: `oversized assistant text ${'x'.repeat(2_000)}`,
+        messageJson: originalSnapshot,
+        errorText: null,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
+
+      const messageRows = await getChatMessages(app, 'session-chat-repair-snapshot')
+      expect(messageRows[0]?.message.parts.find(part => part.type === 'text')?.text).toBe('oversized assistant text')
+
+      const repairedRow = db()
+        .select()
+        .from(messages)
+        .where(eq(messages.id, 'message-repair-snapshot-assistant'))
+        .get()
+      expect(repairedRow?.messageJson.length).toBeLessThan(originalSnapshot.length)
+      expect(repairedRow?.content).toBe('oversized assistant text')
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+      restoreEnv('CRADLE_CHAT_STORED_MESSAGE_REPAIR_MIN_CHARS', previousRepairMin)
+      restoreEnv('CRADLE_CHAT_STORED_TEXT_MAX_CHARS', previousTextLimit)
+      vi.restoreAllMocks()
     }
   })
 
@@ -621,19 +980,21 @@ describe('chat runtime capability', () => {
       const chunks = await collectSseChunks(runRes)
       const chunkTypes = chunks.map(chunk => chunk.type)
 
-      expect(chunkTypes).toEqual([
+      expect(chunkTypes).toEqual(expect.arrayContaining([
         'start',
         'start-step',
         'text-start',
         'text-delta',
-        'text-delta',
         'text-end',
         'finish-step',
         'finish',
-      ])
+      ]))
       expect(chunks[0]).toEqual(expect.objectContaining({ type: 'start' }))
       expect(chunks.at(-1)).toEqual(expect.objectContaining({ type: 'finish', finishReason: 'stop' }))
-      expect(chunkTypes).toContain('text-delta')
+      expect(chunks
+        .filter((chunk): chunk is UIMessageChunk & { type: 'text-delta', delta: string } => chunk.type === 'text-delta')
+        .map(chunk => chunk.delta)
+        .join('')).toBe('Hello stream protocol')
     }
     finally {
       shutdownInfra()
@@ -1189,6 +1550,355 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('coalesces high-frequency replay deltas for active session stream joins', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const chunks = Array.from({ length: 80 }, (_, index) =>
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`,
+        )
+        return buildSseResponse([
+          ...chunks,
+          'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n',
+        ], [0, ...Array.from({ length: 80 }, () => 1), 0])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-coalesced-replay',
+        name: 'Workspace Chat Coalesced Replay',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-coalesced-replay', {
+        providerTargetId: 'provider-target-chat-coalesced-replay',
+        sessionId: 'session-chat-coalesced-replay',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-coalesced-replay/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Replay many deltas', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      const runChunksPromise = collectSseChunks(runRes)
+
+      await waitForCondition(async () => {
+        const rows = await getChatMessages(app!, 'session-chat-coalesced-replay')
+        expect(rows.find(row => row.role === 'assistant')?.status).toBe('streaming')
+      }, 'active assistant stream row')
+
+      const activeRun = await waitForCondition(async () => {
+        const run = db().select().from(backendRuns).where(eq(backendRuns.chatSessionId, 'session-chat-coalesced-replay')).get()
+        const summary = run ? getActiveRunReplayBufferSummary(run.id) : null
+        expect(summary?.textDeltaCount).toBe(1)
+        return summary
+      }, 'coalesced replay buffer')
+
+      expect(activeRun?.chunkCount).toBeLessThan(10)
+      expect(activeRun?.textDeltaCount).toBe(1)
+
+      const runChunks = await runChunksPromise
+      const runTextDeltas = runChunks.filter(chunk => chunk.type === 'text-delta')
+      expect(runTextDeltas.length).toBeLessThan(20)
+      const rows = await waitForMessageStatus(app, 'session-chat-coalesced-replay', 'complete')
+      const expectedText = Array.from({ length: 80 }, (_, index) => `${index} `).join('')
+      expect(runTextDeltas.map((chunk) => {
+        if (chunk.type === 'text-delta') {
+          return chunk.delta
+        }
+        return ''
+      }).join('')).toBe(expectedText)
+      expect(rows.find(row => row.role === 'assistant')?.content).toBe(expectedText)
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('segments replay delta coalescing before strings grow too large', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousFlushChars = process.env.CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    process.env.CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS = '16'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const chunks = Array.from({ length: 12 }, (_, index) =>
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"abcd"},"finish_reason":null}]}\n\n`,
+        )
+        return buildSseResponse([
+          ...chunks,
+          'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n',
+        ], [0, ...Array.from({ length: 12 }, () => 2), 0])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-segmented-replay',
+        name: 'Workspace Chat Segmented Replay',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-segmented-replay', {
+        providerTargetId: 'provider-target-chat-segmented-replay',
+        sessionId: 'session-chat-segmented-replay',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-segmented-replay/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Segment replay deltas', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      const runChunksPromise = collectSseChunks(runRes)
+
+      await waitForCondition(async () => {
+        const rows = await getChatMessages(app!, 'session-chat-segmented-replay')
+        expect(rows.find(row => row.role === 'assistant')?.status).toBe('streaming')
+      }, 'active segmented replay row')
+
+      const activeRun = await waitForCondition(async () => {
+        const run = db().select().from(backendRuns).where(eq(backendRuns.chatSessionId, 'session-chat-segmented-replay')).get()
+        const summary = run ? getActiveRunReplayBufferSummary(run.id) : null
+        expect(summary?.textDeltaCount).toBeGreaterThan(1)
+        expect(summary?.maxDeltaChars).toBeLessThanOrEqual(16)
+        return summary
+      }, 'segmented replay buffer')
+
+      expect(activeRun?.textDeltaCount).toBeLessThanOrEqual(4)
+      expect(activeRun?.maxDeltaChars).toBeLessThanOrEqual(16)
+
+      const runChunks = await runChunksPromise
+      const textDeltas = runChunks.filter((chunk): chunk is UIMessageChunk & { type: 'text-delta', delta: string } => chunk.type === 'text-delta')
+      expect(textDeltas.every(chunk => chunk.delta.length <= 16)).toBe(true)
+      expect(textDeltas.map(chunk => chunk.delta).join('')).toBe('abcd'.repeat(12))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      restoreEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', previousFlushChars)
+      vi.restoreAllMocks()
+    }
+  })
+
+  it('keeps replay buffers bounded across concurrent active session streams', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const chunks = Array.from({ length: 120 }, (_, index) =>
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`,
+        )
+        return buildSseResponse([
+          ...chunks,
+          'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n',
+        ], [0, ...Array.from({ length: 120 }, () => 1), 0])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-concurrent-replay',
+        name: 'Workspace Chat Concurrent Replay',
+        path: workspaceRoot,
+      }).run()
+
+      const sessionIds = ['session-chat-concurrent-1', 'session-chat-concurrent-2', 'session-chat-concurrent-3']
+      for (const sessionId of sessionIds) {
+        await createProfileAndSession(app, 'workspace-chat-concurrent-replay', {
+          providerTargetId: `provider-target-${sessionId}`,
+          sessionId,
+        })
+      }
+
+      const responses = await Promise.all(sessionIds.map(sessionId =>
+        app!.handle(new Request(`http://localhost/chat/sessions/${sessionId}/response`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: 'Concurrent replay pressure', modelId: 'gpt-4o-mini' }),
+        })),
+      ))
+      for (const response of responses) {
+        expect(response.status).toBe(200)
+      }
+      const responseChunkPromises = responses.map(response => collectSseChunks(response))
+
+      await waitForCondition(async () => {
+        const runs = db().select().from(backendRuns).all()
+        expect(runs.filter(run => sessionIds.includes(run.chatSessionId)).length).toBe(3)
+
+        for (const run of runs.filter(run => sessionIds.includes(run.chatSessionId))) {
+          const summary = getActiveRunReplayBufferSummary(run.id)
+          expect(summary?.textDeltaCount).toBe(1)
+          expect(summary?.chunkCount).toBeLessThan(10)
+        }
+      }, 'bounded concurrent replay buffers')
+
+      const responseChunks = await Promise.all(responseChunkPromises)
+      for (const chunks of responseChunks) {
+        expect(chunks.filter(chunk => chunk.type === 'text-delta').length).toBeLessThan(30)
+      }
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('compacts oversized assistant snapshots before persistence', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousTextLimit = process.env.CRADLE_CHAT_STORED_TEXT_MAX_CHARS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    process.env.CRADLE_CHAT_STORED_TEXT_MAX_CHARS = '20'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        return buildSseResponse([
+          'data: {"id":"chunk-text","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"assistant text that should be compacted"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":4,"completion_tokens":4,"total_tokens":8}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-compact-snapshot',
+        name: 'Workspace Chat Compact Snapshot',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-compact-snapshot', {
+        providerTargetId: 'provider-target-chat-compact-snapshot',
+        sessionId: 'session-chat-compact-snapshot',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-compact-snapshot/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Compact final snapshot.', modelId: 'gpt-4o-mini' }),
+      }))
+      expect(runRes.status).toBe(200)
+      await waitForMessageStatus(app, 'session-chat-compact-snapshot', 'complete')
+
+      const assistantRow = db()
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, 'session-chat-compact-snapshot'))
+        .all()
+        .find(row => row.role === 'assistant')
+      const storedMessage = JSON.parse(assistantRow?.messageJson ?? '{}') as {
+        parts: Array<{ type: string, text?: string }>
+      }
+      expect(storedMessage.parts.find(part => part.type === 'text')?.text).toHaveLength(20)
+      expect(assistantRow?.content).toBe('assistant text that ')
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      restoreEnv('CRADLE_CHAT_STORED_TEXT_MAX_CHARS', previousTextLimit)
+      vi.restoreAllMocks()
     }
   })
 })

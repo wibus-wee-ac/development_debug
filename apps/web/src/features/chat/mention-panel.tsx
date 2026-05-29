@@ -3,6 +3,7 @@ import { FolderIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
+import { DelayedSpinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
 
 export interface MentionItem {
@@ -15,6 +16,7 @@ export interface MentionItem {
 interface MentionPanelProps {
   items: MentionItem[]
   query: string
+  searchItems?: (query: string) => Promise<MentionItem[]>
   onSelect: (item: MentionItem) => void
   onClose: () => void
   visible: boolean
@@ -57,34 +59,72 @@ function HighlightedText({ text, positions }: { text: string, positions: Set<num
 
 const MAX_RESULTS = 30
 
-export function MentionPanel({ items, query, onSelect, onClose, visible }: MentionPanelProps) {
+export function MentionPanel({ items, query, searchItems, onSelect, onClose, visible }: MentionPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0)
+  const [remoteItems, setRemoteItems] = useState<MentionItem[]>([])
+  const [remoteLoading, setRemoteLoading] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
   const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
   const previousQueryRef = useRef(query)
+  const requestSeqRef = useRef(0)
+  const effectiveItems = searchItems ? remoteItems : items
 
   // Build the fzf index once per items change; reuse for each query.
   const fzfIndex = useMemo(
-    () => new Fzf(items, { selector: (item: MentionItem) => item.path, limit: MAX_RESULTS }),
-    [items],
+    () => new Fzf(effectiveItems, { selector: (item: MentionItem) => item.path, limit: MAX_RESULTS }),
+    [effectiveItems],
   )
 
   // Fuzzy search with fzf
   const results = useMemo(() => {
     if (!query) {
-      return items.slice(0, MAX_RESULTS).map(item => ({ item, positions: new Set<number>() }))
+      return effectiveItems.slice(0, MAX_RESULTS).map(item => ({ item, positions: new Set<number>() }))
     }
     return fzfIndex.find(query)
-  }, [fzfIndex, query, items])
+  }, [fzfIndex, query, effectiveItems])
 
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref read during render for perf
   const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render
   previousQueryRef.current = query
 
   useEffect(() => {
     setActiveIndex(0)
   }, [items, query, visible])
+
+  useEffect(() => {
+    if (!visible || !searchItems) {
+      setRemoteItems([])
+      setRemoteLoading(false)
+      return
+    }
+
+    const requestSeq = requestSeqRef.current + 1
+    requestSeqRef.current = requestSeq
+    setRemoteLoading(true)
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const nextItems = await searchItems(query)
+          if (requestSeqRef.current === requestSeq) {
+            setRemoteItems(nextItems)
+          }
+        }
+        catch {
+          if (requestSeqRef.current === requestSeq) {
+            setRemoteItems([])
+          }
+        }
+        finally {
+          if (requestSeqRef.current === requestSeq) {
+            setRemoteLoading(false)
+          }
+        }
+      })()
+    }, 80)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [query, searchItems, visible])
 
   // Scroll active item into view
   useEffect(() => {
@@ -96,7 +136,6 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     active?.scrollIntoView({ block: 'nearest' })
   }, [effectiveActiveIndex])
 
-  // eslint-disable-next-line react-hooks/refs -- intentional: key handler ref assigned during render
   keyHandlerRef.current = (e: KeyboardEvent) => {
     if (!visible) {
       return
@@ -134,7 +173,7 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
     onSelect(item)
   }, [onSelect])
 
-  if (!visible || results.length === 0) {
+  if (!visible || (results.length === 0 && !remoteLoading)) {
     return null
   }
 
@@ -146,6 +185,11 @@ export function MentionPanel({ items, query, onSelect, onClose, visible }: Menti
         className="max-h-64 overflow-y-auto p-1"
         role="listbox"
       >
+        {remoteLoading && results.length === 0 && (
+          <div className="flex h-9 items-center justify-center">
+            <DelayedSpinner active delayMs={180} className="size-3.5 text-muted-foreground" />
+          </div>
+        )}
         {results.map(({ item, positions }, idx) => (
           <button
             key={item.path}

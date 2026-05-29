@@ -82,6 +82,50 @@ export const workspace = new Elysia({
     params: WorkspaceModel.idParams,
     response: { 200: t.Array(WorkspaceModel.fileEntry) },
   })
+  .get('/:id/files/children', ({ params, query }) => Workspace.getFileChildren(params.id, query.path ? trimValue(query.path) : ''), {
+    detail: {
+      summary: 'List workspace file children',
+    },
+    params: WorkspaceModel.idParams,
+    query: WorkspaceModel.fileChildrenQuery,
+    response: { 200: t.Array(WorkspaceModel.fileEntry) },
+  })
+  .get('/:id/files/search', ({ params, query }) => Workspace.searchFiles(params.id, {
+    query: query.q ? trimValue(query.q) : '',
+    limit: query.limit,
+  }), {
+    detail: {
+      summary: 'Search workspace files',
+    },
+    params: WorkspaceModel.idParams,
+    query: WorkspaceModel.fileSearchQuery,
+    response: { 200: t.Array(WorkspaceModel.fileEntry) },
+  })
+  .get('/:id/files/events', ({ params }) => {
+    return new Response(Workspace.openFileEvents(params.id), {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      },
+    })
+  }, {
+    detail: {
+      summary: 'Subscribe to workspace file changes',
+      responses: {
+        200: {
+          description: 'Server-sent event stream of workspace directory refresh hints for loaded file tree directories.',
+          content: {
+            'text/event-stream': {
+              schema: { type: 'string' },
+              example: 'data: {"type":"directory-changed","workspaceId":"workspace-1","path":"src","timestamp":1710000000000}\n\n',
+            },
+          },
+        },
+      },
+    },
+    params: WorkspaceModel.idParams,
+  })
   .get('/:id/files/content', async ({ params, query }) => {
     const content = await Workspace.getFileContent(params.id, trimValue(query.path))
     return { content }

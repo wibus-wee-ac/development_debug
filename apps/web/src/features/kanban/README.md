@@ -11,7 +11,7 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **issue-aside-panel-loader.ts**: Issue aside panel 的共享 lazy loader 与 intent preload 入口，供 right aside Issue tab 使用
 - **issue-aside-panel.test.tsx**: Regression tests for linked issue rendering, Kanban navigation, unlink actions, and combobox-based issue linking.
 - **issue-context-menu.tsx**: Shared right-click issue actions for board cards and list rows.
-- **issue-detail/**: Issue detail 子视图，包含属性、活动、关系、子 issue、milestone 横幅、workspace label 管理和 agent session 控制；activity/comment/agent/header/properties 面板通过 memoized row/pane 与稳定 action handler 控制渲染预算。
+- **issue-detail/**: Issue detail 子视图，包含属性、活动、关系、子 issue、milestone 横幅、workspace label 管理，以及独立于 human assignee 的 agent delegation 控制；activity/comment/header/properties 面板通过 memoized row/pane 与稳定 action handler 控制渲染预算。
 - **kanban-board.tsx**: Board layout and drag/drop composition; forwards resolved parent issue refs to cards and drag overlays.
 - **kanban-card.tsx**: Board card rendering for individual issues; issue cards expose native named buttons for opening detail views and separate parent issue quick-jump affordances while preserving drag wiring.
 - **kanban-column.tsx**: Board column rendering and drop targets; inline create mounts without height animation so board layout work stays immediate, and issue maps forward stable open/hover handlers plus parent issue refs.

@@ -74,8 +74,6 @@ function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTar
     configJson: JSON.stringify({
       apiKey: 'sk-test',
       model: 'gpt-5-codex',
-      approvalPolicy: 'never',
-      sandboxMode: 'workspace-write',
       reasoningEffort: 'high',
       ...config,
     }),
@@ -195,15 +193,16 @@ describe('codexProvider app-server integration', () => {
   })
 
   it('passes external OpenAI-compatible targets as explicit Codex model providers', async () => {
-    let client: FakeCodexAppServerClient | null = null
-    let appServerOptions: CodexAppServerClientOptions | null = null
+    const clients: FakeCodexAppServerClient[] = []
+    const appServerOptions: CodexAppServerClientOptions[] = []
     const provider = new CodexProvider({
       readSecret: () => 'sk-secret',
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
       createAppServerClient: (options) => {
-        appServerOptions = options
-        client = new FakeCodexAppServerClient(options)
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
         return client
       },
     })
@@ -221,13 +220,18 @@ describe('codexProvider app-server integration', () => {
     const firstChunkPromise = stream.next()
 
     await vi.waitFor(() => {
-      expect(client?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
     })
-    expect(client).not.toBeNull()
-    const createdClient = client
+    const createdClient = clients[0]
+    const options = appServerOptions[0]
+    if (!createdClient || !options) {
+      throw new Error('Expected Codex app-server client and options to be created')
+    }
 
-    expect(appServerOptions?.apiKey).toBe('sk-test')
-    expect(appServerOptions?.config).toEqual(expect.objectContaining({
+    expect(options.apiKey).toBe('sk-test')
+    expect(options.config).toEqual(expect.objectContaining({
+      approval_policy: 'never',
+      sandbox_mode: 'danger-full-access',
       model: 'gpt-test',
       model_provider: 'cradle-openai-compatible',
       model_providers: {
@@ -240,6 +244,20 @@ describe('codexProvider app-server integration', () => {
         },
       },
     }))
+    expect(createdClient.requests[0]).toEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({
+        approvalPolicy: 'never',
+        sandbox: 'danger-full-access',
+      }),
+    })
+    expect(createdClient.requests[1]).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'dangerFullAccess' },
+      }),
+    })
 
     createdClient.pushNotification({
       method: 'item/agentMessage/delta',

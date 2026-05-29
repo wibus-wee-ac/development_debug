@@ -5,6 +5,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 ## Files
 
 - **config.test.ts**: server config parsing and validation.
+- **provider-base.test.ts**: provider config parser defaults, including Codex app-server permission fallbacks.
 - **agent-runtime-config.test.ts**: runtime config JSON helper preservation for cli-tui launch and Codex session bindings.
 - **elysia-skeleton.test.ts**: parallel Elysia migration coverage for `/health`, `/preferences/chat`, structured validation normalization, `/openapi.json`, and `/docs/openapi.json` compatibility.
 - **request-id.test.ts**: request-id middleware behavior.

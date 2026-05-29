@@ -241,6 +241,63 @@ describe('message bubble', () => {
     expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
   })
 
+  it('keeps Thinking idle detection tied to text length instead of full text content', () => {
+    vi.useFakeTimers()
+    const firstMessage: UIMessage = {
+      id: 'assistant-streaming-same-length',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'abc' }],
+    }
+    const sameLengthMessage: UIMessage = {
+      ...firstMessage,
+      parts: [{ type: 'text', text: 'xyz' }],
+    }
+
+    const { rerender } = render(
+      <TooltipProvider>
+        <MessageBubble message={firstMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(500)
+    })
+
+    rerender(
+      <TooltipProvider>
+        <MessageBubble message={sameLengthMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+
+    expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
+  })
+
+  it('does not duplicate Thinking while reasoning is streaming', () => {
+    vi.useFakeTimers()
+    const reasoningMessage: UIMessage = {
+      id: 'assistant-reasoning-streaming',
+      role: 'assistant',
+      parts: [{ type: 'reasoning', text: 'Inspecting the session state.', state: 'streaming' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={reasoningMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+    expect(screen.getByText('Thinking')).toBeTruthy()
+  })
+
   it('does not show Thinking after the assistant bubble stops streaming', () => {
     const completedMessage: UIMessage = {
       id: 'assistant-completed',

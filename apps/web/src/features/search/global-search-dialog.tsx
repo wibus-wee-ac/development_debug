@@ -18,7 +18,6 @@ import { z } from 'zod'
 import { useShallow } from 'zustand/react/shallow'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import {
   Command,
@@ -33,6 +32,7 @@ import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -348,16 +348,16 @@ function useCommands(close: () => void): CommandAction[] {
   )
 }
 
-// ── File search hook (client-side filter on cached file lists) ─────────────────
+// ── File search hook ──────────────────────────────────────────────────────────
 
 function useFileSearch(query: string, enabled: boolean, workspaceId: string | null | undefined) {
   const { data: files = [], isFetching } = useQuery({
-    queryKey: ['workspace-files', workspaceId],
+    queryKey: ['workspace-file-search', workspaceId, query, 10],
     queryFn: async () => {
-      const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
+      const data = await searchWorkspaceFiles({ workspaceId: workspaceId!, query, limit: 10 })
       return GlobalSearchFileListSchema.parse(data) satisfies GlobalSearchFile[]
     },
-    enabled: enabled && !!workspaceId,
+    enabled: enabled && !!workspaceId && !!query.trim(),
     staleTime: 30_000,
   })
 
@@ -368,15 +368,8 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
       return []
     }
     return files
-      .map((file) => {
-        if (file.type !== 'file') {
-          return null
-        }
-
-        const matchScore = scoreFuzzyMatch(file.path, trimmed)
-        return matchScore === null ? null : { file, matchScore }
-      })
-      .filter((result): result is { file: GlobalSearchFile, matchScore: number } => result !== null)
+      .filter(file => file.type === 'file')
+      .map(file => ({ file, matchScore: scoreFuzzyMatch(file.path, trimmed) ?? 0 }))
       .sort((a, b) => a.matchScore - b.matchScore || a.file.path.localeCompare(b.file.path))
       .map(result => result.file)
       .slice(0, 10)

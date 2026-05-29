@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import {
-  deleteIssueAgentSessionsByAgentSessionId,
   deleteIssuesById,
   deleteIssuesByIdContextRefsByIndex,
   deleteIssuesByIdDelegation,
@@ -12,10 +11,8 @@ import {
   deleteIssuesStatusesById,
   deleteKanbanBoardsById,
   deleteSessionsByIdLinkedIssue,
-  getIssueAgentSessionsByAgentSessionIdActivities,
   getIssues,
   getIssuesById,
-  getIssuesByIdAgentSessions,
   getIssuesByIdComments,
   getIssuesByIdRelations,
   getIssuesMilestones,
@@ -27,7 +24,6 @@ import {
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
   patchKanbanBoardsById,
-  postIssueAgentSessionsByAgentSessionIdRerun,
   postIssues,
   postIssuesByIdComments,
   postIssuesByIdContextRefs,
@@ -40,9 +36,7 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentActivity, AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
-
-import { sessionsQueryKey } from '../workspace/use-session'
+import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
@@ -55,8 +49,6 @@ export const kanbanKeys = {
   issue: (id: string) => ['kanban', 'issue', id] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
-  agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
-  agentActivities: (sessionId: string) => ['kanban', 'agentActivities', sessionId] as const,
 }
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -219,19 +211,6 @@ const AgentSessionSchema = z.object({
   createdAt: z.number(),
   updatedAt: z.number(),
 }).passthrough()
-const AgentSessionListSchema = z.array(AgentSessionSchema).default([])
-
-const AgentActivitySchema = z.object({
-  id: z.string(),
-  agentSessionId: z.string(),
-  type: z.enum(['thought', 'action', 'response', 'elicitation', 'error', 'prompt']),
-  content: z.string(),
-  signal: z.string().nullable(),
-  signalMetadata: z.string().nullable(),
-  createdAt: z.number(),
-})
-const AgentActivityListSchema = z.array(AgentActivitySchema).default([])
-
 const LinkedIssueRefSchema = z.object({
   issueId: z.string().nullable(),
 }).nullable()
@@ -632,7 +611,6 @@ export function useDelegateIssue() {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
     },
   })
 }
@@ -647,82 +625,7 @@ export function useUndelegateIssue() {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
     },
-  })
-}
-
-export function useStopAgentSession() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (vars: { agentSessionId: string, issueId: string }) => {
-      await deleteIssueAgentSessionsByAgentSessionId({ path: { agentSessionId: vars.agentSessionId } })
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
-      qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
-    },
-  })
-}
-
-export function useStartAgentSession() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async (vars: {
-      issueId: string
-      workspaceId?: string
-      agentSessionId: string
-    }) => {
-      await postIssueAgentSessionsByAgentSessionIdRerun({
-        path: { agentSessionId: vars.agentSessionId },
-        body: {},
-      })
-    },
-    onSuccess: (_data, vars) => {
-      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
-      if (vars.workspaceId) {
-        qc.invalidateQueries({ queryKey: sessionsQueryKey(vars.workspaceId) })
-      }
-    },
-  })
-}
-
-// ── Agent Sessions & Activities ───────────────────────────────────────────────
-
-export function useAgentSessions(issueId: string) {
-  return useQuery({
-    queryKey: kanbanKeys.agentSessions(issueId),
-    queryFn: async () => {
-      const { data } = await getIssuesByIdAgentSessions({ path: { id: issueId } })
-      return AgentSessionListSchema.parse(data) satisfies AgentSession[]
-    },
-    enabled: !!issueId,
-    refetchInterval: (query) => {
-      const sessions = query.state.data ?? []
-      const hasActive = sessions.some(s => s.status === 'active' || s.status === 'created')
-      return hasActive ? 500 : false
-    },
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: 'always',
-    refetchOnReconnect: 'always',
-  })
-}
-
-export function useAgentActivities(agentSessionId: string | null, opts?: { refetchInterval?: number | false }) {
-  return useQuery({
-    queryKey: kanbanKeys.agentActivities(agentSessionId ?? ''),
-    queryFn: async () => {
-      if (!agentSessionId) {
-        return []
-      }
-      const { data } = await getIssueAgentSessionsByAgentSessionIdActivities({ path: { agentSessionId } })
-      return AgentActivityListSchema.parse(data) satisfies AgentActivity[]
-    },
-    enabled: !!agentSessionId,
-    refetchInterval: opts?.refetchInterval,
-    refetchIntervalInBackground: false,
-    refetchOnWindowFocus: 'always',
-    refetchOnReconnect: 'always',
   })
 }
 

@@ -13,7 +13,7 @@ import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-comm
 import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
+import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 
@@ -37,17 +37,15 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
   const composerState = useComposerState({ context: 'capsule' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
   const [sending, setSending] = useState(false)
-  const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
 
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const slashCommands = useMemo(
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
     [selection.runtimeKind],
   )
-  const availableFiles: MentionItem[] = useMemo(
-    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
-    [workspaceFiles],
-  )
+  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
+    return searchWorkspaceFiles({ workspaceId, query, limit: 30 })
+  }, [workspaceId])
   const sendDisabled = selection.runtimeKind === 'cli-tui'
     ? !effectiveAgent || sending
     : !effectiveProfile || sending
@@ -100,7 +98,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
       }}
       view={{
         placeholder: t('capsule.placeholder'),
-        availableFiles,
+        searchFiles,
         cardClassName: cn(
           'overflow-hidden border-border bg-background/70 backdrop-blur-xl shadow-sm',
           'rounded-[22px] focus-within:rounded-2xl focus-within:shadow-lg',

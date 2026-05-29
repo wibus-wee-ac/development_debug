@@ -252,6 +252,58 @@ describe('claudeAgentProvider MCP integration', () => {
     }))
   })
 
+  it('does not ask the Claude Agent SDK to globally discover skills unless configured', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-no-skills',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-no-skills',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Do not scan skills by default'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(readQueryOptions(0)).not.toHaveProperty('skills')
+  })
+
+  it('forwards explicitly configured Claude Agent skills', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-configured-skills',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-configured-skills',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({ skills: ['review'] }),
+      message: createUserMessage('Use configured skills'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+      skills: ['review'],
+    }))
+  })
+
   it('normalizes removed Claude Agent permission modes to bypass permissions', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {

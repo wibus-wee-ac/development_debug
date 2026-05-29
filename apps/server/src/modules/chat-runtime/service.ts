@@ -12,8 +12,7 @@ import {
   usageLogs,
   workspaces,
 } from '@cradle/db'
-import type { FileUIPart, UIMessage, UIMessageChunk } from 'ai'
-import { createUIMessageStream } from 'ai'
+import type { FileUIPart, ProviderMetadata, UIMessage, UIMessageChunk } from 'ai'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
@@ -48,9 +47,18 @@ import type {
   TokenUsage,
 } from './runtime-provider-types'
 import type { ChatStreamTraceRecord } from './stream-trace'
-import { readChatRunTrace, recordChatStreamTrace } from './stream-trace'
+import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
+const DEFAULT_TURN_CONTEXT_MAX_MESSAGES = 12
+const DEFAULT_TURN_CONTEXT_MAX_CHARS = 120_000
+const DEFAULT_TURN_CONTEXT_MESSAGE_MAX_CHARS = 24_000
+const DEFAULT_STORED_MESSAGE_TEXT_MAX_CHARS = 256_000
+const DEFAULT_STORED_MESSAGE_REASONING_MAX_CHARS = 64_000
+const DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS = 128_000
+const DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS = 512 * 1024
+const DEFAULT_RUN_DELTA_FLUSH_MS = 16
+const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 
 function parseTrustedJsonObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)
@@ -101,12 +109,50 @@ interface ActiveRun {
   runtimeSession: RuntimeSession
   modelId: string | null
   chunkBuffer: UIMessageChunk[]
+  chunkBufferIndexByKey: Map<string, number>
+  pendingDeltaChunk: UIMessageChunk | null
+  pendingDeltaFlushTimer: StreamFlushTimer | null
   finalMessage: UIMessage
+  finalProjection: FinalMessageProjectionState
   startChunkPublished?: boolean
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
   permissionMode?: ChatPermissionMode
+}
+
+interface ChatRuntimeProfile {
+  enabled: boolean
+  startedAtMs: number
+  streamStartedAtMs: number
+  streamFinishedAtMs: number | null
+  finalizeStartedAtMs: number | null
+  finalizeFinishedAtMs: number | null
+  memoryStarted: NodeJS.MemoryUsage | null
+  memoryFinished: NodeJS.MemoryUsage | null
+  finalMessageJsonBytes: number | null
+}
+
+interface FinalMessageProjectionState {
+  activeTextParts: Map<string, ProjectedTextPart<MutableTextPart>>
+  activeReasoningParts: Map<string, ProjectedTextPart<MutableReasoningPart>>
+  partialToolCalls: Map<string, ProjectedPartialToolCall>
+}
+
+type MutableTextPart = Extract<UIMessage['parts'][number], { type: 'text' }>
+type MutableReasoningPart = Extract<UIMessage['parts'][number], { type: 'reasoning' }>
+type MutableToolPart = Extract<UIMessage['parts'][number], { toolCallId: string }>
+
+interface ProjectedTextPart<TPart extends MutableTextPart | MutableReasoningPart> {
+  part: TPart
+  deltas: string[]
+}
+
+interface ProjectedPartialToolCall {
+  deltas: string[]
+  toolName: string
+  dynamic?: boolean
+  title?: string
 }
 
 export interface ActiveRunSummary {
@@ -116,6 +162,16 @@ export interface ActiveRunSummary {
   providerTargetKind: 'manual' | 'external'
   providerTargetId: string
   modelId: string | null
+}
+
+export interface ActiveRunReplayBufferSummary {
+  runId: string
+  chunkCount: number
+  textDeltaCount: number
+  reasoningDeltaCount: number
+  toolInputDeltaCount: number
+  toolOutputCount: number
+  maxDeltaChars: number
 }
 
 export interface ChatRunTraceDto {
@@ -167,6 +223,7 @@ export interface ChatRuntimeSessionStatusDto {
 }
 
 type RunSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
+type StreamFlushTimer = ReturnType<typeof setTimeout>
 
 interface SerializedChatError {
   text: string
@@ -364,6 +421,80 @@ function readRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {}
+}
+
+function readPositiveIntegerEnv(name: string, fallback: number): number {
+  const value = process.env[name]
+  if (!value) {
+    return fallback
+  }
+
+  const parsed = Number.parseInt(value, 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+function isChatRuntimeProfileEnabled(): boolean {
+  return process.env.CRADLE_CHAT_RUNTIME_PROFILE === '1'
+}
+
+function startChatRuntimeProfile(): ChatRuntimeProfile {
+  const now = performance.now()
+  return {
+    enabled: isChatRuntimeProfileEnabled(),
+    startedAtMs: now,
+    streamStartedAtMs: now,
+    streamFinishedAtMs: null,
+    finalizeStartedAtMs: null,
+    finalizeFinishedAtMs: null,
+    memoryStarted: isChatRuntimeProfileEnabled() ? process.memoryUsage() : null,
+    memoryFinished: null,
+    finalMessageJsonBytes: null,
+  }
+}
+
+function truncateText(value: string, maxChars: number): string {
+  if (value.length <= maxChars) {
+    return value
+  }
+  return value.slice(0, maxChars)
+}
+
+function truncateJsonPayload(value: unknown, maxChars: number): unknown {
+  if (value === undefined || value === null) {
+    return value
+  }
+
+  try {
+    const json = JSON.stringify(value)
+    if (json.length <= maxChars) {
+      return value
+    }
+    return {
+      type: 'cradle.truncated-json-payload.v1',
+      originalChars: json.length,
+      preview: json.slice(0, maxChars),
+    }
+  }
+ catch {
+    const text = String(value)
+    if (text.length <= maxChars) {
+      return text
+    }
+    return {
+      type: 'cradle.truncated-text-payload.v1',
+      originalChars: text.length,
+      preview: text.slice(0, maxChars),
+    }
+  }
+}
+
+function parsePartialToolInputText(text: string): unknown {
+  try {
+    return JSON.parse(text)
+  }
+  catch {
+    return text
+  }
 }
 
 function annotateContinuationMessage(
@@ -633,6 +764,22 @@ export function listActiveRunSummaries(): ActiveRunSummary[] {
   }))
 }
 
+export function getActiveRunReplayBufferSummary(runId: string): ActiveRunReplayBufferSummary | null {
+  const run = activeRuns.get(runId)
+  if (!run) {
+    return null
+  }
+  return {
+    runId,
+    chunkCount: run.chunkBuffer.length,
+    textDeltaCount: run.chunkBuffer.filter(chunk => chunk.type === 'text-delta').length,
+    reasoningDeltaCount: run.chunkBuffer.filter(chunk => chunk.type === 'reasoning-delta').length,
+    toolInputDeltaCount: run.chunkBuffer.filter(chunk => chunk.type === 'tool-input-delta').length,
+    toolOutputCount: run.chunkBuffer.filter(chunk => chunk.type === 'tool-output-available').length,
+    maxDeltaChars: run.chunkBuffer.reduce((max, chunk) => Math.max(max, readDeltaChunkTextLength(chunk)), 0),
+  }
+}
+
 export function getActiveSessionRun(sessionId: string): ActiveRunSummary | null {
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
@@ -756,14 +903,15 @@ function persistMessageSnapshot(input: {
   message: UIMessage
   messageStatus: ChatMessageStatus
   errorText: string | null
-}): void {
+}): { messageJsonBytes: number } {
   const now = currentUnixSeconds()
-  const message = normalizeMessageSnapshot(input.message)
+  const message = compactStoredMessageSnapshot(normalizeMessageSnapshot(input.message))
+  const messageJson = JSON.stringify(message)
   db().transaction((tx) => {
     tx.update(messages)
       .set({
         content: extractMessageText(message),
-        messageJson: JSON.stringify(message),
+        messageJson,
         status: input.messageStatus,
         errorText: input.errorText,
         updatedAt: now,
@@ -773,6 +921,115 @@ function persistMessageSnapshot(input: {
 
     tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
   })
+  return { messageJsonBytes: Buffer.byteLength(messageJson) }
+}
+
+function repairStoredMessageSnapshotIfOversized(input: {
+  row: typeof messages.$inferSelect
+  message: ChatMessageSnapshotRow['message']
+}): ChatMessageSnapshotRow['message'] {
+  const repairMinChars = readPositiveIntegerEnv('CRADLE_CHAT_STORED_MESSAGE_REPAIR_MIN_CHARS', DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS)
+  if (input.row.messageJson.length < repairMinChars) {
+    return input.message
+  }
+
+  const compactedMessage = compactStoredMessageSnapshot(input.message)
+  if (compactedMessage === input.message) {
+    return input.message
+  }
+
+  const compactedJson = JSON.stringify(compactedMessage)
+  if (compactedJson.length >= input.row.messageJson.length) {
+    return input.message
+  }
+
+  const now = currentUnixSeconds()
+  db()
+    .update(messages)
+    .set({
+      content: extractMessageText(compactedMessage),
+      messageJson: compactedJson,
+      updatedAt: now,
+    })
+    .where(eq(messages.id, input.row.id))
+    .run()
+  return compactedMessage as ChatMessageSnapshotRow['message']
+}
+
+function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
+  const textLimit = readPositiveIntegerEnv('CRADLE_CHAT_STORED_TEXT_MAX_CHARS', DEFAULT_STORED_MESSAGE_TEXT_MAX_CHARS)
+  const reasoningLimit = readPositiveIntegerEnv('CRADLE_CHAT_STORED_REASONING_MAX_CHARS', DEFAULT_STORED_MESSAGE_REASONING_MAX_CHARS)
+  const toolPayloadLimit = readPositiveIntegerEnv('CRADLE_CHAT_STORED_TOOL_PAYLOAD_MAX_CHARS', DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS)
+  let changed = false
+  let remainingText = textLimit
+  let remainingReasoning = reasoningLimit
+
+  const parts = message.parts.map((part) => {
+    if (part.type === 'text') {
+      const nextText = truncateText(part.text, remainingText)
+      remainingText = Math.max(0, remainingText - nextText.length)
+      if (nextText !== part.text) {
+        changed = true
+        return {
+          ...part,
+          text: nextText,
+          providerMetadata: {
+            ...readRecord((part as { providerMetadata?: unknown }).providerMetadata),
+            cradle: {
+              ...readRecord(readRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle),
+              truncated: true,
+              originalChars: part.text.length,
+            },
+          },
+        } as UIMessage['parts'][number]
+      }
+      return part
+    }
+
+    if (part.type === 'reasoning') {
+      const nextText = truncateText(part.text, remainingReasoning)
+      remainingReasoning = Math.max(0, remainingReasoning - nextText.length)
+      if (nextText !== part.text) {
+        changed = true
+        return {
+          ...part,
+          text: nextText,
+          providerMetadata: {
+            ...readRecord((part as { providerMetadata?: unknown }).providerMetadata),
+            cradle: {
+              ...readRecord(readRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle),
+              truncated: true,
+              originalChars: part.text.length,
+            },
+          },
+        } as UIMessage['parts'][number]
+      }
+      return part
+    }
+
+    if ('toolCallId' in part && (part.type === 'dynamic-tool' || part.type.startsWith('tool-'))) {
+      let nextPart = part as Record<string, unknown>
+      if ('input' in nextPart) {
+        const inputPayload = truncateJsonPayload(nextPart.input, toolPayloadLimit)
+        if (inputPayload !== nextPart.input) {
+          changed = true
+          nextPart = { ...nextPart, input: inputPayload }
+        }
+      }
+      if ('output' in nextPart) {
+        const outputPayload = truncateJsonPayload(nextPart.output, toolPayloadLimit)
+        if (outputPayload !== nextPart.output) {
+          changed = true
+          nextPart = { ...nextPart, output: outputPayload }
+        }
+      }
+      return nextPart as UIMessage['parts'][number]
+    }
+
+    return part
+  })
+
+  return changed ? { ...message, parts } : message
 }
 
 function insertUsage(input: {
@@ -872,6 +1129,19 @@ function assertRunnableSession(sessionId: string): SessionRunContext {
     })
   }
   return context
+}
+
+function assertStoredSession(sessionId: string): Session {
+  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
+  if (!session) {
+    throw new AppError({
+      code: 'chat_session_not_found',
+      status: 404,
+      message: 'Chat session not found',
+      details: { sessionId },
+    })
+  }
+  return session
 }
 
 function assertRuntimeCompatibleTarget(
@@ -992,8 +1262,31 @@ function resolveTurnContext(input: {
     systemPrompt = systemPrompt ? `${systemPrompt}\n\n---\n\n${chronicleContext}` : chronicleContext
   }
 
-  const historyRows = db()
-    .select()
+  const history = resolveBoundedTurnHistory({
+    sessionId: input.sessionId,
+    excludedMessageIds: new Set([input.draftMessageId, input.draftUserMessageId]),
+  })
+
+  return {
+    systemPrompt,
+    history: history.length > 0 ? history : undefined,
+  }
+}
+
+function resolveBoundedTurnHistory(input: {
+  sessionId: string
+  excludedMessageIds: Set<string>
+}): UIMessage[] {
+  const maxMessages = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_MESSAGES', DEFAULT_TURN_CONTEXT_MAX_MESSAGES)
+  const maxChars = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_CHARS', DEFAULT_TURN_CONTEXT_MAX_CHARS)
+  const messageMaxChars = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MESSAGE_MAX_CHARS', DEFAULT_TURN_CONTEXT_MESSAGE_MAX_CHARS)
+  const rows = db()
+    .select({
+      id: messages.id,
+      role: messages.role,
+      content: messages.content,
+      createdAt: messages.createdAt,
+    })
     .from(messages)
     .where(
       and(
@@ -1002,21 +1295,35 @@ function resolveTurnContext(input: {
         isNull(messages.parentToolCallId),
       ),
     )
-    .orderBy(messages.createdAt, messageInsertOrder)
+    .orderBy(desc(messages.createdAt), desc(messageInsertOrder))
+    .limit(maxMessages + input.excludedMessageIds.size)
     .all()
-    .filter(row => row.id !== input.draftMessageId && row.id !== input.draftUserMessageId)
 
-  const history = historyRows
-    .map((row) => {
-      const role = row.role as 'user' | 'assistant'
-      return parseStoredMessageSnapshot(row, role)
+  const selected: UIMessage[] = []
+  let remainingChars = maxChars
+  for (const row of rows) {
+    if (selected.length >= maxMessages || input.excludedMessageIds.has(row.id)) {
+      continue
+    }
+    if (row.role !== 'user' && row.role !== 'assistant') {
+      continue
+    }
+
+    const content = row.content.trim()
+    if (!content || remainingChars <= 0) {
+      continue
+    }
+
+    const text = truncateText(content, Math.min(messageMaxChars, remainingChars))
+    selected.push({
+      id: row.id,
+      role: row.role,
+      parts: [{ type: 'text', text }],
     })
-    .filter(message => message.parts.length > 0)
-
-  return {
-    systemPrompt,
-    history: history.length > 0 ? history : undefined,
+    remainingChars -= text.length
   }
+
+  return selected.reverse()
 }
 
 function resolveChronicleTurnContext(query: string): string | null {
@@ -1039,15 +1346,7 @@ function resolveChronicleTurnContext(query: string): string | null {
 // ── public service functions ──
 
 export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
-  const context = getSessionRunContext(sessionId)
-  if (!context) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId },
-    })
-  }
+  assertStoredSession(sessionId)
 
   if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
     abortPersistedStreamingSession(sessionId)
@@ -1062,7 +1361,11 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
 
   return rows.map((row) => {
     const role = row.role as 'user' | 'assistant'
-    const message = parseStoredMessageSnapshot(row, role)
+    const parsedMessage = parseStoredMessageSnapshot(row, role)
+    const message = repairStoredMessageSnapshotIfOversized({
+      row,
+      message: parsedMessage,
+    })
     if (message.id !== row.id || message.role !== role) {
       throw new AppError({
         code: 'chat_message_snapshot_invalid',
@@ -1121,12 +1424,12 @@ function parseStoredMessageSnapshot(
 export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCapabilities> {
   const context = getSessionRunContext(sessionId)
   if (!context) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId },
-    })
+    const session = assertStoredSession(sessionId)
+    return {
+      runtimeKind: session.runtimeKind ?? 'standard',
+      slashCommands: [],
+      skills: [],
+    }
   }
 
   const registry = getRuntimeRegistry()
@@ -1385,27 +1688,33 @@ export async function createRun(input: {
         input.modelId
         ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
       chunkBuffer: [],
+      chunkBufferIndexByKey: new Map(),
+      pendingDeltaChunk: null,
+      pendingDeltaFlushTimer: null,
       finalMessage: lastRequestMessage?.role === 'assistant'
         ? lastRequestMessage
         : createAssistantMessage(draft.assistantMessageId),
+      finalProjection: createFinalMessageProjectionState(),
       queueItemId: input.queueItemId,
       permissionMode: input.permissionMode,
     }
     activeRuns.set(run.id, activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
-    recordChatStreamTrace({
-      chatSessionId: activeRun.sessionId,
-      runId: activeRun.runId,
-      messageId: activeRun.messageId,
-      runtimeKind: activeRun.runtimeSession.runtimeKind,
-      providerSessionId: activeRun.runtimeSession.providerSessionId,
-      phase: 'run_started',
-      payload: {
-        providerTargetId: activeRun.providerTargetId,
-        modelId: activeRun.modelId,
-        queueItemId: activeRun.queueItemId ?? null,
-      },
-    })
+    if (isChatStreamTraceEnabled()) {
+      recordChatStreamTrace({
+        chatSessionId: activeRun.sessionId,
+        runId: activeRun.runId,
+        messageId: activeRun.messageId,
+        runtimeKind: activeRun.runtimeSession.runtimeKind,
+        providerSessionId: activeRun.runtimeSession.providerSessionId,
+        phase: 'run_started',
+        payload: {
+          providerTargetId: activeRun.providerTargetId,
+          modelId: activeRun.modelId,
+          queueItemId: activeRun.queueItemId ?? null,
+        },
+      })
+    }
     if (input.queueItemId) {
       db()
         .update(chatSessionQueueItems)
@@ -1498,7 +1807,7 @@ export async function streamResponse(input: {
 }
 
 export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
-  assertRunnableSession(sessionId)
+  assertStoredSession(sessionId)
 
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
@@ -1609,15 +1918,64 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
 
   const encoder = new TextEncoder()
   let unsubscribe = () => {}
+  let queuedChunk: UIMessageChunk | null = null
+  let flushTimer: StreamFlushTimer | null = null
+  let closed = false
   return new ReadableStream<Uint8Array>({
     start: (controller) => {
-      const writeChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+      const writeEncodedChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+        if (closed) {
+          return
+        }
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
         if (terminal) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          closed = true
           unsubscribe()
           controller.close()
         }
+      }
+
+      const flushQueuedChunk = () => {
+        flushTimer = null
+        const chunk = queuedChunk
+        queuedChunk = null
+        if (chunk) {
+          writeEncodedChunk(chunk, false)
+        }
+      }
+
+      const scheduleFlush = () => {
+        flushTimer ??= setTimeout(flushQueuedChunk, 0)
+      }
+
+      const writeChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+        if (terminal) {
+          if (flushTimer) {
+            clearTimeout(flushTimer)
+            flushTimer = null
+          }
+          flushQueuedChunk()
+          writeEncodedChunk(chunk, true)
+          return
+        }
+
+        if (!queuedChunk) {
+          queuedChunk = chunk
+          scheduleFlush()
+          return
+        }
+
+        const merged = mergeSseStreamChunk(queuedChunk, chunk)
+        if (merged) {
+          queuedChunk = merged
+          scheduleFlush()
+          return
+        }
+
+        flushQueuedChunk()
+        queuedChunk = chunk
+        scheduleFlush()
       }
 
       for (const chunk of active?.chunkBuffer ?? []) {
@@ -1650,9 +2008,45 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
       }
     },
     cancel: () => {
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+      }
       unsubscribe()
     },
   })
+}
+
+function mergeSseStreamChunk(existing: UIMessageChunk, next: UIMessageChunk): UIMessageChunk | null {
+  if (existing.type === 'text-delta' && next.type === 'text-delta' && existing.id === next.id) {
+    if (existing.delta.length + next.delta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'reasoning-delta' && next.type === 'reasoning-delta' && existing.id === next.id) {
+    if (existing.delta.length + next.delta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'tool-input-delta' && next.type === 'tool-input-delta' && existing.toolCallId === next.toolCallId) {
+    if (existing.inputTextDelta.length + next.inputTextDelta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      inputTextDelta: `${existing.inputTextDelta}${next.inputTextDelta}`,
+    }
+  }
+  return null
 }
 
 function openIdleRunStream(): ReadableStream<Uint8Array> {
@@ -1715,7 +2109,7 @@ export function getMessages(sessionId: string): Message[] {
 }
 
 export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDto[] {
-  assertRunnableSession(sessionId)
+  assertStoredSession(sessionId)
   return db()
     .select()
     .from(chatSessionQueueItems)
@@ -2108,6 +2502,7 @@ async function executeRun(
   let failurePayload: SerializedChatError['payload'] | undefined
   let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
   let actualModelId = activeRun.modelId
+  const profile = startChatRuntimeProfile()
 
   try {
     for await (const chunk of activeRun.runtime.streamTurn({
@@ -2132,15 +2527,17 @@ async function executeRun(
       if (activeRun.terminalStatus) {
         break
       }
-      recordChatStreamTrace({
-        chatSessionId: activeRun.sessionId,
-        runId: activeRun.runId,
-        messageId: activeRun.messageId,
-        runtimeKind: activeRun.runtimeSession.runtimeKind,
-        providerSessionId: activeRun.runtimeSession.providerSessionId,
-        phase: 'runtime_chunk',
-        payload: chunk,
-      })
+      if (isChatStreamTraceEnabled()) {
+        recordChatStreamTrace({
+          chatSessionId: activeRun.sessionId,
+          runId: activeRun.runId,
+          messageId: activeRun.messageId,
+          runtimeKind: activeRun.runtimeSession.runtimeKind,
+          providerSessionId: activeRun.runtimeSession.providerSessionId,
+          phase: 'runtime_chunk',
+          payload: chunk,
+        })
+      }
       accumulateDiagnostics(diagnostics, chunk)
       if (isTerminalUIMessageChunk(chunk)) {
         finalChunk = chunk
@@ -2152,13 +2549,17 @@ async function executeRun(
         if (chunk.type !== 'start') {
           publishRunStartChunk(activeRun)
         }
-        publishUIMessageChunk(activeRun, chunk, false)
+        publishRuntimeChunk(activeRun, chunk)
       }
     }
 
+    flushPendingRunDelta(activeRun)
     finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+    profile.streamFinishedAtMs = performance.now()
   }
  catch (error) {
+    flushPendingRunDelta(activeRun)
+    profile.streamFinishedAtMs = performance.now()
     if (isAbortError(error)) {
       finalChunk = { type: 'abort', reason: 'user' }
     }
@@ -2171,7 +2572,7 @@ async function executeRun(
 
   try {
     if (!activeRun.cancelRequested) {
-      await publishTerminalChunk(activeRun, finalChunk)
+      await publishTerminalChunk(activeRun, finalChunk, profile)
 
       const finalFailureText = finalChunk.type === 'error' ? finalChunk.errorText : null
 
@@ -2271,7 +2672,16 @@ async function executeRun(
     }
     releaseActiveRun(activeRun)
     scheduleSessionQueueDrain(activeRun.sessionId)
+    recordChatRuntimeProfile(activeRun, diagnostics, profile)
   }
+}
+
+function runDeltaFlushMs(): number {
+  return readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_MS', DEFAULT_RUN_DELTA_FLUSH_MS)
+}
+
+function runDeltaFlushChars(): number {
+  return readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', DEFAULT_RUN_DELTA_FLUSH_CHARS)
 }
 
 function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
@@ -2279,27 +2689,143 @@ function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
   return typeof value === 'string' ? value : null
 }
 
+function createFinalMessageProjectionState(): FinalMessageProjectionState {
+  return {
+    activeTextParts: new Map(),
+    activeReasoningParts: new Map(),
+    partialToolCalls: new Map(),
+  }
+}
+
+function publishRuntimeChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
+  const pending = activeRun.pendingDeltaChunk
+  if (!pending) {
+    if (readRunDeltaCoalesceKey(chunk)) {
+      activeRun.pendingDeltaChunk = chunk
+      schedulePendingRunDeltaFlush(activeRun)
+      return
+    }
+    publishUIMessageChunk(activeRun, chunk, false)
+    return
+  }
+
+  const merged = mergeRuntimeDeltaChunk(pending, chunk)
+  if (merged) {
+    activeRun.pendingDeltaChunk = merged
+    if (readDeltaChunkTextLength(merged) >= runDeltaFlushChars()) {
+      flushPendingRunDelta(activeRun)
+      return
+    }
+    schedulePendingRunDeltaFlush(activeRun)
+    return
+  }
+
+  flushPendingRunDelta(activeRun)
+  if (readRunDeltaCoalesceKey(chunk)) {
+    activeRun.pendingDeltaChunk = chunk
+    schedulePendingRunDeltaFlush(activeRun)
+    return
+  }
+  publishUIMessageChunk(activeRun, chunk, false)
+}
+
+function schedulePendingRunDeltaFlush(activeRun: ActiveRun): void {
+  if (activeRun.pendingDeltaFlushTimer) {
+    return
+  }
+  activeRun.pendingDeltaFlushTimer = setTimeout(() => {
+    activeRun.pendingDeltaFlushTimer = null
+    flushPendingRunDelta(activeRun)
+  }, runDeltaFlushMs())
+}
+
+function flushPendingRunDelta(activeRun: ActiveRun): void {
+  if (activeRun.pendingDeltaFlushTimer) {
+    clearTimeout(activeRun.pendingDeltaFlushTimer)
+    activeRun.pendingDeltaFlushTimer = null
+  }
+  const chunk = activeRun.pendingDeltaChunk
+  activeRun.pendingDeltaChunk = null
+  if (chunk && !activeRun.terminalStatus) {
+    publishUIMessageChunk(activeRun, chunk, false)
+  }
+}
+
+function readRunDeltaCoalesceKey(chunk: UIMessageChunk): string | null {
+  switch (chunk.type) {
+    case 'text-delta':
+      return `text-delta:${chunk.id}`
+    case 'reasoning-delta':
+      return `reasoning-delta:${chunk.id}`
+    case 'tool-input-delta':
+      return `tool-input-delta:${chunk.toolCallId}`
+    default:
+      return null
+  }
+}
+
+function mergeRuntimeDeltaChunk(existing: UIMessageChunk, next: UIMessageChunk): UIMessageChunk | null {
+  if (existing.type === 'text-delta' && next.type === 'text-delta' && existing.id === next.id) {
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'reasoning-delta' && next.type === 'reasoning-delta' && existing.id === next.id) {
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'tool-input-delta' && next.type === 'tool-input-delta' && existing.toolCallId === next.toolCallId) {
+    return {
+      ...next,
+      inputTextDelta: `${existing.inputTextDelta}${next.inputTextDelta}`,
+    }
+  }
+  return null
+}
+
+function readDeltaChunkTextLength(chunk: UIMessageChunk): number {
+  switch (chunk.type) {
+    case 'text-delta':
+    case 'reasoning-delta':
+      return chunk.delta.length
+    case 'tool-input-delta':
+      return chunk.inputTextDelta.length
+    default:
+      return 0
+  }
+}
+
 function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, terminal: boolean): void {
   if (chunk.type === 'start') {
     activeRun.startChunkPublished = true
   }
 
-  recordChatStreamTrace({
-    chatSessionId: activeRun.sessionId,
-    runId: activeRun.runId,
-    messageId: activeRun.messageId,
-    runtimeKind: activeRun.runtimeSession.runtimeKind,
-    providerSessionId: activeRun.runtimeSession.providerSessionId,
-    toolCallId: readChunkTraceToolCallId(chunk),
-    phase: 'sse_emit',
-    payload: {
-      chunk,
-      terminal,
-      subscriberCount: runSubscribers.get(activeRun.runId)?.size ?? 0,
-    },
-  })
+  if (isChatStreamTraceEnabled()) {
+    recordChatStreamTrace({
+      chatSessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+      messageId: activeRun.messageId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      providerSessionId: activeRun.runtimeSession.providerSessionId,
+      toolCallId: readChunkTraceToolCallId(chunk),
+      phase: 'sse_emit',
+      payload: {
+        chunk,
+        terminal,
+        subscriberCount: runSubscribers.get(activeRun.runId)?.size ?? 0,
+      },
+    })
+  }
 
-  activeRun.chunkBuffer.push(chunk)
+  if (!terminal) {
+    projectFinalMessageChunk(activeRun, chunk)
+  }
+  bufferReplayChunk(activeRun, chunk)
 
   const subscribers = runSubscribers.get(activeRun.runId)
   if (!subscribers) {
@@ -2323,47 +2849,410 @@ function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, term
   }
 }
 
+function projectFinalMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
+  const message = activeRun.finalMessage
+  const projection = activeRun.finalProjection
+
+  switch (chunk.type) {
+    case 'text-start': {
+      const part = {
+        type: 'text',
+        text: '',
+        state: 'streaming',
+        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
+      } satisfies MutableTextPart
+      projection.activeTextParts.set(chunk.id, { part, deltas: [] })
+      message.parts.push(part)
+      break
+    }
+    case 'text-delta': {
+      const activePart = projection.activeTextParts.get(chunk.id)
+      if (activePart) {
+        activePart.deltas.push(chunk.delta)
+        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
+      }
+      break
+    }
+    case 'text-end': {
+      const activePart = projection.activeTextParts.get(chunk.id)
+      if (activePart) {
+        flushProjectedTextPart(activePart)
+        activePart.part.state = 'done'
+        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
+        projection.activeTextParts.delete(chunk.id)
+      }
+      break
+    }
+    case 'reasoning-start': {
+      const part = {
+        type: 'reasoning',
+        text: '',
+        state: 'streaming',
+        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
+      } satisfies MutableReasoningPart
+      projection.activeReasoningParts.set(chunk.id, { part, deltas: [] })
+      message.parts.push(part)
+      break
+    }
+    case 'reasoning-delta': {
+      const activePart = projection.activeReasoningParts.get(chunk.id)
+      if (activePart) {
+        activePart.deltas.push(chunk.delta)
+        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
+      }
+      break
+    }
+    case 'reasoning-end': {
+      const activePart = projection.activeReasoningParts.get(chunk.id)
+      if (activePart) {
+        flushProjectedTextPart(activePart)
+        activePart.part.state = 'done'
+        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
+        projection.activeReasoningParts.delete(chunk.id)
+      }
+      break
+    }
+    case 'tool-input-start': {
+      projection.partialToolCalls.set(chunk.toolCallId, {
+        deltas: [],
+        toolName: chunk.toolName,
+        dynamic: chunk.dynamic,
+        title: chunk.title,
+      })
+      upsertProjectedToolPart(message, {
+        toolCallId: chunk.toolCallId,
+        toolName: chunk.toolName,
+        state: 'input-streaming',
+        input: undefined,
+        providerExecuted: chunk.providerExecuted,
+        providerMetadata: chunk.providerMetadata,
+        dynamic: chunk.dynamic,
+        title: chunk.title,
+      })
+      break
+    }
+    case 'tool-input-delta': {
+      const partialToolCall = projection.partialToolCalls.get(chunk.toolCallId)
+      if (partialToolCall) {
+        partialToolCall.deltas.push(chunk.inputTextDelta)
+        upsertProjectedToolPart(message, {
+          toolCallId: chunk.toolCallId,
+          toolName: partialToolCall.toolName,
+          state: 'input-streaming',
+          input: undefined,
+          dynamic: partialToolCall.dynamic,
+          title: partialToolCall.title,
+        })
+      }
+      break
+    }
+    case 'tool-input-available':
+      projection.partialToolCalls.delete(chunk.toolCallId)
+      upsertProjectedToolPart(message, {
+        toolCallId: chunk.toolCallId,
+        toolName: chunk.toolName,
+        state: 'input-available',
+        input: chunk.input,
+        providerExecuted: chunk.providerExecuted,
+        providerMetadata: chunk.providerMetadata,
+        dynamic: chunk.dynamic,
+        title: chunk.title,
+      })
+      break
+    case 'tool-output-available':
+      updateProjectedToolOutput(message, chunk.toolCallId, {
+        state: 'output-available',
+        output: chunk.output,
+        providerExecuted: chunk.providerExecuted,
+        providerMetadata: chunk.providerMetadata,
+        preliminary: chunk.preliminary,
+        dynamic: chunk.dynamic,
+      })
+      break
+    case 'tool-output-error':
+      updateProjectedToolOutput(message, chunk.toolCallId, {
+        state: 'output-error',
+        errorText: chunk.errorText,
+        providerExecuted: chunk.providerExecuted,
+        providerMetadata: chunk.providerMetadata,
+        dynamic: chunk.dynamic,
+      })
+      break
+    case 'tool-output-denied':
+      updateProjectedToolOutput(message, chunk.toolCallId, { state: 'output-denied' })
+      break
+    case 'start-step':
+      message.parts.push({ type: 'step-start' })
+      break
+    case 'finish-step':
+      flushFinalMessageProjection(activeRun)
+      break
+    case 'file':
+      message.parts.push({
+        type: 'file',
+        mediaType: chunk.mediaType,
+        url: chunk.url,
+        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
+      })
+      break
+    case 'source-url':
+      message.parts.push({
+        type: 'source-url',
+        sourceId: chunk.sourceId,
+        url: chunk.url,
+        title: chunk.title,
+        providerMetadata: chunk.providerMetadata,
+      })
+      break
+    case 'source-document':
+      message.parts.push({
+        type: 'source-document',
+        sourceId: chunk.sourceId,
+        mediaType: chunk.mediaType,
+        title: chunk.title,
+        filename: chunk.filename,
+        providerMetadata: chunk.providerMetadata,
+      })
+      break
+  }
+}
+
+function flushFinalMessageProjection(activeRun: ActiveRun): void {
+  for (const activePart of activeRun.finalProjection.activeTextParts.values()) {
+    flushProjectedTextPart(activePart)
+  }
+  for (const activePart of activeRun.finalProjection.activeReasoningParts.values()) {
+    flushProjectedTextPart(activePart)
+  }
+}
+
+function flushProjectedTextPart<TPart extends MutableTextPart | MutableReasoningPart>(
+  activePart: ProjectedTextPart<TPart>,
+): void {
+  if (activePart.deltas.length === 0) {
+    return
+  }
+  activePart.part.text += activePart.deltas.join('')
+  activePart.deltas = []
+}
+
+function upsertProjectedToolPart(
+  message: UIMessage,
+  options: {
+    toolCallId: string
+    toolName: string
+    state: 'input-streaming' | 'input-available'
+    input: unknown
+    providerExecuted?: boolean
+    providerMetadata?: ProviderMetadata
+    dynamic?: boolean
+    title?: string
+  },
+): void {
+  const part = findProjectedToolPart(message, options.toolCallId)
+  if (part) {
+    assignProjectedToolPart(part, {
+      state: options.state,
+      input: options.input,
+      providerExecuted: options.providerExecuted,
+      title: options.title,
+      providerMetadata: options.providerMetadata,
+      isResultMetadata: false,
+    })
+    return
+  }
+
+  if (options.dynamic) {
+    message.parts.push({
+      type: 'dynamic-tool',
+      toolName: options.toolName,
+      toolCallId: options.toolCallId,
+      state: options.state,
+      input: options.input,
+      providerExecuted: options.providerExecuted,
+      title: options.title,
+      ...(options.providerMetadata ? { callProviderMetadata: options.providerMetadata } : {}),
+    } as UIMessage['parts'][number])
+    return
+  }
+
+  message.parts.push({
+    type: `tool-${options.toolName}`,
+    toolCallId: options.toolCallId,
+    state: options.state,
+    input: options.input,
+    providerExecuted: options.providerExecuted,
+    title: options.title,
+    ...(options.providerMetadata ? { callProviderMetadata: options.providerMetadata } : {}),
+  } as UIMessage['parts'][number])
+}
+
+function updateProjectedToolOutput(
+  message: UIMessage,
+  toolCallId: string,
+  options: {
+    state: 'output-available' | 'output-error' | 'output-denied'
+    output?: unknown
+    errorText?: string
+    providerExecuted?: boolean
+    providerMetadata?: ProviderMetadata
+    preliminary?: boolean
+    dynamic?: boolean
+  },
+): void {
+  const part = findProjectedToolPart(message, toolCallId)
+  if (!part) {
+    return
+  }
+
+  assignProjectedToolPart(part, {
+    state: options.state,
+    output: options.output,
+    errorText: options.errorText,
+    providerExecuted: options.providerExecuted,
+    preliminary: options.preliminary,
+    providerMetadata: options.providerMetadata,
+    isResultMetadata: true,
+  })
+}
+
+function findProjectedToolPart(message: UIMessage, toolCallId: string): MutableToolPart | undefined {
+  return message.parts.find((part): part is MutableToolPart => 'toolCallId' in part && part.toolCallId === toolCallId)
+}
+
+function assignProjectedToolPart(
+  part: MutableToolPart,
+  values: {
+    state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied'
+    input?: unknown
+    output?: unknown
+    errorText?: string
+    providerExecuted?: boolean
+    preliminary?: boolean
+    title?: string
+    providerMetadata?: ProviderMetadata
+    isResultMetadata: boolean
+  },
+): void {
+  const target = part as MutableToolPart & Record<string, unknown>
+  target.state = values.state
+  if ('input' in values) {
+    target.input = values.input
+  }
+  if ('output' in values) {
+    target.output = values.output
+  }
+  if ('errorText' in values) {
+    target.errorText = values.errorText
+  }
+  if (values.providerExecuted !== undefined) {
+    target.providerExecuted = values.providerExecuted
+  }
+  if (values.preliminary !== undefined) {
+    target.preliminary = values.preliminary
+  }
+  if (values.title !== undefined) {
+    target.title = values.title
+  }
+  if (values.providerMetadata !== undefined) {
+    target[values.isResultMetadata ? 'resultProviderMetadata' : 'callProviderMetadata'] = values.providerMetadata
+  }
+}
+
+function bufferReplayChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
+  const coalesced = coalesceReplayChunk(activeRun, chunk)
+  if (coalesced) {
+    return
+  }
+
+  activeRun.chunkBuffer.push(chunk)
+}
+
+function coalesceReplayChunk(activeRun: ActiveRun, chunk: UIMessageChunk): boolean {
+  const key = readReplayCoalesceKey(chunk)
+  if (!key) {
+    return false
+  }
+
+  const existingIndex = activeRun.chunkBufferIndexByKey.get(key)
+  if (existingIndex === undefined) {
+    activeRun.chunkBufferIndexByKey.set(key, activeRun.chunkBuffer.length)
+    return false
+  }
+
+  const existing = activeRun.chunkBuffer[existingIndex]
+  const merged = mergeReplayChunk(existing, chunk)
+  if (!merged) {
+    activeRun.chunkBufferIndexByKey.set(key, activeRun.chunkBuffer.length)
+    return false
+  }
+  activeRun.chunkBuffer[existingIndex] = merged
+  return true
+}
+
+function readReplayCoalesceKey(chunk: UIMessageChunk): string | null {
+  switch (chunk.type) {
+    case 'text-delta':
+      return `text-delta:${chunk.id}`
+    case 'reasoning-delta':
+      return `reasoning-delta:${chunk.id}`
+    case 'tool-input-delta':
+      return `tool-input-delta:${chunk.toolCallId}`
+    case 'tool-output-available':
+      return `tool-output-available:${chunk.toolCallId}`
+    default:
+      return null
+  }
+}
+
+function mergeReplayChunk(existing: UIMessageChunk, next: UIMessageChunk): UIMessageChunk | null {
+  if (existing.type === 'text-delta' && next.type === 'text-delta' && existing.id === next.id) {
+    if (existing.delta.length + next.delta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'reasoning-delta' && next.type === 'reasoning-delta' && existing.id === next.id) {
+    if (existing.delta.length + next.delta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      delta: `${existing.delta}${next.delta}`,
+      providerMetadata: next.providerMetadata ?? existing.providerMetadata,
+    }
+  }
+  if (existing.type === 'tool-input-delta' && next.type === 'tool-input-delta' && existing.toolCallId === next.toolCallId) {
+    if (existing.inputTextDelta.length + next.inputTextDelta.length > runDeltaFlushChars()) {
+      return null
+    }
+    return {
+      ...next,
+      inputTextDelta: `${existing.inputTextDelta}${next.inputTextDelta}`,
+    }
+  }
+  return null
+}
+
 function publishRunStartChunk(activeRun: ActiveRun): void {
   if (activeRun.startChunkPublished) {
     return
   }
+  flushPendingRunDelta(activeRun)
   publishUIMessageChunk(activeRun, { type: 'start', messageId: activeRun.messageId }, false)
 }
 
-async function publishTerminalChunk(activeRun: ActiveRun, chunk: UIMessageChunk): Promise<void> {
+async function publishTerminalChunk(activeRun: ActiveRun, chunk: UIMessageChunk, profile?: ChatRuntimeProfile): Promise<void> {
   publishRunStartChunk(activeRun)
+  flushPendingRunDelta(activeRun)
   const status = readTerminalStatus(chunk)
   const errorText = chunk.type === 'error' ? chunk.errorText : null
-  await finalizeActiveRun(activeRun, status, errorText, chunk)
+  await finalizeActiveRun(activeRun, status, errorText, chunk, profile)
   publishUIMessageChunk(activeRun, chunk, true)
-}
-
-async function readFinalMessageFromAiSdkStream(
-  activeRun: ActiveRun,
-  terminalChunk: UIMessageChunk,
-): Promise<UIMessage> {
-  let responseMessage = activeRun.finalMessage
-
-  const stream = createUIMessageStream<UIMessage>({
-    originalMessages: [activeRun.finalMessage],
-    generateId: () => activeRun.messageId,
-    execute({ writer }) {
-      for (const chunk of activeRun.chunkBuffer) {
-        writer.write(chunk)
-      }
-      writer.write(terminalChunk)
-    },
-    onFinish(event) {
-      responseMessage = event.responseMessage
-    },
-    onError(error) {
-      return error instanceof Error ? error.message : String(error)
-    },
-  })
-
-  await stream.pipeTo(new WritableStream<UIMessageChunk>())
-
-  return responseMessage
 }
 
 function readTerminalStatus(chunk: UIMessageChunk): TerminalChatMessageStatus {
@@ -2385,36 +3274,108 @@ async function finalizeActiveRun(
   status: ChatMessageStatus,
   errorText: string | null,
   terminalChunk: UIMessageChunk,
+  profile?: ChatRuntimeProfile,
 ): Promise<void> {
   if (status === 'streaming' || activeRun.terminalStatus) {
     return
   }
 
   activeRun.terminalStatus = status
+  if (profile) {
+    profile.finalizeStartedAtMs = performance.now()
+  }
+  flushFinalMessageProjection(activeRun)
+  flushProjectedToolInputs(activeRun)
 
-  activeRun.finalMessage = await readFinalMessageFromAiSdkStream(activeRun, terminalChunk)
-  persistMessageSnapshot({
+  const snapshotResult = persistMessageSnapshot({
     sessionId: activeRun.sessionId,
     messageId: activeRun.messageId,
     message: activeRun.finalMessage,
     messageStatus: status,
     errorText,
   })
+  if (profile) {
+    profile.finalMessageJsonBytes = snapshotResult.messageJsonBytes
+  }
 
   finalizeRun(activeRun, status, errorText)
-  recordChatStreamTrace({
+  if (profile) {
+    profile.finalizeFinishedAtMs = performance.now()
+    profile.memoryFinished = profile.enabled ? process.memoryUsage() : null
+  }
+  if (isChatStreamTraceEnabled()) {
+    recordChatStreamTrace({
+      chatSessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+      messageId: activeRun.messageId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      providerSessionId: activeRun.runtimeSession.providerSessionId,
+      phase:
+        status === 'complete' ? 'run_completed' : status === 'aborted' ? 'run_aborted' : 'run_failed',
+      payload: {
+        status,
+        errorText,
+        message: activeRun.finalMessage,
+      },
+    })
+  }
+}
+
+function flushProjectedToolInputs(activeRun: ActiveRun): void {
+  const message = activeRun.finalMessage
+  for (const [toolCallId, partialToolCall] of activeRun.finalProjection.partialToolCalls) {
+    upsertProjectedToolPart(message, {
+      toolCallId,
+      toolName: partialToolCall.toolName,
+      state: 'input-streaming',
+      input: parsePartialToolInputText(partialToolCall.deltas.join('')),
+      dynamic: partialToolCall.dynamic,
+      title: partialToolCall.title,
+    })
+  }
+}
+
+function recordChatRuntimeProfile(
+  activeRun: ActiveRun,
+  diagnostics: TurnOutputDiagnostics,
+  profile: ChatRuntimeProfile,
+): void {
+  if (!profile.enabled) {
+    return
+  }
+
+  const streamFinishedAtMs = profile.streamFinishedAtMs ?? performance.now()
+  const finalizeStartedAtMs = profile.finalizeStartedAtMs ?? streamFinishedAtMs
+  const finalizeFinishedAtMs = profile.finalizeFinishedAtMs ?? performance.now()
+  const memoryFinished = profile.memoryFinished ?? process.memoryUsage()
+  const memoryStarted = profile.memoryStarted
+  chatLogger.info('chat runtime profile', {
     chatSessionId: activeRun.sessionId,
     runId: activeRun.runId,
     messageId: activeRun.messageId,
     runtimeKind: activeRun.runtimeSession.runtimeKind,
-    providerSessionId: activeRun.runtimeSession.providerSessionId,
-    phase:
-      status === 'complete' ? 'run_completed' : status === 'aborted' ? 'run_aborted' : 'run_failed',
-    payload: {
-      status,
-      errorText,
-      message: activeRun.finalMessage,
+    providerTargetId: activeRun.providerTargetId,
+    modelId: activeRun.modelId,
+    status: activeRun.terminalStatus ?? 'streaming',
+    timingsMs: {
+      stream: Math.round(streamFinishedAtMs - profile.streamStartedAtMs),
+      finalize: Math.round(finalizeFinishedAtMs - finalizeStartedAtMs),
+      total: Math.round(finalizeFinishedAtMs - profile.startedAtMs),
     },
+    memory: {
+      startHeapUsed: memoryStarted?.heapUsed ?? null,
+      endHeapUsed: memoryFinished.heapUsed,
+      deltaHeapUsed: memoryStarted ? memoryFinished.heapUsed - memoryStarted.heapUsed : null,
+      startRss: memoryStarted?.rss ?? null,
+      endRss: memoryFinished.rss,
+      deltaRss: memoryStarted ? memoryFinished.rss - memoryStarted.rss : null,
+    },
+    activeRun: {
+      replayChunks: activeRun.chunkBuffer.length,
+      finalParts: activeRun.finalMessage.parts.length,
+      finalMessageJsonBytes: profile.finalMessageJsonBytes,
+    },
+    diagnostics,
   })
 }
 

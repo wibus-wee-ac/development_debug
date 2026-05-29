@@ -30,6 +30,7 @@ import type {
   StreamTurnInput,
 } from '../../runtime-provider-types'
 import { extractUiMessageText } from '../../ui-message-input'
+import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerClient } from './app-server-client'
@@ -201,7 +202,7 @@ export class CodexProvider implements ChatRuntime {
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'codex-chat')
     }
-    let outputTextCollector = ''
+    const outputTextCollector = createBoundedTextCollector()
 
     try {
       await client.initialize()
@@ -236,7 +237,7 @@ export class CodexProvider implements ChatRuntime {
         diagnostics.mappedEvents += chunks.length
         for (const chunk of chunks) {
           if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
-            outputTextCollector += (chunk as { delta: string }).delta
+            outputTextCollector.append((chunk as { delta: string }).delta)
           }
           yield chunk
         }
@@ -287,7 +288,7 @@ export class CodexProvider implements ChatRuntime {
 
       if (generation) {
         const update: Parameters<LangfuseGeneration['update']>[0] = {
-          output: outputTextCollector || undefined,
+          output: outputTextCollector.read(),
         }
         generation.update(update)
       }
@@ -437,6 +438,8 @@ function buildCodexConfig(
   const instructionPaths = [...skillPaths, ...(systemPromptFile ? [systemPromptFile] : [])]
   const codexConfig: Record<string, unknown> = {}
   const mcpServers = buildCodexMcpServersConfig()
+  codexConfig.approval_policy = config.approvalPolicy
+  codexConfig.sandbox_mode = config.sandboxMode
   if (Object.keys(mcpServers).length > 0) {
     codexConfig.mcp_servers = mcpServers
   }

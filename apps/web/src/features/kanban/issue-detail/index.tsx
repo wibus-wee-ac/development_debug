@@ -5,7 +5,6 @@ import type { KanbanIssue } from '~/lib/types'
 
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
-import { AgentSessionPanel } from './agent-session-panel'
 import { IssueDescription } from './issue-description'
 import { IssueHeader } from './issue-header'
 import { IssueTitle } from './issue-title'
@@ -182,12 +181,6 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
             <div className="mt-8">
               <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} onOpenIssue={onOpenIssue} />
             </div>
-
-            {(issue.delegateAgentId || issue.delegateAgentProfileId) && (
-              <div className="mt-8">
-                <AgentSessionPanel issueId={issueId} workspaceId={workspaceId} />
-              </div>
-            )}
 
             <div className="mt-8">
               <ActivityTimeline issueId={issueId} />

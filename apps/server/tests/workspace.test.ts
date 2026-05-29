@@ -205,6 +205,45 @@ describe('workspace capability', () => {
       expect(entries.some((entry: { path: string }) => entry.path.startsWith('.git'))).toBe(false)
       expect(entries.some((entry: { path: string }) => entry.path === '.DS_Store')).toBe(false)
 
+      const rootChildrenRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/children`))
+      expect(rootChildrenRes.status).toBe(200)
+      const rootChildren = await rootChildrenRes.json()
+      expect(rootChildren).toEqual([
+        { type: 'directory', name: 'src', path: 'src' },
+        { type: 'file', name: 'notes.md', path: 'notes.md' },
+      ])
+
+      const srcChildrenRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/children?path=${encodeURIComponent('src')}`))
+      expect(srcChildrenRes.status).toBe(200)
+      expect(await srcChildrenRes.json()).toEqual([
+        { type: 'file', name: 'main.ts', path: 'src/main.ts' },
+      ])
+
+      const missingChildrenRes = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files/children'))
+      expect(missingChildrenRes.status).toBe(200)
+      expect(await missingChildrenRes.json()).toEqual([])
+
+      const searchRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('main')}&limit=5`))
+      expect(searchRes.status).toBe(200)
+      expect(await searchRes.json()).toEqual([
+        { type: 'file', name: 'main.ts', path: 'src/main.ts' },
+      ])
+
+      const completionRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('src/')}&limit=5`))
+      expect(completionRes.status).toBe(200)
+      expect(await completionRes.json()).toEqual([
+        { type: 'file', name: 'main.ts', path: 'src/main.ts' },
+      ])
+
+      const missingSearchRes = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files/search?q=main'))
+      expect(missingSearchRes.status).toBe(200)
+      expect(await missingSearchRes.json()).toEqual([])
+
+      const eventsRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/events`))
+      expect(eventsRes.status).toBe(200)
+      expect(eventsRes.headers.get('content-type')).toContain('text/event-stream')
+      await eventsRes.body?.cancel()
+
       const missingFiles = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files'))
       expect(await missingFiles.json()).toEqual([])
 
@@ -288,6 +327,48 @@ describe('workspace capability', () => {
         relativePath: 'notes.md',
         targetPath: null,
       }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('bounds workspace file listing scans for large repositories', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-large-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      for (let index = 0; index < 5_100; index += 1) {
+        writeFileSync(join(workspaceRoot, `file-${String(index).padStart(4, '0')}.txt`), 'content\n', 'utf8')
+      }
+      mkdirSync(join(workspaceRoot, 'node_modules', 'pkg'), { recursive: true })
+      writeFileSync(join(workspaceRoot, 'node_modules', 'pkg', 'index.js'), 'module.exports = {}\n', 'utf8')
+
+      app = await createServerApp()
+      const createRes = await app.handle(new Request('http://localhost/workspaces/from-directory', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: workspaceRoot }),
+      }))
+      const workspace = await createRes.json()
+
+      const filesRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files`))
+      expect(filesRes.status).toBe(200)
+      const entries = await filesRes.json() as Array<{ path: string }>
+
+      expect(entries).toHaveLength(5_000)
+      expect(entries.some(entry => entry.path.startsWith('node_modules'))).toBe(false)
     }
     finally {
       shutdownInfra()

@@ -1,10 +1,9 @@
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import {
   FilePlusIcon,
   FolderPlusIcon,
-  Loader2Icon,
   SearchIcon,
   XIcon,
 } from 'lucide-react'
@@ -12,11 +11,11 @@ import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
-import { getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
+import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useGitFileStatuses } from '~/features/git/use-git'
-import { isElectron, nativeIpc } from '~/lib/electron'
+import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 import type { GitFileStatus } from '~/lib/types'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
@@ -43,6 +42,16 @@ const WorkspaceFileListSchema = z.array(z.object({
   name: z.string(),
   path: z.string(),
 })).default([])
+const WorkspaceFileEventSchema = z.object({
+  type: z.enum(['ready', 'directory-changed']),
+  workspaceId: z.string(),
+  path: z.string().optional(),
+  timestamp: z.number(),
+})
+
+const ROOT_DIRECTORY_KEY = ''
+
+type WorkspaceFileEntry = z.infer<typeof WorkspaceFileListSchema>[number]
 
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
@@ -93,6 +102,32 @@ function getFileTreeInputPaths(entries: z.infer<typeof WorkspaceFileListSchema>)
   return entries.map(entry => entry.type === 'directory' ? `${entry.path}/` : entry.path)
 }
 
+function getParentDirectoryPath(path: string): string {
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path
+  const index = normalizedPath.lastIndexOf('/')
+  return index < 0 ? ROOT_DIRECTORY_KEY : normalizedPath.slice(0, index)
+}
+
+function normalizeDirectoryPath(path: string): string {
+  return path.replace(/\/+$/g, '')
+}
+
+async function fetchWorkspaceFileChildren(workspaceId: string, path: string): Promise<WorkspaceFileEntry[]> {
+  const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}/files/children`, getServerUrl())
+  if (path.length > 0) {
+    url.searchParams.set('path', path)
+  }
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Workspace file children request failed with status ${response.status}.`)
+  }
+  return WorkspaceFileListSchema.parse(await response.json())
+}
+
+function buildWorkspaceFileEventsUrl(workspaceId: string): string {
+  return new URL(`/workspaces/${encodeURIComponent(workspaceId)}/files/events`, getServerUrl()).toString()
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface FileTreeProps {
@@ -103,17 +138,16 @@ interface FileTreeProps {
 
 export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
   const { t } = useTranslation('workspace')
-  const queryClient = useQueryClient()
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
     parentPath: string
   } | null>(null)
-  const filesQuery = useQuery({
-    queryKey: ['workspace-files', workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesByIdFiles({ path: { id: workspaceId! } })
-      return WorkspaceFileListSchema.parse(data)
-    },
+  const [childrenByDirectory, setChildrenByDirectory] = useState<Map<string, WorkspaceFileEntry[]>>(() => new Map())
+  const loadedDirectoriesRef = useRef<Set<string>>(new Set())
+  const loadingDirectoriesRef = useRef<Set<string>>(new Set())
+  const rootChildrenQuery = useQuery({
+    queryKey: ['workspace-file-children', workspaceId, ROOT_DIRECTORY_KEY],
+    queryFn: async () => fetchWorkspaceFileChildren(workspaceId!, ROOT_DIRECTORY_KEY),
     enabled: !!workspaceId,
     ...queryRefreshPolicies.active,
   })
@@ -122,7 +156,36 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
 
   const gitStatuses = gitStatusQuery.data
 
-  const paths = useMemo(() => getFileTreeInputPaths(filesQuery.data ?? []), [filesQuery.data])
+  useEffect(() => {
+    setChildrenByDirectory(new Map())
+    loadedDirectoriesRef.current = new Set()
+    loadingDirectoriesRef.current = new Set()
+  }, [workspaceId])
+
+  useEffect(() => {
+    if (!rootChildrenQuery.data) {
+      return
+    }
+    loadedDirectoriesRef.current.add(ROOT_DIRECTORY_KEY)
+    setChildrenByDirectory((current) => {
+      const next = new Map(current)
+      next.set(ROOT_DIRECTORY_KEY, rootChildrenQuery.data)
+      return next
+    })
+  }, [rootChildrenQuery.data])
+
+  const paths = useMemo(() => {
+    const seen = new Set<string>()
+    const entries = [...childrenByDirectory.values()].flat().filter((entry) => {
+      const key = entry.type === 'directory' ? `${entry.path}/` : entry.path
+      if (seen.has(key)) {
+        return false
+      }
+      seen.add(key)
+      return true
+    })
+    return getFileTreeInputPaths(entries)
+  }, [childrenByDirectory])
 
   const preparedInput = useMemo(
     () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,
@@ -134,8 +197,73 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
     [gitStatuses],
   )
   const refreshWorkspaceFiles = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] })
-  }, [queryClient, workspaceId])
+    if (!workspaceId) {
+      return
+    }
+    const directories = [...loadedDirectoriesRef.current]
+    const updates = await Promise.all(directories.map(async directoryPath => [
+      directoryPath,
+      await fetchWorkspaceFileChildren(workspaceId, directoryPath),
+    ] as const))
+    setChildrenByDirectory(new Map(updates))
+  }, [workspaceId])
+  const loadDirectoryChildren = useCallback(async (directoryPath: string, force = false) => {
+    if (!workspaceId) {
+      return
+    }
+    const normalizedPath = normalizeDirectoryPath(directoryPath)
+    if (!force && loadedDirectoriesRef.current.has(normalizedPath)) {
+      return
+    }
+    if (loadingDirectoriesRef.current.has(normalizedPath)) {
+      return
+    }
+
+    loadingDirectoriesRef.current.add(normalizedPath)
+    try {
+      const children = await fetchWorkspaceFileChildren(workspaceId, normalizedPath)
+      loadedDirectoriesRef.current.add(normalizedPath)
+      setChildrenByDirectory((current) => {
+        const next = new Map(current)
+        next.set(normalizedPath, children)
+        return next
+      })
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('fileTree.toast.loadFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+    finally {
+      loadingDirectoriesRef.current.delete(normalizedPath)
+    }
+  }, [t, workspaceId])
+  useEffect(() => {
+    if (!workspaceId) {
+      return
+    }
+
+    const eventSource = new EventSource(buildWorkspaceFileEventsUrl(workspaceId))
+    eventSource.onmessage = (event) => {
+      const message = WorkspaceFileEventSchema.parse(JSON.parse(event.data))
+      if (message.type !== 'directory-changed') {
+        return
+      }
+      const path = normalizeDirectoryPath(message.path ?? ROOT_DIRECTORY_KEY)
+      if (!loadedDirectoriesRef.current.has(path)) {
+        return
+      }
+      void loadDirectoryChildren(path, true)
+    }
+    eventSource.onerror = () => {
+      // EventSource reconnects automatically.
+    }
+    return () => {
+      eventSource.close()
+    }
+  }, [loadDirectoryChildren, workspaceId])
   const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
     if (!workspaceId) {
       return null
@@ -158,10 +286,10 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
     )
   }
 
-  if (filesQuery.isLoading) {
+  if (rootChildrenQuery.isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" />
+        <DelayedSpinner active className="size-4 text-muted-foreground/40" />
       </div>
     )
   }
@@ -222,8 +350,10 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
       workspaceId={workspaceId}
       paths={paths}
       preparedInput={preparedInput}
-      ready={filesQuery.isSuccess && gitStatusQuery.isSuccess}
+      ready={rootChildrenQuery.isSuccess && gitStatusQuery.isSuccess}
       gitStatus={treeGitStatus}
+      onDirectoryExpanded={loadDirectoryChildren}
+      onRefreshDirectory={loadDirectoryChildren}
       workspacePath={workspacePath ?? undefined}
       onPackRequested={onPackRequested}
     />
@@ -238,13 +368,14 @@ interface FileTreeInnerProps {
   preparedInput: ReturnType<typeof prepareFileTreeInput>
   ready: boolean
   gitStatus?: TreeGitStatus[]
+  onDirectoryExpanded: (path: string) => Promise<void>
+  onRefreshDirectory: (path: string, force?: boolean) => Promise<void>
   workspacePath?: string
   onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, workspacePath, onPackRequested }: FileTreeInnerProps) {
+function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, onDirectoryExpanded, onRefreshDirectory, workspacePath, onPackRequested }: FileTreeInnerProps) {
   const { t } = useTranslation('workspace')
-  const queryClient = useQueryClient()
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
     parentPath: string
@@ -261,8 +392,8 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
   const activeWorkspaceFilePathRef = useRef<string | null>(null)
   const copyPathChordActiveRef = useRef(false)
   const refreshWorkspaceFiles = useCallback(async () => {
-    await queryClient.invalidateQueries({ queryKey: ['workspace-files', workspaceId] })
-  }, [queryClient, workspaceId])
+    await onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
+  }, [onRefreshDirectory])
   const commitRename = useEffectEvent(async (sourcePath: string, destinationPath: string) => {
     await renameWorkspaceFilePath({
       workspaceId,
@@ -270,7 +401,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
       destinationPath,
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
-    await refreshWorkspaceFiles()
+    await onRefreshDirectory(getParentDirectoryPath(destinationPath), true)
   })
   const handleRenameError = useEffectEvent((error: unknown) => {
     toastManager.add({
@@ -278,7 +409,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
       title: t('fileTree.toast.renameFailed'),
       description: error instanceof Error ? error.message : String(error),
     })
-    void refreshWorkspaceFiles()
+    void onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
   })
 
   const { model } = useFileTree({
@@ -356,9 +487,9 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
       return
     }
 
-    await refreshWorkspaceFiles()
+    await onRefreshDirectory(input.parentPath, true)
     model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
-  }, [model, refreshWorkspaceFiles, t, workspaceId])
+  }, [model, onRefreshDirectory, t, workspaceId])
   const startDragFromTree = useEffectEvent((event: DragEvent) => {
     const itemPath = getDraggedTreeItemPath(event)
     if (!itemPath || !event.dataTransfer) {
@@ -441,6 +572,48 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, wo
     container.addEventListener('dragstart', handleDragStart)
     return () => container.removeEventListener('dragstart', handleDragStart)
   }, [model])
+
+  useEffect(() => {
+    const container = model.getFileTreeContainer()
+    if (!container) {
+      return
+    }
+
+    function loadDirectoryIfCollapsed(path: string | null) {
+      if (!path) {
+        return
+      }
+      const item = model.getItem(path)
+      if (!item || !item.isDirectory() || !('isExpanded' in item)) {
+        return
+      }
+      if (item.isExpanded()) {
+        return
+      }
+      void onDirectoryExpanded(normalizeDirectoryPath(path))
+    }
+
+    function handlePointerDown(event: MouseEvent) {
+      const item = getTreeItemFromEvent(event)
+      if (item?.kind === 'directory') {
+        loadDirectoryIfCollapsed(item.path)
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key !== 'ArrowRight' && event.key !== 'Enter') {
+        return
+      }
+      loadDirectoryIfCollapsed(model.getFocusedPath())
+    }
+
+    container.addEventListener('pointerdown', handlePointerDown, { capture: true })
+    container.addEventListener('keydown', handleKeyDown, { capture: true })
+    return () => {
+      container.removeEventListener('pointerdown', handlePointerDown, { capture: true })
+      container.removeEventListener('keydown', handleKeyDown, { capture: true })
+    }
+  }, [model, onDirectoryExpanded])
 
   useEffect(() => {
     const container = model.getFileTreeContainer()

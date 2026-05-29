@@ -2,17 +2,18 @@
 // Input: Issue record plus Issue-owned metadata and workspace resources.
 // Position: Issue Detail owns description editing and resource navigation semantics.
 
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { z } from 'zod'
 
-import { getIssuesSearch, getSessionsByIdMessages, getWorkspacesByIdFiles } from '~/api-gen/sdk.gen'
+import { getIssuesSearch, getSessionsByIdMessages } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import type { SmartMentionAttrs, SmartMentionItem, SmartMentionKind } from '~/components/editor/smart-mention-utils'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { useSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
+import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { KanbanBoard, KanbanIssue } from '~/lib/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -26,18 +27,6 @@ interface IssueDescriptionProps {
   issue: KanbanIssue
   onUpdate: (patch: { description: string | null }) => void
 }
-
-interface WorkspaceFile {
-  type: 'file' | 'directory'
-  name: string
-  path: string
-}
-
-const WorkspaceFileListSchema = z.array(z.object({
-  type: z.enum(['file', 'directory']),
-  name: z.string(),
-  path: z.string(),
-})).default([])
 
 const SessionMessageListSchema = z.array(z.object({
   id: z.string(),
@@ -170,16 +159,6 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
   const setAgentFocusTarget = useSettingsOverlayStore(s => s.setAgentFocusTarget)
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
 
-  const { data: workspaceFiles = [] } = useQuery({
-    queryKey: ['workspace-files', issue.workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesByIdFiles({ path: { id: issue.workspaceId } })
-      return WorkspaceFileListSchema.parse(data) satisfies WorkspaceFile[]
-    },
-    enabled: !!issue.workspaceId,
-    staleTime: 30_000,
-  })
-
   const sessionMessageCounts = useQueries({
     queries: sessions.slice(0, 20).map(session => ({
       queryKey: ['session-message-count', session.id] as const,
@@ -261,19 +240,6 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       }
     })
 
-    const fileItems = workspaceFiles
-      .filter(file => file.type === 'file')
-      .slice(0, 100)
-      .map((file): SmartMentionItem => ({
-        kind: 'file',
-        id: file.path,
-        label: file.name,
-        title: file.path,
-        detail: file.path,
-        workspaceId: issue.workspaceId,
-        searchText: file.path,
-      }))
-
     const currentIssueStatus = issue.statusId ? statusById.get(issue.statusId) : null
     const currentWorkspace = workspaceById.get(issue.workspaceId)
     const currentIssueItem: SmartMentionItem = {
@@ -292,9 +258,8 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       ...workspaceItems,
       ...agentItems,
       ...milestoneItems,
-      ...fileItems,
     ]
-  }, [agents, issue, milestones, sessionMessageCountById, sessions, statuses, workspaceFiles, workspaceIssues, workspaces])
+  }, [agents, issue, milestones, sessionMessageCountById, sessions, statuses, workspaceIssues, workspaces])
 
   const getMentionItems = useCallback(async (query: string): Promise<SmartMentionItem[]> => {
     const parsed = parseMentionQuery(query)
@@ -305,9 +270,25 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
     }
 
     let issueItems: SmartMentionItem[] = []
+    let fileItems: SmartMentionItem[] = []
     try {
+      if (parsed.kind === 'file' || (!parsed.kind && parsed.text)) {
+        const files = await searchWorkspaceFiles({ workspaceId: issue.workspaceId, query: parsed.text, limit: 8 })
+        fileItems = files
+          .filter(file => file.type === 'file')
+          .map((file): SmartMentionItem => ({
+            kind: 'file',
+            id: file.path,
+            label: file.name,
+            title: file.path,
+            detail: file.path,
+            workspaceId: issue.workspaceId,
+            searchText: file.path,
+          }))
+      }
+
       if (parsed.kind && parsed.kind !== 'issue') {
-        return localItems.slice(0, 20)
+        return [...fileItems, ...localItems].slice(0, 20)
       }
 
       const { data } = await getIssuesSearch({ query: { q: parsed.text, limit: '8' } })
@@ -330,7 +311,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
     }
 
     const seen = new Set<string>()
-    return [...issueItems, ...localItems]
+    return [...issueItems, ...fileItems, ...localItems]
       .filter((item) => {
         const key = `${item.kind}:${item.id}`
         if (seen.has(key)) {
@@ -340,7 +321,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
         return true
       })
       .slice(0, 20)
-  }, [staticItems, statuses, workspaces])
+  }, [issue.workspaceId, staticItems, statuses, workspaces])
 
   const handleMentionOpen = useCallback((attrs: SmartMentionAttrs) => {
     if (attrs.kind === 'issue') {

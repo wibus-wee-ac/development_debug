@@ -14,6 +14,7 @@ interface BlockProps {
   content: string
   state: BlockState
   births?: number[]
+  animated: boolean
   nowMs: number
   fadeDuration: number
   settled: boolean
@@ -30,14 +31,15 @@ interface BlockProps {
 
 /**
  * Renders a single markdown block.
- * - When settled, uses revealed rehype plugin (no animation spans, just classes)
- * - When active, uses birth-timestamp based animation
+ * - When settled, renders markdown without animation spans
+ * - When active and animated, uses birth-timestamp based animation
  * - Memoized on content + settled flag to minimize re-renders
  */
 const Block = memo<BlockProps>(({
   content,
   state: _state,
   births,
+  animated,
   nowMs,
   fadeDuration,
   settled,
@@ -50,10 +52,7 @@ const Block = memo<BlockProps>(({
   // eslint-disable-next-line ts/no-explicit-any
   const rehypePlugins: any[] = [rehypeKatex]
 
-  if (settled) {
-    rehypePlugins.push([rehypeStreamAnimate, { revealed: true, mode: animateMode }])
-  }
-  else {
+  if (animated && !settled) {
     rehypePlugins.push([rehypeStreamAnimate, {
       births,
       fadeDuration,
@@ -95,11 +94,10 @@ const Block = memo<BlockProps>(({
   if (prev.settled !== next.settled) {
     return false
   }
-  if (prev.isActiveEnd !== next.isActiveEnd) {
+  if (prev.animated !== next.animated) {
     return false
   }
-  // For active blocks, re-render on nowMs change (animation progress)
-  if (prev.nowMs !== next.nowMs) {
+  if (prev.isActiveEnd !== next.isActiveEnd) {
     return false
   }
   return true

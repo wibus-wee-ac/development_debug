@@ -257,8 +257,8 @@ export function useSmoothContent(
       // Debug store update
       const newBacklog = totalLen - newCursor
       updateDebugState({
-        targetText: fullText,
-        displayedText,
+        targetLength: totalLen,
+        displayedLength: newCursor,
         currentCps: effectiveCps,
         arrivalCps: s.emaArrivalCps,
         phase: s.phase,

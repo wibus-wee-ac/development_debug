@@ -2,7 +2,6 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 
 import * as pty from 'node-pty'
-import { z } from 'zod'
 
 import type { PtyExitState } from './protocol'
 
@@ -61,22 +60,6 @@ interface ProcessTableRow {
 }
 
 const PROCESS_TABLE_FIELD_SEPARATOR_PATTERN = /\s+/
-
-const ProcessTableStdoutSchema = z.string().transform((stdout) => {
-  return stdout
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [pidRaw, ppidRaw, rssRaw, cpuRaw] = line.split(PROCESS_TABLE_FIELD_SEPARATOR_PATTERN)
-      return {
-        pid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(pidRaw),
-        ppid: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(ppidRaw),
-        rssKB: z.string().transform(value => Number.parseInt(value, 10)).pipe(z.number().int()).parse(rssRaw),
-        cpuPercent: z.string().transform(value => Number.parseFloat(value)).pipe(z.number().finite().nonnegative()).parse(cpuRaw),
-      }
-    })
-})
 
 export class PtyRuntimeRegistry {
   private readonly sessions = new Map<string, RuntimeRecord>()
@@ -236,7 +219,7 @@ async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> 
     const { stdout } = await execFileAsync('ps', ['-axo', 'pid=,ppid=,rss=,pcpu='])
     const rows = new Map<number, ProcessTableRow>()
 
-    for (const row of ProcessTableStdoutSchema.parse(stdout)) {
+    for (const row of parseProcessTable(stdout)) {
       rows.set(row.pid, row)
     }
 
@@ -245,6 +228,34 @@ async function readProcessTable(): Promise<Map<number, ProcessTableRow> | null> 
  catch {
     return null
   }
+}
+
+function parseProcessTable(stdout: string): ProcessTableRow[] {
+  const rows: ProcessTableRow[] = []
+  for (const rawLine of stdout.split('\n')) {
+    const line = rawLine.trim()
+    if (!line) {
+      continue
+    }
+
+    const [pidRaw, ppidRaw, rssRaw, cpuRaw] = line.split(PROCESS_TABLE_FIELD_SEPARATOR_PATTERN)
+    const pid = Number.parseInt(pidRaw ?? '', 10)
+    const ppid = Number.parseInt(ppidRaw ?? '', 10)
+    const rssKB = Number.parseInt(rssRaw ?? '', 10)
+    const cpuPercent = Number.parseFloat(cpuRaw ?? '')
+    if (
+      !Number.isInteger(pid)
+      || !Number.isInteger(ppid)
+      || !Number.isInteger(rssKB)
+      || !Number.isFinite(cpuPercent)
+      || cpuPercent < 0
+    ) {
+      continue
+    }
+
+    rows.push({ pid, ppid, rssKB, cpuPercent })
+  }
+  return rows
 }
 
 function collectProcessTree(

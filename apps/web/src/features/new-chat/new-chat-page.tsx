@@ -27,7 +27,7 @@ import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
 import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
-import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
+import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { useSessionLayoutStore } from '~/store/session-layout'
@@ -141,7 +141,6 @@ function useNewChatPageOwner(active: boolean) {
 
   const selectedWorkspace = workspaces.find(w => w.id === selectedProjectWorkspaceId) ?? null
   const { sessions, loading: sessionsLoading } = useSessions(selectedProjectWorkspaceId)
-  const { files: workspaceFiles } = useWorkspaceFiles(selectedProjectWorkspaceId)
   const now = useNow(60_000, active)
   const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
@@ -150,10 +149,12 @@ function useNewChatPageOwner(active: boolean) {
     () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
     [selection.runtimeKind],
   )
-  const availableFiles: MentionItem[] = useMemo(
-    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
-    [workspaceFiles],
-  )
+  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
+    if (!selectedProjectWorkspaceId) {
+      return []
+    }
+    return searchWorkspaceFiles({ workspaceId: selectedProjectWorkspaceId, query, limit: 30 })
+  }, [selectedProjectWorkspaceId])
   const sessionsReady = selectedProjectWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
@@ -320,7 +321,6 @@ function useNewChatPageOwner(active: boolean) {
   }, [openTab])
 
   return {
-    availableFiles,
     composerState,
     draft,
     effectiveWorkspaceId: selectedProjectWorkspaceId,
@@ -335,6 +335,7 @@ function useNewChatPageOwner(active: boolean) {
     recentSessions,
     readinessNotice,
     selectedWorkspace,
+    searchFiles,
     sendDisabled,
     setDraft,
     sending,
@@ -354,7 +355,6 @@ function useNewChatPageOwner(active: boolean) {
 
 function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const {
-    availableFiles,
     composerState,
     handleSend,
     quickActionKey,
@@ -366,6 +366,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
     setSelectedWorkspaceId,
     setDraft,
     selectedWorkspace,
+    searchFiles,
     supportsAttachments,
     t,
     placeholder,
@@ -438,7 +439,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
       }}
       view={{
         placeholder,
-        availableFiles,
+        searchFiles,
         onDraftChange: setDraft,
         className: 'relative',
         cardClassName: cn(

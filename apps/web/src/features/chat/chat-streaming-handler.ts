@@ -3,6 +3,8 @@ import { readUIMessageStream } from 'ai'
 
 import { useChatStore } from '~/store/chat'
 
+const STREAM_FLUSH_INTERVAL_MS = 125
+
 export class ChatStreamingHandler {
   private readonly sessionId: string
   private readonly messageId: string
@@ -13,7 +15,9 @@ export class ChatStreamingHandler {
   private terminated = false
   private pendingMessages = new Map<string, { message: UIMessage, receivedAtMs: number }>()
   private rafId: number | null = null
+  private flushTimerId: number | null = null
   private microtaskFlushQueued = false
+  private lastFlushAtMs = 0
 
   constructor(
     sessionId: string,
@@ -103,6 +107,10 @@ export class ChatStreamingHandler {
       cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
+    if (this.flushTimerId !== null) {
+      window.clearTimeout(this.flushTimerId)
+      this.flushTimerId = null
+    }
     this.microtaskFlushQueued = false
     this.pendingMessages.clear()
   }
@@ -113,6 +121,10 @@ export class ChatStreamingHandler {
         cancelAnimationFrame(this.rafId)
       }
       this.rafId = null
+    }
+    if (this.flushTimerId !== null) {
+      window.clearTimeout(this.flushTimerId)
+      this.flushTimerId = null
     }
     if (this.pendingMessages.size === 0) {
       return
@@ -126,6 +138,7 @@ export class ChatStreamingHandler {
       store.updateMessage(this.sessionId, messageId, () => message)
     }
     this.pendingMessages.clear()
+    this.lastFlushAtMs = performance.now()
   }
 
   private appendLocalPlaceholder(): void {
@@ -145,7 +158,6 @@ export class ChatStreamingHandler {
     const receivedAtMs = performance.now()
     this.activateServerMessage(message.id)
 
-    // Batch: store the latest snapshot per message, flush on next rAF
     this.pendingMessages.set(message.id, { message, receivedAtMs })
 
     if (typeof requestAnimationFrame !== 'function') {
@@ -159,12 +171,30 @@ export class ChatStreamingHandler {
       return
     }
 
-    if (this.rafId === null) {
-      this.rafId = requestAnimationFrame(() => {
-        this.rafId = null
-        this.flushPendingMessages()
-      })
+    if (this.rafId !== null || this.flushTimerId !== null) {
+      return
     }
+
+    const elapsedSinceFlush = receivedAtMs - this.lastFlushAtMs
+    if (elapsedSinceFlush >= STREAM_FLUSH_INTERVAL_MS) {
+      this.scheduleAnimationFrameFlush()
+      return
+    }
+
+    this.flushTimerId = window.setTimeout(() => {
+      this.flushTimerId = null
+      this.scheduleAnimationFrameFlush()
+    }, STREAM_FLUSH_INTERVAL_MS - elapsedSinceFlush)
+  }
+
+  private scheduleAnimationFrameFlush(): void {
+    if (this.rafId !== null) {
+      return
+    }
+    this.rafId = requestAnimationFrame(() => {
+      this.rafId = null
+      this.flushPendingMessages()
+    })
   }
 
   private activateServerMessage(messageId: string): void {

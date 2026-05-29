@@ -4,6 +4,7 @@
 
 import type { UIMessageChunk } from 'ai'
 
+import { createBoundedTextCollector, type BoundedTextCollector } from '../bounded-text-collector'
 import type { CodexAppServerItem } from './app-server-tool-payload'
 import {
   buildCodexToolInput,
@@ -14,8 +15,8 @@ import {
 
 export interface CodexAppServerMapperState {
   openReasoningItemIds: Set<string>
-  itemTextById: Map<string, string>
-  commandOutputById: Map<string, string>
+  emittedTextLengthById: Map<string, number>
+  commandOutputById: Map<string, BoundedTextCollector>
   commandById: Map<string, string>
   startedAgentMessageIds: Set<string>
 }
@@ -38,7 +39,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
   void textItemId
   return {
     openReasoningItemIds: new Set(),
-    itemTextById: new Map(),
+    emittedTextLengthById: new Map(),
     commandOutputById: new Map(),
     commandById: new Map(),
     startedAgentMessageIds: new Set(),
@@ -162,7 +163,7 @@ function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMap
     toolCallId: item.id,
     output: buildCodexToolOutput(
       item,
-      state.commandOutputById.get(item.id),
+      state.commandOutputById.get(item.id)?.read(),
       state.commandById.get(item.id),
     ),
   }]
@@ -173,8 +174,10 @@ function mapAgentMessageDelta(rawParams: unknown, state: CodexAppServerMapperSta
   if (!params.delta || !params.itemId) {
     return []
   }
-  const currentText = state.itemTextById.get(params.itemId) ?? ''
-  state.itemTextById.set(params.itemId, currentText + params.delta)
+  state.emittedTextLengthById.set(
+    params.itemId,
+    (state.emittedTextLengthById.get(params.itemId) ?? 0) + params.delta.length,
+  )
   const chunks: UIMessageChunk[] = []
   if (!state.startedAgentMessageIds.has(params.itemId)) {
     state.startedAgentMessageIds.add(params.itemId)
@@ -203,22 +206,22 @@ function mapCommandOutputDelta(rawParams: unknown, state: CodexAppServerMapperSt
   if (!params.itemId || !params.delta) {
     return []
   }
-  const current = state.commandOutputById.get(params.itemId) ?? ''
-  state.commandOutputById.set(params.itemId, current + params.delta)
+  const collector = state.commandOutputById.get(params.itemId) ?? createBoundedTextCollector()
+  collector.append(params.delta)
+  state.commandOutputById.set(params.itemId, collector)
   return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: params.delta }]
 }
 
 function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
   const text = item.text ?? ''
-  const previousText = state.itemTextById.get(item.id) ?? ''
-  if (text.length <= previousText.length) {
+  const previousTextLength = state.emittedTextLengthById.get(item.id) ?? 0
+  if (text.length <= previousTextLength) {
     if (state.startedAgentMessageIds.delete(item.id)) {
       return [{ type: 'text-end', id: item.id }]
     }
     return []
   }
-  const delta = text.slice(previousText.length)
-  state.itemTextById.set(item.id, text)
+  const delta = text.slice(previousTextLength)
   const chunks = mapAgentMessageDelta({ itemId: item.id, delta }, state)
   state.startedAgentMessageIds.delete(item.id)
   chunks.push({ type: 'text-end', id: item.id })

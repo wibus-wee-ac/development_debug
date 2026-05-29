@@ -9,16 +9,19 @@ import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db, getServerConfig } from '../../infra'
+import { subscribeWorkspaceFileChanges } from './file-watch'
 import {
   createDirectory,
   createEmptyFile,
   createWorkspaceFileWriteBoundary,
   getWorkspaceFileInfo,
+  listFileChildren,
   listFiles,
   readTextFile,
   readWorkspaceFileBytes,
   renameWorkspacePath,
   renderWorkspaceFilePdf,
+  searchWorkspaceFiles,
   writeTextFile,
 } from './files'
 
@@ -121,6 +124,77 @@ export async function getFiles(workspaceId: string) {
     return []
   }
   return listFiles(workspace.path)
+}
+
+export async function getFileChildren(workspaceId: string, relativePath = '') {
+  const workspace = get(workspaceId)
+  if (!workspace) {
+    return []
+  }
+  return listFileChildren(workspace.path, relativePath)
+}
+
+export async function searchFiles(workspaceId: string, input: { query?: string, limit?: number }) {
+  const workspace = get(workspaceId)
+  if (!workspace) {
+    return []
+  }
+  return searchWorkspaceFiles({
+    workspacePath: workspace.path,
+    query: input.query,
+    limit: input.limit,
+  })
+}
+
+export function openFileEvents(workspaceId: string): ReadableStream<Uint8Array> {
+  const workspace = get(workspaceId)
+  if (!workspace) {
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+  }
+
+  const encoder = new TextEncoder()
+  let unsubscribe = () => {}
+  let keepAlive: NodeJS.Timeout | null = null
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (event: unknown) => {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+      }
+      send({
+        type: 'ready',
+        workspaceId,
+        timestamp: Date.now(),
+      })
+      unsubscribe = subscribeWorkspaceFileChanges({
+        workspaceId,
+        workspacePath: workspace.path,
+        listener: send,
+      })
+      keepAlive = setInterval(() => {
+        try {
+          controller.enqueue(encoder.encode(': keepalive\n\n'))
+        }
+        catch {
+          unsubscribe()
+          if (keepAlive) {
+            clearInterval(keepAlive)
+            keepAlive = null
+          }
+        }
+      }, 15000)
+    },
+    cancel() {
+      unsubscribe()
+      if (keepAlive) {
+        clearInterval(keepAlive)
+        keepAlive = null
+      }
+    },
+  })
 }
 
 export async function getFileContent(workspaceId: string, relativePath: string): Promise<string | null> {

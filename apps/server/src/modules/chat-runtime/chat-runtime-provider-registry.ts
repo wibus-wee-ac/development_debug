@@ -16,6 +16,13 @@ import { OpenAICompatibleProvider } from './providers/openai-compatible/provider
 import { SystemAgentProvider } from './providers/system-agent/provider'
 import type { ChatRuntime } from './runtime-provider-types'
 
+const SKILL_PATH_CACHE_TTL_MS = 30_000
+
+interface SkillPathCacheEntry {
+  paths: string[]
+  expiresAt: number
+}
+
 export class RuntimeRegistry {
   private readonly runtimes = new Map<RuntimeKind, ChatRuntime>()
 
@@ -28,8 +35,16 @@ export class RuntimeRegistry {
   }
 }
 
+const skillPathCache = new Map<string, SkillPathCacheEntry>()
+
 /** Resolve all skill folder paths that should be given to a runtime for a workspace. */
-function resolveSkillPaths(workspacePath: string): string[] {
+export function resolveRuntimeSkillPaths(workspacePath: string): string[] {
+  const now = Date.now()
+  const cached = skillPathCache.get(workspacePath)
+  if (cached && cached.expiresAt > now) {
+    return [...cached.paths]
+  }
+
   const roots = [
     resolveScopeRoot('builtin', {}),
     resolveScopeRoot('workspace', { workspacePath }),
@@ -49,7 +64,11 @@ function resolveSkillPaths(workspacePath: string): string[] {
       }
     }
   }
-  return paths
+  skillPathCache.set(workspacePath, {
+    paths,
+    expiresAt: now + SKILL_PATH_CACHE_TTL_MS,
+  })
+  return [...paths]
 }
 
 let registry: RuntimeRegistry | null = null
@@ -69,17 +88,17 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     else {
       registry.register(new ClaudeAgentProvider({
         readSecret: secretRef => Secrets.readSecret(secretRef),
-        resolveSkillPaths,
+        resolveSkillPaths: resolveRuntimeSkillPaths,
       }))
     }
     registry.register(new CodexProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
       recordObservability,
-      resolveSkillPaths,
+      resolveSkillPaths: resolveRuntimeSkillPaths,
     }))
     registry.register(new SystemAgentProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
-      resolveSkillPaths,
+      resolveSkillPaths: resolveRuntimeSkillPaths,
     }))
   }
   return registry

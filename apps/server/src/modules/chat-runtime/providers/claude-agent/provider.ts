@@ -22,7 +22,8 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../runtime-provider-types'
-import { recordChatStreamTrace } from '../../stream-trace'
+import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../stream-trace'
+import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './mapper'
 
@@ -161,7 +162,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       span.setAttribute('langfuse.session.id', input.runtimeSession.chatSessionId)
       span.setAttribute('langfuse.trace.name', 'claude-agent-chat')
     }
-    let outputTextCollector = ''
+    const outputTextCollector = createBoundedTextCollector()
 
     try {
       // Always pin the model on resumed sessions. input.modelId may be undefined
@@ -177,38 +178,42 @@ export class ClaudeAgentProvider implements ChatRuntime {
           break
         }
 
-        recordChatStreamTrace({
-          chatSessionId: input.runtimeSession.chatSessionId,
-          runId: input.runId,
-          messageId: traceMessageId,
-          runtimeKind: this.runtimeKind,
-          providerSessionId: input.runtimeSession.providerSessionId,
-          phase: 'provider_raw',
-          payload: message,
-        })
+        if (isChatStreamTraceEnabled()) {
+          recordChatStreamTrace({
+            chatSessionId: input.runtimeSession.chatSessionId,
+            runId: input.runId,
+            messageId: traceMessageId,
+            runtimeKind: this.runtimeKind,
+            providerSessionId: input.runtimeSession.providerSessionId,
+            phase: 'provider_raw',
+            payload: message,
+          })
+        }
 
         const result = await mapClaudeAgentMessageToChunks(message, mapperState)
 
-        recordChatStreamTrace({
-          chatSessionId: input.runtimeSession.chatSessionId,
-          runId: input.runId,
-          messageId: traceMessageId,
-          runtimeKind: this.runtimeKind,
-          providerSessionId: result.sessionId ?? input.runtimeSession.providerSessionId,
-          phase: 'mapper_output',
-          payload: {
-            messageType: message.type,
-            chunks: result.chunks,
-            sessionId: result.sessionId ?? null,
-            usage: result.usage ?? null,
-            assistantStarted: mapperState.assistantStarted,
-          },
-        })
+        if (isChatStreamTraceEnabled()) {
+          recordChatStreamTrace({
+            chatSessionId: input.runtimeSession.chatSessionId,
+            runId: input.runId,
+            messageId: traceMessageId,
+            runtimeKind: this.runtimeKind,
+            providerSessionId: result.sessionId ?? input.runtimeSession.providerSessionId,
+            phase: 'mapper_output',
+            payload: {
+              messageType: message.type,
+              chunks: result.chunks,
+              sessionId: result.sessionId ?? null,
+              usage: result.usage ?? null,
+              assistantStarted: mapperState.assistantStarted,
+            },
+          })
+        }
 
         for (const chunk of result.chunks) {
           // Collect text output for Langfuse
           if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
-            outputTextCollector += (chunk as { delta: string }).delta
+            outputTextCollector.append((chunk as { delta: string }).delta)
           }
           yield chunk
         }
@@ -233,7 +238,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       // Record usage and output in the generation
       if (generation) {
         generation.update({
-          output: outputTextCollector || undefined,
+          output: outputTextCollector.read(),
           ...(this._lastUsage && {
             usageDetails: {
               input: this._lastUsage.promptTokens,
@@ -571,9 +576,9 @@ function buildClaudeQueryOptions(input: {
     systemPrompt: input.input.systemPrompt
       ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.input.systemPrompt }
       : undefined,
-    // Native Claude SDK support: discover and invoke all SDK-visible skills/commands.
-    // Cradle-specific skill projection is intentionally out of scope for this pass.
-    skills: 'all',
+  }
+  if (config.skills === 'all' || (Array.isArray(config.skills) && config.skills.length > 0)) {
+    queryOptions.skills = config.skills
   }
   if (config.tools) {
     queryOptions.tools = config.tools
@@ -626,7 +631,7 @@ function buildClaudeQueryOptions(input: {
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
 
-  Object.assign(env, buildClaudeAgentModelEnv(config.claudeAgent))
+  Object.assign(env, buildClaudeAgentModelEnv({ model: effectiveModel, ...config.claudeAgent }))
   queryOptions.env = env
 
   return queryOptions
@@ -641,6 +646,7 @@ function readClaudeAgentModelId(
 }
 
 function buildClaudeAgentModelEnv(config: {
+  model: string | undefined
   modelAliases?: {
     haiku?: string
     sonnet?: string

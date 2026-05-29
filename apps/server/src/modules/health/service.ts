@@ -6,29 +6,62 @@ function toMB(bytes: number): number {
   return Math.round((bytes / 1024 / 1024) * 100) / 100
 }
 
-let previousCpuSample: { usageMicros: number, sampledAt: number } | null = null
+const CPU_SAMPLE_WINDOW_MS = 1_000
+
+interface CpuSample {
+  usageMicros: number
+  sampledAt: number
+}
+
+let previousCpuSample: CpuSample | null = null
+let stableCpuPercent: number | null = null
+
+function roundPercent(value: number): number {
+  return Math.round(value * 100) / 100
+}
 
 function readCpuSnapshot(): Static<typeof HealthModel['checkResponse']>['cpu'] {
   const usage = process.cpuUsage()
-  const usageMicros = usage.user + usage.system
-  const sampledAt = Date.now()
+  const current: CpuSample = {
+    usageMicros: usage.user + usage.system,
+    sampledAt: Date.now(),
+  }
   const previous = previousCpuSample
-  previousCpuSample = { usageMicros, sampledAt }
 
-  if (!previous || sampledAt <= previous.sampledAt) {
+  if (!previous) {
+    previousCpuSample = current
     return {
       percent: null,
       userMicros: usage.user,
       systemMicros: usage.system,
+      sampleMs: null,
+      usedMicros: null,
+      windowReady: false,
     }
   }
 
-  const elapsedMicros = (sampledAt - previous.sampledAt) * 1000
-  const usedMicros = Math.max(0, usageMicros - previous.usageMicros)
+  const sampleMs = Math.max(0, current.sampledAt - previous.sampledAt)
+  const usedMicros = Math.max(0, current.usageMicros - previous.usageMicros)
+  if (sampleMs < CPU_SAMPLE_WINDOW_MS) {
+    return {
+      percent: stableCpuPercent,
+      userMicros: usage.user,
+      systemMicros: usage.system,
+      sampleMs,
+      usedMicros,
+      windowReady: false,
+    }
+  }
+
+  previousCpuSample = current
+  stableCpuPercent = roundPercent((usedMicros / (sampleMs * 1000)) * 100)
   return {
-    percent: Math.round((usedMicros / elapsedMicros) * 10000) / 100,
+    percent: stableCpuPercent,
     userMicros: usage.user,
     systemMicros: usage.system,
+    sampleMs,
+    usedMicros,
+    windowReady: true,
   }
 }
 
@@ -46,4 +79,9 @@ export function check(): Static<typeof HealthModel['checkResponse']> {
     cpu: readCpuSnapshot(),
     timestamp: Date.now(),
   }
+}
+
+export function resetHealthSamplesForTests(): void {
+  previousCpuSample = null
+  stableCpuPercent = null
 }

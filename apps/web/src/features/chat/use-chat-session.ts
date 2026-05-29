@@ -608,6 +608,10 @@ export function useChatSession(chatSessionId: string | null) {
   const messageCount = messageIds.length
   const isReady = messageCount > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
 
+  if (lastError) {
+    console.error(`[useChatSession] last error for session ${chatSessionId}:`, lastError)
+  }
+
   return {
     messageIds,
     messageCount,

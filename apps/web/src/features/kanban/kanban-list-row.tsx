@@ -216,13 +216,7 @@ function KanbanListRowView({
           )}
 
           {displayProperties.assignee && issue.assigneeId && (
-            issue.assigneeKind === 'agent'
-              ? (
-                  <span className="flex size-4 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
-                    <BotIcon className="size-2.5" aria-hidden="true" />
-                  </span>
-                )
-              : <AssigneeAvatar name={issue.assigneeId} size={16} />
+            <AssigneeAvatar name={issue.assigneeId} size={16} />
           )}
 
           {displayProperties.createdAt && issue.createdAt && (

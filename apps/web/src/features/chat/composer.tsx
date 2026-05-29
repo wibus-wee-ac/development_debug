@@ -92,6 +92,7 @@ export interface ComposerExternalSignals {
 export interface ComposerViewOptions {
   placeholder?: string
   availableFiles?: MentionItem[]
+  searchFiles?: (query: string) => Promise<MentionItem[]>
   className?: string
   cardClassName?: string
   textareaClassName?: string
@@ -409,6 +410,7 @@ export function Composer({
   const {
     placeholder = 'Message...',
     availableFiles = EMPTY_FILES,
+    searchFiles,
     className,
     cardClassName,
     textareaClassName,
@@ -756,6 +758,7 @@ export function Composer({
       <MentionPanel
         items={availableFiles}
         query={state.mentionQuery}
+        searchItems={searchFiles}
         onSelect={handleMentionSelect}
         onClose={() => dispatch({ type: 'mention/closed' })}
         visible={state.mentionActive}

@@ -1,11 +1,11 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import type { Dirent } from 'node:fs'
 import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, extname, join, resolve, sep } from 'node:path'
 
-import fg from 'fast-glob'
 import ignore from 'ignore'
 
 export interface WorkspaceFileEntry {
@@ -36,7 +36,160 @@ export interface WorkspaceFileWriteBoundary {
   targetPath: string | null
 }
 
+interface WorkspaceIgnoreContext {
+  filter: ReturnType<ReturnType<typeof ignore>['createFilter']>
+}
+
+interface WorkspaceFileListCacheEntry {
+  expiresAt: number
+  entries: WorkspaceFileEntry[]
+}
+
+const WORKSPACE_FILE_LIST_CACHE_TTL_MS = 30_000
+const WORKSPACE_FILE_LIST_MAX_ENTRIES = 5_000
+const WORKSPACE_FILE_LIST_MAX_DIRECTORIES = 1_500
+const WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES = 3_000
+const WORKSPACE_FILE_SEARCH_MAX_DIRECTORIES = 600
+const WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT = 30
+const WORKSPACE_FILE_SEARCH_MAX_LIMIT = 100
+const workspaceFileListCache = new Map<string, WorkspaceFileListCacheEntry>()
+const ignoredWorkspaceFileNames = new Set([
+  '.git',
+  'node_modules',
+  '.DS_Store',
+  '.gitignore',
+  '.gitattributes',
+])
+
 export async function listFiles(workspacePath: string): Promise<WorkspaceFileEntry[]> {
+  const cached = workspaceFileListCache.get(workspacePath)
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.entries
+  }
+
+  const ignoreContext = await createWorkspaceIgnoreContext(workspacePath)
+  const fileEntries = await collectWorkspaceFileEntries(workspacePath, ignoreContext)
+  workspaceFileListCache.set(workspacePath, {
+    expiresAt: Date.now() + WORKSPACE_FILE_LIST_CACHE_TTL_MS,
+    entries: fileEntries,
+  })
+
+  return fileEntries
+}
+
+export async function listFileChildren(workspacePath: string, relativePath = ''): Promise<WorkspaceFileEntry[]> {
+  const directoryPath = relativePath.trim()
+  const resolvedDirectory = directoryPath.length > 0
+    ? resolveWorkspaceFilePath(workspacePath, directoryPath)
+    : resolve(workspacePath)
+  if (!resolvedDirectory) {
+    return []
+  }
+
+  const ignoreContext = await createWorkspaceIgnoreContext(workspacePath)
+  if (directoryPath.length > 0 && !ignoreContext.filter(`${normalizeRelativePath(directoryPath)}/`)) {
+    return []
+  }
+
+  return readDirectWorkspaceChildren({
+    workspacePath,
+    directoryPath: resolvedDirectory,
+    relativePath: normalizeRelativePath(directoryPath),
+    ignoreContext,
+  })
+}
+
+export async function searchWorkspaceFiles(input: {
+  workspacePath: string
+  query?: string
+  limit?: number
+}): Promise<WorkspaceFileEntry[]> {
+  const limit = clampSearchLimit(input.limit)
+  const query = normalizeSearchQuery(input.query ?? '')
+
+  if (!query) {
+    return (await listFileChildren(input.workspacePath, '')).slice(0, limit)
+  }
+
+  const slashIndex = query.lastIndexOf('/')
+  if (slashIndex >= 0) {
+    const parentPath = normalizeRelativePath(query.slice(0, slashIndex))
+    const leafQuery = query.slice(slashIndex + 1).toLowerCase()
+    return (await listFileChildren(input.workspacePath, parentPath))
+      .filter(entry => !leafQuery || entry.name.toLowerCase().includes(leafQuery))
+      .slice(0, limit)
+  }
+
+  const ignoreContext = await createWorkspaceIgnoreContext(input.workspacePath)
+  const matches: Array<{ entry: WorkspaceFileEntry, score: number }> = []
+  const queue: string[] = ['']
+  let visitedDirectories = 0
+  let scannedEntries = 0
+
+  while (
+    queue.length > 0
+    && scannedEntries < WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES
+    && visitedDirectories < WORKSPACE_FILE_SEARCH_MAX_DIRECTORIES
+  ) {
+    const currentPath = queue.shift() ?? ''
+    const directoryPath = currentPath ? join(input.workspacePath, currentPath) : input.workspacePath
+    visitedDirectories += 1
+
+    let dirEntries: Dirent[]
+    try {
+      dirEntries = await readdir(directoryPath, { withFileTypes: true })
+    }
+    catch {
+      continue
+    }
+
+    dirEntries.sort((left, right) => {
+      if (left.isDirectory() !== right.isDirectory()) {
+        return left.isDirectory() ? -1 : 1
+      }
+      return left.name.localeCompare(right.name)
+    })
+
+    for (const dirEntry of dirEntries) {
+      if (scannedEntries >= WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES) {
+        break
+      }
+      if (!dirEntry.isDirectory() && !dirEntry.isFile()) {
+        continue
+      }
+      if (ignoredWorkspaceFileNames.has(dirEntry.name)) {
+        continue
+      }
+
+      const entryPath = currentPath ? `${currentPath}/${dirEntry.name}` : dirEntry.name
+      const filterPath = dirEntry.isDirectory() ? `${entryPath}/` : entryPath
+      if (!ignoreContext.filter(filterPath)) {
+        continue
+      }
+
+      scannedEntries += 1
+      const entry: WorkspaceFileEntry = {
+        type: dirEntry.isDirectory() ? 'directory' : 'file',
+        name: dirEntry.name,
+        path: entryPath,
+      }
+      const score = scoreWorkspaceFileSearch(entry.path, query)
+      if (score !== null) {
+        matches.push({ entry, score })
+      }
+      if (dirEntry.isDirectory()) {
+        queue.push(entryPath)
+      }
+    }
+  }
+
+  return matches
+    .sort((left, right) => left.score - right.score || left.entry.path.localeCompare(right.entry.path))
+    .slice(0, limit)
+    .map(match => match.entry)
+}
+
+async function createWorkspaceIgnoreContext(workspacePath: string): Promise<WorkspaceIgnoreContext> {
   const ig = ignore()
   try {
     ig.add(await readFile(join(workspacePath, '.gitignore'), 'utf8'))
@@ -45,25 +198,145 @@ export async function listFiles(workspacePath: string): Promise<WorkspaceFileEnt
     // Missing .gitignore is fine.
   }
   ig.add(['node_modules', '.git', '.DS_Store'])
+  return { filter: ig.createFilter() }
+}
 
-  const entries = await fg('**/*', {
-    cwd: workspacePath,
-    dot: true,
-    onlyFiles: false,
-    markDirectories: true,
-  })
+async function collectWorkspaceFileEntries(workspacePath: string, ignoreContext: WorkspaceIgnoreContext): Promise<WorkspaceFileEntry[]> {
+  const entries: WorkspaceFileEntry[] = []
+  const queue: string[] = ['']
+  let visitedDirectories = 0
+
+  while (queue.length > 0 && entries.length < WORKSPACE_FILE_LIST_MAX_ENTRIES && visitedDirectories < WORKSPACE_FILE_LIST_MAX_DIRECTORIES) {
+    const currentPath = queue.shift() ?? ''
+    const directoryPath = currentPath ? join(workspacePath, currentPath) : workspacePath
+    visitedDirectories += 1
+
+    let dirEntries: Dirent[]
+    try {
+      dirEntries = await readdir(directoryPath, { withFileTypes: true })
+    }
+    catch {
+      continue
+    }
+
+    dirEntries.sort((left, right) => {
+      if (left.isDirectory() !== right.isDirectory()) {
+        return left.isDirectory() ? -1 : 1
+      }
+      return left.name.localeCompare(right.name)
+    })
+
+    for (const dirEntry of dirEntries) {
+      if (entries.length >= WORKSPACE_FILE_LIST_MAX_ENTRIES) {
+        break
+      }
+      if (!dirEntry.isDirectory() && !dirEntry.isFile()) {
+        continue
+      }
+      if (ignoredWorkspaceFileNames.has(dirEntry.name)) {
+        continue
+      }
+
+      const entryPath = currentPath ? `${currentPath}/${dirEntry.name}` : dirEntry.name
+      const filterPath = dirEntry.isDirectory() ? `${entryPath}/` : entryPath
+      if (!ignoreContext.filter(filterPath)) {
+        continue
+      }
+
+      if (dirEntry.isDirectory()) {
+        entries.push({ type: 'directory', name: dirEntry.name, path: entryPath })
+        queue.push(entryPath)
+        continue
+      }
+
+      entries.push({ type: 'file', name: dirEntry.name, path: entryPath })
+    }
+  }
 
   return entries
-    .filter(ig.createFilter())
-    .map((entry) => {
-      const isDirectory = entry.endsWith('/')
-      const cleanPath = isDirectory ? entry.slice(0, -1) : entry
-      return {
-        type: isDirectory ? 'directory' as const : 'file' as const,
-        name: basename(cleanPath),
-        path: cleanPath,
-      }
+}
+
+async function readDirectWorkspaceChildren(input: {
+  workspacePath: string
+  directoryPath: string
+  relativePath: string
+  ignoreContext: WorkspaceIgnoreContext
+}): Promise<WorkspaceFileEntry[]> {
+  let dirEntries: Dirent[]
+  try {
+    dirEntries = await readdir(input.directoryPath, { withFileTypes: true })
+  }
+  catch {
+    return []
+  }
+
+  dirEntries.sort((left, right) => {
+    if (left.isDirectory() !== right.isDirectory()) {
+      return left.isDirectory() ? -1 : 1
+    }
+    return left.name.localeCompare(right.name)
+  })
+
+  const entries: WorkspaceFileEntry[] = []
+  for (const dirEntry of dirEntries) {
+    if (!dirEntry.isDirectory() && !dirEntry.isFile()) {
+      continue
+    }
+    if (ignoredWorkspaceFileNames.has(dirEntry.name)) {
+      continue
+    }
+
+    const entryPath = input.relativePath ? `${input.relativePath}/${dirEntry.name}` : dirEntry.name
+    const filterPath = dirEntry.isDirectory() ? `${entryPath}/` : entryPath
+    if (!input.ignoreContext.filter(filterPath)) {
+      continue
+    }
+
+    entries.push({
+      type: dirEntry.isDirectory() ? 'directory' : 'file',
+      name: dirEntry.name,
+      path: entryPath,
     })
+  }
+
+  return entries
+}
+
+function normalizeRelativePath(relativePath: string): string {
+  return relativePath.split(sep).join('/').replace(/^\/+|\/+$/g, '')
+}
+
+function normalizeSearchQuery(query: string): string {
+  return query.split(sep).join('/').replace(/^@+/, '').replace(/^\/+/, '').trim()
+}
+
+function clampSearchLimit(limit: number | undefined): number {
+  if (!Number.isFinite(limit)) {
+    return WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT
+  }
+  return Math.max(1, Math.min(WORKSPACE_FILE_SEARCH_MAX_LIMIT, Math.floor(limit ?? WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT)))
+}
+
+function scoreWorkspaceFileSearch(path: string, query: string): number | null {
+  const normalizedPath = path.toLowerCase()
+  const normalizedQuery = query.toLowerCase()
+
+  if (normalizedPath.includes(normalizedQuery)) {
+    return normalizedPath.indexOf(normalizedQuery)
+  }
+
+  let score = normalizedPath.length
+  let pathIndex = 0
+  for (const char of normalizedQuery) {
+    const nextIndex = normalizedPath.indexOf(char, pathIndex)
+    if (nextIndex < 0) {
+      return null
+    }
+    score += nextIndex - pathIndex + 1
+    pathIndex = nextIndex + 1
+  }
+
+  return score
 }
 
 export async function readTextFile(workspacePath: string, relativePath: string): Promise<string | null> {
@@ -200,6 +473,7 @@ export async function writeTextFile(workspacePath: string, relativePath: string,
   }
   try {
     await writeFile(fullPath, content, 'utf8')
+    invalidateWorkspaceFileList(workspacePath)
     return true
   }
   catch {
@@ -214,6 +488,7 @@ export async function createEmptyFile(workspacePath: string, relativePath: strin
   }
   try {
     await writeFile(fullPath, '', { encoding: 'utf8', flag: 'wx' })
+    invalidateWorkspaceFileList(workspacePath)
     return true
   }
   catch {
@@ -228,6 +503,7 @@ export async function createDirectory(workspacePath: string, relativePath: strin
   }
   try {
     await mkdir(fullPath)
+    invalidateWorkspaceFileList(workspacePath)
     return true
   }
   catch {
@@ -250,11 +526,16 @@ export async function renameWorkspacePath(workspacePath: string, sourcePath: str
   }
   try {
     await rename(sourceFullPath, destinationFullPath)
+    invalidateWorkspaceFileList(workspacePath)
     return true
   }
   catch {
     return false
   }
+}
+
+export function invalidateWorkspaceFileList(workspacePath: string): void {
+  workspaceFileListCache.delete(workspacePath)
 }
 
 export function resolveWorkspaceFilePath(workspacePath: string, relativePath: string): string | null {

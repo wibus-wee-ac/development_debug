@@ -184,13 +184,7 @@ function KanbanCardView({
 
             {displayProperties.assignee && (
               issue.assigneeId
-                ? issue.assigneeKind === 'agent'
-                  ? (
-                      <span className="flex size-[18px] shrink-0 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
-                        <BotIcon className="size-3" aria-hidden="true" />
-                      </span>
-                    )
-                  : <AssigneeAvatar name={issue.assigneeId} size={18} />
+                ? <AssigneeAvatar name={issue.assigneeId} size={18} />
                 : <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
             )}
           </span>

@@ -2,11 +2,12 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { workspaces } from '@cradle/db'
+import { agents, providerTargets, workspaces } from '@cradle/db'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import * as Issue from '../src/modules/issue/service'
 
 interface AgentSessionView {
   id: string
@@ -155,6 +156,85 @@ async function waitForActivityBody(app: ElysiaApp, agentSessionId: string, expec
 }
 
 describe('issue-agent capability', () => {
+  it('keeps human assignee separate from agent delegation metadata and activity history', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      await createServerApp()
+      const now = Math.floor(Date.now() / 1000)
+      db().insert(workspaces).values({
+        id: 'workspace-delegation-model',
+        name: 'Workspace Delegation Model',
+        path: '/tmp/workspace-delegation-model',
+      }).run()
+      db().insert(providerTargets).values({
+        id: 'provider-target-delegation-model',
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Delegation Provider',
+        enabled: true,
+      }).run()
+      db().insert(agents).values({
+        id: 'agent-delegation-model',
+        name: 'Delegation Agent',
+        avatarStyle: 'bottts-neutral',
+        avatarSeed: 'delegation-agent',
+        providerTargetId: 'provider-target-delegation-model',
+        runtimeKind: 'standard',
+        enabled: true,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+
+      const issue = Issue.createIssue({
+        workspaceId: 'workspace-delegation-model',
+        title: 'Keep ownership clear',
+      })
+      Issue.updateIssue(issue.id, {
+        assigneeKind: 'user',
+        assigneeId: '__self__',
+      })
+
+      const delegatedIssue = Issue.updateIssueDelegation(issue.id, {
+        agentId: 'agent-delegation-model',
+        providerTargetId: 'provider-target-delegation-model',
+      })
+
+      expect(delegatedIssue).toEqual(expect.objectContaining({
+        assigneeKind: 'user',
+        assigneeId: '__self__',
+        delegateAgentId: 'agent-delegation-model',
+        delegateAgentProfileId: 'provider-target-delegation-model',
+      }))
+
+      Issue.addComment({
+        issueId: issue.id,
+        content: 'Delegated to Delegation Agent',
+        authorKind: 'system.delegated',
+      })
+
+      expect(Issue.listComments(issue.id)).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          authorKind: 'system.delegated',
+          authorId: null,
+          content: 'Delegated to Delegation Agent',
+        }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('delegates an issue, exposes activities and chat output, supports rerun, and clears delegation', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -235,8 +315,8 @@ describe('issue-agent capability', () => {
       const assignedIssueRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`))
       expect(assignedIssueRes.status).toBe(200)
       expect(await assignedIssueRes.json()).toEqual(expect.objectContaining({
-        assigneeKind: 'agent',
-        assigneeId: agent.id,
+        assigneeKind: null,
+        assigneeId: null,
         delegateAgentId: agent.id,
         delegateAgentProfileId: 'profile-issue-agent',
       }))

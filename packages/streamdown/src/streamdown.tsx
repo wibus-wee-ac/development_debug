@@ -11,6 +11,8 @@ export interface StreamdownProps {
   content: string
   /** Whether content is still being streamed */
   streaming?: boolean
+  /** Whether to run the streaming smoother and reveal animation. */
+  animated?: boolean
   /** CPS smoother preset */
   preset?: SmoothPreset
   /** Animation visual preset (minimal/balanced/dramatic or custom) */
@@ -36,6 +38,7 @@ export interface StreamdownProps {
 export function Streamdown({
   content,
   streaming = false,
+  animated = true,
   preset = 'balanced',
   animationPreset,
   animateMode = 'word',
@@ -47,6 +50,14 @@ export function Streamdown({
 }: StreamdownProps) {
   if (!streaming) {
     return <StaticRender content={content} className={className} components={components} rehypePlugins={rehypePlugins} remarkPlugins={remarkPlugins} />
+  }
+
+  if (!animated) {
+    return (
+      <div className={className} data-streamdown-plain-text="">
+        <span style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{content}</span>
+      </div>
+    )
   }
 
   return (

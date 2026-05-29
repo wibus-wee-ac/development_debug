@@ -60,8 +60,6 @@ interface IssueContextMenuProps {
   children: ReactNode
 }
 
-type AssigneeKind = 'user' | 'agent'
-
 const CURRENT_USER_ASSIGNEE = {
   id: '__self__',
   name: 'Me',
@@ -105,9 +103,8 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
   const delegateAgents = agents.filter(agent => !!agent.providerTargetId)
-  const assignedAgent = delegateAgents.find(agent => (
-    (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
-    || agent.id === issue.delegateAgentId
+  const delegatedAgent = delegateAgents.find(agent => (
+    agent.id === issue.delegateAgentId
     || agent.providerTargetId === issue.delegateAgentProfileId
   )) ?? null
   const currentUserName = t('assignee.currentUser')
@@ -116,11 +113,8 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
       ? { ...CURRENT_USER_ASSIGNEE, name: currentUserName }
       : { id: issue.assigneeId ?? '', name: issue.assigneeId ?? t('assignee.unknownUser') }
     : null
-  const assigneeValue = assignedAgent
-    ? `agent:${assignedAgent.id}`
-    : assignedHuman?.id
-      ? `user:${assignedHuman.id}`
-      : ''
+  const assigneeValue = assignedHuman?.id ? `user:${assignedHuman.id}` : ''
+  const agentValue = delegatedAgent ? `agent:${delegatedAgent.id}` : ''
 
   const isMutating = updateIssue.isPending || delegateIssue.isPending || deleteIssue.isPending || undelegateIssue.isPending
   const currentStatusValue = issue.statusId ?? ''
@@ -133,38 +127,34 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
   const handleAssigneeChange = (value: string) => {
     if (value === '') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
-        undelegateIssue.mutate({ issueId: issue.id })
-        return
-      }
       updateIssue.mutate({ id: issue.id, patch: { assigneeKind: null, assigneeId: null } })
       return
     }
 
-    const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
-    if (kind === 'agent') {
-      const agent = delegateAgents.find(candidate => candidate.id === id)
-      if (!agent?.providerTargetId) {
-        return
+    const [kind, id] = value.split(':', 2) as ['user', string]
+    if (kind === 'user') {
+      updateIssue.mutate({ id: issue.id, patch: { assigneeKind: 'user', assigneeId: id } })
+    }
+  }
+
+  const handleAgentChange = (value: string) => {
+    if (value === '') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate({ issueId: issue.id })
       }
-      delegateIssue.mutate({
-        issueId: issue.id,
-        providerTargetId: agent.providerTargetId,
-        agentId: agent.id,
-      })
       return
     }
 
-    if (kind === 'user') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
-        undelegateIssue.mutate(
-          { issueId: issue.id },
-          { onSuccess: () => updateIssue.mutate({ id: issue.id, patch: { assigneeKind: 'user', assigneeId: id } }) },
-        )
-        return
-      }
-      updateIssue.mutate({ id: issue.id, patch: { assigneeKind: 'user', assigneeId: id } })
+    const [, id] = value.split(':', 2)
+    const agent = delegateAgents.find(candidate => candidate.id === id)
+    if (!agent?.providerTargetId) {
+      return
     }
+    delegateIssue.mutate({
+      issueId: issue.id,
+      providerTargetId: agent.providerTargetId,
+      agentId: agent.id,
+    })
   }
 
   return (
@@ -266,11 +256,9 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
         <ContextMenuSub>
           <ContextMenuSubTrigger disabled={isMutating}>
-            {assignedAgent
-              ? <BotIcon className="size-4" />
-              : assignedHuman
-                ? <UserIcon className="size-4" />
-                : <UserRoundXIcon className="size-4" />}
+            {assignedHuman
+              ? <UserIcon className="size-4" />
+              : <UserRoundXIcon className="size-4" />}
             {t('property.assignee')}
           </ContextMenuSubTrigger>
           <ContextMenuSubContent className="w-56">
@@ -285,13 +273,30 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
                 <AssigneeAvatar name={currentUserName} size={18} />
                 <span className="truncate">{currentUserName}</span>
               </ContextMenuRadioItem>
+            </ContextMenuRadioGroup>
+          </ContextMenuSubContent>
+        </ContextMenuSub>
+
+        <ContextMenuSub>
+          <ContextMenuSubTrigger disabled={isMutating}>
+            {delegatedAgent
+              ? <BotIcon className="size-4" />
+              : <UserRoundXIcon className="size-4" />}
+            {t('property.agent')}
+          </ContextMenuSubTrigger>
+          <ContextMenuSubContent className="w-56">
+            <ContextMenuRadioGroup value={agentValue} onValueChange={handleAgentChange}>
+              <ContextMenuRadioItem value="" disabled={isMutating}>
+                <UserRoundXIcon className="size-4" />
+                {t('agent.none')}
+              </ContextMenuRadioItem>
               <ContextMenuSeparator />
-              <ContextMenuLabel>{t('assignee.aiAgents')}</ContextMenuLabel>
+              <ContextMenuLabel>{t('agent.availableAgents')}</ContextMenuLabel>
               {delegateAgents.length === 0
                 ? (
                     <ContextMenuItem disabled>
                       <BotIcon className="size-4" />
-                      {t('assignee.noAgentsConfigured')}
+                      {t('agent.noAgentsConfigured')}
                     </ContextMenuItem>
                   )
                 : delegateAgents.map(agent => (

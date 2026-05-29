@@ -54,6 +54,15 @@ export const WorkspaceModel = {
     path: nonBlankString,
   }, { additionalProperties: false }),
 
+  fileChildrenQuery: t.Object({
+    path: t.Optional(t.String()),
+  }, { additionalProperties: false }),
+
+  fileSearchQuery: t.Object({
+    q: t.Optional(t.String()),
+    limit: t.Optional(t.Number({ minimum: 1, maximum: 100 })),
+  }, { additionalProperties: false }),
+
   fileInfoQuery: t.Object({
     path: nonBlankString,
   }, { additionalProperties: false }),

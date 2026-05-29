@@ -18,6 +18,9 @@ describe('chat stream trace', () => {
   const previous = {
     dataDir: process.env.CRADLE_DATA_DIR,
     trace: process.env.CRADLE_CHAT_STREAM_TRACE,
+    traceFull: process.env.CRADLE_CHAT_STREAM_TRACE_FULL,
+    traceReadLimit: process.env.CRADLE_CHAT_STREAM_TRACE_READ_LIMIT,
+    traceReadBytes: process.env.CRADLE_CHAT_STREAM_TRACE_READ_BYTES,
     secret: process.env.CRADLE_CREDENTIAL_SECRET,
   }
   const tempDirs: string[] = []
@@ -37,6 +40,27 @@ describe('chat stream trace', () => {
     }
     else {
       process.env.CRADLE_CHAT_STREAM_TRACE = previous.trace
+    }
+
+    if (previous.traceFull === undefined) {
+      delete process.env.CRADLE_CHAT_STREAM_TRACE_FULL
+    }
+    else {
+      process.env.CRADLE_CHAT_STREAM_TRACE_FULL = previous.traceFull
+    }
+
+    if (previous.traceReadLimit === undefined) {
+      delete process.env.CRADLE_CHAT_STREAM_TRACE_READ_LIMIT
+    }
+    else {
+      process.env.CRADLE_CHAT_STREAM_TRACE_READ_LIMIT = previous.traceReadLimit
+    }
+
+    if (previous.traceReadBytes === undefined) {
+      delete process.env.CRADLE_CHAT_STREAM_TRACE_READ_BYTES
+    }
+    else {
+      process.env.CRADLE_CHAT_STREAM_TRACE_READ_BYTES = previous.traceReadBytes
     }
 
     if (previous.secret === undefined) {
@@ -100,6 +124,80 @@ describe('chat stream trace', () => {
     })
 
     expect(existsSync(resolveChatStreamTracePath('run-disabled'))).toBe(false)
+  })
+
+  it('does not write traces by default', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'cradle-chat-trace-default-'))
+    tempDirs.push(dataDir)
+    process.env.CRADLE_DATA_DIR = dataDir
+    delete process.env.CRADLE_CHAT_STREAM_TRACE
+
+    recordChatStreamTrace({
+      chatSessionId: 'session-1',
+      runId: 'run-default',
+      messageId: 'message-1',
+      runtimeKind: 'claude-agent',
+      phase: 'provider_raw',
+      payload: { type: 'stream_event' },
+    })
+
+    expect(existsSync(resolveChatStreamTracePath('run-default'))).toBe(false)
+  })
+
+  it('bounds trace payloads unless full tracing is explicitly enabled', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'cradle-chat-trace-bounded-'))
+    tempDirs.push(dataDir)
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CHAT_STREAM_TRACE = '1'
+
+    recordChatStreamTrace({
+      chatSessionId: 'session-1',
+      runId: 'run-bounded',
+      messageId: 'message-1',
+      runtimeKind: 'claude-agent',
+      phase: 'provider_raw',
+      payload: { content: 'x'.repeat(3000) },
+    })
+
+    const trace = readChatRunTrace('run-bounded')
+
+    expect(trace.records[0]?.payload).toEqual({
+      content: {
+        type: 'cradle.trace-truncated-string.v1',
+        originalLength: 3000,
+        preview: 'x'.repeat(2000),
+      },
+    })
+  })
+
+  it('reads trace records from the file tail using bounded bytes', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'cradle-chat-trace-tail-'))
+    tempDirs.push(dataDir)
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CHAT_STREAM_TRACE = '1'
+    process.env.CRADLE_CHAT_STREAM_TRACE_READ_LIMIT = '3'
+    process.env.CRADLE_CHAT_STREAM_TRACE_READ_BYTES = '2600'
+
+    const context = {
+      chatSessionId: 'session-1',
+      runId: 'run-tail',
+      messageId: 'message-1',
+      runtimeKind: 'claude-agent',
+      providerSessionId: null,
+    }
+
+    for (let index = 0; index < 10; index += 1) {
+      recordChatStreamTrace({
+        ...context,
+        phase: 'provider_raw',
+        payload: { index, content: 'x'.repeat(300) },
+      })
+    }
+
+    const trace = readChatRunTrace('run-tail')
+
+    expect(trace.recordCount).toBe(10)
+    expect(trace.records.map(record => (record.payload as { index: number }).index)).toEqual([7, 8, 9])
   })
 
   it('returns decoded trace records by run id and session id through chat routes', async () => {

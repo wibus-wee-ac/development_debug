@@ -13,6 +13,7 @@ import { PRESETS } from './presets/types'
 import { useProfilerContext } from './profiler/profiler-provider'
 
 const DEFAULT_FADE_DURATION = 280
+const MAX_ANIMATED_BLOCK_CHARS = 1800
 
 function resolvePreset(input?: AnimationPresetName | AnimationPreset): AnimationPreset {
   if (!input) {
@@ -94,6 +95,7 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
   /* eslint-disable react-hooks/refs */
   const prevBirths = blockBirthsRef.current
   const birthsForRender = new Map<number, number[]>()
+  const animatedBlockOffsets = new Set<number>()
 
   for (const [index, block] of blocks.entries()) {
     const state = getBlockState(index)
@@ -102,6 +104,11 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
     }
 
     const blockCharCount = countChars(block.content)
+    if (blockCharCount > MAX_ANIMATED_BLOCK_CHARS) {
+      continue
+    }
+
+    animatedBlockOffsets.add(block.startOffset)
     const prev = prevBirths.get(block.startOffset)
     let arr: number[]
 
@@ -163,6 +170,7 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
 
           const settled = isBlockSettled(block, index)
           const births = birthsForRender.get(block.startOffset)
+          const animated = animatedBlockOffsets.has(block.startOffset)
           const key = `${generatedId}-${block.startOffset}`
           const isLastVisible = index === blocks.length - 1 || getBlockState(index + 1) === 'queued'
 
@@ -172,6 +180,7 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
               content={block.content}
               state={state}
               births={births}
+              animated={animated}
               nowMs={renderNow}
               fadeDuration={fadeDuration}
               settled={settled}

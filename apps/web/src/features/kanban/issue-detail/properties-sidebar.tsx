@@ -54,8 +54,6 @@ type IssuePatch = Partial<{
   assigneeId: string | null
 }>
 
-type AssigneeKind = 'user' | 'agent'
-
 const CURRENT_USER_ASSIGNEE_ID = '__self__'
 
 interface PropertiesSidebarProps {
@@ -131,6 +129,11 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
           <AssigneePicker issue={issue} onUpdate={onUpdate} />
         </PropertyRow>
 
+        {/* Agent */}
+        <PropertyRow label={t('property.agent')}>
+          <AgentDelegatePicker issue={issue} />
+        </PropertyRow>
+
         {/* Labels */}
         <PropertyRow label={t('property.labels')}>
           <LabelsEditor labels={labels} workspaceIssues={labelWorkspaceIssues} onUpdate={newLabels => onUpdate({ labels: newLabels })} />
@@ -180,64 +183,27 @@ function PropertyRow({ label, children }: { label: string, children: React.React
 }
 
 function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (patch: IssuePatch) => void }) {
-  const { agents } = useAgents()
   const { t } = useTranslation('kanban')
-  const delegateIssue = useDelegateIssue()
-  const undelegateIssue = useUndelegateIssue()
-  const agentCandidates = useMemo(
-    () => agents.filter(agent => !!agent.providerTargetId),
-    [agents],
-  )
   const humanCandidates = useMemo(() => [{ id: CURRENT_USER_ASSIGNEE_ID, name: t('assignee.currentUser') }], [t])
-  const assignedAgent = agentCandidates.find(agent => (
-    (issue.assigneeKind === 'agent' && agent.id === issue.assigneeId)
-    || agent.id === issue.delegateAgentId
-    || agent.providerTargetId === issue.delegateAgentProfileId
-  )) ?? null
   const assignedHuman = issue.assigneeKind === 'user'
     ? humanCandidates.find(candidate => candidate.id === issue.assigneeId) ?? {
         id: issue.assigneeId ?? '',
         name: issue.assigneeId ?? t('assignee.unknownUser'),
       }
     : null
-  const selectedValue = assignedAgent
-    ? `agent:${assignedAgent.id}`
-    : assignedHuman?.id
-      ? `user:${assignedHuman.id}`
-      : ''
-  const isMutating = delegateIssue.isPending || undelegateIssue.isPending
+  const selectedValue = assignedHuman?.id ? `user:${assignedHuman.id}` : ''
 
   const handleAssigneeChange = useCallback((value: string) => {
     if (value === '') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
-        undelegateIssue.mutate({ issueId: issue.id })
-        return
-      }
       onUpdate({ assigneeKind: null, assigneeId: null })
       return
     }
 
-    const [kind, id] = value.split(':', 2) as [AssigneeKind, string]
-    if (kind === 'agent') {
-      const agent = agentCandidates.find(candidate => candidate.id === id)
-      if (!agent?.providerTargetId) {
-        return
-      }
-      delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, providerTargetId: agent.providerTargetId })
-      return
-    }
-
+    const [kind, id] = value.split(':', 2) as ['user', string]
     if (kind === 'user') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
-        undelegateIssue.mutate(
-          { issueId: issue.id },
-          { onSuccess: () => onUpdate({ assigneeKind: 'user', assigneeId: id }) },
-        )
-        return
-      }
       onUpdate({ assigneeKind: 'user', assigneeId: id })
     }
-  }, [agentCandidates, delegateIssue, issue.delegateAgentId, issue.delegateAgentProfileId, issue.id, onUpdate, undelegateIssue])
+  }, [onUpdate])
 
   return (
     <DropdownMenu>
@@ -247,16 +213,13 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
           'transition-[background-color,color] hover:bg-fill',
           selectedValue ? 'text-foreground' : 'border border-dashed border-border text-muted-foreground hover:text-foreground',
         )}
-        disabled={isMutating}
         data-testid="issue-assignee-trigger"
       >
-        {assignedAgent
-          ? <BotIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
-          : assignedHuman
-            ? <AssigneeAvatar name={assignedHuman.name} size={16} />
-            : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
+        {assignedHuman
+          ? <AssigneeAvatar name={assignedHuman.name} size={16} />
+          : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
         <span className="truncate">
-          {assignedAgent?.name ?? assignedHuman?.name ?? t('assignee.unassigned')}
+          {assignedHuman?.name ?? t('assignee.unassigned')}
         </span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
@@ -273,17 +236,79 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
               <span className="truncate">{candidate.name}</span>
             </DropdownMenuRadioItem>
           ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
+  const { agents } = useAgents()
+  const { t } = useTranslation('kanban')
+  const delegateIssue = useDelegateIssue()
+  const undelegateIssue = useUndelegateIssue()
+  const agentCandidates = useMemo(
+    () => agents.filter(agent => !!agent.providerTargetId),
+    [agents],
+  )
+  const delegatedAgent = agentCandidates.find(agent => (
+    agent.id === issue.delegateAgentId
+    || agent.providerTargetId === issue.delegateAgentProfileId
+  )) ?? null
+  const selectedValue = delegatedAgent ? `agent:${delegatedAgent.id}` : ''
+  const isMutating = delegateIssue.isPending || undelegateIssue.isPending
+
+  const handleAgentChange = useCallback((value: string) => {
+    if (value === '') {
+      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+        undelegateIssue.mutate({ issueId: issue.id })
+      }
+      return
+    }
+
+    const [, id] = value.split(':', 2)
+    const agent = agentCandidates.find(candidate => candidate.id === id)
+    if (!agent?.providerTargetId) {
+      return
+    }
+    delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, providerTargetId: agent.providerTargetId })
+  }, [agentCandidates, delegateIssue, issue.delegateAgentId, issue.delegateAgentProfileId, issue.id, undelegateIssue])
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        className={cn(
+          'flex max-w-40 items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px]',
+          'transition-[background-color,color] hover:bg-fill',
+          selectedValue ? 'text-foreground' : 'border border-dashed border-border text-muted-foreground hover:text-foreground',
+        )}
+        disabled={isMutating}
+        data-testid="issue-agent-trigger"
+      >
+        {delegatedAgent
+          ? <BotIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
+        <span className="truncate">
+          {delegatedAgent?.name ?? t('agent.none')}
+        </span>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuRadioGroup value={selectedValue} onValueChange={handleAgentChange}>
+          <DropdownMenuRadioItem value="" data-testid="issue-agent-option-none">
+            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <span>{t('agent.none')}</span>
+          </DropdownMenuRadioItem>
           <DropdownMenuSeparator />
-          <DropdownMenuLabel>{t('assignee.aiAgents')}</DropdownMenuLabel>
+          <DropdownMenuLabel>{t('agent.availableAgents')}</DropdownMenuLabel>
           {agentCandidates.length === 0
             ? (
                 <DropdownMenuItem disabled>
                   <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-                  {t('assignee.noAgentsConfigured')}
+                  {t('agent.noAgentsConfigured')}
                 </DropdownMenuItem>
               )
             : agentCandidates.map(agent => (
-                <DropdownMenuRadioItem key={agent.id} value={`agent:${agent.id}`} data-testid={`issue-assignee-option-agent-${agent.id}`}>
+                <DropdownMenuRadioItem key={agent.id} value={`agent:${agent.id}`} data-testid={`issue-agent-option-${agent.id}`}>
                   <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
                   <span className="truncate">{agent.name}</span>
                 </DropdownMenuRadioItem>

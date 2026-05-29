@@ -56,6 +56,7 @@ export default {
   'fileTree.status.empty': 'Workspace is empty',
   'fileTree.status.noWorkspace': 'No workspace linked',
   'fileTree.toast.createFailed': 'File could not be created',
+  'fileTree.toast.loadFailed': 'Folder could not be loaded',
   'fileTree.toast.openDefaultFailed': 'File could not be opened',
   'fileTree.toast.revealFailed': 'File could not be revealed in Finder',
   'fileTree.toast.renameFailed': 'File could not be renamed',

@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const CODEX_DEFAULT_APPROVAL_POLICY = 'never'
+export const CODEX_DEFAULT_SANDBOX_MODE = 'danger-full-access'
+
 export const BaseProviderConfig = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
@@ -22,8 +25,8 @@ export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
 })
 
 export const CodexConfigSchema = BaseProviderConfig.extend({
-  approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default('on-failure'),
-  sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default('workspace-write'),
+  approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default(CODEX_DEFAULT_APPROVAL_POLICY),
+  sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default(CODEX_DEFAULT_SANDBOX_MODE),
   reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
 })
 
@@ -123,8 +126,8 @@ export function readTrustedCodexConfig(raw: string): CodexConfig {
     enabledModels: config.enabledModels ?? [],
     skillPaths: config.skillPaths ?? [],
     additionalDirectories: config.additionalDirectories ?? [],
-    approvalPolicy: config.approvalPolicy ?? 'on-failure',
-    sandboxMode: config.sandboxMode ?? 'workspace-write',
+    approvalPolicy: config.approvalPolicy ?? CODEX_DEFAULT_APPROVAL_POLICY,
+    sandboxMode: config.sandboxMode ?? CODEX_DEFAULT_SANDBOX_MODE,
     reasoningEffort: config.reasoningEffort ?? 'high',
   }
 }
@@ -141,7 +144,7 @@ export function readTrustedClaudeAgentConfig(raw: string): ClaudeAgentConfig {
     claudeAgent: config.claudeAgent,
     permissionMode: config.permissionMode === 'plan' ? 'plan' : 'bypassPermissions',
     allowDangerouslySkipPermissions: config.allowDangerouslySkipPermissions,
-    skills: config.skills,
+  skills: config.skills ?? [],
     tools: config.tools,
     disallowedTools: config.disallowedTools,
     maxTurns: config.maxTurns ?? 100,

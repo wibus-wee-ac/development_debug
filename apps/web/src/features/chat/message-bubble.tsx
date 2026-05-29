@@ -29,6 +29,8 @@ import { describeToolCall } from './tool-ui-classifier'
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
 const THINKING_IDLE_DELAY_MS = 900
+const MESSAGE_STREAMING_ANIMATION_MAX_CHARS = 12000
+const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
@@ -163,6 +165,25 @@ function ThinkingPlaceholder() {
   )
 }
 
+function useTextStreamIdle(enabled: boolean, textLength: number): boolean {
+  const streamKey = enabled ? textLength : null
+  const [idleStreamKey, setIdleStreamKey] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (streamKey === null) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      setIdleStreamKey(streamKey)
+    }, THINKING_IDLE_DELAY_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [streamKey])
+
+  return streamKey !== null && idleStreamKey === streamKey
+}
+
 /* ─── Subagent part render ──────────────────────────────────────── */
 
 function renderSubagentItem(
@@ -180,6 +201,7 @@ function renderSubagentItem(
           animationPreset={streamdownSettings.animationPreset as 'minimal' | 'balanced' | 'dramatic'}
           animateMode={streamdownSettings.animateMode}
           showCursor={streamdownSettings.showCursor}
+          animated={item.text.length <= SUBAGENT_STREAMING_ANIMATION_MAX_CHARS}
         />
       )
     case 'reasoning':
@@ -471,6 +493,19 @@ function readPlainTextFromState(state: ChatStoreSnapshot, sessionId: string, mes
     .join('\n')
 }
 
+function readPlainTextPresenceFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): boolean {
+  const message = readMessageFromState(state, sessionId, messageId)
+  return message?.parts.some(part => part.type === 'text' && part.text.length > 0) ?? false
+}
+
+function readPlainTextLengthFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): number {
+  const message = readMessageFromState(state, sessionId, messageId)
+  if (!message) {
+    return 0
+  }
+  return message.parts.reduce((total, part) => total + (part.type === 'text' ? part.text.length : 0), 0)
+}
+
 function readActiveStreamingSegmentKey(segments: ChatRenderSegment[]): string | null {
   const tail = segments.at(-1)
   if (!tail || (tail.kind !== 'text' && tail.kind !== 'reasoning')) {
@@ -587,6 +622,7 @@ function MessageTextPartById({
 }) {
   const text = useChatStore(state => readTextPartFromState(state, sessionId, messageId, partIndex))
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
+  const animated = text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS
 
   if (isUser) {
     return <span className="whitespace-pre-wrap wrap-break-word">{text}</span>
@@ -599,6 +635,7 @@ function MessageTextPartById({
       animationPreset={animationPreset}
       animateMode={animateMode}
       showCursor={showCursor}
+      animated={animated}
     />
   )
 }
@@ -645,31 +682,19 @@ function MessageThinkingPlaceholderById({
   isAssistant,
   isStreaming,
   segmentCount,
+  hasNonTextProgress,
 }: {
   sessionId: string
   messageId: string
   isAssistant: boolean
   isStreaming: boolean
   segmentCount: number
+  hasNonTextProgress: boolean
 }) {
-  const plainText = useChatStore(state => readPlainTextFromState(state, sessionId, messageId))
-  const [streamTextIdle, setStreamTextIdle] = useState(false)
+  const textLength = useChatStore(state => readPlainTextLengthFromState(state, sessionId, messageId))
+  const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, textLength)
 
-  useEffect(() => {
-    if (!isAssistant || !isStreaming) {
-      setStreamTextIdle(false)
-      return
-    }
-
-    setStreamTextIdle(false)
-    const timer = window.setTimeout(() => {
-      setStreamTextIdle(true)
-    }, THINKING_IDLE_DELAY_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [isAssistant, isStreaming, plainText])
-
-  if (!isAssistant || !isStreaming || (segmentCount !== 0 && !streamTextIdle)) {
+  if (!isAssistant || !isStreaming || hasNonTextProgress || (segmentCount !== 0 && !streamTextIdle)) {
     return null
   }
 
@@ -685,7 +710,7 @@ function MessageCopyActionById({
   messageId: string
   isUser: boolean
 }) {
-  const plainText = useChatStore(state => readPlainTextFromState(state, sessionId, messageId))
+  const hasPlainText = useChatStore(state => readPlainTextPresenceFromState(state, sessionId, messageId))
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
 
@@ -698,6 +723,7 @@ function MessageCopyActionById({
   }, [])
 
   const handleCopy = useCallback(async () => {
+    const plainText = readPlainTextFromState(useChatStore.getState(), sessionId, messageId)
     await navigator.clipboard.writeText(plainText)
     setCopied(true)
 
@@ -709,9 +735,9 @@ function MessageCopyActionById({
       setCopied(false)
       copyFeedbackTimerRef.current = null
     }, 1500)
-  }, [plainText])
+  }, [messageId, sessionId])
 
-  if (plainText.length === 0) {
+  if (!hasPlainText) {
     return null
   }
 
@@ -810,6 +836,7 @@ function MessageBubbleSegmentsView({
   const { t } = useTranslation('chat')
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
+  const hasNonTextProgress = segments.some(segment => segment.kind !== 'text')
   const executionPhaseSplit = useMemo(
     () => isStreaming ? null : splitSegmentExecutionPhase(segments),
     [segments, isStreaming],
@@ -887,6 +914,7 @@ function MessageBubbleSegmentsView({
             isAssistant={isAssistant}
             isStreaming={isStreaming}
             segmentCount={segments.length}
+            hasNonTextProgress={hasNonTextProgress}
           />
         </div>
 
@@ -949,7 +977,6 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
-  const [streamTextIdle, setStreamTextIdle] = useState(false)
 
   const isFirstAppearance = trackSeenMessageId(message.id)
 
@@ -958,20 +985,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       .flatMap(p => p.type === 'text' ? [(p as { text: string }).text] : [])
       .join('\n')
   }, [message.parts])
-
-  useEffect(() => {
-    if (!isAssistant || !isStreaming) {
-      setStreamTextIdle(false)
-      return
-    }
-
-    setStreamTextIdle(false)
-    const timer = window.setTimeout(() => {
-      setStreamTextIdle(true)
-    }, THINKING_IDLE_DELAY_MS)
-
-    return () => window.clearTimeout(timer)
-  }, [isAssistant, isStreaming, plainText])
+  const plainTextLength = useMemo(() => {
+    return message.parts.reduce((total, part) => total + (part.type === 'text' ? part.text.length : 0), 0)
+  }, [message.parts])
+  const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, plainTextLength)
 
   const groupedItems = useMemo(
     () => groupMessageParts({
@@ -1001,7 +1018,11 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     () => isStreaming ? null : splitExecutionPhase(groupedItems),
     [groupedItems, isStreaming],
   )
-  const showThinkingPlaceholder = isAssistant && isStreaming && (groupedItems.length === 0 || streamTextIdle)
+  const hasNonTextProgress = groupedItems.some(item => item.kind !== 'text')
+  const showThinkingPlaceholder = isAssistant
+    && isStreaming
+    && !hasNonTextProgress
+    && (groupedItems.length === 0 || streamTextIdle)
 
   useEffect(() => {
     return () => {
@@ -1044,6 +1065,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             animationPreset={animationPreset}
             animateMode={animateMode}
             showCursor={showCursor}
+            animated={item.text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS}
           />
         )
 

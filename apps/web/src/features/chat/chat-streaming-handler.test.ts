@@ -5,7 +5,8 @@
  */
 
 import type { UIMessageChunk } from 'ai'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { act } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useChatStore } from '~/store/chat'
 
@@ -40,6 +41,7 @@ function chunkStream(chunks: UIMessageChunk[]): ReadableStream<UIMessageChunk> {
 describe('ChatStreamingHandler', () => {
   beforeEach(() => {
     resetChatStore()
+    vi.useRealTimers()
   })
 
   it('rebuilds passive replay streams from the protocol start instead of appending to the hydrated snapshot', async () => {
@@ -150,5 +152,55 @@ describe('ChatStreamingHandler', () => {
     expect(useChatStore.getState().sessionMetaMap.get('session-1')?.passiveStatus).toBe('error')
     expect(useChatStore.getState().passiveStreamingMessageIds.has('assistant-1')).toBe(false)
     expect(useChatStore.getState().errorMap.get('assistant-1')?.message).toBe('Provider failed')
+  })
+
+  it('throttles live message snapshot flushes while keeping the final snapshot', async () => {
+    vi.useFakeTimers()
+    const originalRequestAnimationFrame = window.requestAnimationFrame
+    const originalCancelAnimationFrame = window.cancelAnimationFrame
+    window.requestAnimationFrame = ((callback: FrameRequestCallback): number => {
+      return window.setTimeout(() => callback(performance.now()), 0)
+    }) as typeof window.requestAnimationFrame
+    window.cancelAnimationFrame = ((id: number) => window.clearTimeout(id)) as typeof window.cancelAnimationFrame
+
+    const updates: string[] = []
+    const unsubscribe = useChatStore.subscribe(
+      state => state.messagesMap.get('session-1')?.[0]?.parts.find(part => part.type === 'text')?.text,
+      text => {
+        if (text) {
+          updates.push(text)
+        }
+      },
+    )
+
+    try {
+      const stream = new ReadableStream<UIMessageChunk>({
+        start(controller) {
+          controller.enqueue({ type: 'start', messageId: 'assistant-1' })
+          controller.enqueue({ type: 'text-start', id: 'text-1' })
+          controller.enqueue({ type: 'text-delta', id: 'text-1', delta: 'a' })
+          controller.enqueue({ type: 'text-delta', id: 'text-1', delta: 'b' })
+          controller.enqueue({ type: 'text-delta', id: 'text-1', delta: 'c' })
+          controller.close()
+        },
+      })
+      const handler = new ChatStreamingHandler('session-1', 'assistant-1', 0)
+
+      const consumePromise = handler.consume(stream)
+      await vi.runAllTimersAsync()
+      await consumePromise
+
+      act(() => {
+        vi.runOnlyPendingTimers()
+      })
+
+      expect(updates).toEqual(['abc'])
+    }
+    finally {
+      unsubscribe()
+      window.requestAnimationFrame = originalRequestAnimationFrame
+      window.cancelAnimationFrame = originalCancelAnimationFrame
+      vi.useRealTimers()
+    }
   })
 })

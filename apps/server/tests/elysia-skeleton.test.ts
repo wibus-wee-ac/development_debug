@@ -92,6 +92,9 @@ describe('elysia migration skeleton', () => {
     expect(document.paths['/workspaces/{id}']?.patch).toBeTruthy()
     expect(document.paths['/workspaces/{id}']?.delete).toBeTruthy()
     expect(document.paths['/workspaces/{id}/files']?.get).toBeTruthy()
+    expect(document.paths['/workspaces/{id}/files/children']?.get).toBeTruthy()
+    expect(document.paths['/workspaces/{id}/files/search']?.get).toBeTruthy()
+    expect(document.paths['/workspaces/{id}/files/events']?.get).toBeTruthy()
     expect(document.paths['/workspaces/{id}/files/content']?.get).toBeTruthy()
     expect(document.paths['/workspaces/{id}/files/content']?.put).toBeTruthy()
     expect(document.paths['/usage/daily']?.get).toBeTruthy()
@@ -383,6 +386,12 @@ describe('elysia migration skeleton', () => {
       expect(entries.some(entry => entry.path.startsWith('node_modules'))).toBe(false)
       expect(entries.some(entry => entry.path.startsWith('.git'))).toBe(false)
       expect(entries.some(entry => entry.path === '.DS_Store')).toBe(false)
+
+      const searchResponse = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('main')}&limit=5`))
+      expect(searchResponse.status).toBe(200)
+      expect(await searchResponse.json()).toEqual([
+        { type: 'file', name: 'main.ts', path: 'src/main.ts' },
+      ])
 
       const missingFiles = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files'))
       expect(missingFiles.status).toBe(200)

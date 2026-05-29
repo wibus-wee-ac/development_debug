@@ -40,6 +40,8 @@ interface ChatViewProps {
   sessionId: string | null
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
+  /** Lazy workspace file search for @ mention */
+  searchFiles?: (query: string) => Promise<MentionItem[]>
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
@@ -199,6 +201,7 @@ function ChatComposerSection({
   permissionModeControl,
   placeholder,
   availableFiles,
+  searchFiles,
   toolbar,
   contextBar,
   droppedPath,
@@ -215,6 +218,7 @@ function ChatComposerSection({
   permissionModeControl?: React.ReactNode
   placeholder?: string
   availableFiles: MentionItem[]
+  searchFiles?: (query: string) => Promise<MentionItem[]>
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
@@ -265,6 +269,7 @@ function ChatComposerSection({
           view={{
             placeholder,
             availableFiles,
+            searchFiles,
             onFocusChange: onComposerFocusChange,
             sessionTokens: composerRuntime.tokenUsage.tokens,
             sessionContextWindow: composerRuntime.tokenUsage.contextWindow,
@@ -314,6 +319,7 @@ function TodoProgress({ snapshot }: { snapshot: SessionTodoSnapshot | null }) {
 export function ChatView({
   sessionId,
   availableFiles = EMPTY_FILES,
+  searchFiles,
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
@@ -478,6 +484,7 @@ export function ChatView({
         permissionModeControl={permissionModeControl}
         placeholder={placeholder}
         availableFiles={availableFiles}
+        searchFiles={searchFiles}
         toolbar={composerToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}

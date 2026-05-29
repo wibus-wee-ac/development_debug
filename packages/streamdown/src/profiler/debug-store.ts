@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react'
 
 export interface StreamDebugState {
-  targetText: string
-  displayedText: string
+  targetLength: number
+  displayedLength: number
   currentCps: number
   arrivalCps: number
   phase: 'idle' | 'active' | 'settling'
@@ -17,8 +17,8 @@ const RING_BUFFER_SIZE = 60
 
 function createInitialState(): StreamDebugState {
   return {
-    targetText: '',
-    displayedText: '',
+    targetLength: 0,
+    displayedLength: 0,
     currentCps: 0,
     arrivalCps: 0,
     phase: 'idle',

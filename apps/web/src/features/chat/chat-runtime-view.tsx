@@ -2,12 +2,12 @@
 // Input: Session metadata, runtime kind, and workspace ownership.
 // Position: Chat-owned rendering boundary independent of app shell and tab registry.
 
-import { lazy, Suspense, useMemo, useRef } from 'react'
+import { lazy, Suspense, useCallback, useMemo, useRef } from 'react'
 
 import type { MentionItem } from '~/features/chat'
 import { loadChatView } from '~/features/chat/chat-view-loader'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
+import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { RuntimeKind } from '~/lib/types'
 
 const ChatView = lazy(loadChatView)
@@ -28,18 +28,18 @@ export function ChatRuntimeView({
     boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundRuntimeKind: runtimeKind,
   })
-  const { files: workspaceFiles } = useWorkspaceFiles(workspaceId)
-  const availableFiles: MentionItem[] = useMemo(
-    () => workspaceFiles.map(file => ({ type: file.type, name: file.name, path: file.path })),
-    [workspaceFiles],
-  )
+  const searchFiles = useCallback(async (query: string): Promise<MentionItem[]> => {
+    if (!workspaceId) {
+      return []
+    }
+    return searchWorkspaceFiles({ workspaceId, query, limit: 30 })
+  }, [workspaceId])
 
   const sendOverridesRef = useRef({
     providerTargetId: undefined as string | undefined,
     modelId: undefined as string | undefined,
     thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
   })
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render for perf
   sendOverridesRef.current = {
     providerTargetId: composerState.selection.profileId ?? undefined,
     modelId: composerState.selection.modelId ?? undefined,
@@ -56,7 +56,7 @@ export function ChatRuntimeView({
         key={sessionId}
         sessionId={sessionId}
         runtimeKind={runtimeKind}
-        availableFiles={availableFiles}
+        searchFiles={searchFiles}
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}
         composerModel={composerState.effectiveModel}
