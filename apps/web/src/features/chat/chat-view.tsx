@@ -4,27 +4,26 @@ import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
-import { ScrollArea } from '~/components/ui/scroll-area'
 import { Progress } from '~/components/ui/progress'
+import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
 import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
-import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
-import type { SessionTodoSnapshot } from './chat-todo-projection'
-import { readTodoCompletion } from './chat-todo-projection'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
+import type { SessionTodoSnapshot } from './chat-todo-projection'
+import { readTodoCompletion } from './chat-todo-projection'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
-import { MessageBubble } from './message-bubble'
+import { MessageBubbleById } from './message-bubble'
 import { PermissionModeControl } from './permission-mode-control'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
@@ -282,13 +281,18 @@ function TodoProgress({ snapshot }: { snapshot: SessionTodoSnapshot | null }) {
   }
 
   const completion = readTodoCompletion(snapshot.todos)
+  const fallbackTodo = snapshot.todos.at(-1)
+  if (!fallbackTodo) {
+    return null
+  }
   const activeTodo = snapshot.todos.find(todo => todo.status === 'processing')
     ?? snapshot.todos.find(todo => todo.status === 'todo')
-    ?? snapshot.todos[snapshot.todos.length - 1]
+    ?? fallbackTodo
 
   const label = completion.completed === completion.total
     ? 'Todos complete'
     : activeTodo.content
+  const completionLabel = `${completion.completed}/${completion.total}`
 
   return (
     <div className="mb-2 px-1">
@@ -299,7 +303,7 @@ function TodoProgress({ snapshot }: { snapshot: SessionTodoSnapshot | null }) {
           {label}
         </span>
         <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-          {completion.completed}/{completion.total}
+          {completionLabel}
         </span>
       </div>
       <Progress value={safePercent(completion.completed, completion.total)} className="h-0.5 bg-muted/60" />
@@ -329,12 +333,12 @@ export function ChatView({
     queueItems,
     cancelQueueItem,
     reorderQueueItems,
-    setPermissionMode,
+    setPermissionMode: switchPermissionMode,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
-  const [permissionMode, setPermissionModeState] = useState<ChatPermissionMode>('bypassPermissions')
+  const [permissionMode, setPermissionMode] = useState<ChatPermissionMode>('bypassPermissions')
   const [permissionModePending, setPermissionModePending] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
@@ -353,13 +357,13 @@ export function ChatView({
   })
 
   const handlePermissionModeChange = useCallback((nextMode: ChatPermissionMode) => {
-    setPermissionModeState(nextMode)
+    setPermissionMode(nextMode)
     if (status !== 'streaming') {
       return
     }
 
     setPermissionModePending(true)
-    void setPermissionMode(nextMode)
+    void switchPermissionMode(nextMode)
       .then((ok) => {
         if (ok) {
           return
@@ -378,7 +382,7 @@ export function ChatView({
         })
       })
       .finally(() => setPermissionModePending(false))
-  }, [setPermissionMode, status])
+  }, [status, switchPermissionMode])
 
   const permissionModeControl = runtimeKind === 'claude-agent'
     ? (
@@ -488,27 +492,4 @@ function safePercent(value: number, total: number): number {
     return 0
   }
   return Math.round((value / total) * 100)
-}
-
-function MessageBubbleById({
-  sessionId,
-  messageId,
-  onToolApprovalResponse,
-}: {
-  sessionId: string | null
-  messageId: string
-  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-}) {
-  const message = useChatStore(chatSelectors.message(sessionId ?? '', messageId))
-  const isStreaming = useChatStore(chatSelectors.isStreamingMessage(messageId))
-  if (!message) {
-    return null
-  }
-  return (
-    <MessageBubble
-      message={message}
-      isStreaming={isStreaming}
-      onToolApprovalResponse={onToolApprovalResponse}
-    />
-  )
 }

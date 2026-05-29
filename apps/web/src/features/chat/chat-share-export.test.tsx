@@ -13,7 +13,9 @@ import { useChatStore } from '~/store/chat'
 
 import { ChatShareExport } from './chat-share-export'
 
-const domToPngMock = vi.fn(async () => 'data:image/png;base64,exported')
+const { domToPngMock } = vi.hoisted(() => ({
+  domToPngMock: vi.fn(async () => 'data:image/png;base64,exported'),
+}))
 
 vi.mock('modern-screenshot', () => ({
   domToPng: domToPngMock,

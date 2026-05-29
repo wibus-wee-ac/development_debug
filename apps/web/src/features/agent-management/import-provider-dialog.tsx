@@ -25,7 +25,7 @@ import {
 import { Spinner } from '~/components/ui/spinner'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
-import type { ProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/lib/types'
 
 import type { ParsedProvider } from './import-provider-parser'
 import { parseProviderConfig } from './import-provider-parser'
@@ -33,7 +33,7 @@ import { buildProfileId } from './provider-settings-utils'
 
 const SecretCreateResponseSchema = z.object({ id: z.string().min(1) })
 
-const KIND_OPTIONS: { value: ProviderKind, label: string }[] = [
+const KIND_OPTIONS: { value: ApiProviderKind, label: string }[] = [
   { value: 'openai-compatible', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
 ]
@@ -54,9 +54,9 @@ export function ImportProviderDialog({
   const [text, setText] = useState('')
   const [importing, setImporting] = useState(false)
   const [enabledSet, setEnabledSet] = useState<Set<number>>(new Set())
-  const [kinds, setKinds] = useState<ProviderKind[]>([])
+  const [kinds, setKinds] = useState<ApiProviderKind[]>([])
   const [manualUrl, setManualUrl] = useState('')
-  const [manualKind, setManualKind] = useState<ProviderKind>('openai-compatible')
+  const [manualKind, setManualKind] = useState<ApiProviderKind>('openai-compatible')
   const prevTokenRef = useRef<string | null>(null)
 
   const parseResult = useMemo(() => {
@@ -244,7 +244,7 @@ export function ImportProviderDialog({
               {/* Manual endpoint entry */}
               {showManualEntry && (
                 <div className="flex items-center gap-2">
-                  <Select value={manualKind} onValueChange={v => setManualKind(v as ProviderKind)}>
+                  <Select value={manualKind} onValueChange={v => setManualKind(v as ApiProviderKind)}>
                     <SelectTrigger
                       className={cn(
                         'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
@@ -306,10 +306,10 @@ function ProviderCard({
 }: {
   provider: ParsedProvider
   resolvedName: string
-  kind: ProviderKind
+  kind: ApiProviderKind
   enabled: boolean
   onToggle: () => void
-  onKindChange: (k: ProviderKind) => void
+  onKindChange: (k: ApiProviderKind) => void
 }) {
   return (
     <label
@@ -323,7 +323,7 @@ function ProviderCard({
       <Checkbox checked={enabled} onCheckedChange={onToggle} className="mt-0.5" />
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2">
-          <Select value={kind} onValueChange={v => onKindChange(v as ProviderKind)}>
+          <Select value={kind} onValueChange={v => onKindChange(v as ApiProviderKind)}>
             <SelectTrigger
               className={cn(
                 'h-6 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',

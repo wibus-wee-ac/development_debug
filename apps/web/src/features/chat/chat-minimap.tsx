@@ -1,7 +1,6 @@
 import type { UIMessage } from 'ai'
 import type { Ref } from 'react'
 import { memo, useCallback, useImperativeHandle, useReducer, useRef } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
@@ -109,6 +108,65 @@ function readBarData(message: UIMessage | undefined): ChatMinimapBarData | null 
   }
 }
 
+const EMPTY_MINIMAP_BARS: Array<ChatMinimapBarData | null> = []
+
+type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
+
+function readMinimapBars(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageIds: string[],
+): Array<ChatMinimapBarData | null> {
+  if (messageIds.length === 0) {
+    return EMPTY_MINIMAP_BARS
+  }
+
+  const messages = chatSelectors.messages(sessionId)(state)
+  if (messages.length === 0) {
+    return EMPTY_MINIMAP_BARS
+  }
+
+  if (messages.length === messageIds.length) {
+    let sameOrder = true
+    for (let index = 0; index < messages.length; index++) {
+      if (messages[index].id !== messageIds[index]) {
+        sameOrder = false
+        break
+      }
+    }
+    if (sameOrder) {
+      return messages.map(readBarData)
+    }
+  }
+
+  const messageById = new Map(messages.map(message => [message.id, message]))
+  return messageIds.map(messageId => readBarData(messageById.get(messageId)))
+}
+
+function areMinimapBarsEqual(
+  left: Array<ChatMinimapBarData | null>,
+  right: Array<ChatMinimapBarData | null>,
+): boolean {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let index = 0; index < left.length; index++) {
+    const leftItem = left[index]
+    const rightItem = right[index]
+    if (
+      leftItem?.role !== rightItem?.role
+      || leftItem?.width !== rightItem?.width
+      || leftItem?.preview !== rightItem?.preview
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
 /** Compute bar width — normalized to 50%~100% range */
 function barWidth(text: string): number {
   const normalized = Math.sqrt(Math.min(text.length / 300, 1))
@@ -135,6 +193,10 @@ function ChatMinimapInner({
   const barProgressValuesRef = useRef<number[]>([])
   const activeIndexRef = useRef(0)
   const [uiState, dispatch] = useReducer(chatMinimapUiReducer, initialChatMinimapUiState)
+  const bars = useChatStore(
+    state => readMinimapBars(state, sessionId ?? '', messageIds),
+    areMinimapBarsEqual,
+  )
 
   const scrollable = Math.max(scrollHeight - viewportHeight, 1)
   const messageCount = messageIds.length
@@ -290,11 +352,14 @@ function ChatMinimapInner({
         className="relative flex w-full cursor-pointer flex-col items-center gap-1 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {messageIds.map((messageId, i) => {
+          const bar = bars[i]
+          if (!bar) {
+            return null
+          }
           return (
             <ChatMinimapBar
               key={messageId}
-              sessionId={sessionId}
-              messageId={messageId}
+              bar={bar}
               index={i}
               hovered={uiState.hoverIdx === i}
               progressRefs={barProgressRef}
@@ -306,8 +371,7 @@ function ChatMinimapInner({
       {/* Hover peek popover */}
       {uiState.hoverIdx !== null && (
         <ChatMinimapHoverPreview
-          sessionId={sessionId}
-          messageId={messageIds[uiState.hoverIdx]}
+          bar={bars[uiState.hoverIdx]}
           index={uiState.hoverIdx}
           top={peekTop}
         />
@@ -317,25 +381,16 @@ function ChatMinimapInner({
 }
 
 function ChatMinimapBar({
-  sessionId,
-  messageId,
+  bar,
   index,
   hovered,
   progressRefs,
 }: {
-  sessionId: string | null
-  messageId: string
+  bar: ChatMinimapBarData
   index: number
   hovered: boolean
   progressRefs: React.RefObject<Array<HTMLSpanElement | null>>
 }) {
-  const bar = useChatStore(useShallow(state =>
-    readBarData(chatSelectors.message(sessionId ?? '', messageId)(state))))
-
-  if (!bar) {
-    return null
-  }
-
   return (
     <span
       className={cn(
@@ -366,19 +421,14 @@ function ChatMinimapBar({
 }
 
 function ChatMinimapHoverPreview({
-  sessionId,
-  messageId,
+  bar,
   index,
   top,
 }: {
-  sessionId: string | null
-  messageId: string | undefined
+  bar: ChatMinimapBarData | null | undefined
   index: number
   top: number
 }) {
-  const bar = useChatStore(useShallow(state =>
-    messageId ? readBarData(chatSelectors.message(sessionId ?? '', messageId)(state)) : null))
-
   if (!bar) {
     return null
   }

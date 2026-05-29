@@ -1,12 +1,12 @@
-import type { ProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/lib/types'
 
 export interface ParsedUrl {
   url: string
-  kind: ProviderKind | 'unknown'
+  kind: ApiProviderKind | 'unknown'
 }
 
 export interface ParsedProvider {
-  providerKind: ProviderKind
+  providerKind: ApiProviderKind
   name: string
   apiKey: string
   baseUrl: string
@@ -20,7 +20,7 @@ export interface ParseResult {
 
 const URL_RE = /https?:\/\/[^\s,;，；)、）"'“”‘’]+/g
 
-const ENV_VAR_DEFS: { prefix: string, providerKind: ProviderKind }[] = [
+const ENV_VAR_DEFS: { prefix: string, providerKind: ApiProviderKind }[] = [
   { prefix: 'ANTHROPIC_', providerKind: 'anthropic' },
   { prefix: 'OPENAI_', providerKind: 'openai-compatible' },
 ]
@@ -31,7 +31,7 @@ function extractUrls(text: string): string[] {
   return [...new Set(matches.map(u => u.replace(/[^\w/\-:.]+$/, '')))]
 }
 
-function classifyUrl(url: string): ProviderKind | 'unknown' {
+function classifyUrl(url: string): ApiProviderKind | 'unknown' {
   const lower = url.toLowerCase()
   if (lower.includes('/anthropic') || lower.includes('/claude')) { return 'anthropic' }
   if (lower.includes('/v1') || lower.includes('/openai') || lower.includes('/chat/completions')) { return 'openai-compatible' }
@@ -74,8 +74,8 @@ interface EnvGroup {
   apiKey?: string
 }
 
-function parseExportGroups(text: string): Map<ProviderKind, EnvGroup> {
-  const groups = new Map<ProviderKind, EnvGroup>()
+function parseExportGroups(text: string): Map<ApiProviderKind, EnvGroup> {
+  const groups = new Map<ApiProviderKind, EnvGroup>()
   const matches = text.matchAll(EXPORT_LINE_RE)
 
   for (const [, key, value] of matches) {
@@ -249,7 +249,7 @@ export function parseProviderConfig(text: string): ParseResult {
   const providers: ParsedProvider[] = []
   const seen = new Set<string>()
 
-  function addProvider(kind: ProviderKind, name: string, baseUrl: string, apiKey: string) {
+  function addProvider(kind: ApiProviderKind, name: string, baseUrl: string, apiKey: string) {
     if (!baseUrl) { return }
     // dedupe by (baseUrl + apiKey) — same URL with different key is allowed
     const dedupeKey = `${baseUrl}\0${apiKey}`
@@ -284,7 +284,7 @@ export function parseProviderConfig(text: string): ParseResult {
 
   for (const u of urls) {
     const kind = u.kind === 'unknown' ? 'openai-compatible' : u.kind
-    addProvider(kind as ProviderKind, hostnameFromUrl(u.url), u.url, bestToken ?? '')
+    addProvider(kind as ApiProviderKind, hostnameFromUrl(u.url), u.url, bestToken ?? '')
   }
 
   return { token: bestToken, urls, providers }

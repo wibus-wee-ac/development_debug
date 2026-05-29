@@ -29,6 +29,7 @@ export function AppshotAttachmentCard({
   const title = metadata.windowTitle ?? metadata.appName ?? 'AppShot'
   const accessibilityText = metadata.axTree.trim()
   const snapshotHeight = metadata.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT
+  const composerImageDataUrl = metadata.transitionSnapshotDataUrl
   const [threadImageSize, setThreadImageSize] = useState<{ height: number, width: number } | null>(null)
   const threadImageHeight = readThreadImageHeight(threadImageSize)
   const renderedComposerHeight = Math.max(
@@ -79,14 +80,14 @@ export function AppshotAttachmentCard({
       >
         <AppshotImageFrame
           alt={title}
-          appIconDataUrl={metadata.appIconDataUrl}
-          imageDataUrl={metadata.imageDataUrl}
+          appIconDataUrl={variant === 'thread' ? metadata.appIconDataUrl : null}
+          imageDataUrl={variant === 'composer' ? composerImageDataUrl : metadata.imageDataUrl}
           imageHeight={APPSHOT_FALLBACK_HEIGHT}
-          renderedImageHeight={threadImageHeight}
+          renderedImageHeight={variant === 'thread' ? threadImageHeight : snapshotHeight}
           slotWidth={APPSHOT_CARD_WIDTH}
           visualWidth={APPSHOT_THREAD_IMAGE_CANVAS_WIDTH}
-          imageInlinePadding={APPSHOT_THREAD_IMAGE_INLINE_PADDING}
-          usesThreadTreatment
+          imageInlinePadding={variant === 'thread' ? APPSHOT_THREAD_IMAGE_INLINE_PADDING : 0}
+          usesThreadTreatment={variant === 'thread'}
           onImageSize={setThreadImageSize}
         />
         <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
@@ -166,7 +167,7 @@ function AppshotImageFrame({
 }: {
   alt: string
   appIconDataUrl: string | null
-  imageDataUrl: string
+  imageDataUrl: string | null
   imageHeight: number
   renderedImageHeight?: number
   imageInlinePadding?: number
@@ -195,20 +196,29 @@ function AppshotImageFrame({
             : undefined,
         }}
       >
-        <img
-          src={imageDataUrl}
-          alt={alt}
-          className="max-h-full max-w-full object-contain"
-          loading="lazy"
-          draggable={false}
-          onLoad={(event) => {
-            onImageSize?.({
-              height: event.currentTarget.naturalHeight,
-              width: event.currentTarget.naturalWidth,
-            })
-          }}
-          data-testid="chat-appshot-image"
-        />
+        {imageDataUrl
+          ? (
+              <img
+                src={imageDataUrl}
+                alt={alt}
+                className="max-h-full max-w-full object-contain"
+                loading="lazy"
+                draggable={false}
+                onLoad={(event) => {
+                  onImageSize?.({
+                    height: event.currentTarget.naturalHeight,
+                    width: event.currentTarget.naturalWidth,
+                  })
+                }}
+                data-testid="chat-appshot-image"
+              />
+            )
+          : (
+              <div
+                className="h-full w-full rounded-xl border border-dashed border-border/70 bg-muted/35"
+                data-testid="chat-appshot-empty-snapshot"
+              />
+            )}
       </div>
       <AppshotAppIcon appIconDataUrl={appIconDataUrl} />
     </div>

@@ -103,6 +103,36 @@ describe('ChatStreamingHandler', () => {
     expect(state.runDisplayMetaMap.get('assistant-temp')?.completedAtMs).toBeNull()
   })
 
+  it('does not pass frozen store snapshots directly to the AI stream reader', async () => {
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'old ' }],
+    }])
+
+    const storedMessage = useChatStore.getState().messagesMap.get('session-1')?.[0]
+    expect(storedMessage && Object.isFrozen(storedMessage)).toBe(true)
+
+    const handler = new ChatStreamingHandler('session-1', 'assistant-1', 0)
+
+    await handler.consume(chunkStream([
+      { type: 'start', messageId: 'assistant-1' },
+      { type: 'text-start', id: 'text-1' },
+      { type: 'text-delta', id: 'text-1', delta: 'new' },
+      { type: 'text-end', id: 'text-1' },
+      { type: 'finish', finishReason: 'stop' },
+    ]))
+
+    expect(useChatStore.getState().messagesMap.get('session-1')).toEqual([{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        { type: 'text', text: 'old ' },
+        { type: 'text', text: 'new', state: 'done' },
+      ],
+    }])
+  })
+
   it('marks a passive session failed when replay stream errors', () => {
     useChatStore.getState().setMessages('session-1', [{
       id: 'assistant-1',

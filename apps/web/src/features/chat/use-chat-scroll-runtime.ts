@@ -65,6 +65,8 @@ export function useChatScrollRuntime({
   const initialScrollDoneRef = useRef(false)
   const messageIdsRef = useRef(messageIds)
   const sessionIdRef = useRef(sessionId)
+  const metricsRef = useRef<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
+  const minimapRafId = useRef(0)
   const [metrics, setMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   useEffect(() => {
@@ -75,6 +77,7 @@ export function useChatScrollRuntime({
     sessionIdRef.current = sessionId
     initialScrollDoneRef.current = false
     isAtBottomRef.current = true
+    metricsRef.current = EMPTY_SCROLL_METRICS
     setMetrics(EMPTY_SCROLL_METRICS)
     minimapRef.current?.setScrollProgress(1)
   }, [sessionId])
@@ -148,24 +151,19 @@ export function useChatScrollRuntime({
     })
   }, [])
 
-  const writeMinimapProgress = useCallback((nextMetrics?: ChatScrollMetrics | null) => {
-    const currentMessageIds = messageIdsRef.current
-    const currentMetrics = nextMetrics ?? readScrollMetrics()
-    if (currentMessageIds.length === 0 || !currentMetrics) {
-      return
-    }
+  const scheduleMinimapSync = useCallback((nextMetrics: ChatScrollMetrics) => {
+    metricsRef.current = nextMetrics
+    writeChatAttentionSnapshot(nextMetrics)
+    minimapRef.current?.setScrollProgress(readMinimapProgress(nextMetrics))
 
-    minimapRef.current?.setScrollProgress(readMinimapProgress(currentMetrics))
-  }, [readScrollMetrics])
-
-  const refreshScrollMetrics = useCallback(() => {
-    const nextMetrics = readScrollMetrics()
-    if (nextMetrics) {
-      setMetrics(nextMetrics)
-      writeChatAttentionSnapshot(nextMetrics)
+    // Throttle React state update to one per frame (for ChatMinimap consumers)
+    if (minimapRafId.current === 0) {
+      minimapRafId.current = requestAnimationFrame(() => {
+        minimapRafId.current = 0
+        setMetrics(metricsRef.current)
+      })
     }
-    writeMinimapProgress(nextMetrics)
-  }, [readScrollMetrics, writeChatAttentionSnapshot, writeMinimapProgress])
+  }, [writeChatAttentionSnapshot])
 
   const scrollToBottom = useCallback(() => {
     const viewport = viewportRef.current
@@ -194,9 +192,12 @@ export function useChatScrollRuntime({
       if (viewport) {
         viewport.scrollTop = viewport.scrollHeight
       }
-      refreshScrollMetrics()
+      const nextMetrics = readScrollMetrics()
+      if (nextMetrics) {
+        scheduleMinimapSync(nextMetrics)
+      }
     })
-  }, [messageIds.length, refreshScrollMetrics])
+  }, [messageIds.length, readScrollMetrics, scheduleMinimapSync])
 
   useEffect(() => {
     if (!isAtBottomRef.current) {
@@ -204,8 +205,13 @@ export function useChatScrollRuntime({
     }
 
     scrollToBottom()
-    requestAnimationFrame(refreshScrollMetrics)
-  }, [messageIds.length, status, refreshScrollMetrics, scrollToBottom])
+    requestAnimationFrame(() => {
+      const nextMetrics = readScrollMetrics()
+      if (nextMetrics) {
+        scheduleMinimapSync(nextMetrics)
+      }
+    })
+  }, [messageIds.length, status, readScrollMetrics, scheduleMinimapSync, scrollToBottom])
 
   const handleVirtualScroll = useCallback((offset: number) => {
     const viewport = viewportRef.current
@@ -215,53 +221,57 @@ export function useChatScrollRuntime({
     isAtBottomRef.current = offset + viewport.offsetHeight >= viewport.scrollHeight - BOTTOM_PROXIMITY_PX
   }, [])
 
+  // Event-driven scroll observation — replaces the rAF loop
   useEffect(() => {
-    let frame = 0
-    let lastScrollTop = -1
-    let lastScrollHeight = -1
-    let lastViewportHeight = -1
+    const viewport = viewportRef.current
+    if (!viewport) {
+      return
+    }
 
-    const syncScrollObservers = () => {
-      const viewport = viewportRef.current
-      if (viewport) {
-        const wasAtBottom = isAtBottomRef.current
-        let scrollTop = viewport.scrollTop
-        let scrollHeight = viewport.scrollHeight
-        const viewportHeight = viewport.offsetHeight
+    let lastScrollHeight = viewport.scrollHeight
 
-        if (wasAtBottom && lastScrollHeight >= 0 && scrollHeight > lastScrollHeight) {
-          viewport.scrollTop = viewport.scrollHeight
-          scrollTop = viewport.scrollTop
-          scrollHeight = viewport.scrollHeight
-        }
+    const onScroll = () => {
+      const scrollTop = viewport.scrollTop
+      const scrollHeight = viewport.scrollHeight
+      const viewportHeight = viewport.offsetHeight
+      const nextMetrics = { offset: scrollTop, scrollHeight, viewportHeight }
+      isAtBottomRef.current = readIsAtBottom(nextMetrics)
+      scheduleMinimapSync(nextMetrics)
+    }
 
-        if (
-          scrollTop !== lastScrollTop
-          || scrollHeight !== lastScrollHeight
-          || viewportHeight !== lastViewportHeight
-        ) {
-          lastScrollTop = scrollTop
-          lastScrollHeight = scrollHeight
-          lastViewportHeight = viewportHeight
-          const nextMetrics = {
-            offset: scrollTop,
-            scrollHeight,
-            viewportHeight,
-          }
-          isAtBottomRef.current = readIsAtBottom(nextMetrics)
-          writeChatAttentionSnapshot(nextMetrics)
-          writeMinimapProgress(nextMetrics)
-        }
+    const onResize = () => {
+      const scrollTop = viewport.scrollTop
+      const scrollHeight = viewport.scrollHeight
+      const viewportHeight = viewport.offsetHeight
+
+      // Auto-scroll to bottom when content grows and user was at bottom
+      if (isAtBottomRef.current && scrollHeight > lastScrollHeight) {
+        viewport.scrollTop = scrollHeight
       }
+      lastScrollHeight = scrollHeight
 
-      frame = requestAnimationFrame(syncScrollObservers)
+      const nextMetrics = {
+        offset: viewport.scrollTop,
+        scrollHeight: viewport.scrollHeight,
+        viewportHeight,
+      }
+      isAtBottomRef.current = readIsAtBottom(nextMetrics)
+      scheduleMinimapSync(nextMetrics)
     }
 
-    frame = requestAnimationFrame(syncScrollObservers)
+    viewport.addEventListener('scroll', onScroll, { passive: true })
+    const resizeObserver = new ResizeObserver(onResize)
+    resizeObserver.observe(viewport)
+
     return () => {
-      cancelAnimationFrame(frame)
+      viewport.removeEventListener('scroll', onScroll)
+      resizeObserver.disconnect()
+      if (minimapRafId.current !== 0) {
+        cancelAnimationFrame(minimapRafId.current)
+        minimapRafId.current = 0
+      }
     }
-  }, [writeChatAttentionSnapshot, writeMinimapProgress])
+  }, [scheduleMinimapSync])
 
   const handleComposerFocusChange = useCallback((focused: boolean) => {
     updateChatAttentionSnapshot(sessionIdRef.current, {
@@ -271,9 +281,11 @@ export function useChatScrollRuntime({
   }, [])
 
   useEffect(() => {
-    const frame = requestAnimationFrame(refreshScrollMetrics)
-    return () => cancelAnimationFrame(frame)
-  }, [messageIds.length, refreshScrollMetrics])
+    const nextMetrics = readScrollMetrics()
+    if (nextMetrics) {
+      scheduleMinimapSync(nextMetrics)
+    }
+  }, [messageIds.length, readScrollMetrics, scheduleMinimapSync])
 
   const scrollToMessageIndex = useCallback((index: number) => {
     const virtualizer = virtualizerRef.current

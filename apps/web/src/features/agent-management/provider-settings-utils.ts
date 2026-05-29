@@ -3,7 +3,7 @@
 // Position: Agent Management owns provider settings semantics used by list, draft, detail, and model panels.
 
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
-import type { AgentProfile, ProviderKind } from '~/lib/types'
+import type { AgentProfile, ApiProviderKind, ProviderKind } from '~/lib/types'
 
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
@@ -42,7 +42,7 @@ export interface ExternalProviderRecordView {
   externalId: string
   app: string
   name: string
-  providerKind: ProviderKind
+  providerKind: ApiProviderKind
   status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
   runtimeTargetEnabled: boolean
   metadata: Record<string, unknown>
@@ -53,7 +53,7 @@ export interface ExternalProviderRuntimeTargetView {
   id: string
   sourceKey: string
   externalRecordId: string
-  providerKind: ProviderKind
+  providerKind: ApiProviderKind
   displayName: string
   enabled: boolean
   credentialRef: string | null

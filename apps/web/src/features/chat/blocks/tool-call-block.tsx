@@ -436,7 +436,7 @@ function DiffSummary({ input, output, state }: { input: ToolPayload, output: Too
         filePath={editPreview.filePath}
         oldContent={editPreview.oldContent}
         newContent={editPreview.newContent}
-        defaultOpen={!isRunning(state)}
+        defaultOpen={false}
       />
     )
   }

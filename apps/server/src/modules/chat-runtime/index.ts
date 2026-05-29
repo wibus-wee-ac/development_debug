@@ -50,8 +50,9 @@ export const chatRuntime = new Elysia({
     body: ChatRuntimeModel.responseBody,
   })
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
-  .get('/sessions/:sessionId/stream', ({ params }) => {
-    const stream = ChatRuntime.openSessionRunStream(params.sessionId)
+  .get('/sessions/:sessionId/stream', ({ params, query }) => {
+    const skipReplay = query.skipReplay === '1' || query.skipReplay === 'true'
+    const stream = ChatRuntime.openSessionRunStream(params.sessionId, { skipReplay })
     const activeRun = ChatRuntime.getActiveSessionRun(params.sessionId)
     return new Response(stream, {
       headers: {
@@ -66,7 +67,7 @@ export const chatRuntime = new Elysia({
       summary: 'Subscribe to the active chat run stream for an existing session',
       responses: {
         200: {
-          description: 'AI SDK UIMessageChunk SSE stream for the currently active chat run. The stream replays the active run buffer before forwarding live chunks so late subscribers receive required protocol start frames.',
+          description: 'AI SDK UIMessageChunk SSE stream for the currently active chat run. By default, replays buffered events before forwarding live chunks. Pass ?skipReplay=true to only receive live chunks (for late subscribers that already have the current message state).',
           content: {
             'text/event-stream': {
               schema: {

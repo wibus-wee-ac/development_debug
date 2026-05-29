@@ -1497,7 +1497,7 @@ export async function streamResponse(input: {
   }
 }
 
-export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
+export function openSessionRunStream(sessionId: string, options?: { skipReplay?: boolean }): ReadableStream<Uint8Array> {
   assertRunnableSession(sessionId)
 
   const runId = activeRunIdsBySession.get(sessionId)
@@ -1505,7 +1505,7 @@ export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Arr
     return openIdleRunStream()
   }
 
-  return openRunEventStream(runId, { replayBufferedEvents: true })
+  return openRunEventStream(runId, { replayBufferedEvents: !options?.skipReplay })
 }
 
 export async function abortRun(runId: string): Promise<void> {
@@ -1634,6 +1634,19 @@ function openRunEventStream(
       }
 
       if (run.status !== 'streaming' || !active) {
+        // When skipping replay, late subscribers still need the terminal chunk
+        // if the run already finished, so they don't hang waiting for live events
+        // that will never arrive.
+        if (!options.replayBufferedEvents && active?.terminalStatus) {
+          const terminalChunk: UIMessageChunk
+            = active.terminalStatus === 'complete'
+              ? { type: 'finish', finishReason: 'stop' }
+              : active.terminalStatus === 'aborted'
+                ? { type: 'abort', reason: 'user' }
+                : { type: 'error', errorText: 'Chat run failed' }
+          writeChunk(terminalChunk, true)
+          return
+        }
         controller.close()
         return
       }

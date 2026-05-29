@@ -1,10 +1,10 @@
-import type { ProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/lib/types'
 
 export interface ProviderPreset {
   id: string
   name: string
   tagline: string
-  providerKind: ProviderKind
+  providerKind: ApiProviderKind
   accent: string
   fields: PresetField[]
   defaults: Record<string, unknown>

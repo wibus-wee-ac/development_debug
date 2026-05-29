@@ -131,20 +131,23 @@ function normalizeMessageForOwner(message: UIMessage, ownerMessageId: string): {
   toolEntities: ChatToolEntity[]
 } {
   const toolEntities: ChatToolEntity[] = []
-  for (const part of message.parts) {
+  let hasToolParts = false
+  const parts = message.parts.map((part) => {
     if (!isToolLikePart(part)) {
-      continue
+      return part
     }
 
+    hasToolParts = true
     toolEntities.push(toToolEntity(ownerMessageId, part))
     const subagentMessage = readSubagentOutputMessage(part.output)
     if (subagentMessage) {
       toolEntities.push(...normalizeMessageForOwner(subagentMessage, ownerMessageId).toolEntities)
     }
-  }
+    return toToolAnchorPart(part) as MessagePart
+  })
 
   return {
-    message,
+    message: hasToolParts ? { ...message, parts } : message,
     toolEntities,
   }
 }

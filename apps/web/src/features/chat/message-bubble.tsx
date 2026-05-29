@@ -1,5 +1,6 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
+import isEqual from 'fast-deep-equal'
 import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -19,8 +20,8 @@ import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
 import { readChatContinuationMetadata } from './chat-continuation-metadata'
-import type { ChatRenderItem, FileMessagePart } from './chat-render-plan'
-import { groupMessageParts, splitExecutionPhase } from './chat-render-plan'
+import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
+import { groupMessagePartRefs, groupMessageParts, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
 import type { ChatToolEntity } from './chat-tool-entities'
 import { readSubagentOutputMessage } from './chat-tool-entities'
 import { describeToolCall } from './tool-ui-classifier'
@@ -278,7 +279,22 @@ function ExecutionPhaseFold({
 
 /* ─── Main Component ────────────────────────────────────────────── */
 
+const SEEN_MESSAGE_IDS_MAX = 1000
 const seenMessageIds = new Set<string>()
+function trackSeenMessageId(id: string): boolean {
+  if (seenMessageIds.has(id)) {
+    return false
+  }
+  if (seenMessageIds.size >= SEEN_MESSAGE_IDS_MAX) {
+    const first = seenMessageIds.values().next().value
+    if (first !== undefined) {
+      seenMessageIds.delete(first)
+    }
+  }
+  seenMessageIds.add(id)
+  return true
+}
+const EMPTY_RENDER_SEGMENTS: ChatRenderSegment[] = []
 
 interface MessageBubbleProps {
   message: UIMessage
@@ -290,6 +306,177 @@ interface MessageBubbleProps {
     approvalId: string
     approved: boolean
   }) => void
+}
+
+type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
+
+interface MessageFrame {
+  id: string
+  role: UIMessage['role']
+  isSteerMessage: boolean
+}
+
+function readMessageFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): UIMessage | undefined {
+  return (state.messagesMap.get(sessionId) ?? []).find(message => message.id === messageId)
+}
+
+function readMessageFrameFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): MessageFrame | null {
+  const message = readMessageFromState(state, sessionId, messageId)
+  if (!message) {
+    return null
+  }
+  const continuationMetadata = readChatContinuationMetadata(message)
+  return {
+    id: message.id,
+    role: message.role,
+    isSteerMessage: message.role === 'user' && continuationMetadata?.mode === 'steer',
+  }
+}
+
+function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | null): boolean {
+  return left?.id === right?.id
+    && left?.role === right?.role
+    && left?.isSteerMessage === right?.isSteerMessage
+}
+
+function describeToolKindFromState(state: ChatStoreSnapshot, toolCallId: string) {
+  const tool = state.toolEntitiesMap.get(toolCallId)
+  if (!tool) {
+    return null
+  }
+  return describeToolCall({
+    type: 'dynamic-tool',
+    toolCallId: tool.toolCallId,
+    toolName: tool.toolName,
+    state: tool.state,
+    argumentsText: tool.argumentsText,
+    input: tool.input,
+    output: tool.output,
+    errorText: tool.errorText,
+  }).kind
+}
+
+function readRenderSegmentsFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): ChatRenderSegment[] {
+  const message = readMessageFromState(state, sessionId, messageId)
+  if (!message) {
+    return EMPTY_RENDER_SEGMENTS
+  }
+  return groupMessagePartRefs({
+    parts: message.parts,
+    messageId: message.id,
+    describeToolKind: toolCallId => describeToolKindFromState(state, toolCallId),
+  })
+}
+
+function areRenderSegmentsEqual(left: ChatRenderSegment[], right: ChatRenderSegment[]): boolean {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (!areRenderSegmentEqual(left[i], right[i])) {
+      return false
+    }
+  }
+  return true
+}
+
+function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment): boolean {
+  if (left.kind !== right.kind || left.key !== right.key) {
+    return false
+  }
+  switch (left.kind) {
+    case 'text':
+      return right.kind === 'text'
+        && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
+        && left.hasText === right.hasText
+    case 'reasoning':
+    case 'file-attachment':
+      return (right.kind === 'reasoning' || right.kind === 'file-attachment')
+        && left.kind === right.kind
+        && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
+    case 'tool-call':
+      return right.kind === 'tool-call'
+        && left.messageId === right.messageId
+        && left.toolCallId === right.toolCallId
+    case 'tool-group':
+      return right.kind === 'tool-group'
+        && left.uiKind === right.uiKind
+        && areToolItemRefsEqual(left.items, right.items)
+    default:
+      return false
+  }
+}
+
+function areToolItemRefsEqual(left: Array<{ key: string, messageId: string, toolCallId: string }>, right: Array<{ key: string, messageId: string, toolCallId: string }>): boolean {
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (
+      left[i].key !== right[i].key
+      || left[i].messageId !== right[i].messageId
+      || left[i].toolCallId !== right[i].toolCallId
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function readTextPartFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): string {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  return part?.type === 'text' ? part.text : ''
+}
+
+function readReasoningPartFromState(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageId: string,
+  partIndex: number,
+): { text: string, state?: 'streaming' | 'done' } {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  if (part?.type !== 'reasoning') {
+    return { text: '', state: 'done' }
+  }
+  return {
+    text: part.text,
+    state: (part as { state?: 'streaming' | 'done' }).state,
+  }
+}
+
+function areReasoningPartsEqual(
+  left: { text: string, state?: 'streaming' | 'done' },
+  right: { text: string, state?: 'streaming' | 'done' },
+): boolean {
+  return left.text === right.text && left.state === right.state
+}
+
+function readFilePartFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): FileMessagePart | null {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  return part?.type === 'file' ? part : null
+}
+
+function readPlainTextFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): string {
+  const message = readMessageFromState(state, sessionId, messageId)
+  if (!message) {
+    return ''
+  }
+  return message.parts
+    .flatMap(part => part.type === 'text' ? [part.text] : [])
+    .join('\n')
+}
+
+function readActiveStreamingSegmentKey(segments: ChatRenderSegment[]): string | null {
+  const tail = segments.at(-1)
+  if (!tail || (tail.kind !== 'text' && tail.kind !== 'reasoning')) {
+    return null
+  }
+  return tail.key
 }
 
 function ToolCallBlockFromStore({
@@ -385,6 +572,373 @@ function GroupedToolCallBlockFromStore({
   return <GroupedToolCallBlock items={tools} uiKind={uiKind} animated={animated} />
 }
 
+function MessageTextPartById({
+  sessionId,
+  messageId,
+  partIndex,
+  isUser,
+  isActiveStreamingSegment,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+  isUser: boolean
+  isActiveStreamingSegment: boolean
+}) {
+  const text = useChatStore(state => readTextPartFromState(state, sessionId, messageId, partIndex))
+  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
+
+  if (isUser) {
+    return <span className="whitespace-pre-wrap wrap-break-word">{text}</span>
+  }
+
+  return (
+    <Streamdown
+      content={text}
+      streaming={isActiveStreamingSegment}
+      animationPreset={animationPreset}
+      animateMode={animateMode}
+      showCursor={showCursor}
+    />
+  )
+}
+
+function MessageReasoningPartById({
+  sessionId,
+  messageId,
+  partIndex,
+  isActiveStreamingSegment,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+  isActiveStreamingSegment: boolean
+}) {
+  const part = useChatStore(
+    state => readReasoningPartFromState(state, sessionId, messageId, partIndex),
+    areReasoningPartsEqual,
+  )
+  const state = isActiveStreamingSegment && part.state === 'streaming' ? 'streaming' : 'done'
+
+  return <ReasoningBlock text={part.text} state={state} />
+}
+
+function MessageFilePartById({
+  sessionId,
+  messageId,
+  partIndex,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+}) {
+  const part = useChatStore(state => readFilePartFromState(state, sessionId, messageId, partIndex))
+  if (!part) {
+    return null
+  }
+  return <FileAttachmentBlock part={part} />
+}
+
+function MessageThinkingPlaceholderById({
+  sessionId,
+  messageId,
+  isAssistant,
+  isStreaming,
+  segmentCount,
+}: {
+  sessionId: string
+  messageId: string
+  isAssistant: boolean
+  isStreaming: boolean
+  segmentCount: number
+}) {
+  const plainText = useChatStore(state => readPlainTextFromState(state, sessionId, messageId))
+  const [streamTextIdle, setStreamTextIdle] = useState(false)
+
+  useEffect(() => {
+    if (!isAssistant || !isStreaming) {
+      setStreamTextIdle(false)
+      return
+    }
+
+    setStreamTextIdle(false)
+    const timer = window.setTimeout(() => {
+      setStreamTextIdle(true)
+    }, THINKING_IDLE_DELAY_MS)
+
+    return () => window.clearTimeout(timer)
+  }, [isAssistant, isStreaming, plainText])
+
+  if (!isAssistant || !isStreaming || (segmentCount !== 0 && !streamTextIdle)) {
+    return null
+  }
+
+  return <ThinkingPlaceholder />
+}
+
+function MessageCopyActionById({
+  sessionId,
+  messageId,
+  isUser,
+}: {
+  sessionId: string
+  messageId: string
+  isUser: boolean
+}) {
+  const plainText = useChatStore(state => readPlainTextFromState(state, sessionId, messageId))
+  const [copied, setCopied] = useState(false)
+  const copyFeedbackTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimerRef.current !== null) {
+        window.clearTimeout(copyFeedbackTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(plainText)
+    setCopied(true)
+
+    if (copyFeedbackTimerRef.current !== null) {
+      window.clearTimeout(copyFeedbackTimerRef.current)
+    }
+
+    copyFeedbackTimerRef.current = window.setTimeout(() => {
+      setCopied(false)
+      copyFeedbackTimerRef.current = null
+    }, 1500)
+  }, [plainText])
+
+  if (plainText.length === 0) {
+    return null
+  }
+
+  return (
+    <div className={cn(
+      'mt-1 flex items-center gap-0.5 opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-150',
+      isUser && 'justify-end',
+    )}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-xs"
+        onClick={handleCopy}
+        className="text-muted-foreground/50 hover:text-foreground"
+        aria-label="Copy message"
+      >
+        {copied
+          ? <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
+          : <CopyIcon className="size-3.5" aria-hidden="true" />}
+      </Button>
+    </div>
+  )
+}
+
+function MessageSegmentView({
+  segment,
+  sessionId,
+  isUser,
+  isActiveStreamingSegment,
+  onToolApprovalResponse,
+}: {
+  segment: ChatRenderSegment
+  sessionId: string
+  isUser: boolean
+  isActiveStreamingSegment: boolean
+  onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+}) {
+  switch (segment.kind) {
+    case 'text':
+      return (
+        <MessageTextPartById
+          sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
+          isUser={isUser}
+          isActiveStreamingSegment={isActiveStreamingSegment}
+        />
+      )
+    case 'reasoning':
+      return (
+        <MessageReasoningPartById
+          sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
+          isActiveStreamingSegment={isActiveStreamingSegment}
+        />
+      )
+    case 'tool-group':
+      return <GroupedToolCallBlockFromStore items={segment.items} uiKind={segment.uiKind} />
+    case 'tool-call':
+      return (
+        <ToolCallBlockFromStore
+          toolCallId={segment.toolCallId}
+          onToolApprovalResponse={onToolApprovalResponse}
+        />
+      )
+    case 'file-attachment':
+      return (
+        <MessageFilePartById
+          sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
+        />
+      )
+    default:
+      return null
+  }
+}
+
+function MessageBubbleSegmentsView({
+  sessionId,
+  frame,
+  segments,
+  isStreaming,
+  onToolApprovalResponse,
+}: {
+  sessionId: string
+  frame: MessageFrame
+  segments: ChatRenderSegment[]
+  isStreaming: boolean
+  onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+}) {
+  const isUser = frame.role === 'user'
+  const isAssistant = frame.role === 'assistant'
+  const { t } = useTranslation('chat')
+  const isFirstAppearance = trackSeenMessageId(frame.id)
+  const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
+  const executionPhaseSplit = useMemo(
+    () => isStreaming ? null : splitSegmentExecutionPhase(segments),
+    [segments, isStreaming],
+  )
+
+  function renderSegment(segment: ChatRenderSegment) {
+    return (
+      <MessageSegmentView
+        key={segment.key}
+        segment={segment}
+        sessionId={sessionId}
+        isUser={isUser}
+        isActiveStreamingSegment={segment.key === activeStreamingSegmentKey}
+        onToolApprovalResponse={onToolApprovalResponse}
+      />
+    )
+  }
+
+  function renderContent() {
+    if (!executionPhaseSplit) {
+      return segments.map(renderSegment)
+    }
+
+    return (
+      <>
+        <ExecutionPhaseFold>
+          {executionPhaseSplit.executionItems.map(renderSegment)}
+        </ExecutionPhaseFold>
+        {executionPhaseSplit.finalItems.map(renderSegment)}
+      </>
+    )
+  }
+
+  return (
+    <m.div
+      initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
+      animate={{ opacity: 1, y: 0 }}
+      transition={BUBBLE_TRANSITION}
+      data-testid={`message-bubble-${frame.role}`}
+      data-message-id={frame.id}
+      data-message-role={frame.role}
+      data-message-streaming={isStreaming ? 'true' : 'false'}
+      className={cn(
+        'group flex w-full gap-3',
+        isUser && 'justify-end',
+      )}
+    >
+      <div
+        className={cn(
+          'min-w-0',
+          isUser && !frame.isSteerMessage && 'max-w-[70%]',
+          frame.isSteerMessage && 'max-w-[78%]',
+          !isUser && 'w-full',
+        )}
+      >
+        {frame.isSteerMessage && (
+          <div className="mb-1 flex justify-end pr-1">
+            <span className="text-[10px] font-medium uppercase text-muted-foreground/60">
+              {t('continuation.steer.label')}
+            </span>
+          </div>
+        )}
+        <div
+          className={cn(
+            'rounded-lg text-sm leading-relaxed',
+            isUser && !frame.isSteerMessage && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            frame.isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
+            isAssistant && 'text-foreground',
+          )}
+        >
+          {renderContent()}
+          <MessageThinkingPlaceholderById
+            sessionId={sessionId}
+            messageId={frame.id}
+            isAssistant={isAssistant}
+            isStreaming={isStreaming}
+            segmentCount={segments.length}
+          />
+        </div>
+
+        {isAssistant && <RunDebugCaption messageId={frame.id} />}
+
+        {!isStreaming && (
+          <MessageCopyActionById
+            sessionId={sessionId}
+            messageId={frame.id}
+            isUser={isUser}
+          />
+        )}
+      </div>
+    </m.div>
+  )
+}
+
+export function MessageBubbleById({
+  sessionId,
+  messageId,
+  onToolApprovalResponse,
+}: {
+  sessionId: string | null
+  messageId: string
+  onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+}) {
+  const storeSessionId = sessionId ?? ''
+  const frame = useChatStore(
+    state => readMessageFrameFromState(state, storeSessionId, messageId),
+    areMessageFramesEqual,
+  )
+  const segments = useChatStore(
+    state => readRenderSegmentsFromState(state, storeSessionId, messageId),
+    areRenderSegmentsEqual,
+  )
+  const isStreaming = useChatStore(chatSelectors.isStreamingMessage(messageId))
+
+  if (!frame) {
+    return null
+  }
+
+  return (
+    <MessageBubbleSegmentsView
+      sessionId={storeSessionId}
+      frame={frame}
+      segments={segments}
+      isStreaming={isStreaming}
+      onToolApprovalResponse={onToolApprovalResponse}
+    />
+  )
+}
+
 function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
@@ -397,10 +951,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const [streamTextIdle, setStreamTextIdle] = useState(false)
 
-  const isFirstAppearance = !seenMessageIds.has(message.id)
-  if (isFirstAppearance) {
-    seenMessageIds.add(message.id)
-  }
+  const isFirstAppearance = trackSeenMessageId(message.id)
 
   const plainText = useMemo(() => {
     return message.parts
@@ -612,7 +1163,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 export const MessageBubble = memo(
   MessageBubbleView,
   (prevProps, nextProps) =>
-    prevProps.message === nextProps.message
+    (prevProps.message === nextProps.message || isEqual(prevProps.message, nextProps.message))
     && prevProps.isStreaming === nextProps.isStreaming
     && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
     && prevProps.presentation === nextProps.presentation

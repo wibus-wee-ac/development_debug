@@ -1,4 +1,6 @@
 import type { UIMessage } from 'ai'
+import type { Draft } from 'immer'
+import { enableMapSet, produce } from 'immer'
 import { subscribeWithSelector } from 'zustand/middleware'
 import { shallow } from 'zustand/shallow'
 import { createWithEqualityFn } from 'zustand/traditional'
@@ -8,6 +10,8 @@ import {
   collectToolCallIdsFromMessages,
   normalizeMessageForToolEntities,
 } from '~/features/chat/chat-tool-entities'
+
+enableMapSet()
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -149,27 +153,30 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             normalizedMessages.flatMap(item => item.toolEntities),
             removedMessageIds,
           )
-          const nextPassiveStreamingMessageIds = removedMessageIds.length > 0
-            ? new Set([...state.passiveStreamingMessageIds].filter(id => !removedMessageIds.includes(id)))
-            : state.passiveStreamingMessageIds
 
           if (
             currentMessages === nextMessages
             && toolState.toolCallIdsByMessageId === state.toolCallIdsByMessageId
             && toolState.toolEntitiesMap === state.toolEntitiesMap
-            && nextPassiveStreamingMessageIds === state.passiveStreamingMessageIds
+            && (removedMessageIds.length === 0 || state.passiveStreamingMessageIds.size === 0)
           ) {
             return state
           }
 
-          const next = new Map(state.messagesMap)
-          next.set(sessionId, nextMessages)
-          return {
-            messagesMap: next,
-            toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
-            toolEntitiesMap: toolState.toolEntitiesMap,
-            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
-          }
+          return produce(state, (draft) => {
+            draft.messagesMap.set(sessionId, nextMessages)
+            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
+              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
+            }
+            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
+              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+            }
+            if (removedMessageIds.length > 0 && state.passiveStreamingMessageIds.size > 0) {
+              for (const id of removedMessageIds) {
+                draft.passiveStreamingMessageIds.delete(id)
+              }
+            }
+          })
         })
       },
 
@@ -187,42 +194,50 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
           const normalizedMessage = normalizeMessageForToolEntities(updater(messages[idx]))
           const updatedMessage = normalizedMessage.message
-          const updated = [...messages]
-          updated[idx] = updatedMessage
-
           const toolState = withToolEntitiesForMessages(
             state.toolCallIdsByMessageId,
             state.toolEntitiesMap,
             [updatedMessage],
             normalizedMessage.toolEntities,
           )
-          const next = new Map(state.messagesMap)
-          next.set(sessionId, updated)
-          return {
-            messagesMap: next,
-            toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
-            toolEntitiesMap: toolState.toolEntitiesMap,
-          }
+
+          return produce(state, (draft) => {
+            draft.messagesMap.get(sessionId)![idx] = updatedMessage as Draft<UIMessage>
+            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
+              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
+            }
+            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
+              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+            }
+          })
         })
       },
 
       appendMessage: (sessionId, message) => {
         set((state) => {
-          const messages = state.messagesMap.get(sessionId) ?? []
           const normalizedMessage = normalizeMessageForToolEntities(message)
-          const next = new Map(state.messagesMap)
-          next.set(sessionId, [...messages, normalizedMessage.message])
           const toolState = withToolEntitiesForMessages(
             state.toolCallIdsByMessageId,
             state.toolEntitiesMap,
             [normalizedMessage.message],
             normalizedMessage.toolEntities,
           )
-          return {
-            messagesMap: next,
-            toolCallIdsByMessageId: toolState.toolCallIdsByMessageId,
-            toolEntitiesMap: toolState.toolEntitiesMap,
-          }
+
+          return produce(state, (draft) => {
+            const messages = draft.messagesMap.get(sessionId)
+            if (messages) {
+              messages.push(normalizedMessage.message as Draft<UIMessage>)
+            }
+            else {
+              draft.messagesMap.set(sessionId, [normalizedMessage.message as Draft<UIMessage>])
+            }
+            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
+              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
+            }
+            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
+              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+            }
+          })
         })
       },
 
@@ -233,50 +248,33 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             return state
           }
 
-          const nextMessages = new Map(state.messagesMap)
-          nextMessages.set(sessionId, messages.filter(message => message.id !== messageId))
+          return produce(state, (draft) => {
+            const draftMessages = draft.messagesMap.get(sessionId)
+            if (draftMessages) {
+              const idx = draftMessages.findIndex(m => m.id === messageId)
+              if (idx !== -1) {
+                draftMessages.splice(idx, 1)
+              }
+            }
 
-          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
-          const toolCallIds = nextToolCallIdsByMessageId.get(messageId) ?? []
-          nextToolCallIdsByMessageId.delete(messageId)
+            const toolCallIds = draft.toolCallIdsByMessageId.get(messageId) ?? []
+            draft.toolCallIdsByMessageId.delete(messageId)
+            for (const toolCallId of toolCallIds) {
+              draft.toolEntitiesMap.delete(toolCallId)
+            }
 
-          const nextToolEntities = new Map(state.toolEntitiesMap)
-          for (const toolCallId of toolCallIds) {
-            nextToolEntities.delete(toolCallId)
-          }
+            draft.generatingMessageIds.delete(messageId)
+            draft.passiveStreamingMessageIds.delete(messageId)
+            draft.activeAbortControllers.delete(messageId)
+            draft.runDisplayMetaMap.delete(messageId)
+            draft.errorMap.delete(messageId)
 
-          const nextGenerating = new Set(state.generatingMessageIds)
-          nextGenerating.delete(messageId)
-          const nextPassiveStreaming = new Set(state.passiveStreamingMessageIds)
-          nextPassiveStreaming.delete(messageId)
-          const nextControllers = new Map(state.activeAbortControllers)
-          nextControllers.delete(messageId)
-          const nextRunDisplayMeta = new Map(state.runDisplayMetaMap)
-          nextRunDisplayMeta.delete(messageId)
-          const nextError = new Map(state.errorMap)
-          nextError.delete(messageId)
-
-          const currentMeta = state.sessionMetaMap.get(sessionId)
-          const nextSessionMeta = new Map(state.sessionMetaMap)
-          if (currentMeta?.localDriverMessageId === messageId) {
-            nextSessionMeta.set(sessionId, {
-              ...currentMeta,
-              locallyDriving: false,
-              localDriverMessageId: undefined,
-            })
-          }
-
-          return {
-            messagesMap: nextMessages,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-            toolEntitiesMap: nextToolEntities,
-            generatingMessageIds: nextGenerating,
-            passiveStreamingMessageIds: nextPassiveStreaming,
-            activeAbortControllers: nextControllers,
-            runDisplayMetaMap: nextRunDisplayMeta,
-            errorMap: nextError,
-            sessionMetaMap: nextSessionMeta,
-          }
+            const currentMeta = draft.sessionMetaMap.get(sessionId)
+            if (currentMeta?.localDriverMessageId === messageId) {
+              currentMeta.locallyDriving = false
+              currentMeta.localDriverMessageId = undefined
+            }
+          })
         })
       },
 
@@ -286,17 +284,18 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (current && areToolEntitiesEqual(current, entity)) {
             return state
           }
-          const nextEntities = new Map(state.toolEntitiesMap)
-          nextEntities.set(entity.toolCallId, entity)
-          const nextToolCallIdsByMessageId = upsertMessageToolCallIds(
-            state.toolCallIdsByMessageId,
-            entity.messageId,
-            entity.toolCallId,
-          )
-          return {
-            toolEntitiesMap: nextEntities,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-          }
+          return produce(state, (draft) => {
+            draft.toolEntitiesMap.set(entity.toolCallId, entity as Draft<ChatToolEntity>)
+            const currentIds = draft.toolCallIdsByMessageId.get(entity.messageId)
+            if (currentIds) {
+              if (!currentIds.includes(entity.toolCallId)) {
+                currentIds.push(entity.toolCallId)
+              }
+            }
+            else {
+              draft.toolCallIdsByMessageId.set(entity.messageId, [entity.toolCallId])
+            }
+          })
         })
       },
 
@@ -312,17 +311,18 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (areToolEntitiesEqual(current, nextEntity)) {
             return state
           }
-          const nextEntities = new Map(state.toolEntitiesMap)
-          nextEntities.set(toolCallId, nextEntity)
-          const nextToolCallIdsByMessageId = upsertMessageToolCallIds(
-            state.toolCallIdsByMessageId,
-            nextEntity.messageId,
-            toolCallId,
-          )
-          return {
-            toolEntitiesMap: nextEntities,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-          }
+          return produce(state, (draft) => {
+            draft.toolEntitiesMap.set(toolCallId, nextEntity as Draft<ChatToolEntity>)
+            const currentIds = draft.toolCallIdsByMessageId.get(nextEntity.messageId)
+            if (currentIds) {
+              if (!currentIds.includes(toolCallId)) {
+                currentIds.push(toolCallId)
+              }
+            }
+            else {
+              draft.toolCallIdsByMessageId.set(nextEntity.messageId, [toolCallId])
+            }
+          })
         })
       },
 
@@ -331,9 +331,8 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           return
         }
         set((state) => {
-          let nextEntities = state.toolEntitiesMap
-          let nextToolCallIdsByMessageId = state.toolCallIdsByMessageId
-
+          let hasChanges = false
+          const nextEntities = new Map(state.toolEntitiesMap)
           for (const patch of patches) {
             const current = nextEntities.get(patch.toolCallId) ?? {
               toolCallId: patch.toolCallId,
@@ -342,30 +341,37 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
               state: 'input-streaming' as const,
             }
             const nextEntity = patch.updater(current)
-            if (areToolEntitiesEqual(current, nextEntity)) {
-              continue
+            if (!areToolEntitiesEqual(current, nextEntity)) {
+              nextEntities.set(patch.toolCallId, nextEntity)
+              hasChanges = true
             }
-            if (nextEntities === state.toolEntitiesMap) {
-              nextEntities = new Map(nextEntities)
-            }
-            nextEntities.set(patch.toolCallId, nextEntity)
-            nextToolCallIdsByMessageId = upsertMessageToolCallIds(
-              nextToolCallIdsByMessageId,
-              nextEntity.messageId,
-              patch.toolCallId,
-            )
           }
 
-          if (
-            nextEntities === state.toolEntitiesMap
-            && nextToolCallIdsByMessageId === state.toolCallIdsByMessageId
-          ) {
+          if (!hasChanges) {
             return state
           }
-          return {
-            toolEntitiesMap: nextEntities,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-          }
+
+          return produce(state, (draft) => {
+            for (const [key, value] of nextEntities) {
+              if (value !== state.toolEntitiesMap.get(key)) {
+                draft.toolEntitiesMap.set(key, value as Draft<ChatToolEntity>)
+              }
+            }
+            for (const patch of patches) {
+              const entity = nextEntities.get(patch.toolCallId)
+              if (entity) {
+                const currentIds = draft.toolCallIdsByMessageId.get(entity.messageId)
+                if (currentIds) {
+                  if (!currentIds.includes(patch.toolCallId)) {
+                    currentIds.push(patch.toolCallId)
+                  }
+                }
+                else {
+                  draft.toolCallIdsByMessageId.set(entity.messageId, [patch.toolCallId])
+                }
+              }
+            }
+          })
         })
       },
 
@@ -382,22 +388,24 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             nextEntities.set(entity.toolCallId, entity)
           }
 
-          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
-          if (nextToolCallIds.length > 0) {
-            nextToolCallIdsByMessageId.set(messageId, nextToolCallIds)
-          }
-          else {
-            nextToolCallIdsByMessageId.delete(messageId)
-          }
-
           if (arraysEqual(previousToolCallIds, nextToolCallIds) && mapsEqualByJson(state.toolEntitiesMap, nextEntities)) {
             return state
           }
 
-          return {
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-            toolEntitiesMap: nextEntities,
-          }
+          return produce(state, (draft) => {
+            for (const toolCallId of previousToolCallIds) {
+              draft.toolEntitiesMap.delete(toolCallId)
+            }
+            for (const entity of entities) {
+              draft.toolEntitiesMap.set(entity.toolCallId, entity as Draft<ChatToolEntity>)
+            }
+            if (nextToolCallIds.length > 0) {
+              draft.toolCallIdsByMessageId.set(messageId, nextToolCallIds)
+            }
+            else {
+              draft.toolCallIdsByMessageId.delete(messageId)
+            }
+          })
         })
       },
 
@@ -407,114 +415,69 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (!previousToolCallIds || previousToolCallIds.length === 0) {
             return state
           }
-          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
-          nextToolCallIdsByMessageId.delete(messageId)
-          const nextEntities = new Map(state.toolEntitiesMap)
-          for (const toolCallId of previousToolCallIds) {
-            nextEntities.delete(toolCallId)
-          }
-          return {
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-            toolEntitiesMap: nextEntities,
-          }
+          return produce(state, (draft) => {
+            draft.toolCallIdsByMessageId.delete(messageId)
+            for (const toolCallId of previousToolCallIds) {
+              draft.toolEntitiesMap.delete(toolCallId)
+            }
+          })
         })
       },
 
       // --- Streaming ---
 
       startGeneration: (sessionId, messageId, controller) => {
-        set((state) => {
-          const nextGen = new Set(state.generatingMessageIds)
-          nextGen.add(messageId)
-          const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
-          nextPassiveStreamingMessageIds.delete(messageId)
-          const nextCtrl = new Map(state.activeAbortControllers)
-          nextCtrl.set(messageId, controller)
-          const nextMeta = new Map(state.sessionMetaMap)
-          nextMeta.set(sessionId, {
-            ...(state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META),
+        set((state) => produce(state, (draft) => {
+          draft.generatingMessageIds.add(messageId)
+          draft.passiveStreamingMessageIds.delete(messageId)
+          draft.activeAbortControllers.set(messageId, controller)
+          const current = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+          draft.sessionMetaMap.set(sessionId, {
+            ...current,
             cancelling: false,
             locallyDriving: true,
             localDriverMessageId: messageId,
           })
-          return {
-            generatingMessageIds: nextGen,
-            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
-            activeAbortControllers: nextCtrl,
-            sessionMetaMap: nextMeta,
-          }
-        })
+        }))
       },
 
       finishGeneration: (messageId) => {
-        set((state) => {
-          const nextGen = new Set(state.generatingMessageIds)
-          nextGen.delete(messageId)
-          const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
-          nextPassiveStreamingMessageIds.delete(messageId)
-          const nextCtrl = new Map(state.activeAbortControllers)
-          nextCtrl.delete(messageId)
-          const nextMeta = new Map(state.sessionMetaMap)
-          const nextRunMeta = new Map(state.runDisplayMetaMap)
-          const currentRunMeta = nextRunMeta.get(messageId)
+        set((state) => produce(state, (draft) => {
+          draft.generatingMessageIds.delete(messageId)
+          draft.passiveStreamingMessageIds.delete(messageId)
+          draft.activeAbortControllers.delete(messageId)
+          const currentRunMeta = draft.runDisplayMetaMap.get(messageId)
           if (currentRunMeta && currentRunMeta.completedAtMs === null) {
-            nextRunMeta.set(messageId, { ...currentRunMeta, completedAtMs: performance.now() })
+            currentRunMeta.completedAtMs = performance.now()
           }
-          for (const [sessionId, meta] of nextMeta) {
+          for (const [sessionId, meta] of draft.sessionMetaMap) {
             if (meta.localDriverMessageId === messageId) {
-              nextMeta.set(sessionId, {
-                ...meta,
-                cancelling: false,
-                locallyDriving: false,
-                localDriverMessageId: undefined,
-              })
+              meta.cancelling = false
+              meta.locallyDriving = false
+              meta.localDriverMessageId = undefined
             }
           }
-          return {
-            generatingMessageIds: nextGen,
-            passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
-            activeAbortControllers: nextCtrl,
-            sessionMetaMap: nextMeta,
-            runDisplayMetaMap: nextRunMeta,
-          }
-        })
+        }))
       },
 
       failGeneration: (messageId, error) => {
-        const state = get()
-        // Finish generation and record error atomically
-        const nextGen = new Set(state.generatingMessageIds)
-        nextGen.delete(messageId)
-        const nextPassiveStreamingMessageIds = new Set(state.passiveStreamingMessageIds)
-        nextPassiveStreamingMessageIds.delete(messageId)
-        const nextCtrl = new Map(state.activeAbortControllers)
-        nextCtrl.delete(messageId)
-        const nextErr = new Map(state.errorMap)
-        nextErr.set(messageId, { message: error, timestamp: Date.now() })
-        const nextRunMeta = new Map(state.runDisplayMetaMap)
-        const currentRunMeta = nextRunMeta.get(messageId)
-        if (currentRunMeta && currentRunMeta.completedAtMs === null) {
-          nextRunMeta.set(messageId, { ...currentRunMeta, completedAtMs: performance.now() })
-        }
-        const nextMeta = new Map(state.sessionMetaMap)
-        for (const [sessionId, meta] of nextMeta) {
-          if (meta.localDriverMessageId === messageId) {
-            nextMeta.set(sessionId, {
-              ...meta,
-              cancelling: false,
-              locallyDriving: false,
-              localDriverMessageId: undefined,
-            })
+        set((state) => produce(state, (draft) => {
+          draft.generatingMessageIds.delete(messageId)
+          draft.passiveStreamingMessageIds.delete(messageId)
+          draft.activeAbortControllers.delete(messageId)
+          draft.errorMap.set(messageId, { message: error, timestamp: Date.now() })
+          const currentRunMeta = draft.runDisplayMetaMap.get(messageId)
+          if (currentRunMeta && currentRunMeta.completedAtMs === null) {
+            currentRunMeta.completedAtMs = performance.now()
           }
-        }
-        set({
-          generatingMessageIds: nextGen,
-          passiveStreamingMessageIds: nextPassiveStreamingMessageIds,
-          activeAbortControllers: nextCtrl,
-          errorMap: nextErr,
-          runDisplayMetaMap: nextRunMeta,
-          sessionMetaMap: nextMeta,
-        })
+          for (const [, meta] of draft.sessionMetaMap) {
+            if (meta.localDriverMessageId === messageId) {
+              meta.cancelling = false
+              meta.locallyDriving = false
+              meta.localDriverMessageId = undefined
+            }
+          }
+        }))
       },
 
       stopGeneration: (messageId, sessionId) => {
@@ -547,7 +510,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (areSetsEqual(nextPassive, state.passiveStreamingMessageIds)) {
             return state
           }
-          return { passiveStreamingMessageIds: nextPassive }
+          return produce(state, (draft) => {
+            draft.passiveStreamingMessageIds = nextPassive as Draft<Set<string>>
+          })
         })
       },
 
@@ -564,7 +529,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (areSetsEqual(nextPassive, state.passiveStreamingMessageIds)) {
             return state
           }
-          return { passiveStreamingMessageIds: nextPassive }
+          return produce(state, (draft) => {
+            draft.passiveStreamingMessageIds = nextPassive as Draft<Set<string>>
+          })
         })
       },
 
@@ -574,15 +541,15 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (current?.requestStartedAtMs === requestStartedAtMs) {
             return state
           }
-          const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, {
-            runId: current?.runId ?? null,
-            requestStartedAtMs,
-            firstEventAtMs: current?.firstEventAtMs ?? null,
-            firstContentAtMs: current?.firstContentAtMs ?? null,
-            completedAtMs: current?.completedAtMs ?? null,
+          return produce(state, (draft) => {
+            draft.runDisplayMetaMap.set(messageId, {
+              runId: current?.runId ?? null,
+              requestStartedAtMs,
+              firstEventAtMs: current?.firstEventAtMs ?? null,
+              firstContentAtMs: current?.firstContentAtMs ?? null,
+              completedAtMs: current?.completedAtMs ?? null,
+            })
           })
-          return { runDisplayMetaMap: next }
         })
       },
 
@@ -592,15 +559,15 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (current?.runId === runId) {
             return state
           }
-          const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, {
-            runId,
-            requestStartedAtMs: current?.requestStartedAtMs ?? performance.now(),
-            firstEventAtMs: current?.firstEventAtMs ?? null,
-            firstContentAtMs: current?.firstContentAtMs ?? null,
-            completedAtMs: current?.completedAtMs ?? null,
+          return produce(state, (draft) => {
+            draft.runDisplayMetaMap.set(messageId, {
+              runId,
+              requestStartedAtMs: current?.requestStartedAtMs ?? performance.now(),
+              firstEventAtMs: current?.firstEventAtMs ?? null,
+              firstContentAtMs: current?.firstContentAtMs ?? null,
+              completedAtMs: current?.completedAtMs ?? null,
+            })
           })
-          return { runDisplayMetaMap: next }
         })
       },
 
@@ -613,10 +580,10 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (!current) {
             return state
           }
-          const next = new Map(state.runDisplayMetaMap)
-          next.delete(fromMessageId)
-          next.set(toMessageId, state.runDisplayMetaMap.get(toMessageId) ?? current)
-          return { runDisplayMetaMap: next }
+          return produce(state, (draft) => {
+            draft.runDisplayMetaMap.delete(fromMessageId)
+            draft.runDisplayMetaMap.set(toMessageId, state.runDisplayMetaMap.get(toMessageId) ?? current)
+          })
         })
       },
 
@@ -626,9 +593,12 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (!current || current.firstEventAtMs !== null) {
             return state
           }
-          const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { ...current, firstEventAtMs: timestampMs })
-          return { runDisplayMetaMap: next }
+          return produce(state, (draft) => {
+            const meta = draft.runDisplayMetaMap.get(messageId)
+            if (meta) {
+              meta.firstEventAtMs = timestampMs
+            }
+          })
         })
       },
 
@@ -638,32 +608,33 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (!current || current.firstContentAtMs !== null) {
             return state
           }
-          const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { ...current, firstContentAtMs: timestampMs })
-          return { runDisplayMetaMap: next }
+          return produce(state, (draft) => {
+            const meta = draft.runDisplayMetaMap.get(messageId)
+            if (meta) {
+              meta.firstContentAtMs = timestampMs
+            }
+          })
         })
       },
 
       // --- Session Meta ---
 
       setSessionMeta: (sessionId, meta) => {
-        set((state) => {
-          const nextMeta = new Map(state.sessionMetaMap)
-          const current = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-          nextMeta.set(sessionId, { ...current, ...meta })
-          return { sessionMetaMap: nextMeta }
-        })
+        set((state) => produce(state, (draft) => {
+          const current = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+          draft.sessionMetaMap.set(sessionId, { ...current, ...meta })
+        }))
       },
 
       setPassiveStatus: (sessionId, status) => {
         set((state) => {
-          const nextMeta = new Map(state.sessionMetaMap)
           const current = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           if (current.passiveStatus === status) {
             return state
           }
-          nextMeta.set(sessionId, { ...current, passiveStatus: status })
-          return { sessionMetaMap: nextMeta }
+          return produce(state, (draft) => {
+            draft.sessionMetaMap.set(sessionId, { ...current, passiveStatus: status })
+          })
         })
       },
 
@@ -671,41 +642,30 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
       clearSession: (sessionId) => {
         set((state) => {
-          const nextMsg = new Map(state.messagesMap)
-          const nextMeta = new Map(state.sessionMetaMap)
-          nextMeta.delete(sessionId)
-          const nextToolCallIdsByMessageId = new Map(state.toolCallIdsByMessageId)
-          const nextToolEntitiesMap = new Map(state.toolEntitiesMap)
-          const nextRunDisplayMetaMap = new Map(state.runDisplayMetaMap)
           const removedMessages = state.messagesMap.get(sessionId) ?? []
-          nextMsg.delete(sessionId)
-          for (const message of removedMessages) {
-            nextRunDisplayMetaMap.delete(message.id)
-            const toolCallIds = nextToolCallIdsByMessageId.get(message.id) ?? []
-            nextToolCallIdsByMessageId.delete(message.id)
-            for (const toolCallId of toolCallIds) {
-              nextToolEntitiesMap.delete(toolCallId)
+          const removedMessageIds = new Set(removedMessages.map(m => m.id))
+          return produce(state, (draft) => {
+            draft.messagesMap.delete(sessionId)
+            draft.sessionMetaMap.delete(sessionId)
+            for (const message of removedMessages) {
+              draft.runDisplayMetaMap.delete(message.id)
+              const toolCallIds = draft.toolCallIdsByMessageId.get(message.id) ?? []
+              draft.toolCallIdsByMessageId.delete(message.id)
+              for (const toolCallId of toolCallIds) {
+                draft.toolEntitiesMap.delete(toolCallId)
+              }
             }
-          }
-          return {
-            messagesMap: nextMsg,
-            sessionMetaMap: nextMeta,
-            toolCallIdsByMessageId: nextToolCallIdsByMessageId,
-            toolEntitiesMap: nextToolEntitiesMap,
-            runDisplayMetaMap: nextRunDisplayMetaMap,
-            passiveStreamingMessageIds: new Set(
-              [...state.passiveStreamingMessageIds].filter(id => !removedMessages.some(message => message.id === id)),
-            ),
-          }
+            for (const id of removedMessageIds) {
+              draft.passiveStreamingMessageIds.delete(id)
+            }
+          })
         })
       },
 
       clearError: (messageId) => {
-        set((state) => {
-          const nextErr = new Map(state.errorMap)
-          nextErr.delete(messageId)
-          return { errorMap: nextErr }
-        })
+        set((state) => produce(state, (draft) => {
+          draft.errorMap.delete(messageId)
+        }))
       },
 
     }),
@@ -807,24 +767,54 @@ export const chatSelectors = {
       .map(toolCallId => s.toolEntitiesMap.get(toolCallId))
       .filter((entity): entity is ChatToolEntity => entity !== undefined),
 
-  sessionToolEntities: (sessionId: string) => (s: ChatState) => {
-    const messages = s.messagesMap.get(sessionId)
-    if (!messages || messages.length === 0) {
-      return EMPTY_TOOL_ENTITIES
-    }
+  sessionToolEntities: (() => {
+    const cache = new Map<string, { entities: ChatToolEntity[], lastToolCallIds: string[] }>()
+    return (sessionId: string) => (s: ChatState) => {
+      const messages = s.messagesMap.get(sessionId)
+      if (!messages || messages.length === 0) {
+        cache.delete(sessionId)
+        return EMPTY_TOOL_ENTITIES
+      }
 
-    const entities: ChatToolEntity[] = []
-    for (const message of messages) {
-      const toolCallIds = s.toolCallIdsByMessageId.get(message.id) ?? EMPTY_TOOL_CALL_IDS
+      const toolCallIds: string[] = []
+      for (const message of messages) {
+        const ids = s.toolCallIdsByMessageId.get(message.id)
+        if (ids) {
+          toolCallIds.push(...ids)
+        }
+      }
+
+      if (toolCallIds.length === 0) {
+        cache.delete(sessionId)
+        return EMPTY_TOOL_ENTITIES
+      }
+
+      const prev = cache.get(sessionId)
+      if (prev && arraysEqual(prev.lastToolCallIds, toolCallIds)) {
+        let stale = false
+        for (let i = 0; i < prev.entities.length; i++) {
+          if (prev.entities[i] !== s.toolEntitiesMap.get(toolCallIds[i])) {
+            stale = true
+            break
+          }
+        }
+        if (!stale) {
+          return prev.entities
+        }
+      }
+
+      const entities: ChatToolEntity[] = []
       for (const toolCallId of toolCallIds) {
         const entity = s.toolEntitiesMap.get(toolCallId)
         if (entity) {
           entities.push(entity)
         }
       }
+      const result = entities.length > 0 ? entities : EMPTY_TOOL_ENTITIES
+      cache.set(sessionId, { entities: result, lastToolCallIds: toolCallIds })
+      return result
     }
-    return entities.length > 0 ? entities : EMPTY_TOOL_ENTITIES
-  },
+  })(),
 
   runDisplayMeta: (messageId: string) => (s: ChatState) =>
     s.runDisplayMetaMap.get(messageId),

@@ -40,15 +40,27 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
   const [centerColumnRect, setCenterColumnRect] = React.useState<LayoutRect | null>(null)
   const [footerRect, setFooterRect] = React.useState<LayoutRect | null>(null)
 
+  const rafIdRef = React.useRef(0)
+
   const measure = React.useCallback(() => {
     setCenterColumnRect(toLayoutRect(centerColumnElement))
     setFooterRect(toLayoutRect(footerElement))
   }, [centerColumnElement, footerElement])
 
+  const scheduleMeasure = React.useCallback(() => {
+    if (rafIdRef.current !== 0) {
+      return
+    }
+    rafIdRef.current = requestAnimationFrame(() => {
+      rafIdRef.current = 0
+      measure()
+    })
+  }, [measure])
+
   React.useEffect(() => {
     measure()
 
-    const observer = new ResizeObserver(() => measure())
+    const observer = new ResizeObserver(scheduleMeasure)
     if (centerColumnElement) {
       observer.observe(centerColumnElement)
     }
@@ -56,13 +68,17 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
       observer.observe(footerElement)
     }
 
-    window.addEventListener('resize', measure)
+    window.addEventListener('resize', scheduleMeasure)
 
     return () => {
       observer.disconnect()
-      window.removeEventListener('resize', measure)
+      window.removeEventListener('resize', scheduleMeasure)
+      if (rafIdRef.current !== 0) {
+        cancelAnimationFrame(rafIdRef.current)
+        rafIdRef.current = 0
+      }
     }
-  }, [centerColumnElement, footerElement, measure])
+  }, [centerColumnElement, footerElement, measure, scheduleMeasure])
 
   const value = React.useMemo<LayoutGeometryContextValue>(
     () => ({

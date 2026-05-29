@@ -1,14 +1,11 @@
 import './global.css'
 
+import { GeistSans } from 'geist/font/sans'
+import { GeistMono } from 'geist/font/mono'
 import { RootProvider } from 'fumadocs-ui/provider/next'
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 
 import { appName } from '@/lib/shared'
-
-const inter = Inter({
-  subsets: ['latin'],
-})
 
 export const metadata: Metadata = {
   title: {
@@ -20,8 +17,15 @@ export const metadata: Metadata = {
 
 export default function Layout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="zh-CN" className={inter.className} suppressHydrationWarning>
-      <body className="flex flex-col min-h-screen">
+    <html
+      lang="zh-CN"
+      className={`${GeistSans.variable} ${GeistMono.variable}`}
+      suppressHydrationWarning
+    >
+      <body
+        className="flex min-h-screen flex-col font-sans"
+        style={{ fontFamily: 'var(--font-geist-sans), system-ui, sans-serif' }}
+      >
         <RootProvider>{children}</RootProvider>
       </body>
     </html>

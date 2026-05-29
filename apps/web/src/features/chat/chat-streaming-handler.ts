@@ -11,6 +11,8 @@ export class ChatStreamingHandler {
   private readonly useStoredMessageSnapshot: boolean
   private activeMessageId: string | null = null
   private terminated = false
+  private pendingMessages = new Map<string, { message: UIMessage, receivedAtMs: number }>()
+  private rafId: number | null = null
 
   constructor(
     sessionId: string,
@@ -43,7 +45,9 @@ export class ChatStreamingHandler {
 
   async consume(stream: ReadableStream<UIMessageChunk>): Promise<void> {
     const initialMessage = this.useStoredMessageSnapshot
-      ? useChatStore.getState().messagesMap.get(this.sessionId)?.find(message => message.id === (this.activeMessageId ?? this.messageId))
+      ? cloneMessageForStreamReader(
+          useChatStore.getState().messagesMap.get(this.sessionId)?.find(message => message.id === (this.activeMessageId ?? this.messageId)),
+        )
       : undefined
 
     for await (const message of readUIMessageStream<UIMessage>({
@@ -57,9 +61,11 @@ export class ChatStreamingHandler {
     })) {
       this.applyMessageSnapshot(message)
     }
+    this.flushPendingMessages()
   }
 
   finish(): void {
+    this.flushPendingMessages()
     if (this.terminated) {
       return
     }
@@ -77,6 +83,7 @@ export class ChatStreamingHandler {
   }
 
   fail(error: string): void {
+    this.flushPendingMessages()
     if (this.terminated) {
       return
     }
@@ -90,7 +97,32 @@ export class ChatStreamingHandler {
     }
   }
 
-  dispose(): void {}
+  dispose(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
+    this.pendingMessages.clear()
+  }
+
+  private flushPendingMessages(): void {
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId)
+      this.rafId = null
+    }
+    if (this.pendingMessages.size === 0) {
+      return
+    }
+    const store = useChatStore.getState()
+    for (const [messageId, { message, receivedAtMs }] of this.pendingMessages) {
+      store.markRunFirstEvent(messageId, receivedAtMs)
+      if (hasVisibleContent(message)) {
+        store.markRunFirstContent(messageId, receivedAtMs)
+      }
+      store.updateMessage(this.sessionId, messageId, () => message)
+    }
+    this.pendingMessages.clear()
+  }
 
   private appendLocalPlaceholder(): void {
     const store = useChatStore.getState()
@@ -108,12 +140,16 @@ export class ChatStreamingHandler {
   private applyMessageSnapshot(message: UIMessage): void {
     const receivedAtMs = performance.now()
     this.activateServerMessage(message.id)
-    const store = useChatStore.getState()
-    store.markRunFirstEvent(message.id, receivedAtMs)
-    if (hasVisibleContent(message)) {
-      store.markRunFirstContent(message.id, receivedAtMs)
+
+    // Batch: store the latest snapshot per message, flush on next rAF
+    this.pendingMessages.set(message.id, { message, receivedAtMs })
+
+    if (this.rafId === null) {
+      this.rafId = requestAnimationFrame(() => {
+        this.rafId = null
+        this.flushPendingMessages()
+      })
     }
-    store.updateMessage(this.sessionId, message.id, () => message)
   }
 
   private activateServerMessage(messageId: string): void {
@@ -158,6 +194,13 @@ export class ChatStreamingHandler {
 
     this.activeMessageId = messageId
   }
+}
+
+function cloneMessageForStreamReader(message: UIMessage | undefined): UIMessage | undefined {
+  if (!message) {
+    return undefined
+  }
+  return structuredClone(message) as UIMessage
 }
 
 function hasVisibleContent(message: UIMessage): boolean {

@@ -159,17 +159,18 @@ function readAppshotDestinationFrame(
     + imageAttachmentCount * APPSHOT_IMAGE_ATTACHMENT_STEP
     + appshotContextCount * APPSHOT_ATTACHMENT_SLOT_STEP
     + pendingIndex * APPSHOT_ATTACHMENT_SLOT_STEP
-  const rowTop = containerRect.top + paddingTop
   const left = pendingRect?.left ?? fallbackLeft
-  const transitionSnapshotHeight = readPositiveNumber(options.transitionSnapshotHeight) ?? APPSHOT_ATTACHMENT_SLOT_HEIGHT
-  const transitionSnapshotLayoutHeight = readPositiveNumber(options.transitionSnapshotLayoutHeight) ?? transitionSnapshotHeight
+  const rowTop = containerRect.top + paddingTop
+  const targetHeight = APPSHOT_ATTACHMENT_SLOT_HEIGHT
+  const transitionSnapshotLayoutHeight = readPositiveNumber(options.transitionSnapshotLayoutHeight)
+    ?? readPositiveNumber(options.transitionSnapshotHeight)
+    ?? targetHeight
   const targetWidth = APPSHOT_ATTACHMENT_SLOT_WIDTH
-  const targetHeight = transitionSnapshotHeight
   const renderedCardHeight = transitionSnapshotLayoutHeight + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
-  const upwardGrowthOffset = options.attachmentTrayGrowthDirection === 'up' && rowRect
-    ? Math.max(0, renderedCardHeight - rowRect.height)
-    : 0
-  const targetTop = rowTop - upwardGrowthOffset
+  const fallbackTop = rowRect
+    ? rowRect.bottom - renderedCardHeight
+    : rowTop
+  const targetTop = pendingRect?.top ?? fallbackTop
 
   return {
     x: left * scaleFactor,

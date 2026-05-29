@@ -47,6 +47,67 @@ function getHighlighter(): Promise<Highlighter> {
 
 const LANGUAGE_CLASS_RE = /language-(\w+)/
 const TRAILING_NEWLINE_RE = /\n$/
+const HIGHLIGHT_IDLE_TIMEOUT_MS = 1200
+
+interface HighlightJob {
+  canceled: boolean
+  run: () => Promise<void>
+}
+
+type IdleGlobal = typeof globalThis & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number
+  cancelIdleCallback?: (handle: number) => void
+}
+
+const highlightQueue: HighlightJob[] = []
+let highlightQueueScheduled = false
+
+function requestIdleWork(callback: () => void): () => void {
+  const idleGlobal = globalThis as IdleGlobal
+
+  if (typeof idleGlobal.requestIdleCallback === 'function' && typeof idleGlobal.cancelIdleCallback === 'function') {
+    const idleId = idleGlobal.requestIdleCallback(callback, { timeout: HIGHLIGHT_IDLE_TIMEOUT_MS })
+    return () => idleGlobal.cancelIdleCallback?.(idleId)
+  }
+
+  const timeoutId = setTimeout(callback, 0)
+  return () => clearTimeout(timeoutId)
+}
+
+function scheduleHighlightQueue(): void {
+  if (highlightQueueScheduled || highlightQueue.length === 0) {
+    return
+  }
+
+  highlightQueueScheduled = true
+  requestIdleWork(() => {
+    highlightQueueScheduled = false
+    void runNextHighlightJob()
+  })
+}
+
+async function runNextHighlightJob(): Promise<void> {
+  const job = highlightQueue.shift()
+  if (!job) {
+    return
+  }
+
+  if (!job.canceled) {
+    await job.run()
+  }
+
+  scheduleHighlightQueue()
+}
+
+function enqueueHighlightJob(run: () => Promise<void>): () => void {
+  const job: HighlightJob = { canceled: false, run }
+  highlightQueue.push(job)
+  scheduleHighlightQueue()
+
+  return () => {
+    job.canceled = true
+  }
+}
 
 // Language alias map
 const LANG_ALIASES: Record<string, string> = {
@@ -191,15 +252,21 @@ const FencedCodeBlock = memo<FencedCodeBlockProps>(({ code, language }) => {
       return
     }
     lastCodeRef.current = code
+    setHtml('')
 
-    getHighlighter().then((highlighter) => {
+    const cancelHighlight = enqueueHighlightJob(async () => {
+      const highlighter = await getHighlighter()
       const resolved = language && highlighter.getLoadedLanguages().includes(language) ? language : 'plaintext'
       const result = highlighter.codeToHtml(code.replace(TRAILING_NEWLINE_RE, ''), {
         lang: resolved,
         themes: { dark: 'github-dark', light: 'github-light' },
       })
-      setHtml(result)
+      if (lastCodeRef.current === code) {
+        setHtml(result)
+      }
     })
+
+    return cancelHighlight
   }, [code, language])
 
   useEffect(() => {
