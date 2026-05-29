@@ -101,6 +101,30 @@ export const sessionAwait = new Elysia({
     query: SessionAwaitModel.summaryQuery,
     response: { 200: SessionAwaitModel.summary },
   })
+  .get('/discovered-repos', ({ query }) => SessionAwait.listDiscoveredRepos(query.workspaceId), {
+    detail: { summary: 'List repos discovered from session awaits' },
+    query: SessionAwaitModel.discoveredReposQuery,
+    response: { 200: t.Array(t.String()) },
+  })
+  .get('/available-checks', async ({ query }) => SessionAwait.fetchAvailableChecks(query.owner, query.repo), {
+    detail: { summary: 'Fetch available CI checks for a repo from GitHub' },
+    query: SessionAwaitModel.availableChecksQuery,
+    response: { 200: SessionAwaitModel.availableChecksResponse },
+  })
+  .post('/:id/bypass-check', ({ params, body }) => {
+    const row = SessionAwait.bypassCheck(params.id, body.checkName)
+    if (!row) {
+      throw new AppError({ code: 'session_await_not_found', status: 404, message: 'Session await not found or not pending' })
+    }
+    return row
+  }, {
+    detail: {
+      summary: 'Bypass a non-required CI check for a session await',
+    },
+    params: SessionAwaitModel.idParams,
+    body: SessionAwaitModel.bypassCheckBody,
+    response: { 200: SessionAwaitModel.sessionAwait },
+  })
   .get('/:id/live-status', async ({ params }) => {
     const row = SessionAwait.get(params.id)
     if (!row) {
@@ -135,4 +159,37 @@ export const sessionAwait = new Elysia({
       summary: 'Get live status for a session await',
     },
     params: SessionAwaitModel.idParams,
+  })
+  // ── bypass rules ──
+  .get('/bypass-rules', ({ query }) => SessionAwait.listBypassRules(query.workspaceId), {
+    detail: { summary: 'List bypass rules for a workspace' },
+    query: SessionAwaitModel.bypassRulesQuery,
+    response: { 200: t.Array(SessionAwaitModel.bypassRule) },
+  })
+  .post('/bypass-rules', ({ body }) => SessionAwait.createBypassRule(body.workspaceId, body.repo, body.checkPattern), {
+    detail: { summary: 'Create a bypass rule' },
+    body: SessionAwaitModel.createBypassRuleBody,
+    response: { 200: SessionAwaitModel.bypassRule },
+  })
+  .delete('/bypass-rules/:id', ({ params }) => {
+    const deleted = SessionAwait.deleteBypassRule(params.id)
+    if (!deleted) {
+      throw new AppError({ code: 'bypass_rule_not_found', status: 404, message: 'Bypass rule not found' })
+    }
+    return { success: true }
+  }, {
+    detail: { summary: 'Delete a bypass rule' },
+    params: SessionAwaitModel.idParams,
+  })
+  .patch('/bypass-rules/:id', ({ params, body }) => {
+    const row = SessionAwait.toggleBypassRule(params.id, body.enabled)
+    if (!row) {
+      throw new AppError({ code: 'bypass_rule_not_found', status: 404, message: 'Bypass rule not found' })
+    }
+    return row
+  }, {
+    detail: { summary: 'Toggle a bypass rule' },
+    params: SessionAwaitModel.idParams,
+    body: SessionAwaitModel.toggleBypassRuleBody,
+    response: { 200: SessionAwaitModel.bypassRule },
   })

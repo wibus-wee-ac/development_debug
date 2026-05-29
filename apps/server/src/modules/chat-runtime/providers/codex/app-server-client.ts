@@ -4,6 +4,9 @@
 
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
+import { mkdirSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 type RequestId = number
@@ -48,8 +51,10 @@ export class CodexAppServerClient {
     }
 
     const env = { ...process.env }
+    env.CODEX_HOME = prepareCodexAppServerHome()
     if (options.apiKey) {
       env.CODEX_API_KEY = options.apiKey
+      env.OPENAI_API_KEY = options.apiKey
     }
 
     this.child = spawn(options.codexPath ?? 'codex', args, { env })
@@ -182,6 +187,30 @@ export class CodexAppServerClient {
       this.notificationWaiters.shift()?.({ method: 'error', params: { message: error.message } })
     }
   }
+}
+
+export function resolveCodexAppServerHome(input: {
+  env?: NodeJS.ProcessEnv
+  homeDir?: string
+} = {}): string {
+  const env = input.env ?? process.env
+  const dataDir = env.CRADLE_DATA_DIR?.trim()
+  if (dataDir) {
+    return join(dataDir, 'runtimes', 'codex-app-server')
+  }
+
+  const dbPath = env.CRADLE_DB_PATH?.trim()
+  if (dbPath) {
+    return join(dirname(dbPath), 'runtimes', 'codex-app-server')
+  }
+
+  return join(input.homeDir ?? homedir(), '.cradle', 'runtimes', 'codex-app-server')
+}
+
+function prepareCodexAppServerHome(): string {
+  const resolvedHome = resolveCodexAppServerHome()
+  mkdirSync(resolvedHome, { recursive: true })
+  return resolvedHome
 }
 
 function serializeConfigOverrides(config: Record<string, unknown>, prefix = ''): string[] {

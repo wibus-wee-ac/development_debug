@@ -163,5 +163,14 @@
   "support.template.version": "版本：{{version}}",
   "support.template.whatHappened": "## 发生了什么",
   "support.uninstall.description": "使用操作系统卸载流程移除应用。Cradle 拥有的用户数据默认会保留，避免意外卸载删除工作内容。",
-  "support.uninstall.label": "卸载"
+  "support.uninstall.label": "卸载",
+  "await.page.title": "Await",
+  "await.page.description": "配置 Session Await 的 CI 检查绕过规则。被绕过的检查在轮询时会被跳过，不会阻塞 await 完成。",
+  "await.workspace.label": "工作区",
+  "await.workspace.description": "选择要管理绕过规则的工作区。",
+  "await.rules.label": "绕过规则",
+  "await.rules.description": "定义应自动绕过的 CI 检查的匹配模式。支持 glob 通配符（* 和 ?）。",
+  "await.rules.empty": "暂无绕过规则。添加规则以自动跳过非阻塞的 CI 检查。",
+  "await.rules.add": "添加规则",
+  "await.rules.patternPlaceholder": "检查名称模式（如 PR Checklist*）"
 }

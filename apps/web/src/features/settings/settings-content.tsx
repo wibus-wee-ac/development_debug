@@ -5,6 +5,7 @@ import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 import { cn } from '~/lib/cn'
 
 import { AppearanceSettings } from './appearance-settings'
+import { AwaitSettings } from './await-settings'
 import { ChatSettings } from './chat-settings'
 import { DesktopUpdateSettings } from './desktop-update-settings'
 import { ExternalWorkImportSettings } from './external-work-import-settings'
@@ -18,6 +19,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   registry: ModelRegistrySettings,
   agents: AgentList,
   chat: ChatSettings,
+  await: AwaitSettings,
   jarvis: JarvisSettings,
   chronicle: ChronicleSettings,
   skills: GlobalSkillsSettings,

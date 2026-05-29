@@ -1,8 +1,10 @@
 import { z } from 'zod'
 
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
+import { getMatchingBypassPatterns, matchesAnyBypassPattern } from '../service'
 import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from './github-api'
 import {
+  fetchBranchProtection,
   fetchCheckRuns,
   fetchCombinedStatus,
   fetchPullRequest,
@@ -100,6 +102,7 @@ interface ResolvedCITarget {
   prNumber: number | null
   prTitle: string | null
   ref: string
+  baseBranch: string | null
 }
 
 interface AggregatedCI {
@@ -146,6 +149,7 @@ type GitHubCIFilter = z.infer<typeof GitHubCIFilterSchema>
 async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget | null> {
   let ref = filter.sha
   let prTitle: string | null = null
+  let baseBranch: string | null = null
   if (filter.pr) {
     const prData = await fetchPullRequest(filter.owner, filter.repo, filter.pr)
     if (!prData) {
@@ -153,6 +157,7 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
     }
     ref = prData.head.sha
     prTitle = prData.title
+    baseBranch = prData.base.ref
   }
 
   if (!ref) {
@@ -165,6 +170,7 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
     prNumber: filter.pr ?? null,
     prTitle,
     ref,
+    baseBranch,
   }
 }
 
@@ -308,7 +314,7 @@ function findWorkflowJob(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[]): 
   return null
 }
 
-function toLiveCheckRun(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[]): LiveCheckRun {
+function toLiveCheckRun(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[], requiredContexts: Set<string>): LiveCheckRun {
   const workflowJob = findWorkflowJob(run, workflowRuns)
   const workflowRun = workflowJob
     ? workflowRuns.find(candidate => candidate.jobs.some(job => job.id === workflowJob.id)) ?? null
@@ -319,7 +325,7 @@ function toLiveCheckRun(run: GitHubCheckRun, workflowRuns: LiveWorkflowRun[]): L
     name: run.name,
     status: run.status,
     conclusion: run.conclusion,
-    required: false,
+    required: requiredContexts.has(run.name),
     htmlUrl: run.html_url ?? null,
     detailsUrl: run.details_url ?? null,
     workflowRunId: workflowRun?.id ?? null,
@@ -367,6 +373,7 @@ export const githubCISource: SessionAwaitSource = {
 
     for (const row of awaits) {
       const filter = GitHubCIFilterJsonSchema.parse(row.filterJson)
+      const perAwaitBypassed = row.bypassedChecksJson ? JSON.parse(row.bypassedChecksJson) as string[] : []
 
       let target: ResolvedCITarget | null
       try {
@@ -400,6 +407,18 @@ export const githubCISource: SessionAwaitSource = {
       if (!aggregate) {
         results.push({ awaitId: row.id, matched: false, transientError: 'GitHub CI API unavailable' })
         continue
+      }
+
+      // Filter out bypassed checks (per-await + workspace-level rules)
+      const workspacePatterns = getMatchingBypassPatterns(row.workspaceId, `${target.owner}/${target.repo}`)
+      const hasPerAwait = perAwaitBypassed.length > 0
+      const hasWorkspace = workspacePatterns.length > 0
+      if (hasPerAwait || hasWorkspace) {
+        const perAwaitSet = new Set(perAwaitBypassed)
+        const filteredRuns = aggregate.checkRuns.filter(r =>
+          !perAwaitSet.has(r.name) && !matchesAnyBypassPattern(r.name, workspacePatterns),
+        )
+        aggregate = aggregateCI(filteredRuns, aggregate.statuses)
       }
 
       if (aggregate.totalCount === 0) {
@@ -539,6 +558,11 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
 
   const workflowRuns = await fetchWorkflowRuns(target)
 
+  const requiredContexts = target.baseBranch
+    ? (await fetchBranchProtection(target.owner, target.repo, target.baseBranch))?.requiredContexts ?? []
+    : []
+  const requiredSet = new Set(requiredContexts)
+
   return {
     kind: 'github-ci',
     owner: target.owner,
@@ -546,7 +570,7 @@ export async function fetchLiveCIStatus(filterJson: string): Promise<LiveCIStatu
     prNumber: target.prNumber,
     prTitle: target.prTitle,
     ref: target.ref,
-    checkRuns: aggregate.checkRuns.map(r => toLiveCheckRun(r, workflowRuns)),
+    checkRuns: aggregate.checkRuns.map(r => toLiveCheckRun(r, workflowRuns, requiredSet)),
     workflowRuns,
     statuses: aggregate.statuses.map(s => ({
       context: s.context,

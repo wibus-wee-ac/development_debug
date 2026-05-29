@@ -6,12 +6,12 @@ import { ActivityIcon, CircleIcon, ListTodoIcon, TimerIcon, WrenchIcon } from 'l
 import { useShallow } from 'zustand/react/shallow'
 
 import { Progress } from '~/components/ui/progress'
-import type { RuntimeKind } from '~/lib/types'
 import { cn } from '~/lib/cn'
+import type { RuntimeKind } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import type { ChatToolEntity } from './chat-tool-entities'
 import { readTodoCompletion } from './chat-todo-projection'
+import type { ChatToolEntity } from './chat-tool-entities'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
 import type { ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
@@ -71,6 +71,58 @@ export function RuntimeSessionPanel({
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <section className="space-y-2">
+        <PanelHeading icon={ListTodoIcon} label="Todos" />
+        {!todoSnapshot || todoSnapshot.todos.length === 0
+          ? (
+            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+              No TODO state for this session
+            </p>
+          )
+          : (
+            <div className="space-y-2 rounded-md bg-muted/40 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-muted-foreground">
+                  {todoCompletion?.completed ?? 0}
+                  /
+                  {todoCompletion?.total ?? 0}
+                  {' '}
+                  completed
+                </span>
+              </div>
+              <Progress
+                value={todoCompletion ? safePercent(todoCompletion.completed, todoCompletion.total) : 0}
+                className="h-1.5"
+              />
+              <div className="space-y-1">
+                {todoSnapshot.todos.map(todo => (
+                  <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded bg-background/50 px-2 py-1.5">
+                    <CircleIcon className={cn(
+                      'mt-1 size-2.5 shrink-0 fill-current',
+                      todo.status === 'completed' && 'text-emerald-500',
+                      todo.status === 'processing' && 'text-primary',
+                      todo.status === 'todo' && 'text-muted-foreground',
+                    )}
+                    />
+                    <span className={cn(
+                      'min-w-0 flex-1 text-[11px] text-foreground/85',
+                      todo.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
+                    )}
+                    >
+                      {todo.content}
+                    </span>
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                      {todo.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+      </section>
+
+      <div className="border-t" />
+
       <section className="space-y-2">
         <PanelHeading icon={ActivityIcon} label="Session" />
         <div className="grid grid-cols-2 gap-2">
@@ -146,54 +198,6 @@ export function RuntimeSessionPanel({
         </div>
       </section>
 
-      <section className="space-y-2">
-        <PanelHeading icon={ListTodoIcon} label="Todos" />
-        {!todoSnapshot || todoSnapshot.todos.length === 0
-          ? (
-              <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
-                No TODO state for this session
-              </p>
-            )
-          : (
-              <div className="space-y-2 rounded-md bg-muted/40 p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[11px] text-muted-foreground">
-                    {todoCompletion?.completed ?? 0}/{todoCompletion?.total ?? 0} completed
-                  </span>
-                  <span className="max-w-24 truncate font-mono text-[10px] text-muted-foreground">
-                    {todoSnapshot.toolCallId}
-                  </span>
-                </div>
-                <Progress
-                  value={todoCompletion ? safePercent(todoCompletion.completed, todoCompletion.total) : 0}
-                  className="h-1.5"
-                />
-                <div className="space-y-1">
-                  {todoSnapshot.todos.map(todo => (
-                    <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded bg-background/50 px-2 py-1.5">
-                      <CircleIcon className={cn(
-                        'mt-1 size-2.5 shrink-0 fill-current',
-                        todo.status === 'completed' && 'text-emerald-500',
-                        todo.status === 'processing' && 'text-primary',
-                        todo.status === 'todo' && 'text-muted-foreground',
-                      )}
-                      />
-                      <span className={cn(
-                        'min-w-0 flex-1 text-[11px] text-foreground/85',
-                        todo.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
-                      )}
-                      >
-                        {todo.content}
-                      </span>
-                      <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                        {todo.status}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-      </section>
     </div>
   )
 }

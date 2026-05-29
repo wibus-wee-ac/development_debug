@@ -1,4 +1,4 @@
-import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, DatabaseIcon, DownloadIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, DatabaseIcon, DownloadIcon, HourglassIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -18,6 +18,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'registry', labelKey: 'nav.registry', icon: DatabaseIcon },
   { id: 'agents', labelKey: 'nav.agents', icon: BotIcon },
   { id: 'chat', labelKey: 'nav.chat', icon: MessageSquareIcon },
+  { id: 'await', labelKey: 'nav.await', icon: HourglassIcon },
   { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
   { id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon },
   { id: 'skills', labelKey: 'nav.skills', icon: SparklesIcon },

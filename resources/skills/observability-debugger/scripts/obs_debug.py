@@ -24,8 +24,8 @@ def default_db_path() -> Path:
             return candidate
 
     candidates = [
-        Path("~/Library/Application Support/Cradle/cradle.db").expanduser(),
-        Path("~/.config/Cradle/cradle.db").expanduser(),
+        Path("~/Library/Application Support/Cradle/data/cradle.db").expanduser(),
+        Path("~/.config/Cradle/data/cradle.db").expanduser(),
     ]
     for candidate in candidates:
         if candidate.exists():

@@ -18,6 +18,7 @@ export const SessionAwaitModel = {
     status: awaitStatusEnum,
     reason: t.Nullable(t.String()),
     resumePayloadJson: t.Nullable(t.String()),
+    bypassedChecksJson: t.Nullable(t.String()),
     createdAt: t.Number(),
     triggeredAt: t.Nullable(t.Number()),
     expiresAt: t.Nullable(t.Number()),
@@ -58,5 +59,58 @@ export const SessionAwaitModel = {
 
   summaryQuery: t.Object({
     sessionId: t.String({ minLength: 1 }),
+  }),
+
+  bypassCheckBody: t.Object({
+    checkName: t.String({ minLength: 1 }),
+  }),
+
+  bypassRule: t.Object({
+    id: t.String(),
+    workspaceId: t.String(),
+    repo: t.String(),
+    checkPattern: t.String(),
+    enabled: t.Number(),
+    createdAt: t.Number(),
+  }),
+
+  bypassRulesQuery: t.Object({
+    workspaceId: t.String({ minLength: 1 }),
+  }),
+
+  createBypassRuleBody: t.Object({
+    workspaceId: t.String({ minLength: 1 }),
+    repo: t.String({ minLength: 1 }),
+    checkPattern: t.String({ minLength: 1 }),
+  }),
+
+  toggleBypassRuleBody: t.Object({
+    enabled: t.Boolean(),
+  }),
+
+  discoveredReposQuery: t.Object({
+    workspaceId: t.String({ minLength: 1 }),
+  }),
+
+  availableChecksQuery: t.Object({
+    owner: t.String({ minLength: 1 }),
+    repo: t.String({ minLength: 1 }),
+  }),
+
+  availableCheck: t.Object({
+    name: t.String(),
+    required: t.Boolean(),
+    source: t.Union([t.Literal('check-run'), t.Literal('status')]),
+  }),
+
+  availableChecksResponse: t.Object({
+    owner: t.String(),
+    repo: t.String(),
+    defaultBranch: t.String(),
+    checks: t.Array(t.Object({
+      name: t.String(),
+      required: t.Boolean(),
+      source: t.Union([t.Literal('check-run'), t.Literal('status')]),
+    })),
   }),
 }

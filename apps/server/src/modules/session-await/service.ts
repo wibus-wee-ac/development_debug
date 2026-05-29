@@ -1,13 +1,13 @@
 import { randomUUID } from 'node:crypto'
 
-import { sessionAwaits, sessions, workspaces } from '@cradle/db'
+import { awaitBypassRules, sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { createRun } from '../chat-runtime/service'
-import { GitHubTargetValidationError } from './sources/github-api'
+import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError } from './sources/github-api'
 import { GitHubCIFilterJsonSchema, validateGitHubCITarget } from './sources/github-ci'
 import { GitHubReviewFilterJsonSchema, validateGitHubReviewTarget } from './sources/github-review'
 import type {
@@ -228,6 +228,34 @@ export function updateLastChecked(awaitId: string, errorText?: string): void {
     .run()
 }
 
+export function bypassCheck(awaitId: string, checkName: string): SessionAwait | null {
+  const row = db().select().from(sessionAwaits).where(eq(sessionAwaits.id, awaitId)).get()
+  if (!row || row.status !== 'pending') {
+    return null
+  }
+
+  const existing: string[] = row.bypassedChecksJson ? JSON.parse(row.bypassedChecksJson) : []
+  if (existing.includes(checkName)) {
+    return row
+  }
+  existing.push(checkName)
+
+  return db()
+    .update(sessionAwaits)
+    .set({ bypassedChecksJson: JSON.stringify(existing) })
+    .where(eq(sessionAwaits.id, awaitId))
+    .returning()
+    .get()
+}
+
+export function getBypassedChecks(awaitId: string): string[] {
+  const row = db().select({ bypassedChecksJson: sessionAwaits.bypassedChecksJson }).from(sessionAwaits).where(eq(sessionAwaits.id, awaitId)).get()
+  if (!row?.bypassedChecksJson) {
+    return []
+  }
+  return JSON.parse(row.bypassedChecksJson) as string[]
+}
+
 // ── read operations ──
 
 export function get(awaitId: string): SessionAwait | null {
@@ -286,4 +314,164 @@ export function getSessionSummary(sessionId: string): SessionAwaitSummary {
     primarySource: first.source,
     reason: first.reason,
   }
+}
+
+// ── bypass rules ──
+
+export type BypassRule = typeof awaitBypassRules.$inferSelect
+
+export function listBypassRules(workspaceId: string): BypassRule[] {
+  return db()
+    .select()
+    .from(awaitBypassRules)
+    .where(eq(awaitBypassRules.workspaceId, workspaceId))
+    .all()
+}
+
+export function createBypassRule(workspaceId: string, repo: string, checkPattern: string): BypassRule {
+  const id = randomUUID()
+  return db()
+    .insert(awaitBypassRules)
+    .values({ id, workspaceId, repo, checkPattern })
+    .returning()
+    .get()
+}
+
+export function deleteBypassRule(ruleId: string): boolean {
+  const result = db()
+    .delete(awaitBypassRules)
+    .where(eq(awaitBypassRules.id, ruleId))
+    .run()
+  return result.changes > 0
+}
+
+export function toggleBypassRule(ruleId: string, enabled: boolean): BypassRule | null {
+  return db()
+    .update(awaitBypassRules)
+    .set({ enabled: enabled ? 1 : 0 })
+    .where(eq(awaitBypassRules.id, ruleId))
+    .returning()
+    .get() ?? null
+}
+
+export function getMatchingBypassPatterns(workspaceId: string, repo: string): string[] {
+  const rules = db()
+    .select({ checkPattern: awaitBypassRules.checkPattern })
+    .from(awaitBypassRules)
+    .where(and(
+      eq(awaitBypassRules.workspaceId, workspaceId),
+      eq(awaitBypassRules.repo, repo),
+      eq(awaitBypassRules.enabled, 1),
+    ))
+    .all()
+  return rules.map(r => r.checkPattern)
+}
+
+export function globMatch(name: string, pattern: string): boolean {
+  // Convert glob pattern to regex: * -> .*, ? -> ., escape the rest
+  const regexStr = `^${pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.')}$`
+  return new RegExp(regexStr).test(name)
+}
+
+export function matchesAnyBypassPattern(name: string, patterns: Iterable<string>): boolean {
+  for (const pattern of patterns) {
+    if (globMatch(name, pattern)) {
+      return true
+    }
+  }
+  return false
+}
+
+// ── discovered repos & available checks ──
+
+export function listDiscoveredRepos(workspaceId: string): string[] {
+  const rows = db()
+    .select({ filterJson: sessionAwaits.filterJson })
+    .from(sessionAwaits)
+    .where(and(
+      eq(sessionAwaits.workspaceId, workspaceId),
+    ))
+    .all()
+
+  const repos = new Set<string>()
+  for (const row of rows) {
+    if (row.filterJson) {
+      try {
+        const parsed = JSON.parse(row.filterJson)
+        if (typeof parsed.repo === 'string') {
+          repos.add(parsed.repo)
+        }
+      }
+      catch { /* ignore malformed filterJson */ }
+    }
+  }
+  return [...repos].sort()
+}
+
+export interface AvailableCheck {
+  name: string
+  required: boolean
+  source: 'check-run' | 'status'
+}
+
+export interface AvailableChecksResult {
+  owner: string
+  repo: string
+  defaultBranch: string
+  checks: AvailableCheck[]
+}
+
+export async function fetchAvailableChecks(owner: string, repo: string): Promise<AvailableChecksResult> {
+  const repoInfo = await fetchRepo(owner, repo)
+  if (!repoInfo) {
+    throw new AppError({ code: 'github_repo_not_found', status: 404, message: `Repository ${owner}/${repo} not found` })
+  }
+
+  const defaultBranch = repoInfo.default_branch
+  const headInfo = await fetchBranchHead(owner, repo, defaultBranch)
+  if (!headInfo) {
+    return { owner, repo, defaultBranch, checks: [] }
+  }
+
+  const [checkRunsResp, combinedStatus, branchProtection] = await Promise.all([
+    fetchCheckRuns(owner, repo, headInfo.sha),
+    fetchCombinedStatus(owner, repo, headInfo.sha),
+    fetchBranchProtection(owner, repo, defaultBranch),
+  ])
+
+  const requiredContexts = new Set(branchProtection?.requiredContexts ?? [])
+  const seen = new Map<string, AvailableCheck>()
+
+  for (const run of checkRunsResp?.check_runs ?? []) {
+    if (!seen.has(run.name)) {
+      seen.set(run.name, {
+        name: run.name,
+        required: requiredContexts.has(run.name),
+        source: 'check-run',
+      })
+    }
+    else if (requiredContexts.has(run.name)) {
+      seen.get(run.name)!.required = true
+    }
+  }
+
+  for (const status of combinedStatus?.statuses ?? []) {
+    if (!seen.has(status.context)) {
+      seen.set(status.context, {
+        name: status.context,
+        required: requiredContexts.has(status.context),
+        source: 'status',
+      })
+    }
+    else if (requiredContexts.has(status.context)) {
+      seen.get(status.context)!.required = true
+    }
+  }
+
+  const checks = [...seen.values()].sort((a, b) => {
+    if (a.required !== b.required) return a.required ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+
+  return { owner, repo, defaultBranch, checks }
 }

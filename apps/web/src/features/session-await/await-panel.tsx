@@ -221,6 +221,34 @@ function useCancelAwait(sessionId: string | null) {
   })
 }
 
+function useBypassCheck(sessionId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ awaitId, checkName }: { awaitId: string, checkName: string }) => {
+      const { client } = await import('~/lib/client.config')
+      const res = await client.post({
+        url: `/session-awaits/${awaitId}/bypass-check`,
+        body: { checkName },
+      })
+      return res.data
+    },
+    onSuccess: () => {
+      if (sessionId) {
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId } }) })
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId } }) })
+      }
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Failed to bypass check',
+        description: error instanceof Error ? error.message : 'Check could not be bypassed',
+      })
+    },
+  })
+}
+
 // ── Icons ──
 
 function GitHubIcon({ className }: { className?: string }) {
@@ -476,10 +504,14 @@ function TreeLevel({
   nodes,
   expandedNodeIds,
   onToggleNode,
+  awaitId,
+  sessionId,
 }: {
   nodes: TreeNode[]
   expandedNodeIds: Set<string>
   onToggleNode: (nodeId: string) => void
+  awaitId: string
+  sessionId: string | null
 }) {
   const offsets: number[] = []
   let acc = 0
@@ -518,6 +550,8 @@ function TreeLevel({
               isLast={i === nodes.length - 1}
               expandedNodeIds={expandedNodeIds}
               onToggleNode={onToggleNode}
+              awaitId={awaitId}
+              sessionId={sessionId}
             />
           ))
         }
@@ -531,12 +565,17 @@ function TreeItem({
   isLast: _isLast,
   expandedNodeIds,
   onToggleNode,
+  awaitId,
+  sessionId,
 }: {
   node: TreeNode
   isLast: boolean
   expandedNodeIds: Set<string>
   onToggleNode: (nodeId: string) => void
+  awaitId: string
+  sessionId: string | null
 }) {
+  const bypassMutation = useBypassCheck(sessionId)
   const hasChildren = node.children.length > 0
   const isExpandableJob = isExpandableJobNode(node)
   const isExpanded = !isExpandableJob || expandedNodeIds.has(node.id)
@@ -557,6 +596,22 @@ function TreeItem({
       </span>
       {node.run?.required && (
         <span className="shrink-0 rounded bg-muted/60 px-1 text-[9px] text-muted-foreground/50">req</span>
+      )}
+      {node.run && !node.run.required && (
+        <span className="shrink-0 rounded bg-muted/40 px-1 text-[9px] text-muted-foreground/40">opt</span>
+      )}
+      {node.run && !node.run.required && node.run.status !== 'completed' && (
+        <button
+          type="button"
+          className="ml-auto shrink-0 rounded px-1 text-[9px] text-muted-foreground/50 transition-colors hover:bg-accent hover:text-foreground"
+          disabled={bypassMutation.isPending}
+          onClick={(e) => {
+            e.stopPropagation()
+            bypassMutation.mutate({ awaitId, checkName: node.run!.name })
+          }}
+        >
+          bypass
+        </button>
       )}
       {isExpandableJob && (
         <m.span
@@ -604,7 +659,7 @@ function TreeItem({
             className="overflow-hidden"
             style={{ marginLeft: 3 }}
           >
-            <TreeLevel nodes={node.children} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} />
+            <TreeLevel nodes={node.children} expandedNodeIds={expandedNodeIds} onToggleNode={onToggleNode} awaitId={awaitId} sessionId={sessionId} />
           </m.div>
         )}
       </AnimatePresence>
@@ -683,10 +738,10 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
     return <GitHubReviewCard review={data} />
   }
 
-  return <GitHubCICard ci={data} />
+  return <GitHubCICard ci={data} awaitId={awaitRow.id} sessionId={sessionId} />
 }
 
-function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
+function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: string, sessionId: string | null }) {
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set())
 
   if (!ci.hasToken) {
@@ -743,7 +798,7 @@ function GitHubCICard({ ci }: { ci: LiveCIStatus }) {
       {tree.length > 0 && (
         <div className="px-3 pb-2">
           <div className="ml-1.25">
-            <TreeLevel nodes={tree} expandedNodeIds={expandedNodeIds} onToggleNode={toggleNode} />
+            <TreeLevel nodes={tree} expandedNodeIds={expandedNodeIds} onToggleNode={toggleNode} awaitId={awaitId} sessionId={sessionId} />
           </div>
         </div>
       )}
@@ -1113,7 +1168,7 @@ export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
   }
 
   const activeAwaits = awaits.filter(a => a.status === 'pending')
-  const pastAwaits = awaits.filter(a => a.status !== 'pending')
+  const pastAwaits = awaits.filter(a => a.status === 'triggered' || a.status === 'failed')
 
   if (awaits.length === 0) {
     return (

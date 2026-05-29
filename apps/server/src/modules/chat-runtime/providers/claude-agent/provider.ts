@@ -578,9 +578,8 @@ function buildClaudeQueryOptions(input: {
   if (config.tools) {
     queryOptions.tools = config.tools
   }
-  if (config.disallowedTools) {
-    queryOptions.disallowedTools = config.disallowedTools
-  }
+  const disallowedTools = [...(config.disallowedTools ?? []), 'AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']
+  queryOptions.disallowedTools = [...new Set(disallowedTools)]
   if (input.input.runtimeSession.providerSessionId) {
     queryOptions.resume = input.input.runtimeSession.providerSessionId
   }
@@ -620,6 +619,13 @@ function buildClaudeQueryOptions(input: {
   }
   env.CRADLE_CHAT_SESSION_ID = input.input.runtimeSession.chatSessionId
   env.CRADLE_WORKSPACE_ID = input.input.workspaceId ?? undefined
+
+  // Protect User Data
+  // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
+  // CLAUDE_CODE_ATTRIBUTION_HEADER=0
+  env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
+  env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
+
   Object.assign(env, buildClaudeAgentModelEnv(config.claudeAgent))
   queryOptions.env = env
 

@@ -163,5 +163,14 @@
   "support.template.version": "Version: {{version}}",
   "support.template.whatHappened": "## What happened",
   "support.uninstall.description": "Use the OS uninstall flow to remove the app. Cradle-owned user data is retained by default so accidental uninstall does not delete work.",
-  "support.uninstall.label": "Uninstall"
+  "support.uninstall.label": "Uninstall",
+  "await.page.title": "Await",
+  "await.page.description": "Configure CI check bypass rules for session awaits. Bypassed checks are skipped during polling and do not block await completion.",
+  "await.workspace.label": "Workspace",
+  "await.workspace.description": "Select which workspace to manage bypass rules for.",
+  "await.rules.label": "Bypass rules",
+  "await.rules.description": "Define patterns for CI checks that should be automatically bypassed. Supports glob patterns (* and ?).",
+  "await.rules.empty": "No bypass rules defined. Add a rule to automatically skip non-blocking CI checks.",
+  "await.rules.add": "Add rule",
+  "await.rules.patternPlaceholder": "Check name pattern (e.g. PR Checklist*)"
 }

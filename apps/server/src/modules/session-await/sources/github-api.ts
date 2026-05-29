@@ -2,6 +2,8 @@ import { execSync } from 'node:child_process'
 
 import { z } from 'zod'
 
+import { getCached, isCacheStale, setCache } from './github-cache'
+
 let cachedToken: string | null | undefined
 
 export class GitHubApiError extends Error {
@@ -426,10 +428,91 @@ export async function fetchWorkflowRunJobs(owner: string, repo: string, runId: n
   return { total_count: totalCount, jobs }
 }
 
+const GitHubRepoSchema = z.object({
+  default_branch: z.string(),
+}).passthrough()
+
+export function fetchRepo(owner: string, repo: string): Promise<{ default_branch: string } | null> {
+  return githubGet(`/repos/${owner}/${repo}`, GitHubRepoSchema)
+}
+
+const GitHubBranchHeadSchema = z.object({
+  commit: z.object({ sha: z.string() }).passthrough(),
+}).passthrough()
+
+export function fetchBranchHead(owner: string, repo: string, branch: string): Promise<{ sha: string } | null> {
+  return githubGet(`/repos/${owner}/${repo}/branches/${branch}`, GitHubBranchHeadSchema)
+    .then(data => data ? { sha: data.commit.sha } : null)
+}
+
 export function fetchCombinedStatus(owner: string, repo: string, ref: string): Promise<GitHubCombinedStatus | null> {
   return githubGet(`/repos/${owner}/${repo}/commits/${ref}/status`, GitHubCombinedStatusSchema)
 }
 
 export function fetchPullRequestReviews(owner: string, repo: string, pr: number): Promise<GitHubPullRequestReview[] | null> {
   return githubGetPaged(`/repos/${owner}/${repo}/pulls/${pr}/reviews`, z.array(GitHubPullRequestReviewSchema))
+}
+
+export interface BranchProtectionResult {
+  requiredContexts: string[]
+}
+
+const BranchProtectionSchema = z.object({
+  required_status_checks: z.object({
+    contexts: z.array(z.string()),
+  }).nullable(),
+}).passthrough()
+
+const BRANCH_PROTECTION_CACHE_TTL_S = 60 * 60 // 1 hour
+
+export async function fetchBranchProtection(owner: string, repo: string, branch: string): Promise<BranchProtectionResult | null> {
+  const cacheKey = `branch-protection:${owner}/${repo}:${branch}`
+
+  if (!isCacheStale(cacheKey, BRANCH_PROTECTION_CACHE_TTL_S)) {
+    const cached = getCached<BranchProtectionResult>(cacheKey)
+    if (cached) {
+      return cached.data
+    }
+  }
+
+  const token = resolveGitHubToken()
+  const url = `https://api.github.com/repos/${owner}/${repo}/branches/${branch}/protection`
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  const cachedEntry = getCached<{ etag?: string }>(cacheKey)
+  if (cachedEntry?.etag) {
+    headers['If-None-Match'] = cachedEntry.etag
+  }
+
+  const res = await fetch(url, { headers })
+  recordRateLimit(res.headers)
+
+  if (res.status === 304) {
+    const cached = getCached<BranchProtectionResult>(cacheKey)
+    return cached?.data ?? null
+  }
+
+  if (res.status === 404) {
+    const result: BranchProtectionResult = { requiredContexts: [] }
+    setCache(cacheKey, result, null)
+    return result
+  }
+
+  if (!res.ok) {
+    return getCached<BranchProtectionResult>(cacheKey)?.data ?? null
+  }
+
+  const raw = BranchProtectionSchema.parse(await res.json())
+  const result: BranchProtectionResult = {
+    requiredContexts: raw.required_status_checks?.contexts ?? [],
+  }
+  const etag = res.headers.get('ETag')
+  setCache(cacheKey, result, etag)
+  return result
 }

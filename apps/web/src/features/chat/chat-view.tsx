@@ -132,10 +132,10 @@ function ChatMessageListPane({
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-              className="flex items-center gap-2 pl-1 pt-4"
+              className="flex items-start gap-2 pl-1 pt-4"
             >
-              <AlertCircleIcon className="size-3.5 text-destructive/70" aria-hidden="true" />
-              <span className="text-xs text-destructive/70">
+              <AlertCircleIcon className="size-3.5 shrink-0 text-destructive/70" aria-hidden="true" />
+              <span className="min-w-0 break-all text-xs text-destructive/70">
                 {error ?? t('error.loadMessages')}
               </span>
             </m.div>
