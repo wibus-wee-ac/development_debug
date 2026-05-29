@@ -17,6 +17,7 @@ export interface GitHubRepository {
 export type GitHubAwaitTarget
   = | { kind: 'pull-request', filter: { pr: number }, label: string }
     | { kind: 'commit-ref', filter: { sha: string }, label: string }
+    | { kind: 'check-run', filter: { runs_id: number }, label: string }
 
 function normalizeRepositoryPath(pathname: string): string | null {
   const clean = pathname.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.git$/i, '')
@@ -118,6 +119,12 @@ export function parseGitHubAwaitTargetInput(input: string): GitHubAwaitTarget | 
   const trimmed = input.trim()
   if (!trimmed) {
     return null
+  }
+
+  const checkRunMatch = /(?:^|[/:])(?:check-)?runs[/:](\d+)(?:$|[/?#])/.exec(trimmed)
+  if (checkRunMatch && !/\/actions\/runs\/\d+(?:$|[/?#])/.test(trimmed)) {
+    const checkRunId = Number.parseInt(checkRunMatch[1], 10)
+    return { kind: 'check-run', filter: { runs_id: checkRunId }, label: `/runs/${checkRunId}` }
   }
 
   if (/^\d+$/.test(trimmed)) {

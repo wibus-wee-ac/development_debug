@@ -6,7 +6,7 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import { createRun } from '../chat-runtime/service'
+import { enqueueSessionQueueItem } from '../chat-runtime/service'
 import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError } from './sources/github-api'
 import { GitHubCIFilterJsonSchema, validateGitHubCITarget } from './sources/github-ci'
 import { GitHubReviewFilterJsonSchema, validateGitHubReviewTarget } from './sources/github-review'
@@ -174,22 +174,21 @@ export async function trigger(rawInput: TriggerAwaitInput): Promise<SessionAwait
     return row
   } // another trigger won the race
 
-  // Resume the chat session — rollback status on failure
+  // Resume through Chat Runtime's durable continuation queue. This preserves the
+  // await result when the target session is currently running.
   try {
-    await createRun({
+    await enqueueSessionQueueItem({
       sessionId: row.chatSessionId,
+      mode: 'queue',
       text: input.resumeText,
     })
   }
   catch (err) {
-    // Rollback to pending so poller can retry, or mark failed for persistent errors
     const errorText = err instanceof Error ? err.message : String(err)
-    const isSessionBusy = (err instanceof AppError && err.status === 409)
-      || errorText.includes('active run')
     db()
       .update(sessionAwaits)
       .set({
-        status: isSessionBusy ? 'pending' : 'failed',
+        status: 'failed',
         triggeredAt: null,
         lastErrorText: errorText,
         lastCheckedAt: now,

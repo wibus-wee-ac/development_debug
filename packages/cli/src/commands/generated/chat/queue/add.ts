@@ -69,11 +69,8 @@ const spec = {
       "target": "body.permissionMode",
       "type": "string",
       "values": [
-        "default",
-        "acceptEdits",
         "bypassPermissions",
-        "plan",
-        "dontAsk"
+        "plan"
       ]
     }
   ],

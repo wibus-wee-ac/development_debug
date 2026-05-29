@@ -1,5 +1,5 @@
-// Tests for session-await trigger 409 handling
-// Verifies that createRun returning 409 (session busy) rolls back await to 'pending'
+// Tests for session-await trigger dispatch
+// Verifies that await completion is delivered through Chat Runtime's durable queue.
 
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -13,16 +13,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { AppError } from '../src/errors/app-error'
 import { db, shutdownInfra } from '../src/infra'
-import { createRun } from '../src/modules/chat-runtime/service'
+import { enqueueSessionQueueItem } from '../src/modules/chat-runtime/service'
 import { trigger } from '../src/modules/session-await/service'
 import { resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 
-// Mock createRun to simulate 409 without needing full chat runtime setup
 vi.mock('../src/modules/chat-runtime/service', () => ({
-  createRun: vi.fn(),
+  enqueueSessionQueueItem: vi.fn(),
 }))
 
-const mockedCreateRun = vi.mocked(createRun)
+const mockedEnqueueSessionQueueItem = vi.mocked(enqueueSessionQueueItem)
 const originalFetch = globalThis.fetch
 
 describe('session-await trigger', () => {
@@ -75,34 +74,10 @@ describe('session-await trigger', () => {
     return { awaitId, sessionId }
   }
 
-  it('rolls back to pending when createRun throws 409 AppError', async () => {
-    const { awaitId } = seedAwait()
-
-    // Simulate the exact error thrown by createRun when session is busy
-    mockedCreateRun.mockRejectedValueOnce(
-      new AppError({
-        code: 'chat_run_in_progress',
-        status: 409,
-        message: 'Chat session already has an active run',
-      }),
-    )
-
-    const result = await trigger({
-      awaitId,
-      resumeText: 'CI passed',
-    })
-
-    expect(result).not.toBeNull()
-    expect(result!.status).toBe('pending')
-    expect(result!.lastErrorText).toContain('active run')
-    // triggeredAt should be cleared
-    expect(result!.triggeredAt).toBeNull()
-  })
-
   it('marks as failed for non-retryable errors', async () => {
     const { awaitId } = seedAwait()
 
-    mockedCreateRun.mockRejectedValueOnce(
+    mockedEnqueueSessionQueueItem.mockRejectedValueOnce(
       new AppError({
         code: 'chat_session_not_found',
         status: 404,
@@ -120,10 +95,10 @@ describe('session-await trigger', () => {
     expect(result!.lastErrorText).toContain('not found')
   })
 
-  it('marks as triggered when createRun succeeds', async () => {
-    const { awaitId } = seedAwait()
+  it('marks as triggered and enqueues the resume message when dispatch succeeds', async () => {
+    const { awaitId, sessionId } = seedAwait()
 
-    mockedCreateRun.mockResolvedValueOnce(undefined as never)
+    mockedEnqueueSessionQueueItem.mockResolvedValueOnce({} as never)
 
     const result = await trigger({
       awaitId,
@@ -132,6 +107,11 @@ describe('session-await trigger', () => {
 
     expect(result).not.toBeNull()
     expect(result!.status).toBe('triggered')
+    expect(mockedEnqueueSessionQueueItem).toHaveBeenCalledWith({
+      sessionId,
+      mode: 'queue',
+      text: 'CI passed',
+    })
   })
 
   it('rejects GitHub CI registration when the commit target is not found', async () => {

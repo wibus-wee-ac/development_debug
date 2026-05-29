@@ -40,6 +40,14 @@ cradle session await-create \
   --source github-ci \
   --filter-json '{"repo":"owner/repo","sha":"abc123def"}' \
   --reason "Waiting for CI on commit abc123def"
+
+# Wait for one GitHub check run:
+cradle session await-create \
+  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
+  --workspace-id "$CRADLE_WORKSPACE_ID" \
+  --source github-ci \
+  --filter-json '{"repo":"owner/repo","runs_id":1234567890}' \
+  --reason "Waiting for GitHub check run 1234567890"
 ```
 
 After registering, tell the user what you're waiting for and end your turn. Cradle's background poller will monitor the condition and resume your session with the result as a new message. You will have full conversation history when resumed.
@@ -47,7 +55,7 @@ After registering, tell the user what you're waiting for and end your turn. Crad
 > **Note**: `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` are automatically available as environment variables — no need to look them up manually.
 
 Supported sources:
-- `github-ci` — waits for all CI checks to complete. Filter: `{"repo":"owner/repo","pr":<number>}` or `{"repo":"owner/repo","sha":"<commit-sha>"}`
+- `github-ci` — waits for all CI checks to complete, or one explicit GitHub check run. Filter: `{"repo":"owner/repo","pr":<number>}`, `{"repo":"owner/repo","sha":"<commit-sha>"}`, or `{"repo":"owner/repo","runs_id":<check-run-id>}`
 - `manual` — waits for a human to manually trigger via UI or CLI
 
 ## Behavioral Rules

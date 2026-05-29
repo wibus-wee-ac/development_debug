@@ -5,6 +5,7 @@ import { getMatchingBypassPatterns, matchesAnyBypassPattern } from '../service'
 import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from './github-api'
 import {
   fetchBranchProtection,
+  fetchCheckRun,
   fetchCheckRuns,
   fetchCombinedStatus,
   fetchPullRequest,
@@ -103,6 +104,7 @@ interface ResolvedCITarget {
   prTitle: string | null
   ref: string
   baseBranch: string | null
+  checkRunId: number | null
 }
 
 interface AggregatedCI {
@@ -129,10 +131,16 @@ const GitHubCIFilterSchema = z.object({
   repo: GitHubRepoSchema,
   pr: z.number().int().positive().optional(),
   sha: z.string().min(1).optional(),
+  runs_id: z.number().int().positive().optional(),
+  runId: z.number().int().positive().optional(),
+  checkRunId: z.number().int().positive().optional(),
   mode: z.literal('all').optional(),
   allowNoChecksAfterSeconds: z.number().int().nonnegative().default(DEFAULT_NO_CHECKS_GRACE_SECONDS),
-}).refine(filter => filter.pr !== undefined || filter.sha !== undefined, {
-  message: 'GitHub CI filter requires pr or sha',
+}).transform((filter) => {
+  const checkRunId = filter.runs_id ?? filter.checkRunId ?? filter.runId
+  return { ...filter, checkRunId }
+}).refine(filter => filter.pr !== undefined || filter.sha !== undefined || filter.checkRunId !== undefined, {
+  message: 'GitHub CI filter requires pr, sha, or runs_id',
 }).transform(({ repo, ...filter }) => ({
   ...filter,
   owner: repo.owner,
@@ -150,6 +158,13 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
   let ref = filter.sha
   let prTitle: string | null = null
   let baseBranch: string | null = null
+  if (filter.checkRunId) {
+    const checkRun = await fetchCheckRun(filter.owner, filter.repo, filter.checkRunId)
+    if (!checkRun) {
+      return null
+    }
+    ref = checkRun.head_sha ?? filter.sha
+  }
   if (filter.pr) {
     const prData = await fetchPullRequest(filter.owner, filter.repo, filter.pr)
     if (!prData) {
@@ -160,7 +175,7 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
     baseBranch = prData.base.ref
   }
 
-  if (!ref) {
+  if (!ref && !filter.checkRunId) {
     return null
   }
 
@@ -169,13 +184,18 @@ async function resolveTarget(filter: GitHubCIFilter): Promise<ResolvedCITarget |
     repo: filter.repo,
     prNumber: filter.pr ?? null,
     prTitle,
-    ref,
+    ref: ref ?? '',
     baseBranch,
+    checkRunId: filter.checkRunId ?? null,
   }
 }
 
 function buildMissingTargetMessage(filter: GitHubCIFilter): string {
-  const target = filter.pr ? `PR #${filter.pr}` : `commit ${filter.sha}`
+  const target = filter.pr
+    ? `PR #${filter.pr}`
+    : filter.checkRunId
+      ? `check run ${filter.checkRunId}`
+      : `commit ${filter.sha}`
   return `GitHub CI target not found or inaccessible: ${filter.owner}/${filter.repo} ${target}.`
 }
 
@@ -218,6 +238,14 @@ function aggregateCI(checkRuns: GitHubCheckRun[], statuses: GitHubCommitStatus[]
 }
 
 async function fetchAggregatedCI(target: ResolvedCITarget): Promise<AggregatedCI | null> {
+  if (target.checkRunId) {
+    const checkRun = await fetchCheckRun(target.owner, target.repo, target.checkRunId)
+    if (!checkRun) {
+      return null
+    }
+    return aggregateCI([checkRun], [])
+  }
+
   const [checkRuns, combinedStatus] = await Promise.all([
     fetchCheckRuns(target.owner, target.repo, target.ref),
     fetchCombinedStatus(target.owner, target.repo, target.ref),
@@ -281,6 +309,9 @@ function toLiveWorkflowRun(run: GitHubWorkflowRun, jobs: GitHubWorkflowJob[]): L
 }
 
 async function fetchWorkflowRuns(target: ResolvedCITarget): Promise<LiveWorkflowRun[]> {
+  if (!target.ref) {
+    return []
+  }
   const runs = await fetchWorkflowRunsForHead(target.owner, target.repo, target.ref)
   if (!runs) {
     return []
@@ -340,6 +371,7 @@ function buildCIResumePayload(target: ResolvedCITarget, aggregate: AggregatedCI,
     repo: `${target.owner}/${target.repo}`,
     pr: target.prNumber,
     ref: target.ref,
+    checkRunId: target.checkRunId,
     allSuccess: aggregate.allPassed,
     totalCount: aggregate.totalCount,
     pendingCount: aggregate.pendingCount,

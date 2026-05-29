@@ -176,6 +176,7 @@ export interface GitHubCheckRun {
   name: string
   status: 'queued' | 'in_progress' | 'completed'
   conclusion: string | null
+  head_sha?: string | null
   html_url?: string | null
   details_url?: string | null
 }
@@ -278,6 +279,7 @@ const GitHubCheckRunSchema = z.object({
   name: z.string(),
   status: z.enum(['queued', 'in_progress', 'completed']),
   conclusion: z.string().nullable(),
+  head_sha: z.string().nullable().optional(),
   html_url: z.string().nullable().optional(),
   details_url: z.string().nullable().optional(),
 }).passthrough()
@@ -386,6 +388,10 @@ export async function fetchCheckRuns(owner: string, repo: string, ref: string): 
     }
   }
   return { total_count: totalCount, check_runs: runs }
+}
+
+export function fetchCheckRun(owner: string, repo: string, checkRunId: number): Promise<GitHubCheckRun | null> {
+  return githubGet(`/repos/${owner}/${repo}/check-runs/${checkRunId}`, GitHubCheckRunSchema)
 }
 
 export async function fetchWorkflowRunsForHead(owner: string, repo: string, headSha: string): Promise<GitHubWorkflowRunsResponse | null> {

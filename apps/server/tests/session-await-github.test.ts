@@ -1,10 +1,16 @@
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { shutdownInfra } from '../src/infra'
 import { fetchLiveCIStatus, githubCISource, resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 import { githubReviewSource } from '../src/modules/session-await/sources/github-review'
 import type { SessionAwait } from '../src/modules/session-await/types'
 
 const originalFetch = globalThis.fetch
+const originalDataDir = process.env.CRADLE_DATA_DIR
 
 function awaitRow(filter: unknown, overrides: Partial<SessionAwait> = {}): SessionAwait {
   return {
@@ -53,7 +59,11 @@ function installGitHubFetch(routes: Record<string, unknown | Response>): ReturnT
 }
 
 describe('gitHub session-await sources', () => {
+  let dataDir: string
+
   beforeEach(() => {
+    dataDir = mkdtempSync(join(tmpdir(), 'cradle-await-github-test-'))
+    process.env.CRADLE_DATA_DIR = dataDir
     process.env.GITHUB_TOKEN = 'token'
     resetTokenCache()
   })
@@ -61,7 +71,15 @@ describe('gitHub session-await sources', () => {
   afterEach(() => {
     globalThis.fetch = originalFetch
     delete process.env.GITHUB_TOKEN
+    if (originalDataDir === undefined) {
+      delete process.env.CRADLE_DATA_DIR
+    }
+    else {
+      process.env.CRADLE_DATA_DIR = originalDataDir
+    }
     resetTokenCache()
+    shutdownInfra()
+    rmSync(dataDir, { recursive: true, force: true })
     vi.restoreAllMocks()
   })
 
@@ -127,6 +145,57 @@ describe('gitHub session-await sources', () => {
       allSuccess: false,
       failureCount: 2,
     })
+  })
+
+  it('waits on a single GitHub check run when runs_id is provided', async () => {
+    installGitHubFetch({
+      '/repos/acme/app/check-runs/101': {
+        id: 101,
+        name: 'targeted test',
+        status: 'completed',
+        conclusion: 'success',
+        head_sha: 'head-sha',
+        html_url: 'https://github.com/acme/app/runs/101',
+        details_url: 'https://github.com/acme/app/actions/runs/201/job/301',
+      },
+    })
+
+    const [result] = await githubCISource.checkPending([
+      awaitRow({ repo: 'acme/app', runs_id: 101 }),
+    ])
+
+    expect(result.matched).toBe(true)
+    expect(result.resumeText).toContain('All 1 checks/statuses succeeded')
+    expect(JSON.parse(result.resumePayloadJson ?? '{}')).toMatchObject({
+      kind: 'github-ci',
+      repo: 'acme/app',
+      pr: null,
+      ref: 'head-sha',
+      checkRunId: 101,
+      totalCount: 1,
+      checkRuns: [{ name: 'targeted test', status: 'completed', conclusion: 'success' }],
+      statuses: [],
+    })
+  })
+
+  it('keeps a runs_id await pending while the targeted check run is still running', async () => {
+    installGitHubFetch({
+      '/repos/acme/app/check-runs/101': {
+        id: 101,
+        name: 'targeted test',
+        status: 'in_progress',
+        conclusion: null,
+        head_sha: 'head-sha',
+        html_url: 'https://github.com/acme/app/runs/101',
+        details_url: null,
+      },
+    })
+
+    const [result] = await githubCISource.checkPending([
+      awaitRow({ repo: 'acme/app', runs_id: 101 }),
+    ])
+
+    expect(result).toEqual({ awaitId: 'await-1', matched: false })
   })
 
   it('keeps a CI await pending while no checks or statuses are still inside the grace window', async () => {

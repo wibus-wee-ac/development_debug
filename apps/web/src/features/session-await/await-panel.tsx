@@ -4,11 +4,8 @@ import {
   ChevronRightIcon,
   GitCommitHorizontalIcon,
   GitPullRequestIcon,
-  LoaderCircleIcon,
   MessageSquareCheckIcon,
   MessageSquareWarningIcon,
-  MinusIcon,
-  MoreHorizontalIcon,
   PlusIcon,
   WandSparklesIcon,
   XIcon,
@@ -29,6 +26,7 @@ import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
@@ -170,10 +168,10 @@ function useSessionAwaits(sessionId: string | null) {
   })
 }
 
-function useLiveCIStatus(awaitId: string | null) {
+function useLiveCIStatus(awaitId: string | null, active: boolean) {
   return useQuery({
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
-    ...queryRefreshPolicy('active', { refetchInterval: 20_000 }),
+    ...queryRefreshPolicy(active ? 'active' : 'static', active ? { refetchInterval: 20_000 } : { staleTime: 60_000 }),
     enabled: !!awaitId,
   })
 }
@@ -277,37 +275,30 @@ function FailRunIcon({ className }: { className?: string }) {
   )
 }
 
-function SpinRunIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 16 16" className={cn('size-3 animate-spin', className)}>
-      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="10 30" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function QueuedRunIcon({ className }: { className?: string }) {
+function SkippedRunIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 16 16" className={cn('size-3', className)}>
-      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 3" />
+      <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.75 11.25l6.5-6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   )
 }
 
-function RunStatusIcon({ status, conclusion }: { status: LiveCheckRun['status'] | LiveWorkflowJobStep['status'], conclusion: string | null }) {
+function RunStatusIcon({ status, conclusion }: {
+  status: LiveCheckRun['status'] | LiveWorkflowJobStep['status'] | LiveWorkflowJob['status']
+  conclusion: string | null
+}) {
   const icon = (() => {
     if (status === 'completed') {
-      if (conclusion === 'success' || conclusion === 'neutral' || conclusion === 'skipped') {
-        return <CheckRunIcon className="text-green-500" />
+      if (conclusion === 'skipped' || conclusion === 'cancelled' || conclusion === 'neutral') {
+        return <SkippedRunIcon className="text-muted-foreground/70" />
       }
-      if (conclusion === 'cancelled') {
-        return <QueuedRunIcon className="text-muted-foreground" />
+      if (conclusion === 'success') {
+        return <CheckRunIcon className="text-green-500" />
       }
       return <FailRunIcon className="text-red-500" />
     }
-    if (status === 'in_progress') {
-      return <SpinRunIcon className="text-amber-500" />
-    }
-    return <QueuedRunIcon className="text-muted-foreground/60" />
+    return <Spinner className="size-3 text-amber-500" />
   })()
 
   return (
@@ -329,18 +320,15 @@ function RunStatusIcon({ status, conclusion }: { status: LiveCheckRun['status'] 
 function StepStatusIcon({ status, conclusion }: { status: LiveWorkflowJobStep['status'], conclusion: string | null }) {
   const icon = (() => {
     if (status === 'completed') {
-      if (conclusion === 'success' || conclusion === 'neutral' || conclusion === 'skipped') {
-        return <CheckIcon className="size-3 text-green-500" strokeWidth={2.2} />
+      if (conclusion === 'skipped' || conclusion === 'cancelled' || conclusion === 'neutral') {
+        return <SkippedRunIcon className="text-muted-foreground/70" />
       }
-      if (conclusion === 'cancelled') {
-        return <MinusIcon className="size-3 text-muted-foreground" strokeWidth={2.1} />
+      if (conclusion === 'success') {
+        return <CheckIcon className="size-3 text-green-500" strokeWidth={2.2} />
       }
       return <XIcon className="size-3 text-red-500" strokeWidth={2.1} />
     }
-    if (status === 'in_progress') {
-      return <MoreHorizontalIcon className="size-3 text-amber-500" strokeWidth={2.1} />
-    }
-    return <MinusIcon className="size-3 text-muted-foreground/60" strokeWidth={2.1} />
+    return <Spinner className="size-3 text-amber-500" />
   })()
 
   return (
@@ -364,7 +352,7 @@ function StatusContextIcon({ status }: { status: LiveCommitStatus }) {
     return <CheckRunIcon className="text-green-500" />
   }
   if (status.state === 'pending') {
-    return <SpinRunIcon className="text-amber-500" />
+    return <Spinner className="size-3 text-amber-500" />
   }
   return <FailRunIcon className="text-red-500" />
 }
@@ -377,6 +365,7 @@ interface TreeNode {
   id: string
   label: string
   run: LiveCheckRun | null
+  workflowJob: LiveWorkflowJob | null
   step: LiveWorkflowJobStep | null
   children: TreeNode[]
 }
@@ -386,25 +375,57 @@ interface TreeIndexEntry {
   childIndex: Map<string, TreeIndexEntry>
 }
 
-function createStepNode(run: LiveCheckRun, step: LiveWorkflowJobStep): TreeNode {
+function createStepNode(parentId: string, step: LiveWorkflowJobStep): TreeNode {
   return {
-    id: `run-${run.id ?? run.name}-step-${step.number}-${step.name}`,
+    id: `${parentId}-step-${step.number}-${step.name}`,
     label: step.name,
     run: null,
+    workflowJob: null,
     step,
     children: [],
   }
 }
 
 function createStepNodes(run: LiveCheckRun): TreeNode[] {
-  return run.steps.map(step => createStepNode(run, step))
+  return run.steps.map(step => createStepNode(`run-${run.id ?? run.name}`, step))
 }
 
-function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
+function createWorkflowStepNodes(job: LiveWorkflowJob): TreeNode[] {
+  return job.steps.map(step => createStepNode(`workflow-job-${job.id}`, step))
+}
+
+function createWorkflowJobNode(job: LiveWorkflowJob): TreeNode {
+  return {
+    id: `workflow-job-${job.id}`,
+    label: job.name,
+    run: null,
+    workflowJob: job,
+    step: null,
+    children: createWorkflowStepNodes(job),
+  }
+}
+
+function createWorkflowRunNode(run: LiveWorkflowRun, jobs: LiveWorkflowJob[]): TreeNode {
+  const label = run.displayTitle ?? run.name ?? `Workflow run #${run.runNumber}`
+  return {
+    id: `workflow-run-${run.id}`,
+    label,
+    run: null,
+    workflowJob: null,
+    step: null,
+    children: jobs.map(createWorkflowJobNode),
+  }
+}
+
+function buildRunTree(runs: LiveCheckRun[], workflowRuns: LiveWorkflowRun[]): TreeNode[] {
   const root: TreeNode[] = []
   const rootIndex = new Map<string, TreeIndexEntry>()
+  const visibleWorkflowJobIds = new Set<number>()
 
   for (const run of runs) {
+    if (run.workflowJobId) {
+      visibleWorkflowJobIds.add(run.workflowJobId)
+    }
     const segments = run.name.split(' / ').map(s => s.trim())
     const limited = segments.length > MAX_TREE_DEPTH
       ? [...segments.slice(0, MAX_TREE_DEPTH - 1), segments.slice(MAX_TREE_DEPTH - 1).join(' / ')]
@@ -422,6 +443,7 @@ function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
           id: `run-${run.id ?? run.name}-part-${limited.slice(0, i + 1).join('/')}`,
           label: segment,
           run: isLeaf ? run : null,
+          workflowJob: null,
           step: null,
           children: isLeaf ? createStepNodes(run) : [],
         }
@@ -435,6 +457,13 @@ function buildRunTree(runs: LiveCheckRun[]): TreeNode[] {
       }
       currentLevel = entry.node.children
       currentIndex = entry.childIndex
+    }
+  }
+
+  for (const workflowRun of workflowRuns) {
+    const unmatchedJobs = workflowRun.jobs.filter(job => !visibleWorkflowJobIds.has(job.id))
+    if (unmatchedJobs.length > 0) {
+      root.push(createWorkflowRunNode(workflowRun, unmatchedJobs))
     }
   }
 
@@ -453,7 +482,7 @@ const TRUNK_X = STROKE_W / 2
 const BRANCH_END = TREE_INDENT + 5 // extend to dot center
 
 function isExpandableJobNode(node: TreeNode): boolean {
-  return !!node.run && node.children.length > 0
+  return (!!node.run || !!node.workflowJob) && node.children.length > 0
 }
 
 function countVisibleRows(node: TreeNode, expandedNodeIds: Set<string>): number {
@@ -583,13 +612,14 @@ function TreeItem({
   const content = (
     <>
       {node.run && <RunStatusIcon status={node.run.status} conclusion={node.run.conclusion} />}
+      {node.workflowJob && <RunStatusIcon status={node.workflowJob.status} conclusion={node.workflowJob.conclusion} />}
       {node.step && <StepStatusIcon status={node.step.status} conclusion={node.step.conclusion} />}
-      {!node.run && !node.step && hasChildren && (
+      {!node.run && !node.workflowJob && !node.step && hasChildren && (
         <span className="size-2 rounded-full bg-foreground/40 shrink-0" />
       )}
       <span className={cn(
         'truncate text-[11px]',
-        node.run || node.step ? 'text-foreground/80' : 'text-muted-foreground font-medium',
+        node.run || node.workflowJob || node.step ? 'text-foreground/80' : 'text-muted-foreground font-medium',
       )}
       >
         {node.label}
@@ -669,12 +699,76 @@ function TreeItem({
 
 // ── Card ──
 
+function parseResumePayload(awaitRow: AwaitRow): Record<string, unknown> | null {
+  const rawPayload = awaitRow.resumePayloadJson
+  if (typeof rawPayload !== 'string' || rawPayload.length === 0) {
+    return null
+  }
+  try {
+    const parsed = JSON.parse(rawPayload)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null
+  }
+  catch {
+    return null
+  }
+}
+
+function formatCount(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function describeStoredAwaitStatus(awaitRow: AwaitRow): string {
+  const errorText = (awaitRow.lastErrorText as string | null) ?? null
+  if (errorText) {
+    return errorText
+  }
+  if (awaitRow.status === 'triggered') {
+    const payload = parseResumePayload(awaitRow)
+    if (payload?.kind === 'github-ci') {
+      const totalCount = formatCount(payload.totalCount)
+      const failureCount = formatCount(payload.failureCount)
+      if (payload.noCIConfigured === true) {
+        return 'Completed without CI signals'
+      }
+      if (payload.allSuccess === true) {
+        return `Completed: ${totalCount} checks/statuses passed`
+      }
+      if (failureCount > 0) {
+        return `Completed: ${failureCount} checks/statuses failed`
+      }
+      return 'Completed: GitHub checks finished'
+    }
+    if (payload?.kind === 'github-review') {
+      const approvedCount = formatCount(payload.approvedCount)
+      const changesRequestedCount = formatCount(payload.changesRequestedCount)
+      if (changesRequestedCount > 0) {
+        return `Completed: ${changesRequestedCount} changes requested`
+      }
+      if (approvedCount > 0) {
+        return `Completed: ${approvedCount} approvals`
+      }
+      return 'Completed: review activity found'
+    }
+    return 'Completed'
+  }
+  if (awaitRow.status === 'failed') {
+    return 'Failed'
+  }
+  if (awaitRow.status === 'expired') {
+    return 'Expired'
+  }
+  if (awaitRow.status === 'cancelled') {
+    return 'Cancelled'
+  }
+  return (awaitRow.reason as string | null) ?? 'Waiting...'
+}
+
 function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: string | null }) {
   const queryClient = useQueryClient()
   const cancelMutation = useCancelAwait(sessionId)
   const invalidatedRef = useRef(false)
-  const supportsLiveStatus = awaitRow.status === 'pending' && (awaitRow.source === 'github-ci' || awaitRow.source === 'github-review')
-  const { data: rawData } = useLiveCIStatus(supportsLiveStatus ? awaitRow.id : null)
+  const supportsLiveStatus = awaitRow.source === 'github-ci' || awaitRow.source === 'github-review'
+  const { data: rawData } = useLiveCIStatus(supportsLiveStatus ? awaitRow.id : null, awaitRow.status === 'pending')
   const data = rawData as (LiveAwaitStatus | UnsupportedLiveAwaitStatus) | undefined
 
   useEffect(() => {
@@ -691,7 +785,7 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
 
   if (!data || !data.supported) {
     const errorText = data?.error?.message ?? (awaitRow.lastErrorText as string | null) ?? null
-    const statusText = errorText ?? (awaitRow.reason as string | null) ?? 'Waiting...'
+    const statusText = errorText ?? describeStoredAwaitStatus(awaitRow)
     const hasError = !!errorText || awaitRow.status === 'failed'
     const isPending = awaitRow.status === 'pending'
 
@@ -755,8 +849,23 @@ function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: s
     )
   }
 
-  const tree = buildRunTree(ci.checkRuns)
+  const tree = buildRunTree(ci.checkRuns, ci.workflowRuns)
   const targetLabel = ci.prNumber ? null : ci.ref.slice(0, 12)
+  const summaryText = (() => {
+    if (ci.noCIConfigured || ci.totalCount === 0) {
+      return 'No checks or statuses found yet'
+    }
+    if (ci.allCompleted && ci.allPassed) {
+      return `All ${ci.totalCount} checks/statuses passed`
+    }
+    if (ci.allCompleted) {
+      return `Completed with ${ci.failureCount} failing`
+    }
+    if (ci.failureCount > 0) {
+      return `${ci.pendingCount} pending, ${ci.failureCount} failing`
+    }
+    return `${ci.pendingCount} pending`
+  })()
   const toggleNode = (nodeId: string) => {
     setExpandedNodeIds((current) => {
       const next = new Set(current)
@@ -792,6 +901,15 @@ function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: s
               </span>
             )}
           </span>
+          <span className={cn(
+            'block truncate text-[10px]',
+            ci.allCompleted
+              ? ci.allPassed ? 'text-green-500' : 'text-red-500'
+              : 'text-muted-foreground/70',
+          )}
+          >
+            {summaryText}
+          </span>
         </div>
       </div>
 
@@ -821,7 +939,7 @@ function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: s
         </div>
       )}
 
-      {ci.totalCount === 0 && (
+      {ci.totalCount === 0 && tree.length === 0 && (
         <div className="px-3 pb-2 text-[11px] text-muted-foreground">
           No checks or statuses found yet
         </div>
@@ -847,6 +965,13 @@ function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
     : review.mode === 'changes-requested'
       ? 'Waiting for changes requested'
       : 'Waiting for review'
+  const statusLabel = review.matched
+    ? review.mode === 'changes-requested'
+      ? 'Changes requested'
+      : review.mode === 'reviewed'
+        ? 'Review activity found'
+        : `Approved by ${review.approvedCount}`
+    : modeLabel
 
   return (
     <div className="rounded-md border border-border overflow-hidden">
@@ -862,7 +987,7 @@ function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
             {review.prTitle ?? `${review.owner}/${review.repo}`}
           </span>
           <span className="block truncate text-[10px] text-muted-foreground/70">
-            {modeLabel}
+            {statusLabel}
             {review.headSha && ` @${review.headSha.slice(0, 12)}`}
           </span>
         </div>
@@ -1091,7 +1216,7 @@ function GitHubAwaitComposer({
       <div className="space-y-1">
         <div className="min-w-0 space-y-1">
           <label htmlFor={targetInputId} className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-            {sourceKind === 'github-ci' ? 'PR or commit' : 'Pull request'}
+            {sourceKind === 'github-ci' ? 'PR, commit, or check run' : 'Pull request'}
           </label>
           <div className="relative">
             <TargetIcon className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground/70" aria-hidden />
@@ -1103,9 +1228,9 @@ function GitHubAwaitComposer({
                 setTargetInput(event.target.value)
               }}
               inputMode="text"
-              placeholder={sourceKind === 'github-ci' ? '123 or commit sha/ref' : '123'}
+              placeholder={sourceKind === 'github-ci' ? '123, commit sha/ref, or runs URL' : '123'}
               className="h-7 rounded-md pl-7 font-mono text-xs tabular-nums"
-              aria-label={sourceKind === 'github-ci' ? 'GitHub pull request number or commit SHA/ref' : 'GitHub pull request number'}
+              aria-label={sourceKind === 'github-ci' ? 'GitHub pull request number, commit SHA/ref, or check run URL' : 'GitHub pull request number'}
             />
           </div>
         </div>
@@ -1136,7 +1261,7 @@ function GitHubAwaitComposer({
         disabled={!canCreate || mutation.isPending}
       >
         {mutation.isPending
-          ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden />
+          ? <Spinner className="size-3" aria-hidden />
           : <PlusIcon className="size-3" aria-hidden />}
         {sourceKind === 'github-ci' ? 'Wait for checks' : 'Wait for review'}
       </Button>
