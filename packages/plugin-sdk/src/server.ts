@@ -158,7 +158,7 @@ export interface ExternalProviderRecord {
   externalId: string
   app: string
   name: string
-  providerKind: 'anthropic' | 'openai-compatible'
+  providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool'
   config: Record<string, unknown>
   credential?: ExternalProviderCredential
   current?: boolean

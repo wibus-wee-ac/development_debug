@@ -59,6 +59,7 @@ const DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS = 128_000
 const DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS = 512 * 1024
 const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
+const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
 
 function parseTrustedJsonObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)
@@ -112,6 +113,7 @@ interface ActiveRun {
   chunkBufferIndexByKey: Map<string, number>
   pendingDeltaChunk: UIMessageChunk | null
   pendingDeltaFlushTimer: StreamFlushTimer | null
+  snapshotTimer: ReturnType<typeof setInterval> | null
   finalMessage: UIMessage
   finalProjection: FinalMessageProjectionState
   startChunkPublished?: boolean
@@ -1691,6 +1693,7 @@ export async function createRun(input: {
       chunkBufferIndexByKey: new Map(),
       pendingDeltaChunk: null,
       pendingDeltaFlushTimer: null,
+      snapshotTimer: null,
       finalMessage: lastRequestMessage?.role === 'assistant'
         ? lastRequestMessage
         : createAssistantMessage(draft.assistantMessageId),
@@ -1699,6 +1702,7 @@ export async function createRun(input: {
       permissionMode: input.permissionMode,
     }
     activeRuns.set(run.id, activeRun)
+    startSnapshotTimer(activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
     if (isChatStreamTraceEnabled()) {
       recordChatStreamTrace({
@@ -2684,6 +2688,47 @@ function runDeltaFlushChars(): number {
   return readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', DEFAULT_RUN_DELTA_FLUSH_CHARS)
 }
 
+function snapshotIntervalMs(): number {
+  return readPositiveIntegerEnv('CRADLE_CHAT_SNAPSHOT_INTERVAL_MS', DEFAULT_SNAPSHOT_INTERVAL_MS)
+}
+
+function snapshotActiveRun(activeRun: ActiveRun): void {
+  if (activeRun.terminalStatus) {
+    return
+  }
+  flushFinalMessageProjection(activeRun)
+  persistMessageSnapshot({
+    sessionId: activeRun.sessionId,
+    messageId: activeRun.messageId,
+    message: activeRun.finalMessage,
+    messageStatus: 'streaming',
+    errorText: null,
+  })
+}
+
+function startSnapshotTimer(activeRun: ActiveRun): void {
+  stopSnapshotTimer(activeRun)
+  activeRun.snapshotTimer = setInterval(() => snapshotActiveRun(activeRun), snapshotIntervalMs())
+}
+
+function stopSnapshotTimer(activeRun: ActiveRun): void {
+  if (activeRun.snapshotTimer) {
+    clearInterval(activeRun.snapshotTimer)
+    activeRun.snapshotTimer = null
+  }
+}
+
+export function flushAllActiveRunSnapshots(): void {
+  for (const activeRun of activeRuns.values()) {
+    try {
+      snapshotActiveRun(activeRun)
+    }
+ catch {
+      // best-effort on shutdown
+    }
+  }
+}
+
 function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
   const value = (chunk as { toolCallId?: unknown }).toolCallId
   return typeof value === 'string' ? value : null
@@ -3511,6 +3556,7 @@ function abortPersistedStreamingMessages(sessionId: string): void {
 }
 
 function releaseActiveRun(activeRun: ActiveRun): void {
+  stopSnapshotTimer(activeRun)
   activeRuns.delete(activeRun.runId)
   if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
     activeRunIdsBySession.delete(activeRun.sessionId)

@@ -9,8 +9,8 @@ const runtimeKindSchema = t.Union([
   t.Literal('cli-tui'),
 ])
 
-const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
-const nullableRequiredString = t.Unsafe<string | null>({ type: 'string', minLength: 1, nullable: true })
+const nullableString = t.Nullable(t.String())
+const nullableRequiredString = t.Nullable(t.String({ minLength: 1 }))
 
 export const SessionModel = {
   session: t.Object({

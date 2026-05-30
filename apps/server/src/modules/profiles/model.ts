@@ -2,8 +2,8 @@ import { t } from 'elysia'
 
 import { ProvidersModel } from '../providers/model'
 
-const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
-const nullableProfileRef = t.Unsafe<string | null>({ type: 'string', minLength: 1, nullable: true })
+const nullableString = t.Nullable(t.String())
+const nullableProfileRef = t.Nullable(t.String({ minLength: 1 }))
 
 export const ProfilesModel = {
   agentProfile: t.Object({

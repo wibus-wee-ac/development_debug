@@ -1,6 +1,6 @@
 import { t } from 'elysia'
 
-const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+const nullableString = t.Nullable(t.String())
 
 export const GitModel = {
   idParams: t.Object({

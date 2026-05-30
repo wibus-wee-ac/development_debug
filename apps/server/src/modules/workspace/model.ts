@@ -1,7 +1,7 @@
 import { t } from 'elysia'
 
 const nonBlankString = t.String({ minLength: 1, pattern: '.*\\S.*' })
-const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+const nullableString = t.Nullable(t.String())
 
 interface WorkspaceRecord {
   id: string
@@ -33,10 +33,7 @@ const workspaceRecord = t.Object({
   updatedAt: t.Number(),
 }, { additionalProperties: false })
 
-const nullableWorkspaceRecord = t.Unsafe<WorkspaceRecord | null>({
-  ...workspaceRecord,
-  nullable: true,
-})
+const nullableWorkspaceRecord = t.Nullable(workspaceRecord)
 
 export const WorkspaceModel = {
   record: workspaceRecord,
