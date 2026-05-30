@@ -1,5 +1,5 @@
 import { Link } from '@cradle/tabs-next'
-import { useQueries, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   BotIcon,
@@ -17,8 +17,10 @@ import {
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getSessionsOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
+import {
+  getSessionsOptions,
+  postWorkspacesFromDirectoryMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 import type { AutomationDefinition, AutomationRun } from '~/features/automation'
 import { AutomationDashboard, useAutomationDefinitions } from '~/features/automation'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
@@ -401,6 +403,10 @@ export function HomeDashboard() {
   const queryClient = useQueryClient()
   const { selectDirectory } = useDirectoryPicker()
   const automationDefinitionsQuery = useAutomationDefinitions()
+  const addWorkspaceMutation = useMutation({
+    ...postWorkspacesFromDirectoryMutation(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
+  })
 
   const sessionQueries = useQueries({
     queries: workspaces.map(ws => getSessionsOptions({ query: { workspaceId: ws.id } })),
@@ -440,9 +446,8 @@ export function HomeDashboard() {
     if (!dirPath) {
       return
     }
-    await postWorkspacesFromDirectory({ body: { path: dirPath } })
-    await queryClient.invalidateQueries({ queryKey: ['workspaces'] })
-  }, [homeT, queryClient, selectDirectory])
+    await addWorkspaceMutation.mutateAsync({ body: { path: dirPath } })
+  }, [addWorkspaceMutation.mutateAsync, homeT, selectDirectory])
 
   if (automationOpen) {
     return <AutomationDashboard onBack={() => setAutomationOpen(false)} />

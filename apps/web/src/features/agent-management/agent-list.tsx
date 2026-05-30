@@ -633,7 +633,7 @@ export function AgentList() {
     setImportPreview(null)
     setSelectedImportCandidateIds(new Set())
     try {
-      const preview = await previewLocalConfigImport.mutateAsync()
+      const preview = await previewLocalConfigImport.mutateAsync({ body: {} })
       setImportPreview(preview)
       setSelectedImportCandidateIds(new Set(preview.candidates.filter(candidate => candidate.importable).map(candidate => candidate.id)))
     }
@@ -659,7 +659,9 @@ export function AgentList() {
     setImportError(null)
     try {
       const result = await importLocalConfig.mutateAsync({
-        candidateIds: Array.from(selectedImportCandidateIds),
+        body: {
+          candidateIds: Array.from(selectedImportCandidateIds),
+        },
       })
       const selectedImport = result.agents.find(imported => imported.status === 'created' && imported.agent)
         ?? result.agents.find(imported => imported.status === 'existing' && imported.agent)
@@ -754,13 +756,12 @@ export function AgentList() {
         await Promise.all(
           selectedAgents.map(async (agent) => {
             await updateAgent.mutateAsync({
-              id: agent.id,
-              patch: {
+              path: { id: agent.id },
+              body: {
                 name: agent.name,
                 description: agent.description,
                 avatarStyle: agent.avatarStyle,
                 avatarSeed: agent.avatarSeed,
-                avatarUrl: agent.avatarUrl,
                 providerTargetId: agent.providerTargetId,
                 modelId: agent.modelId,
                 thinkingEffort: agent.thinkingEffort,
@@ -787,7 +788,7 @@ export function AgentList() {
     }
     setBatchBusy(true)
     try {
-      await Promise.all(selectedAgents.map(agent => removeAgent.mutateAsync(agent.id)))
+      await Promise.all(selectedAgents.map(agent => removeAgent.mutateAsync({ path: { id: agent.id } })))
       setSelectedIds(new Set())
       selectionAnchorIdRef.current = null
     }
@@ -808,8 +809,8 @@ export function AgentList() {
         await Promise.all(
           patches.map(({ id, patch }) =>
             updateAgent.mutateAsync({
-              id,
-              patch,
+              path: { id },
+              body: patch,
             })),
         )
         setSelectedIds(new Set())

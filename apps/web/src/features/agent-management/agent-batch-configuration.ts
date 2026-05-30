@@ -2,7 +2,8 @@
 // Input: Selected agent records and a target provider/model/thinking selection.
 // Position: Agent Management owns how settings-level batch edits preserve agent identity fields.
 
-import type { Agent, ProviderTarget, UpdateAgentInput } from '~/lib/types'
+import type { UpdateAgentInput } from '~/features/agent-runtime/use-agents'
+import type { Agent, ProviderTarget } from '~/lib/types'
 
 export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
 
@@ -42,7 +43,6 @@ export function buildAgentProviderBatchPatches(
         description: agent.description,
         avatarStyle: agent.avatarStyle,
         avatarSeed: agent.avatarSeed,
-        avatarUrl: agent.avatarUrl,
         providerTargetId: selection.providerTarget.id,
         modelId: selection.modelId,
         thinkingEffort: selection.thinkingEffort,

@@ -10,7 +10,11 @@ import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { useThemeStore } from '~/store/theme'
 
-import { useWorkspaceFileContent, useWorkspaceFileContentMutation } from './use-workspace-file-content'
+import {
+  buildWorkspaceFileContentMutationInput,
+  useWorkspaceFileContent,
+  useWorkspaceFileContentMutation,
+} from './use-workspace-file-content'
 import { getMonacoLanguage } from './workspace-file-language'
 
 function useMonacoTheme(): 'vs' | 'vs-dark' {
@@ -79,7 +83,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
     const contentToSave = editorState.draft
     setEditorState(current => ({ ...current, saveError: null }))
     try {
-      await saveMutation.mutateAsync(contentToSave)
+      await saveMutation.mutateAsync(buildWorkspaceFileContentMutationInput(workspaceId, path, contentToSave))
       setEditorState(current => ({
         ...current,
         savedContent: contentToSave,
@@ -92,7 +96,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
         saveError: error instanceof Error ? error.message : 'Unable to save this file.',
       }))
     }
-  }, [editorState.draft, isDirty, isSaving, saveMutation])
+  }, [editorState.draft, isDirty, isSaving, path, saveMutation, workspaceId])
 
   useEffect(() => {
     saveDraftRef.current = saveDraft

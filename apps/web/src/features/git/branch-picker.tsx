@@ -1,4 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   CheckIcon,
   GitBranchIcon,
@@ -9,7 +9,11 @@ import {
 import { useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { postWorkspacesByIdGitBranches, postWorkspacesByIdGitCheckout, postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
+import {
+  postWorkspacesByIdGitBranchesMutation,
+  postWorkspacesByIdGitCheckoutMutation,
+  postWorkspacesByIdGitFetchMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -318,30 +322,43 @@ export function BranchPicker({
     void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId } }) })
   }, [queryClient, workspaceId])
 
+  const checkoutMutation = useMutation({
+    ...postWorkspacesByIdGitCheckoutMutation(),
+    onSuccess: () => invalidateAll(),
+  })
+
+  const fetchMutation = useMutation({
+    ...postWorkspacesByIdGitFetchMutation(),
+    onSuccess: () => invalidateAll(),
+  })
+
+  const createBranchMutation = useMutation({
+    ...postWorkspacesByIdGitBranchesMutation(),
+    onSuccess: () => invalidateAll(),
+  })
+
   const handleCheckout = useCallback(async (branch: string) => {
     dispatch({ type: 'set-open', open: false })
     try {
-      await postWorkspacesByIdGitCheckout({
+      await checkoutMutation.mutateAsync({
         path: { id: workspaceId },
         body: { branch },
       })
-      invalidateAll()
     }
     catch (err) {
       toastManager.add({ type: 'error', title: t('branch.checkout.error'), description: cleanGitError(err) })
     }
-  }, [workspaceId, invalidateAll, t])
+  }, [checkoutMutation.mutateAsync, workspaceId, t])
 
   const handleFetch = useCallback(async () => {
     dispatch({ type: 'set-fetching', fetching: true })
     try {
-      await postWorkspacesByIdGitFetch({ path: { id: workspaceId } })
-      invalidateAll()
+      await fetchMutation.mutateAsync({ path: { id: workspaceId } })
     }
     finally {
       dispatch({ type: 'set-fetching', fetching: false })
     }
-  }, [workspaceId, invalidateAll])
+  }, [fetchMutation.mutateAsync, workspaceId])
 
   const startCreating = useCallback(() => {
     dispatch({ type: 'start-creating' })
@@ -359,11 +376,10 @@ export function BranchPicker({
     dispatch({ type: 'set-create-loading', loading: true })
     dispatch({ type: 'set-create-error', error: null })
     try {
-      await postWorkspacesByIdGitBranches({
+      await createBranchMutation.mutateAsync({
         path: { id: workspaceId },
         body: { name },
       })
-      invalidateAll()
       dispatch({ type: 'complete-create' })
     }
     catch (err) {
@@ -372,7 +388,7 @@ export function BranchPicker({
     finally {
       dispatch({ type: 'set-create-loading', loading: false })
     }
-  }, [invalidateAll, state.newName, workspaceId])
+  }, [createBranchMutation.mutateAsync, state.newName, workspaceId])
 
   useEffect(() => {
     if (!state.open) {

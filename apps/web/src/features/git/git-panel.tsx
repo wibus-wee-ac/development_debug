@@ -1,11 +1,11 @@
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'
 import { VList } from 'virtua'
 
-import { postWorkspacesByIdGitFetch } from '~/api-gen/sdk.gen'
+import { postWorkspacesByIdGitFetchMutation } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
@@ -34,7 +34,6 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     isFetching: graphFetching,
     isSuccess: graphReady,
   } = useGitGraph(workspaceId, limit)
-  const [fetching, setFetching] = useState(false)
   const queryClient = useQueryClient()
   const ready = !!workspaceId && statusReady && graphReady
 
@@ -45,19 +44,17 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId! } }) })
   }, [queryClient, workspaceId])
 
+  const fetchMutation = useMutation({
+    ...postWorkspacesByIdGitFetchMutation(),
+    onSuccess: () => invalidateAll(),
+  })
+
   const handleFetch = useCallback(async () => {
     if (!workspaceId) {
       return
     }
-    setFetching(true)
-    try {
-      await postWorkspacesByIdGitFetch({ path: { id: workspaceId } })
-      invalidateAll()
-    }
-    finally {
-      setFetching(false)
-    }
-  }, [workspaceId, invalidateAll])
+    await fetchMutation.mutateAsync({ path: { id: workspaceId } })
+  }, [fetchMutation.mutateAsync, workspaceId])
 
   const vListRef = useRef<VListHandle>(null)
 
@@ -148,11 +145,11 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
           aria-label={t('panel.fetch')}
           title={t('panel.fetch.title')}
           onClick={() => { void handleFetch() }}
-          disabled={fetching}
+          disabled={fetchMutation.isPending}
           className="text-muted-foreground hover:text-foreground"
           data-testid="git-panel-fetch"
         >
-          <RefreshCwIcon className={cn('size-3.5', fetching && 'animate-spin')} aria-hidden />
+          <RefreshCwIcon className={cn('size-3.5', fetchMutation.isPending && 'animate-spin')} aria-hidden />
         </Button>
       </div>
 

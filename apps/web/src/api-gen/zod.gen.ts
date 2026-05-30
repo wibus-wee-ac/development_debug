@@ -43,6 +43,27 @@ export const zGetWorkspacesByIdFilesPath = z.object({
     id: z.string().min(1)
 });
 
+export const zGetWorkspacesByIdFilesChildrenPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdFilesChildrenQuery = z.object({
+    path: z.string().optional()
+});
+
+export const zGetWorkspacesByIdFilesSearchPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdFilesSearchQuery = z.object({
+    q: z.string().optional(),
+    limit: z.number().gte(1).lte(100).optional()
+});
+
+export const zGetWorkspacesByIdFilesEventsPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zGetWorkspacesByIdFilesContentPath = z.object({
     id: z.string().min(1)
 });
@@ -173,14 +194,8 @@ export const zPutProfilesByIdBody = z.object({
     providerKind: z.enum(['openai-compatible', 'anthropic']),
     enabled: z.boolean(),
     config: z.record(z.string(), z.unknown()),
-    credentialRef: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
-    iconSlug: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    credentialRef: z.string().min(1).nullish(),
+    iconSlug: z.string().nullish()
 });
 
 export const zPutProfilesByIdPath = z.object({
@@ -498,20 +513,11 @@ export const zGetAgentsQuery = z.object({
 
 export const zPostAgentsBody = z.object({
     name: z.string().min(1),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     avatarStyle: z.string().min(1),
     avatarSeed: z.string().min(1),
-    providerTargetId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    modelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().nullish(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -539,20 +545,11 @@ export const zGetAgentsByIdPath = z.object({
 
 export const zPatchAgentsByIdBody = z.object({
     name: z.string().min(1).optional(),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     avatarStyle: z.string().min(1).optional(),
     avatarSeed: z.string().min(1).optional(),
-    providerTargetId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    modelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().nullish(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -791,15 +788,9 @@ export const zGetSessionsQuery = z.object({
 });
 
 export const zPostSessionsBody = z.object({
-    workspaceId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().min(1).nullish(),
     title: z.string().min(1),
-    providerTargetId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().min(1).nullish(),
     agentId: z.string().min(1).optional(),
     runtimeKind: z.enum([
         'standard',
@@ -900,7 +891,46 @@ export const zGetSessionAwaitsSummaryQuery = z.object({
     sessionId: z.string().min(1)
 });
 
+export const zGetSessionAwaitsDiscoveredReposQuery = z.object({
+    workspaceId: z.string().min(1)
+});
+
+export const zGetSessionAwaitsAvailableChecksQuery = z.object({
+    owner: z.string().min(1),
+    repo: z.string().min(1)
+});
+
+export const zPostSessionAwaitsByIdBypassCheckBody = z.object({
+    checkName: z.string().min(1)
+});
+
+export const zPostSessionAwaitsByIdBypassCheckPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zGetSessionAwaitsByIdLiveStatusPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetSessionAwaitsBypassRulesQuery = z.object({
+    workspaceId: z.string().min(1)
+});
+
+export const zPostSessionAwaitsBypassRulesBody = z.object({
+    workspaceId: z.string().min(1),
+    repo: z.string().min(1),
+    checkPattern: z.string().min(1)
+});
+
+export const zDeleteSessionAwaitsBypassRulesByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPatchSessionAwaitsBypassRulesByIdBody = z.object({
+    enabled: z.boolean()
+});
+
+export const zPatchSessionAwaitsBypassRulesByIdPath = z.object({
     id: z.string().min(1)
 });
 
@@ -1398,10 +1428,7 @@ export const zGetWorkflowRulesByWorkspaceIdQuery = z.object({
 });
 
 export const zPutWorkflowRulesByWorkspaceIdBody = z.object({
-    agentProfileId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    agentProfileId: z.string().nullish(),
     content: z.string()
 });
 
@@ -1537,13 +1564,7 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         'medium',
         'high'
     ]).optional(),
-    permissionMode: z.enum([
-        'default',
-        'acceptEdits',
-        'bypassPermissions',
-        'plan',
-        'dontAsk'
-    ]).optional()
+    permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
 });
 
 export const zPostChatSessionsBySessionIdResponsePath = z.object({
@@ -1575,13 +1596,7 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
         'medium',
         'high'
     ]).optional(),
-    permissionMode: z.enum([
-        'default',
-        'acceptEdits',
-        'bypassPermissions',
-        'plan',
-        'dontAsk'
-    ]).optional()
+    permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
 });
 
 export const zPostChatSessionsBySessionIdQueuePath = z.object({
@@ -1626,13 +1641,7 @@ export const zPostChatSessionsBySessionIdCancelPath = z.object({
 });
 
 export const zPostChatSessionsBySessionIdPermissionModeBody = z.object({
-    mode: z.enum([
-        'default',
-        'acceptEdits',
-        'bypassPermissions',
-        'plan',
-        'dontAsk'
-    ])
+    mode: z.enum(['bypassPermissions', 'plan'])
 });
 
 export const zPostChatSessionsBySessionIdPermissionModePath = z.object({

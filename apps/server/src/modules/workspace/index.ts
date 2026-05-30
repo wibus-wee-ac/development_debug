@@ -70,7 +70,7 @@ export const workspace = new Elysia({
       },
     },
     query: WorkspaceModel.resolveQuery,
-    response: { 200: t.Nullable(WorkspaceModel.record) },
+    response: { 200: WorkspaceModel.nullableRecord },
   })
   .get('/:id/files', ({ params }) => Workspace.getFiles(params.id), {
     detail: {
@@ -282,7 +282,7 @@ export const workspace = new Elysia({
       },
     },
     params: WorkspaceModel.idParams,
-    response: { 200: t.Nullable(WorkspaceModel.record) },
+    response: { 200: WorkspaceModel.nullableRecord },
   })
   .patch('/:id', ({ params, body }) => {
     if (body.name === undefined && body.pinned === undefined) {
@@ -307,7 +307,7 @@ export const workspace = new Elysia({
     },
     params: WorkspaceModel.idParams,
     body: WorkspaceModel.updateBody,
-    response: { 200: t.Nullable(WorkspaceModel.record) },
+    response: { 200: WorkspaceModel.nullableRecord },
   })
   .delete('/:id', ({ params }) => {
     Workspace.remove(params.id)

@@ -453,7 +453,7 @@ export function AgentRuntimeSettings() {
 
   const handleRemoveProfile = useCallback(
     async (id: string) => {
-      await removeProfile.mutateAsync(id)
+      await removeProfile.mutateAsync({ path: { id } })
       setSelectedIds((prev) => {
         const next = new Set(prev)
         next.delete(providerListEntryId('manual', id))
@@ -469,7 +469,7 @@ export function AgentRuntimeSettings() {
   const handleToggleProfile = useCallback(
     async (profile: AgentProfile, enabled: boolean) => {
       await updateProfile.mutateAsync({
-        id: profile.id,
+        path: { id: profile.id },
         body: {
           name: profile.name,
           providerKind: profile.providerKind,
@@ -587,7 +587,7 @@ export function AgentRuntimeSettings() {
     setBatchBusy(true)
     try {
       await Promise.all(
-        removableSelectedProfiles.map(profile => removeProfile.mutateAsync(profile.id)),
+        removableSelectedProfiles.map(profile => removeProfile.mutateAsync({ path: { id: profile.id } })),
       )
       setSelectedIds(new Set())
       selectionAnchorIdRef.current = null

@@ -129,7 +129,7 @@ export function ImportProviderDialog({
         const name = resolvedNames[i] ?? p.name
         const profileId = buildProfileId(name, `imported-${Date.now()}-${i}`)
         await createProfile.mutateAsync({
-          id: profileId,
+          path: { id: profileId },
           body: {
             name,
             providerKind: finalKinds[i] ?? p.providerKind,

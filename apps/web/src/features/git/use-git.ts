@@ -1,5 +1,4 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { z } from 'zod'
 
 import {
   getWorkspacesByIdGitBranchesOptions,
@@ -8,54 +7,11 @@ import {
   getWorkspacesByIdGitDiffQueryKey,
   getWorkspacesByIdGitGraphOptions,
   getWorkspacesByIdGitGraphQueryKey,
+  getWorkspacesByIdGitRemotesOptions,
   getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdGitStatusQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
-import { client } from '~/lib/client.config'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
-import type { GitBranches, GitFileStatus, GitGraphCommit, GitStatus } from '~/lib/types'
-
-interface GitRemote {
-  name: string
-  fetchUrl: string | null
-  pushUrl: string | null
-}
-
-const GitStatusSchema = z.object({
-  branch: z.string(),
-  tracking: z.string().nullable(),
-  ahead: z.number(),
-  behind: z.number(),
-  isDetached: z.boolean(),
-  files: z.array(z.object({
-    path: z.string(),
-    status: z.enum(['added', 'modified', 'deleted', 'renamed', 'untracked']),
-  })).default([]),
-})
-
-const GitBranchesSchema = z.object({
-  local: z.array(z.object({
-    name: z.string(),
-    isCurrent: z.boolean(),
-    tracking: z.string().optional(),
-  })),
-  remote: z.array(z.object({
-    name: z.string(),
-  })),
-})
-
-const GitGraphCommitListSchema = z.array(z.object({
-  sha: z.string(),
-  shortSha: z.string(),
-  parents: z.array(z.string()),
-  refs: z.array(z.string()),
-  subject: z.string(),
-  authorName: z.string(),
-  authorEmail: z.string(),
-  gravatarHash: z.string(),
-  date: z.string(),
-  timestamp: z.number(),
-})).default([])
 
 // ─── Re-export generated query key builders so callers don't import from api-gen ──
 
@@ -72,7 +28,6 @@ export function useGitStatus(workspaceId: string | null | undefined) {
     ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
     retry: false,
-    select: data => GitStatusSchema.parse(data) satisfies GitStatus,
   })
 }
 
@@ -82,7 +37,7 @@ export function useGitFileStatuses(workspaceId: string | null | undefined) {
     ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
     retry: false,
-    select: data => GitStatusSchema.parse(data).files satisfies GitFileStatus[],
+    select: data => data.files,
   })
 }
 
@@ -92,21 +47,12 @@ export function useGitBranches(workspaceId: string | null | undefined) {
     ...queryRefreshPolicies.background,
     enabled: !!workspaceId,
     retry: false,
-    select: data => GitBranchesSchema.parse(data) satisfies GitBranches,
   })
 }
 
 export function useGitRemotes(workspaceId: string | null | undefined) {
   return useQuery({
-    queryKey: ['git-remotes', workspaceId] as const,
-    queryFn: async () => {
-      const { data } = await client.get<{ 200: GitRemote[] }, unknown, true>({
-        url: '/workspaces/{id}/git/remotes',
-        path: { id: workspaceId! },
-        throwOnError: true,
-      })
-      return data
-    },
+    ...getWorkspacesByIdGitRemotesOptions({ path: { id: workspaceId! } }),
     enabled: !!workspaceId,
     ...queryRefreshPolicies.background,
     retry: false,
@@ -120,7 +66,6 @@ export function useGitGraph(workspaceId: string | null | undefined, limit: numbe
     enabled: !!workspaceId,
     retry: false,
     placeholderData: keepPreviousData,
-    select: data => GitGraphCommitListSchema.parse(data) satisfies GitGraphCommit[],
   })
 }
 

@@ -4,30 +4,21 @@ import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo } from 'react'
-import { z } from 'zod'
 
-import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getWorkspacesById } from '~/api-gen/sdk.gen'
+import {
+  getSessionsByIdOptions,
+  getWorkspacesByIdOptions,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
 import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
-import { WorkspaceSchema } from '~/features/workspace/use-workspace'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 const BottomTerminalPanel = lazy(loadTerminalPanelView)
 const TuiView = lazy(loadTuiView)
 
 export const CHAT_TAB_FALLBACK_LABEL = 'Chat'
-
-const RuntimeKindSchema = z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'])
-const ChatSessionMetadataSchema = z.object({
-  id: z.string(),
-  title: z.string().nullable(),
-  workspaceId: z.string().nullable(),
-  providerTargetId: z.string().nullable(),
-  runtimeKind: RuntimeKindSchema,
-}).passthrough()
 
 export function isGeneratedChatLabel(label: string, sessionId: string): boolean {
   return label === `Chat: ${sessionId.slice(0, 6)}`
@@ -78,7 +69,6 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   const { data: session } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId } }),
     enabled: !!sessionId,
-    select: data => data ? ChatSessionMetadataSchema.parse(data) : undefined,
   })
   const sessionProviderTargetId = session?.providerTargetId ?? null
 
@@ -117,11 +107,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   // Fetch workspace details — derive path/name from query data (not side-effects)
   const { data: workspace } = useQuery({
-    queryKey: ['workspace-detail', workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesById({ path: { id: workspaceId! } })
-      return WorkspaceSchema.parse(data)
-    },
+    ...getWorkspacesByIdOptions({ path: { id: workspaceId! } }),
     enabled: !!workspaceId,
     staleTime: 60_000,
   })

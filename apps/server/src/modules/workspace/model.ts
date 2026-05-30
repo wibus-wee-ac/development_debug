@@ -1,26 +1,47 @@
 import { t } from 'elysia'
 
 const nonBlankString = t.String({ minLength: 1, pattern: '.*\\S.*' })
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+
+interface WorkspaceRecord {
+  id: string
+  name: string
+  path: string
+  identifier: string
+  pinned: number
+  createdAt: number
+  updatedAt: number
+}
+
 const ownerBoundary = t.Object({
   classification: t.Literal('non-cradle-owned'),
   owner: t.Literal('workspace'),
   consentRequired: t.Literal(true),
   consentConfirmed: t.Literal(true),
-  workspacePath: t.Nullable(t.String()),
+  workspacePath: nullableString,
   relativePath: t.String(),
-  targetPath: t.Nullable(t.String()),
+  targetPath: nullableString,
 }, { additionalProperties: false })
 
+const workspaceRecord = t.Object({
+  id: t.String(),
+  name: t.String(),
+  path: t.String(),
+  identifier: t.String(),
+  pinned: t.Number(),
+  createdAt: t.Number(),
+  updatedAt: t.Number(),
+}, { additionalProperties: false })
+
+const nullableWorkspaceRecord = t.Unsafe<WorkspaceRecord | null>({
+  ...workspaceRecord,
+  nullable: true,
+})
+
 export const WorkspaceModel = {
-  record: t.Object({
-    id: t.String(),
-    name: t.String(),
-    path: t.String(),
-    identifier: t.String(),
-    pinned: t.Number(),
-    createdAt: t.Number(),
-    updatedAt: t.Number(),
-  }, { additionalProperties: false }),
+  record: workspaceRecord,
+
+  nullableRecord: nullableWorkspaceRecord,
 
   fileEntry: t.Object({
     type: t.Union([t.Literal('file'), t.Literal('directory')]),
@@ -90,7 +111,7 @@ export const WorkspaceModel = {
   }, { additionalProperties: false }),
 
   readFileResponse: t.Object({
-    content: t.Nullable(t.String()),
+    content: nullableString,
   }),
 
   fileInfoResponse: t.Object({

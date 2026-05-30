@@ -1,32 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
-import { z } from 'zod'
 
-import { deleteWorkspacesById, getWorkspaces, patchWorkspacesById, postWorkspacesFromDirectory } from '~/api-gen/sdk.gen'
+import {
+  deleteWorkspacesByIdMutation,
+  getWorkspacesOptions,
+  getWorkspacesQueryKey,
+  patchWorkspacesByIdMutation,
+  postWorkspacesFromDirectoryMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
-import type { Workspace } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
-export const WORKSPACES_QUERY_KEY = ['workspaces'] as const
-
-export const WorkspaceSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  path: z.string(),
-  identifier: z.string(),
-  pinned: z.number(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-})
-export const WorkspaceListSchema = z.array(WorkspaceSchema).default([])
+export const WORKSPACES_QUERY_KEY = getWorkspacesQueryKey()
 
 export function useWorkspaces() {
   const { data: workspaces = [], isPending: loading, isSuccess: ready } = useQuery({
-    queryKey: WORKSPACES_QUERY_KEY,
-    queryFn: async () => {
-      const { data } = await getWorkspaces()
-      return WorkspaceListSchema.parse(data) satisfies Workspace[]
-    },
+    ...getWorkspacesOptions(),
   })
 
   useEffect(() => {
@@ -44,6 +33,10 @@ export function useAddWorkspace() {
   const queryClient = useQueryClient()
   const [adding, setAdding] = useState(false)
   const { selectDirectory } = useDirectoryPicker()
+  const addWorkspace = useMutation({
+    ...postWorkspacesFromDirectoryMutation(),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+  })
 
   const addFromPicker = useCallback(async () => {
     setAdding(true)
@@ -52,13 +45,12 @@ export function useAddWorkspace() {
       if (!dirPath) {
         return
       }
-      await postWorkspacesFromDirectory({ body: { path: dirPath } })
-      await queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
+      await addWorkspace.mutateAsync({ body: { path: dirPath } })
     }
     finally {
       setAdding(false)
     }
-  }, [queryClient, selectDirectory])
+  }, [addWorkspace, selectDirectory])
 
   return { addFromPicker, adding }
 }
@@ -67,7 +59,7 @@ export function useDeleteWorkspace() {
   const queryClient = useQueryClient()
 
   const { mutate: remove } = useMutation({
-    mutationFn: (id: string) => deleteWorkspacesById({ path: { id } }),
+    ...deleteWorkspacesByIdMutation(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
   })
 
@@ -78,10 +70,7 @@ export function useToggleWorkspacePin() {
   const queryClient = useQueryClient()
 
   const { mutate: togglePin } = useMutation({
-    mutationFn: ({ id, pinned }: { id: string, pinned: boolean }) => patchWorkspacesById({
-      path: { id },
-      body: { pinned },
-    }),
+    ...patchWorkspacesByIdMutation(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
   })
 

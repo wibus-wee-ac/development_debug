@@ -165,7 +165,7 @@ function PresetSetupForm({
       }
 
       await createProfile.mutateAsync({
-        id: profileId,
+        path: { id: profileId },
         body: {
           name: currentValues.name,
           providerKind: preset.providerKind,

@@ -3,7 +3,7 @@
 // Position: Workspace Detail owns workspace configuration UX and non-Cradle-owned file save boundaries.
 
 import { Link } from '@cradle/tabs-next'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import type { TFunction } from 'i18next'
 import {
@@ -24,8 +24,13 @@ import { useTranslation } from 'react-i18next'
 import {
   getChatSessionsBySessionIdMessagesQueryKey,
   getSessionsByIdQueryKey,
+  getSessionsOptions,
+  getWorkflowRulesByWorkspaceIdOptions,
+  getWorkspacesByIdGitStatusOptions,
+  getWorkspacesByIdOptions,
+  patchWorkspacesByIdMutation,
+  postSessionsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
-import { getSessions, getWorkflowRulesByWorkspaceId, getWorkspacesById, getWorkspacesByIdGitStatus, patchWorkspacesById, postSessions } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
@@ -462,11 +467,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const [tocLayout, setTocLayout] = useState<TocLayout>(EMPTY_TOC_LAYOUT)
 
   const { data: workspace } = useQuery({
-    queryKey: ['workspace', workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesById({ path: { id: workspaceId } })
-      return data as Workspace | undefined
-    },
+    ...getWorkspacesByIdOptions({ path: { id: workspaceId } }),
     enabled: !!workspaceId,
   })
 
@@ -483,34 +484,22 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   }, [workspace])
 
   const { data: gitStatus } = useQuery({
-    queryKey: ['git-status', workspaceId],
-    queryFn: async () => {
-      const { data } = await getWorkspacesByIdGitStatus({ path: { id: workspaceId } })
-      return data ?? null
-    },
+    ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId } }),
     enabled: !!workspaceId,
     refetchInterval: 10_000,
   })
 
   const { data: sessions = [] } = useQuery({
-    queryKey: sessionsQueryKey(workspaceId),
-    queryFn: async () => {
-      const { data } = await getSessions({ query: { workspaceId } })
-      return (data ?? []) as WorkspaceSession[]
-    },
+    ...getSessionsOptions({ query: { workspaceId } }),
     enabled: !!workspaceId,
   })
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
   const { data: workflowRule } = useQuery({
-    queryKey: ['workflow-rules', workspaceId, selectedWorkflowAgentId],
-    queryFn: async () => {
-      const { data } = await getWorkflowRulesByWorkspaceId({
-        path: { workspaceId },
-        query: selectedWorkflowAgentId ? { agentProfileId: selectedWorkflowAgentId } : {},
-      })
-      return data as { global: string | null, profileSpecific: string | null }
-    },
+    ...getWorkflowRulesByWorkspaceIdOptions({
+      path: { workspaceId },
+      query: selectedWorkflowAgentId ? { agentProfileId: selectedWorkflowAgentId } : {},
+    }),
     enabled: activeTab === 'workflow-rules' && !!workspaceId,
   })
   const workflowContent = selectedWorkflowAgentId
@@ -542,13 +531,26 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     return []
   }, [activeTab, agents.content, t, workflowContent])
 
+  const renameWorkspaceMutation = useMutation({
+    ...patchWorkspacesByIdMutation(),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+      ])
+    },
+  })
+
+  const createSessionMutation = useMutation({
+    ...postSessionsMutation(),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+    },
+  })
+
   const handleRename = useCallback(async (newName: string) => {
-    await patchWorkspacesById({ path: { id: workspaceId }, body: { name: newName } })
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['workspace', workspaceId] }),
-      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
-    ])
-  }, [workspaceId, queryClient])
+    await renameWorkspaceMutation.mutateAsync({ path: { id: workspaceId }, body: { name: newName } })
+  }, [renameWorkspaceMutation.mutateAsync, workspaceId])
 
   const handleOpenInFinder = useCallback(async () => {
     if (!workspace || !isElectron || !nativeIpc) {
@@ -600,10 +602,9 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       if (!opts.agentId) {
         return
       }
-      const { data: sessionData } = await postSessions({
+      const session = await createSessionMutation.mutateAsync({
         body: { workspaceId, agentId: opts.agentId, title: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle') },
       })
-      const session = sessionData as { id: string } | null
       if (!session?.id) {
         return
       }
@@ -614,14 +615,12 @@ function useWorkspaceDetailOwner(workspaceId: string) {
         workspacePath: workspace.path,
         runtimeKind: 'cli-tui',
       })
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
       openTab('chat', { sessionId: session.id })
       return
     }
-    const { data: sessionData } = await postSessions({
+    const session = await createSessionMutation.mutateAsync({
       body: { workspaceId, providerTargetId: opts.providerTargetId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle') },
     })
-    const session = sessionData as { id: string } | null
     if (!session?.id) {
       return
     }
@@ -632,7 +631,6 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       workspacePath: workspace.path,
       runtimeKind: opts.runtimeKind,
     })
-    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
     openTab('chat', { sessionId: session.id })
 
     void (async () => {
@@ -663,7 +661,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
         })
       }
     })()
-  }, [openTab, queryClient, t, workspace, workspaceId])
+  }, [createSessionMutation.mutateAsync, openTab, queryClient, t, workspace, workspaceId])
 
   const handleTocNavigate = useCallback((slug: string) => {
     const el = document.getElementById(slug)

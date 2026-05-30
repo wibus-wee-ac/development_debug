@@ -1,15 +1,17 @@
 import { t } from 'elysia'
 
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+
 export const WorkflowRulesModel = {
   workflowRuleEntry: t.Object({
     type: t.Union([t.Literal('global'), t.Literal('agent')]),
-    agentProfileId: t.Nullable(t.String()),
+    agentProfileId: nullableString,
     content: t.String(),
   }),
 
   workflowRules: t.Object({
-    global: t.Nullable(t.String()),
-    profileSpecific: t.Nullable(t.String()),
+    global: nullableString,
+    profileSpecific: nullableString,
   }),
 
   workspaceIdParams: t.Object({
@@ -21,7 +23,7 @@ export const WorkflowRulesModel = {
   }),
 
   saveBody: t.Object({
-    agentProfileId: t.Optional(t.Nullable(t.String())),
+    agentProfileId: t.Optional(nullableString),
     content: t.String(),
   }),
 

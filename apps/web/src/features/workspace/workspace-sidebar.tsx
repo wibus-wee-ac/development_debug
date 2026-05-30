@@ -1,6 +1,6 @@
 import type { ScreenCoordinates } from '@cradle/tabs-next'
 import { getEventScreenCoordinates, isPointerOutsideWindow, Link } from '@cradle/tabs-next'
-import { useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   BarChart3Icon,
@@ -34,11 +34,13 @@ import {
   deleteSessionsById,
   getSessionsByIdExportMarkdown,
   patchSessionsById,
-  patchWorkspacesById,
-  postWorkspacesByIdFilesFile,
-  postWorkspacesByIdFilesFolder,
 } from '~/api-gen'
-import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
+import {
+  getSessionsByIdQueryKey,
+  patchWorkspacesByIdMutation,
+  postWorkspacesByIdFilesFileMutation,
+  postWorkspacesByIdFilesFolderMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import {
   ContextMenu,
@@ -684,6 +686,17 @@ function WorkspaceGroup({
   } | null>(null)
   const workspacePinned = Boolean(workspace.pinned)
   const { sessions } = useSessions(expanded ? workspace.id : null)
+  const renameWorkspaceMutation = useMutation({
+    ...patchWorkspacesByIdMutation(),
+    onSuccess: () => {
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] }),
+      ])
+    },
+  })
+  const createFileMutation = useMutation(postWorkspacesByIdFilesFileMutation())
+  const createFolderMutation = useMutation(postWorkspacesByIdFilesFolderMutation())
   const sortedSessions = useMemo(() => {
     return sessions.toSorted((a, b) => {
       const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
@@ -761,11 +774,7 @@ function WorkspaceGroup({
     }
 
     try {
-      await patchWorkspacesById({ path: { id: workspace.id }, body: { name } })
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] }),
-      ])
+      await renameWorkspaceMutation.mutateAsync({ path: { id: workspace.id }, body: { name } })
       setRenameOpen(false)
     }
     catch (error) {
@@ -775,7 +784,7 @@ function WorkspaceGroup({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [queryClient, t, workspace.id, workspace.name])
+  }, [renameWorkspaceMutation.mutateAsync, t, workspace.id, workspace.name])
   const handleCreateWorkspaceChild = useCallback(async (nameValue: string) => {
     if (!createRequest) {
       return
@@ -794,11 +803,11 @@ function WorkspaceGroup({
       },
     }
     try {
-      const { data } = createRequest.kind === 'file'
-        ? await postWorkspacesByIdFilesFile(request)
-        : await postWorkspacesByIdFilesFolder(request)
+      const data = createRequest.kind === 'file'
+        ? await createFileMutation.mutateAsync(request)
+        : await createFolderMutation.mutateAsync(request)
 
-      if (!(data as { success?: boolean } | null)?.success) {
+      if (!data.success) {
         toastManager.add({
           type: 'error',
           title: t('workspace.toast.createFailed'),
@@ -816,7 +825,7 @@ function WorkspaceGroup({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [createRequest, queryClient, t, workspace.id])
+  }, [createFileMutation.mutateAsync, createFolderMutation.mutateAsync, createRequest, queryClient, t, workspace.id])
   const workspaceActions = useMemo<WorkspaceMenuAction[]>(() => [
     {
       key: 'open',
@@ -1282,11 +1291,11 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
   }, [openSettings])
 
   const handleDelete = useCallback((id: string) => {
-    remove(id)
+    remove({ path: { id } })
   }, [remove])
 
   const handleToggleWorkspacePin = useCallback((id: string, pinned: boolean) => {
-    togglePin({ id, pinned })
+    togglePin({ path: { id }, body: { pinned } })
   }, [togglePin])
 
   const openSearch = useCallback(() => useGlobalSearchStore.getState().openSearch(), [])

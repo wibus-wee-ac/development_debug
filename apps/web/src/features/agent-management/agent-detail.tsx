@@ -25,6 +25,7 @@ import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema } from '~/featur
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import type { CreateAgentInput } from '~/features/agent-runtime/use-agents'
 import type { ProviderTargetOption } from '~/features/agent-runtime/use-provider-targets'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
@@ -33,7 +34,7 @@ import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-m
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, CliTuiLaunchConfig, CreateAgentInput, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { Agent, CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { buildAvatarUrl } from './avatar-url'
@@ -1291,8 +1292,8 @@ function useAgentDetailOwner({
         cliTuiEnvText: currentValues.cliTuiEnvText,
       })
       await updateAgent.mutateAsync({
-        id: agent.id,
-        patch: {
+        path: { id: agent.id },
+        body: {
           name: normalizedValues.name,
           description: normalizedValues.description || null,
           avatarStyle: currentValues.avatarStyle,
@@ -1356,28 +1357,30 @@ function useAgentDetailOwner({
     dispatch({ type: 'save/error', error: null })
     try {
       const created = await createAgent.mutateAsync({
-        name: normalizedValues.name,
-        description: normalizedValues.description || null,
-        avatarStyle: currentValues.avatarStyle,
-        avatarSeed: currentValues.avatarSeed,
-        providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
-        modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
-        thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
-        runtimeKind: currentValues.runtimeKind,
-        configJson: stringifyConfigJson({
-          systemPrompt: currentValues.systemPrompt,
-          claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
-          claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
-          claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
-          claudeAgentConfig: AgentRuntimeConfigSchema.parse({}).claudeAgent,
-          baseConfig: {},
+        body: {
+          name: normalizedValues.name,
+          description: normalizedValues.description || null,
+          avatarStyle: currentValues.avatarStyle,
+          avatarSeed: currentValues.avatarSeed,
+          providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
+          modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
+          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
           runtimeKind: currentValues.runtimeKind,
-          cliTuiPreset: currentValues.cliTuiPreset,
-          cliTuiExecutable: currentValues.cliTuiExecutable,
-          cliTuiArguments: currentValues.cliTuiArguments,
-          cliTuiEnvText: currentValues.cliTuiEnvText,
-        }),
-      } satisfies CreateAgentInput)
+          configJson: stringifyConfigJson({
+            systemPrompt: currentValues.systemPrompt,
+            claudeAgentHaikuModel: currentValues.claudeAgentHaikuModel,
+            claudeAgentSonnetModel: currentValues.claudeAgentSonnetModel,
+            claudeAgentOpusModel: currentValues.claudeAgentOpusModel,
+            claudeAgentConfig: AgentRuntimeConfigSchema.parse({}).claudeAgent,
+            baseConfig: {},
+            runtimeKind: currentValues.runtimeKind,
+            cliTuiPreset: currentValues.cliTuiPreset,
+            cliTuiExecutable: currentValues.cliTuiExecutable,
+            cliTuiArguments: currentValues.cliTuiArguments,
+            cliTuiEnvText: currentValues.cliTuiEnvText,
+          }),
+        } satisfies CreateAgentInput,
+      })
       onCreated?.(created.id)
     }
     catch (err) {
@@ -1392,7 +1395,7 @@ function useAgentDetailOwner({
     if (!agent) {
       return
     }
-    await removeAgent.mutateAsync(agent.id)
+    await removeAgent.mutateAsync({ path: { id: agent.id } })
     onDeleted?.()
   }, [agent, removeAgent, onDeleted])
 

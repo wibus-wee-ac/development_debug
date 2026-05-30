@@ -9,15 +9,18 @@ const runtimeKindSchema = t.Union([
   t.Literal('cli-tui'),
 ])
 
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+const nullableRequiredString = t.Unsafe<string | null>({ type: 'string', minLength: 1, nullable: true })
+
 export const SessionModel = {
   session: t.Object({
     id: t.String(),
-    workspaceId: t.Nullable(t.String()),
-    title: t.Nullable(t.String()),
-    providerTargetId: t.Nullable(t.String()),
-    agentId: t.Nullable(t.String()),
-    modelId: t.Nullable(t.String()),
-    linkedIssueId: t.Nullable(t.String()),
+    workspaceId: nullableString,
+    title: nullableString,
+    providerTargetId: nullableString,
+    agentId: nullableString,
+    modelId: nullableString,
+    linkedIssueId: nullableString,
     runtimeKind: runtimeKindSchema,
     pinned: t.Number(),
     createdAt: t.Number(),
@@ -27,15 +30,15 @@ export const SessionModel = {
   message: t.Object({
     id: t.String(),
     sessionId: t.String(),
-    parentMessageId: t.Nullable(t.String()),
-    parentToolCallId: t.Nullable(t.String()),
-    taskId: t.Nullable(t.String()),
+    parentMessageId: nullableString,
+    parentToolCallId: nullableString,
+    taskId: nullableString,
     depth: t.Number(),
     role: t.Union([t.Literal('user'), t.Literal('assistant')]),
     status: t.Union([t.Literal('streaming'), t.Literal('complete'), t.Literal('aborted'), t.Literal('failed')]),
     content: t.String(),
     messageJson: t.String(),
-    errorText: t.Nullable(t.String()),
+    errorText: nullableString,
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -53,9 +56,9 @@ export const SessionModel = {
   }),
 
   createBody: t.Object({
-    workspaceId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    workspaceId: t.Optional(nullableRequiredString),
     title: t.String({ minLength: 1 }),
-    providerTargetId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    providerTargetId: t.Optional(nullableRequiredString),
     agentId: t.Optional(t.String({ minLength: 1 })),
     runtimeKind: t.Optional(runtimeKindSchema),
     id: t.Optional(t.String()),

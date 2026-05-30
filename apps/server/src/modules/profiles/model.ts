@@ -2,6 +2,9 @@ import { t } from 'elysia'
 
 import { ProvidersModel } from '../providers/model'
 
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+const nullableProfileRef = t.Unsafe<string | null>({ type: 'string', minLength: 1, nullable: true })
+
 export const ProfilesModel = {
   agentProfile: t.Object({
     id: t.String(),
@@ -9,9 +12,9 @@ export const ProfilesModel = {
     providerKind: t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')]),
     enabled: t.Boolean(),
     configJson: t.String(),
-    credentialRef: t.Nullable(t.String()),
+    credentialRef: nullableString,
     customModels: t.String(),
-    iconSlug: t.Nullable(t.String()),
+    iconSlug: nullableString,
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -25,8 +28,8 @@ export const ProfilesModel = {
     providerKind: t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')]),
     enabled: t.Boolean(),
     config: t.Record(t.String(), t.Any()),
-    credentialRef: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
-    iconSlug: t.Optional(t.Nullable(t.String())),
+    credentialRef: t.Optional(nullableProfileRef),
+    iconSlug: t.Optional(nullableString),
   }),
 
   customModelsBody: t.Object({

@@ -1,5 +1,7 @@
 import { t } from 'elysia'
 
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+
 export const GitModel = {
   idParams: t.Object({
     id: t.String({ minLength: 1 }),
@@ -24,7 +26,7 @@ export const GitModel = {
 
   statusView: t.Object({
     branch: t.String(),
-    tracking: t.Nullable(t.String()),
+    tracking: nullableString,
     ahead: t.Number(),
     behind: t.Number(),
     isDetached: t.Boolean(),
@@ -53,8 +55,8 @@ export const GitModel = {
 
   remotesView: t.Array(t.Object({
     name: t.String(),
-    fetchUrl: t.Nullable(t.String()),
-    pushUrl: t.Nullable(t.String()),
+    fetchUrl: nullableString,
+    pushUrl: nullableString,
   })),
 
   graphCommitView: t.Object({

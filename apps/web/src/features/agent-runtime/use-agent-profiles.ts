@@ -1,48 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { z } from 'zod'
 
-import { getProviderTargetsQueryKey } from '~/api-gen/@tanstack/react-query.gen'
-import { deleteProfilesById, getProfiles, putProfilesById } from '~/api-gen/sdk.gen'
-import type { PutProfilesByIdData } from '~/api-gen/types.gen'
-import type { AgentProfile } from '~/lib/types'
+import {
+  deleteProfilesByIdMutation,
+  getProfilesOptions,
+  getProfilesQueryKey,
+  getProviderTargetsQueryKey,
+  putProfilesByIdMutation,
+} from '~/api-gen/@tanstack/react-query.gen'
 
 import { AGENT_MODELS_QUERY_KEY } from './use-agent-models'
 import { AGENTS_QUERY_KEY } from './use-agents'
 
-const AGENT_PROFILES_QUERY_KEY = ['agent-profiles'] as const
-const AgentProfileSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
-  enabled: z.boolean(),
-  configJson: z.string(),
-  credentialRef: z.string().nullable(),
-  customModels: z.string(),
-  iconSlug: z.string().nullable(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-})
-const AgentProfileListSchema = z.array(AgentProfileSchema).default([])
+const AGENT_PROFILES_QUERY_KEY = getProfilesQueryKey()
 
 export function useAgentProfiles() {
   const queryClient = useQueryClient()
 
   const { data: profiles = [], isLoading, isSuccess, refetch } = useQuery({
-    queryKey: AGENT_PROFILES_QUERY_KEY,
-    queryFn: async (): Promise<AgentProfile[]> => {
-      const { data } = await getProfiles()
-      return AgentProfileListSchema.parse(data) satisfies AgentProfile[]
-    },
+    ...getProfilesOptions(),
   })
 
   const updateProfile = useMutation({
-    mutationFn: async ({ id, body }: { id: string, body: PutProfilesByIdData['body'] }) => {
-      const { data } = await putProfilesById({
-        path: { id },
-        body,
-      })
-      return AgentProfileSchema.parse(data) satisfies AgentProfile
-    },
+    ...putProfilesByIdMutation(),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
@@ -54,13 +33,7 @@ export function useAgentProfiles() {
   })
 
   const createProfile = useMutation({
-    mutationFn: async ({ id, body }: { id: string, body: PutProfilesByIdData['body'] }) => {
-      const { data } = await putProfilesById({
-        path: { id },
-        body,
-      })
-      return AgentProfileSchema.parse(data) satisfies AgentProfile
-    },
+    ...putProfilesByIdMutation(),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
@@ -72,9 +45,7 @@ export function useAgentProfiles() {
   })
 
   const removeProfile = useMutation({
-    mutationFn: async (id: string) => {
-      await deleteProfilesById({ path: { id } })
-    },
+    ...deleteProfilesByIdMutation(),
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),

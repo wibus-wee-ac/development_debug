@@ -101,34 +101,6 @@ interface _CredentialMetadata {
   updatedAt: number
 }
 
-// ── Agent CRUD input types ──────────────────────────────────────────────────
-
-export interface CreateAgentInput {
-  name: string
-  description?: string | null
-  avatarStyle: string
-  avatarSeed: string
-  providerTargetId?: string | null
-  modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
-  runtimeKind?: RuntimeKind
-  configJson?: string
-}
-
-export interface UpdateAgentInput {
-  name?: string
-  description?: string | null
-  avatarStyle?: string
-  avatarSeed?: string
-  avatarUrl?: string | null
-  providerTargetId?: string | null
-  modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
-  runtimeKind?: RuntimeKind
-  configJson?: string
-  enabled?: boolean
-}
-
 // ── Git types ───────────────────────────────────────────────────────────────
 
 type GitFileStatusKind = 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'

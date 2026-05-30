@@ -34,6 +34,47 @@ const importAppEnum = t.Union([
   t.Literal('pi'),
 ])
 
+interface AgentIdentityRecord {
+  id: string
+  name: string
+  description: string | null
+  avatarUrl: string | null
+  avatarStyle: string
+  avatarSeed: string
+  providerTargetId: string | null
+  modelId: string | null
+  thinkingEffort: 'low' | 'medium' | 'high' | 'auto'
+  runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+  configJson: string
+  enabled: boolean
+  createdAt: number
+  updatedAt: number
+}
+
+const nullableString = t.Unsafe<string | null>({ type: 'string', nullable: true })
+
+const agentRecord = t.Object({
+  id: t.String(),
+  name: t.String(),
+  description: nullableString,
+  avatarUrl: nullableString,
+  avatarStyle: t.String(),
+  avatarSeed: t.String(),
+  providerTargetId: nullableString,
+  modelId: nullableString,
+  thinkingEffort: thinkingEffortEnum,
+  runtimeKind: runtimeKindEnum,
+  configJson: t.String(),
+  enabled: t.Boolean(),
+  createdAt: t.Number(),
+  updatedAt: t.Number(),
+})
+
+const nullableAgentRecord = t.Unsafe<AgentIdentityRecord | null>({
+  ...agentRecord,
+  nullable: true,
+})
+
 const importSourceRefresh = t.Object({
   sourceKey: t.String(),
   sourceLabel: t.String(),
@@ -41,26 +82,48 @@ const importSourceRefresh = t.Object({
   recordsSeen: t.Number(),
   recordsProjected: t.Number(),
   recordsMissing: t.Number(),
-  message: t.Nullable(t.String()),
+  message: nullableString,
+})
+
+const localConfigImportCandidate = t.Object({
+  id: t.String(),
+  app: importAppEnum,
+  runtimeKind: importedRuntimeKindEnum,
+  sourceKind: importCandidateSourceKindEnum,
+  sourceLabel: t.String(),
+  externalRecordId: t.String(),
+  providerTargetId: nullableString,
+  agentName: t.String(),
+  resolvedProviderName: t.String(),
+  name: t.String(),
+  modelId: nullableString,
+  endpoint: nullableString,
+  importable: t.Boolean(),
+  alreadyConfigured: t.Boolean(),
+  reason: nullableString,
+  notes: t.Array(t.String()),
+  agent: nullableAgentRecord,
+})
+
+const previewLocalConfigImportResult = t.Object({
+  candidates: t.Array(localConfigImportCandidate),
+  sourceRefreshes: t.Array(importSourceRefresh),
+})
+
+const importedAgentResult = t.Object({
+  app: importAppEnum,
+  candidateId: t.String(),
+  sourceKind: importCandidateSourceKindEnum,
+  externalRecordId: t.String(),
+  providerTargetId: nullableString,
+  runtimeKind: importedRuntimeKindEnum,
+  status: t.Union([t.Literal('created'), t.Literal('existing'), t.Literal('skipped')]),
+  reason: nullableString,
+  agent: nullableAgentRecord,
 })
 
 export const AgentIdentityModel = {
-  agent: t.Object({
-    id: t.String(),
-    name: t.String(),
-    description: t.Nullable(t.String()),
-    avatarUrl: t.Nullable(t.String()),
-    avatarStyle: t.String(),
-    avatarSeed: t.String(),
-    providerTargetId: t.Nullable(t.String()),
-    modelId: t.Nullable(t.String()),
-    thinkingEffort: thinkingEffortEnum,
-    runtimeKind: runtimeKindEnum,
-    configJson: t.String(),
-    enabled: t.Boolean(),
-    createdAt: t.Number(),
-    updatedAt: t.Number(),
-  }),
+  agent: agentRecord,
 
   idParams: t.Object({
     id: t.String({ minLength: 1 }),
@@ -73,11 +136,11 @@ export const AgentIdentityModel = {
 
   createBody: t.Object({
     name: t.String({ minLength: 1 }),
-    description: t.Optional(t.Nullable(t.String())),
+    description: t.Optional(nullableString),
     avatarStyle: t.String({ minLength: 1 }),
     avatarSeed: t.String({ minLength: 1 }),
-    providerTargetId: t.Optional(t.Nullable(t.String())),
-    modelId: t.Optional(t.Nullable(t.String())),
+    providerTargetId: t.Optional(nullableString),
+    modelId: t.Optional(nullableString),
     thinkingEffort: t.Optional(thinkingEffortEnum),
     runtimeKind: t.Optional(runtimeKindEnum),
     configJson: t.Optional(t.String()),
@@ -85,11 +148,11 @@ export const AgentIdentityModel = {
 
   updateBody: t.Object({
     name: t.Optional(t.String({ minLength: 1 })),
-    description: t.Optional(t.Nullable(t.String())),
+    description: t.Optional(nullableString),
     avatarStyle: t.Optional(t.String({ minLength: 1 })),
     avatarSeed: t.Optional(t.String({ minLength: 1 })),
-    providerTargetId: t.Optional(t.Nullable(t.String())),
-    modelId: t.Optional(t.Nullable(t.String())),
+    providerTargetId: t.Optional(nullableString),
+    modelId: t.Optional(nullableString),
     thinkingEffort: t.Optional(thinkingEffortEnum),
     runtimeKind: t.Optional(runtimeKindEnum),
     configJson: t.Optional(t.String()),
@@ -101,145 +164,15 @@ export const AgentIdentityModel = {
     candidateIds: t.Optional(t.Array(t.String({ minLength: 1 }))),
   })),
 
-  localConfigImportCandidate: t.Object({
-    id: t.String(),
-    app: importAppEnum,
-    runtimeKind: importedRuntimeKindEnum,
-    sourceKind: importCandidateSourceKindEnum,
-    sourceLabel: t.String(),
-    externalRecordId: t.String(),
-    providerTargetId: t.Nullable(t.String()),
-    agentName: t.String(),
-    resolvedProviderName: t.String(),
-    name: t.String(),
-    modelId: t.Nullable(t.String()),
-    endpoint: t.Nullable(t.String()),
-    importable: t.Boolean(),
-    alreadyConfigured: t.Boolean(),
-    reason: t.Nullable(t.String()),
-    notes: t.Array(t.String()),
-    agent: t.Nullable(t.Object({
-      id: t.String(),
-      name: t.String(),
-      description: t.Nullable(t.String()),
-      avatarUrl: t.Nullable(t.String()),
-      avatarStyle: t.String(),
-      avatarSeed: t.String(),
-      providerTargetId: t.Nullable(t.String()),
-      modelId: t.Nullable(t.String()),
-      thinkingEffort: thinkingEffortEnum,
-      runtimeKind: runtimeKindEnum,
-      configJson: t.String(),
-      enabled: t.Boolean(),
-      createdAt: t.Number(),
-      updatedAt: t.Number(),
-    })),
-  }),
+  localConfigImportCandidate,
 
-  previewLocalConfigImportResult: t.Object({
-    candidates: t.Array(t.Object({
-      id: t.String(),
-      app: importAppEnum,
-      runtimeKind: importedRuntimeKindEnum,
-      sourceKind: importCandidateSourceKindEnum,
-      sourceLabel: t.String(),
-      externalRecordId: t.String(),
-      providerTargetId: t.Nullable(t.String()),
-      agentName: t.String(),
-      resolvedProviderName: t.String(),
-      name: t.String(),
-      modelId: t.Nullable(t.String()),
-      endpoint: t.Nullable(t.String()),
-      importable: t.Boolean(),
-      alreadyConfigured: t.Boolean(),
-      reason: t.Nullable(t.String()),
-      notes: t.Array(t.String()),
-      agent: t.Nullable(t.Object({
-        id: t.String(),
-        name: t.String(),
-        description: t.Nullable(t.String()),
-        avatarUrl: t.Nullable(t.String()),
-        avatarStyle: t.String(),
-        avatarSeed: t.String(),
-        providerTargetId: t.Nullable(t.String()),
-        modelId: t.Nullable(t.String()),
-        thinkingEffort: thinkingEffortEnum,
-        runtimeKind: runtimeKindEnum,
-        configJson: t.String(),
-        enabled: t.Boolean(),
-        createdAt: t.Number(),
-        updatedAt: t.Number(),
-      })),
-    })),
-    sourceRefreshes: t.Array(importSourceRefresh),
-  }),
+  previewLocalConfigImportResult,
 
   importLocalConfigResult: t.Object({
-    preview: t.Object({
-      candidates: t.Array(t.Object({
-        id: t.String(),
-        app: importAppEnum,
-        runtimeKind: importedRuntimeKindEnum,
-        sourceKind: importCandidateSourceKindEnum,
-        sourceLabel: t.String(),
-        externalRecordId: t.String(),
-        providerTargetId: t.Nullable(t.String()),
-        agentName: t.String(),
-        resolvedProviderName: t.String(),
-        name: t.String(),
-        modelId: t.Nullable(t.String()),
-        endpoint: t.Nullable(t.String()),
-        importable: t.Boolean(),
-        alreadyConfigured: t.Boolean(),
-        reason: t.Nullable(t.String()),
-        notes: t.Array(t.String()),
-        agent: t.Nullable(t.Object({
-          id: t.String(),
-          name: t.String(),
-          description: t.Nullable(t.String()),
-          avatarUrl: t.Nullable(t.String()),
-          avatarStyle: t.String(),
-          avatarSeed: t.String(),
-          providerTargetId: t.Nullable(t.String()),
-          modelId: t.Nullable(t.String()),
-          thinkingEffort: thinkingEffortEnum,
-          runtimeKind: runtimeKindEnum,
-          configJson: t.String(),
-          enabled: t.Boolean(),
-          createdAt: t.Number(),
-          updatedAt: t.Number(),
-        })),
-      })),
-      sourceRefreshes: t.Array(importSourceRefresh),
-    }),
+    preview: previewLocalConfigImportResult,
     created: t.Number(),
     existing: t.Number(),
     skipped: t.Number(),
-    agents: t.Array(t.Object({
-      app: importAppEnum,
-      candidateId: t.String(),
-      sourceKind: importCandidateSourceKindEnum,
-      externalRecordId: t.String(),
-      providerTargetId: t.Nullable(t.String()),
-      runtimeKind: importedRuntimeKindEnum,
-      status: t.Union([t.Literal('created'), t.Literal('existing'), t.Literal('skipped')]),
-      reason: t.Nullable(t.String()),
-      agent: t.Nullable(t.Object({
-        id: t.String(),
-        name: t.String(),
-        description: t.Nullable(t.String()),
-        avatarUrl: t.Nullable(t.String()),
-        avatarStyle: t.String(),
-        avatarSeed: t.String(),
-        providerTargetId: t.Nullable(t.String()),
-        modelId: t.Nullable(t.String()),
-        thinkingEffort: thinkingEffortEnum,
-        runtimeKind: runtimeKindEnum,
-        configJson: t.String(),
-        enabled: t.Boolean(),
-        createdAt: t.Number(),
-        updatedAt: t.Number(),
-      })),
-    })),
+    agents: t.Array(importedAgentResult),
   }),
 }

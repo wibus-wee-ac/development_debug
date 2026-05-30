@@ -1,17 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
-import { z } from 'zod'
 
-import { getServerUrl } from '~/lib/electron'
+import {
+  getWorkspacesByIdFilesSearchOptions,
+} from '~/api-gen/@tanstack/react-query.gen'
+import { getWorkspacesByIdFilesSearch } from '~/api-gen/sdk.gen'
+import type { GetWorkspacesByIdFilesSearchResponse } from '~/api-gen/types.gen'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 
-export type WorkspaceFile = { type: 'file' | 'directory', name: string, path: string }
+export type WorkspaceFile = GetWorkspacesByIdFilesSearchResponse[number]
 const WORKSPACE_FILE_SEARCH_DEBOUNCE_MS = 120
-const WorkspaceFileListSchema = z.array(z.object({
-  type: z.enum(['file', 'directory']),
-  name: z.string(),
-  path: z.string(),
-})).default([])
 
 export async function searchWorkspaceFiles(input: {
   workspaceId: string
@@ -19,19 +17,16 @@ export async function searchWorkspaceFiles(input: {
   limit?: number
   signal?: AbortSignal
 }): Promise<WorkspaceFile[]> {
-  const url = new URL(`/workspaces/${encodeURIComponent(input.workspaceId)}/files/search`, getServerUrl())
-  if (input.query) {
-    url.searchParams.set('q', input.query)
-  }
-  if (input.limit) {
-    url.searchParams.set('limit', String(input.limit))
-  }
-
-  const response = await fetch(url, { signal: input.signal })
-  if (!response.ok) {
-    throw new Error(`Workspace file search request failed with status ${response.status}.`)
-  }
-  return WorkspaceFileListSchema.parse(await response.json()) satisfies WorkspaceFile[]
+  const { data } = await getWorkspacesByIdFilesSearch({
+    path: { id: input.workspaceId },
+    query: {
+      ...(input.query ? { q: input.query } : {}),
+      ...(input.limit ? { limit: input.limit } : {}),
+    },
+    signal: input.signal,
+    throwOnError: true,
+  })
+  return data
 }
 
 export function useWorkspaceFiles(workspaceId: string | null, input: { query?: string, limit?: number, enabled?: boolean } = {}) {
@@ -46,8 +41,13 @@ export function useWorkspaceFiles(workspaceId: string | null, input: { query?: s
   }, [rawQuery])
 
   const { data: files = [], isFetching } = useQuery({
-    queryKey: ['workspace-file-search', workspaceId, query, limit],
-    queryFn: ({ signal }) => searchWorkspaceFiles({ workspaceId: workspaceId!, query, limit, signal }),
+    ...getWorkspacesByIdFilesSearchOptions({
+      path: { id: workspaceId! },
+      query: {
+        ...(query ? { q: query } : {}),
+        limit,
+      },
+    }),
     enabled: enabled && !!workspaceId,
     ...queryRefreshPolicies.static,
   })
