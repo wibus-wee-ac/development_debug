@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
-import { ProviderIcon } from '~/features/agent-management/provider-icons'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
 

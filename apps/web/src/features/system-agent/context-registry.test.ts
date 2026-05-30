@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { createContextRegistry } from './context-registry'
+import { createContextRegistry } from '~/features/context/context-registry'
 import type { SystemAgentContext } from './context-schema'
 import { projectLegacyContextItems } from './legacy-context-items'
 

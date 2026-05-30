@@ -12,7 +12,7 @@ import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsContent } from '~/features/settings/settings-content'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'

@@ -38,7 +38,7 @@ import type { Agent, CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { buildAvatarUrl } from './avatar-url'
-import { PROVIDER_ICONS } from './provider-icons'
+import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 

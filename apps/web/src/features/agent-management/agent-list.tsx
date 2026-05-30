@@ -50,7 +50,7 @@ import {
 } from '~/features/composer-toolbar/constants'
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import type { Agent, ModelDescriptor, ProviderTarget } from '~/lib/types'
 

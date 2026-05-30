@@ -48,7 +48,7 @@ import { DraftSetupPanel } from './draft-setup-panel'
 import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
 import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
-import { ProviderIcon } from './provider-icons'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { collectProviderListGroups } from './provider-list-groups'
 import type {
   DraftProvider,

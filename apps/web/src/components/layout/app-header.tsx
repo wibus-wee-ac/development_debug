@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, platform } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'

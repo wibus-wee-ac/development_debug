@@ -2,7 +2,7 @@
 // Input: Typed ContextEnvelope items from feature-owned context providers.
 // Position: system-agent owns prompt-block assembly before Chat Runtime receives plain text.
 
-import type { ContextEnvelope, ContextItem } from './context-items'
+import type { ContextEnvelope, ContextItem } from '~/features/context/context-items'
 
 export interface ContextAssemblyOptions {
   tokenBudget?: number

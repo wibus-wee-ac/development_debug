@@ -2,10 +2,10 @@
 // Input: ChatView viewport, message, and composer focus state.
 // Position: Chat owns chat-session attention semantics; system-agent only aggregates provider output.
 
-import type { ContextItem } from '~/features/system-agent/context-items'
-import { estimateContextTokens } from '~/features/system-agent/context-items'
-import type { ContextProvider } from '~/features/system-agent/context-registry'
-import { jarvisContextRegistry } from '~/features/system-agent/context-registry'
+import type { ContextItem } from '~/features/context/context-items'
+import { estimateContextTokens } from '~/features/context/context-items'
+import type { ContextProvider } from '~/features/context/context-registry'
+import { jarvisContextRegistry } from '~/features/context/context-registry'
 
 export interface ChatAttentionSnapshot {
   sessionId: string

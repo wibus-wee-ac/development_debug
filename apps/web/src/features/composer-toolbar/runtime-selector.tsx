@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/features/agent-management/provider-icons'
+import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/components/common/provider-icons'
 import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 
@@ -59,7 +59,7 @@ export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorPr
         className="disabled:pointer-events-auto disabled:opacity-70"
       >
         <Icon className="size-3.5 shrink-0" />
-        <span>{label}</span>
+        <span className="hidden min-[480px]:inline">{label}</span>
       </Button>
     )
   }
@@ -72,7 +72,7 @@ export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorPr
         )}
       >
         <Icon className="size-3.5 shrink-0" />
-        <span>{t(runtimeLabelKeys[current.value])}</span>
+        <span className="hidden min-[480px]:inline">{t(runtimeLabelKeys[current.value])}</span>
         <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
       </MenuTrigger>
       <MenuPopup align="start" side="top" sideOffset={4}>

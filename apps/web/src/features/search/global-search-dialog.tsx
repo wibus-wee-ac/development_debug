@@ -31,7 +31,7 @@ import {
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import type { WebCommandRegistration } from '~/lib/plugin-store'

@@ -2,7 +2,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { useCallback } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { SettingsSidebar } from '~/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '~/features/workspace'
 import { useShortcut } from '~/hooks/use-shortcut'

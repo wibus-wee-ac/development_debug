@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { ProviderIcon } from '~/features/agent-management/provider-icons'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import type { ModelDescriptor } from '~/lib/types'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'

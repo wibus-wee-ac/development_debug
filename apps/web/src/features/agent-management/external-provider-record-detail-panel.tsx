@@ -26,7 +26,7 @@ import type { ModelDescriptor } from '~/lib/types'
 import { SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
-import { ProviderIcon } from './provider-icons'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import type {
   ExternalProviderRecordView,
   ExternalProviderRuntimeTargetView,

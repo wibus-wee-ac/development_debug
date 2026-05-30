@@ -1,6 +1,6 @@
 // Output: Provider registry and envelope collector for Jarvis semantic context.
 // Input: Feature-owned context providers that expose current attention and references.
-// Position: Owned by system-agent as the aggregation layer, without reading feature DOM directly.
+// Position: Shared cross-cutting module — consumed by system-agent, chat, kanban, and other features.
 
 import { useCradleTabStore } from '~/tabs/registry'
 

@@ -14,9 +14,9 @@ import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 
-import { useSettingsOverlayStore } from '../settings/settings-overlay-store'
-import type { ContextEnvelope } from './context-items'
-import { jarvisContextRegistry } from './context-registry'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
+import type { ContextEnvelope } from '~/features/context/context-items'
+import { jarvisContextRegistry } from '~/features/context/context-registry'
 import type { SystemAgentContext } from './context-schema'
 import { projectLegacyContextItems } from './legacy-context-items'
 

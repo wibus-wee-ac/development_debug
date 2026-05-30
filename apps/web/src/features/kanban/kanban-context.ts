@@ -2,10 +2,10 @@
 // Input: KanbanView selection, peek, focus, hover, filter, and visible issue state.
 // Position: Kanban owns board attention semantics; system-agent only aggregates provider output.
 
-import type { ContextItem, ContextReference } from '~/features/system-agent/context-items'
-import { estimateContextTokens } from '~/features/system-agent/context-items'
-import type { ContextProvider } from '~/features/system-agent/context-registry'
-import { jarvisContextRegistry } from '~/features/system-agent/context-registry'
+import type { ContextItem, ContextReference } from '~/features/context/context-items'
+import { estimateContextTokens } from '~/features/context/context-items'
+import type { ContextProvider } from '~/features/context/context-registry'
+import { jarvisContextRegistry } from '~/features/context/context-registry'
 
 export interface KanbanContextIssue {
   id: string

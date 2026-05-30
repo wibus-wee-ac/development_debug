@@ -57,7 +57,7 @@ import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
-import { ProviderIcon } from './provider-icons'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import {
   ALL_DISABLED_SENTINEL,
   presetForProfile,

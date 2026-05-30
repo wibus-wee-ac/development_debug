@@ -4,10 +4,10 @@
 
 import { useSyncExternalStore } from 'react'
 
-import type { ContextItem, ContextReference, ContextSensitivity } from './context-items'
-import { estimateContextTokens } from './context-items'
-import type { ContextProvider } from './context-registry'
-import { jarvisContextRegistry } from './context-registry'
+import type { ContextItem, ContextReference, ContextSensitivity } from '~/features/context/context-items'
+import { estimateContextTokens } from '~/features/context/context-items'
+import type { ContextProvider } from '~/features/context/context-registry'
+import { jarvisContextRegistry } from '~/features/context/context-registry'
 
 const MAX_TEXT_SELECTION_CHARS = 2_000
 const MAX_REFERENCE_CONTENT_CHARS = 4_000

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 
 import { onAnyChatRunEvent } from '~/features/chat/sse-chat-transport'
-import { useSettingsOverlayStore } from '~/features/settings/settings-overlay-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
   handleBrowserPanelTabShortcut,

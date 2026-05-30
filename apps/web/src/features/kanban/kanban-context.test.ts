@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { createContextRegistry } from '~/features/system-agent/context-registry'
+import { createContextRegistry } from '~/features/context/context-registry'
 
 import {
   clearKanbanAttentionSnapshot,

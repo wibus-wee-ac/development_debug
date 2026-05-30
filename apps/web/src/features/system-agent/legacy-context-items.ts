@@ -2,8 +2,8 @@
 // Input: Current Jarvis snapshot shape produced by use-context-snapshot.ts.
 // Position: Transitional system-agent adapter until feature-owned providers replace the monolithic snapshot.
 
-import type { ContextItem } from './context-items'
-import { estimateContextTokens } from './context-items'
+import type { ContextItem } from '~/features/context/context-items'
+import { estimateContextTokens } from '~/features/context/context-items'
 import type { SystemAgentContext } from './context-schema'
 
 const OWNER = 'system-agent'

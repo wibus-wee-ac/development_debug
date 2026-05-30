@@ -20,7 +20,7 @@ import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { PROVIDER_ICONS } from './provider-icons'
+import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 import type { DraftProvider } from './provider-settings-utils'
 import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
