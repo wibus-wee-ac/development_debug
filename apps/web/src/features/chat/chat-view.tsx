@@ -24,12 +24,11 @@ import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
-import { PermissionModeControl } from './permission-mode-control'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
-import type { ChatPermissionMode, ChatQueueItem } from './use-chat-session'
+import type { ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
@@ -198,7 +197,6 @@ function ChatComposerSection({
   onSlashCommandAction,
   composerRuntime,
   appshotRuntime,
-  permissionModeControl,
   placeholder,
   availableFiles,
   searchFiles,
@@ -215,7 +213,6 @@ function ChatComposerSection({
   onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   composerRuntime: ChatComposerRuntime
   appshotRuntime: ComposerAppshotRuntime
-  permissionModeControl?: React.ReactNode
   placeholder?: string
   availableFiles: MentionItem[]
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
@@ -255,12 +252,7 @@ function ChatComposerSection({
           }}
           slots={{
             toolbar,
-            contextBar: (
-              <>
-                {permissionModeControl}
-                {contextBar}
-              </>
-            ),
+            contextBar,
           }}
           externalSignals={{
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
@@ -339,20 +331,16 @@ export function ChatView({
     queueItems,
     cancelQueueItem,
     reorderQueueItems,
-    setPermissionMode: switchPermissionMode,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
-  const [permissionMode, setPermissionMode] = useState<ChatPermissionMode>('bypassPermissions')
-  const [permissionModePending, setPermissionModePending] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
     messageCount,
     isReady,
     composerModel,
-    permissionMode: runtimeKind === 'claude-agent' ? permissionMode : undefined,
     sendOverridesRef,
     sendMessage,
     stop,
@@ -361,44 +349,6 @@ export function ChatView({
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
-
-  const handlePermissionModeChange = useCallback((nextMode: ChatPermissionMode) => {
-    setPermissionMode(nextMode)
-    if (status !== 'streaming') {
-      return
-    }
-
-    setPermissionModePending(true)
-    void switchPermissionMode(nextMode)
-      .then((ok) => {
-        if (ok) {
-          return
-        }
-        toastManager.add({
-          type: 'error',
-          title: 'Mode switch unavailable',
-          description: 'The active runtime did not accept the mode switch.',
-        })
-      })
-      .catch((error) => {
-        toastManager.add({
-          type: 'error',
-          title: 'Mode switch failed',
-          description: error instanceof Error ? error.message : 'Unknown permission mode error.',
-        })
-      })
-      .finally(() => setPermissionModePending(false))
-  }, [status, switchPermissionMode])
-
-  const permissionModeControl = runtimeKind === 'claude-agent'
-    ? (
-        <PermissionModeControl
-          mode={permissionMode}
-          pending={permissionModePending}
-          onModeChange={handlePermissionModeChange}
-        />
-      )
-    : null
 
   const handleSlashCommandAction = useCallback(async (
     command: ChatComposerSlashCommand,
@@ -481,7 +431,6 @@ export function ChatView({
         onSlashCommandAction={handleSlashCommandAction}
         composerRuntime={composerRuntime}
         appshotRuntime={appshotRuntime}
-        permissionModeControl={permissionModeControl}
         placeholder={placeholder}
         availableFiles={availableFiles}
         searchFiles={searchFiles}

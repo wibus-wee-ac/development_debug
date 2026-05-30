@@ -105,12 +105,15 @@ const CommentItem = memo(({
     const cfg = systemEventConfig[kind] ?? systemEventConfig.system
     const Icon = cfg.icon
     return (
-      <div className="flex items-center gap-2.5 py-0.5" data-testid={`comment-${comment.id}`}>
-        <div className="flex size-5.5 shrink-0 items-center justify-center">
+      <div className="group flex gap-2.5" data-testid={`comment-${comment.id}`}>
+        <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
           <Icon className="size-3.5 text-text-tertiary" aria-hidden="true" />
         </div>
-        <span className="text-[12px] text-text-tertiary">{comment.content}</span>
-        <span className="text-[11px] text-text-dim shrink-0">{formatRelativeTime(comment.createdAt)}</span>
+        <div className="flex-1 min-w-0 flex items-center gap-2 text-[12px]">
+          <span className="font-medium text-foreground">{comment.author.displayName}</span>
+          <span className="text-text-dim">{comment.content}</span>
+          <span className="text-text-dim">{formatRelativeTime(comment.createdAt)}</span>
+        </div>
       </div>
     )
   }
@@ -139,8 +142,7 @@ const CommentItem = memo(({
         )}
       <div
         className={cn(
-          'flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5',
-          isAgent ? 'bg-fill/50' : 'bg-card',
+          'flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 bg-card',
         )}
       >
         <div className="flex items-center gap-2">

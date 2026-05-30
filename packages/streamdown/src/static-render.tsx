@@ -15,6 +15,8 @@ interface StaticRenderProps {
   rehypePlugins?: PluggableList
   /** Additional remark plugins */
   remarkPlugins?: PluggableList
+  /** Render as a different HTML element */
+  as?: 'div' | 'span'
 }
 
 const defaultComponents = {
@@ -22,13 +24,13 @@ const defaultComponents = {
   pre: HighlightedPre,
 }
 
-export function StaticRender({ content, className, components, rehypePlugins, remarkPlugins }: StaticRenderProps) {
+export function StaticRender({ content, className, components, rehypePlugins, remarkPlugins, as: Component = 'div' }: StaticRenderProps) {
   const merged = components
     ? { ...defaultComponents, ...components }
     : defaultComponents
 
   return (
-    <div className={className} data-pre-mounted="">
+    <Component className={className} data-pre-mounted="">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath, ...(remarkPlugins || [])]}
         rehypePlugins={[rehypeKatex, ...(rehypePlugins || [])]}
@@ -36,6 +38,6 @@ export function StaticRender({ content, className, components, rehypePlugins, re
       >
         {content}
       </ReactMarkdown>
-    </div>
+    </Component>
   )
 }
