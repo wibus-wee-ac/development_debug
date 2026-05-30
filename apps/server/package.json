@@ -24,7 +24,7 @@
     "@cradle/plugin-sdk": "workspace:*",
     "@elysia/openapi": "^1.4.15",
     "@elysiajs/node": "^1.4.5",
-    "@hijarvis/jar-core": "link:/Users/wibus/dev/HiJarvis/packages/jar-core",
+    "@hijarvis/core": "^0.1.0",
     "@hono/node-server": "^1.19.9",
     "@langfuse/otel": "^5.3.0",
     "@langfuse/tracing": "^5.3.0",

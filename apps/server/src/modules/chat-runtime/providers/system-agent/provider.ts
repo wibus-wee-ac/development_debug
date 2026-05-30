@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 
-import type { DefaultRuntimeConfigOptions, MessageIngressCommand, MessageIngressResult } from '@hijarvis/jar-core'
-import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/jar-core'
+import type { DefaultRuntimeConfigOptions, MessageIngressCommand, MessageIngressResult } from '@hijarvis/core'
+import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/core'
 import type { UIMessageChunk } from 'ai'
 
 import { getServerConfig } from '../../../../infra'

@@ -20,7 +20,7 @@ const jarCoreMocks = vi.hoisted(() => ({
   }),
 }))
 
-vi.mock('@hijarvis/jar-core', () => jarCoreMocks)
+vi.mock('@hijarvis/core', () => jarCoreMocks)
 
 vi.mock('../src/modules/providers/model-info-registry', () => ({
   lookupModelRaw: vi.fn(async () => null),
