@@ -99,6 +99,8 @@ interface WindowServiceMethods {
   focusSession: (sessionId: string) => Promise<boolean>
   closeSession: (sessionId: string) => Promise<void>
   getOpenSessions: () => Promise<string[]>
+  startPointerMonitor: () => Promise<void>
+  stopPointerMonitor: () => Promise<void>
 }
 
 export interface DesktopUpdateAsset {
@@ -405,4 +407,10 @@ export function subscribeTearoffSessionClosed(
   handler: (sessionId: string) => void,
 ): () => void {
   return window.cradle?.window.onTearoffSessionClosed(handler) ?? (() => {})
+}
+
+export function subscribePointerOutsideWindow(
+  handler: (screenX: number, screenY: number) => void,
+): () => void {
+  return window.cradle?.window.onPointerOutsideWindow(handler) ?? (() => {})
 }

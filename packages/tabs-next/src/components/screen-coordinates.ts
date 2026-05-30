@@ -74,3 +74,4 @@ export function isPointerOutsideWindow(
     || pointer.screenY > windowBounds.screenY + windowBounds.outerHeight
   )
 }
+

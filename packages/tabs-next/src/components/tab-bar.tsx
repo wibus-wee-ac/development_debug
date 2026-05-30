@@ -1,8 +1,8 @@
 import type { DragEndEvent, DragStartEvent } from '@dnd-kit/core'
-import { closestCenter, DndContext, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
+import { closestCenter, DndContext, DragOverlay, MouseSensor, useSensor, useSensors } from '@dnd-kit/core'
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '../cn'
 import { useTabsContext } from '../context'
@@ -32,6 +32,8 @@ export interface TabBarProps {
   onTabActivated?: (tab: TabInstance) => void
   onTabClosed?: (tabId: string) => void
   onTabTearOff?: (tab: TabInstance, screenX: number, screenY: number) => void
+  onDragStart?: (tab: TabInstance) => void
+  onDragEnd?: () => void
 }
 
 interface TabPillProps {
@@ -135,6 +137,8 @@ export const TabBar = memo(({
   onTabActivated,
   onTabClosed,
   onTabTearOff,
+  onDragStart,
+  onDragEnd,
 }: TabBarProps) => {
   'use no memo'
   const { store } = useTabsContext()
@@ -143,6 +147,7 @@ export const TabBar = memo(({
   const pointerRef = useRef<ScreenCoordinates | null>(null)
   const dragWasTornOffRef = useRef(false)
   const dragCleanupRef = useRef<(() => void) | null>(null)
+  const [activeDragTab, setActiveDragTab] = useState<TabInstance | null>(null)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -200,6 +205,12 @@ export const TabBar = memo(({
     dragWasTornOffRef.current = false
     dragCleanupRef.current?.()
 
+    const tab = store.getState().tabs.find(item => item.id === event.active.id)
+    setActiveDragTab(tab ?? null)
+    if (tab) {
+      onDragStart?.(tab)
+    }
+
     const onMove = (moveEvent: MouseEvent | PointerEvent | TouchEvent) => {
       pointerRef.current = getEventScreenCoordinates(moveEvent, window)
     }
@@ -212,7 +223,7 @@ export const TabBar = memo(({
       window.removeEventListener('pointermove', onMove, true)
       window.removeEventListener('touchmove', onMove, true)
     }
-  }, [])
+  }, [onDragStart, store])
 
   useEffect(() => {
     return releaseCurrentDrag
@@ -220,6 +231,8 @@ export const TabBar = memo(({
 
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event
+    setActiveDragTab(null)
+    onDragEnd?.()
     if (dragWasTornOffRef.current) {
       releaseCurrentDrag()
       return
@@ -243,11 +256,13 @@ export const TabBar = memo(({
     reordered.splice(newIndex, 0, moved)
     store.getState().reorderTabs(reordered.map(tab => tab.id))
     releaseCurrentDrag()
-  }, [checkTearOff, releaseCurrentDrag, store])
+  }, [checkTearOff, onDragEnd, releaseCurrentDrag, store])
 
   const handleDragCancel = useCallback(() => {
+    setActiveDragTab(null)
+    onDragEnd?.()
     releaseCurrentDrag()
-  }, [releaseCurrentDrag])
+  }, [onDragEnd, releaseCurrentDrag])
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={handleDragCancel}>
@@ -271,6 +286,25 @@ export const TabBar = memo(({
             />
           ))}
         </SortableContext>
+
+        <DragOverlay dropAnimation={null}>
+          {activeDragTab && (
+            <div
+              className={cn(
+                'flex items-center justify-start gap-1.5 h-7.5 text-[11px] font-medium mx-0.5',
+                activeDragTab.pinned ? 'px-3' : 'pl-3 pr-7',
+                'rounded-md bg-background shadow-lg border border-border/50 opacity-90 cursor-grabbing overflow-hidden max-w-44',
+              )}
+            >
+              {(tabPresentation?.[activeDragTab.id]?.icon ?? customization?.tabIcon?.(activeDragTab)) && (
+                <span className="shrink-0 flex items-center">
+                  {tabPresentation?.[activeDragTab.id]?.icon ?? customization?.tabIcon?.(activeDragTab)}
+                </span>
+              )}
+              <span className="truncate select-none">{tabPresentation?.[activeDragTab.id]?.label ?? activeDragTab.label}</span>
+            </div>
+          )}
+        </DragOverlay>
 
         {onNewTab && (
           <button

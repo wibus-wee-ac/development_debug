@@ -468,6 +468,8 @@ function readScreenAppshotAnimationTarget(
   return convertedTarget
 }
 
+const pointerMonitors = new Map<number, ReturnType<typeof setInterval>>()
+
 class WindowService extends IpcService {
   static readonly groupName = 'window'
 
@@ -524,6 +526,64 @@ class WindowService extends IpcService {
       return
     }
     win.maximize()
+  }
+
+  @IpcMethod()
+  async startPointerMonitor(): Promise<void> {
+    const ctx = getIpcContext()
+    const webContents = ctx.sender
+    const contentsId = webContents.id
+
+    // Stop any existing monitor for this webContents
+    const existing = pointerMonitors.get(contentsId)
+    if (existing) {
+      clearInterval(existing)
+    }
+
+    let wasOutside = false
+
+    const interval = setInterval(() => {
+      if (webContents.isDestroyed()) {
+        clearInterval(interval)
+        pointerMonitors.delete(contentsId)
+        return
+      }
+
+      const cursor = screen.getCursorScreenPoint()
+      const win = BrowserWindow.fromWebContents(webContents)
+      if (!win || win.isDestroyed()) {
+        return
+      }
+
+      const bounds = win.getBounds()
+      const isOutside = (
+        cursor.x < bounds.x
+        || cursor.x > bounds.x + bounds.width
+        || cursor.y < bounds.y
+        || cursor.y > bounds.y + bounds.height
+      )
+
+      if (isOutside && !wasOutside) {
+        wasOutside = true
+        webContents.send('window:pointer-outside-window', cursor.x, cursor.y)
+      }
+      else if (!isOutside && wasOutside) {
+        wasOutside = false
+      }
+    }, 16)
+
+    pointerMonitors.set(contentsId, interval)
+  }
+
+  @IpcMethod()
+  async stopPointerMonitor(): Promise<void> {
+    const ctx = getIpcContext()
+    const contentsId = ctx.sender.id
+    const existing = pointerMonitors.get(contentsId)
+    if (existing) {
+      clearInterval(existing)
+      pointerMonitors.delete(contentsId)
+    }
   }
 
   @IpcMethod()

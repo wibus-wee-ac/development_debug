@@ -15,9 +15,10 @@ const dndMockState = vi.hoisted(() => ({
 
 vi.mock('@dnd-kit/core', () => ({
   closestCenter: vi.fn(),
-  DndContext: ({ children, onDragStart, onDragEnd, onDragCancel }: {
+  DndContext: ({ children, onDragStart, onDragMove, onDragEnd, onDragCancel }: {
     children: ReactNode
     onDragStart?: (event: { active: { id: string }, activatorEvent: Event }) => void
+    onDragMove?: (event: { active: { id: string } }) => void
     onDragEnd?: (event: { active: { id: string }, over: null }) => void
     onDragCancel?: (event: { active: { id: string } }) => void
   }) => (
@@ -33,6 +34,17 @@ vi.mock('@dnd-kit/core', () => ({
         }}
       >
         Start drag
+      </button>
+      <button
+        type="button"
+        data-testid="mock-drag-move"
+        onClick={() => {
+          onDragMove?.({
+            active: { id: dndMockState.activeId },
+          })
+        }}
+      >
+        Move drag
       </button>
       <button
         type="button"
@@ -60,6 +72,7 @@ vi.mock('@dnd-kit/core', () => ({
       {children}
     </div>
   ),
+  DragOverlay: ({ children }: { children?: ReactNode, dropAnimation?: unknown }) => <>{children}</>,
   MouseSensor: vi.fn(),
   useSensor: vi.fn(() => ({})),
   useSensors: vi.fn(() => []),

@@ -41,11 +41,20 @@ const cradleElectron = {
     minimize: () => ipcRenderer.invoke('window.minimize'),
     maximize: () => ipcRenderer.invoke('window.maximize'),
     close: () => ipcRenderer.invoke('window.close'),
+    startPointerMonitor: () => ipcRenderer.invoke('window.startPointerMonitor'),
+    stopPointerMonitor: () => ipcRenderer.invoke('window.stopPointerMonitor'),
     onTearoffSessionClosed: (handler: (sessionId: string) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, sessionId: string) => handler(sessionId)
       ipcRenderer.on('window:tearoff-session-closed', listener)
       return () => {
         ipcRenderer.removeListener('window:tearoff-session-closed', listener)
+      }
+    },
+    onPointerOutsideWindow: (handler: (screenX: number, screenY: number) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, screenX: number, screenY: number) => handler(screenX, screenY)
+      ipcRenderer.on('window:pointer-outside-window', listener)
+      return () => {
+        ipcRenderer.removeListener('window:pointer-outside-window', listener)
       }
     },
   },

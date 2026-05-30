@@ -4,7 +4,7 @@ packages:
   - plugins/*
   - documentations
 allowBuilds:
-  '@google/genai': set this to true or false
+  '@google/genai': true
   '@swc/core': true
   better-sqlite3: true
   electron: true
@@ -12,7 +12,7 @@ allowBuilds:
   esbuild: true
   msw: true
   node-pty: true
-  protobufjs: set this to true or false
+  protobufjs: true
   sharp: true
 minimumReleaseAgeExclude:
   - '@hijarvis/core@0.1.0'
