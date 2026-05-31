@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 import { electronRebuildPackages } from '../../server/runtime-packages.mjs'
 
-const electronVersion = process.env.CRADLE_ELECTRON_VERSION ?? '39.8.10'
+const electronVersion = process.env.CRADLE_ELECTRON_VERSION ?? '42.3.0'
 const targetArch
   = process.env.CRADLE_ELECTRON_REBUILD_ARCH ?? process.env.npm_config_arch ?? process.arch
 const serverRuntimeDir = '../server/dist'
