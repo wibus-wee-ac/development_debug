@@ -26,8 +26,8 @@ import * as ModelRegistry from '../model-registry/service'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import { resolveProviderTarget } from '../provider-targets/service'
-import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
-import type { RuntimeKind } from '../providers/types'
+import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
+import type { RuntimeKind } from '../provider-contracts/types'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry } from './chat-runtime-provider-registry'
 import {
@@ -37,7 +37,7 @@ import {
   normalizeMessageSnapshot,
   parseStoredMessageSnapshot as parseTrustedStoredMessageSnapshot,
 } from './message-snapshots'
-import { readProviderStateSnapshot } from './providers/provider-state-snapshot'
+import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import type {
   ChatPermissionMode,
   ChatRuntime,

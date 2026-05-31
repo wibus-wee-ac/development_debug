@@ -876,8 +876,8 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
 describe('claude-agent mapper: input_json_delta streaming', () => {
   it('keeps subagent text projection isolated from the parent assistant stream', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'parent-text-1',
@@ -937,8 +937,8 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('maps content_block_delta with input_json_delta to tool-input-delta chunks', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',
@@ -1002,8 +1002,8 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('ignores input_json_delta with empty partial_json', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',
@@ -1029,8 +1029,8 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('ignores input_json_delta for unknown block index', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime/providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime/providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
+    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
 
     const state: MapperState = {
       textItemId: 'text-1',

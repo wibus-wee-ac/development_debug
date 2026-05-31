@@ -4,7 +4,7 @@
 
 import { t } from 'elysia'
 
-import { ProvidersModel } from '../providers/model'
+import { modelCapabilitiesSchema } from '../provider-contracts/model'
 
 const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
 const providerKind = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')])
@@ -71,14 +71,14 @@ export const ProviderTargetsModel = {
   customModelEntry: t.Object({
     id: t.String(),
     label: t.String(),
-    capabilities: ProvidersModel.modelCapabilities,
+    capabilities: modelCapabilitiesSchema,
   }),
 
   customModelEntryList: t.Array(
     t.Object({
       id: t.String(),
       label: t.String(),
-      capabilities: ProvidersModel.modelCapabilities,
+      capabilities: modelCapabilitiesSchema,
     }),
   ),
 }

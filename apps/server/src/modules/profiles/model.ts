@@ -1,6 +1,6 @@
 import { t } from 'elysia'
 
-import { ProvidersModel } from '../providers/model'
+import { modelCapabilitiesSchema } from '../provider-contracts/model'
 
 const nullableString = t.Nullable(t.String())
 const nullableProfileRef = t.Nullable(t.String({ minLength: 1 }))
@@ -36,14 +36,14 @@ export const ProfilesModel = {
     models: t.Array(t.Object({
       id: t.String({ minLength: 1 }),
       label: t.Optional(t.String()),
-      capabilities: t.Optional(ProvidersModel.modelCapabilities),
+      capabilities: t.Optional(modelCapabilitiesSchema),
     })),
   }),
 
   customModelEntry: t.Object({
     id: t.String(),
     label: t.String(),
-    capabilities: ProvidersModel.modelCapabilities,
+    capabilities: modelCapabilitiesSchema,
   }),
 
 }

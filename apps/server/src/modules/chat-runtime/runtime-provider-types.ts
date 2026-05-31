@@ -1,6 +1,6 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
 
-import type { ProviderKind, RuntimeKind } from '../providers/types'
+import type { ProviderKind, RuntimeKind } from '../provider-contracts/types'
 
 export interface RuntimeProviderTargetProfile {
   id: string

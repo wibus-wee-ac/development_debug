@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { CodexConfigSchema, readTrustedClaudeAgentConfig, readTrustedCodexConfig } from '../src/modules/providers/provider-base'
+import { CodexConfigSchema, readTrustedClaudeAgentConfig, readTrustedCodexConfig } from '../src/modules/provider-contracts/provider-base'
 
 describe('provider config defaults', () => {
   it('uses full-access Codex app-server permissions when no profile override is stored', () => {

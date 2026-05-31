@@ -347,7 +347,7 @@ describe('acp chat runtime capability', () => {
   })
 
   it('passes registered MCP servers when loading and resuming ACP sessions', async () => {
-    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime-providers/acp/connection-manager')
     const manager = new AcpConnectionManager({
       spawn: () => ({
         agentId: 'profile-acp',
@@ -402,7 +402,7 @@ describe('acp chat runtime capability', () => {
   })
 
   it('fails closed before ACP agents write client filesystem paths', async () => {
-    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime-providers/acp/connection-manager')
     const workspaceRoot = makeTempDir('cradle-acp-write-')
     const targetPath = join(workspaceRoot, 'notes.md')
     const manager = new AcpConnectionManager({
@@ -445,7 +445,7 @@ describe('acp chat runtime capability', () => {
   })
 
   it('does not write ACP client filesystem paths when the injected policy rejects', async () => {
-    const { AcpConnectionManager } = await import('../src/modules/chat-runtime/providers/acp/connection-manager')
+    const { AcpConnectionManager } = await import('../src/modules/chat-runtime-providers/acp/connection-manager')
     const workspaceRoot = makeTempDir('cradle-acp-write-reject-')
     const targetPath = join(workspaceRoot, 'notes.md')
     const manager = new AcpConnectionManager({

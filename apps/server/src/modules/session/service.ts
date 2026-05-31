@@ -12,8 +12,8 @@ import {
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
-import type { RuntimeKind } from '../providers/types'
-import { runtimeKinds } from '../providers/types'
+import type { RuntimeKind } from '../provider-contracts/types'
+import { runtimeKinds } from '../provider-contracts/types'
 import * as Workspace from '../workspace/service'
 
 export type SessionView = Session & { modelId: string | null }

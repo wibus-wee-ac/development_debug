@@ -23,33 +23,14 @@ Claude Agent `TodoWrite` state is owned by the Claude Agent adapter: the mapper 
 - `stream-trace.ts`: dev-mode JSONL trace writer/reader for the provider raw event, mapper output, runtime chunk, SSE emit, and run terminal chain.
 - `ui-message-input.ts`: provider-boundary helpers for extracting text from `UIMessage` and rejecting attachments for text-only runtimes.
 - `chat-turn-context.ts`: system prompt and history resolution.
-- `chat-runtime-provider-registry.ts`: runtime provider registry for ACP Chat, OpenAI-compatible, Claude Agent, Codex, System Agent (`jar-core`), and debug/mock variants, plus cached runtime skill path discovery.
-- `engine/`: AI SDK orchestration helpers, compaction, and provider selection used by the server-owned chat loop. AI SDK tool approval must be expressed with native `needsApproval` on tool definitions, not by wrapping `execute`.
-- `providers/`: concrete runtime providers grouped by backend owner.
-  - `providers/bounded-text-collector.ts`: bounded streaming text accumulator for tracing/diagnostic output so provider observability never copies unbounded assistant text on every delta.
-  - `providers/acp/config.ts`: ACP runtime config parser for chat-owned profiles.
-  - `providers/acp/process-manager.ts`: server-owned ACP subprocess supervisor without Electron shell coupling.
-  - `providers/acp/connection-manager.ts`: ACP connection/session/prompt manager for unified chat runtime; forwards plugin-registered MCP servers to ACP new/load/resume session calls; rejects ACP `fs.writeTextFile` client-filesystem writes until that permission is modeled as an AI SDK tool with native `needsApproval`.
-  - `providers/acp/runtime-integration.ts`: bridges ACP title updates into server session ownership and rejects ACP permission requests now that the legacy approval SSE owner has been removed.
-  - `providers/acp/provider.ts`: ACP Chat provider bound to the unified `/chat` API.
-  - `providers/acp/timeline-mapper.ts`: ACP session updates → AI SDK `UIMessageChunk` mapper.
-  - `providers/openai-compatible/provider.ts`: OpenAI-compatible AI SDK runtime that converts text/file `UIMessage` history through AI SDK `convertToModelMessages`, passes original UI messages into `toUIMessageStream` for assistant-message continuation, and emits native `UIMessageChunk` streams directly.
-  - `providers/claude-agent/provider.ts`: Claude Agent SDK runtime bound to the unified `/chat` API; injects plugin-registered MCP servers, strips host model env fallbacks, pins the resolved model from the runtime session snapshot, applies request-scoped `bypassPermissions` / `plan` mode from Chat Runtime provider options, applies active `setPermissionMode` switches through the SDK query side-channel, applies trimmed `config.claudeAgent.modelAliases` environment overrides into Claude Agent SDK query options, and leaves SDK skill discovery disabled unless provider config explicitly sets `skills`; projects text plus image file parts into Claude Agent SDK user message content blocks and rejects unsupported non-image file parts at the provider boundary.
-  - `providers/claude-agent/mapper.ts`: Claude Agent SDK message → AI SDK `UIMessageChunk` mapper; caches TodoWrite args until tool results arrive so adapter-synthesized `pluginState.todos` is persisted in tool outputs; subagent child messages are projected with isolated mapper state into accumulated `UIMessage` snapshots, bounded for preliminary `tool-output-available` chunks, and attached in full when the parent tool result arrives.
-  - `providers/claude-agent/todo-plugin-state.ts`: Claude Agent TodoWrite args → persisted tool plugin state mapper; converts provider statuses into `todo`, `processing`, and `completed`, and uses `activeForm` as the processing label.
-  - `providers/claude-agent/mapper.test.ts`: focused mapper coverage for TodoWrite plugin state synthesis.
-  - `providers/mock-claude-agent/provider.ts`: debug/test runtime that mimics Claude Agent chunk output under mock configuration.
-  - `providers/codex/provider.ts`: Codex app-server runtime bound to the unified `/chat` API; starts/resumes app-server threads, maps app-server notifications into AI SDK chunks, supports live `turn/steer`, maps text/image user parts into Codex app-server input, interrupts active turns through `turn/interrupt`, forwards explicit app-server permission config overrides, projects plugin-registered MCP servers into Codex `mcp_servers` config, records bounded app-server notification diagnostics on stream failures, and rejects unsupported user parts at the provider boundary.
-  - `providers/codex/app-server-client.ts`: newline-delimited JSON-RPC client for per-turn Codex app-server processes.
-  - `providers/codex/app-server-tool-payload.ts`: Codex app-server item helper that projects command, file-change, MCP, dynamic, collab-agent, web-search, and plan records into structured AI SDK tool input/output payloads.
-  - `providers/codex/app-server-mapper.ts`: Codex app-server notification → AI SDK `UIMessageChunk` mapper, including structured tool output for renderer-owned classified tool UI and bounded/length-only state for long text and command output streams.
-  - `providers/codex/provider.test.ts`: focused app-server provider coverage for text/image input projection, streaming, structured app-server tool output, thread resume, and live steer.
-  - `providers/system-agent/provider.ts`: System Agent (`jar-core`) runtime bridged into the same AI SDK chunk contract, using jar-core `defaultRuntimeConfig` while keeping Cradle-owned session/workspace paths, injecting Cradle chat/workspace env for shell-driven skills, applying profile-owned models.dev mappings as per-model metadata, normalizing thinking level against model reasoning capability, rejecting non-text user parts, and forwarding jar-core result usage/model metadata into Cradle-owned usage logs.
+- `chat-runtime-provider-registry.ts`: runtime provider registry for ACP Chat, OpenAI-compatible, Claude Agent, Codex, System Agent (`jar-core`), and debug/mock variants. It registers adapters from `../chat-runtime-providers` and keeps cached runtime skill path discovery under Chat Runtime because skills are resolved per chat workspace.
 - `runtime-provider-types.ts`: chat runtime provider contracts, including the optional `steerTurn` side-channel used only by providers that can inject input into an active turn.
+
+`../chat-runtime-engine` owns provider-agnostic AI SDK execution helpers, compaction, and provider selection. `../chat-runtime-providers` owns concrete backend adapters. Chat Runtime depends on both through narrow contracts and keeps HTTP routes, persistence, queueing, trace files, and run lifecycle semantics here.
 
 ## Provider MCP Ownership
 
-The server MCP registry owns MCP server discovery for both plugin-registered servers and host-owned builtin servers such as Chronicle. Chat-runtime providers only read that registry when their upstream runtime supports MCP-style tool servers:
+The server MCP registry owns MCP server discovery for both plugin-registered servers and host-owned builtin servers such as Chronicle. Chat runtime providers in `../chat-runtime-providers` only read that registry when their upstream runtime supports MCP-style tool servers:
 
 - Claude Agent receives the registry through SDK `mcpServers` query options.
 - ACP receives the registry on `newSession`, `loadSession`, and `unstable_resumeSession` as ACP `McpServer[]`.
@@ -71,4 +52,4 @@ Chat runtime reads Chronicle-owned memory context through `../chronicle/agent-co
 
 ## ACP Client Filesystem Ownership
 
-ACP `fs.writeTextFile` writes to the client filesystem, not to Cradle-owned data. The legacy Cradle approval SSE owner has been removed from chat runtime, so `providers/acp/connection-manager.ts` must fail closed and leave the target file unchanged until ACP filesystem writes are represented as AI SDK tools with native `needsApproval`. Do not reintroduce a separate approval stream or wrapper for this path.
+ACP `fs.writeTextFile` writes to the client filesystem, not to Cradle-owned data. The legacy Cradle approval SSE owner has been removed from chat runtime, so `../chat-runtime-providers/acp/connection-manager.ts` must fail closed and leave the target file unchanged until ACP filesystem writes are represented as AI SDK tools with native `needsApproval`. Do not reintroduce a separate approval stream or wrapper for this path.

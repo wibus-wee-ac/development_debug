@@ -38,7 +38,7 @@ async function bootstrap() {
   const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }] = await Promise.all([
     import('./app'),
     import('./config/server-config'),
-    import('./modules/providers/model-info-registry'),
+    import('./modules/model-registry/model-info-registry'),
   ])
 
   const config = loadServerConfig()

@@ -6,8 +6,9 @@ import { join } from 'node:path'
 
 import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
 
-import { SystemAgentProvider } from '../src/modules/chat-runtime/providers/system-agent/provider'
+import { SystemAgentProvider } from '../src/modules/chat-runtime-providers/system-agent/provider'
 import type { RuntimeProviderTargetProfile } from '../src/modules/chat-runtime/runtime-provider-types'
 
 const jarCoreMocks = vi.hoisted(() => ({
@@ -22,10 +23,14 @@ const jarCoreMocks = vi.hoisted(() => ({
 
 vi.mock('@hijarvis/core', () => jarCoreMocks)
 
-vi.mock('../src/modules/providers/model-info-registry', () => ({
-  lookupModelRaw: vi.fn(async () => null),
-  lookupModelRawExact: vi.fn(async () => null),
-}))
+vi.mock('../src/modules/model-registry/model-info-registry', () => {
+  const ModelsDevModelSchema = z.object({ id: z.string() }).passthrough()
+  return {
+    ModelsDevModelSchema,
+    lookupModelRaw: vi.fn(async () => null),
+    lookupModelRawExact: vi.fn(async () => null),
+  }
+})
 
 describe('systemAgentProvider', () => {
   afterEach(() => {

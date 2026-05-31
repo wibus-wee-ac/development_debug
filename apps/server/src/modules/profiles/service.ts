@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import * as ProviderTargets from '../provider-targets/service'
-import type { ModelCapabilities, ProviderKind } from '../providers/types'
+import type { ModelCapabilities, ProviderKind } from '../provider-contracts/types'
 
 // ── types ──
 

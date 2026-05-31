@@ -9,8 +9,8 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import type { ModelRegistryMappingEntry, ModelsDevModel } from '../providers/model-info-registry'
-import { lookupModelRawExact, ModelsDevModelSchema } from '../providers/model-info-registry'
+import type { ModelRegistryMappingEntry, ModelsDevModel } from '../model-registry/model-info-registry'
+import { lookupModelRawExact, ModelsDevModelSchema } from '../model-registry/model-info-registry'
 
 const nonEmptyTrimmedString = z.string().trim().min(1)
 

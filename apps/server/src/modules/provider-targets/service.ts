@@ -20,8 +20,8 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
-import { runtimeSupportsProviderKind } from '../providers/runtime-compatibility'
-import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../providers/types'
+import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
+import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
 
 const ProviderTargetRefSchema = z.object({
   id: z.string().trim().min(1),
