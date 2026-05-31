@@ -20,6 +20,7 @@ import {
   getSessionAwaitsQueryKey,
   getSessionAwaitsSummaryQueryKey,
   postSessionAwaitsByIdCancelMutation,
+  postSessionAwaitsByIdRetryDeliveryMutation,
   postSessionAwaitsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionAwaitsResponse } from '~/api-gen/types.gen'
@@ -30,10 +31,12 @@ import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
+import type { GitRemote, GitStatus } from '~/lib/types'
 import { cn } from '~/lib/cn'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
 
 import {
+  describeGitHubAwaitTargetInputIssue,
   derivePullRequestNumberFromStatus,
   parseGitHubAwaitTargetInput,
   parseGitHubRepositoryInput,
@@ -45,6 +48,58 @@ import {
 type AwaitRow = GetSessionAwaitsResponse[number]
 type GitHubAwaitSourceKind = 'github-ci' | 'github-review'
 type GitHubReviewMode = 'approved' | 'changes-requested' | 'reviewed'
+
+function readNullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function normalizeGitRemotes(value: unknown): GitRemote[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  return value
+    .filter((remote): remote is { fetchUrl?: unknown, name: string, pushUrl?: unknown } => {
+      return remote !== null && typeof remote === 'object' && typeof (remote as { name?: unknown }).name === 'string'
+    })
+    .map(remote => ({
+      name: remote.name,
+      fetchUrl: readNullableString(remote.fetchUrl),
+      pushUrl: readNullableString(remote.pushUrl),
+    }))
+}
+
+function normalizeGitStatus(value: unknown): GitStatus | null {
+  if (value === null || typeof value !== 'object') {
+    return null
+  }
+  const status = value as {
+    ahead?: unknown
+    behind?: unknown
+    branch?: unknown
+    files?: unknown
+    isDetached?: unknown
+    tracking?: unknown
+  }
+  if (typeof status.branch !== 'string' || typeof status.ahead !== 'number' || typeof status.behind !== 'number' || typeof status.isDetached !== 'boolean' || !Array.isArray(status.files)) {
+    return null
+  }
+  const fileStatuses = new Set(['added', 'modified', 'deleted', 'renamed', 'untracked'])
+  return {
+    branch: status.branch,
+    tracking: readNullableString(status.tracking),
+    ahead: status.ahead,
+    behind: status.behind,
+    isDetached: status.isDetached,
+    files: status.files
+      .filter((file): file is { path: string, status: GitStatus['files'][number]['status'] } => {
+        return file !== null
+          && typeof file === 'object'
+          && typeof (file as { path?: unknown }).path === 'string'
+          && typeof (file as { status?: unknown }).status === 'string'
+          && fileStatuses.has((file as { status: string }).status)
+      }),
+  }
+}
 
 interface LiveCheckRun {
   id: number | null
@@ -273,6 +328,27 @@ function useCancelAwait(sessionId: string | null) {
         type: 'error',
         title: 'Failed to cancel await',
         description: error instanceof Error ? error.message : 'Session await could not be cancelled',
+      })
+    },
+  })
+}
+
+function useRetryAwaitDelivery(sessionId: string | null) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    ...postSessionAwaitsByIdRetryDeliveryMutation(),
+    onSuccess: () => {
+      if (sessionId) {
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId } }) })
+        void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId } }) })
+      }
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Failed to retry await',
+        description: error instanceof Error ? error.message : 'Session await delivery could not be retried',
       })
     },
   })
@@ -836,9 +912,11 @@ function describeStoredAwaitStatus(awaitRow: AwaitRow): string {
 function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: string | null }) {
   const queryClient = useQueryClient()
   const cancelMutation = useCancelAwait(sessionId)
+  const retryDeliveryMutation = useRetryAwaitDelivery(sessionId)
   const invalidatedRef = useRef(false)
   const supportsLiveStatus = awaitRow.source === 'github-ci' || awaitRow.source === 'github-review'
-  const { data: rawData } = useLiveCIStatus(supportsLiveStatus ? awaitRow.id : null, awaitRow.status === 'pending')
+  const isPending = awaitRow.status === 'pending'
+  const { data: rawData } = useLiveCIStatus(supportsLiveStatus && isPending ? awaitRow.id : null, isPending)
   const data = rawData as (LiveAwaitStatus | UnsupportedLiveAwaitStatus) | undefined
 
   useEffect(() => {
@@ -857,7 +935,8 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
     const errorText = data?.error?.message ?? (awaitRow.lastErrorText as string | null) ?? null
     const statusText = errorText ?? describeStoredAwaitStatus(awaitRow)
     const hasError = !!errorText || awaitRow.status === 'failed'
-    const isPending = awaitRow.status === 'pending'
+    const failureKind = (awaitRow as { failureKind?: unknown }).failureKind
+    const isRetryableDeliveryFailure = awaitRow.status === 'failed' && failureKind === 'delivery'
 
     return (
       <div className={cn(
@@ -893,6 +972,19 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
           >
             {statusText}
           </span>
+          {isRetryableDeliveryFailure && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="mt-1 h-8 w-full active:scale-[0.96] transition-transform"
+              disabled={retryDeliveryMutation.isPending}
+              onClick={() => retryDeliveryMutation.mutate({ path: { id: awaitRow.id }, body: {} })}
+            >
+              {retryDeliveryMutation.isPending ? <Spinner className="size-3" /> : null}
+              Retry delivery
+            </Button>
+          )}
         </div>
       </div>
     )
@@ -1128,8 +1220,8 @@ function GitHubAwaitComposer({
 }) {
   const { data: remotes, isLoading: remotesLoading, isError: remotesError } = useGitRemotes(workspaceId)
   const { data: status } = useGitStatus(workspaceId)
-  const detectedRepo = useMemo(() => selectGitHubRepository(remotes), [remotes])
-  const detectedPrNumber = useMemo(() => derivePullRequestNumberFromStatus(status), [status])
+  const detectedRepo = useMemo(() => selectGitHubRepository(normalizeGitRemotes(remotes)), [remotes])
+  const detectedPrNumber = useMemo(() => derivePullRequestNumberFromStatus(normalizeGitStatus(status)), [status])
   const [repoInput, setRepoInput] = useState('')
   const [targetInput, setTargetInput] = useState('')
   const [sourceKind, setSourceKind] = useState<GitHubAwaitSourceKind>('github-ci')
@@ -1154,10 +1246,12 @@ function GitHubAwaitComposer({
 
   const parsedRepo = parseGitHubRepositoryInput(repoInput)
   const parsedTarget = parseGitHubAwaitTargetInput(targetInput)
+  const targetIssue = describeGitHubAwaitTargetInputIssue(targetInput, sourceKind)
   const canCreate = !!sessionId
     && !!workspaceId
     && !!parsedRepo
     && !!parsedTarget
+    && !targetIssue
     && (sourceKind === 'github-ci' || parsedTarget.kind === 'pull-request')
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -1319,8 +1413,14 @@ function GitHubAwaitComposer({
               placeholder={sourceKind === 'github-ci' ? '123, commit sha/ref, or runs URL' : '123'}
               className="h-7 rounded-md pl-7 font-mono text-xs tabular-nums"
               aria-label={sourceKind === 'github-ci' ? 'GitHub pull request number, commit SHA/ref, or check run URL' : 'GitHub pull request number'}
+              aria-invalid={targetIssue ? true : undefined}
             />
           </div>
+          {targetIssue && (
+            <p className="text-[11px] leading-4 text-destructive">
+              {targetIssue}
+            </p>
+          )}
         </div>
       </div>
 
@@ -1381,7 +1481,7 @@ export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
   }
 
   const activeAwaits = awaits.filter(a => a.status === 'pending')
-  const pastAwaits = awaits.filter(a => a.status === 'triggered' || a.status === 'failed')
+  const pastAwaits = awaits.filter(a => a.status !== 'pending')
 
   if (awaits.length === 0) {
     return (

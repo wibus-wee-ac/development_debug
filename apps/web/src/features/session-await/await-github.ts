@@ -19,6 +19,27 @@ export type GitHubAwaitTarget
     | { kind: 'commit-ref', filter: { sha: string }, label: string }
     | { kind: 'check-run', filter: { runs_id: number }, label: string }
 
+export function describeGitHubAwaitTargetInputIssue(input: string, sourceKind: 'github-ci' | 'github-review'): string | null {
+  const trimmed = input.trim()
+  if (!trimmed) {
+    return null
+  }
+
+  const parsed = parseGitHubAwaitTargetInput(trimmed)
+  if (sourceKind === 'github-review' && parsed && parsed.kind !== 'pull-request') {
+    return 'Review awaits require a pull request number.'
+  }
+  if (parsed) {
+    return null
+  }
+  if (/github\.com\/[^/]+\/[^/]+\/actions\/runs\/\d+/i.test(trimmed)) {
+    return 'GitHub Actions workflow run URLs are not supported. Paste a check run URL or use the PR number.'
+  }
+  return sourceKind === 'github-review'
+    ? 'Enter a pull request number.'
+    : 'Enter a pull request number, commit ref, or GitHub check run URL.'
+}
+
 function normalizeRepositoryPath(pathname: string): string | null {
   const clean = pathname.replace(/^\/+/, '').replace(/\/+$/, '').replace(/\.git$/i, '')
   const segments = clean.split('/').filter(Boolean)

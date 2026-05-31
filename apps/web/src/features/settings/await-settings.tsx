@@ -51,6 +51,19 @@ function parseRepoFullName(fullName: string): { owner: string, repo: string } | 
   return { owner: parts[0], repo: parts[1] }
 }
 
+function readErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message
+  }
+  if (error && typeof error === 'object') {
+    const maybeMessage = (error as { message?: unknown }).message
+    if (typeof maybeMessage === 'string' && maybeMessage.trim().length > 0) {
+      return maybeMessage
+    }
+  }
+  return fallback
+}
+
 // ── Hooks ──
 
 function useBypassRules(workspaceId: string) {
@@ -150,6 +163,7 @@ function CheckRow({ name, required, isBypassed, onToggle, isPending }: {
   onToggle: () => void
   isPending: boolean
 }) {
+  const isToggleDisabled = isPending || required
   return (
     <div className={cn(
       'group flex items-center gap-2.5 rounded-md border px-3 py-1.5 transition-colors',
@@ -158,7 +172,7 @@ function CheckRow({ name, required, isBypassed, onToggle, isPending }: {
       <Switch
         checked={isBypassed}
         onCheckedChange={onToggle}
-        disabled={isPending}
+        disabled={isToggleDisabled}
         className="scale-75 origin-left"
       />
       <div className="flex flex-1 min-w-0 items-center gap-2">
@@ -193,6 +207,9 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
   }
 
   function handleToggle(check: AvailableCheck) {
+    if (check.required) {
+      return
+    }
     const existing = findMatchingRule(check.name)
     if (existing) {
       removeMut.mutate(existing.id)
@@ -233,7 +250,7 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
 
           {error && (
             <div className="text-[11px] text-destructive/70 py-2 px-3">
-              Failed to fetch checks. Existing rules still apply.
+              {readErrorMessage(error, 'Failed to fetch checks. Existing rules still apply.')}
             </div>
           )}
 

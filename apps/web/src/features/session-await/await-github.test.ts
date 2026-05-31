@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { parseGitHubAwaitTargetInput } from './await-github'
+import { describeGitHubAwaitTargetInputIssue, parseGitHubAwaitTargetInput } from './await-github'
 
 describe('parseGitHubAwaitTargetInput', () => {
   it('parses a PR number target', () => {
@@ -33,5 +33,15 @@ describe('parseGitHubAwaitTargetInput', () => {
 
   it('does not treat a workflow run URL as a check run', () => {
     expect(parseGitHubAwaitTargetInput('https://github.com/acme/app/actions/runs/201')).toBeNull()
+  })
+
+  it('explains unsupported workflow run URLs', () => {
+    expect(describeGitHubAwaitTargetInputIssue('https://github.com/acme/app/actions/runs/201', 'github-ci'))
+      .toBe('GitHub Actions workflow run URLs are not supported. Paste a check run URL or use the PR number.')
+  })
+
+  it('explains review target requirements', () => {
+    expect(describeGitHubAwaitTargetInputIssue('feature/checks', 'github-review'))
+      .toBe('Review awaits require a pull request number.')
   })
 })
