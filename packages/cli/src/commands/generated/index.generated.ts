@@ -141,6 +141,7 @@ import { register as registerSessionAwaitCancel } from './session/await-cancel'
 import { register as registerSessionAwaitCreate } from './session/await-create'
 import { register as registerSessionAwaitGet } from './session/await-get'
 import { register as registerSessionAwaitList } from './session/await-list'
+import { register as registerSessionAwaitRetryDelivery } from './session/await-retry-delivery'
 import { register as registerSessionAwaitSummary } from './session/await-summary'
 import { register as registerSessionAwaitTrigger } from './session/await-trigger'
 import { register as registerSessionCreate } from './session/create'
@@ -338,6 +339,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerSessionAwaitCreate(program)
   registerSessionAwaitGet(program)
   registerSessionAwaitList(program)
+  registerSessionAwaitRetryDelivery(program)
   registerSessionAwaitSummary(program)
   registerSessionAwaitTrigger(program)
   registerSessionCreate(program)

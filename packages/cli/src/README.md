@@ -8,4 +8,4 @@ Runtime and generated command source for the Cradle CLI.
 
 - **index.ts**: Root `cradle` executable entry point
 - **runtime/**: Stable command runtime helpers
-- **commands/**: Generated command modules and registration barrel
+- **commands/**: Generated command modules, manual task-shaped wrappers, and registration barrel

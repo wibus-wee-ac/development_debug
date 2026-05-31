@@ -12,7 +12,7 @@ const spec = {
   "flags": [
     {
       "name": "workspaceId",
-      "required": true,
+      "required": false,
       "target": "query.workspaceId",
       "type": "string"
     }

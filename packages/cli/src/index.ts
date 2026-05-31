@@ -3,6 +3,7 @@
 import { Command } from 'commander'
 
 import { registerGeneratedCommands } from './commands/generated/index.generated'
+import { registerSessionAwaitCommand } from './commands/session-await'
 import { createCommandContext } from './runtime/context'
 import { registerManualCommand } from './runtime/manual-command'
 
@@ -13,6 +14,7 @@ const program = new Command()
   .option('--server <url>', 'Cradle server URL', process.env.CRADLE_SERVER_URL ?? 'http://localhost:21423')
 
 registerGeneratedCommands(program)
+registerSessionAwaitCommand(program)
 registerManualCommand(program)
 
 program.hook('preAction', (root) => {

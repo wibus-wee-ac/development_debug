@@ -103,28 +103,29 @@ Register an await to pause your session and let Cradle automatically resume it w
 
 ```bash
 # Register a CI wait on a PR — Cradle will resume this session when CI passes
-cradle session await-create \
-  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
-  --workspace-id "$CRADLE_WORKSPACE_ID" \
-  --source github-ci \
-  --filter-json '{"repo":"owner/repo","pr":42}' \
+cradle session await github-ci owner/repo \
+  --pr 42 \
   --reason "Waiting for CI on PR #42"
 
 # Register a CI wait on a specific commit (no PR needed)
-cradle session await-create \
-  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
-  --workspace-id "$CRADLE_WORKSPACE_ID" \
-  --source github-ci \
-  --filter-json '{"repo":"owner/repo","sha":"abc123def"}' \
+cradle session await github-ci owner/repo \
+  --sha abc123def \
   --reason "Waiting for CI on commit abc123def"
 
 # Register a CI wait on one GitHub check run
-cradle session await-create \
-  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
-  --workspace-id "$CRADLE_WORKSPACE_ID" \
-  --source github-ci \
-  --filter-json '{"repo":"owner/repo","runs_id":1234567890}' \
+cradle session await github-ci owner/repo \
+  --run-id 1234567890 \
   --reason "Waiting for GitHub check run 1234567890"
+
+# Register a PR review wait
+cradle session await github-review owner/repo \
+  --pr 42 \
+  --mode approved \
+  --reason "Waiting for PR #42 approval"
+
+# Register a manual trigger-only wait
+cradle session await manual \
+  --reason "Waiting for deploy approval"
 
 # Check await status
 cradle session await-summary --session-id "$CRADLE_CHAT_SESSION_ID"
@@ -137,12 +138,16 @@ cradle session await-cancel <awaitId>
 
 # Manually trigger (for testing)
 cradle session await-trigger <awaitId> --resume-text "CI passed"
+
+# Retry delivery after a matched await failed to enqueue its resume message
+cradle session await retry <awaitId>
 ```
 
 **Key rules for await usage**:
 - `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` are automatically injected as environment variables by Cradle — they are always available in your shell without any setup.
 - After registering an await, end your turn. Cradle will resume the session with the trigger payload as a new user message.
-- Supported sources: `github-ci` (filter: `{"repo":"owner/repo","pr":N}`, `{"repo":"owner/repo","sha":"<commit-sha>"}`, or `{"repo":"owner/repo","runs_id":N}`), `manual` (no filter needed).
+- Prefer the task-shaped `cradle session await ...` commands. The raw generated `cradle session await-create` command is still available when you need to pass a custom source/filter payload directly.
+- Supported sources: `github-ci` (`--pr`, `--sha`, or `--run-id`), `github-review` (`--mode approved|changes-requested|reviewed`), and `manual`.
 - Your session history is preserved — when resumed, you have full context of what you were doing.
 
 <!-- CRADLE_CLI_MODULES_START -->
@@ -167,7 +172,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `provider` | 1 | Inspect provider model availability. | `cradle man provider` |
 | `search` | 2 | Search Cradle data. | `cradle man search` |
 | `secret` | 2 | Manage secret metadata. | `cradle man secret` |
-| `session` | 16 | Manage chat sessions and session links. | `cradle man session` |
+| `session` | 17 | Manage chat sessions and session links. | `cradle man session` |
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
 | `workflow-rule` | 4 | Manage workflow rules. | `cradle man workflow-rule` |
