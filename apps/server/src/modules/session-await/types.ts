@@ -20,6 +20,12 @@ export interface TriggerAwaitInput {
   resumePayloadJson?: string | null
 }
 
+export interface RetryAwaitDeliveryInput {
+  awaitId: string
+  resumeText?: string
+  resumePayloadJson?: string | null
+}
+
 export interface SessionAwaitSummary {
   awaiting: boolean
   pendingCount: number
@@ -27,14 +33,21 @@ export interface SessionAwaitSummary {
   reason: string | null
 }
 
-export interface CheckResult {
+interface PendingCheckResult {
   awaitId: string
-  matched: boolean
-  resumeText?: string
-  resumePayloadJson?: string
+  matched: false
   transientError?: string
   permanentError?: string
 }
+
+interface MatchedCheckResult {
+  awaitId: string
+  matched: true
+  resumeText: string
+  resumePayloadJson?: string
+}
+
+export type CheckResult = MatchedCheckResult | PendingCheckResult
 
 export interface SessionAwaitSource {
   source: string

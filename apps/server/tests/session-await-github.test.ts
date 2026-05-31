@@ -2,9 +2,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import { workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { shutdownInfra } from '../src/infra'
+import { db, shutdownInfra } from '../src/infra'
+import { createBypassRule } from '../src/modules/session-await/service'
 import { fetchLiveCIStatus, githubCISource, resetTokenCache } from '../src/modules/session-await/sources/github-ci'
 import { githubReviewSource } from '../src/modules/session-await/sources/github-review'
 import type { SessionAwait } from '../src/modules/session-await/types'
@@ -216,6 +218,65 @@ describe('gitHub session-await sources', () => {
     ])
 
     expect(result).toEqual({ awaitId: 'await-1', matched: false })
+  })
+
+  it('rejects ambiguous CI filters with more than one target', async () => {
+    await expect(githubCISource.checkPending([
+      awaitRow({ repo: 'acme/app', pr: 42, runs_id: 101 }),
+    ])).rejects.toThrow('GitHub CI filter requires exactly one of pr, sha, or runs_id')
+  })
+
+  it('does not bypass required checks or statuses', async () => {
+    db().insert(workspaces).values({ id: 'workspace-1', name: 'ws', path: '/tmp/ws' }).run()
+    createBypassRule('workspace-1', 'acme/app', '*')
+    installGitHubFetch({
+      '/repos/acme/app/pulls/42': {
+        number: 42,
+        title: 'Ship feature',
+        state: 'open',
+        merged: false,
+        mergeable: true,
+        head: { sha: 'head-sha', ref: 'feature' },
+        base: { ref: 'main' },
+      },
+      '/repos/acme/app/commits/head-sha/check-runs?per_page=100&page=1': {
+        total_count: 2,
+        check_runs: [
+          { name: 'required-build', status: 'completed', conclusion: 'failure' },
+          { name: 'optional-lint', status: 'completed', conclusion: 'failure' },
+        ],
+      },
+      '/repos/acme/app/commits/head-sha/status': {
+        state: 'failure',
+        total_count: 2,
+        statuses: [
+          { context: 'required-status', state: 'failure', description: 'failed', target_url: null },
+          { context: 'optional-status', state: 'failure', description: 'failed', target_url: null },
+        ],
+      },
+      '/repos/acme/app/branches/main/protection': {
+        required_status_checks: {
+          contexts: ['required-build', 'required-status'],
+        },
+      },
+    })
+
+    const [result] = await githubCISource.checkPending([
+      awaitRow({ repo: 'acme/app', pr: 42 }),
+    ])
+
+    expect(result.matched).toBe(true)
+    expect(result.resumeText).toContain('required-build: failure')
+    expect(result.resumeText).toContain('required-status: failure')
+    expect(result.resumeText).not.toContain('optional-lint')
+    expect(result.resumeText).not.toContain('optional-status')
+    expect(JSON.parse(result.resumePayloadJson ?? '{}')).toMatchObject({
+      allSuccess: false,
+      totalCount: 2,
+      failureCount: 2,
+      checkRuns: [{ name: 'required-build' }],
+      statuses: [{ context: 'required-status' }],
+    })
   })
 
   it('fails a CI await permanently when the repo or commit is not found', async () => {

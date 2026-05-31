@@ -17,7 +17,11 @@ export const sessionAwaits = sqliteTable('session_awaits', {
     enum: ['pending', 'triggered', 'expired', 'cancelled', 'failed'],
   }).notNull().default('pending'),
   reason: text('reason'),
+  resumeText: text('resume_text'),
   resumePayloadJson: text('resume_payload_json'),
+  failureKind: text('failure_kind', {
+    enum: ['source', 'delivery'],
+  }),
   bypassedChecksJson: text('bypassed_checks_json'),
   ...createdAt(),
   triggeredAt: int('triggered_at'),

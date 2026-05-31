@@ -52,7 +52,7 @@ export const SessionModel = {
   }),
 
   listQuery: t.Object({
-    workspaceId: t.String({ minLength: 1 }),
+    workspaceId: t.Optional(t.String({ minLength: 1 })),
   }),
 
   createBody: t.Object({

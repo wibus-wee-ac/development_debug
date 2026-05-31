@@ -77,13 +77,19 @@ function assertTargetCompatibleWithRuntime(input: {
   }
 }
 
-export function list(workspaceId: string): SessionView[] {
-  const rows = db()
-    .select()
-    .from(sessions)
-    .where(eq(sessions.workspaceId, workspaceId))
-    .orderBy(desc(sessions.updatedAt))
-    .all()
+export function list(workspaceId?: string): SessionView[] {
+  const rows = workspaceId
+    ? db()
+        .select()
+        .from(sessions)
+        .where(eq(sessions.workspaceId, workspaceId))
+        .orderBy(desc(sessions.updatedAt))
+        .all()
+    : db()
+        .select()
+        .from(sessions)
+        .orderBy(desc(sessions.updatedAt))
+        .all()
 
   const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
   return rows.map(row => toSessionView(row, modelsBySessionId.get(row.id) ?? null))

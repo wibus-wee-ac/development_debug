@@ -91,6 +91,27 @@ export const sessionAwait = new Elysia({
     body: SessionAwaitModel.triggerBody,
     response: { 200: SessionAwaitModel.sessionAwait },
   })
+  .post('/:id/retry-delivery', async ({ params, body }) => {
+    const row = await SessionAwait.retryDelivery({
+      awaitId: params.id,
+      resumeText: body.resumeText,
+      resumePayloadJson: body.resumePayloadJson,
+    })
+    if (!row) {
+      throw new AppError({ code: 'session_await_delivery_not_retryable', status: 409, message: 'Session await delivery is not retryable' })
+    }
+    return row
+  }, {
+    detail: {
+      'summary': 'Retry delivery for a failed session await',
+      'x-cradle-cli': {
+        command: ['session', 'await-retry-delivery'],
+      },
+    },
+    params: SessionAwaitModel.idParams,
+    body: SessionAwaitModel.retryDeliveryBody,
+    response: { 200: SessionAwaitModel.sessionAwait },
+  })
   .get('/summary', ({ query }) => SessionAwait.getSessionSummary(query.sessionId), {
     detail: {
       'summary': 'Get await summary for a session',

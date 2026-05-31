@@ -1,11 +1,18 @@
 import { t } from 'elysia'
 
+const nonBlankString = t.String({ minLength: 1, pattern: '.*\\S.*' })
+
 const awaitStatusEnum = t.Union([
   t.Literal('pending'),
   t.Literal('triggered'),
   t.Literal('expired'),
   t.Literal('cancelled'),
   t.Literal('failed'),
+])
+
+const awaitFailureKindEnum = t.Union([
+  t.Literal('source'),
+  t.Literal('delivery'),
 ])
 
 export const SessionAwaitModel = {
@@ -17,7 +24,9 @@ export const SessionAwaitModel = {
     filterJson: t.String(),
     status: awaitStatusEnum,
     reason: t.Nullable(t.String()),
+    resumeText: t.Nullable(t.String()),
     resumePayloadJson: t.Nullable(t.String()),
+    failureKind: t.Nullable(awaitFailureKindEnum),
     bypassedChecksJson: t.Nullable(t.String()),
     createdAt: t.Number(),
     triggeredAt: t.Nullable(t.Number()),
@@ -53,7 +62,12 @@ export const SessionAwaitModel = {
   }),
 
   triggerBody: t.Object({
-    resumeText: t.String({ minLength: 1 }),
+    resumeText: nonBlankString,
+    resumePayloadJson: t.Optional(t.Nullable(t.String())),
+  }),
+
+  retryDeliveryBody: t.Object({
+    resumeText: t.Optional(nonBlankString),
     resumePayloadJson: t.Optional(t.Nullable(t.String())),
   }),
 

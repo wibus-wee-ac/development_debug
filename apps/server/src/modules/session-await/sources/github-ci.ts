@@ -139,8 +139,8 @@ const GitHubCIFilterSchema = z.object({
 }).transform((filter) => {
   const checkRunId = filter.runs_id ?? filter.checkRunId ?? filter.runId
   return { ...filter, checkRunId }
-}).refine(filter => filter.pr !== undefined || filter.sha !== undefined || filter.checkRunId !== undefined, {
-  message: 'GitHub CI filter requires pr, sha, or runs_id',
+}).refine(filter => [filter.pr, filter.sha, filter.checkRunId].filter(value => value !== undefined).length === 1, {
+  message: 'GitHub CI filter requires exactly one of pr, sha, or runs_id',
 }).transform(({ repo, ...filter }) => ({
   ...filter,
   owner: repo.owner,
@@ -235,6 +235,33 @@ function aggregateCI(checkRuns: GitHubCheckRun[], statuses: GitHubCommitStatus[]
     allCompleted,
     allPassed,
   }
+}
+
+function filterBypassedCI(
+  aggregate: AggregatedCI,
+  perAwaitBypassed: string[],
+  workspacePatterns: string[],
+  requiredContexts: Set<string>,
+): AggregatedCI {
+  if (perAwaitBypassed.length === 0 && workspacePatterns.length === 0) {
+    return aggregate
+  }
+
+  const perAwaitSet = new Set(perAwaitBypassed)
+  const filteredRuns = aggregate.checkRuns.filter((run) => {
+    if (requiredContexts.has(run.name)) {
+      return true
+    }
+    return !perAwaitSet.has(run.name) && !matchesAnyBypassPattern(run.name, workspacePatterns)
+  })
+  const filteredStatuses = aggregate.statuses.filter((status) => {
+    if (requiredContexts.has(status.context)) {
+      return true
+    }
+    return !perAwaitSet.has(status.context) && !matchesAnyBypassPattern(status.context, workspacePatterns)
+  })
+
+  return aggregateCI(filteredRuns, filteredStatuses)
 }
 
 async function fetchAggregatedCI(target: ResolvedCITarget): Promise<AggregatedCI | null> {
@@ -441,17 +468,11 @@ export const githubCISource: SessionAwaitSource = {
         continue
       }
 
-      // Filter out bypassed checks (per-await + workspace-level rules)
       const workspacePatterns = getMatchingBypassPatterns(row.workspaceId, `${target.owner}/${target.repo}`)
-      const hasPerAwait = perAwaitBypassed.length > 0
-      const hasWorkspace = workspacePatterns.length > 0
-      if (hasPerAwait || hasWorkspace) {
-        const perAwaitSet = new Set(perAwaitBypassed)
-        const filteredRuns = aggregate.checkRuns.filter(r =>
-          !perAwaitSet.has(r.name) && !matchesAnyBypassPattern(r.name, workspacePatterns),
-        )
-        aggregate = aggregateCI(filteredRuns, aggregate.statuses)
-      }
+      const requiredContexts = target.baseBranch
+        ? (await fetchBranchProtection(target.owner, target.repo, target.baseBranch))?.requiredContexts ?? []
+        : []
+      aggregate = filterBypassedCI(aggregate, perAwaitBypassed, workspacePatterns, new Set(requiredContexts))
 
       if (aggregate.totalCount === 0) {
         const graceSeconds = filter.allowNoChecksAfterSeconds

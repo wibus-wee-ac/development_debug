@@ -18,7 +18,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **session-await.test.ts**: session await/resume lifecycle, pending states, and resume semantics.
 - **session-await-github.test.ts**: GitHub session-await source behavior for check runs, legacy commit statuses, no-signal grace, and PR review modes.
 - **chat-runtime.test.ts**: chat run execution, strict AI SDK `UIMessage` snapshot hydration, AI SDK `UIMessageChunk` SSE sequencing, usage writes, active abort flow, and persisted streaming cleanup when an in-memory active run is missing.
-- **src/modules/chat-runtime/providers/codex/provider.test.ts**: Codex app-server provider streaming, thread resume, and live `turn/steer` behavior.
+- **src/modules/chat-runtime-providers/codex/provider.test.ts**: Codex app-server provider streaming, thread resume, and live `turn/steer` behavior.
 - **kanban.test.ts**: Kanban board shell plus Issue-owned status, status-name movement, default status assignment, issue, ID generation, issue search, and comment core loops.
 - **system-agent-provider.test.ts**: Jarvis `jar-core` provider integration, including Cradle chat/workspace environment injection for shell commands.
 - **issue-agent.test.ts**: issue delegation, activity timeline, rerun, undelegation, and Chat Runtime continuation bridge coverage for queued and steered follow-up activity records.

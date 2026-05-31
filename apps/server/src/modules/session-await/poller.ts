@@ -43,6 +43,7 @@ export function unregisterSource(source: string) {
 const DEFAULT_INTERVAL_MS = 30_000
 const MAX_CONCURRENT_TRIGGERS = 3
 const MAX_CHECKS_PER_SOURCE = 100
+const EMPTY_RESUME_TEXT_ERROR = 'Source adapter matched without a resume message'
 
 let timer: ReturnType<typeof setInterval> | null = null
 let running = false
@@ -61,7 +62,7 @@ export function stop() {
   }
 }
 
-async function tick() {
+export async function runOnce(): Promise<void> {
   if (running) {
     return
   }
@@ -79,14 +80,14 @@ async function tick() {
       return
     }
     for (const row of allPending) {
-      if (row.expiresAt && row.expiresAt <= now) {
+      if (row.expiresAt !== null && row.expiresAt <= now) {
         service.expire(row.id)
       }
     }
 
     // 2. Timer-based triggers (fireAt <= now)
     const limit = pLimit(MAX_CONCURRENT_TRIGGERS)
-    const timerAwaits = service.listAllPending().filter(r => r.fireAt && r.fireAt <= now)
+    const timerAwaits = service.listAllPending().filter(r => r.fireAt !== null && r.fireAt <= now)
     await Promise.all(
       timerAwaits.map(row => limit(() =>
         service.trigger({ awaitId: row.id, resumeText: 'Timer fired' }))),
@@ -113,14 +114,19 @@ async function tick() {
 
       const toTrigger: { awaitId: string, resumeText: string, resumePayloadJson?: string }[] = []
       for (const result of results) {
-        if (result.permanentError) {
+        if (result.matched) {
+          if (result.resumeText.trim().length === 0) {
+            service.markFailed(result.awaitId, EMPTY_RESUME_TEXT_ERROR)
+          }
+          else {
+            toTrigger.push({ awaitId: result.awaitId, resumeText: result.resumeText, resumePayloadJson: result.resumePayloadJson })
+          }
+        }
+        else if (result.permanentError) {
           service.markFailed(result.awaitId, result.permanentError)
         }
         else if (result.transientError) {
           service.updateLastChecked(result.awaitId, result.transientError)
-        }
-        else if (result.matched) {
-          toTrigger.push({ awaitId: result.awaitId, resumeText: result.resumeText ?? '', resumePayloadJson: result.resumePayloadJson })
         }
         else {
           service.updateLastChecked(result.awaitId)
@@ -136,4 +142,8 @@ async function tick() {
   finally {
     running = false
   }
+}
+
+async function tick() {
+  await runOnce()
 }

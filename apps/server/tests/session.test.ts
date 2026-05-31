@@ -102,6 +102,12 @@ describe('session capability', () => {
         expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null })]),
       )
 
+      const allListRes = await app.handle(new Request('http://localhost/sessions'))
+      expect(allListRes.status).toBe(200)
+      expect(await allListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null })]),
+      )
+
       const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
       expect(await getRes.json()).toEqual(expect.objectContaining({ id: sessionId, modelId: null }))
 

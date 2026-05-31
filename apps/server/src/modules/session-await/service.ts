@@ -1,17 +1,18 @@
 import { randomUUID } from 'node:crypto'
 
 import { awaitBypassRules, sessionAwaits, sessions, workspaces } from '@cradle/db'
-import { and, eq } from 'drizzle-orm'
+import { and, asc, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { enqueueSessionQueueItem } from '../chat-runtime/service'
-import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError } from './sources/github-api'
+import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError, isGitHubMissingTarget } from './sources/github-api'
 import { GitHubCIFilterJsonSchema, validateGitHubCITarget } from './sources/github-ci'
 import { GitHubReviewFilterJsonSchema, validateGitHubReviewTarget } from './sources/github-review'
 import type {
   RegisterAwaitInput,
+  RetryAwaitDeliveryInput,
   SessionAwait,
   SessionAwaitSummary,
   TriggerAwaitInput,
@@ -19,6 +20,10 @@ import type {
 
 const SessionAwaitFilterJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
+
+const SupportedAwaitSourceSchema = z.enum(['github-ci', 'github-review', 'manual', 'timer'])
+const NonBlankResumeTextSchema = z.string()
+  .refine(value => value.trim().length > 0, 'resumeText must include non-whitespace content')
 
 const RegisterAwaitInputSchema = z.object({
   chatSessionId: z.string(),
@@ -32,13 +37,47 @@ const RegisterAwaitInputSchema = z.object({
 
 const TriggerAwaitInputSchema = z.object({
   awaitId: z.string(),
-  resumeText: z.string(),
+  resumeText: NonBlankResumeTextSchema,
   resumePayloadJson: z.string().nullable().default(null),
+})
+
+const RetryAwaitDeliveryInputSchema = z.object({
+  awaitId: z.string(),
+  resumeText: NonBlankResumeTextSchema.optional(),
+  resumePayloadJson: z.string().nullable().optional(),
 })
 
 const LastCheckedInputSchema = z.object({
   errorText: z.string().nullable().default(null),
 })
+
+async function enqueueResume(row: SessionAwait, resumeText: string): Promise<void> {
+  await enqueueSessionQueueItem({
+    sessionId: row.chatSessionId,
+    mode: 'queue',
+    text: resumeText,
+  })
+}
+
+function readDeliveryErrorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+function markDeliveryFailed(awaitId: string, errorText: string, checkedAt: number): SessionAwait | null {
+  db()
+    .update(sessionAwaits)
+    .set({
+      status: 'failed',
+      failureKind: 'delivery',
+      triggeredAt: null,
+      lastErrorText: errorText,
+      lastCheckedAt: checkedAt,
+    })
+    .where(eq(sessionAwaits.id, awaitId))
+    .run()
+
+  return db().select().from(sessionAwaits).where(eq(sessionAwaits.id, awaitId)).get() ?? null
+}
 
 // ── write operations ──
 
@@ -69,6 +108,32 @@ async function validateGitHubAwaitSource(source: string, filterJson: string): Pr
 
 export async function register(rawInput: RegisterAwaitInput): Promise<SessionAwait> {
   const input = RegisterAwaitInputSchema.parse(rawInput)
+  const source = SupportedAwaitSourceSchema.safeParse(input.source)
+  if (!source.success) {
+    throw new AppError({
+      code: 'session_await_source_unsupported',
+      status: 400,
+      message: `Unsupported session await source: ${input.source}`,
+      details: { supportedSources: SupportedAwaitSourceSchema.options },
+    })
+  }
+
+  if (input.source === 'timer' && input.fireAt === null) {
+    throw new AppError({
+      code: 'session_await_timer_fire_at_required',
+      status: 400,
+      message: 'Timer session awaits require fireAt.',
+    })
+  }
+
+  if (input.source !== 'timer' && input.fireAt !== null) {
+    throw new AppError({
+      code: 'session_await_fire_at_unsupported',
+      status: 400,
+      message: 'fireAt is only supported for timer session awaits.',
+    })
+  }
+
   if (input.source === 'github-ci') {
     GitHubCIFilterJsonSchema.parse(input.filterJson)
   }
@@ -161,7 +226,10 @@ export async function trigger(rawInput: TriggerAwaitInput): Promise<SessionAwait
     .set({
       status: 'triggered',
       triggeredAt: now,
+      resumeText: input.resumeText,
       resumePayloadJson: input.resumePayloadJson,
+      failureKind: null,
+      lastErrorText: null,
     })
     .where(and(
       eq(sessionAwaits.id, input.awaitId),
@@ -177,26 +245,77 @@ export async function trigger(rawInput: TriggerAwaitInput): Promise<SessionAwait
   // Resume through Chat Runtime's durable continuation queue. This preserves the
   // await result when the target session is currently running.
   try {
-    await enqueueSessionQueueItem({
-      sessionId: row.chatSessionId,
-      mode: 'queue',
-      text: input.resumeText,
-    })
+    await enqueueResume(row, input.resumeText)
   }
   catch (err) {
-    const errorText = err instanceof Error ? err.message : String(err)
-    db()
-      .update(sessionAwaits)
-      .set({
-        status: 'failed',
-        triggeredAt: null,
-        lastErrorText: errorText,
-        lastCheckedAt: now,
-      })
-      .where(eq(sessionAwaits.id, input.awaitId))
-      .run()
+    return markDeliveryFailed(input.awaitId, readDeliveryErrorText(err), now)
+  }
 
+  return updated
+}
+
+export async function retryDelivery(rawInput: RetryAwaitDeliveryInput): Promise<SessionAwait | null> {
+  const input = RetryAwaitDeliveryInputSchema.parse(rawInput)
+  const row = db()
+    .select()
+    .from(sessionAwaits)
+    .where(eq(sessionAwaits.id, input.awaitId))
+    .get()
+
+  if (!row) {
+    return null
+  }
+
+  if (row.status === 'triggered') {
+    return row
+  }
+
+  if (row.status !== 'failed' || row.failureKind !== 'delivery') {
+    return null
+  }
+
+  const resumeText = input.resumeText ?? row.resumeText
+  if (!resumeText || resumeText.trim().length === 0) {
+    throw new AppError({
+      code: 'session_await_resume_text_required',
+      status: 400,
+      message: 'A resumeText value is required to retry this session await delivery.',
+    })
+  }
+
+  const resumePayloadJson = input.resumePayloadJson === undefined
+    ? row.resumePayloadJson
+    : input.resumePayloadJson
+  const now = Math.floor(Date.now() / 1000)
+
+  const updated = db()
+    .update(sessionAwaits)
+    .set({
+      status: 'triggered',
+      triggeredAt: now,
+      resumeText,
+      resumePayloadJson,
+      failureKind: null,
+      lastErrorText: null,
+      lastCheckedAt: now,
+    })
+    .where(and(
+      eq(sessionAwaits.id, input.awaitId),
+      eq(sessionAwaits.status, 'failed'),
+      eq(sessionAwaits.failureKind, 'delivery'),
+    ))
+    .returning()
+    .get()
+
+  if (!updated) {
     return db().select().from(sessionAwaits).where(eq(sessionAwaits.id, input.awaitId)).get() ?? null
+  }
+
+  try {
+    await enqueueResume(updated, resumeText)
+  }
+  catch (err) {
+    return markDeliveryFailed(input.awaitId, readDeliveryErrorText(err), now)
   }
 
   return updated
@@ -206,7 +325,12 @@ export function markFailed(awaitId: string, errorText: string): void {
   const now = Math.floor(Date.now() / 1000)
   db()
     .update(sessionAwaits)
-    .set({ status: 'failed', lastErrorText: errorText, lastCheckedAt: now })
+    .set({
+      status: 'failed',
+      failureKind: 'source',
+      lastErrorText: errorText,
+      lastCheckedAt: now,
+    })
     .where(and(
       eq(sessionAwaits.id, awaitId),
       eq(sessionAwaits.status, 'pending'),
@@ -270,6 +394,7 @@ export function listBySession(sessionId: string): SessionAwait[] {
     .select()
     .from(sessionAwaits)
     .where(eq(sessionAwaits.chatSessionId, sessionId))
+    .orderBy(desc(sessionAwaits.createdAt), desc(sessionAwaits.triggeredAt), asc(sessionAwaits.id))
     .all()
 }
 
@@ -281,6 +406,7 @@ export function listPendingBySource(source: string): SessionAwait[] {
       eq(sessionAwaits.source, source),
       eq(sessionAwaits.status, 'pending'),
     ))
+    .orderBy(asc(sessionAwaits.createdAt), asc(sessionAwaits.id))
     .all()
 }
 
@@ -289,6 +415,7 @@ export function listAllPending(): SessionAwait[] {
     .select()
     .from(sessionAwaits)
     .where(eq(sessionAwaits.status, 'pending'))
+    .orderBy(asc(sessionAwaits.createdAt), asc(sessionAwaits.id))
     .all()
 }
 
@@ -300,6 +427,7 @@ export function getSessionSummary(sessionId: string): SessionAwaitSummary {
       eq(sessionAwaits.chatSessionId, sessionId),
       eq(sessionAwaits.status, 'pending'),
     ))
+    .orderBy(asc(sessionAwaits.createdAt), asc(sessionAwaits.id))
     .all()
 
   if (pending.length === 0) {
@@ -421,13 +549,31 @@ export interface AvailableChecksResult {
 }
 
 export async function fetchAvailableChecks(owner: string, repo: string): Promise<AvailableChecksResult> {
-  const repoInfo = await fetchRepo(owner, repo)
+  let repoInfo: Awaited<ReturnType<typeof fetchRepo>>
+  try {
+    repoInfo = await fetchRepo(owner, repo)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new AppError({ code: 'github_repo_not_found', status: 404, message: `Repository ${owner}/${repo} not found or inaccessible` })
+    }
+    throw err
+  }
   if (!repoInfo) {
-    throw new AppError({ code: 'github_repo_not_found', status: 404, message: `Repository ${owner}/${repo} not found` })
+    throw new AppError({ code: 'github_repo_unavailable', status: 503, message: `Repository ${owner}/${repo} could not be checked right now` })
   }
 
   const defaultBranch = repoInfo.default_branch
-  const headInfo = await fetchBranchHead(owner, repo, defaultBranch)
+  let headInfo: Awaited<ReturnType<typeof fetchBranchHead>>
+  try {
+    headInfo = await fetchBranchHead(owner, repo, defaultBranch)
+  }
+  catch (err) {
+    if (isGitHubMissingTarget(err)) {
+      throw new AppError({ code: 'github_repo_default_branch_not_found', status: 404, message: `Default branch ${defaultBranch} for ${owner}/${repo} not found or inaccessible` })
+    }
+    throw err
+  }
   if (!headInfo) {
     return { owner, repo, defaultBranch, checks: [] }
   }
