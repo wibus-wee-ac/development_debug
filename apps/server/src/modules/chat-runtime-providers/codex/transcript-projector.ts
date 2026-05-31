@@ -1,0 +1,237 @@
+// Output: Projection from Cradle UIMessage transcript snapshots to Codex app-server Response API items.
+// Input: Reconstructed Cradle chat history with text, files, reasoning, tool, and unknown parts.
+// Position: Codex runtime adapter boundary for native thread history reconstruction.
+
+import type { UIMessage } from 'ai'
+
+import type { ContentItem as CodexContentItem } from './app-server-protocol/ContentItem'
+import type { ResponseItem as CodexResponseItem } from './app-server-protocol/ResponseItem'
+
+type MessagePart = UIMessage['parts'][number]
+
+export function projectCradleTranscriptToCodexItems(messages: UIMessage[]): CodexResponseItem[] {
+  const items: CodexResponseItem[] = []
+  for (const message of messages) {
+    items.push(...projectMessage(message))
+  }
+  return items
+}
+
+function projectMessage(message: UIMessage): CodexResponseItem[] {
+  const items: CodexResponseItem[] = []
+  let pendingContent: CodexContentItem[] = []
+
+  const flushMessage = () => {
+    if (pendingContent.length === 0) {
+      return
+    }
+    items.push({
+      type: 'message',
+      role: message.role,
+      content: pendingContent,
+    })
+    pendingContent = []
+  }
+
+  for (const part of message.parts) {
+    const projectedContent = projectContentPart(message.role, part)
+    if (projectedContent) {
+      pendingContent.push(...projectedContent)
+      continue
+    }
+
+    flushMessage()
+    items.push(...projectNonContentPart(part))
+  }
+
+  flushMessage()
+  if (items.length === 0) {
+    items.push({
+      type: 'message',
+      role: message.role,
+      content: [textContentForRole(message.role, '[Cradle transcript message contained no model-visible parts]')],
+    })
+  }
+  return items
+}
+
+function projectContentPart(role: UIMessage['role'], part: MessagePart): CodexContentItem[] | null {
+  const record = asRecord(part)
+  if (!record) {
+    return [textContentForRole(role, describeOpaquePart(part))]
+  }
+
+  if (part.type === 'text') {
+    const text = typeof record.text === 'string' ? record.text : ''
+    return text ? [textContentForRole(role, text)] : null
+  }
+
+  if (part.type === 'file') {
+    return projectFilePart(role, record)
+  }
+
+  if (part.type === 'step-start' || record.type === 'step-finish') {
+    return [textContentForRole(role, describeOpaquePart(part))]
+  }
+
+  if (isUnknownContentLikePart(record)) {
+    return [textContentForRole(role, describeOpaquePart(part))]
+  }
+
+  return null
+}
+
+function projectNonContentPart(part: MessagePart): CodexResponseItem[] {
+  const record = asRecord(part)
+  if (!record) {
+    return [otherItem(part)]
+  }
+
+  if (part.type === 'reasoning') {
+    const text = readReasoningText(record)
+    if (!text) {
+      return [otherItem(part)]
+    }
+    return [{
+      type: 'reasoning',
+      summary: [{ type: 'summary_text', text }],
+      content: [{ type: 'reasoning_text', text }],
+      encrypted_content: null,
+    }]
+  }
+
+  if (isToolPart(record)) {
+    return projectToolPart(record)
+  }
+
+  return [otherItem(part)]
+}
+
+function projectFilePart(role: UIMessage['role'], part: Record<string, unknown>): CodexContentItem[] {
+  const mediaType = typeof part.mediaType === 'string' ? part.mediaType : ''
+  const url = typeof part.url === 'string' ? part.url : ''
+  const filename = typeof part.filename === 'string' ? part.filename : null
+
+  if (mediaType.startsWith('image/') && url) {
+    return [{
+      type: 'input_image',
+      image_url: url,
+      ...(readImageDetail(part) ? { detail: readImageDetail(part) } : {}),
+    } as CodexContentItem]
+  }
+
+  return [textContentForRole(role, JSON.stringify({
+    type: 'cradle.file',
+    filename,
+    mediaType,
+    url,
+  }))]
+}
+
+function projectToolPart(part: Record<string, unknown>): CodexResponseItem[] {
+  const toolCallId = String(part.toolCallId)
+  const toolName = readToolName(part)
+  const items: CodexResponseItem[] = [{
+    type: 'function_call',
+    name: toolName,
+    arguments: stringifyForCodex(part.input ?? {}),
+    call_id: toolCallId,
+  }]
+
+  if (part.state === 'output-available' || part.state === 'output-error' || part.state === 'output-denied') {
+    items.push({
+      type: 'function_call_output',
+      call_id: toolCallId,
+      output: stringifyForCodex(readToolOutput(part)),
+    })
+  }
+
+  return items
+}
+
+function readToolOutput(part: Record<string, unknown>): unknown {
+  if (part.state === 'output-error') {
+    return {
+      error: typeof part.errorText === 'string' ? part.errorText : 'Tool call failed',
+    }
+  }
+  if (part.state === 'output-denied') {
+    return { denied: true }
+  }
+  return part.output ?? ''
+}
+
+function readToolName(part: Record<string, unknown>): string {
+  if (typeof part.toolName === 'string' && part.toolName) {
+    return part.toolName
+  }
+  if (typeof part.type === 'string' && part.type.startsWith('tool-')) {
+    return part.type.slice('tool-'.length)
+  }
+  return 'unknown_tool'
+}
+
+function textContentForRole(role: UIMessage['role'], text: string): CodexContentItem {
+  return role === 'assistant'
+    ? { type: 'output_text', text }
+    : { type: 'input_text', text }
+}
+
+function otherItem(value: unknown): CodexResponseItem {
+  return {
+    type: 'message',
+    role: 'assistant',
+    content: [{
+      type: 'output_text',
+      text: describeOpaquePart(value),
+    }],
+  }
+}
+
+function describeOpaquePart(value: unknown): string {
+  return JSON.stringify({
+    type: 'cradle.transcript_part',
+    value,
+  })
+}
+
+function stringifyForCodex(value: unknown): string {
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value)
+  }
+  catch {
+    return JSON.stringify({ unserializable: true })
+  }
+}
+
+function readReasoningText(part: Record<string, unknown>): string | null {
+  if (typeof part.text === 'string' && part.text) {
+    return part.text
+  }
+  if (typeof part.reasoning === 'string' && part.reasoning) {
+    return part.reasoning
+  }
+  return null
+}
+
+function readImageDetail(part: Record<string, unknown>): 'high' | 'original' | null {
+  return part.detail === 'high' || part.detail === 'original' ? part.detail : null
+}
+
+function isToolPart(part: Record<string, unknown>): boolean {
+  return typeof part.toolCallId === 'string'
+    && (part.type === 'dynamic-tool' || (typeof part.type === 'string' && part.type.startsWith('tool-')))
+}
+
+function isUnknownContentLikePart(part: Record<string, unknown>): boolean {
+  return typeof part.type === 'string' && part.type.startsWith('data-')
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
+}
