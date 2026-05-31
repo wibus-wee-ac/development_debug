@@ -32,9 +32,9 @@ When('我刷新 System Info 面板', async function (this: CradleWorld) {
 })
 
 When('我点击首页导航项', async function (this: CradleWorld) {
-  const homeNav = this.page.locator('[data-testid="nav-home"]')
-  await expect(homeNav).toBeVisible({ timeout: 15_000 })
-  await homeNav.click()
+  const homeTabPill = this.page.locator('[data-testid^="tab-pill-"]').first()
+  await expect(homeTabPill).toBeVisible({ timeout: 15_000 })
+  await homeTabPill.click()
 })
 
 Then('System Info 面板应显示系统信息', async function (this: CradleWorld) {

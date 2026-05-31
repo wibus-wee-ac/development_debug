@@ -82,7 +82,14 @@ function workspaceButtonByName(world: CradleWorld, name: string) {
 }
 
 async function addWorkspaceFromPicker(world: CradleWorld, fixture: WorkspaceFixture): Promise<void> {
+  // Ensure the sidebar workspace section is visible and scrolled to the add button
+  const sidebar = world.page.locator('[data-testid="app-sidebar"]')
+  await expect(sidebar).toBeVisible({ timeout: 15_000 })
+
   const button = world.page.locator('[data-testid="add-workspace-btn"]')
+  // Wait for the button to be attached to DOM, then scroll into view
+  await button.waitFor({ state: 'attached', timeout: 15_000 })
+  await button.scrollIntoViewIfNeeded()
   await expect(button).toBeVisible({ timeout: 10_000 })
   await button.click()
 
@@ -228,7 +235,7 @@ Given('当前工作区中存在文件{string}，内容为{string}', async functi
 
 When('我在新建聊天中选择当前工作区', async function (this: CradleWorld) {
   const fixture = recallCurrentWorkspace(this)
-  const selector = this.page.locator('[data-testid="new-chat-workspace-selector"]')
+  const selector = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-workspace-selector"]').first()
 
   await expect(selector).toBeVisible({ timeout: 10_000 })
   await selector.click()
@@ -271,7 +278,11 @@ When('我将工作区重命名为 {string}', async function (this: CradleWorld, 
   await titleInput.fill(nextName)
   await titleInput.press('Enter')
 
-  await expect(detailPage.locator('[data-testid="workspace-detail-title-trigger"]')).toContainText(nextName, { timeout: 10_000 })
+  // Wait for the rename mutation to complete and the query to refetch
+  await expect.poll(async () => {
+    const text = await detailPage.locator('[data-testid="workspace-detail-title-trigger"]').textContent().catch(() => '')
+    return text?.includes(nextName) ? true : text
+  }, { timeout: 20_000, message: `Expected title to contain "${nextName}"` }).toBe(true)
 
   updateRememberedWorkspaceName(this, fixture.dir, nextName)
 })

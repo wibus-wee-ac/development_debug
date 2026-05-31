@@ -56,9 +56,10 @@ When('我关闭设置并返回首页', async function (this: CradleWorld) {
   await expect(closeButton).toBeVisible({ timeout: SETTINGS_TIMEOUT })
   await closeButton.click()
 
-  const homeNav = this.page.locator('[data-testid="nav-home"]')
-  await expect(homeNav).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await homeNav.click()
+  // Navigate to the home tab via the first tab pill (home is always the first pinned tab)
+  const firstTabPill = this.page.locator('[data-testid^="tab-pill-"]').first()
+  await expect(firstTabPill).toBeVisible({ timeout: SETTINGS_TIMEOUT })
+  await firstTabPill.click()
 })
 
 When('我复制 Support 反馈模板', async function (this: CradleWorld) {
@@ -132,9 +133,9 @@ Then('Jarvis 模型选择器应显示空 Provider 状态', async function (this:
 Then('Chronicle 设置应提示需要配置模型服务', async function (this: CradleWorld) {
   const settings = this.page.locator('[data-testid="chronicle-settings"]')
   await expect(settings).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await expect(settings).toContainText('记录功能还不能开启', { timeout: SETTINGS_TIMEOUT })
-  await expect(settings).toContainText('你还没有配置任何模型服务', { timeout: SETTINGS_TIMEOUT })
-  await expect(settings.getByRole('button', { name: '去配置模型服务' })).toBeVisible({ timeout: SETTINGS_TIMEOUT })
+  await expect(settings).toContainText('Chronicle cannot be enabled yet', { timeout: SETTINGS_TIMEOUT })
+  await expect(settings).toContainText('No model provider is configured yet', { timeout: SETTINGS_TIMEOUT })
+  await expect(settings.getByRole('button', { name: 'Configure model providers' })).toBeVisible({ timeout: SETTINGS_TIMEOUT })
 })
 
 Then('Chronicle 整理模型选择器应显示空 Provider 状态', async function (this: CradleWorld) {
@@ -144,20 +145,20 @@ Then('Chronicle 整理模型选择器应显示空 Provider 状态', async functi
 
   const menuPopup = this.page.locator('[role="menu"]').last()
   await expect(menuPopup).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await expect(menuPopup).toContainText('还没有配置模型服务', { timeout: SETTINGS_TIMEOUT })
+  await expect(menuPopup).toContainText('No model providers configured', { timeout: SETTINGS_TIMEOUT })
   await this.page.keyboard.press('Escape')
 })
 
 Then('Chronicle 记录活动开关应不可用', async function (this: CradleWorld) {
   const settings = this.page.locator('[data-testid="chronicle-settings"]')
-  await expect(settings).toContainText('需要先选择整理模型', { timeout: SETTINGS_TIMEOUT })
+  await expect(settings).toContainText('Choose an organization model first', { timeout: SETTINGS_TIMEOUT })
   await expect(settings.getByRole('switch').first()).toBeDisabled({ timeout: SETTINGS_TIMEOUT })
 })
 
 When('我从 Chronicle 设置跳转配置模型服务', async function (this: CradleWorld) {
   const settings = this.page.locator('[data-testid="chronicle-settings"]')
   await expect(settings).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await settings.getByRole('button', { name: '去配置模型服务' }).click()
+  await settings.getByRole('button', { name: 'Configure model providers' }).click()
 })
 
 When('我在 Jarvis 模型选择器选择 Provider {string}', async function (this: CradleWorld, name: string) {
@@ -170,12 +171,26 @@ When('我在 Jarvis 模型选择器选择 Provider {string}', async function (th
   const providerItem = menuPopup.locator('[role="menuitem"]').filter({ hasText: name }).first()
   await expect(providerItem).toBeVisible({ timeout: SETTINGS_TIMEOUT })
   await providerItem.click()
+
+  // After selecting provider, models load asynchronously.
+  // Wait for a model item to appear and click it.
+  await this.page.waitForTimeout(2000)
+  const modelItems = this.page.locator('[role="menuitem"]:not(:has-text("Loading")):not(:has-text("No "))')
+  const firstModel = modelItems.first()
+  if (await firstModel.isVisible({ timeout: 10_000 }).catch(() => false)) {
+    await firstModel.click()
+  }
+  await this.page.keyboard.press('Escape')
 })
 
 Then('Jarvis 模型选择器应显示模型{string}', async function (this: CradleWorld, model: string) {
   const selector = this.page.locator('[data-testid="jarvis-provider-model-selector"]')
   await expect(selector).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await expect(selector).toContainText(model, { timeout: SETTINGS_TIMEOUT })
+  // Model loads lazily after provider selection — poll until it appears
+  await expect.poll(async () => {
+    const text = await selector.innerText().catch(() => '')
+    return text.includes(model) ? true : text
+  }, { timeout: 30_000, message: `Expected Jarvis selector to contain "${model}"` }).toBe(true)
 })
 
 Then('剪贴板中应包含文本{string}', async function (this: CradleWorld, text: string) {

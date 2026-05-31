@@ -33,7 +33,7 @@ type ShortcutName
 
 const SHORTCUTS: Record<ShortcutName, { key: string, modifiers: ModifierKey[] }> = {
   'open-settings': { key: 'Comma', modifiers: ['Meta'] },
-  'exit-settings': { key: 'Escape', modifiers: [] },
+  'exit-settings': { key: 'Escape', modifiers: ['Meta'] },
   'toggle-sidebar': { key: 'KeyB', modifiers: ['Meta'] },
   'toggle-right-aside': { key: 'KeyB', modifiers: ['Meta', 'Alt'] },
   'toggle-bottom-panel': { key: 'Backquote', modifiers: ['Control'] },
@@ -186,11 +186,11 @@ Given('我已准备好一个带工作区的聊天标签页', async function (thi
   await expect(newChatNav).toBeVisible({ timeout: 10_000 })
   await newChatNav.click()
 
-  const textarea = this.page.locator('[data-testid="new-chat-textarea"]')
+  const textarea = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
   await expect(textarea).toBeVisible({ timeout: 10_000 })
   await textarea.fill('用来验证 shell 布局快捷键的测试消息')
 
-  const sendButton = this.page.locator('[data-testid="new-chat-send-btn"]')
+  const sendButton = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-send-btn"]').first()
   await expect(sendButton).toBeEnabled({ timeout: 15_000 })
   await sendButton.click()
 

@@ -8,7 +8,7 @@ const APPROVAL_TIMEOUT = 20_000
 const MOCK_CLAUDE_AGENT_RE = /Mock Claude Agent/i
 
 async function selectClaudeAgentRuntime(world: CradleWorld): Promise<void> {
-  const runtimeSelector = world.page.locator('[data-testid="runtime-selector"]')
+  const runtimeSelector = world.page.locator('[data-tab-visible="true"] [data-testid="runtime-selector"]').first()
   await expect(runtimeSelector).toBeVisible({ timeout: 10_000 })
   await runtimeSelector.click()
 
@@ -18,7 +18,7 @@ async function selectClaudeAgentRuntime(world: CradleWorld): Promise<void> {
 }
 
 async function selectMockClaudeAgentProvider(world: CradleWorld): Promise<void> {
-  const providerSelector = world.page.locator('[data-testid="provider-model-selector"]')
+  const providerSelector = world.page.locator('[data-tab-visible="true"] [data-testid="provider-model-selector"]').first()
   await expect(providerSelector).toBeVisible({ timeout: 10_000 })
   await providerSelector.click()
 
@@ -92,16 +92,16 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   const navItem = this.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  await expect(this.page.locator('[data-testid="new-chat-page"]')).toBeVisible({ timeout: 10_000 })
+  await expect(this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
 
   await selectClaudeAgentRuntime(this)
   await selectMockClaudeAgentProvider(this)
 
   // Fill and send
-  const textarea = this.page.locator('[data-testid="new-chat-textarea"]')
+  const textarea = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
   await textarea.click()
   await textarea.fill('请执行 echo hello')
-  const sendBtn = this.page.locator('[data-testid="new-chat-send-btn"]')
+  const sendBtn = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-send-btn"]').first()
   await expect(sendBtn).toBeEnabled({ timeout: 15_000 })
   await sendBtn.click()
 

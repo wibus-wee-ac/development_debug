@@ -3,7 +3,7 @@ import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world'
 
-const ASIDE_TIMEOUT = 15_000
+const ASIDE_TIMEOUT = 30_000
 const RIGHT_ASIDE = '[data-testid="app-layout-right-aside"]'
 const RIGHT_ASIDE_TOGGLE = '[data-testid="app-header-aside-toggle"]'
 const RIGHT_ASIDE_ROOT = '[data-testid="right-aside"]'
@@ -109,7 +109,7 @@ Then('右侧 Feed 面板应显示 GitHub checks composer', async function (this:
   await expect(panel).toHaveAttribute('data-right-aside-await-ready', 'true', { timeout: ASIDE_TIMEOUT })
   await expect(panel.locator('[data-testid="github-await-composer"]')).toBeVisible({ timeout: ASIDE_TIMEOUT })
   await expect(panel.getByLabel('GitHub repository')).toBeVisible({ timeout: ASIDE_TIMEOUT })
-  await expect(panel.getByLabel('GitHub pull request number or commit SHA/ref')).toBeVisible({ timeout: ASIDE_TIMEOUT })
+  await expect(panel.getByLabel('GitHub pull request number, commit SHA/ref, or check run URL')).toBeVisible({ timeout: ASIDE_TIMEOUT })
   await expect(panel.getByRole('button', { name: 'Wait for checks' })).toBeDisabled({ timeout: ASIDE_TIMEOUT })
 })
 

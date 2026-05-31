@@ -3,8 +3,8 @@ import { expect } from '@playwright/test'
 
 import type { CradleWorld } from '../support/world'
 
-const DELEGATE_TRIGGER = '[data-testid="issue-agent-delegate-trigger"]'
-const DELEGATE_OPTIONS = '[data-testid^="issue-agent-option-"]'
+const DELEGATE_TRIGGER = '[data-testid="issue-agent-trigger"]'
+const DELEGATE_OPTIONS = '[role="menuitemradio"]'
 const AGENT_SESSION = '[data-testid="issue-agent-session"]'
 const AGENT_SESSION_PHASE = '[data-testid="issue-agent-session-phase"]'
 const AGENT_SESSION_OPEN_CHAT = '[data-testid="issue-agent-session-open-chat"]'
@@ -75,7 +75,7 @@ When('我取消当前 Issue 的 Agent 委派', async function (this: CradleWorld
     await expect(trigger).toBeVisible({ timeout: 10_000 })
     await trigger.click()
 
-    const unassignedOption = this.page.locator('[data-testid="issue-agent-option-unassigned"]')
+    const unassignedOption = this.page.locator('[data-testid="issue-agent-option-none"]')
     try {
       await expect(unassignedOption).toBeVisible({ timeout: 5_000 })
       await unassignedOption.click({ timeout: 5_000 })

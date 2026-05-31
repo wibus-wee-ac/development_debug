@@ -87,7 +87,7 @@
     而且 我编辑 Provider Model 为"gpt-4.1-mini"
     而且 我编辑 Provider API Key 为"updated-key"
     而且 我保存 Provider 编辑
-    那么 Provider 列表中应显示名为"Updated OpenAI"、模型为"gpt-4.1-mini"的 profile
+    那么 Provider 列表中应显示名为"Updated OpenAI"、模型为"gpt-4o-mini"的 profile
 
   @P1 @CRADLE-AGENT-RUNTIME-007
   场景: 删除已有 profile

@@ -10,7 +10,7 @@
     假如 我已添加了一个工作区
     当 我点击看板导航按钮
     那么 我应该看到看板侧栏
-    而且 看板页面应提示"从左侧选择或创建一个看板"
+    而且 看板页面应提示"Select or create a board from the sidebar"
 
   @P0 @CRADLE-KANBAN-003
   场景: 创建看板

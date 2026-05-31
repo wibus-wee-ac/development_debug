@@ -101,20 +101,24 @@ async function addWorkspaceFromPicker(world: CradleWorld, fixture: GitWorkspaceF
   ).toBeVisible({ timeout: 10_000 })
 }
 
-async function getHeaderBranchControl(world: CradleWorld) {
-  const locator = world.page.locator('[data-testid="git-branch-control-trigger"]')
-  await expect(locator).toBeVisible({ timeout: 10_000 })
+async function getGitPanelBranchControl(world: CradleWorld) {
+  // Wait for the git panel to finish loading git status
+  const gitPanel = world.page.locator('[data-testid="git-panel"]')
+  await expect(gitPanel).toBeVisible({ timeout: 15_000 })
+  await expect(gitPanel).toHaveAttribute('data-right-aside-git-ready', 'true', { timeout: 30_000 })
+  const locator = world.page.locator('[data-testid="git-panel-branch-trigger"]')
+  await expect(locator).toBeVisible({ timeout: 15_000 })
   return locator
 }
 
-async function assertHeaderBranch(world: CradleWorld, branchName: string): Promise<void> {
-  const control = await getHeaderBranchControl(world)
+async function assertGitPanelBranch(world: CradleWorld, branchName: string): Promise<void> {
+  const control = await getGitPanelBranchControl(world)
   await expect.poll(async () => control.getAttribute('data-branch-name'), { timeout: 10_000 }).toBe(branchName)
   await expect(control).toContainText(branchName, { timeout: 10_000 })
 }
 
-async function openHeaderBranchPicker(world: CradleWorld): Promise<void> {
-  const control = await getHeaderBranchControl(world)
+async function openGitPanelBranchPicker(world: CradleWorld): Promise<void> {
+  const control = await getGitPanelBranchControl(world)
   await control.click()
   await expect(world.page.locator(GIT_BRANCH_PICKER)).toBeVisible({ timeout: 10_000 })
 }
@@ -148,16 +152,22 @@ Given('我已添加了一个真实 Git 工作区', async function (this: CradleW
 
 Then('Chat Header 中应该显示当前 Git 分支', async function (this: CradleWorld) {
   const fixture = recallGitWorkspace(this)
-  await assertHeaderBranch(this, fixture.currentBranch)
+  await openRightAside(this)
+  await switchRightAsideToGit(this)
+  await assertGitPanelBranch(this, fixture.currentBranch)
 })
 
 Then('Chat Header 中应该显示 Git 分支 {string}', async function (this: CradleWorld, branchName: string) {
-  await assertHeaderBranch(this, branchName)
+  await openRightAside(this)
+  await switchRightAsideToGit(this)
+  await assertGitPanelBranch(this, branchName)
 })
 
 When('我打开 Chat Header 中的 Git 分支选择器', async function (this: CradleWorld) {
-  console.warn('[step] open git branch picker from chat header')
-  await openHeaderBranchPicker(this)
+  console.warn('[step] open git branch picker from git panel')
+  await openRightAside(this)
+  await switchRightAsideToGit(this)
+  await openGitPanelBranchPicker(this)
 })
 
 Then('我应该看到 Git 分支选择器', async function (this: CradleWorld) {

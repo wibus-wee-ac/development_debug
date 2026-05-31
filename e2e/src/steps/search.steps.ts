@@ -96,6 +96,8 @@ When('我在全局搜索中输入{string}', async function (this: CradleWorld, q
   const input = globalSearchInput(this)
   await expect(input).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
   await input.fill(query)
+  // Wait for the search results to update
+  await this.page.waitForTimeout(500)
 })
 
 When('我从全局搜索执行命令{string}', async function (this: CradleWorld, label: string) {
