@@ -1033,7 +1033,7 @@ visible
                 ))}
 
               {!isLoading && visibleAgents.length === 0 && !isDrafting && (
-                <div className="px-2 py-6 text-center">
+                <div className="px-2 py-6 text-center" data-testid="agent-empty-state">
                   <p className="text-[11.5px] text-muted-foreground/70">
                     {filter ? 'No matches' : 'No agents yet'}
                   </p>

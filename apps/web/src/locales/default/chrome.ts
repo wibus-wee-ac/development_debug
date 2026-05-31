@@ -12,6 +12,7 @@ export default {
   'footer.action.askJarvis': 'Ask Jarvis',
   'rightAside.tab.files': 'Files',
   'rightAside.tab.changes': 'Changes',
+  'rightAside.tab.git': 'Git',
   'rightAside.tab.issue': 'Issue',
   'rightAside.tab.runtime': 'Runtime',
   'rightAside.tab.await': 'Feed',

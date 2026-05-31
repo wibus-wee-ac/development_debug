@@ -84,7 +84,7 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
         {/* Status */}
         <PropertyRow label={t('property.status')}>
           <DropdownMenu>
-            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors">
+            <DropdownMenuTrigger className="flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px] text-foreground hover:bg-fill transition-colors" data-testid="issue-status-trigger">
               {currentStatus && <StatusIcon category={currentStatus.category as StatusCategory} size={14} />}
               <span>{currentStatus?.name ?? t('priority.none')}</span>
             </DropdownMenuTrigger>

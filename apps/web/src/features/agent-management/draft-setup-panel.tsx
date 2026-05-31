@@ -144,8 +144,15 @@ function PresetSetupForm({
 
   const handleConnect = useCallback(async () => {
     const currentValues = form.getValues()
-    setBusy(true)
     setStatus(null)
+
+    const requiresApiKey = preset.fields.some(f => f.key === 'apiKey')
+    if (requiresApiKey && !currentValues.values.apiKey) {
+      setStatus({ ok: false, text: 'API key secretRef is required' })
+      return
+    }
+
+    setBusy(true)
     try {
       let credentialRef: string | null = null
       const apiKey = currentValues.values.apiKey

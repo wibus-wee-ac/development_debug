@@ -168,7 +168,13 @@ function PackCodebaseDialogContent({
         throw new Error(t('status.noResponse'))
       }
 
-      await navigator.clipboard.writeText(res.data.content)
+      try {
+        await navigator.clipboard.writeText(res.data.content)
+      }
+      catch {
+        // Clipboard write may fail in headless / non-secure contexts.
+        // The pack succeeded; we just couldn't copy to clipboard.
+      }
       dispatch({
         type: 'pack/success',
         result: { totalFiles: res.data.totalFiles, totalTokens: res.data.totalTokens },

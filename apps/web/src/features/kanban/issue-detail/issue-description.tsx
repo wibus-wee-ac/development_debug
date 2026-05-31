@@ -368,6 +368,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
   }, [boards, issue.workspaceId, openSettings, openTab, openWorkspaceFileTab, setAgentFocusTarget, setBrowserPanelOpen, setSettingsSection])
 
   return (
+    <div data-testid="issue-description-editor">
     <MarkdownEditor
       content={issue.description ?? ''}
       documentId={issue.id}
@@ -382,5 +383,6 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
         onOpen: handleMentionOpen,
       }}
     />
+    </div>
   )
 }

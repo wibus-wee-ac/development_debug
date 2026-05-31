@@ -34,6 +34,7 @@ export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-controls={contentId}
+        data-testid="chat-reasoning-toggle"
         className={cn(
           'flex items-center gap-1.5 text-xs transition-colors duration-150',
           expanded ? 'text-muted-foreground' : 'text-muted-foreground/60 hover:text-muted-foreground',
@@ -53,6 +54,7 @@ export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
         <div
           id={contentId}
           className="overflow-hidden"
+          data-testid="chat-reasoning-content"
         >
           <div className="relative pt-2 pl-5">
             <div className="text-sm max-h-82 overflow-y-auto leading-relaxed opacity-50 before:absolute before:top-0 before:left-0 before:h-full before:w-0.5 before:bg-linear-to-b before:from-transparent before:via-muted-foreground/50 before:to-transparent">

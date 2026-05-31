@@ -6,20 +6,51 @@ import {
   getSessionsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionsResponse } from '~/api-gen/types.gen'
+import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
-export type WorkspaceSession = GetSessionsResponse[number]
+export interface WorkspaceSession {
+  id: string
+  workspaceId: string | null
+  title: string | null
+  providerTargetId: string | null
+  agentId: string | null
+  modelId: string | null
+  linkedIssueId: string | null
+  runtimeKind: RuntimeKind
+  pinned: number
+  createdAt: number
+  updatedAt: number
+}
 
-export const sessionsQueryKey = (workspaceId: string | null) =>
-  workspaceId
-    ? getSessionsQueryKey({ query: { workspaceId } })
-    : ['getSessions', { query: { workspaceId: 'no-workspace' } }] as const
+export const sessionsQueryKey = (_workspaceId?: string | null) =>
+  getSessionsQueryKey()
 
-export function useSessions(workspaceId: string | null) {
-  const { data: sessions = [], isPending: loading } = useQuery({
-    ...getSessionsOptions({ query: { workspaceId: workspaceId! } }),
-    enabled: !!workspaceId,
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSession {
+  return {
+    id: session.id,
+    workspaceId: nullableString(session.workspaceId),
+    title: nullableString(session.title),
+    providerTargetId: nullableString(session.providerTargetId),
+    agentId: nullableString(session.agentId),
+    modelId: nullableString(session.modelId),
+    linkedIssueId: nullableString(session.linkedIssueId),
+    runtimeKind: session.runtimeKind,
+    pinned: session.pinned,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  }
+}
+
+export function useAllSessions() {
+  const { data: rawSessions = [], isPending: loading } = useQuery({
+    ...getSessionsOptions(),
   })
+  const sessions = rawSessions.map(asWorkspaceSession)
 
   useEffect(() => {
     useSessionLayoutStore.getState().upsertSessions(sessions.map(session => ({
@@ -29,6 +60,15 @@ export function useSessions(workspaceId: string | null) {
       runtimeKind: session.runtimeKind,
     })))
   }, [sessions])
+
+  return { sessions, loading }
+}
+
+export function useSessions(workspaceId: string | null) {
+  const { sessions: allSessions, loading } = useAllSessions()
+  const sessions = workspaceId
+    ? allSessions.filter(session => session.workspaceId === workspaceId)
+    : []
 
   return { sessions, loading }
 }

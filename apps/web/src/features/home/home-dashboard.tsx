@@ -1,5 +1,5 @@
 import { Link } from '@cradle/tabs-next'
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   BotIcon,
@@ -17,17 +17,16 @@ import {
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  getSessionsOptions,
-  postWorkspacesFromDirectoryMutation,
-} from '~/api-gen/@tanstack/react-query.gen'
+import { postWorkspacesFromDirectoryMutation } from '~/api-gen/@tanstack/react-query.gen'
 import type { AutomationDefinition, AutomationRun } from '~/features/automation'
 import { AutomationDashboard, useAutomationDefinitions } from '~/features/automation'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
+import type { WorkspaceSession } from '~/features/workspace/use-session'
+import { useAllSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { Session, Workspace } from '~/lib/types'
+import type { Workspace } from '~/lib/types'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
 
@@ -294,7 +293,7 @@ function PendingRunRow({ run, t }: { run: PendingRun, t: TFunction<'home'> }) {
 
 // ── Recent session row ────────────────────────────────────────────────────────
 
-function RecentSessionRow({ session, workspaceName, t }: { session: Session, workspaceName: string, t: TFunction<'home'> }) {
+function RecentSessionRow({ session, workspaceName, t }: { session: WorkspaceSession, workspaceName: string, t: TFunction<'home'> }) {
   return (
     <Link
       to="chat"
@@ -393,12 +392,13 @@ function ScheduledRow({ task, onClick }: { task: ScheduledTask, onClick: () => v
 
 type ActivityItem
   = { kind: 'workspace', ws: Workspace }
-    | { kind: 'session', session: Session, workspaceName: string }
+    | { kind: 'session', session: WorkspaceSession, workspaceName: string }
     | { kind: Artifact['type'], artifact: Artifact }
 
 export function HomeDashboard() {
   const { t: homeT } = useTranslation('home')
   const { workspaces } = useWorkspaces()
+  const { sessions } = useAllSessions()
   const [automationOpen, setAutomationOpen] = useState(false)
   const queryClient = useQueryClient()
   const { selectDirectory } = useDirectoryPicker()
@@ -408,15 +408,13 @@ export function HomeDashboard() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['workspaces'] }),
   })
 
-  const sessionQueries = useQueries({
-    queries: workspaces.map(ws => getSessionsOptions({ query: { workspaceId: ws.id } })),
-  })
+  const workspaceNameById = new Map(workspaces.map(ws => [ws.id, ws.name]))
 
-  const recentSessions = sessionQueries
-    .flatMap((q, i) => ((q.data as Session[] | undefined) ?? []).map(s => ({
-      session: s,
-      workspaceName: workspaces[i]?.name ?? '',
-    })))
+  const recentSessions = sessions
+    .map(session => ({
+      session,
+      workspaceName: session.workspaceId ? (workspaceNameById.get(session.workspaceId) ?? '') : '',
+    }))
     .sort((a, b) => b.session.updatedAt - a.session.updatedAt)
     .slice(0, 10)
 
@@ -502,7 +500,7 @@ export function HomeDashboard() {
                 <ActivityCard
                   key={`sess-${item.session.id}`}
                   kind="session"
-                  title={item.session.title}
+                  title={item.session.title ?? item.session.id}
                   meta={item.workspaceName}
                   to="chat"
                   params={{ sessionId: item.session.id }}

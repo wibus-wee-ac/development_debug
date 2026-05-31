@@ -24,7 +24,6 @@ import { useTranslation } from 'react-i18next'
 import {
   getChatSessionsBySessionIdMessagesQueryKey,
   getSessionsByIdQueryKey,
-  getSessionsOptions,
   getWorkflowRulesByWorkspaceIdOptions,
   getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdOptions,
@@ -36,7 +35,7 @@ import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import type { WorkspaceSession } from '~/features/workspace/use-session'
-import { sessionsQueryKey } from '~/features/workspace/use-session'
+import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
@@ -199,7 +198,7 @@ function InlineEditTitleEditor({
   onCancel,
 }: {
   initialValue: string
-  onCommit: (name: string) => void
+  onCommit: (name: string) => void | Promise<void>
   onCancel: () => void
 }) {
   const { t } = useTranslation('workspace')
@@ -212,10 +211,15 @@ function InlineEditTitleEditor({
     })
   }, [])
 
-  const commit = useCallback(() => {
+  const commit = useCallback(async () => {
     const trimmed = inputRef.current?.value.trim() ?? ''
     if (trimmed && trimmed !== initialValue) {
-      onCommit(trimmed)
+      try {
+        await onCommit(trimmed)
+      }
+      catch {
+        // Rename mutation failed; close editor anyway to avoid stuck state.
+      }
     }
     onCancel()
   }, [initialValue, onCancel, onCommit])
@@ -245,7 +249,7 @@ function InlineEditTitle({
   onSave,
 }: {
   value: string
-  onSave: (name: string) => void
+  onSave: (name: string) => void | Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
 
@@ -489,10 +493,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     refetchInterval: 10_000,
   })
 
-  const { data: sessions = [] } = useQuery({
-    ...getSessionsOptions({ query: { workspaceId } }),
-    enabled: !!workspaceId,
-  })
+  const { sessions } = useSessions(workspaceId)
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
   const { data: workflowRule } = useQuery({

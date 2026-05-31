@@ -17,7 +17,7 @@ import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 import { useShallow } from 'zustand/react/shallow'
 
-import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getIssuesSearchOptions, getKanbanBoardsOptions, getSearchThreadsOptions, getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import {
   Command,
@@ -379,6 +379,104 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
   }
 }
 
+// ── Thread search hook ────────────────────────────────────────────────────────
+
+interface ThreadSearchHit {
+  sessionId: string
+  sessionTitle: string | null
+  titleRanges: Array<{ start: number; end: number }>
+  snippets: Array<{
+    text: string
+    ranges: Array<{ start: number; end: number }>
+    messageRole: string
+    messageId: string
+  }>
+}
+
+function useThreadSearch(query: string, enabled: boolean) {
+  const trimmed = query.trim()
+  const { data, isPending } = useQuery({
+    ...getSearchThreadsOptions({ query: { query: trimmed, limit: 10 } }),
+    enabled: enabled && trimmed.length > 0,
+    staleTime: 10_000,
+  })
+
+  const threads = (data ?? []) as ThreadSearchHit[]
+
+  return {
+    threads: enabled ? threads : [],
+    isPending: enabled && trimmed.length > 0 && isPending,
+  }
+}
+
+// ── Issue search hook ─────────────────────────────────────────────────────────
+
+interface IssueSearchHit {
+  id: string
+  title: string
+  workspaceId: string
+  priority: string
+  labels: string[]
+}
+
+function useIssueSearch(query: string, enabled: boolean) {
+  const trimmed = query.trim()
+  const { data, isPending } = useQuery({
+    ...getIssuesSearchOptions({ query: { q: trimmed, limit: '10' } }),
+    enabled: enabled && trimmed.length > 0,
+    staleTime: 10_000,
+  })
+
+  const issues = (data ?? []) as IssueSearchHit[]
+
+  // Derive workspace IDs from search results to batch-fetch boards
+  const workspaceIds = useMemo(
+    () => [...new Set(issues.map(issue => issue.workspaceId))],
+    [issues],
+  )
+
+  const firstWorkspaceId = workspaceIds[0] ?? null
+
+  const { data: boardsData } = useQuery({
+    ...getKanbanBoardsOptions({ query: { workspaceId: firstWorkspaceId ?? undefined } }),
+    enabled: enabled && !!firstWorkspaceId,
+    staleTime: 60_000,
+  })
+
+  const boardId = (boardsData as Array<{ id: string }> | undefined)?.[0]?.id ?? null
+
+  return {
+    issues: enabled ? issues : [],
+    isPending: enabled && trimmed.length > 0 && isPending,
+    boardId,
+  }
+}
+
+// ── Highlighted text renderer ─────────────────────────────────────────────────
+
+function HighlightedText({ text, ranges }: { text: string; ranges: Array<{ start: number; end: number }> }) {
+  if (!ranges || ranges.length === 0) {
+    return <>{text}</>
+  }
+
+  const parts: React.ReactNode[] = []
+  let cursor = 0
+
+  for (const range of ranges) {
+    if (range.start > cursor) {
+      parts.push(text.slice(cursor, range.start))
+    }
+    parts.push(<mark key={range.start}>{text.slice(range.start, range.end)}</mark>)
+    cursor = range.end
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor))
+  }
+
+  return <>{parts}</>
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export const GlobalSearchDialog = memo(({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
@@ -481,6 +579,16 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
     fileSearchWorkspace.workspaceId,
   )
 
+  const { threads, isPending: threadsPending } = useThreadSearch(
+    trimmed,
+    open && isQuickOpenMode,
+  )
+
+  const { issues, isPending: issuesPending, boardId } = useIssueSearch(
+    trimmed,
+    open && isQuickOpenMode,
+  )
+
   // Filter commands by query
   const filteredCommands = useMemo(() => {
     if (!isCommandMode) {
@@ -515,8 +623,8 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
       .map(result => result.command)
   }, [commandHistory, commands, hasQuery, isCommandMode, trimmed])
 
-  const isPending = isQuickOpenMode && filesPending
-  const hasResults = filteredCommands.length > 0 || files.length > 0
+  const isPending = isQuickOpenMode && (filesPending || threadsPending || issuesPending)
+  const hasResults = filteredCommands.length > 0 || files.length > 0 || threads.length > 0 || issues.length > 0
   const showModeGuide = !hasQuery && isCommandMode
   const showUnsupportedModeState = isUnsupportedMode && !isPending && !hasResults
   const showFileSearchUnavailableState = isQuickOpenMode
@@ -565,6 +673,26 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
       })
     },
     [close, fileWorkspaceId, openWorkspaceFile, setBrowserPanelOpen],
+  )
+
+  const { openTab } = useCradleNavigation()
+
+  const handleSelectThread = useCallback(
+    (sessionId: string) => {
+      close()
+      openTab('chat', { sessionId })
+    },
+    [close, openTab],
+  )
+
+  const handleSelectIssue = useCallback(
+    (issueId: string) => {
+      close()
+      if (boardId) {
+        openTab('kanban-board', { boardId, issue: issueId })
+      }
+    },
+    [boardId, close, openTab],
   )
 
   return createPortal(
@@ -658,6 +786,32 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
                         key={file.path}
                         file={file}
                         onSelect={handleSelectFile}
+                      />
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {threads.length > 0 && (
+                  <CommandGroup>
+                    <GroupHeader label={t('group.threads')} count={threads.length} />
+                    {threads.map(thread => (
+                      <ThreadSearchResultRow
+                        key={thread.sessionId}
+                        thread={thread}
+                        onSelect={handleSelectThread}
+                      />
+                    ))}
+                  </CommandGroup>
+                )}
+
+                {issues.length > 0 && (
+                  <CommandGroup>
+                    <GroupHeader label={t('group.issues')} count={issues.length} />
+                    {issues.map(issue => (
+                      <IssueSearchResultRow
+                        key={issue.id}
+                        issue={issue}
+                        onSelect={handleSelectIssue}
                       />
                     ))}
                   </CommandGroup>
@@ -802,6 +956,73 @@ const FileSearchCommandRow = memo(({
     >
       <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
+    </CommandItem>
+  )
+})
+
+const ThreadSearchResultRow = memo(({
+  thread,
+  onSelect,
+}: {
+  thread: ThreadSearchHit
+  onSelect: (sessionId: string) => void
+}) => {
+  const { t } = useTranslation('search')
+  const selectThread = useCallback(() => {
+    onSelect(thread.sessionId)
+  }, [thread.sessionId, onSelect])
+
+  const title = thread.sessionTitle ?? thread.snippets[0]?.text ?? ''
+  const snippet = thread.snippets[0]
+
+  return (
+    <CommandItem
+      value={`thread-${thread.sessionId}`}
+      onSelect={selectThread}
+      className="flex flex-col gap-1 px-2.5 py-1.5"
+      data-testid={`global-search-thread-result-${thread.sessionId}`}
+    >
+      <span
+        className="truncate text-sm"
+        data-testid={`global-search-thread-title-${thread.sessionId}`}
+      >
+        <HighlightedText text={title} ranges={thread.titleRanges} />
+      </span>
+      {snippet && (
+        <span
+          className="truncate text-xs text-muted-foreground"
+          data-testid={`global-search-thread-snippet-${thread.sessionId}`}
+        >
+          <HighlightedText text={snippet.text} ranges={snippet.ranges} />
+        </span>
+      )}
+      {thread.snippets.length === 0 && (
+        <span className="text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</span>
+      )}
+    </CommandItem>
+  )
+})
+
+const IssueSearchResultRow = memo(({
+  issue,
+  onSelect,
+}: {
+  issue: IssueSearchHit
+  onSelect: (issueId: string) => void
+}) => {
+  const selectIssue = useCallback(() => {
+    onSelect(issue.id)
+  }, [issue.id, onSelect])
+
+  return (
+    <CommandItem
+      value={`issue-${issue.id}`}
+      onSelect={selectIssue}
+      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      data-testid={`global-search-issue-result-${issue.title}`}
+    >
+      <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
     </CommandItem>
   )
 })

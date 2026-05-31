@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, RssIcon } from 'lucide-react'
+import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
 import { LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -23,6 +23,7 @@ interface Tab {
   labelKey:
   | 'rightAside.tab.files'
   | 'rightAside.tab.changes'
+  | 'rightAside.tab.git'
   | 'rightAside.tab.issue'
   | 'rightAside.tab.await'
   | 'rightAside.tab.runtime'
@@ -32,7 +33,7 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'files', labelKey: 'rightAside.tab.files', icon: FolderTreeIcon },
   { id: 'changes', labelKey: 'rightAside.tab.changes', icon: FileDiffIcon },
-  // { id: 'git', label: 'Git', icon: GitBranchIcon },
+  { id: 'git', labelKey: 'rightAside.tab.git', icon: GitBranchIcon },
   { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon },
   { id: 'runtime', labelKey: 'rightAside.tab.runtime', icon: ActivityIcon },
   { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon },

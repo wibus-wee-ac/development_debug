@@ -1001,11 +1001,12 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
         )}
 
         {state === 'approval-requested' && approval && onApprovalResponse && (
-          <div className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2">
+          <div className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2" data-testid="approval-card">
             <Button
               type="button"
               variant="ghost"
               size="xs"
+              data-testid="approval-deny-btn"
               onClick={() => onApprovalResponse({ id: approval.id, approved: false })}
             >
               Deny
@@ -1013,6 +1014,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
             <Button
               type="button"
               size="xs"
+              data-testid="approval-allow-btn"
               onClick={() => onApprovalResponse({ id: approval.id, approved: true })}
             >
               Approve

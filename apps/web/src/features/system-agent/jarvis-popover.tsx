@@ -86,6 +86,8 @@ export function JarvisPopover({
     sendMessage,
     stop,
     isReady: chatReady,
+    isBusy,
+    canStop,
   } = useChatSession(activeSessionId)
   const messages = useChatStore(chatSelectors.messages(activeSessionId ?? ''))
   const isStreaming = status === 'streaming'
@@ -148,7 +150,7 @@ export function JarvisPopover({
 
   const handleSend = React.useCallback(async () => {
     const text = input.trim()
-    if (!text || isStreaming || !prefs?.profileId || creating) {
+    if (!text || isBusy || !prefs?.profileId || creating) {
       return
     }
 
@@ -209,7 +211,7 @@ export function JarvisPopover({
     clearExplicitContextAttachments()
   }, [
     input,
-    isStreaming,
+    isBusy,
     prefs,
     creating,
     activeSessionId,
@@ -360,7 +362,7 @@ export function JarvisPopover({
     </div>
   )
 
-  const sendButton = isStreaming
+  const sendButton = canStop
     ? (
         <Button variant="outline" size="icon-xs" onClick={stop} aria-label={t('action.stop')}>
           <SquareIcon />
@@ -402,7 +404,7 @@ export function JarvisPopover({
               height: { type: 'spring', duration: 0.35, bounce: 0 },
             }
       }
-      style={{ pointerEvents: open ? 'auto' : 'none' }}
+      style={{ pointerEvents: open ? 'auto' : 'none', visibility: open ? 'visible' : 'hidden' }}
       className={cn(
         'fixed z-50 flex flex-col',
         'rounded-xl bg-popover text-popover-foreground',
