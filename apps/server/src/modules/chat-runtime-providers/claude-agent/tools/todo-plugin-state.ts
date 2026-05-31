@@ -1,6 +1,6 @@
 // Output: Claude Agent TodoWrite input synthesis for persisted tool plugin state.
 // Input: TodoWrite tool input args captured by the Claude Agent mapper.
-// Position: Provider-owned adapter model written into AI SDK tool output messages.
+// Position: Claude Agent provider-owned tool semantic mapper written into AI SDK tool output messages.
 
 export type TodoPluginStatus = 'todo' | 'processing' | 'completed'
 

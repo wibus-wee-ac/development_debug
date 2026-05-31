@@ -1,0 +1,14 @@
+{
+  "owner": "apps/server/src/modules/chat-runtime-providers/codex",
+  "protocol": "codex-app-server",
+  "bindings": "typescript",
+  "generator": "codex app-server generate-ts",
+  "generatorVersion": "codex-cli 0.135.0",
+  "experimental": true,
+  "command": "codex app-server generate-ts --experimental --out apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol",
+  "generatedDate": "2026-05-31",
+  "notes": [
+    "Codex app-server does not expose a separate schema version in generated files; generatorVersion is the schema source version.",
+    "When regenerating these bindings, update generatorVersion from `codex --version` in the same change."
+  ]
+}

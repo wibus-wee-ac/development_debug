@@ -1,3 +1,7 @@
-export function buildAvatarUrl(style: string, seed: string): string {
-  return `https://api.dicebear.com/9.x/${encodeURIComponent(style)}/svg?seed=${encodeURIComponent(seed)}`
-}
+/**
+ * Output: Agent Management import alias for Agent Runtime avatar URL construction.
+ * Input: Persisted Agent avatar style and seed.
+ * Position: Compatibility export for settings surfaces while Agent Runtime owns identity display helpers.
+ */
+
+export { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'

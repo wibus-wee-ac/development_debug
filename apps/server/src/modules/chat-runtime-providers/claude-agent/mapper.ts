@@ -5,7 +5,8 @@ import type { ProviderMetadata } from 'ai'
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
-import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './todo-plugin-state'
+import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload } from './tools/mapper'
+import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './tools/todo-plugin-state'
 
 interface BetaContentBlock {
   type: string
@@ -48,8 +49,8 @@ export interface ClaudeAgentChunkMapperState {
   toolNamesByToolCallId: Map<string, string>
   /** Accumulates streaming JSON input for tool_use blocks until a full snapshot arrives. */
   toolInputTextByToolCallId: Map<string, TextAccumulator>
-  /** Caches TodoWrite args by tool call until tool_result arrives and pluginState can be synthesized. */
-  todoWriteInputs: Map<string, unknown>
+  /** Caches Cradle-owned tool args by tool call so results can carry a stable tool envelope. */
+  toolArgsByToolCallId: Map<string, unknown>
   /** Accumulated child-agent stream state keyed by parent tool call. */
   subagentStreams: Map<string, ClaudeAgentSubagentStreamState>
 }
@@ -131,7 +132,7 @@ function normalizeClaudeAgentChunkMapperState(state: ClaudeAgentChunkMapperState
   state.activeToolBlockIds ??= new Map()
   state.toolNamesByToolCallId ??= new Map()
   state.toolInputTextByToolCallId ??= new Map()
-  state.todoWriteInputs ??= new Map()
+  state.toolArgsByToolCallId ??= new Map()
   state.subagentStreams ??= new Map()
 }
 
@@ -145,7 +146,7 @@ export function createClaudeAgentChunkMapperState(textItemId: string = randomUUI
     activeToolBlockIds: new Map(),
     toolNamesByToolCallId: new Map(),
     toolInputTextByToolCallId: new Map(),
-    todoWriteInputs: new Map(),
+    toolArgsByToolCallId: new Map(),
     subagentStreams: new Map(),
   }
 }
@@ -298,7 +299,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
             if (subagentState) {
               compactSubagentStreamState(subagentState, subagentMessage)
             }
-            const output = attachTodoWritePluginState(
+            const output = createClaudeCodeToolResult(
               b.tool_use_id,
               normalizedOutput,
               state,
@@ -965,24 +966,18 @@ function emitToolUseChunks(
   }
 
   if (input !== undefined && !current.inputAvailable) {
-    cacheTodoWriteInput(state, toolCallId, toolName, input)
-    chunks.push({ type: 'tool-input-available', toolCallId, toolName, input })
+    state.toolArgsByToolCallId.set(toolCallId, input)
+    chunks.push({
+      type: 'tool-input-available',
+      toolCallId,
+      toolName,
+      input: createClaudeCodeToolInputPayload(toolName, input),
+    })
     current.inputAvailable = true
   }
 
   state.emittedToolStateByToolCallId.set(toolCallId, current)
   return { chunks }
-}
-
-function cacheTodoWriteInput(
-  state: ClaudeAgentChunkMapperState,
-  toolCallId: string,
-  toolName: string,
-  input: unknown,
-): void {
-  if (isTodoWriteToolName(toolName)) {
-    state.todoWriteInputs.set(toolCallId, input)
-  }
 }
 
 function appendToolInputText(
@@ -1012,17 +1007,33 @@ function readAccumulatedText(accumulator: TextAccumulator | undefined): string {
   return text
 }
 
-function attachTodoWritePluginState(
+function createClaudeCodeToolResult(
   toolCallId: string,
-  output: unknown,
+  result: unknown,
   state: ClaudeAgentChunkMapperState,
 ): unknown {
   const toolName = state.toolNamesByToolCallId.get(toolCallId)
-  if (!toolName || !isTodoWriteToolName(toolName)) {
-    return output
+  if (!toolName) {
+    return result
   }
 
-  const input = state.todoWriteInputs.get(toolCallId) ?? parseToolInputText(readAccumulatedText(state.toolInputTextByToolCallId.get(toolCallId)))
+  const args = state.toolArgsByToolCallId.get(toolCallId) ?? parseToolInputText(readAccumulatedText(state.toolInputTextByToolCallId.get(toolCallId)))
+  const enrichedResult = attachTodoWritePluginState(toolName, args, result)
+  return createClaudeCodeToolResultPayload({
+    apiName: toolName,
+    args,
+    result: enrichedResult,
+  })
+}
+
+function attachTodoWritePluginState(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+): unknown {
+  if (!isTodoWriteToolName(toolName)) {
+    return output
+  }
   const pluginState = synthesizeTodoWritePluginState(input)
   if (!pluginState) {
     return output

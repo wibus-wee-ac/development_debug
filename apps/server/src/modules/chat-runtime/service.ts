@@ -48,11 +48,11 @@ import type {
 } from './runtime-provider-types'
 import type { ChatStreamTraceRecord } from './stream-trace'
 import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
+import { type CradleTurnTranscript, resolveCradleTurnTranscript } from './transcript'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
 const DEFAULT_TURN_CONTEXT_MAX_MESSAGES = 12
 const DEFAULT_TURN_CONTEXT_MAX_CHARS = 120_000
-const DEFAULT_TURN_CONTEXT_MESSAGE_MAX_CHARS = 24_000
 const DEFAULT_STORED_MESSAGE_TEXT_MAX_CHARS = 256_000
 const DEFAULT_STORED_MESSAGE_REASONING_MAX_CHARS = 64_000
 const DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS = 128_000
@@ -1223,6 +1223,7 @@ function getSourceRunId(sessionId: string): string | null {
 
 interface ChatTurnContext {
   systemPrompt?: string
+  transcript?: CradleTurnTranscript
   history?: UIMessage[]
 }
 
@@ -1264,68 +1265,30 @@ function resolveTurnContext(input: {
     systemPrompt = systemPrompt ? `${systemPrompt}\n\n---\n\n${chronicleContext}` : chronicleContext
   }
 
-  const history = resolveBoundedTurnHistory({
+  const transcript = resolveBoundedTurnHistory({
     sessionId: input.sessionId,
     excludedMessageIds: new Set([input.draftMessageId, input.draftUserMessageId]),
   })
 
   return {
     systemPrompt,
-    history: history.length > 0 ? history : undefined,
+    transcript,
+    history: transcript.history.length > 0 ? transcript.history : undefined,
   }
 }
 
 function resolveBoundedTurnHistory(input: {
   sessionId: string
   excludedMessageIds: Set<string>
-}): UIMessage[] {
+}): CradleTurnTranscript {
   const maxMessages = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_MESSAGES', DEFAULT_TURN_CONTEXT_MAX_MESSAGES)
   const maxChars = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MAX_CHARS', DEFAULT_TURN_CONTEXT_MAX_CHARS)
-  const messageMaxChars = readPositiveIntegerEnv('CRADLE_CHAT_TURN_CONTEXT_MESSAGE_MAX_CHARS', DEFAULT_TURN_CONTEXT_MESSAGE_MAX_CHARS)
-  const rows = db()
-    .select({
-      id: messages.id,
-      role: messages.role,
-      content: messages.content,
-      createdAt: messages.createdAt,
-    })
-    .from(messages)
-    .where(
-      and(
-        eq(messages.sessionId, input.sessionId),
-        eq(messages.status, 'complete'),
-        isNull(messages.parentToolCallId),
-      ),
-    )
-    .orderBy(desc(messages.createdAt), desc(messageInsertOrder))
-    .limit(maxMessages + input.excludedMessageIds.size)
-    .all()
-
-  const selected: UIMessage[] = []
-  let remainingChars = maxChars
-  for (const row of rows) {
-    if (selected.length >= maxMessages || input.excludedMessageIds.has(row.id)) {
-      continue
-    }
-    if (row.role !== 'user' && row.role !== 'assistant') {
-      continue
-    }
-
-    const content = row.content.trim()
-    if (!content || remainingChars <= 0) {
-      continue
-    }
-
-    const text = truncateText(content, Math.min(messageMaxChars, remainingChars))
-    selected.push({
-      id: row.id,
-      role: row.role,
-      parts: [{ type: 'text', text }],
-    })
-    remainingChars -= text.length
-  }
-
-  return selected.reverse()
+  return resolveCradleTurnTranscript({
+    sessionId: input.sessionId,
+    excludedMessageIds: input.excludedMessageIds,
+    maxMessages,
+    maxChars,
+  })
 }
 
 function resolveChronicleTurnContext(query: string): string | null {
@@ -1756,6 +1719,7 @@ export async function createRun(input: {
       thinkingEffort: input.thinkingEffort,
       permissionMode: input.permissionMode,
       systemPrompt: turnContext.systemPrompt,
+      transcript: turnContext.transcript,
       history: turnContext.history?.length ? turnContext.history : undefined,
       originalMessages: requestMessages,
       workspaceId: context.session.workspaceId,
@@ -1925,8 +1889,36 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
   let queuedChunk: UIMessageChunk | null = null
   let flushTimer: StreamFlushTimer | null = null
   let closed = false
+  const clearQueuedFlush = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    queuedChunk = null
+  }
   return new ReadableStream<Uint8Array>({
     start: (controller) => {
+      const clearFlushTimer = () => {
+        if (flushTimer) {
+          clearTimeout(flushTimer)
+          flushTimer = null
+        }
+      }
+
+      const closeStream = (flushQueued: boolean) => {
+        if (closed) {
+          return
+        }
+        if (flushQueued) {
+          clearFlushTimer()
+          flushQueuedChunk()
+        }
+        closed = true
+        clearQueuedFlush()
+        unsubscribe()
+        controller.close()
+      }
+
       const writeEncodedChunk = (chunk: UIMessageChunk, terminal: boolean) => {
         if (closed) {
           return
@@ -1934,9 +1926,7 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
         if (terminal) {
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          closed = true
-          unsubscribe()
-          controller.close()
+          closeStream(false)
         }
       }
 
@@ -1954,11 +1944,12 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
       }
 
       const writeChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+        if (closed) {
+          return
+        }
+
         if (terminal) {
-          if (flushTimer) {
-            clearTimeout(flushTimer)
-            flushTimer = null
-          }
+          clearFlushTimer()
           flushQueuedChunk()
           writeEncodedChunk(chunk, true)
           return
@@ -1991,7 +1982,7 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
       }
 
       if (run.status !== 'streaming' || !active) {
-        controller.close()
+        closeStream(true)
         return
       }
 
@@ -2012,9 +2003,12 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
       }
     },
     cancel: () => {
+      closed = true
       if (flushTimer) {
         clearTimeout(flushTimer)
+        flushTimer = null
       }
+      queuedChunk = null
       unsubscribe()
     },
   })
@@ -2487,6 +2481,7 @@ async function executeRun(
     thinkingEffort?: 'low' | 'medium' | 'high'
     permissionMode?: ChatPermissionMode
     systemPrompt?: string
+    transcript?: CradleTurnTranscript
     history?: UIMessage[]
     originalMessages?: UIMessage[]
     workspaceId?: string | null
@@ -2516,6 +2511,7 @@ async function executeRun(
       message: input.message,
       responseMessageId: activeRun.messageId,
       modelId: input.modelId,
+      transcript: input.transcript,
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
       providerOptions: input.thinkingEffort || input.permissionMode

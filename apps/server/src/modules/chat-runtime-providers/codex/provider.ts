@@ -40,6 +40,8 @@ import {
   createCodexAppServerMapperState,
   mapCodexAppServerNotificationToChunks,
 } from './app-server-mapper'
+import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
+import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -183,6 +185,7 @@ export class CodexProvider implements ChatRuntime {
     const client = this.createAppServerClient({ apiKey, config: codexConfig })
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
+    const shouldInjectReconstructedHistory = !input.runtimeSession.providerSessionId
     this._lastUsage = null
 
     const textItemId = randomUUID()
@@ -214,6 +217,9 @@ export class CodexProvider implements ChatRuntime {
         config: codexConfig,
       })
       input.runtimeSession.providerSessionId = threadId
+      if (shouldInjectReconstructedHistory) {
+        await injectCradleTranscriptHistory(client, threadId, input.transcript?.history ?? input.history)
+      }
 
       const turnResponse = await client.request('turn/start', {
         threadId,
@@ -382,6 +388,27 @@ async function startOrResumeThread(
     throw new Error('Codex app-server did not return a thread id')
   }
   return threadId
+}
+
+async function injectCradleTranscriptHistory(
+  client: CodexAppServerClientLike,
+  threadId: string,
+  history: UIMessage[] | undefined,
+): Promise<void> {
+  if (!history?.length) {
+    return
+  }
+
+  const items = projectCradleTranscriptToCodexItems(history)
+  if (items.length === 0) {
+    return
+  }
+
+  const params: ThreadInjectItemsParams = {
+    threadId,
+    items: items as ThreadInjectItemsParams['items'],
+  }
+  await client.request('thread/inject_items', params)
 }
 
 async function* readTurnNotifications(

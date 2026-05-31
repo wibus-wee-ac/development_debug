@@ -52,13 +52,25 @@ describe('mapClaudeAgentMessageToChunks', () => {
         type: 'tool-output-available',
         toolCallId: 'toolu_todo_1',
         output: {
-          ok: true,
-          pluginState: {
+          type: 'cradle.builtin-tool-call.result.v1',
+          identifier: 'claude-code',
+          apiName: 'TodoWrite',
+          args: {
             todos: [
-              { id: 'todo-1', content: 'Inspect', status: 'todo', sourceStatus: 'pending' },
-              { id: 'todo-2', content: 'Patching', status: 'processing', sourceStatus: 'in_progress' },
-              { id: 'todo-3', content: 'Verify', status: 'completed', sourceStatus: 'completed' },
+              { id: 'todo-1', content: 'Inspect', status: 'pending' },
+              { id: 'todo-2', content: 'Patch', activeForm: 'Patching', status: 'in_progress' },
+              { id: 'todo-3', content: 'Verify', status: 'completed' },
             ],
+          },
+          result: {
+            ok: true,
+            pluginState: {
+              todos: [
+                { id: 'todo-1', content: 'Inspect', status: 'todo', sourceStatus: 'pending' },
+                { id: 'todo-2', content: 'Patching', status: 'processing', sourceStatus: 'in_progress' },
+                { id: 'todo-3', content: 'Verify', status: 'completed', sourceStatus: 'completed' },
+              ],
+            },
           },
         },
       },

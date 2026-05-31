@@ -18,6 +18,7 @@ export interface CodexAppServerMapperState {
   emittedTextLengthById: Map<string, number>
   commandOutputById: Map<string, BoundedTextCollector>
   commandById: Map<string, string>
+  toolArgsById: Map<string, unknown>
   startedAgentMessageIds: Set<string>
 }
 
@@ -42,6 +43,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
     emittedTextLengthById: new Map(),
     commandOutputById: new Map(),
     commandById: new Map(),
+    toolArgsById: new Map(),
     startedAgentMessageIds: new Set(),
   }
 }
@@ -118,6 +120,7 @@ function mapStartedToolItem(item: CodexAppServerItem, state: CodexAppServerMappe
   if (item.type === 'commandExecution') {
     state.commandById.set(item.id, item.command ?? '')
   }
+  state.toolArgsById.set(item.id, input.args)
   return [
     ...closeOpenAgentMessageSegments(state),
     { type: 'tool-input-start', toolCallId: item.id, toolName },
@@ -165,6 +168,7 @@ function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMap
       item,
       state.commandOutputById.get(item.id)?.read(),
       state.commandById.get(item.id),
+      state.toolArgsById.get(item.id),
     ),
   }]
 }

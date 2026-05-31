@@ -126,6 +126,25 @@ async function drainStream(stream: AsyncGenerator<UIMessageChunk, void, void>): 
   }
 }
 
+function codexInput(apiName: string, args: unknown) {
+  return {
+    type: 'cradle.builtin-tool-call.input.v1',
+    identifier: 'codex',
+    apiName,
+    args,
+  }
+}
+
+function codexOutput(apiName: string, args: unknown, result: unknown) {
+  return {
+    type: 'cradle.builtin-tool-call.result.v1',
+    identifier: 'codex',
+    apiName,
+    args,
+    result,
+  }
+}
+
 describe('codexProvider app-server integration', () => {
   it('maps image attachments to Codex app-server user input', async () => {
     const client = new FakeCodexAppServerClient({})
@@ -190,6 +209,158 @@ describe('codexProvider app-server integration', () => {
     for await (const _chunk of stream) {
       // Drain stream.
     }
+  })
+
+  it('reconstructs Cradle transcript into Codex thread history before starting a fresh turn', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const history: UIMessage[] = [
+      {
+        id: 'history-user',
+        role: 'user',
+        parts: [
+          { type: 'text', text: 'Earlier request' },
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            filename: 'screen.png',
+            url: 'data:image/png;base64,history',
+          },
+          {
+            type: 'file',
+            mediaType: 'application/pdf',
+            filename: 'spec.pdf',
+            url: 'file:///tmp/spec.pdf',
+          },
+        ],
+      },
+      {
+        id: 'history-assistant',
+        role: 'assistant',
+        parts: [
+          { type: 'reasoning', text: 'I inspected the prior request.' },
+          { type: 'text', text: 'Earlier answer' },
+          {
+            type: 'tool-command_execution',
+            toolCallId: 'tool-1',
+            state: 'output-available',
+            input: { command: 'pwd' },
+            output: { exitCode: 0, stdout: '/tmp/project\n' },
+          } as UIMessage['parts'][number],
+          {
+            type: 'dynamic-tool',
+            toolCallId: 'tool-2',
+            toolName: 'custom_tool',
+            state: 'output-error',
+            input: { query: 'cradle' },
+            errorText: 'failed',
+          } as UIMessage['parts'][number],
+        ],
+      },
+    ]
+    const stream = provider.streamTurn({
+      runId: 'run-codex-history-reconstruction',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Continue now'),
+      transcript: {
+        history,
+        omittedMessageCount: 0,
+        truncated: false,
+        fallbackMessageCount: 0,
+      },
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/inject_items', 'turn/start'])
+    })
+
+    expect(client.requests[1]).toEqual({
+      method: 'thread/inject_items',
+      params: {
+        threadId: 'codex-thread-1',
+        items: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              { type: 'input_text', text: 'Earlier request' },
+              { type: 'input_image', image_url: 'data:image/png;base64,history' },
+              {
+                type: 'input_text',
+                text: JSON.stringify({
+                  type: 'cradle.file',
+                  filename: 'spec.pdf',
+                  mediaType: 'application/pdf',
+                  url: 'file:///tmp/spec.pdf',
+                }),
+              },
+            ],
+          },
+          {
+            type: 'reasoning',
+            summary: [{ type: 'summary_text', text: 'I inspected the prior request.' }],
+            content: [{ type: 'reasoning_text', text: 'I inspected the prior request.' }],
+            encrypted_content: null,
+          },
+          {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Earlier answer' }],
+          },
+          {
+            type: 'function_call',
+            name: 'command_execution',
+            arguments: JSON.stringify({ command: 'pwd' }),
+            call_id: 'tool-1',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'tool-1',
+            output: JSON.stringify({ exitCode: 0, stdout: '/tmp/project\n' }),
+          },
+          {
+            type: 'function_call',
+            name: 'custom_tool',
+            arguments: JSON.stringify({ query: 'cradle' }),
+            call_id: 'tool-2',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'tool-2',
+            output: JSON.stringify({ error: 'failed' }),
+          },
+        ],
+      },
+    })
+    expect(client.requests[2]).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        input: [{ type: 'text', text: 'Continue now', text_elements: [] }],
+      }),
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Continued',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
   })
 
   it('passes external OpenAI-compatible targets as explicit Codex model providers', async () => {
@@ -728,8 +899,8 @@ describe('codexProvider app-server integration', () => {
       { type: 'text-delta', id: 'assistant-message-1', delta: 'Before tool' },
       { type: 'text-end', id: 'assistant-message-1' },
       { type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'command_execution' },
-      { type: 'tool-input-available', toolCallId: 'tool-1', toolName: 'command_execution', input: { command: 'pwd' } },
-      { type: 'tool-output-available', toolCallId: 'tool-1', output: { command: 'pwd', output: '/tmp', exitCode: 0, code: 0 } },
+      { type: 'tool-input-available', toolCallId: 'tool-1', toolName: 'command_execution', input: codexInput('command_execution', { command: 'pwd' }) },
+      { type: 'tool-output-available', toolCallId: 'tool-1', output: codexOutput('command_execution', { command: 'pwd' }, { command: 'pwd', output: '/tmp', exitCode: 0, code: 0 }) },
       { type: 'text-start', id: 'assistant-message-2' },
       { type: 'text-delta', id: 'assistant-message-2', delta: 'After tool' },
       { type: 'text-end', id: 'assistant-message-2' },
@@ -778,8 +949,8 @@ describe('codexProvider app-server integration', () => {
 
     expect(chunks).toEqual([
       { type: 'tool-input-start', toolCallId: 'plan-1', toolName: 'plan' },
-      { type: 'tool-input-available', toolCallId: 'plan-1', toolName: 'plan', input: { text: '1. Inspect\n2. Patch' } },
-      { type: 'tool-output-available', toolCallId: 'plan-1', output: { plan: '1. Inspect\n2. Patch' } },
+      { type: 'tool-input-available', toolCallId: 'plan-1', toolName: 'plan', input: codexInput('plan', { text: '1. Inspect\n2. Patch' }) },
+      { type: 'tool-output-available', toolCallId: 'plan-1', output: codexOutput('plan', { text: '1. Inspect\n2. Patch' }, { plan: '1. Inspect\n2. Patch' }) },
     ])
   })
 
@@ -857,14 +1028,14 @@ describe('codexProvider app-server integration', () => {
 
     expect(chunks).toEqual([
       { type: 'tool-input-start', toolCallId: 'file-1', toolName: 'file_change' },
-      { type: 'tool-input-available', toolCallId: 'file-1', toolName: 'file_change', input: { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' } },
-      { type: 'tool-output-available', toolCallId: 'file-1', output: { filenames: ['src/app.ts'], status: 'completed', type: 'fileChange' } },
+      { type: 'tool-input-available', toolCallId: 'file-1', toolName: 'file_change', input: codexInput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }) },
+      { type: 'tool-output-available', toolCallId: 'file-1', output: codexOutput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }, { filenames: ['src/app.ts'], status: 'completed', type: 'fileChange' }) },
       { type: 'tool-input-start', toolCallId: 'mcp-1', toolName: 'github/search' },
-      { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github/search', input: { query: 'cradle' } },
-      { type: 'tool-output-available', toolCallId: 'mcp-1', output: { server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] }, content: [{ type: 'text', text: 'ok' }] } },
+      { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github/search', input: codexInput('github/search', { query: 'cradle' }) },
+      { type: 'tool-output-available', toolCallId: 'mcp-1', output: codexOutput('github/search', { query: 'cradle' }, { server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] }, content: [{ type: 'text', text: 'ok' }] }) },
       { type: 'tool-input-start', toolCallId: 'web-1', toolName: 'web_search' },
-      { type: 'tool-input-available', toolCallId: 'web-1', toolName: 'web_search', input: { query: 'Cradle', action: { type: 'search', query: 'Cradle' } } },
-      { type: 'tool-output-available', toolCallId: 'web-1', output: { query: 'Cradle', action: { type: 'search', query: 'Cradle' } } },
+      { type: 'tool-input-available', toolCallId: 'web-1', toolName: 'web_search', input: codexInput('web_search', { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }) },
+      { type: 'tool-output-available', toolCallId: 'web-1', output: codexOutput('web_search', { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }, { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }) },
     ])
   })
 })

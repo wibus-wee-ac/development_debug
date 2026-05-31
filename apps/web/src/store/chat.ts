@@ -730,6 +730,20 @@ export const chatSelectors = {
   error: (messageId: string) => (s: ChatState) =>
     s.errorMap.get(messageId),
 
+  /** Most recent error for a session */
+  latestError: (sessionId: string) => (s: ChatState) => {
+    const messages = s.messagesMap.get(sessionId)
+    if (!messages) return undefined
+    let latest: ChatError | undefined
+    for (const m of messages) {
+      const err = s.errorMap.get(m.id)
+      if (err && (!latest || err.timestamp > latest.timestamp)) {
+        latest = err
+      }
+    }
+    return latest
+  },
+
   /** Session meta */
   sessionMeta: (sessionId: string) => (s: ChatState) =>
     s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META,

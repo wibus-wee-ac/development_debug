@@ -130,11 +130,13 @@ function projectFilePart(role: UIMessage['role'], part: Record<string, unknown>)
 
 function projectToolPart(part: Record<string, unknown>): CodexResponseItem[] {
   const toolCallId = String(part.toolCallId)
-  const toolName = readToolName(part)
+  const toolInput = readBuiltinToolCallInputPayload(part.input)
+  const toolOutput = readBuiltinToolCallResultPayload(part.output)
+  const toolName = toolInput?.apiName ?? toolOutput?.apiName ?? readToolName(part)
   const items: CodexResponseItem[] = [{
     type: 'function_call',
     name: toolName,
-    arguments: stringifyForCodex(part.input ?? {}),
+    arguments: stringifyForCodex(toolInput?.args ?? toolOutput?.args ?? part.input ?? {}),
     call_id: toolCallId,
   }]
 
@@ -150,6 +152,10 @@ function projectToolPart(part: Record<string, unknown>): CodexResponseItem[] {
 }
 
 function readToolOutput(part: Record<string, unknown>): unknown {
+  const builtinResult = readBuiltinToolCallResultPayload(part.output)
+  if (builtinResult) {
+    return builtinResult.result
+  }
   if (part.state === 'output-error') {
     return {
       error: typeof part.errorText === 'string' ? part.errorText : 'Tool call failed',
@@ -159,6 +165,30 @@ function readToolOutput(part: Record<string, unknown>): unknown {
     return { denied: true }
   }
   return part.output ?? ''
+}
+
+function readBuiltinToolCallInputPayload(value: unknown): { apiName: string, args: unknown } | null {
+  const record = asRecord(value)
+  if (!record || record.type !== 'cradle.builtin-tool-call.input.v1') {
+    return null
+  }
+  return typeof record.apiName === 'string'
+    ? { apiName: record.apiName, args: record.args }
+    : null
+}
+
+function readBuiltinToolCallResultPayload(value: unknown): { apiName: string, args?: unknown, result: unknown } | null {
+  const record = asRecord(value)
+  if (!record || record.type !== 'cradle.builtin-tool-call.result.v1') {
+    return null
+  }
+  return typeof record.apiName === 'string'
+    ? {
+        apiName: record.apiName,
+        ...(record.args === undefined ? {} : { args: record.args }),
+        result: record.result,
+      }
+    : null
 }
 
 function readToolName(part: Record<string, unknown>): string {

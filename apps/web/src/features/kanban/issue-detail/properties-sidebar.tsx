@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -286,7 +287,15 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
         data-testid="issue-agent-trigger"
       >
         {delegatedAgent
-          ? <BotIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          ? (
+              <AgentAvatar
+                name={delegatedAgent.name}
+                avatarUrl={delegatedAgent.avatarUrl}
+                avatarStyle={delegatedAgent.avatarStyle}
+                avatarSeed={delegatedAgent.avatarSeed}
+                size={16}
+              />
+            )
           : <span className="flex size-4 items-center justify-center rounded-full border border-dashed border-muted-foreground/60" aria-hidden="true" />}
         <span className="truncate">
           {delegatedAgent?.name ?? t('agent.none')}
@@ -309,7 +318,13 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
               )
             : agentCandidates.map(agent => (
                 <DropdownMenuRadioItem key={agent.id} value={`agent:${agent.id}`} data-testid={`issue-agent-option-${agent.id}`}>
-                  <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+                  <AgentAvatar
+                    name={agent.name}
+                    avatarUrl={agent.avatarUrl}
+                    avatarStyle={agent.avatarStyle}
+                    avatarSeed={agent.avatarSeed}
+                    size={18}
+                  />
                   <span className="truncate">{agent.name}</span>
                 </DropdownMenuRadioItem>
               ))}

@@ -1,6 +1,7 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
 
 import type { ProviderKind, RuntimeKind } from '../provider-contracts/types'
+import type { CradleTurnTranscript } from './transcript'
 
 export interface RuntimeProviderTargetProfile {
   id: string
@@ -58,6 +59,7 @@ export interface StreamTurnInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
   message: UIMessage
+  transcript?: CradleTurnTranscript
   originalMessages?: UIMessage[]
   responseMessageId?: string
   modelId?: string

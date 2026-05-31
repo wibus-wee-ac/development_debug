@@ -159,12 +159,8 @@ export function useChatSession(chatSessionId: string | null) {
     chatSelectors.visibleStatus(chatSessionId ?? ''),
   )
 
-  const lastAssistantId = useChatStore(
-    chatSelectors.lastAssistantId(chatSessionId ?? ''),
-  )
-
-  const lastError = useChatStore(
-    lastAssistantId ? chatSelectors.error(lastAssistantId) : () => undefined,
+  const latestError = useChatStore(
+    chatSessionId ? chatSelectors.latestError(chatSessionId) : () => undefined,
   )
 
   // ── Hydration from server ──
@@ -608,15 +604,17 @@ export function useChatSession(chatSessionId: string | null) {
   const messageCount = messageIds.length
   const isReady = messageCount > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
 
-  if (lastError) {
-    console.error(`[useChatSession] last error for session ${chatSessionId}:`, lastError)
-  }
+  useEffect(() => {
+    if (latestError) {
+      console.error(`[useChatSession] error for session ${chatSessionId}:`, latestError)
+    }
+  }, [chatSessionId, latestError])
 
   return {
     messageIds,
     messageCount,
     status: visibleStatus,
-    error: lastError?.message,
+    error: latestError?.message,
     sendMessage,
     respondToToolApproval,
     stop,

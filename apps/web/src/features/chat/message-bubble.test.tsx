@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { useChatStore } from '~/store/chat'
 
-import { MessageBubble } from './message-bubble'
+import { MessageBubble, MessageBubbleById } from './message-bubble'
 
 vi.mock('@cradle/streamdown', () => ({
   Streamdown: ({ content }: { content: string }) => <div>{content}</div>,
@@ -296,6 +296,95 @@ describe('message bubble', () => {
 
     expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
     expect(screen.getByText('Thinking')).toBeTruthy()
+  })
+
+  it('shows Thinking after completed tool progress becomes idle during streaming', () => {
+    vi.useFakeTimers()
+    seedToolEntity()
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={messageWithToolCall} isStreaming />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+
+    expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
+  })
+
+  it('does not duplicate Thinking while a tool call is still active', () => {
+    vi.useFakeTimers()
+    const activeToolMessage: UIMessage = {
+      id: 'assistant-active-tool',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolCallId: 'tool-active',
+          toolName: 'unknown_tool',
+          state: 'input-streaming',
+        } as UIMessage['parts'][number],
+        { type: 'text', text: 'Checking the workspace.' },
+      ],
+    }
+    useChatStore.setState(state => ({
+      ...state,
+      toolCallIdsByMessageId: new Map([[activeToolMessage.id, ['tool-active']]]),
+      toolEntitiesMap: new Map([[
+        'tool-active',
+        {
+          toolCallId: 'tool-active',
+          messageId: activeToolMessage.id,
+          toolName: 'unknown_tool',
+          state: 'input-streaming',
+        },
+      ]]),
+    }))
+
+    render(
+      <TooltipProvider>
+        <MessageBubble message={activeToolMessage} isStreaming />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+
+    expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
+  })
+
+  it('shows Thinking in the store-backed renderer after completed tool progress becomes idle', () => {
+    vi.useFakeTimers()
+    seedToolEntity()
+    useChatStore.setState(state => ({
+      ...state,
+      messagesMap: new Map([['session-1', [messageWithToolCall]]]),
+    }))
+
+    render(
+      <TooltipProvider>
+        <MessageBubbleById sessionId="session-1" messageId={messageWithToolCall.id} />
+      </TooltipProvider>,
+    )
+
+    act(() => {
+      useChatStore.setState(state => ({
+        ...state,
+        passiveStreamingMessageIds: new Set([messageWithToolCall.id]),
+      }))
+    })
+
+    act(() => {
+      vi.advanceTimersByTime(900)
+    })
+
+    expect(screen.getByTestId('message-bubble-thinking-placeholder').textContent).toBe('Thinking...')
   })
 
   it('does not show Thinking after the assistant bubble stops streaming', () => {

@@ -44,10 +44,6 @@ function readScrollRatio(metrics: ChatScrollMetrics): number {
   return scrollable > 0 ? metrics.offset / scrollable : 1
 }
 
-function readMinimapProgress(metrics: ChatScrollMetrics): number {
-  return Math.max(0, Math.min(1, readScrollRatio(metrics)))
-}
-
 function readIsAtBottom(metrics: ChatScrollMetrics): boolean {
   return metrics.offset + metrics.viewportHeight >= metrics.scrollHeight - BOTTOM_PROXIMITY_PX
 }
@@ -66,7 +62,7 @@ export function useChatScrollRuntime({
   const messageIdsRef = useRef(messageIds)
   const sessionIdRef = useRef(sessionId)
   const metricsRef = useRef<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
-  const minimapRafId = useRef(0)
+  const minimapRafIdRef = useRef(0)
   const [metrics, setMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   useEffect(() => {
@@ -79,7 +75,7 @@ export function useChatScrollRuntime({
     isAtBottomRef.current = true
     metricsRef.current = EMPTY_SCROLL_METRICS
     setMetrics(EMPTY_SCROLL_METRICS)
-    minimapRef.current?.setScrollProgress(1)
+    minimapRef.current?.setActiveMessageIndex(0)
   }, [sessionId])
 
   useEffect(() => {
@@ -154,12 +150,20 @@ export function useChatScrollRuntime({
   const scheduleMinimapSync = useCallback((nextMetrics: ChatScrollMetrics) => {
     metricsRef.current = nextMetrics
     writeChatAttentionSnapshot(nextMetrics)
-    minimapRef.current?.setScrollProgress(readMinimapProgress(nextMetrics))
+    const virtualizer = virtualizerRef.current
+    const currentMessageIds = messageIdsRef.current
+    if (virtualizer && currentMessageIds.length > 0) {
+      const activeMessageIndex = Math.max(
+        0,
+        Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset)),
+      )
+      minimapRef.current?.setActiveMessageIndex(activeMessageIndex)
+    }
 
     // Throttle React state update to one per frame (for ChatMinimap consumers)
-    if (minimapRafId.current === 0) {
-      minimapRafId.current = requestAnimationFrame(() => {
-        minimapRafId.current = 0
+    if (minimapRafIdRef.current === 0) {
+      minimapRafIdRef.current = requestAnimationFrame(() => {
+        minimapRafIdRef.current = 0
         setMetrics(metricsRef.current)
       })
     }
@@ -240,7 +244,6 @@ export function useChatScrollRuntime({
     }
 
     const onResize = () => {
-      const scrollTop = viewport.scrollTop
       const scrollHeight = viewport.scrollHeight
       const viewportHeight = viewport.offsetHeight
 
@@ -266,9 +269,9 @@ export function useChatScrollRuntime({
     return () => {
       viewport.removeEventListener('scroll', onScroll)
       resizeObserver.disconnect()
-      if (minimapRafId.current !== 0) {
-        cancelAnimationFrame(minimapRafId.current)
-        minimapRafId.current = 0
+      if (minimapRafIdRef.current !== 0) {
+        cancelAnimationFrame(minimapRafIdRef.current)
+        minimapRafIdRef.current = 0
       }
     }
   }, [scheduleMinimapSync])

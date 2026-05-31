@@ -31,6 +31,7 @@ const IS_DEV = import.meta.env.DEV
 const THINKING_IDLE_DELAY_MS = 900
 const MESSAGE_STREAMING_ANIMATION_MAX_CHARS = 12000
 const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
+const ACTIVE_TOOL_STATES = new Set(['input-streaming', 'input-available', 'approval-requested'])
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
@@ -182,6 +183,52 @@ function useTextStreamIdle(enabled: boolean, textLength: number): boolean {
   }, [streamKey])
 
   return streamKey !== null && idleStreamKey === streamKey
+}
+
+function hasActiveNonTextProgress(items: ChatRenderItem[]): boolean {
+  return items.some((item) => {
+    if (item.kind === 'reasoning') {
+      return item.state === 'streaming'
+    }
+    if (item.kind === 'tool-call') {
+      return isToolCallActive(item.toolCallId)
+    }
+    if (item.kind === 'tool-group') {
+      return item.items.some(toolItem => isToolCallActive(toolItem.toolCallId))
+    }
+    return false
+  })
+}
+
+function isToolCallActive(toolCallId: string): boolean {
+  const state = useChatStore.getState().toolEntitiesMap.get(toolCallId)?.state
+  return typeof state === 'string' && ACTIVE_TOOL_STATES.has(state)
+}
+
+function hasActiveNonTextSegmentProgress(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageId: string,
+  segments: ChatRenderSegment[],
+): boolean {
+  return segments.some((segment) => {
+    if (segment.kind === 'reasoning') {
+      const part = readMessageFromState(state, sessionId, messageId)?.parts[segment.partIndex]
+      return part?.type === 'reasoning' && (part as { state?: 'streaming' | 'done' }).state === 'streaming'
+    }
+    if (segment.kind === 'tool-call') {
+      return isToolCallActiveInState(state, segment.toolCallId)
+    }
+    if (segment.kind === 'tool-group') {
+      return segment.items.some(toolItem => isToolCallActiveInState(state, toolItem.toolCallId))
+    }
+    return false
+  })
+}
+
+function isToolCallActiveInState(state: ChatStoreSnapshot, toolCallId: string): boolean {
+  const toolState = state.toolEntitiesMap.get(toolCallId)?.state
+  return typeof toolState === 'string' && ACTIVE_TOOL_STATES.has(toolState)
 }
 
 /* ─── Subagent part render ──────────────────────────────────────── */
@@ -682,19 +729,22 @@ function MessageThinkingPlaceholderById({
   isAssistant,
   isStreaming,
   segmentCount,
-  hasNonTextProgress,
+  segments,
 }: {
   sessionId: string
   messageId: string
   isAssistant: boolean
   isStreaming: boolean
   segmentCount: number
-  hasNonTextProgress: boolean
+  segments: ChatRenderSegment[]
 }) {
   const textLength = useChatStore(state => readPlainTextLengthFromState(state, sessionId, messageId))
+  const hasActiveProgress = useChatStore(
+    state => hasActiveNonTextSegmentProgress(state, sessionId, messageId, segments),
+  )
   const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, textLength)
 
-  if (!isAssistant || !isStreaming || hasNonTextProgress || (segmentCount !== 0 && !streamTextIdle)) {
+  if (!isAssistant || !isStreaming || hasActiveProgress || (segmentCount !== 0 && !streamTextIdle)) {
     return null
   }
 
@@ -836,7 +886,6 @@ function MessageBubbleSegmentsView({
   const { t } = useTranslation('chat')
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
-  const hasNonTextProgress = segments.some(segment => segment.kind !== 'text')
   const executionPhaseSplit = useMemo(
     () => isStreaming ? null : splitSegmentExecutionPhase(segments),
     [segments, isStreaming],
@@ -914,7 +963,7 @@ function MessageBubbleSegmentsView({
             isAssistant={isAssistant}
             isStreaming={isStreaming}
             segmentCount={segments.length}
-            hasNonTextProgress={hasNonTextProgress}
+            segments={segments}
           />
         </div>
 
@@ -1018,10 +1067,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     () => isStreaming ? null : splitExecutionPhase(groupedItems),
     [groupedItems, isStreaming],
   )
-  const hasNonTextProgress = groupedItems.some(item => item.kind !== 'text')
+  const hasActiveProgress = hasActiveNonTextProgress(groupedItems)
   const showThinkingPlaceholder = isAssistant
     && isStreaming
-    && !hasNonTextProgress
+    && !hasActiveProgress
     && (groupedItems.length === 0 || streamTextIdle)
 
   useEffect(() => {

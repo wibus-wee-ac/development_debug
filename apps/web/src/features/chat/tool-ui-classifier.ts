@@ -529,6 +529,14 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
 }
 
 export function readToolPayload(value: unknown): ToolPayload {
+  const builtinResult = readBuiltinToolCallResultPayload(value)
+  if (builtinResult) {
+    return readToolPayload(builtinResult.result)
+  }
+  const builtinInput = readBuiltinToolCallInputPayload(value)
+  if (builtinInput) {
+    return readToolPayload(builtinInput.args)
+  }
   if (typeof value === 'string') {
     return {
       ...toolPayloadFromObject(readToolObjectPayload({})),
@@ -557,7 +565,8 @@ export function readToolInputPayload(input: unknown, argumentsText?: string): To
 }
 
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
-  const toolName = part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
+  const builtinIdentity = readBuiltinToolCallIdentity(part.input, part.output)
+  const toolName = builtinIdentity?.apiName ?? part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
   const input = readToolInputPayload(part.input, part.argumentsText)
   const output = readToolPayload(part.output)
   const normalizedName = normalizeToolName(toolName)
@@ -571,6 +580,52 @@ export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
     title: readToolTitle(kind, displayName, input, output),
     target,
     summary: readToolSummary(kind, input, output),
+  }
+}
+
+function readBuiltinToolCallIdentity(input: unknown, output: unknown): { identifier: string, apiName: string } | null {
+  const inputPayload = readBuiltinToolCallInputPayload(input)
+  if (inputPayload) {
+    return {
+      identifier: inputPayload.identifier,
+      apiName: inputPayload.apiName,
+    }
+  }
+  const resultPayload = readBuiltinToolCallResultPayload(output)
+  if (resultPayload) {
+    return {
+      identifier: resultPayload.identifier,
+      apiName: resultPayload.apiName,
+    }
+  }
+  return null
+}
+
+function readBuiltinToolCallInputPayload(value: unknown): { identifier: string, apiName: string, args: unknown } | null {
+  if (!isRecord(value) || value.type !== 'cradle.builtin-tool-call.input.v1') {
+    return null
+  }
+  if (typeof value.identifier !== 'string' || typeof value.apiName !== 'string') {
+    return null
+  }
+  return {
+    identifier: value.identifier,
+    apiName: value.apiName,
+    args: value.args,
+  }
+}
+
+function readBuiltinToolCallResultPayload(value: unknown): { identifier: string, apiName: string, result: unknown } | null {
+  if (!isRecord(value) || value.type !== 'cradle.builtin-tool-call.result.v1') {
+    return null
+  }
+  if (typeof value.identifier !== 'string' || typeof value.apiName !== 'string') {
+    return null
+  }
+  return {
+    identifier: value.identifier,
+    apiName: value.apiName,
+    result: value.result,
   }
 }
 

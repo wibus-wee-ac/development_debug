@@ -1,8 +1,10 @@
 import { useDraggable } from '@dnd-kit/core'
-import { BotIcon, CheckIcon } from 'lucide-react'
+import { CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
+import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -54,6 +56,7 @@ function KanbanCardView({
   const [pressed, setPressed] = useState(false)
   const openTimerRef = useRef<number | null>(null)
   const { workspaces } = useWorkspaces()
+  const { agents } = useAgents()
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: issue.id,
     data: { issue },
@@ -68,6 +71,12 @@ function KanbanCardView({
   const labels = issue.labels
   const issueStatus = statuses.find(status => status.id === issue.statusId)
   const statusCategory = StatusCategorySchema.parse(issueStatus?.category ?? category)
+  const delegatedAgent = agents.find(agent => (
+    agent.id === issue.delegateAgentId
+    || agent.providerTargetId === issue.delegateAgentProfileId
+  )) ?? null
+  const showAssigneeAvatar = displayProperties.assignee && issue.assigneeId
+  const showAgentAvatar = displayProperties.agentIndicator && delegatedAgent
 
   useEffect(() => {
     return () => {
@@ -182,10 +191,27 @@ function KanbanCardView({
               )}
             </span>
 
-            {displayProperties.assignee && (
-              issue.assigneeId
-                ? <AssigneeAvatar name={issue.assigneeId} size={18} />
-                : <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
+            {(displayProperties.assignee || displayProperties.agentIndicator) && (
+              <span className="flex min-w-[26px] justify-end">
+                {showAssigneeAvatar || showAgentAvatar
+                  ? (
+                      <span className="flex items-center -space-x-1.5 *:ring-2 *:ring-card">
+                        {showAssigneeAvatar && <AssigneeAvatar name={issue.assigneeId} size={18} />}
+                        {showAgentAvatar && (
+                          <AgentAvatar
+                            name={delegatedAgent.name}
+                            avatarUrl={delegatedAgent.avatarUrl}
+                            avatarStyle={delegatedAgent.avatarStyle}
+                            avatarSeed={delegatedAgent.avatarSeed}
+                            size={18}
+                          />
+                        )}
+                      </span>
+                    )
+                  : displayProperties.assignee
+                    ? <span className="size-3.5 shrink-0 rounded-full border border-dashed border-muted-foreground" />
+                    : null}
+              </span>
             )}
           </span>
 

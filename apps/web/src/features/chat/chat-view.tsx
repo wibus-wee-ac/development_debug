@@ -85,9 +85,9 @@ function ChatMessageListPane({
     <div ref={scrollRuntime.scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea
         viewportRef={scrollRuntime.viewportRef}
-        className="h-full **:data-[slot=scroll-area-scrollbar]:hidden"
+        className="h-full **:data-[slot=scroll-area-scrollbar]:flex **:data-[slot=scroll-area-scrollbar]:opacity-100 **:data-[slot=scroll-area-thumb]:bg-foreground/25"
       >
-        <div className="mx-auto max-w-208 px-4 pt-4">
+        <div className="mx-auto max-w-208 px-4 pr-12 pt-4">
           {messageCount === 0 && !isReady && (
             <div className="space-y-6 py-4">
               {['loading-left-1', 'loading-right', 'loading-left-2'].map((skeletonId, i) => (
@@ -317,7 +317,7 @@ export function ChatView({
   sendOverridesRef,
   composerModel,
   placeholder,
-  runtimeKind,
+  runtimeKind: _runtimeKind,
 }: ChatViewProps) {
   const {
     messageIds,

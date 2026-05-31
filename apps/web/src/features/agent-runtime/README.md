@@ -9,6 +9,8 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 
 ## Files
 
+- **agent-avatar.tsx**: Agent Runtime-owned compact avatar adapter that renders persisted Agent avatar URLs or DiceBear metadata for Kanban and other feature surfaces.
+- **avatar-url.ts**: Agent identity DiceBear avatar URL builder shared by settings and feature surfaces.
 - **model-visibility.ts**: Shared helpers for interpreting provider model visibility config and filtering model descriptors
 - **model-visibility.test.ts**: Unit coverage for default-all, all-disabled, and explicit allow-list model visibility semantics
 - **use-agent-profiles.ts**: `useAgentProfiles` hook — legacy manual provider mutation adapter for settings surfaces that still edit manual provider records, invalidating agent, provider-target, profile, and model queries when manual config changes
