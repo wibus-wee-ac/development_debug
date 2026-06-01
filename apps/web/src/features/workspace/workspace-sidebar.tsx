@@ -343,7 +343,8 @@ function SessionItem({
   const { openNewTab, openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
-  const isStreaming = useChatStore(chatSelectors.isSessionStreaming(session.id))
+  const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id))
+  const isStreaming = session.status === 'streaming' || hasLocalStreamingState
   const [isRenaming, setIsRenaming] = useState(false)
   const dragPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)

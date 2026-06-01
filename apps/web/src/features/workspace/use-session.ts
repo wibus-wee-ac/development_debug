@@ -18,6 +18,7 @@ export interface WorkspaceSession {
   modelId: string | null
   linkedIssueId: string | null
   runtimeKind: RuntimeKind
+  status: 'idle' | 'streaming'
   pinned: number
   archivedAt: number | null
   createdAt: number
@@ -46,8 +47,13 @@ function nullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
+function readSessionStatus(value: unknown): WorkspaceSession['status'] {
+  return value === 'streaming' ? 'streaming' : 'idle'
+}
+
 function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSession {
   const archivedAt = (session as { archivedAt?: unknown }).archivedAt
+  const status = (session as { status?: unknown }).status
   return {
     id: session.id,
     workspaceId: nullableString(session.workspaceId),
@@ -57,6 +63,7 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
     modelId: nullableString(session.modelId),
     linkedIssueId: nullableString(session.linkedIssueId),
     runtimeKind: session.runtimeKind,
+    status: readSessionStatus(status),
     pinned: session.pinned,
     archivedAt: typeof archivedAt === 'number' ? archivedAt : null,
     createdAt: session.createdAt,

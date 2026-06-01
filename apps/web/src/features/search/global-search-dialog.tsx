@@ -979,18 +979,18 @@ const ThreadSearchResultRow = memo(({
     <CommandItem
       value={`thread-${thread.sessionId}`}
       onSelect={selectThread}
-      className="flex flex-col gap-1 px-2.5 py-1.5"
+      className="flex flex-col items-start gap-1 px-2.5 py-1.5 text-left"
       data-testid={`global-search-thread-result-${thread.sessionId}`}
     >
       <span
-        className="truncate text-sm"
+        className="w-full min-w-0 truncate text-sm"
         data-testid={`global-search-thread-title-${thread.sessionId}`}
       >
         <HighlightedText text={title} ranges={thread.titleRanges} />
       </span>
       {snippet && (
         <span
-          className="truncate text-xs text-muted-foreground"
+          className="w-full min-w-0 truncate text-xs text-muted-foreground"
           data-testid={`global-search-thread-snippet-${thread.sessionId}`}
         >
           <HighlightedText text={snippet.text} ranges={snippet.ranges} />
