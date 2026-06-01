@@ -1,0 +1,28 @@
+/**
+ * Output: Helpers for projecting Issue delegation fields into Kanban UI state.
+ * Input: Issue-owned delegation identifiers and Agent Runtime identity records.
+ * Position: Kanban shared helper for board/list/detail delegation display.
+ */
+
+import type { Agent } from '~/features/agent-runtime/use-agents'
+import type { KanbanIssue } from '~/lib/types'
+
+type IssueDelegationFields = Pick<KanbanIssue, 'delegateAgentId' | 'delegateAgentProfileId'>
+
+export function findDelegatedAgent(issue: IssueDelegationFields, agents: Agent[]): Agent | null {
+  const delegateAgentId = issue.delegateAgentId?.trim()
+  const delegateAgentProfileId = issue.delegateAgentProfileId?.trim()
+
+  if (delegateAgentId) {
+    const agent = agents.find(candidate => candidate.id === delegateAgentId)
+    if (agent) {
+      return agent
+    }
+  }
+
+  if (!delegateAgentProfileId) {
+    return null
+  }
+
+  return agents.find(candidate => candidate.providerTargetId === delegateAgentProfileId) ?? null
+}

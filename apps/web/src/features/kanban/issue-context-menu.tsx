@@ -46,6 +46,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
+import { findDelegatedAgent } from './shared/issue-delegation'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import type { IssuePriority } from './use-kanban'
@@ -103,10 +104,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
   const delegateAgents = agents.filter(agent => !!agent.providerTargetId)
-  const delegatedAgent = delegateAgents.find(agent => (
-    agent.id === issue.delegateAgentId
-    || agent.providerTargetId === issue.delegateAgentProfileId
-  )) ?? null
+  const delegatedAgent = findDelegatedAgent(issue, delegateAgents)
   const currentUserName = t('assignee.currentUser')
   const assignedHuman = issue.assigneeKind === 'user'
     ? issue.assigneeId === CURRENT_USER_ASSIGNEE.id

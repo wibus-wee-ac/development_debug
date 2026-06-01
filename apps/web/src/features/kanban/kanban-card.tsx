@@ -12,6 +12,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
+import { findDelegatedAgent } from './shared/issue-delegation'
 import { LabelChip } from './shared/label-chip'
 import { ParentIssueLink } from './shared/parent-issue-link'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
@@ -71,10 +72,7 @@ function KanbanCardView({
   const labels = issue.labels
   const issueStatus = statuses.find(status => status.id === issue.statusId)
   const statusCategory = StatusCategorySchema.parse(issueStatus?.category ?? category)
-  const delegatedAgent = agents.find(agent => (
-    agent.id === issue.delegateAgentId
-    || agent.providerTargetId === issue.delegateAgentProfileId
-  )) ?? null
+  const delegatedAgent = findDelegatedAgent(issue, agents)
   const showAssigneeAvatar = displayProperties.assignee && issue.assigneeId
   const showAgentAvatar = displayProperties.agentIndicator && delegatedAgent
 

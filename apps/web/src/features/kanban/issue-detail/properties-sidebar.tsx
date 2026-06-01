@@ -19,6 +19,7 @@ import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
+import { findDelegatedAgent } from '../shared/issue-delegation'
 import { priorityOptions } from '../shared/issue-metadata'
 import { LabelChip } from '../shared/label-chip'
 import {
@@ -252,10 +253,7 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
     () => agents.filter(agent => !!agent.providerTargetId),
     [agents],
   )
-  const delegatedAgent = agentCandidates.find(agent => (
-    agent.id === issue.delegateAgentId
-    || agent.providerTargetId === issue.delegateAgentProfileId
-  )) ?? null
+  const delegatedAgent = findDelegatedAgent(issue, agentCandidates)
   const selectedValue = delegatedAgent ? `agent:${delegatedAgent.id}` : ''
   const isMutating = delegateIssue.isPending || undelegateIssue.isPending
 

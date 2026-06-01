@@ -11,6 +11,7 @@ import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
+import { findDelegatedAgent } from './shared/issue-delegation'
 import { LabelChip } from './shared/label-chip'
 import { ParentIssueLink } from './shared/parent-issue-link'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
@@ -64,10 +65,7 @@ function KanbanListRowView({
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const labels = issue.labels
-  const delegatedAgent = agents.find(agent => (
-    agent.id === issue.delegateAgentId
-    || agent.providerTargetId === issue.delegateAgentProfileId
-  )) ?? null
+  const delegatedAgent = findDelegatedAgent(issue, agents)
   const showAssigneeAvatar = displayProperties.assignee && issue.assigneeId
   const showAgentAvatar = displayProperties.agentIndicator && delegatedAgent
 

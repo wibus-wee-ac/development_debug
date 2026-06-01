@@ -31,13 +31,13 @@ import {
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -384,10 +384,10 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
 interface ThreadSearchHit {
   sessionId: string
   sessionTitle: string | null
-  titleRanges: Array<{ start: number; end: number }>
+  titleRanges: Array<{ start: number, end: number }>
   snippets: Array<{
     text: string
-    ranges: Array<{ start: number; end: number }>
+    ranges: Array<{ start: number, end: number }>
     messageRole: string
     messageId: string
   }>
@@ -454,7 +454,7 @@ function useIssueSearch(query: string, enabled: boolean) {
 
 // ── Highlighted text renderer ─────────────────────────────────────────────────
 
-function HighlightedText({ text, ranges }: { text: string; ranges: Array<{ start: number; end: number }> }) {
+function HighlightedText({ text, ranges }: { text: string, ranges: Array<{ start: number, end: number }> }) {
   if (!ranges || ranges.length === 0) {
     return <>{text}</>
   }
@@ -466,7 +466,14 @@ function HighlightedText({ text, ranges }: { text: string; ranges: Array<{ start
     if (range.start > cursor) {
       parts.push(text.slice(cursor, range.start))
     }
-    parts.push(<mark key={range.start}>{text.slice(range.start, range.end)}</mark>)
+    parts.push(
+      <mark
+        key={range.start}
+        className="rounded-[3px] bg-primary/10 px-0.5 font-semibold text-primary ring-1 ring-primary/10"
+      >
+        {text.slice(range.start, range.end)}
+      </mark>,
+    )
     cursor = range.end
   }
 
@@ -979,26 +986,31 @@ const ThreadSearchResultRow = memo(({
     <CommandItem
       value={`thread-${thread.sessionId}`}
       onSelect={selectThread}
-      className="flex flex-col items-start gap-1 px-2.5 py-1.5 text-left"
+      className="flex items-start gap-2.5 px-2.5 py-1.5 text-left"
       data-testid={`global-search-thread-result-${thread.sessionId}`}
     >
-      <span
-        className="w-full min-w-0 truncate text-sm"
-        data-testid={`global-search-thread-title-${thread.sessionId}`}
-      >
-        <HighlightedText text={title} ranges={thread.titleRanges} />
+      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground">
+        <MessageSquareIcon className="size-3.5" aria-hidden="true" />
       </span>
-      {snippet && (
+      <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
         <span
-          className="w-full min-w-0 truncate text-xs text-muted-foreground"
-          data-testid={`global-search-thread-snippet-${thread.sessionId}`}
+          className="w-full min-w-0 truncate text-sm"
+          data-testid={`global-search-thread-title-${thread.sessionId}`}
         >
-          <HighlightedText text={snippet.text} ranges={snippet.ranges} />
+          <HighlightedText text={title} ranges={thread.titleRanges} />
         </span>
-      )}
-      {thread.snippets.length === 0 && (
-        <span className="text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</span>
-      )}
+        {snippet && (
+          <span
+            className="w-full min-w-0 truncate text-xs text-muted-foreground"
+            data-testid={`global-search-thread-snippet-${thread.sessionId}`}
+          >
+            <HighlightedText text={snippet.text} ranges={snippet.ranges} />
+          </span>
+        )}
+        {thread.snippets.length === 0 && (
+          <span className="text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</span>
+        )}
+      </span>
     </CommandItem>
   )
 })
