@@ -14,6 +14,7 @@ import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { createContinuationUserMessage } from './chat-continuation-metadata'
 import type { ChatContextPart } from './chat-context-parts'
+import { toMessageContextParts } from './chat-context-parts'
 import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './chat-response-command'
 import {
   cancelChatResponse,
@@ -420,7 +421,7 @@ export function useChatSession(chatSessionId: string | null) {
     // 1. Optimistic user message
     const userMessageId = `user-${Date.now()}`
     const userParts: UIMessage['parts'] = trimmedText ? [{ type: 'text', text: trimmedText }] : []
-    userParts.push(...contextParts as UIMessage['parts'])
+    userParts.push(...toMessageContextParts(contextParts) as UIMessage['parts'])
     userParts.push(...files)
     const userMessage: UIMessage = {
       id: userMessageId,

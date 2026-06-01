@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 
-import type { ChatSkillContextPart } from './chat-context-parts'
+import type { ChatSkillContextMessagePart } from './chat-context-parts'
 import { isChatSkillContextPart } from './chat-context-parts'
 import type { ToolUiKind } from './tool-ui-classifier'
 
@@ -32,7 +32,7 @@ export type ChatRenderItem
     | { kind: 'reasoning', text: string, state?: 'streaming' | 'done', key: string }
     | { kind: 'tool-call', messageId: string, toolCallId: string, key: string }
     | { kind: 'tool-group', items: ToolCallItemRef[], uiKind: ToolUiKind, key: string }
-    | { kind: 'skill-context', part: ChatSkillContextPart, key: string }
+    | { kind: 'skill-context', part: ChatSkillContextMessagePart, key: string }
     | { kind: 'file-attachment', part: FileMessagePart, key: string }
 
 export interface ExecutionPhaseSplit {
@@ -126,7 +126,7 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
       items.push({ kind: 'file-attachment', part, key })
     }
     else if (isChatSkillContextPart(part)) {
-      items.push({ kind: 'skill-context', part, key })
+      items.push({ kind: 'skill-context', part: part as ChatSkillContextMessagePart, key })
     }
     else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
       const toolCallId = (part as { toolCallId: string }).toolCallId

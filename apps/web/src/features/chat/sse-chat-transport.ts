@@ -18,7 +18,7 @@ export function onAnyChatRunEvent(handler: RunActivityHandler): () => void {
   }
 }
 
-function emitRunActivity(data: ChatRunActivityPayload): void {
+export function emitChatRunActivity(data: ChatRunActivityPayload): void {
   for (const handler of globalHandlers) {
     handler(data)
   }
@@ -50,7 +50,7 @@ export function buildUIMessageChunkStreamFromResponse(
       if (!result.success) {
         throw result.error
       }
-      emitRunActivity({
+      emitChatRunActivity({
         chatSessionId,
         messageId: readChunkMessageId(result.value),
         chunk: result.value,
