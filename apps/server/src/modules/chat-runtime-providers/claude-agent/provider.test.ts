@@ -7,10 +7,12 @@ import { ClaudeAgentProvider } from './provider'
 
 const sdkMocks = vi.hoisted(() => ({
   query: vi.fn(),
+  getSessionInfo: vi.fn(),
 }))
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: sdkMocks.query,
+  getSessionInfo: sdkMocks.getSessionInfo,
 }))
 
 function createAsyncQuery(
@@ -166,6 +168,7 @@ describe('claudeAgentProvider MCP integration', () => {
   afterEach(() => {
     removeHostMcpServer('browser-use')
     sdkMocks.query.mockReset()
+    sdkMocks.getSessionInfo.mockReset()
   })
 
   it('passes plugin-registered browser-use MCP server config to the Claude Agent SDK', async () => {
@@ -477,6 +480,47 @@ describe('claudeAgentProvider MCP integration', () => {
       expect.objectContaining({ type: 'text-delta', delta: 'Context preserved' }),
     ]))
     expect(runtimeSession.providerSessionId).toBe('claude-session-2')
+  })
+
+  it('projects Claude session titles from SDK session metadata into the Cradle session title callback', async () => {
+    sdkMocks.getSessionInfo.mockResolvedValue({
+      sessionId: 'claude-session-title',
+      summary: 'Claude SDK summary',
+      customTitle: '  Claude custom title  ',
+      lastModified: 1,
+    })
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-title',
+        message: {
+          content: [{ type: 'text', text: 'ready' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-title',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const reportSessionTitle = vi.fn()
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-title-projection',
+      runtimeSession: createResumedRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Continue the session'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })) {
+      // Drain stream.
+    }
+
+    expect(reportSessionTitle).toHaveBeenCalledWith('Claude custom title')
+    expect(sdkMocks.getSessionInfo).toHaveBeenCalledWith('claude-session-1')
   })
 
   it('uses the runtime session model snapshot when a resumed Claude Agent turn has no explicit model override', async () => {

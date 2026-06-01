@@ -25,10 +25,10 @@ class FakeCodexAppServerClient {
   async request(method: string, params?: unknown): Promise<unknown> {
     this.requests.push({ method, params })
     if (method === 'thread/start') {
-      return { thread: { id: 'codex-thread-1' } }
+      return { thread: { id: 'codex-thread-1', name: 'Codex native title' } }
     }
     if (method === 'thread/resume') {
-      return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1' } }
+      return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
     }
     if (method === 'turn/start') {
       return { turn: { id: 'codex-turn-1', status: 'inProgress' } }
@@ -215,6 +215,62 @@ describe('codexProvider app-server integration', () => {
         turnId: 'codex-turn-1',
         itemId: 'assistant-message-1',
         delta: 'Read',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
+  it('projects Codex thread titles into the Cradle session title callback', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-title-projection',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Start the session'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    expect(reportSessionTitle).toHaveBeenCalledWith('Codex native title')
+
+    client.pushNotification({
+      method: 'thread/name/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        threadName: '  Updated Codex title  ',
+      },
+    })
+    await vi.waitFor(() => {
+      expect(reportSessionTitle).toHaveBeenCalledWith('Updated Codex title')
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
       },
     })
     await firstChunkPromise
