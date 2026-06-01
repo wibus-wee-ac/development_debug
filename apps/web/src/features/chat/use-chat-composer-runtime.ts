@@ -13,10 +13,12 @@ import { useChatPreferencesQuery } from '~/features/settings/use-chat-preference
 import { isElectron, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
-import { getChatRuntimeCapabilities } from './chat-capabilities'
+import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates } from './chat-capabilities'
+import type { ChatRuntimeUiSlotState } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CRADLE_APPSHOT_SLASH_COMMAND,
+  createRuntimeUiSlotCommands,
   getFallbackRuntimeSlashCommands,
   mergeChatSlashCommands,
   withSlashCommandAvailability,
@@ -33,6 +35,7 @@ interface ChatComposerSendOverrides {
 export interface ChatComposerRuntime {
   disabled: boolean
   isStreaming: boolean
+  goalCommandText: string | null
   send: (
     text: string,
     files: FileUIPart[],
@@ -40,6 +43,7 @@ export interface ChatComposerRuntime {
   ) => void
   stop: () => void
   slashCommands: ChatComposerSlashCommand[]
+  slotStates: ChatRuntimeUiSlotState[]
   supportsAttachments: boolean
   tokenUsage: {
     tokens: number
@@ -90,6 +94,14 @@ export function useChatComposerRuntime({
     staleTime: 60_000,
     retry: false,
   })
+  const { data: runtimeUiSlotStates } = useQuery({
+    queryKey: ['chat', 'runtime-ui-slot-states', sessionId ?? 'no-session', runtimeCapabilities?.runtimeKind ?? 'unknown'] as const,
+    queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
+    enabled: !!sessionId,
+    staleTime: 2_000,
+    refetchInterval: query => isStreaming || shouldPollRuntimeSlotStates(query.state.data?.states ?? []) ? 5_000 : false,
+    retry: false,
+  })
   const { data: sessionBinding } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
     enabled: !!sessionId,
@@ -117,29 +129,37 @@ export function useChatComposerRuntime({
     return modelSupportsAttachments(currentSessionModel)
   }, [currentSessionModel])
   const cradleSlashCommands = useMemo(() => {
-    if (!isElectron || platform !== 'darwin') {
-      return [
-        withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+    const appshotCommand = (() => {
+      if (!isElectron || platform !== 'darwin') {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
           enabled: false,
           reason: 'Requires the macOS desktop app.',
-        }),
-      ]
-    }
-    if (!supportsAttachments) {
-      return [
-        withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+        })
+      }
+      if (!supportsAttachments) {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
           enabled: false,
           reason: 'Requires an image-capable model.',
-        }),
-      ]
-    }
-    return [withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)]
+        })
+      }
+      return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
+    })()
+
+    return [appshotCommand]
   }, [supportsAttachments])
+  const runtimeSlotCommands = useMemo(() => {
+    return createRuntimeUiSlotCommands(runtimeCapabilities?.uiSlots ?? [], runtimeUiSlotStates?.states ?? [])
+  }, [runtimeCapabilities?.uiSlots, runtimeUiSlotStates?.states])
+  const goalCommandText = useMemo(() => {
+    const goalCommand = runtimeSlotCommands.find(command => command.id === 'codex:goal')
+    return goalCommand?.action.kind === 'insertText' ? goalCommand.action.text : null
+  }, [runtimeSlotCommands])
   const slashCommands = useMemo(() => mergeChatSlashCommands({
     runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
+    runtimeUiSlotCommands: runtimeSlotCommands,
     fallbackRuntimeCommands: getFallbackRuntimeSlashCommands(runtimeCapabilities?.runtimeKind ?? sessionBinding?.runtimeKind),
     cradleCommands: cradleSlashCommands,
-  }), [cradleSlashCommands, runtimeCapabilities?.runtimeKind, runtimeCapabilities?.slashCommands, sessionBinding?.runtimeKind])
+  }), [cradleSlashCommands, runtimeCapabilities?.runtimeKind, runtimeCapabilities?.slashCommands, runtimeSlotCommands, sessionBinding?.runtimeKind])
 
   const { data: sessionTokens = 0 } = useQuery({
     queryKey: ['chat', 'session-usage', sessionId ?? 'no-session', messageCount] as const,
@@ -171,13 +191,36 @@ export function useChatComposerRuntime({
   return {
     disabled: !isReady,
     isStreaming,
+    goalCommandText,
     send,
     stop,
     slashCommands,
+    slotStates: runtimeUiSlotStates?.states ?? [],
     supportsAttachments,
     tokenUsage: {
       tokens: sessionTokens,
       contextWindow: sessionContextWindow,
     },
   }
+}
+
+function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {
+  return states.some(state => {
+    if (state.kind === 'goal') {
+      return state.status === 'active'
+    }
+    if (state.kind === 'compact') {
+      return state.isCompactRelevant
+    }
+    if (state.kind === 'status') {
+      return state.status === 'active'
+    }
+    if (state.kind === 'toolActivity') {
+      return state.activeCount > 0
+    }
+    if (state.kind === 'mcp') {
+      return Boolean(state.recentProgress)
+    }
+    return false
+  })
 }

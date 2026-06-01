@@ -1,9 +1,34 @@
-import { CommandIcon } from 'lucide-react'
+import {
+  ActivityIcon,
+  AlertTriangleIcon,
+  BoxIcon,
+  BrainIcon,
+  CircleDotIcon,
+  CommandIcon,
+  DiffIcon,
+  FolderTreeIcon,
+  GaugeIcon,
+  HammerIcon,
+  MessageCircleIcon,
+  MousePointer2Icon,
+  PackageIcon,
+  PaperclipIcon,
+  PuzzleIcon,
+  ScanEyeIcon,
+  SearchIcon,
+  SettingsIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  SquareTerminalIcon,
+  TargetIcon,
+  UsersIcon,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
-import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import type { ChatComposerSlashCommand, ChatSlashCommandStateVisual } from './chat-slash-commands'
 import { getSlashCommandSourceLabel, hasDuplicateSlashCommandName } from './chat-slash-commands'
 import { getSlashCommandPanelItems, isSlashCommandAvailable } from './slash-command-input'
 
@@ -43,6 +68,167 @@ function getCommandBadgeClassName(command: ChatComposerSlashCommand): string {
     : 'border-border bg-muted text-muted-foreground'
 }
 
+function getCommandStateClassName(command: ChatComposerSlashCommand): string {
+  switch (command.stateTone) {
+    case 'success':
+      return 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+    case 'warning':
+      return 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-400'
+    case 'danger':
+      return 'border-destructive/25 bg-destructive/10 text-destructive'
+    case 'neutral':
+    default:
+      return 'border-border/70 bg-muted/70 text-muted-foreground'
+  }
+}
+
+function formatCommandRowSubtitle(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
+  if (command.stateVisual?.kind === 'compactUsage' && command.stateLabel) {
+    return `${command.description} (${command.stateLabel.toLowerCase()})`
+  }
+  return formatCommandSubtitle(commands, command)
+}
+
+function readCommandTitle(command: ChatComposerSlashCommand): string {
+  return command.label ?? `/${command.name}`
+}
+
+function readCompactRingClassName(status: ChatSlashCommandStateVisual['status']): string {
+  switch (status) {
+    case 'compacted':
+      return 'text-emerald-500'
+    case 'overLimit':
+      return 'text-destructive'
+    case 'nearLimit':
+      return 'text-amber-500'
+    case 'running':
+      return 'text-primary'
+    case 'idle':
+    default:
+      return 'text-primary/80'
+  }
+}
+
+function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
+  const className = 'mt-0.5 size-3.5 shrink-0 text-muted-foreground/80'
+  switch (command.iconKey ?? (command.presentation === 'slot' ? 'tool-activity' : undefined)) {
+    case 'alert':
+      return <AlertTriangleIcon className={className} aria-hidden="true" />
+    case 'appshot':
+      return <SparklesIcon className={className} aria-hidden="true" />
+    case 'approvals':
+      return <ShieldCheckIcon className={className} aria-hidden="true" />
+    case 'code-review':
+      return <ScanEyeIcon className={className} aria-hidden="true" />
+    case 'compact':
+      return <GaugeIcon className={className} aria-hidden="true" />
+    case 'config':
+      return <SettingsIcon className={className} aria-hidden="true" />
+    case 'crew':
+      return <UsersIcon className={className} aria-hidden="true" />
+    case 'diff':
+      return <DiffIcon className={className} aria-hidden="true" />
+    case 'feedback':
+      return <MessageCircleIcon className={className} aria-hidden="true" />
+    case 'filesystem':
+      return <FolderTreeIcon className={className} aria-hidden="true" />
+    case 'goal':
+      return <TargetIcon className={className} aria-hidden="true" />
+    case 'ide-context':
+      return <MousePointer2Icon className={className} aria-hidden="true" />
+    case 'mcp':
+      return <PaperclipIcon className={className} aria-hidden="true" />
+    case 'model':
+      return <BoxIcon className={className} aria-hidden="true" />
+    case 'personality':
+    case 'plan':
+    case 'side-chat':
+      return <CircleDotIcon className={className} aria-hidden="true" />
+    case 'plugin':
+      return <PuzzleIcon className={className} aria-hidden="true" />
+    case 'reasoning':
+      return <BrainIcon className={className} aria-hidden="true" />
+    case 'search':
+      return <SearchIcon className={className} aria-hidden="true" />
+    case 'skills':
+      return <PackageIcon className={className} aria-hidden="true" />
+    case 'status':
+      return <ActivityIcon className={className} aria-hidden="true" />
+    case 'terminal':
+      return <SquareTerminalIcon className={className} aria-hidden="true" />
+    case 'tool-activity':
+      return <HammerIcon className={className} aria-hidden="true" />
+    case 'usage':
+      return <GaugeIcon className={className} aria-hidden="true" />
+    default:
+      return <CommandIcon className={className} aria-hidden="true" />
+  }
+}
+
+function SlashCommandIcon({
+  command,
+  className,
+}: {
+  command: ChatComposerSlashCommand
+  className?: string
+}) {
+  const visual = command.stateVisual
+  if (visual?.kind === 'compactUsage') {
+    return <CompactUsageIcon state={visual} className={className} />
+  }
+  return <span className={cn('shrink-0', className)}>{renderCommandIcon(command)}</span>
+}
+
+function CompactUsageIcon({
+  state,
+  className,
+}: {
+  state: ChatSlashCommandStateVisual
+  className?: string
+}) {
+  const radius = 7
+  const circumference = 2 * Math.PI * radius
+  const percent = state.percent === null ? 0 : Math.min(100, Math.max(0, state.percent))
+  const strokeDashoffset = circumference - (circumference * percent) / 100
+
+  return (
+    <span
+      className={cn(
+        'relative mt-px grid size-4 shrink-0 place-items-center',
+        readCompactRingClassName(state.status),
+        state.status === 'running' && 'animate-pulse',
+        className,
+      )}
+      aria-hidden="true"
+      data-testid="slash-command-compact-state-ring"
+    >
+      <svg className="absolute inset-0 size-4 -rotate-90" viewBox="0 0 18 18">
+        <circle
+          cx="9"
+          cy="9"
+          r={radius}
+          className="stroke-muted-foreground/20"
+          fill="none"
+          strokeWidth="2"
+        />
+        {state.percent !== null && (
+          <circle
+            cx="9"
+            cy="9"
+            r={radius}
+            className="stroke-current"
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            strokeLinecap="round"
+            strokeWidth="2"
+          />
+        )}
+      </svg>
+    </span>
+  )
+}
+
 export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
   const [activeIndex, setActiveIndex] = useState(0)
   const listRef = useRef<HTMLDivElement>(null)
@@ -53,9 +239,8 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
     return getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item }))
   }, [commands, query])
 
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref read during render for perf
   const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
-  // eslint-disable-next-line react-hooks/refs -- intentional: sync ref write during render
+
   previousQueryRef.current = query
 
   useEffect(() => {
@@ -69,7 +254,6 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
     }
   }, [effectiveActiveIndex])
 
-  // eslint-disable-next-line react-hooks/refs -- intentional: key handler ref assigned during render
   keyHandlerRef.current = (e: KeyboardEvent) => {
     if (!visible) {
       return
@@ -110,8 +294,6 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
   }, [onSelect])
 
   const activeCommand = results[effectiveActiveIndex]?.item
-  const activeSubtitle = activeCommand ? formatCommandSubtitle(commands, activeCommand) : ''
-  const activeBadge = activeCommand ? getCommandBadge(commands, activeCommand) : ''
   const activeOptionId = activeCommand ? formatSlashCommandOptionId(activeCommand, effectiveActiveIndex) : undefined
 
   useEffect(() => {
@@ -124,94 +306,68 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
 
   return (
     <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl backdrop-blur-md">
-      <div className="flex max-h-72 min-h-0">
-        <div
-          ref={listRef}
-          className="max-h-72 min-w-0 flex-1 overflow-y-auto p-1"
-          id={listboxId}
-          role="listbox"
-        >
-          {results.map(({ item }, idx) => {
-            const subtitle = formatCommandSubtitle(commands, item)
-            const badge = getCommandBadge(commands, item)
-            const isAvailable = isSlashCommandAvailable(item)
-            return (
-              <button
-                key={formatCommandKey(item, idx)}
-                type="button"
-                id={formatSlashCommandOptionId(item, idx)}
-                role="option"
-                aria-label={`/${item.name} ${getSlashCommandSourceLabel(item)}`}
-                aria-selected={formatSlashCommandOptionId(item, idx) === activeOptionId}
-                disabled={!isAvailable}
-                className={cn(
-                  'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors',
-                  isAvailable
-                    ? idx === effectiveActiveIndex
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-foreground/80 hover:bg-accent/40'
-                    : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
-                )}
-                onMouseEnter={() => setActiveIndex(idx)}
-                onFocus={() => setActiveIndex(idx)}
-                onClick={() => handleOptionClick(item)}
-              >
-                <CommandIcon className="mt-0.5 size-3.5 shrink-0 text-primary/70" aria-hidden="true" />
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-baseline gap-1.5">
-                    <span className="truncate text-xs font-medium">
-                      /
-                      {item.name}
-                    </span>
-                    {item.argumentHint && (
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {item.argumentHint}
-                      </span>
-                    )}
-                    {badge && (
-                      <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(item))}>
-                        {badge}
-                      </span>
-                    )}
+      <div
+        ref={listRef}
+        className="max-h-72 overflow-y-auto p-1"
+        id={listboxId}
+        role="listbox"
+      >
+        {results.map(({ item }, idx) => {
+          const subtitle = formatCommandRowSubtitle(commands, item)
+          const badge = getCommandBadge(commands, item)
+          const isAvailable = isSlashCommandAvailable(item)
+          return (
+            <button
+              key={formatCommandKey(item, idx)}
+              type="button"
+              id={formatSlashCommandOptionId(item, idx)}
+              role="option"
+              aria-label={`${readCommandTitle(item)} ${getSlashCommandSourceLabel(item)}`}
+              aria-selected={formatSlashCommandOptionId(item, idx) === activeOptionId}
+              disabled={!isAvailable}
+              className={cn(
+                'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1 text-left',
+                isAvailable
+                  ? idx === effectiveActiveIndex
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-foreground/80 hover:bg-accent/40'
+                  : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
+              )}
+              onMouseEnter={() => setActiveIndex(idx)}
+              onFocus={() => setActiveIndex(idx)}
+              onClick={() => handleOptionClick(item)}
+            >
+              <SlashCommandIcon command={item} />
+              <span className="min-w-0 flex-1 flex flex-row gap-1.5 items-center">
+                <span className="flex min-w-0 items-baseline gap-1.5">
+                  <span className="truncate text-xs font-medium">
+                    {readCommandTitle(item)}
                   </span>
-                  {subtitle && (
-                    <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                      {subtitle}
+                  {item.argumentHint && (
+                    <span className="truncate text-[11px] text-muted-foreground">
+                      {item.argumentHint}
+                    </span>
+                  )}
+                  {badge && (
+                    <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(item))}>
+                      {badge}
+                    </span>
+                  )}
+                  {item.stateLabel && item.stateVisual?.kind !== 'compactUsage' && (
+                    <span className={cn('max-w-28 truncate rounded border px-1 py-px text-[9px] font-medium leading-none tabular-nums', getCommandStateClassName(item))}>
+                      {item.stateLabel}
                     </span>
                   )}
                 </span>
-              </button>
-            )
-          })}
-        </div>
-        {activeCommand && (
-          <aside
-            className="hidden w-64 shrink-0 border-l border-border/40 bg-background/35 p-3 sm:block"
-            data-testid="slash-command-description"
-          >
-            <div className="flex min-w-0 items-baseline gap-1.5">
-              <span className="truncate font-mono text-xs font-medium text-foreground">
-                /
-                {activeCommand.name}
+                {subtitle && (
+                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                    {subtitle}
+                  </span>
+                )}
               </span>
-              {activeCommand.argumentHint && (
-                <span className="truncate font-mono text-[11px] text-primary/75">
-                  {activeCommand.argumentHint}
-                </span>
-              )}
-              {activeBadge && (
-                <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(activeCommand))}>
-                  {activeBadge}
-                </span>
-              )}
-            </div>
-            {activeSubtitle && (
-              <p className="mt-2 text-pretty text-xs leading-5 text-muted-foreground">
-                {activeSubtitle}
-              </p>
-            )}
-          </aside>
-        )}
+            </button>
+          )
+        })}
       </div>
     </div>
   )

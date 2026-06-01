@@ -25,7 +25,8 @@ Position: docs/specs/cradle-unified-ui-slots.md
 
 - message action：用户可以从某条 user message 设置当前目标。
 - composer goal rail：composer 上方常驻显示 active goal，例如“进行中的目标 ... · elapsed time”。
-- composer-attached drawer：点击 goal rail 后，在输入区上方展开 status、context、rate limit、plan/todo 摘要。
+- slash command row state：provider 暴露的 slash row 可以直接携带状态，例如 `/compact` 在行内 icon 位显示 context usage 圆环。
+- toolbar picker：模型、推理档位、权限模式这类可选配置从 composer toolbar 触发 picker，不伪装成 `/model`、`/reasoning` 这种文本命令。
 - chat stream blocks：tool activity、diff、terminal、plan 更新仍然可以在消息流中作为执行证据出现。
 
 right aside 更适合承载可并行查看的辅助信息，例如文件、workspace context、diff explorer、MCP / plugin detail，而不是承载当前目标的主交互。
@@ -42,7 +43,7 @@ right aside 更适合承载可并行查看的辅助信息，例如文件、works
 
 | Cradle UI slot | Provider/native source | Current projection in Cradle | Gap / note | Scope |
 | --- | --- | --- | --- | --- |
-| Goal / active objective | `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/goal/updated`, `thread/goal/cleared`, user-message action | no dedicated product slot yet | 需要成为 chat / composer 原生工作流：message action 设置目标，composer goal rail 常驻 active goal，composer-attached drawer 展开状态；不是 right aside first | in-scope |
+| Goal / active objective | `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/goal/updated`, `thread/goal/cleared`, user-message action | provider-owned goal slot state renders next to Composer; `/goal` slash row comes from provider slot capability; completed user messages can draft the provider `/goal` command | 还缺真正的 provider command execution flow；当前 message action 只生成 provider command draft，不由 Cradle 写 goal state | in-scope |
 | Session / run status | `turn/*`, `thread/status/changed`, `turn/completed`, `error`, `model/rerouted`, `thread/tokenUsage/updated` | `RuntimeSessionPanel` runtime/UI status, run metadata, queue, provider session | 已有基础，但还不是完整的统一 run summary | in-scope |
 | Task / TODO | `turn/plan/updated`, `item/plan/delta`, Claude `TodoWrite`, task tools | `RuntimeSessionPanel` Todos, `ChatView` TodoProgress | TODO 是可跟踪状态项，必须能形成 session-level snapshot；Claude 有，Codex plan 还缺稳定投影到 session TODO snapshot | in-scope |
 | Plan | `turn/plan/updated`, `item/plan/delta`, `plan` tool | chat tool block can render plan text | Plan 是 reasoning / execution strategy 的时序投影；有展示，但没有独立 plan 槽位和 session-level 汇总 | in-scope |
@@ -68,7 +69,7 @@ right aside 更适合承载可并行查看的辅助信息，例如文件、works
 ## 结论
 
 Cradle 的统一 UI 应该以自己的槽位为中心，而不是按 provider 名称拆面板。  
-`Goal / active objective` 是 chat 主工作流的一部分：从消息动作设置目标，在 composer goal rail 常驻状态，并通过 composer-attached drawer 展开运行信息。right aside 可以显示辅助详情，但不应该成为目标交互的主入口。
+`Goal / active objective` 和 `/compact` 这类 provider-owned state 是 chat 主工作流的一部分：目标从消息动作生成 provider command draft，在 composer goal rail 常驻；compaction usage 直接显示在 `/compact` slash row 的 icon 位。模型、推理档位、权限模式属于 toolbar picker，不进入 slash panel。right aside 可以显示辅助详情，但不应该成为目标交互、command state 或 picker state 的主入口。
 
 Codex 的价值在于它能从 app-server 里提供最完整的原生事件源，所以最适合先拿来填这些槽位，尤其是 `Goal / active objective`、`Task / TODO`、`Plan`、`Tool activity`、`Diff`、`Terminal`、`Approvals` 这几类。
 

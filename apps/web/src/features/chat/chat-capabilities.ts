@@ -9,10 +9,365 @@ export interface ChatSlashCommand {
   aliases?: string[]
 }
 
+export type ChatRuntimeUiSlotIconKey =
+  | 'alert'
+  | 'approvals'
+  | 'code-review'
+  | 'compact'
+  | 'config'
+  | 'crew'
+  | 'diff'
+  | 'feedback'
+  | 'filesystem'
+  | 'goal'
+  | 'ide-context'
+  | 'mcp'
+  | 'model'
+  | 'personality'
+  | 'plugin'
+  | 'plan'
+  | 'reasoning'
+  | 'search'
+  | 'side-chat'
+  | 'skills'
+  | 'status'
+  | 'terminal'
+  | 'tool-activity'
+  | 'usage'
+
+export interface ChatRuntimeUiSlot {
+  id: string
+  name: string
+  label: string
+  description: string
+  argumentHint: string
+  aliases?: string[]
+  iconKey?: ChatRuntimeUiSlotIconKey
+  commandText?: string
+}
+
 export interface ChatRuntimeCapabilities {
   runtimeKind: string
   slashCommands: ChatSlashCommand[]
+  uiSlots: ChatRuntimeUiSlot[]
   skills: string[]
+}
+
+export type ChatRuntimeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
+export type ChatRuntimeCompactStatus = 'idle' | 'running' | 'nearLimit' | 'overLimit' | 'compacted'
+export type ChatRuntimeThreadStatus = 'notLoaded' | 'idle' | 'systemError' | 'active'
+export type ChatRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
+export type ChatRuntimeToolActivityStatus = 'running' | 'completed' | 'failed'
+export type ChatRuntimeMcpServerStatus = 'starting' | 'ready' | 'failed' | 'cancelled' | 'unknown'
+export type ChatRuntimeMcpAuthStatus = 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | 'unknown'
+export type ChatRuntimeApprovalStatus = 'pending' | 'approved' | 'denied' | 'timedOut' | 'aborted'
+export type ChatRuntimeAlertSeverity = 'info' | 'warning' | 'error'
+
+export interface ChatRuntimeTokenUsageBreakdown {
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+}
+
+export interface ChatRuntimeGoalUiSlotState {
+  kind: 'goal'
+  slotId: string
+  threadId: string
+  objective: string
+  status: ChatRuntimeGoalStatus
+  tokenBudget: number | null
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface ChatRuntimeCompactUiSlotState {
+  kind: 'compact'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  status: ChatRuntimeCompactStatus
+  isCompactRelevant: boolean
+  total: ChatRuntimeTokenUsageBreakdown
+  last: ChatRuntimeTokenUsageBreakdown
+  modelContextWindow: number | null
+  autoCompactTokenLimit: number | null
+  usagePercent: number | null
+  autoCompactPercent: number | null
+  lastCompactedAt: number | null
+  compactionItemId: string | null
+  updatedAt: number
+}
+
+export interface ChatRuntimeStatusUiSlotState {
+  kind: 'status'
+  slotId: string
+  threadId: string
+  status: ChatRuntimeThreadStatus
+  activeFlags: string[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeModelUiSlotState {
+  kind: 'model'
+  slotId: string
+  threadId: string
+  modelId: string | null
+  modelLabel: string | null
+  modelProvider: string | null
+  serviceTier: string | null
+  supportsImages: boolean | null
+  supportsWebSearch: boolean | null
+  supportsNamespaceTools: boolean | null
+  updatedAt: number
+}
+
+export interface ChatRuntimeReasoningUiSlotState {
+  kind: 'reasoning'
+  slotId: string
+  threadId: string
+  effort: string | null
+  summary: string | null
+  supportedEfforts: Array<{ id: string, description: string }>
+  updatedAt: number
+}
+
+export interface ChatRuntimePlanStep {
+  step: string
+  status: ChatRuntimePlanStepStatus
+}
+
+export interface ChatRuntimePlanUiSlotState {
+  kind: 'plan'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  explanation: string | null
+  steps: ChatRuntimePlanStep[]
+  currentStep: string | null
+  pendingCount: number
+  inProgressCount: number
+  completedCount: number
+  updatedAt: number
+}
+
+export interface ChatRuntimeToolActivityItem {
+  id: string
+  type: string
+  label: string
+  status: ChatRuntimeToolActivityStatus
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export interface ChatRuntimeToolActivityUiSlotState {
+  kind: 'toolActivity'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  recentItems: ChatRuntimeToolActivityItem[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeMcpServerSummary {
+  name: string
+  status: ChatRuntimeMcpServerStatus
+  authStatus: ChatRuntimeMcpAuthStatus
+  toolCount: number
+  resourceCount: number
+  error: string | null
+}
+
+export interface ChatRuntimeMcpUiSlotState {
+  kind: 'mcp'
+  slotId: string
+  threadId: string
+  serverCount: number
+  readyCount: number
+  failedCount: number
+  needsLoginCount: number
+  recentProgress: string | null
+  servers: ChatRuntimeMcpServerSummary[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeDiffUiSlotState {
+  kind: 'diff'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  fileCount: number
+  addedLines: number
+  removedLines: number
+  hasDiff: boolean
+  updatedAt: number
+}
+
+export interface ChatRuntimeTerminalUiSlotState {
+  kind: 'terminal'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  lastCommand: string | null
+  lastOutputPreview: string | null
+  updatedAt: number
+}
+
+export interface ChatRuntimeApprovalItem {
+  id: string
+  targetItemId: string | null
+  status: ChatRuntimeApprovalStatus
+  label: string
+  riskLevel: string | null
+  rationale: string | null
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export interface ChatRuntimeApprovalsUiSlotState {
+  kind: 'approvals'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  pendingCount: number
+  approvedCount: number
+  deniedCount: number
+  recentItems: ChatRuntimeApprovalItem[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeAlertItem {
+  id: string
+  severity: ChatRuntimeAlertSeverity
+  message: string
+  source: string
+  updatedAt: number
+}
+
+export interface ChatRuntimeAlertUiSlotState {
+  kind: 'alert'
+  slotId: string
+  threadId: string | null
+  warningCount: number
+  errorCount: number
+  recentItems: ChatRuntimeAlertItem[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeFilesystemUiSlotState {
+  kind: 'filesystem'
+  slotId: string
+  threadId: string
+  changedPathCount: number
+  recentPaths: string[]
+  updatedAt: number
+}
+
+export interface ChatRuntimeSkillsUiSlotState {
+  kind: 'skills'
+  slotId: string
+  threadId: string
+  enabledCount: number
+  disabledCount: number
+  errorCount: number
+  roots: string[]
+  updatedAt: number
+}
+
+export interface ChatRuntimePluginUiSlotState {
+  kind: 'plugin'
+  slotId: string
+  threadId: string
+  installedCount: number
+  enabledCount: number
+  appCount: number
+  marketplaceCount: number
+  errorCount: number
+  updatedAt: number
+}
+
+export interface ChatRuntimeSearchUiSlotState {
+  kind: 'search'
+  slotId: string
+  threadId: string
+  recentResultCount: number
+  recentQuery: string | null
+  fuzzySessionActive: boolean
+  updatedAt: number
+}
+
+export interface ChatRuntimeCrewUiSlotState {
+  kind: 'crew'
+  slotId: string
+  threadId: string
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  recentItems: ChatRuntimeToolActivityItem[]
+  collaborationModeCount: number
+  updatedAt: number
+}
+
+export interface ChatRuntimeUsageUiSlotState {
+  kind: 'usage'
+  slotId: string
+  threadId: string
+  usedPercent: number | null
+  secondaryUsedPercent: number | null
+  creditsBalance: string | null
+  hasCredits: boolean | null
+  rateLimitReachedType: string | null
+  planType: string | null
+  updatedAt: number
+}
+
+export interface ChatRuntimeConfigUiSlotState {
+  kind: 'config'
+  slotId: string
+  threadId: string
+  modelId: string | null
+  approvalPolicy: string | null
+  sandboxMode: string | null
+  allowedApprovalPolicyCount: number | null
+  allowedSandboxModeCount: number | null
+  featureRequirementCount: number | null
+  webSearchModeCount: number | null
+  updatedAt: number
+}
+
+export type ChatRuntimeUiSlotState =
+  | ChatRuntimeAlertUiSlotState
+  | ChatRuntimeApprovalsUiSlotState
+  | ChatRuntimeCompactUiSlotState
+  | ChatRuntimeConfigUiSlotState
+  | ChatRuntimeCrewUiSlotState
+  | ChatRuntimeDiffUiSlotState
+  | ChatRuntimeFilesystemUiSlotState
+  | ChatRuntimeGoalUiSlotState
+  | ChatRuntimeMcpUiSlotState
+  | ChatRuntimeModelUiSlotState
+  | ChatRuntimePlanUiSlotState
+  | ChatRuntimePluginUiSlotState
+  | ChatRuntimeReasoningUiSlotState
+  | ChatRuntimeSearchUiSlotState
+  | ChatRuntimeSkillsUiSlotState
+  | ChatRuntimeStatusUiSlotState
+  | ChatRuntimeTerminalUiSlotState
+  | ChatRuntimeToolActivityUiSlotState
+  | ChatRuntimeUsageUiSlotState
+
+export interface ChatRuntimeUiSlotStatesResponse {
+  runtimeKind: string
+  states: ChatRuntimeUiSlotState[]
 }
 
 export async function getChatRuntimeCapabilities(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeCapabilities> {
@@ -22,4 +377,13 @@ export async function getChatRuntimeCapabilities(sessionId: string, signal?: Abo
     throw new Error(`Failed to load chat capabilities: ${res.status} ${body}`)
   }
   return await res.json() as ChatRuntimeCapabilities
+}
+
+export async function getChatRuntimeUiSlotStates(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeUiSlotStatesResponse> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/ui-slot-states`, { signal })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to load chat UI slot states: ${res.status} ${body}`)
+  }
+  return await res.json() as ChatRuntimeUiSlotStatesResponse
 }

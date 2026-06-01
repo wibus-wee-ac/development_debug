@@ -21,6 +21,7 @@ import { CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import type { SessionTodoSnapshot } from './chat-todo-projection'
 import { readTodoCompletion } from './chat-todo-projection'
 import { Composer } from './composer'
+import { ComposerSlotStates } from './composer-slot-states'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
@@ -69,6 +70,7 @@ function ChatMessageListPane({
   isReady,
   scrollRuntime,
   onToolApprovalResponse,
+  onSetGoalFromMessage,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -78,6 +80,7 @@ function ChatMessageListPane({
   isReady: boolean
   scrollRuntime: ChatScrollRuntime
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  onSetGoalFromMessage?: (messageId: string, text: string) => void
 }) {
   const { t } = useTranslation('chat')
 
@@ -122,6 +125,7 @@ function ChatMessageListPane({
                 sessionId={sessionId}
                 messageId={messageId}
                 onToolApprovalResponse={onToolApprovalResponse}
+                onSetGoalFromMessage={onSetGoalFromMessage}
               />
             ))}
           </Virtualizer>
@@ -203,6 +207,7 @@ function ChatComposerSection({
   toolbar,
   contextBar,
   droppedPath,
+  goalDraft,
   onComposerFocusChange,
 }: {
   todoSnapshot: SessionTodoSnapshot | null
@@ -219,6 +224,7 @@ function ChatComposerSection({
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
+  goalDraft: { text: string, ts: number } | null
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
@@ -232,6 +238,7 @@ function ChatComposerSection({
           onReorder={onReorderQueueItems}
           className="mb-2"
         />
+        <ComposerSlotStates states={composerRuntime.slotStates} />
         <Composer
           send={{
             submit: composerRuntime.send,
@@ -255,6 +262,8 @@ function ChatComposerSection({
             contextBar,
           }}
           externalSignals={{
+            replaceText: goalDraft?.text,
+            replaceTextKey: goalDraft?.ts,
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
             appendTextKey: droppedPath?.ts,
           }}
@@ -336,6 +345,7 @@ export function ChatView({
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [goalDraft, setGoalDraft] = useState<{ text: string, ts: number } | null>(null)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
@@ -390,6 +400,16 @@ export function ChatView({
     }
   }, [appshotRuntime, composerRuntime.supportsAttachments])
 
+  const handleSetGoalFromMessage = useCallback((_: string, text: string) => {
+    if (!composerRuntime.goalCommandText) {
+      return
+    }
+    const commandText = composerRuntime.goalCommandText.endsWith(' ')
+      ? composerRuntime.goalCommandText
+      : `${composerRuntime.goalCommandText} `
+    setGoalDraft({ text: `${commandText}${text.trim()}`, ts: Date.now() })
+  }, [composerRuntime.goalCommandText])
+
   return (
     <div
       className="relative flex h-full flex-col"
@@ -422,6 +442,7 @@ export function ChatView({
         isReady={isReady}
         scrollRuntime={scrollRuntime}
         onToolApprovalResponse={respondToToolApproval}
+        onSetGoalFromMessage={composerRuntime.goalCommandText ? handleSetGoalFromMessage : undefined}
       />
 
       <ChatComposerSection
@@ -439,6 +460,7 @@ export function ChatView({
         toolbar={composerToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
+        goalDraft={goalDraft}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
     </div>

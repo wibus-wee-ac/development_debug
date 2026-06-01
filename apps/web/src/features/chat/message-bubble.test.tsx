@@ -419,6 +419,29 @@ describe('message bubble', () => {
     expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
   })
 
+  it('offers a provider goal action on completed user messages', () => {
+    const onSetGoalFromMessage = vi.fn()
+    const userMessage: UIMessage = {
+      id: 'user-goal',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Refactor the runtime slot state' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble
+          message={userMessage}
+          isStreaming={false}
+          onSetGoalFromMessage={onSetGoalFromMessage}
+        />
+      </TooltipProvider>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
+
+    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal', 'Refactor the runtime slot state')
+  })
+
   it('opens Cradle AppShot previews and toggles accessibility text', () => {
     const messageWithAppshot: UIMessage = {
       id: 'user-appshot-preview',
