@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
-import { KanbanCard } from './kanban-card'
+import { KanbanCardPreview } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
 import type { IssueSelectionMode } from './kanban-selection'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
@@ -178,7 +178,7 @@ export function KanbanBoard({
               boxShadow: 'var(--shadow-md)',
             }}
           >
-            <KanbanCard
+            <KanbanCardPreview
               issue={activeIssue}
               statuses={statuses}
               milestones={milestones}

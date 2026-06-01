@@ -10,13 +10,13 @@ import { getIssuesSearch, getSessionsByIdMessages } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import type { SmartMentionAttrs, SmartMentionItem, SmartMentionKind } from '~/components/editor/smart-mention-utils'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useSessions } from '~/features/workspace/use-session'
+import { useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { KanbanBoard, KanbanIssue } from '~/lib/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -150,7 +150,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const { workspaces } = useWorkspaces()
   const { agents } = useAgents()
-  const { sessions } = useSessions(issue.workspaceId)
+  const { sessions } = useWorkspaceSessions(issue.workspaceId)
   const { data: statuses = [] } = useStatuses(issue.workspaceId)
   const { data: milestones = [] } = useMilestones(issue.workspaceId)
   const { data: workspaceIssues = [] } = useIssues({ workspaceId: issue.workspaceId })
