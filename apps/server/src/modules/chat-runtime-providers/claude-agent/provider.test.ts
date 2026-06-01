@@ -375,6 +375,7 @@ describe('claudeAgentProvider MCP integration', () => {
         { name: 'compact', description: 'Compact the conversation', argumentHint: '' },
         { name: 'review', description: 'Review a target file', argumentHint: '<file>', aliases: ['code-review'] },
       ],
+      uiSlots: [],
       skills: [],
     })
 
@@ -510,7 +511,7 @@ describe('claudeAgentProvider MCP integration', () => {
     const reportSessionTitle = vi.fn()
     for await (const _chunk of provider.streamTurn({
       runId: 'run-claude-agent-title-projection',
-      runtimeSession: createResumedRuntimeSession(),
+      runtimeSession: createResumedRuntimeSession({ providerSessionId: 'claude-session-title' }),
       profile: createProfile(),
       message: createUserMessage('Continue the session'),
       workspaceId: 'workspace-1',
@@ -520,7 +521,7 @@ describe('claudeAgentProvider MCP integration', () => {
     }
 
     expect(reportSessionTitle).toHaveBeenCalledWith('Claude custom title')
-    expect(sdkMocks.getSessionInfo).toHaveBeenCalledWith('claude-session-1')
+    expect(sdkMocks.getSessionInfo).toHaveBeenCalledWith('claude-session-title')
   })
 
   it('uses the runtime session model snapshot when a resumed Claude Agent turn has no explicit model override', async () => {
@@ -783,11 +784,29 @@ describe('claudeAgentProvider MCP integration', () => {
       { type: 'text-start', id: expect.any(String) },
       { type: 'text-delta', id: expect.any(String), delta: 'First text.' },
       { type: 'tool-input-start', toolCallId: 'tool-1', toolName: 'bash' },
-      { type: 'tool-input-available', toolCallId: 'tool-1', toolName: 'bash', input: { command: 'pwd' } },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'tool-1',
+        toolName: 'bash',
+        input: expect.objectContaining({
+          identifier: 'claude-code',
+          apiName: 'bash',
+          args: { command: 'pwd' },
+        }),
+      },
       { type: 'text-start', id: expect.any(String) },
       { type: 'text-delta', id: expect.any(String), delta: 'Second text.' },
       { type: 'tool-input-start', toolCallId: 'tool-2', toolName: 'read_file' },
-      { type: 'tool-input-available', toolCallId: 'tool-2', toolName: 'read_file', input: { path: 'README.md' } },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'tool-2',
+        toolName: 'read_file',
+        input: expect.objectContaining({
+          identifier: 'claude-code',
+          apiName: 'read_file',
+          args: { path: 'README.md' },
+        }),
+      },
       { type: 'text-start', id: expect.any(String) },
       { type: 'text-delta', id: expect.any(String), delta: 'Final text.' },
       { type: 'text-end', id: expect.any(String) },

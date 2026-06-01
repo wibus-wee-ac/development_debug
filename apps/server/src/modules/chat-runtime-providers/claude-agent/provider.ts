@@ -118,6 +118,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return {
         runtimeKind: RUNTIME_KIND,
         slashCommands: slashCommands.map(toRuntimeSlashCommand),
+        uiSlots: [],
         skills: [],
       }
     }

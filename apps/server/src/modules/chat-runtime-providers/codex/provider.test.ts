@@ -24,8 +24,162 @@ class FakeCodexAppServerClient {
 
   async request(method: string, params?: unknown): Promise<unknown> {
     this.requests.push({ method, params })
+    if (method === 'config/read') {
+      return {
+        config: {
+          model: 'gpt-5-codex',
+          model_provider: 'openai',
+          model_context_window: 200_000,
+          model_auto_compact_token_limit: 160_000,
+          model_reasoning_effort: 'high',
+          model_reasoning_summary: 'auto',
+          service_tier: 'priority',
+        },
+      }
+    }
+    if (method === 'modelProvider/capabilities/read') {
+      return {
+        imageGeneration: true,
+        namespaceTools: true,
+        webSearch: true,
+      }
+    }
+    if (method === 'model/list') {
+      return {
+        data: [
+          {
+            id: 'gpt-5-codex',
+            model: 'gpt-5-codex',
+            displayName: 'GPT-5 Codex',
+            defaultReasoningEffort: 'medium',
+            supportedReasoningEfforts: [
+              { reasoningEffort: 'low', description: 'Low' },
+              { reasoningEffort: 'medium', description: 'Medium' },
+              { reasoningEffort: 'high', description: 'High' },
+            ],
+          },
+        ],
+        nextCursor: null,
+      }
+    }
+    if (method === 'mcpServerStatus/list') {
+      return {
+        data: [
+          {
+            name: 'github',
+            tools: { search: {}, read_issue: {} },
+            resources: [{ uri: 'repo://cradle' }],
+            resourceTemplates: [{ uriTemplate: 'repo://{owner}/{repo}' }],
+            authStatus: 'oAuth',
+          },
+          {
+            name: 'linear',
+            tools: { issue_search: {} },
+            resources: [],
+            resourceTemplates: [],
+            authStatus: 'notLoggedIn',
+          },
+        ],
+        nextCursor: null,
+      }
+    }
+    if (method === 'account/rateLimits/read') {
+      return {
+        rateLimits: {
+          primary: { usedPercent: 91, resetsAt: 1_900_000_000 },
+          secondary: { usedPercent: 44, resetsAt: 1_900_000_500 },
+          credits: { hasCredits: true, unlimited: false, balance: '12.50' },
+          planType: 'pro',
+        },
+      }
+    }
+    if (method === 'configRequirements/read') {
+      return {
+        requirements: {
+          allowedApprovalPolicies: ['on-request', 'never'],
+          allowedSandboxModes: ['workspace-write', 'read-only'],
+          allowedWebSearchModes: ['enabled', 'disabled'],
+          featureRequirements: { webSearch: true, imageGeneration: true },
+        },
+      }
+    }
+    if (method === 'skills/list') {
+      return {
+        data: [
+          {
+            cwd: '/tmp/cradle-workspace',
+            skills: [
+              { name: 'agent-design', enabled: true },
+              { name: 'server-app-development', enabled: true },
+              { name: 'disabled-skill', enabled: false },
+            ],
+            errors: ['invalid skill metadata'],
+          },
+        ],
+      }
+    }
+    if (method === 'plugin/list') {
+      return {
+        marketplaces: [
+          {
+            id: 'personal',
+            plugins: [
+              { id: 'browser', installed: true, enabled: true },
+              { id: 'documents', installed: true, enabled: false },
+            ],
+          },
+        ],
+        marketplaceLoadErrors: ['marketplace unavailable'],
+      }
+    }
+    if (method === 'app/list') {
+      return {
+        data: [
+          { id: 'browser', isAccessible: true, isEnabled: true },
+          { id: 'hidden', isAccessible: false, isEnabled: true },
+        ],
+        nextCursor: null,
+      }
+    }
+    if (method === 'collaborationMode/list') {
+      return {
+        data: [
+          { id: 'solo' },
+          { id: 'crew' },
+        ],
+      }
+    }
+    if (method === 'thread/goal/get') {
+      return { goal: null }
+    }
+    if (method === 'thread/goal/set') {
+      const request = params as { threadId: string, objective?: string | null, status?: string | null, tokenBudget?: number | null }
+      return {
+        goal: {
+          threadId: request.threadId,
+          objective: request.objective,
+          status: request.status ?? 'active',
+          tokenBudget: request.tokenBudget ?? null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      }
+    }
     if (method === 'thread/start') {
-      return { thread: { id: 'codex-thread-1', name: 'Codex native title' } }
+      return {
+        thread: {
+          id: 'codex-thread-1',
+          name: 'Codex native title',
+          modelProvider: 'openai',
+          status: { type: 'active', activeFlags: ['waitingOnApproval'] },
+        },
+        model: 'gpt-5-codex',
+        modelProvider: 'openai',
+        serviceTier: 'priority',
+        reasoningEffort: 'high',
+      }
     }
     if (method === 'thread/resume') {
       return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
@@ -166,6 +320,30 @@ function codexOutput(apiName: string, args: unknown, result: unknown) {
 }
 
 describe('codexProvider app-server integration', () => {
+  it('projects Codex app-server capabilities into provider-owned UI slots', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.getCapabilities({
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toMatchObject({
+      runtimeKind: 'codex',
+      slashCommands: [],
+      skills: [],
+      uiSlots: expect.arrayContaining([
+        expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal' }),
+        expect.objectContaining({ id: 'codex:mcp', name: 'mcp', iconKey: 'mcp' }),
+        expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review' }),
+        expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact' }),
+        expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model' }),
+        expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status' }),
+      ]),
+    })
+  })
+
   it('maps image attachments to Codex app-server user input', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
@@ -229,6 +407,721 @@ describe('codexProvider app-server integration', () => {
     for await (const _chunk of stream) {
       // Drain stream.
     }
+  })
+
+  it('dispatches goal slash commands to Codex thread goal state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-goal',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('/goal Ship provider-owned slots'),
+      workspaceId: 'workspace-1',
+    })
+
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: { type: 'finish', finishReason: 'stop' },
+    })
+    await expect(stream.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
+
+    expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/goal/set'])
+    expect(client.requests[1]).toEqual({
+      method: 'thread/goal/set',
+      params: {
+        threadId: 'codex-thread-1',
+        objective: 'Ship provider-owned slots',
+        status: 'active',
+        tokenBudget: null,
+      },
+    })
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'active',
+        },
+      },
+    })
+  })
+
+  it('projects Codex token usage notifications into compact UI slot state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Summarize the repo'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.some(request => request.method === 'turn/start')).toBe(true)
+    })
+
+    client.pushNotification({
+      method: 'thread/tokenUsage/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        tokenUsage: {
+          total: {
+            totalTokens: 128_000,
+            inputTokens: 96_000,
+            cachedInputTokens: 8_000,
+            outputTokens: 24_000,
+            reasoningOutputTokens: 8_000,
+          },
+          last: {
+            totalTokens: 4_000,
+            inputTokens: 3_000,
+            cachedInputTokens: 1_000,
+            outputTokens: 1_000,
+            reasoningOutputTokens: 250,
+          },
+          modelContextWindow: 200_000,
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 40,
+        item: { id: 'compact-1', type: 'contextCompaction', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        completedAtMs: 50,
+        item: { id: 'compact-1', type: 'contextCompaction', status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await firstChunkPromise
+    await drainStream(stream)
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'codex:compact',
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        status: 'compacted',
+        compactionItemId: 'compact-1',
+        lastCompactedAt: 50,
+        autoCompactTokenLimit: 160_000,
+        autoCompactPercent: 3,
+        usagePercent: 2,
+        total: expect.objectContaining({ totalTokens: 128_000 }),
+        last: expect.objectContaining({ totalTokens: 4_000 }),
+      }),
+    ]))
+  })
+
+  it('projects Codex status, model, and reasoning into UI slot state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-runtime-state',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect runtime state'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.some(request => request.method === 'turn/start')).toBe(true)
+    })
+
+    client.pushNotification({
+      method: 'thread/status/changed',
+      params: {
+        threadId: 'codex-thread-1',
+        status: { type: 'active', activeFlags: ['waitingOnUserInput'] },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/settings/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        threadSettings: {
+          model: 'gpt-5-codex',
+          modelProvider: 'openai',
+          serviceTier: 'priority',
+          effort: 'high',
+          summary: 'auto',
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await firstChunkPromise
+    await drainStream(stream)
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'status',
+        slotId: 'codex:status',
+        threadId: 'codex-thread-1',
+        status: 'active',
+        activeFlags: ['waitingOnUserInput'],
+      }),
+      expect.objectContaining({
+        kind: 'model',
+        slotId: 'codex:model',
+        threadId: 'codex-thread-1',
+        modelId: 'gpt-5-codex',
+        modelLabel: 'GPT-5 Codex',
+        modelProvider: 'openai',
+        serviceTier: 'priority',
+        supportsImages: true,
+        supportsWebSearch: true,
+        supportsNamespaceTools: true,
+      }),
+      expect.objectContaining({
+        kind: 'reasoning',
+        slotId: 'codex:reasoning',
+        threadId: 'codex-thread-1',
+        effort: 'high',
+        summary: 'auto',
+        supportedEfforts: [
+          { id: 'low', description: 'Low' },
+          { id: 'medium', description: 'Medium' },
+          { id: 'high', description: 'High' },
+        ],
+      }),
+    ]))
+  })
+
+  it('projects Codex plan, tool activity, and MCP into UI slot state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-expanded-slots',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect expanded slots'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.some(request => request.method === 'turn/start')).toBe(true)
+    })
+
+    client.pushNotification({
+      method: 'turn/plan/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        explanation: 'Work through the repository carefully.',
+        plan: [
+          { step: 'Inspect current slot contract', status: 'completed' },
+          { step: 'Project provider state', status: 'inProgress' },
+          { step: 'Render composer state', status: 'pending' },
+        ],
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 10,
+        item: { id: 'tool-1', type: 'commandExecution', command: 'pnpm test', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        completedAtMs: 20,
+        item: { id: 'tool-1', type: 'commandExecution', command: 'pnpm test', status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 30,
+        item: { id: 'mcp-1', type: 'mcpToolCall', server: 'github', tool: 'search', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/mcpToolCall/progress',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'mcp-1',
+        message: 'Searching issues',
+      },
+    })
+    client.pushNotification({
+      method: 'mcpServer/startupStatus/updated',
+      params: {
+        name: 'local-dev',
+        status: 'failed',
+        error: 'Missing command',
+      },
+    })
+    client.pushNotification({
+      method: 'mcpServer/oauthLogin/completed',
+      params: {
+        name: 'linear',
+        success: false,
+        error: 'Denied',
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await firstChunkPromise
+    await drainStream(stream)
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'plan',
+        slotId: 'codex:plan',
+        threadId: 'codex-thread-1',
+        currentStep: 'Project provider state',
+        pendingCount: 1,
+        inProgressCount: 1,
+        completedCount: 1,
+      }),
+      expect.objectContaining({
+        kind: 'toolActivity',
+        slotId: 'codex:tool-activity',
+        threadId: 'codex-thread-1',
+        activeCount: 1,
+        completedCount: 1,
+        failedCount: 0,
+        recentItems: expect.arrayContaining([
+          expect.objectContaining({ id: 'mcp-1', label: 'github/search', status: 'running' }),
+          expect.objectContaining({ id: 'tool-1', label: 'pnpm test', status: 'completed' }),
+        ]),
+      }),
+      expect.objectContaining({
+        kind: 'mcp',
+        slotId: 'codex:mcp',
+        threadId: 'codex-thread-1',
+        serverCount: 3,
+        readyCount: 1,
+        failedCount: 2,
+        needsLoginCount: 1,
+        recentProgress: 'Searching issues',
+        servers: expect.arrayContaining([
+          expect.objectContaining({ name: 'github', status: 'ready', authStatus: 'oAuth', toolCount: 2, resourceCount: 2 }),
+          expect.objectContaining({ name: 'linear', status: 'failed', authStatus: 'notLoggedIn', error: 'Denied' }),
+          expect.objectContaining({ name: 'local-dev', status: 'failed', error: 'Missing command' }),
+        ]),
+      }),
+    ]))
+
+    expect(client.requests.map(request => request.method)).toContain('mcpServerStatus/list')
+  })
+
+  it('projects Codex diff, terminal, approvals, and alerts into UI slot state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-stateful-slots',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect stateful slots'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.some(request => request.method === 'turn/start')).toBe(true)
+    })
+
+    client.pushNotification({
+      method: 'turn/diff/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        diff: [
+          'diff --git a/src/a.ts b/src/a.ts',
+          '--- a/src/a.ts',
+          '+++ b/src/a.ts',
+          '@@ -1 +1,2 @@',
+          '-old',
+          '+new',
+          '+next',
+        ].join('\n'),
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 10,
+        item: { id: 'command-1', type: 'commandExecution', command: 'pnpm typecheck', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/commandExecution/outputDelta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'command-1',
+        delta: 'Typechecking...',
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        completedAtMs: 20,
+        item: { id: 'command-1', type: 'commandExecution', command: 'pnpm typecheck', status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/autoApprovalReview/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 30,
+        reviewId: 'approval-1',
+        targetItemId: 'command-1',
+        review: { status: 'inProgress', riskLevel: 'medium', rationale: 'Needs command review' },
+        action: { type: 'command' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/autoApprovalReview/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 30,
+        completedAtMs: 40,
+        reviewId: 'approval-1',
+        targetItemId: 'command-1',
+        review: { status: 'approved', riskLevel: 'medium', rationale: 'Approved command' },
+        action: { type: 'command' },
+      },
+    })
+    client.pushNotification({
+      method: 'warning',
+      params: {
+        threadId: 'codex-thread-1',
+        message: 'Sandbox warning',
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await firstChunkPromise
+    await drainStream(stream)
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'diff',
+        slotId: 'codex:diff',
+        threadId: 'codex-thread-1',
+        fileCount: 1,
+        addedLines: 2,
+        removedLines: 1,
+        hasDiff: true,
+      }),
+      expect.objectContaining({
+        kind: 'terminal',
+        slotId: 'codex:terminal',
+        threadId: 'codex-thread-1',
+        activeCount: 0,
+        completedCount: 1,
+        failedCount: 0,
+        lastCommand: 'pnpm typecheck',
+        lastOutputPreview: 'Typechecking...',
+      }),
+      expect.objectContaining({
+        kind: 'approvals',
+        slotId: 'codex:approvals',
+        threadId: 'codex-thread-1',
+        pendingCount: 0,
+        approvedCount: 1,
+        deniedCount: 0,
+        recentItems: [expect.objectContaining({ id: 'approval-1', status: 'approved', label: 'Command' })],
+      }),
+      expect.objectContaining({
+        kind: 'alert',
+        slotId: 'codex:alerts',
+        threadId: 'codex-thread-1',
+        warningCount: 1,
+        errorCount: 0,
+        recentItems: [expect.objectContaining({ message: 'Sandbox warning', source: 'warning' })],
+      }),
+    ]))
+  })
+
+  it('projects Codex filesystem, skill, plugin, search, crew, usage, and config summaries into UI slot state', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-lightweight-slots',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect lightweight slots'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.some(request => request.method === 'turn/start')).toBe(true)
+    })
+
+    client.pushNotification({
+      method: 'fs/changed',
+      params: {
+        changedPaths: ['/tmp/cradle-workspace/src/a.ts', '/tmp/cradle-workspace/src/b.ts'],
+      },
+    })
+    client.pushNotification({
+      method: 'fuzzyFileSearch/sessionUpdated',
+      params: {
+        threadId: 'codex-thread-1',
+        query: 'provider',
+        resultCount: 7,
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        startedAtMs: 10,
+        item: { id: 'crew-1', type: 'collabAgentToolCall', text: 'Review server changes', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        completedAtMs: 20,
+        item: { id: 'crew-1', type: 'collabAgentToolCall', text: 'Review server changes', status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'account/rateLimits/updated',
+      params: {
+        rateLimits: {
+          primary: { usedPercent: 73, resetsAt: 1_900_000_000 },
+          secondary: { usedPercent: 18, resetsAt: 1_900_000_500 },
+          credits: { hasCredits: false, unlimited: false, balance: '0' },
+          planType: 'team',
+          rateLimitReachedType: 'primary',
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await firstChunkPromise
+    await drainStream(stream)
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'filesystem',
+        slotId: 'codex:filesystem',
+        threadId: 'codex-thread-1',
+        changedPathCount: 2,
+        recentPaths: ['/tmp/cradle-workspace/src/a.ts', '/tmp/cradle-workspace/src/b.ts'],
+      }),
+      expect.objectContaining({
+        kind: 'skills',
+        slotId: 'codex:skills',
+        threadId: 'codex-thread-1',
+        enabledCount: 2,
+        disabledCount: 1,
+        errorCount: 1,
+        roots: ['/tmp/cradle-workspace'],
+      }),
+      expect.objectContaining({
+        kind: 'plugin',
+        slotId: 'codex:plugin',
+        threadId: 'codex-thread-1',
+        installedCount: 2,
+        enabledCount: 1,
+        appCount: 1,
+        marketplaceCount: 1,
+        errorCount: 1,
+      }),
+      expect.objectContaining({
+        kind: 'search',
+        slotId: 'codex:search',
+        threadId: 'codex-thread-1',
+        recentQuery: 'provider',
+        recentResultCount: 7,
+        fuzzySessionActive: true,
+      }),
+      expect.objectContaining({
+        kind: 'crew',
+        slotId: 'codex:crew',
+        threadId: 'codex-thread-1',
+        activeCount: 0,
+        completedCount: 1,
+        failedCount: 0,
+        collaborationModeCount: 2,
+        recentItems: [expect.objectContaining({ id: 'crew-1', label: 'Agent', status: 'completed' })],
+      }),
+      expect.objectContaining({
+        kind: 'usage',
+        slotId: 'codex:usage',
+        threadId: 'codex-thread-1',
+        usedPercent: 91,
+        secondaryUsedPercent: 44,
+        creditsBalance: '12.50',
+        hasCredits: true,
+        planType: 'pro',
+      }),
+      expect.objectContaining({
+        kind: 'config',
+        slotId: 'codex:config',
+        threadId: 'codex-thread-1',
+        modelId: 'gpt-5-codex',
+        allowedApprovalPolicyCount: 2,
+        allowedSandboxModeCount: 2,
+        featureRequirementCount: 2,
+        webSearchModeCount: 2,
+      }),
+    ]))
+
+    expect(client.requests.map(request => request.method)).toEqual(expect.arrayContaining([
+      'account/rateLimits/read',
+      'configRequirements/read',
+      'skills/list',
+      'plugin/list',
+      'app/list',
+      'collaborationMode/list',
+    ]))
   })
 
   it('projects Codex thread titles into the Cradle session title callback', async () => {
@@ -974,6 +1867,129 @@ describe('codexProvider app-server integration', () => {
     expect(chunks).toEqual([
       { type: 'text-delta', id: 'assistant-message-1', delta: 'Planning text.' },
       { type: 'text-end', id: 'assistant-message-1' },
+    ])
+  })
+
+  it('does not emit visible reasoning chunks for encrypted-only reasoning items', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-encrypted-reasoning',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Encrypted reasoning'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'reasoning-1', type: 'reasoning', summary: [], content: null, encrypted_content: 'encrypted' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'reasoning-1', type: 'reasoning', summary: [], content: null, encrypted_content: 'encrypted' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Visible answer.',
+      },
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: { type: 'text-start', id: 'assistant-message-1' },
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'text-delta', id: 'assistant-message-1', delta: 'Visible answer.' },
+      { type: 'text-end', id: 'assistant-message-1' },
+    ])
+  })
+
+  it('emits reasoning when a completed snapshot adds displayable content', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-reasoning-snapshot',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Reasoning snapshot'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'reasoning-1', type: 'reasoning', summary: [], content: null, encrypted_content: 'encrypted' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'reasoning-1', type: 'reasoning', summary: [], content: ['Displayable thought.'], encrypted_content: 'encrypted' },
+      },
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: { type: 'reasoning-start', id: 'reasoning-1' },
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'reasoning-delta', id: 'reasoning-1', delta: 'Displayable thought.' },
+      { type: 'reasoning-end', id: 'reasoning-1' },
     ])
   })
 

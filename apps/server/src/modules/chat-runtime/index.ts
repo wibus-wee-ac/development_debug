@@ -153,6 +153,16 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.capabilities },
   })
+  // GET /chat/sessions/:sessionId/ui-slot-states -> provider-owned composer-adjacent state
+  .get('/sessions/:sessionId/ui-slot-states', ({ params }) => {
+    return ChatRuntime.getUiSlotStates(params.sessionId)
+  }, {
+    detail: {
+      summary: 'Get provider-owned chat UI slot states',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.uiSlotStates },
+  })
   // GET /chat/sessions/:sessionId/runtime-status → server-owned runtime session/run status
   .get('/sessions/:sessionId/runtime-status', ({ params }) => {
     return ChatRuntime.getRuntimeSessionStatus(params.sessionId)

@@ -49,6 +49,7 @@ import type {
   ChatPermissionMode,
   ChatRuntime,
   ChatRuntimeCapabilities,
+  RuntimeUiSlotState,
   RuntimeProviderTargetProfile,
   RuntimeSession,
   TokenUsage,
@@ -1445,6 +1446,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
     return {
       runtimeKind: session.runtimeKind ?? 'standard',
       slashCommands: [],
+      uiSlots: [],
       skills: [],
     }
   }
@@ -1461,7 +1463,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
   }
 
   if (!runtime.getCapabilities) {
-    return { runtimeKind, slashCommands: [], skills: [] }
+    return { runtimeKind, slashCommands: [], uiSlots: [], skills: [] }
   }
 
   const binding = getBinding(sessionId)
@@ -1495,6 +1497,82 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
       readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
     systemPrompt: resolveSessionSystemPrompt(context.session),
   })
+}
+
+export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind: RuntimeKind, states: RuntimeUiSlotState[] }> {
+  const context = getSessionRunContext(sessionId)
+  if (!context) {
+    const session = assertStoredSession(sessionId)
+    return {
+      runtimeKind: session.runtimeKind ?? 'standard',
+      states: [],
+    }
+  }
+
+  const registry = getRuntimeRegistry()
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  const runtime = registry.get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: `Runtime is not available: ${runtimeKind}`,
+    })
+  }
+
+  if (!runtime.getUiSlotStates) {
+    return { runtimeKind, states: [] }
+  }
+
+  const activeRunId = activeRunIdsBySession.get(sessionId)
+  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
+  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
+    return {
+      runtimeKind,
+      states: await runtime.getUiSlotStates({
+        runtimeSession: activeRun.runtimeSession,
+        profile: context.profile,
+        workspaceId: context.session.workspaceId,
+        workspacePath: context.workspacePath,
+        modelId:
+          readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
+        systemPrompt: resolveSessionSystemPrompt(context.session),
+      }),
+    }
+  }
+
+  const binding = getBinding(sessionId)
+  if (!binding) {
+    return { runtimeKind, states: [] }
+  }
+
+  const runtimeSession = await runtime.resumeChatSession({
+    runtimeSession: {
+      id: sessionId,
+      chatSessionId: sessionId,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind,
+      providerSessionId: binding.backendSessionId,
+      providerStateSnapshot: binding.backendStateSnapshot,
+    },
+    profile: context.profile,
+    workspacePath: context.workspacePath,
+    modelId:
+      readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined,
+  })
+
+  return {
+    runtimeKind,
+    states: await runtime.getUiSlotStates({
+      runtimeSession,
+      profile: context.profile,
+      workspaceId: context.session.workspaceId,
+      workspacePath: context.workspacePath,
+      modelId:
+        readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
+      systemPrompt: resolveSessionSystemPrompt(context.session),
+    }),
+  }
 }
 
 export function getCodexAppServerCapabilityManifest(): CodexAppServerCapabilityManifest {

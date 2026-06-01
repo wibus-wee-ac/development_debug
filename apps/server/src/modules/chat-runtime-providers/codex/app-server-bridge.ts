@@ -197,6 +197,9 @@ function buildBridgeCodexConfig(
   return {
     approval_policy: config.approvalPolicy,
     sandbox_mode: config.sandboxMode,
+    network_access: "enabled",
+    show_raw_agent_reasoning: true,
+    disable_response_storage: true,
     ...(skillPaths.length > 0 ? { instructions_paths: skillPaths } : {}),
     ...(Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : {}),
     ...(config.baseUrl

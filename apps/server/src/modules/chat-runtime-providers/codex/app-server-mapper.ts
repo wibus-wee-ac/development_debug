@@ -17,6 +17,7 @@ import {
 
 export interface CodexAppServerMapperState {
   openReasoningItemIds: Set<string>
+  emittedReasoningTextLengthById: Map<string, number>
   emittedTextLengthById: Map<string, number>
   commandOutputById: Map<string, BoundedTextCollector>
   commandById: Map<string, string>
@@ -49,6 +50,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
   void textItemId
   return {
     openReasoningItemIds: new Set(),
+    emittedReasoningTextLengthById: new Map(),
     emittedTextLengthById: new Map(),
     commandOutputById: new Map(),
     commandById: new Map(),
@@ -113,11 +115,7 @@ function mapStartedItem(item: CodexAppServerItem | null, state: CodexAppServerMa
     case 'agentMessage':
       return mapAgentMessageSnapshot(item, state)
     case 'reasoning':
-      state.openReasoningItemIds.add(item.id)
-      return [
-        { type: 'reasoning-start', id: item.id },
-        ...mapReasoningSnapshotText(item).map(delta => ({ type: 'reasoning-delta' as const, id: item.id, delta })),
-      ]
+      return mapReasoningSnapshot(item, state, false)
     case 'commandExecution':
     case 'fileChange':
     case 'mcpToolCall':
@@ -152,14 +150,8 @@ function mapCompletedItem(item: CodexAppServerItem | null, state: CodexAppServer
   switch (item.type) {
     case 'agentMessage':
       return mapAgentMessageSnapshot(item, state)
-    case 'reasoning': {
-      const chunks: UIMessageChunk[] = mapReasoningSnapshotText(item).map(delta => ({ type: 'reasoning-delta' as const, id: item.id, delta }))
-      if (state.openReasoningItemIds.has(item.id)) {
-        state.openReasoningItemIds.delete(item.id)
-        chunks.push({ type: 'reasoning-end', id: item.id })
-      }
-      return chunks
-    }
+    case 'reasoning':
+      return mapReasoningSnapshot(item, state, true)
     case 'commandExecution':
     case 'fileChange':
     case 'mcpToolCall':
@@ -218,6 +210,10 @@ function mapReasoningDelta(rawParams: unknown, state: CodexAppServerMapperState)
     state.openReasoningItemIds.add(params.itemId)
     chunks.push({ type: 'reasoning-start', id: params.itemId })
   }
+  state.emittedReasoningTextLengthById.set(
+    params.itemId,
+    (state.emittedReasoningTextLengthById.get(params.itemId) ?? 0) + params.delta.length,
+  )
   chunks.push({ type: 'reasoning-delta', id: params.itemId, delta: params.delta })
   return chunks
 }
@@ -300,6 +296,33 @@ function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServer
   const chunks = mapAgentMessageDelta({ itemId: item.id, delta }, state)
   state.startedAgentMessageIds.delete(item.id)
   chunks.push({ type: 'text-end', id: item.id })
+  return chunks
+}
+
+function mapReasoningSnapshot(
+  item: CodexAppServerItem,
+  state: CodexAppServerMapperState,
+  complete: boolean,
+): UIMessageChunk[] {
+  const text = mapReasoningSnapshotText(item).join('')
+  const previousTextLength = state.emittedReasoningTextLengthById.get(item.id) ?? 0
+  const chunks: UIMessageChunk[] = []
+
+  if (text.length > previousTextLength) {
+    if (!state.openReasoningItemIds.has(item.id)) {
+      state.openReasoningItemIds.add(item.id)
+      chunks.push({ type: 'reasoning-start', id: item.id })
+    }
+    const delta = text.slice(previousTextLength)
+    state.emittedReasoningTextLengthById.set(item.id, text.length)
+    chunks.push({ type: 'reasoning-delta', id: item.id, delta })
+  }
+
+  if (complete && state.openReasoningItemIds.has(item.id)) {
+    state.openReasoningItemIds.delete(item.id)
+    chunks.push({ type: 'reasoning-end', id: item.id })
+  }
+
   return chunks
 }
 

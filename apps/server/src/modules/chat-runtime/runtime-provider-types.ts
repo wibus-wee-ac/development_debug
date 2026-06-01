@@ -23,9 +23,361 @@ export interface RuntimeSlashCommand {
   aliases?: string[]
 }
 
+export type RuntimeUiSlotIconKey =
+  | 'alert'
+  | 'approvals'
+  | 'code-review'
+  | 'compact'
+  | 'config'
+  | 'diff'
+  | 'feedback'
+  | 'filesystem'
+  | 'goal'
+  | 'crew'
+  | 'ide-context'
+  | 'mcp'
+  | 'model'
+  | 'personality'
+  | 'plugin'
+  | 'plan'
+  | 'reasoning'
+  | 'search'
+  | 'side-chat'
+  | 'skills'
+  | 'status'
+  | 'terminal'
+  | 'tool-activity'
+  | 'usage'
+
+export interface RuntimeUiSlot {
+  id: string
+  name: string
+  label: string
+  description: string
+  argumentHint: string
+  aliases?: string[]
+  iconKey?: RuntimeUiSlotIconKey
+  commandText?: string
+}
+
+export type RuntimeUiSlotStateKind = 'alert' | 'approvals' | 'compact' | 'config' | 'crew' | 'diff' | 'filesystem' | 'goal' | 'mcp' | 'model' | 'plan' | 'plugin' | 'reasoning' | 'search' | 'skills' | 'status' | 'terminal' | 'toolActivity' | 'usage'
+
+export type RuntimeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
+export type RuntimeCompactStatus = 'idle' | 'running' | 'nearLimit' | 'overLimit' | 'compacted'
+export type RuntimeThreadStatus = 'notLoaded' | 'idle' | 'systemError' | 'active'
+export type RuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
+export type RuntimeToolActivityStatus = 'running' | 'completed' | 'failed'
+export type RuntimeMcpServerStatus = 'starting' | 'ready' | 'failed' | 'cancelled' | 'unknown'
+export type RuntimeMcpAuthStatus = 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | 'unknown'
+export type RuntimeApprovalStatus = 'pending' | 'approved' | 'denied' | 'timedOut' | 'aborted'
+export type RuntimeAlertSeverity = 'info' | 'warning' | 'error'
+
+export interface RuntimeTokenUsageBreakdown {
+  totalTokens: number
+  inputTokens: number
+  cachedInputTokens: number
+  outputTokens: number
+  reasoningOutputTokens: number
+}
+
+export interface RuntimeGoalUiSlotState {
+  kind: 'goal'
+  slotId: string
+  threadId: string
+  objective: string
+  status: RuntimeGoalStatus
+  tokenBudget: number | null
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface RuntimeCompactUiSlotState {
+  kind: 'compact'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  status: RuntimeCompactStatus
+  isCompactRelevant: boolean
+  total: RuntimeTokenUsageBreakdown
+  last: RuntimeTokenUsageBreakdown
+  modelContextWindow: number | null
+  autoCompactTokenLimit: number | null
+  usagePercent: number | null
+  autoCompactPercent: number | null
+  lastCompactedAt: number | null
+  compactionItemId: string | null
+  updatedAt: number
+}
+
+export interface RuntimeStatusUiSlotState {
+  kind: 'status'
+  slotId: string
+  threadId: string
+  status: RuntimeThreadStatus
+  activeFlags: string[]
+  updatedAt: number
+}
+
+export interface RuntimeModelUiSlotState {
+  kind: 'model'
+  slotId: string
+  threadId: string
+  modelId: string | null
+  modelLabel: string | null
+  modelProvider: string | null
+  serviceTier: string | null
+  supportsImages: boolean | null
+  supportsWebSearch: boolean | null
+  supportsNamespaceTools: boolean | null
+  updatedAt: number
+}
+
+export interface RuntimeReasoningUiSlotState {
+  kind: 'reasoning'
+  slotId: string
+  threadId: string
+  effort: string | null
+  summary: string | null
+  supportedEfforts: Array<{ id: string, description: string }>
+  updatedAt: number
+}
+
+export interface RuntimePlanStep {
+  step: string
+  status: RuntimePlanStepStatus
+}
+
+export interface RuntimePlanUiSlotState {
+  kind: 'plan'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  explanation: string | null
+  steps: RuntimePlanStep[]
+  currentStep: string | null
+  pendingCount: number
+  inProgressCount: number
+  completedCount: number
+  updatedAt: number
+}
+
+export interface RuntimeToolActivityItem {
+  id: string
+  type: string
+  label: string
+  status: RuntimeToolActivityStatus
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export interface RuntimeToolActivityUiSlotState {
+  kind: 'toolActivity'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  recentItems: RuntimeToolActivityItem[]
+  updatedAt: number
+}
+
+export interface RuntimeMcpServerSummary {
+  name: string
+  status: RuntimeMcpServerStatus
+  authStatus: RuntimeMcpAuthStatus
+  toolCount: number
+  resourceCount: number
+  error: string | null
+}
+
+export interface RuntimeMcpUiSlotState {
+  kind: 'mcp'
+  slotId: string
+  threadId: string
+  serverCount: number
+  readyCount: number
+  failedCount: number
+  needsLoginCount: number
+  recentProgress: string | null
+  servers: RuntimeMcpServerSummary[]
+  updatedAt: number
+}
+
+export interface RuntimeDiffUiSlotState {
+  kind: 'diff'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  fileCount: number
+  addedLines: number
+  removedLines: number
+  hasDiff: boolean
+  updatedAt: number
+}
+
+export interface RuntimeTerminalUiSlotState {
+  kind: 'terminal'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  lastCommand: string | null
+  lastOutputPreview: string | null
+  updatedAt: number
+}
+
+export interface RuntimeApprovalItem {
+  id: string
+  targetItemId: string | null
+  status: RuntimeApprovalStatus
+  label: string
+  riskLevel: string | null
+  rationale: string | null
+  startedAt: number | null
+  completedAt: number | null
+}
+
+export interface RuntimeApprovalsUiSlotState {
+  kind: 'approvals'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  pendingCount: number
+  approvedCount: number
+  deniedCount: number
+  recentItems: RuntimeApprovalItem[]
+  updatedAt: number
+}
+
+export interface RuntimeAlertItem {
+  id: string
+  severity: RuntimeAlertSeverity
+  message: string
+  source: string
+  updatedAt: number
+}
+
+export interface RuntimeAlertUiSlotState {
+  kind: 'alert'
+  slotId: string
+  threadId: string | null
+  warningCount: number
+  errorCount: number
+  recentItems: RuntimeAlertItem[]
+  updatedAt: number
+}
+
+export interface RuntimeFilesystemUiSlotState {
+  kind: 'filesystem'
+  slotId: string
+  threadId: string
+  changedPathCount: number
+  recentPaths: string[]
+  updatedAt: number
+}
+
+export interface RuntimeSkillsUiSlotState {
+  kind: 'skills'
+  slotId: string
+  threadId: string
+  enabledCount: number
+  disabledCount: number
+  errorCount: number
+  roots: string[]
+  updatedAt: number
+}
+
+export interface RuntimePluginUiSlotState {
+  kind: 'plugin'
+  slotId: string
+  threadId: string
+  installedCount: number
+  enabledCount: number
+  appCount: number
+  marketplaceCount: number
+  errorCount: number
+  updatedAt: number
+}
+
+export interface RuntimeSearchUiSlotState {
+  kind: 'search'
+  slotId: string
+  threadId: string
+  recentResultCount: number
+  recentQuery: string | null
+  fuzzySessionActive: boolean
+  updatedAt: number
+}
+
+export interface RuntimeCrewUiSlotState {
+  kind: 'crew'
+  slotId: string
+  threadId: string
+  activeCount: number
+  completedCount: number
+  failedCount: number
+  recentItems: RuntimeToolActivityItem[]
+  collaborationModeCount: number
+  updatedAt: number
+}
+
+export interface RuntimeUsageUiSlotState {
+  kind: 'usage'
+  slotId: string
+  threadId: string
+  usedPercent: number | null
+  secondaryUsedPercent: number | null
+  creditsBalance: string | null
+  hasCredits: boolean | null
+  rateLimitReachedType: string | null
+  planType: string | null
+  updatedAt: number
+}
+
+export interface RuntimeConfigUiSlotState {
+  kind: 'config'
+  slotId: string
+  threadId: string
+  modelId: string | null
+  approvalPolicy: string | null
+  sandboxMode: string | null
+  allowedApprovalPolicyCount: number | null
+  allowedSandboxModeCount: number | null
+  featureRequirementCount: number | null
+  webSearchModeCount: number | null
+  updatedAt: number
+}
+
+export type RuntimeUiSlotState =
+  | RuntimeAlertUiSlotState
+  | RuntimeApprovalsUiSlotState
+  | RuntimeCompactUiSlotState
+  | RuntimeConfigUiSlotState
+  | RuntimeCrewUiSlotState
+  | RuntimeDiffUiSlotState
+  | RuntimeFilesystemUiSlotState
+  | RuntimeGoalUiSlotState
+  | RuntimeMcpUiSlotState
+  | RuntimeModelUiSlotState
+  | RuntimePlanUiSlotState
+  | RuntimePluginUiSlotState
+  | RuntimeReasoningUiSlotState
+  | RuntimeSearchUiSlotState
+  | RuntimeSkillsUiSlotState
+  | RuntimeStatusUiSlotState
+  | RuntimeTerminalUiSlotState
+  | RuntimeToolActivityUiSlotState
+  | RuntimeUsageUiSlotState
+
 export interface ChatRuntimeCapabilities {
   runtimeKind: RuntimeKind
   slashCommands: RuntimeSlashCommand[]
+  uiSlots: RuntimeUiSlot[]
   skills: string[]
 }
 
@@ -94,6 +446,8 @@ export interface GetCapabilitiesInput {
   systemPrompt?: string
 }
 
+export interface GetUiSlotStatesInput extends GetCapabilitiesInput {}
+
 export interface SetPermissionModeInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
@@ -113,6 +467,7 @@ export interface ChatRuntime {
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
+  getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.
