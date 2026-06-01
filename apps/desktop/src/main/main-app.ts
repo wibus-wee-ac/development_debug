@@ -4,6 +4,7 @@ import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
 import { ChatStreamBroker } from './chat-stream-broker'
+import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
@@ -26,6 +27,7 @@ let mainWindow: BrowserWindow | null = null
 let windowManager: WindowManager | undefined
 let updateManager: DesktopUpdateManager | null = null
 let trayManager: TrayManager | null = null
+let desktopAppBadgeManager: DesktopAppBadgeManager | null = null
 let macBridgeManager: MacBridgeManager | null = null
 let chatStreamBroker: ChatStreamBroker | null = null
 let isQuitting = false
@@ -304,6 +306,8 @@ async function shutdownDesktopRuntime(): Promise<void> {
   chatStreamBroker = null
   trayManager?.destroy()
   trayManager = null
+  desktopAppBadgeManager?.destroy()
+  desktopAppBadgeManager = null
   await macBridgeManager?.stop()
   macBridgeManager = null
   await deactivateDesktopPlugins()
@@ -321,6 +325,8 @@ export async function startDesktopApp(): Promise<void> {
   updateManager = new DesktopUpdateManager({
     beforeApplyUpdate: shutdownDesktopRuntime,
   })
+  const appBadgeManager = new DesktopAppBadgeManager()
+  desktopAppBadgeManager = appBadgeManager
   macBridgeManager = new MacBridgeManager({
     moduleDir: __dirname,
   })
@@ -363,6 +369,7 @@ export async function startDesktopApp(): Promise<void> {
     chatStreamBroker = new ChatStreamBroker({ serverUrl })
 
     windowManager = new WindowManager(serverUrl)
+    appBadgeManager.initialize()
 
     mainWindow = await createMainWindow(serverUrl)
     setMainWindow(mainWindow)

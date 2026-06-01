@@ -5,9 +5,11 @@
 ## 文件清单
 
 - `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
-- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 `cradle://` protocol，并把 webview creation event 转发给 plugin loader。
+- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，并把 webview creation event 转发给 plugin loader。
 - `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames。
 - `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、subscriber cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
+- `desktop-app-badge-manager.ts`：拥有 Electron app icon badge IPC；renderer 只投影 unread count，main process 负责 macOS Dock badge 写入和清理。
+- `desktop-app-badge-manager.test.ts`：覆盖 unread count 正规化、macOS Dock badge 投影、IPC handler 注册/移除，以及非 macOS 平台 no-op 行为。
 - `desktop-assets.ts`：解析 Electron main process 在 dev 和 packaged runtime 中使用的 preload、main renderer、tear-off renderer asset 路径，兼容 electron-vite main chunk 输出目录。
 - `desktop-assets.test.ts`：覆盖 dev preload 路径从 `dist/main/chunks` 回溯到 `dist/preload/index.js`，以及 packaged preload / tear-off renderer 路径解析。
 - `browser-tab-scripts.ts`：拥有 Browser Panel webview 的 UserScript-like 注入 runtime，通过 IPC 接收 renderer 声明的脚本列表，使用 CDP `Page.addScriptToEvaluateOnNewDocument` 支持 `document-start`，并用 webContents lifecycle 支持 `document-end` / `document-idle`，同时负责 webContents listener cleanup。

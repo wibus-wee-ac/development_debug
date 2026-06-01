@@ -82,6 +82,11 @@ const cradleElectron = {
     },
   },
 
+  /** Desktop app icon badge bridge */
+  desktopAppBadge: {
+    setUnreadCount: (count: number) => ipcRenderer.invoke('desktop-app-badge:set-unread-count', count),
+  },
+
   /** Desktop-owned long-lived chat stream bridge */
   chatStream: {
     startResponse: (request: unknown) => ipcRenderer.invoke('chatStream.startResponse', request),
