@@ -7,9 +7,19 @@ interface ChatRunActivityPayload {
   chunk: UIMessageChunk
 }
 
+export type ChatRunSettledStatus = 'complete' | 'aborted' | 'error'
+
+interface ChatRunSettledPayload {
+  chatSessionId: string
+  messageId: string | null
+  status: ChatRunSettledStatus
+}
+
 type RunActivityHandler = (data: ChatRunActivityPayload) => void
+type RunSettledHandler = (data: ChatRunSettledPayload) => void
 
 const globalHandlers = new Set<RunActivityHandler>()
+const settledHandlers = new Set<RunSettledHandler>()
 
 export function onAnyChatRunEvent(handler: RunActivityHandler): () => void {
   globalHandlers.add(handler)
@@ -18,8 +28,21 @@ export function onAnyChatRunEvent(handler: RunActivityHandler): () => void {
   }
 }
 
+export function onChatRunSettled(handler: RunSettledHandler): () => void {
+  settledHandlers.add(handler)
+  return () => {
+    settledHandlers.delete(handler)
+  }
+}
+
 export function emitChatRunActivity(data: ChatRunActivityPayload): void {
   for (const handler of globalHandlers) {
+    handler(data)
+  }
+}
+
+export function emitChatRunSettled(data: ChatRunSettledPayload): void {
+  for (const handler of settledHandlers) {
     handler(data)
   }
 }
@@ -30,6 +53,19 @@ function readChunkMessageId(chunk: UIMessageChunk): string | null {
   }
   if ('toolCallId' in chunk && typeof chunk.toolCallId === 'string') {
     return null
+  }
+  return null
+}
+
+export function readTerminalChunkStatus(chunk: UIMessageChunk): ChatRunSettledStatus | null {
+  if (chunk.type === 'finish') {
+    return 'complete'
+  }
+  if (chunk.type === 'abort') {
+    return 'aborted'
+  }
+  if (chunk.type === 'error') {
+    return 'error'
   }
   return null
 }
@@ -55,6 +91,14 @@ export function buildUIMessageChunkStreamFromResponse(
         messageId: readChunkMessageId(result.value),
         chunk: result.value,
       })
+      const terminalStatus = readTerminalChunkStatus(result.value)
+      if (terminalStatus) {
+        emitChatRunSettled({
+          chatSessionId,
+          messageId: readChunkMessageId(result.value),
+          status: terminalStatus,
+        })
+      }
       controller.enqueue(result.value)
     },
   }))

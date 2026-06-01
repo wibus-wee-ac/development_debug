@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart, UIMessage } from 'ai'
 import { lastAssistantMessageIsCompleteWithApprovalResponses } from 'ai'
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import {
@@ -9,12 +9,15 @@ import {
   getChatSessionsBySessionIdMessagesQueryKey,
   getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { isSessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
-import { createContinuationUserMessage } from './chat-continuation-metadata'
+import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import type { ChatContextPart } from './chat-context-parts'
-import { toMessageContextParts } from './chat-context-parts'
+import { toOrderedUserMessageParts } from './chat-context-parts'
+import { createContinuationUserMessage } from './chat-continuation-metadata'
 import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './chat-response-command'
 import {
   cancelChatResponse,
@@ -61,10 +64,6 @@ export async function stopChatTurn(args: {
   chatStop: () => Promise<void> | void
 }): Promise<void> {
   await Promise.resolve(args.chatStop())
-}
-
-function runtimeUiSlotStatesQueryKey(sessionId: string): readonly unknown[] {
-  return ['chat', 'runtime-ui-slot-states', sessionId]
 }
 
 // ── Message Snapshot Types ──────────────────────────────────
@@ -149,6 +148,38 @@ const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 
+function readCodexGoalCommandObjective(text: string): string | null {
+  const normalized = text.trimStart()
+  if (!normalized.startsWith('/goal')) {
+    return null
+  }
+  const nextChar = normalized.charAt('/goal'.length)
+  if (nextChar && nextChar !== ' ' && nextChar !== '\t') {
+    return null
+  }
+  const objective = normalized.slice('/goal'.length).trim()
+  return objective.length > 0 ? objective : null
+}
+
+function annotateCodexGoalMessage(message: UIMessage, objective: string): UIMessage {
+  const metadata = message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
+    ? message.metadata as Record<string, unknown>
+    : {}
+  const cradleMetadata = metadata.cradle && typeof metadata.cradle === 'object' && !Array.isArray(metadata.cradle)
+    ? metadata.cradle as Record<string, unknown>
+    : {}
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      cradle: {
+        ...cradleMetadata,
+        goal: { objective },
+      },
+    },
+  } as UIMessage
+}
+
 export function useChatSession(chatSessionId: string | null) {
   const queryClient = useQueryClient()
 
@@ -224,6 +255,10 @@ export function useChatSession(chatSessionId: string | null) {
       : false,
   })
 
+  const runtimeKind = useSessionLayoutStore(
+    useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),
+  )
+
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
     if (!snapshotRowsQueryKey && !sessionBindingQueryKey) {
       return
@@ -242,6 +277,10 @@ export function useChatSession(chatSessionId: string | null) {
     }, delay)
   }, [queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
 
+  const refreshSessionLists = useCallback(() => {
+    void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
+  }, [queryClient])
+
   const refreshQueue = useCallback((delay = 0) => {
     if (delay <= 0) {
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
@@ -257,7 +296,7 @@ export function useChatSession(chatSessionId: string | null) {
 
   // ── Initial load ──
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!chatSessionId || !snapshotRowsQuery.data) {
       return
     }
@@ -387,6 +426,8 @@ export function useChatSession(chatSessionId: string | null) {
     if (!chatSessionId || (!trimmedText && files.length === 0 && contextParts.length === 0)) {
       return
     }
+    const goalObjective = runtimeKind === 'codex' ? readCodexGoalCommandObjective(trimmedText) : null
+    const optimisticText = goalObjective ?? trimmedText
 
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
@@ -420,15 +461,19 @@ export function useChatSession(chatSessionId: string | null) {
 
     // 1. Optimistic user message
     const userMessageId = `user-${Date.now()}`
-    const userParts: UIMessage['parts'] = trimmedText ? [{ type: 'text', text: trimmedText }] : []
-    userParts.push(...toMessageContextParts(contextParts) as UIMessage['parts'])
+    const userParts = toOrderedUserMessageParts(optimisticText, contextParts, text) as UIMessage['parts']
     userParts.push(...files)
-    const userMessage: UIMessage = {
+    const userMessage: UIMessage = goalObjective ? annotateCodexGoalMessage({
+      id: userMessageId,
+      role: 'user',
+      parts: userParts,
+    }, goalObjective) : {
       id: userMessageId,
       role: 'user',
       parts: userParts,
     }
     useChatStore.getState().appendMessage(chatSessionId, userMessage)
+    updateSessionInSessionLists(queryClient, { id: chatSessionId }, { promote: true })
 
     // 2. Create handler for assistant response
     const assistantMessageId = `assistant-${Date.now()}`
@@ -461,6 +506,7 @@ export function useChatSession(chatSessionId: string | null) {
       if (sessionBindingQueryKey) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
+      refreshSessionLists()
 
       await handler.consume(transport.stream)
 
@@ -490,7 +536,7 @@ export function useChatSession(chatSessionId: string | null) {
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, refreshQueue, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
     if (!chatSessionId) {
@@ -542,6 +588,7 @@ export function useChatSession(chatSessionId: string | null) {
       if (sessionBindingQueryKey) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
+      refreshSessionLists()
 
       await handler.consume(transport.stream)
       handler.finish()
@@ -568,7 +615,7 @@ export function useChatSession(chatSessionId: string | null) {
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, refreshQueue, scheduleSnapshotRefresh, sessionBindingQueryKey])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
   const cancelQueueItem = useCallback(async (queueItemId: string) => {
     if (!chatSessionId) {

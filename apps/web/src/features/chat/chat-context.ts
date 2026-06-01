@@ -19,7 +19,14 @@ export interface ChatAttentionSnapshot {
 }
 
 const snapshotsBySessionId = new Map<string, ChatAttentionSnapshot>()
+const listeners = new Set<() => void>()
 let providerInstalled = false
+
+function publishSnapshotChange(): void {
+  for (const listener of listeners) {
+    listener()
+  }
+}
 
 function clampRatio(value: number): number {
   if (!Number.isFinite(value)) {
@@ -80,13 +87,30 @@ export function updateChatAttentionSnapshot(
     focusedArea: patch.focusedArea ?? current?.focusedArea ?? null,
     updatedAt: patch.updatedAt ?? Date.now(),
   })
+  publishSnapshotChange()
 }
 
 export function clearChatAttentionSnapshot(sessionId: string | null): void {
   if (!sessionId) {
     return
   }
-  snapshotsBySessionId.delete(sessionId)
+  if (snapshotsBySessionId.delete(sessionId)) {
+    publishSnapshotChange()
+  }
+}
+
+export function readChatAttentionSnapshot(sessionId: string | null): ChatAttentionSnapshot | null {
+  if (!sessionId) {
+    return null
+  }
+  return snapshotsBySessionId.get(sessionId) ?? null
+}
+
+export function subscribeChatAttentionSnapshots(listener: () => void): () => void {
+  listeners.add(listener)
+  return () => {
+    listeners.delete(listener)
+  }
 }
 
 export function createChatContextProvider(): ContextProvider {

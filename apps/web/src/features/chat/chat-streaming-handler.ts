@@ -3,6 +3,8 @@ import { readUIMessageStream } from 'ai'
 
 import { useChatStore } from '~/store/chat'
 
+import { emitChatRunSettled } from './sse-chat-transport'
+
 const STREAM_FLUSH_INTERVAL_MS = 125
 
 export class ChatStreamingHandler {
@@ -18,6 +20,7 @@ export class ChatStreamingHandler {
   private flushTimerId: number | null = null
   private microtaskFlushQueued = false
   private lastFlushAtMs = 0
+  private settled = false
 
   constructor(
     sessionId: string,
@@ -85,6 +88,7 @@ export class ChatStreamingHandler {
       store.setPassiveStreamingMessage(this.sessionId, messageId, false)
       store.setSessionMeta(this.sessionId, { passiveStatus: 'idle' })
     }
+    this.emitSettled(messageId, 'complete')
   }
 
   fail(error: string): void {
@@ -100,6 +104,7 @@ export class ChatStreamingHandler {
       store.setPassiveStreamingMessage(this.sessionId, messageId, false)
       store.setSessionMeta(this.sessionId, { passiveStatus: 'error' })
     }
+    this.emitSettled(messageId, 'error')
   }
 
   dispose(): void {
@@ -238,6 +243,18 @@ export class ChatStreamingHandler {
     }
 
     this.activeMessageId = messageId
+  }
+
+  private emitSettled(messageId: string | null, status: 'complete' | 'error'): void {
+    if (this.settled) {
+      return
+    }
+    this.settled = true
+    emitChatRunSettled({
+      chatSessionId: this.sessionId,
+      messageId,
+      status,
+    })
   }
 }
 

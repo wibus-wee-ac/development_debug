@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // Output: Unit coverage for Chat-owned Jarvis attention context.
 // Input: Chat attention snapshots and the shared Jarvis context registry.
 // Position: Feature-owned tests for chat semantic context publication.

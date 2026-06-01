@@ -12,6 +12,7 @@ import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useSessionLayoutStore } from '~/store/session-layout'
 import { useStreamdownStore } from '~/store/streamdown'
 
 import { AppshotAttachmentCard } from './appshot-attachment'
@@ -34,6 +35,55 @@ const THINKING_IDLE_DELAY_MS = 900
 const MESSAGE_STREAMING_ANIMATION_MAX_CHARS = 12000
 const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
 const ACTIVE_TOOL_STATES = new Set(['input-streaming', 'input-available', 'approval-requested'])
+const CODEX_GOAL_COMMAND_PREFIX = '/goal '
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readGoalMetadataObjective(message: UIMessage): string | null {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  const goal = readRecord(cradleMetadata.goal)
+  return typeof goal.objective === 'string' && goal.objective.trim().length > 0
+    ? goal.objective.trim()
+    : null
+}
+
+function readCodexGoalObjective(text: string): string | null {
+  const normalized = text.trimStart()
+  if (!normalized.startsWith(CODEX_GOAL_COMMAND_PREFIX)) {
+    return null
+  }
+  const objective = normalized.slice(CODEX_GOAL_COMMAND_PREFIX.length).trimStart()
+  return objective.length > 0 ? objective : null
+}
+
+function readUserDisplayText(text: string): string {
+  return readCodexGoalObjective(text) ?? text
+}
+
+function readMessageDisplayText(message: UIMessage): string {
+  const goalObjective = readGoalMetadataObjective(message)
+  if (message.role === 'user' && goalObjective) {
+    return goalObjective
+  }
+  return message.parts
+    .flatMap(part => part.type === 'text' ? [message.role === 'user' ? readUserDisplayText(part.text) : part.text] : [])
+    .join('\n')
+}
+
+function isCodexGoalUserMessage(message: UIMessage): boolean {
+  if (message.role === 'user' && readGoalMetadataObjective(message)) {
+    return true
+  }
+  return message.role === 'user'
+    && readCodexGoalObjective(message.parts
+      .flatMap(part => part.type === 'text' ? [part.text] : [])
+      .join('\n')) !== null
+}
 
 function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   const label = part.filename ?? part.mediaType
@@ -73,12 +123,15 @@ function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
 
 function SkillContextBlock({ part }: { part: ChatSkillContextMessagePart }) {
   const skill = readSkillContextPart(part)
+  if (!skill) {
+    return null
+  }
   return (
-    <div className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-background/55 px-2 py-1 text-xs text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]">
+    <span className="mx-1 inline-flex max-w-full align-baseline items-center gap-1.5 rounded-md bg-background/55 px-2 py-1 text-xs text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]">
       <PackageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 truncate font-medium">{readSkillContextLabel(skill)}</span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{skill.scope}</span>
-    </div>
+    </span>
   )
 }
 
@@ -174,6 +227,17 @@ function ThinkingPlaceholder() {
         )}
       >
         {t('status.thinking')}
+      </span>
+    </div>
+  )
+}
+
+function GoalMessageLabel() {
+  return (
+    <div className="mb-1 flex justify-end pr-1">
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium uppercase text-muted-foreground/60">
+        <TargetIcon className="size-3" aria-hidden="true" />
+        Goal
       </span>
     </div>
   )
@@ -399,6 +463,7 @@ interface MessageFrame {
   id: string
   role: UIMessage['role']
   isSteerMessage: boolean
+  isGoalMessage: boolean
 }
 
 function readMessageFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): UIMessage | undefined {
@@ -415,6 +480,7 @@ function readMessageFrameFromState(state: ChatStoreSnapshot, sessionId: string, 
     id: message.id,
     role: message.role,
     isSteerMessage: message.role === 'user' && continuationMetadata?.mode === 'steer',
+    isGoalMessage: isCodexGoalUserMessage(message),
   }
 }
 
@@ -422,6 +488,7 @@ function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | 
   return left?.id === right?.id
     && left?.role === right?.role
     && left?.isSteerMessage === right?.isSteerMessage
+    && left?.isGoalMessage === right?.isGoalMessage
 }
 
 function describeToolKindFromState(state: ChatStoreSnapshot, toolCallId: string) {
@@ -547,7 +614,12 @@ function readFilePartFromState(state: ChatStoreSnapshot, sessionId: string, mess
   return part?.type === 'file' ? part : null
 }
 
-function readSkillContextPartFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): ChatSkillContextPart | null {
+function readSkillContextPartFromState(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageId: string,
+  partIndex: number,
+): ChatSkillContextMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return isChatSkillContextPart(part) ? part : null
 }
@@ -557,9 +629,7 @@ function readPlainTextFromState(state: ChatStoreSnapshot, sessionId: string, mes
   if (!message) {
     return ''
   }
-  return message.parts
-    .flatMap(part => part.type === 'text' ? [part.text] : [])
-    .join('\n')
+  return readMessageDisplayText(message)
 }
 
 function readPlainTextPresenceFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): boolean {
@@ -572,7 +642,7 @@ function readPlainTextLengthFromState(state: ChatStoreSnapshot, sessionId: strin
   if (!message) {
     return 0
   }
-  return message.parts.reduce((total, part) => total + (part.type === 'text' ? part.text.length : 0), 0)
+  return readMessageDisplayText(message).length
 }
 
 function readActiveStreamingSegmentKey(segments: ChatRenderSegment[]): string | null {
@@ -588,14 +658,25 @@ function ToolCallBlockFromStore({
   onToolApprovalResponse,
   children,
   animated,
+  sessionId,
 }: {
   toolCallId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   children?: React.ReactNode
   animated?: boolean
+  sessionId?: string | null
 }) {
   const tool = useChatStore(chatSelectors.toolEntity(toolCallId))
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
+  const workspaceDiffTarget = useSessionLayoutStore(
+    useShallow((state) => {
+      if (!sessionId) {
+        return undefined
+      }
+      const workspaceId = state.sessions[sessionId]?.workspaceId
+      return workspaceId ? { workspaceId } : undefined
+    }),
+  )
   if (!tool) {
     return null
   }
@@ -613,6 +694,7 @@ function ToolCallBlockFromStore({
       output={tool.output}
       errorText={tool.errorText}
       animated={animated}
+      workspaceDiffTarget={workspaceDiffTarget}
       onApprovalResponse={tool.approval && onToolApprovalResponse
         ? approval => onToolApprovalResponse({
             messageId: tool.messageId,
@@ -641,13 +723,24 @@ function GroupedToolCallBlockFromStore({
   items,
   uiKind,
   animated,
+  sessionId,
 }: {
   items: Array<{ key: string, messageId: string, toolCallId: string }>
   uiKind: ReturnType<typeof describeToolCall>['kind']
   animated?: boolean
+  sessionId?: string | null
 }) {
   const selectedToolState = useChatStore(useShallow(state =>
     items.map(item => state.toolEntitiesMap.get(item.toolCallId))))
+  const workspaceDiffTarget = useSessionLayoutStore(
+    useShallow((state) => {
+      if (!sessionId) {
+        return undefined
+      }
+      const workspaceId = state.sessions[sessionId]?.workspaceId
+      return workspaceId ? { workspaceId } : undefined
+    }),
+  )
   const tools = useMemo(() =>
     items.flatMap((item, index) => {
       const entity = selectedToolState[index] as ChatToolEntity | undefined
@@ -673,7 +766,7 @@ function GroupedToolCallBlockFromStore({
     return null
   }
 
-  return <GroupedToolCallBlock items={tools} uiKind={uiKind} animated={animated} />
+  return <GroupedToolCallBlock items={tools} uiKind={uiKind} animated={animated} workspaceDiffTarget={workspaceDiffTarget} />
 }
 
 function MessageTextPartById({
@@ -691,15 +784,16 @@ function MessageTextPartById({
 }) {
   const text = useChatStore(state => readTextPartFromState(state, sessionId, messageId, partIndex))
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
-  const animated = text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS
+  const displayText = isUser ? readUserDisplayText(text) : text
+  const animated = displayText.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS
 
   if (isUser) {
-    return <span className="whitespace-pre-wrap wrap-break-word">{text}</span>
+    return <span className="whitespace-pre-wrap wrap-break-word">{displayText}</span>
   }
 
   return (
     <Streamdown
-      content={text}
+      content={displayText}
       streaming={isActiveStreamingSegment}
       animationPreset={animationPreset}
       animateMode={animateMode}
@@ -907,11 +1001,12 @@ function MessageSegmentView({
         />
       )
     case 'tool-group':
-      return <GroupedToolCallBlockFromStore items={segment.items} uiKind={segment.uiKind} />
+      return <GroupedToolCallBlockFromStore items={segment.items} uiKind={segment.uiKind} sessionId={sessionId} />
     case 'tool-call':
       return (
         <ToolCallBlockFromStore
           toolCallId={segment.toolCallId}
+          sessionId={sessionId}
           onToolApprovalResponse={onToolApprovalResponse}
         />
       )
@@ -1018,6 +1113,7 @@ function MessageBubbleSegmentsView({
             </span>
           </div>
         )}
+        {frame.isGoalMessage && <GoalMessageLabel />}
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
@@ -1096,6 +1192,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const isExportPresentation = presentation === 'export'
   const continuationMetadata = readChatContinuationMetadata(message)
   const isSteerMessage = isUser && continuationMetadata?.mode === 'steer'
+  const isGoalMessage = isCodexGoalUserMessage(message)
   const { t } = useTranslation('chat')
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
@@ -1103,14 +1200,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
   const isFirstAppearance = trackSeenMessageId(message.id)
 
-  const plainText = useMemo(() => {
-    return message.parts
-      .flatMap(p => p.type === 'text' ? [(p as { text: string }).text] : [])
-      .join('\n')
-  }, [message.parts])
+  const plainText = useMemo(() => readMessageDisplayText(message), [message])
   const plainTextLength = useMemo(() => {
-    return message.parts.reduce((total, part) => total + (part.type === 'text' ? part.text.length : 0), 0)
-  }, [message.parts])
+    return plainText.length
+  }, [plainText.length])
   const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, plainTextLength)
 
   const groupedItems = useMemo(
@@ -1182,9 +1275,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     switch (item.kind) {
       case 'text':
         if (isUser) {
+          const displayText = readUserDisplayText(item.text)
           return (
             <span key={item.key} className="whitespace-pre-wrap wrap-break-word">
-              {item.text}
+              {displayText}
             </span>
           )
         }
@@ -1217,6 +1311,9 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
       case 'file-attachment':
         return <FileAttachmentBlock key={item.key} part={item.part} />
+
+      case 'skill-context':
+        return <SkillContextBlock key={item.key} part={item.part} />
 
       default:
         return null
@@ -1272,6 +1369,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             </span>
           </div>
         )}
+        {isGoalMessage && <GoalMessageLabel />}
         {/* Bubble */}
         <div
           className={cn(

@@ -18,7 +18,12 @@ import { readDesktopChatStreamBridge } from '~/lib/electron'
 
 import type { ChatResponseRequestBody } from './chat-response-command'
 import { startChatResponse, subscribeChatSessionStream } from './chat-response-command'
-import { buildUIMessageChunkStreamFromResponse, emitChatRunActivity } from './sse-chat-transport'
+import {
+  buildUIMessageChunkStreamFromResponse,
+  emitChatRunActivity,
+  emitChatRunSettled,
+  readTerminalChunkStatus,
+} from './sse-chat-transport'
 
 export interface ChatStreamTransportResult {
   streamId: string | null
@@ -238,6 +243,14 @@ function routeDesktopEvent(event: BufferedDesktopEvent): void {
         messageId: readChunkMessageId(result.value),
         chunk: result.value,
       })
+      const terminalStatus = readTerminalChunkStatus(result.value)
+      if (terminalStatus) {
+        emitChatRunSettled({
+          chatSessionId: event.event.sessionId,
+          messageId: readChunkMessageId(result.value),
+          status: terminalStatus,
+        })
+      }
       state.controller.enqueue(result.value)
       return
     }

@@ -152,7 +152,7 @@ describe('chat stream transport', () => {
     })
   })
 
-  it('emits app chrome activity for Electron chat stream chunks', async () => {
+  it('emits app chrome settled activity only after Electron terminal chunks', async () => {
     const { bridge, chunkHandlers, closedHandlers } = createBridge()
     writeWindowCradle({
       ipc: {
@@ -186,12 +186,12 @@ describe('chat stream transport', () => {
         onActionRequested: vi.fn(),
       },
     })
-    const [{ startChatResponseStream }, { onAnyChatRunEvent }] = await Promise.all([
+    const [{ startChatResponseStream }, { onChatRunSettled }] = await Promise.all([
       import('./chat-stream-transport'),
       import('./sse-chat-transport'),
     ])
-    const activity = vi.fn()
-    const unsubscribe = onAnyChatRunEvent(activity)
+    const settled = vi.fn()
+    const unsubscribe = onChatRunSettled(settled)
 
     const result = await startChatResponseStream({
       sessionId: 'session-1',
@@ -205,6 +205,15 @@ describe('chat stream transport', () => {
       runId: 'run-1',
       chunk: { type: 'start', messageId: 'assistant-1' },
     }))
+    await Promise.resolve()
+    expect(settled).not.toHaveBeenCalled()
+
+    chunkHandlers.forEach(handler => handler({
+      streamId: 'stream-1',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      chunk: { type: 'finish', finishReason: 'stop' },
+    }))
     closedHandlers.forEach(handler => handler({
       streamId: 'stream-1',
       sessionId: 'session-1',
@@ -214,11 +223,13 @@ describe('chat stream transport', () => {
 
     await expect(chunksPromise).resolves.toEqual([
       { type: 'start', messageId: 'assistant-1' },
+      { type: 'finish', finishReason: 'stop' },
     ])
-    expect(activity).toHaveBeenCalledWith({
+    expect(settled).toHaveBeenCalledTimes(1)
+    expect(settled).toHaveBeenCalledWith({
       chatSessionId: 'session-1',
-      messageId: 'assistant-1',
-      chunk: { type: 'start', messageId: 'assistant-1' },
+      messageId: null,
+      status: 'complete',
     })
     unsubscribe()
   })

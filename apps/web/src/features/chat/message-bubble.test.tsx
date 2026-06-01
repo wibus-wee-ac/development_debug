@@ -442,6 +442,64 @@ describe('message bubble', () => {
     expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal', 'Refactor the runtime slot state')
   })
 
+  it('projects Codex goal slash messages as objective timeline items', () => {
+    const onSetGoalFromMessage = vi.fn()
+    const userMessage: UIMessage = {
+      id: 'user-goal-command',
+      role: 'user',
+      parts: [{ type: 'text', text: '/goal Refactor runtime slots' }],
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble
+          message={userMessage}
+          isStreaming={false}
+          onSetGoalFromMessage={onSetGoalFromMessage}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Goal')).toBeTruthy()
+    expect(screen.getByText('Refactor runtime slots')).toBeTruthy()
+    expect(screen.queryByText('/goal Refactor runtime slots')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
+
+    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal-command', 'Refactor runtime slots')
+  })
+
+  it('projects Codex goal slash messages in the store-backed renderer', () => {
+    const onSetGoalFromMessage = vi.fn()
+    const userMessage: UIMessage = {
+      id: 'user-goal-command-store',
+      role: 'user',
+      parts: [{ type: 'text', text: '/goal Refactor store-backed slots' }],
+    }
+    useChatStore.setState(state => ({
+      ...state,
+      messagesMap: new Map([['session-1', [userMessage]]]),
+    }))
+
+    render(
+      <TooltipProvider>
+        <MessageBubbleById
+          sessionId="session-1"
+          messageId={userMessage.id}
+          onSetGoalFromMessage={onSetGoalFromMessage}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByText('Goal')).toBeTruthy()
+    expect(screen.getByText('Refactor store-backed slots')).toBeTruthy()
+    expect(screen.queryByText('/goal Refactor store-backed slots')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
+
+    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal-command-store', 'Refactor store-backed slots')
+  })
+
   it('opens Cradle AppShot previews and toggles accessibility text', () => {
     const messageWithAppshot: UIMessage = {
       id: 'user-appshot-preview',
