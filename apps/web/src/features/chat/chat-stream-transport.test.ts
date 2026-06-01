@@ -152,6 +152,77 @@ describe('chat stream transport', () => {
     })
   })
 
+  it('emits app chrome activity for Electron chat stream chunks', async () => {
+    const { bridge, chunkHandlers, closedHandlers } = createBridge()
+    writeWindowCradle({
+      ipc: {
+        invoke: vi.fn(),
+        on: vi.fn(),
+      },
+      env: {
+        serverUrl: 'http://127.0.0.1:21423',
+        sessionId: null,
+        isTearoff: false,
+        surface: null,
+        platform: 'darwin',
+        isElectron: true,
+      },
+      window: {
+        minimize: vi.fn(),
+        maximize: vi.fn(),
+        close: vi.fn(),
+        startPointerMonitor: vi.fn(),
+        stopPointerMonitor: vi.fn(),
+        onTearoffSessionClosed: vi.fn(),
+        onPointerOutsideWindow: vi.fn(),
+      },
+      desktopUpdate: {
+        onStatusChanged: vi.fn(),
+      },
+      chatStream: bridge,
+      desktopTray: {
+        performAction: vi.fn(),
+        consumePendingActionRequests: vi.fn(),
+        onActionRequested: vi.fn(),
+      },
+    })
+    const [{ startChatResponseStream }, { onAnyChatRunEvent }] = await Promise.all([
+      import('./chat-stream-transport'),
+      import('./sse-chat-transport'),
+    ])
+    const activity = vi.fn()
+    const unsubscribe = onAnyChatRunEvent(activity)
+
+    const result = await startChatResponseStream({
+      sessionId: 'session-1',
+      body: { text: 'hello' },
+    })
+    const chunksPromise = readChunks(result.stream)
+
+    chunkHandlers.forEach(handler => handler({
+      streamId: 'stream-1',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      chunk: { type: 'start', messageId: 'assistant-1' },
+    }))
+    closedHandlers.forEach(handler => handler({
+      streamId: 'stream-1',
+      sessionId: 'session-1',
+      runId: 'run-1',
+      reason: 'done',
+    }))
+
+    await expect(chunksPromise).resolves.toEqual([
+      { type: 'start', messageId: 'assistant-1' },
+    ])
+    expect(activity).toHaveBeenCalledWith({
+      chatSessionId: 'session-1',
+      messageId: 'assistant-1',
+      chunk: { type: 'start', messageId: 'assistant-1' },
+    })
+    unsubscribe()
+  })
+
   it('errors the renderer stream when Electron reports a stream failure', async () => {
     const { bridge, errorHandlers } = createBridge()
     writeWindowCradle({
