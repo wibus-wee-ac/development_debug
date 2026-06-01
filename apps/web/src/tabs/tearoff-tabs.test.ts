@@ -1,7 +1,7 @@
 import { createTabStore, defineTab } from '@cradle/tabs-next'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-import { detachTearoffSessionTab, restoreTearoffSessionTab } from './tearoff-tabs'
+import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession, restoreTearoffSessionTab } from './tearoff-tabs'
 
 function DummyComponent() {
   return null
@@ -34,6 +34,11 @@ function createStore() {
 }
 
 describe('tearoff tab lifecycle helpers', () => {
+  afterEach(() => {
+    releaseTearoffSession('session-1')
+    releaseTearoffSession('session-2')
+  })
+
   it('detaches a torn-off chat tab from the main tab list and restores it when closed', () => {
     const store = createStore()
     const homeId = store.getState().openTab('home', {}, { pinned: true })
@@ -70,5 +75,15 @@ describe('tearoff tab lifecycle helpers', () => {
       pinned: true,
     })
     expect(store.getState().activeTabId).toBe(store.getState().tabs[0].id)
+  })
+
+  it('reserves a session tear-off until it is released', () => {
+    expect(reserveTearoffSession('session-1')).toBe(true)
+    expect(reserveTearoffSession('session-1')).toBe(false)
+    expect(reserveTearoffSession('session-2')).toBe(true)
+
+    releaseTearoffSession('session-1')
+
+    expect(reserveTearoffSession('session-1')).toBe(true)
   })
 })

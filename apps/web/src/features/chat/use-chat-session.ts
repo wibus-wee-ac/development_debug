@@ -20,12 +20,10 @@ import {
   enqueueChatSessionQueueItem,
   listChatSessionQueue,
   reorderChatSessionQueue,
-  startChatResponse,
-  subscribeChatSessionStream,
   switchChatPermissionMode,
 } from './chat-response-command'
 import { ChatStreamingHandler } from './chat-streaming-handler'
-import { buildUIMessageChunkStreamFromResponse } from './sse-chat-transport'
+import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -124,6 +122,13 @@ function derivePassiveStatus(rows: ChatSessionMessageRow[]): PublicStatus {
   return 'idle'
 }
 
+function readLatestFailedMainAssistantRow(rows: ChatSessionMessageRow[]): ChatSessionMessageRow | undefined {
+  const latestAssistant = [...rows]
+    .reverse()
+    .find(row => row.role === 'assistant' && !row.parentToolCallId)
+  return latestAssistant?.status === 'failed' ? latestAssistant : undefined
+}
+
 function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: string): boolean {
   if (!(part.type === 'dynamic-tool' || part.type.startsWith('tool-'))) {
     return false
@@ -157,6 +162,9 @@ export function useChatSession(chatSessionId: string | null) {
   )
   const visibleStatus = useChatStore(
     chatSelectors.visibleStatus(chatSessionId ?? ''),
+  )
+  const isStreaming = useChatStore(
+    chatSelectors.isSessionStreaming(chatSessionId ?? ''),
   )
 
   const latestError = useChatStore(
@@ -240,16 +248,15 @@ export function useChatSession(chatSessionId: string | null) {
     const passiveStatus = derivePassiveStatus(snapshotRowsQuery.data)
     useChatStore.getState().setMessages(chatSessionId, projected)
     useChatStore.getState().setPassiveStreamingMessageIds(chatSessionId, passiveStreamingMessageIds)
+    useChatStore.getState().clearSessionErrors(chatSessionId)
     useChatStore.getState().setSessionMeta(chatSessionId, {
       cancelling: meta?.cancelling && passiveStatus === 'streaming',
       passiveStatus,
     })
 
-    // Hydrate errorMap from server-side failed messages
-    for (const row of snapshotRowsQuery.data) {
-      if (row.role === 'assistant' && row.status === 'failed' && row.errorText) {
-        useChatStore.getState().failGeneration(row.messageId, row.errorText)
-      }
+    const failedRow = readLatestFailedMainAssistantRow(snapshotRowsQuery.data)
+    if (failedRow?.errorText) {
+      useChatStore.getState().failGeneration(failedRow.messageId, failedRow.errorText)
     }
   }, [chatSessionId, snapshotRowsQuery.data])
 
@@ -316,21 +323,15 @@ export function useChatSession(chatSessionId: string | null) {
 
     void (async () => {
       try {
-        const res = await subscribeChatSessionStream({
+        const transport = await subscribeChatSessionStreamForSession({
           sessionId: chatSessionId,
           signal: controller.signal,
         })
-        if (!res.ok) {
-          const body = await res.text().catch(() => '')
-          throw new Error(`Failed to subscribe chat session stream: ${res.status} ${body}`)
+        if (transport.runId) {
+          useChatStore.getState().setRunDisplayId(streamingMessageId, transport.runId)
         }
 
-        const runId = res.headers.get('x-cradle-run-id')
-        if (runId) {
-          useChatStore.getState().setRunDisplayId(streamingMessageId, runId)
-        }
-
-        await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
+        await handler.consume(transport.stream)
         handler.finish()
       }
       catch (err) {
@@ -412,7 +413,7 @@ export function useChatSession(chatSessionId: string | null) {
 
     try {
       // 3. Initiate SSE stream
-      const res = await startChatResponse({
+      const transport = await startChatResponseStream({
         sessionId: chatSessionId,
         body: {
           text: trimmedText,
@@ -425,21 +426,15 @@ export function useChatSession(chatSessionId: string | null) {
         signal: controller.signal,
       })
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => '')
-        throw new Error(`Failed to start chat response: ${res.status} ${body}`)
-      }
-
-      const runId = res.headers.get('x-cradle-run-id')
-      if (runId) {
-        useChatStore.getState().setRunDisplayId(assistantMessageId, runId)
+      if (transport.runId) {
+        useChatStore.getState().setRunDisplayId(assistantMessageId, transport.runId)
       }
 
       if (sessionBindingQueryKey) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
 
-      await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
+      await handler.consume(transport.stream)
 
       handler.finish()
     }
@@ -501,7 +496,7 @@ export function useChatSession(chatSessionId: string | null) {
     handlerRef.current = handler
 
     try {
-      const res = await startChatResponse({
+      const transport = await startChatResponseStream({
         sessionId: chatSessionId,
         body: {
           text: '',
@@ -510,21 +505,15 @@ export function useChatSession(chatSessionId: string | null) {
         signal: controller.signal,
       })
 
-      if (!res.ok) {
-        const body = await res.text().catch(() => '')
-        throw new Error(`Failed to continue chat approval response: ${res.status} ${body}`)
-      }
-
-      const runId = res.headers.get('x-cradle-run-id')
-      if (runId) {
-        useChatStore.getState().setRunDisplayId(response.messageId, runId)
+      if (transport.runId) {
+        useChatStore.getState().setRunDisplayId(response.messageId, transport.runId)
       }
 
       if (sessionBindingQueryKey) {
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
 
-      await handler.consume(buildUIMessageChunkStreamFromResponse(res, chatSessionId))
+      await handler.consume(transport.stream)
       handler.finish()
     }
     catch (err) {
@@ -614,6 +603,9 @@ export function useChatSession(chatSessionId: string | null) {
     messageIds,
     messageCount,
     status: visibleStatus,
+    isStreaming,
+    isBusy: isStreaming,
+    canStop: isStreaming,
     error: latestError?.message,
     sendMessage,
     respondToToolApproval,

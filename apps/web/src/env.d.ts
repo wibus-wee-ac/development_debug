@@ -41,6 +41,8 @@ interface Window {
     desktopUpdate: {
       onStatusChanged: (handler: (status: unknown) => void) => () => void
     }
+    // eslint-disable-next-line ts/no-explicit-any
+    chatStream?: any
     desktopTray: {
       performAction: (actionId: string, payload?: unknown) => Promise<unknown>
       consumePendingActionRequests: () => Promise<unknown>

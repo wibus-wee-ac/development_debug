@@ -1,4 +1,4 @@
-import { DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
+import { DownloadIcon, EyeIcon, EyeOffIcon, GlobeIcon, KeyIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -65,7 +65,7 @@ export function ImportProviderDialog({
   }, [text])
 
   // Deduplicate provider names: append " (2)", " (3)" etc for same-name entries
-  const resolvedNames = useMemo(() => {
+  const computeResolvedNames = useCallback(() => {
     const parsed = parseResult?.providers ?? []
     const counts = new Map<string, number>()
     const allExisting = new Set(profiles.map(p => p.name.toLowerCase()))
@@ -83,6 +83,14 @@ export function ImportProviderDialog({
     })
   }, [parseResult, profiles])
 
+  const [resolvedNames, setResolvedNames] = useState<string[]>([])
+
+  useEffect(() => {
+    if (parseResult) {
+      setResolvedNames(computeResolvedNames())
+    }
+  }, [parseResult, computeResolvedNames])
+
   useEffect(() => {
     if (!parseResult) { return }
     if (parseResult.token !== prevTokenRef.current) {
@@ -94,6 +102,12 @@ export function ImportProviderDialog({
   }, [parseResult])
 
   const token = parseResult?.token ?? null
+  const [showDecoded, setShowDecoded] = useState(false)
+  const decodedToken = useMemo(() => {
+    if (!token) { return null }
+    try { return atob(token) }
+    catch { return null }
+  }, [token])
   const hasProviders = parseResult && parseResult.providers.length > 0
   const showManualEntry = parseResult && !hasProviders && parseResult.urls.length === 0
 
@@ -200,9 +214,23 @@ export function ImportProviderDialog({
                 <KeyIcon className="size-3.5 shrink-0" />
                 {token
 ? (
-                  <span className="truncate font-mono text-[11px]">
-                    {token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token}
-                  </span>
+                  <>
+                    <span className="flex-1 truncate font-mono text-[11px]">
+                      {showDecoded && decodedToken
+                        ? (decodedToken.length > 48 ? `${decodedToken.slice(0, 24)}...${decodedToken.slice(-12)}` : decodedToken)
+                        : (token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token)}
+                    </span>
+                    {decodedToken && decodedToken !== token && (
+                      <button
+                        type="button"
+                        onClick={() => setShowDecoded(v => !v)}
+                        className="shrink-0 rounded p-0.5 text-emerald-600/60 hover:text-emerald-600 dark:text-emerald-400/60 dark:hover:text-emerald-400"
+                        title={showDecoded ? 'Show encoded' : 'Base64 decode'}
+                      >
+                        {showDecoded ? <EyeOffIcon className="size-3" /> : <EyeIcon className="size-3" />}
+                      </button>
+                    )}
+                  </>
                 )
 : (
                   <span>No API key detected.</span>
@@ -232,6 +260,13 @@ export function ImportProviderDialog({
                           setKinds((prev) => {
                             const next = [...prev]
                             next[i] = k
+                            return next
+                          })
+                        }}
+                        onNameChange={(name) => {
+                          setResolvedNames((prev) => {
+                            const next = [...prev]
+                            next[i] = name
                             return next
                           })
                         }}
@@ -303,6 +338,7 @@ function ProviderCard({
   enabled,
   onToggle,
   onKindChange,
+  onNameChange,
 }: {
   provider: ParsedProvider
   resolvedName: string
@@ -310,6 +346,7 @@ function ProviderCard({
   enabled: boolean
   onToggle: () => void
   onKindChange: (k: ApiProviderKind) => void
+  onNameChange: (name: string) => void
 }) {
   return (
     <label
@@ -342,9 +379,11 @@ function ProviderCard({
               ))}
             </SelectContent>
           </Select>
-          <span className="truncate text-[13px] font-medium text-foreground">
-            {resolvedName}
-          </span>
+          <Input
+            value={resolvedName}
+            onChange={e => onNameChange(e.target.value)}
+            className="h-6 flex-1 border-0 bg-transparent px-0 text-[13px] font-medium text-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
         </div>
         <div className="flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">

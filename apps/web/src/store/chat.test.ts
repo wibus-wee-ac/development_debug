@@ -96,6 +96,7 @@ describe('chat store tool entity normalization', () => {
     const state = useChatStore.getState()
     expect(chatSelectors.isStreamingMessage('assistant-streaming')(state)).toBe(true)
     expect(chatSelectors.isStreamingMessage('assistant-other-session')(state)).toBe(false)
+    expect(chatSelectors.isSessionStreaming('session-1')(state)).toBe(true)
   })
 
   it('clears passive streaming ids when messages leave the session snapshot', () => {
@@ -110,5 +111,29 @@ describe('chat store tool entity normalization', () => {
     useChatStore.getState().setMessages('session-1', [])
 
     expect(chatSelectors.isStreamingMessage('assistant-streaming')(useChatStore.getState())).toBe(false)
+  })
+
+  it('drops stale session errors when a new local generation starts', () => {
+    const previousAssistant: UIMessage = {
+      id: 'assistant-failed',
+      role: 'assistant',
+      parts: [{ type: 'text', text: '' }],
+    }
+
+    useChatStore.getState().setMessages('session-1', [previousAssistant])
+    useChatStore.getState().failGeneration('assistant-failed', 'Previous stream failed')
+
+    expect(chatSelectors.visibleStatus('session-1')(useChatStore.getState())).toBe('error')
+
+    useChatStore.getState().appendMessage('session-1', {
+      id: 'assistant-next',
+      role: 'assistant',
+      parts: [],
+    })
+    useChatStore.getState().startGeneration('session-1', 'assistant-next', new AbortController())
+
+    const state = useChatStore.getState()
+    expect(chatSelectors.visibleStatus('session-1')(state)).toBe('streaming')
+    expect(chatSelectors.latestError('session-1')(state)).toBeUndefined()
   })
 })

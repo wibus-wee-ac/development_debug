@@ -5,7 +5,7 @@ import {
   getSessionsOptions,
   getSessionsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
-import type { GetSessionsResponse } from '~/api-gen/types.gen'
+import type { GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
 import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
@@ -19,18 +19,35 @@ export interface WorkspaceSession {
   linkedIssueId: string | null
   runtimeKind: RuntimeKind
   pinned: number
+  archivedAt: number | null
   createdAt: number
   updatedAt: number
 }
 
-export const sessionsQueryKey = (_workspaceId?: string | null) =>
-  getSessionsQueryKey()
+function sessionListOptions(workspaceId?: string | null, archived?: boolean): GetSessionsData | undefined {
+  const query: NonNullable<GetSessionsData['query']> = {}
+
+  if (workspaceId) {
+    query.workspaceId = workspaceId
+  }
+  if (archived !== undefined) {
+    query.archived = archived
+  }
+
+  return Object.keys(query).length > 0
+    ? { url: '/sessions/', query }
+    : undefined
+}
+
+export const sessionsQueryKey = (workspaceId?: string | null, archived?: boolean) =>
+  getSessionsQueryKey(sessionListOptions(workspaceId, archived))
 
 function nullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
 }
 
 function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSession {
+  const archivedAt = (session as { archivedAt?: unknown }).archivedAt
   return {
     id: session.id,
     workspaceId: nullableString(session.workspaceId),
@@ -41,6 +58,7 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
     linkedIssueId: nullableString(session.linkedIssueId),
     runtimeKind: session.runtimeKind,
     pinned: session.pinned,
+    archivedAt: typeof archivedAt === 'number' ? archivedAt : null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
   }
@@ -65,10 +83,21 @@ export function useAllSessions() {
 }
 
 export function useSessions(workspaceId: string | null) {
-  const { sessions: allSessions, loading } = useAllSessions()
-  const sessions = workspaceId
-    ? allSessions.filter(session => session.workspaceId === workspaceId)
-    : []
+  const queryOptions = sessionListOptions(workspaceId)
+  const { data: rawSessions = [], isPending: loading } = useQuery({
+    ...getSessionsOptions(queryOptions),
+    enabled: Boolean(workspaceId),
+  })
+  const sessions = rawSessions.map(asWorkspaceSession)
+
+  useEffect(() => {
+    useSessionLayoutStore.getState().upsertSessions(sessions.map(session => ({
+      sessionId: session.id,
+      sessionTitle: session.title,
+      workspaceId: session.workspaceId,
+      runtimeKind: session.runtimeKind,
+    })))
+  }, [sessions])
 
   return { sessions, loading }
 }

@@ -30,6 +30,20 @@ export interface ChatRunDisplayMeta {
   completedAtMs: number | null
 }
 
+export type ChatActiveGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
+
+export interface ChatActiveGoal {
+  sessionId: string
+  objective: string
+  status: ChatActiveGoalStatus
+  sourceMessageId: string | null
+  tokenBudget: number | null
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+}
+
 interface SessionMeta {
   /** Passive observer status (for sessions streaming from another tab/reload) */
   passiveStatus: PublicStatus
@@ -60,6 +74,7 @@ interface ChatState {
 
   // --- Session Meta ---
   sessionMetaMap: Map<string, SessionMeta>
+  activeGoalMap: Map<string, ChatActiveGoal>
 
   // --- Actions: Messages ---
   setMessages: (sessionId: string, messages: UIMessage[]) => void
@@ -96,10 +111,18 @@ interface ChatState {
   // --- Actions: Session Meta ---
   setSessionMeta: (sessionId: string, meta: Partial<SessionMeta>) => void
   setPassiveStatus: (sessionId: string, status: PublicStatus) => void
+  setActiveGoal: (sessionId: string, input: {
+    objective: string
+    sourceMessageId?: string | null
+    status?: ChatActiveGoalStatus
+    tokenBudget?: number | null
+  }) => void
+  clearActiveGoal: (sessionId: string) => void
 
   // --- Actions: Cleanup ---
   clearSession: (sessionId: string) => void
   clearError: (messageId: string) => void
+  clearSessionErrors: (sessionId: string) => void
 
 }
 
@@ -125,6 +148,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       runDisplayMetaMap: new Map(),
       errorMap: new Map(),
       sessionMetaMap: new Map(),
+      activeGoalMap: new Map(),
 
       // --- Messages ---
 
@@ -175,6 +199,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
               for (const id of removedMessageIds) {
                 draft.passiveStreamingMessageIds.delete(id)
               }
+            }
+            for (const id of removedMessageIds) {
+              draft.errorMap.delete(id)
             }
           })
         })
@@ -428,6 +455,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
       startGeneration: (sessionId, messageId, controller) => {
         set((state) => produce(state, (draft) => {
+          for (const message of state.messagesMap.get(sessionId) ?? EMPTY_MESSAGES) {
+            draft.errorMap.delete(message.id)
+          }
           draft.generatingMessageIds.add(messageId)
           draft.passiveStreamingMessageIds.delete(messageId)
           draft.activeAbortControllers.set(messageId, controller)
@@ -638,6 +668,45 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         })
       },
 
+      setActiveGoal: (sessionId, input) => {
+        const objective = input.objective.trim()
+        if (!objective) {
+          return
+        }
+        set((state) => {
+          const now = Math.floor(Date.now() / 1000)
+          const current = state.activeGoalMap.get(sessionId)
+          const next: ChatActiveGoal = {
+            sessionId,
+            objective,
+            status: input.status ?? 'active',
+            sourceMessageId: input.sourceMessageId ?? null,
+            tokenBudget: input.tokenBudget ?? null,
+            tokensUsed: current?.tokensUsed ?? 0,
+            timeUsedSeconds: current?.timeUsedSeconds ?? 0,
+            createdAt: current?.createdAt ?? now,
+            updatedAt: now,
+          }
+          if (areActiveGoalsEqual(current, next)) {
+            return state
+          }
+          return produce(state, (draft) => {
+            draft.activeGoalMap.set(sessionId, next as Draft<ChatActiveGoal>)
+          })
+        })
+      },
+
+      clearActiveGoal: (sessionId) => {
+        set((state) => {
+          if (!state.activeGoalMap.has(sessionId)) {
+            return state
+          }
+          return produce(state, (draft) => {
+            draft.activeGoalMap.delete(sessionId)
+          })
+        })
+      },
+
       // --- Cleanup ---
 
       clearSession: (sessionId) => {
@@ -647,8 +716,10 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           return produce(state, (draft) => {
             draft.messagesMap.delete(sessionId)
             draft.sessionMetaMap.delete(sessionId)
+            draft.activeGoalMap.delete(sessionId)
             for (const message of removedMessages) {
               draft.runDisplayMetaMap.delete(message.id)
+              draft.errorMap.delete(message.id)
               const toolCallIds = draft.toolCallIdsByMessageId.get(message.id) ?? []
               draft.toolCallIdsByMessageId.delete(message.id)
               for (const toolCallId of toolCallIds) {
@@ -666,6 +737,21 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         set((state) => produce(state, (draft) => {
           draft.errorMap.delete(messageId)
         }))
+      },
+
+      clearSessionErrors: (sessionId) => {
+        set((state) => {
+          const messages = state.messagesMap.get(sessionId) ?? EMPTY_MESSAGES
+          if (!messages.some(message => state.errorMap.has(message.id))) {
+            return state
+          }
+
+          return produce(state, (draft) => {
+            for (const message of messages) {
+              draft.errorMap.delete(message.id)
+            }
+          })
+        })
       },
 
     }),
@@ -726,6 +812,21 @@ export const chatSelectors = {
     return messages.some(m => s.generatingMessageIds.has(m.id))
   },
 
+  /** Session-level: is this session visibly streaming in any renderer. */
+  isSessionStreaming: (sessionId: string) => (s: ChatState) => {
+    const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    if (meta.locallyDriving || meta.passiveStatus === 'streaming') {
+      return true
+    }
+    const messages = s.messagesMap.get(sessionId)
+    if (!messages) {
+      return false
+    }
+    return messages.some(message =>
+      s.generatingMessageIds.has(message.id) || s.passiveStreamingMessageIds.has(message.id),
+    )
+  },
+
   /** Error for a message */
   error: (messageId: string) => (s: ChatState) =>
     s.errorMap.get(messageId),
@@ -747,6 +848,9 @@ export const chatSelectors = {
   /** Session meta */
   sessionMeta: (sessionId: string) => (s: ChatState) =>
     s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META,
+
+  activeGoal: (sessionId: string) => (s: ChatState) =>
+    s.activeGoalMap.get(sessionId) ?? null,
 
   /** Resolved visible status combining local + passive */
   visibleStatus: (sessionId: string) => (s: ChatState): PublicStatus => {
@@ -1050,6 +1154,19 @@ function areToolEntitiesEqual(left: ChatToolEntity, right: ChatToolEntity): bool
     && left.errorText === right.errorText
     && areJsonValuesEqual(left.input, right.input)
     && areJsonValuesEqual(left.output, right.output)
+}
+
+function areActiveGoalsEqual(left: ChatActiveGoal | undefined, right: ChatActiveGoal): boolean {
+  return left !== undefined
+    && left.sessionId === right.sessionId
+    && left.objective === right.objective
+    && left.status === right.status
+    && left.sourceMessageId === right.sourceMessageId
+    && left.tokenBudget === right.tokenBudget
+    && left.tokensUsed === right.tokensUsed
+    && left.timeUsedSeconds === right.timeUsedSeconds
+    && left.createdAt === right.createdAt
+    && left.updatedAt === right.updatedAt
 }
 
 function arraysEqual(left: string[], right: string[]): boolean {

@@ -155,6 +155,24 @@ afterEach(() => {
 })
 
 describe('composer attachments', () => {
+  it('shows the stop action as the primary action while streaming without a draft', () => {
+    const onSend = vi.fn()
+    const onStop = vi.fn()
+
+    render(
+      <TooltipProvider>
+        <Composer onSend={onSend} onStop={onStop} isStreaming />
+      </TooltipProvider>,
+    )
+
+    expect(screen.queryByTestId('chat-send-btn')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('chat-stop-btn'))
+
+    expect(onStop).toHaveBeenCalledTimes(1)
+    expect(onSend).not.toHaveBeenCalled()
+  })
+
   it('selects, removes, and sends file attachments', async () => {
     const onSend = vi.fn()
     render(

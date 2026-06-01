@@ -808,7 +808,8 @@ export const zGetAutomationsByIdArtifactsByArtifactIdPath = z.object({
 });
 
 export const zGetSessionsQuery = z.object({
-    workspaceId: z.string().min(1).optional()
+    workspaceId: z.string().min(1).optional(),
+    archived: z.boolean().optional()
 });
 
 export const zPostSessionsBody = z.object({
@@ -847,6 +848,14 @@ export const zPatchSessionsByIdBody = z.object({
 });
 
 export const zPatchSessionsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostSessionsByIdArchiveBody = z.object({
+    archived: z.boolean()
+});
+
+export const zPostSessionsByIdArchivePath = z.object({
     id: z.string().min(1)
 });
 

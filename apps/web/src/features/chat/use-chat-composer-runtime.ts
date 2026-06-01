@@ -50,6 +50,7 @@ export interface ChatComposerRuntime {
 interface UseChatComposerRuntimeOptions {
   sessionId: string | null
   status: string
+  isStreaming: boolean
   messageCount: number
   isReady: boolean
   composerModel?: ModelDescriptor | null
@@ -72,6 +73,7 @@ function invertContinuationMode(mode: NonNullable<SendMessageOptions['continuati
 export function useChatComposerRuntime({
   sessionId,
   status,
+  isStreaming,
   messageCount,
   isReady,
   composerModel,
@@ -168,7 +170,7 @@ export function useChatComposerRuntime({
 
   return {
     disabled: !isReady,
-    isStreaming: status === 'streaming',
+    isStreaming,
     send,
     stop,
     slashCommands,

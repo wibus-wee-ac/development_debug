@@ -26,7 +26,7 @@ import { cn } from '~/lib/cn'
 import { hasTerminalDetails } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall } from '../tool-ui-classifier'
-import { LazyTooltip, TerminalExecutionDetails } from './tool-call-block'
+import { TerminalExecutionDetails } from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
 
@@ -205,29 +205,13 @@ export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items
                     aria-hidden
                   />
                 )}
-                {animated && descriptor.target
-                  ? (
-                      <LazyTooltip
-                        delayDuration={600}
-                        side="bottom"
-                        content={descriptor.target}
-                        contentClassName="font-mono text-[11px]"
-                        title={descriptor.target}
-                      >
-                        <span className="min-w-0 flex-1 cursor-default truncate font-mono text-foreground/70">
-                          {label}
-                        </span>
-                      </LazyTooltip>
-                    )
-                  : (
-                      <span className={cn(
-                        'min-w-0 flex-1 cursor-default font-mono text-foreground/70',
-                        animated ? 'truncate' : 'whitespace-normal break-all',
-                      )}
-                      >
-                        {label}
-                      </span>
-                    )}
+                <span className={cn(
+                  'min-w-0 flex-1 cursor-default font-mono text-foreground/70',
+                  animated ? 'truncate' : 'whitespace-normal break-all',
+                )}
+                >
+                  {label}
+                </span>
                 <ItemStatusIcon state={item.part.state} animated={animated} />
               </button>
               {expandable && expanded && (

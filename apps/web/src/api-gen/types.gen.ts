@@ -3252,6 +3252,7 @@ export type GetSessionsData = {
     path?: never;
     query?: {
         workspaceId?: string;
+        archived?: boolean;
     };
     url: '/sessions/';
 };
@@ -3270,6 +3271,7 @@ export type GetSessionsResponses = {
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         pinned: number;
+        archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -3305,6 +3307,7 @@ export type PostSessionsResponses = {
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         pinned: number;
+        archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -3355,6 +3358,7 @@ export type GetSessionsByIdResponses = {
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         pinned: number;
+        archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -3388,12 +3392,46 @@ export type PatchSessionsByIdResponses = {
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         pinned: number;
+        archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
     };
 };
 
 export type PatchSessionsByIdResponse = PatchSessionsByIdResponses[keyof PatchSessionsByIdResponses];
+
+export type PostSessionsByIdArchiveData = {
+    body: {
+        archived: boolean;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/archive';
+};
+
+export type PostSessionsByIdArchiveResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string | unknown | null;
+        title: string | unknown | null;
+        providerTargetId: string | unknown | null;
+        agentId: string | unknown | null;
+        modelId: string | unknown | null;
+        linkedIssueId: string | unknown | null;
+        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        pinned: number;
+        archivedAt: number | unknown | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostSessionsByIdArchiveResponse = PostSessionsByIdArchiveResponses[keyof PostSessionsByIdArchiveResponses];
 
 export type GetSessionsByIdMessagesData = {
     body?: never;

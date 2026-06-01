@@ -23,24 +23,18 @@ export interface ChatMinimapHandle {
 
 interface ChatMinimapUiState {
   hoverIdx: number | null
-  hoverClientY: number
   isDragging: boolean
-  containerHeight: number
-  containerTop: number
 }
 
 type ChatMinimapUiAction
-  = { type: 'pointer-start', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
-    | { type: 'pointer-move', hoverIdx: number, hoverClientY: number, containerHeight: number, containerTop: number }
+  = { type: 'pointer-start', hoverIdx: number }
+    | { type: 'pointer-move', hoverIdx: number }
     | { type: 'pointer-end' }
     | { type: 'pointer-leave' }
 
 const initialChatMinimapUiState: ChatMinimapUiState = {
   hoverIdx: null,
-  hoverClientY: 0,
   isDragging: false,
-  containerHeight: 0,
-  containerTop: 0,
 }
 
 function chatMinimapUiReducer(state: ChatMinimapUiState, action: ChatMinimapUiAction): ChatMinimapUiState {
@@ -48,18 +42,12 @@ function chatMinimapUiReducer(state: ChatMinimapUiState, action: ChatMinimapUiAc
     case 'pointer-start':
       return {
         hoverIdx: action.hoverIdx,
-        hoverClientY: action.hoverClientY,
         isDragging: true,
-        containerHeight: action.containerHeight,
-        containerTop: action.containerTop,
       }
     case 'pointer-move':
       return {
         ...state,
         hoverIdx: action.hoverIdx,
-        hoverClientY: action.hoverClientY,
-        containerHeight: action.containerHeight,
-        containerTop: action.containerTop,
       }
     case 'pointer-end':
       return {
@@ -257,9 +245,6 @@ function ChatMinimapInner({
         dispatch({
           type: 'pointer-start',
           hoverIdx: yToIndex(y, rect.height),
-          hoverClientY: e.clientY,
-          containerHeight: rect.height,
-          containerTop: rect.top,
         })
       }
     },
@@ -276,9 +261,6 @@ function ChatMinimapInner({
       dispatch({
         type: 'pointer-move',
         hoverIdx: yToIndex(y, rect.height),
-        hoverClientY: e.clientY,
-        containerHeight: rect.height,
-        containerTop: rect.top,
       })
       if (uiState.isDragging) {
         onScrollTo(yToScroll(y, rect.height))
@@ -326,11 +308,6 @@ function ChatMinimapInner({
     return null
   }
 
-  // Compute hover peek position (clamped to container)
-  const peekTop = uiState.hoverIdx !== null
-    ? Math.max(0, Math.min(uiState.hoverClientY - uiState.containerTop - 40, uiState.containerHeight - 120))
-    : 0
-
   return (
     <div
       className="pointer-events-none absolute right-7 top-0 bottom-0 z-10 flex w-10 items-center justify-center"
@@ -357,72 +334,72 @@ function ChatMinimapInner({
             <ChatMinimapBar
               key={messageIds[anchor.messageIndex]}
               index={i}
+              anchor={anchor}
               hovered={uiState.hoverIdx === i}
               setAnchorNode={setAnchorNode}
             />
           )
         })}
       </button>
-
-      {/* Hover peek popover */}
-      {uiState.hoverIdx !== null && (
-        <ChatMinimapHoverPreview
-          anchor={anchors[uiState.hoverIdx]}
-          index={uiState.hoverIdx}
-          top={peekTop}
-        />
-      )}
     </div>
   )
 }
 
 function ChatMinimapBar({
   index,
+  anchor,
   hovered,
   setAnchorNode,
 }: {
   index: number
+  anchor: ChatMinimapAnchor
   hovered: boolean
   setAnchorNode: (index: number, node: HTMLSpanElement | null) => void
 }) {
   return (
     <span
-      ref={(node) => {
-        setAnchorNode(index, node)
-      }}
-      data-active="false"
-      className={cn(
-        'block h-1 w-9 rounded-full bg-foreground/40 transition-[background-color,opacity,scale] duration-150',
-        'data-[active=true]:bg-foreground/95 data-[active=true]:opacity-100',
-        'opacity-55',
-        hovered && 'scale-x-110 bg-foreground/80 opacity-100',
-      )}
-    />
+      className="group/minimap-bar relative block h-1 w-9"
+    >
+      <span
+        ref={(node) => {
+          setAnchorNode(index, node)
+        }}
+        data-active="false"
+        className={cn(
+          'block h-1 w-9 rounded-full bg-foreground/40 transition-[background-color,opacity,scale] duration-150',
+          'data-[active=true]:bg-foreground/95 data-[active=true]:opacity-100',
+          'opacity-55',
+          hovered && 'scale-x-110 bg-foreground/80 opacity-100',
+        )}
+      />
+      <ChatMinimapHoverPreview
+        anchor={anchor}
+        index={index}
+        visible={hovered}
+      />
+    </span>
   )
 }
 
 function ChatMinimapHoverPreview({
   anchor,
   index,
-  top,
+  visible,
 }: {
-  anchor: ChatMinimapAnchor | null | undefined
+  anchor: ChatMinimapAnchor
   index: number
-  top: number
+  visible: boolean
 }) {
-  if (!anchor) {
-    return null
-  }
-
   return (
-    <div
-      className="pointer-events-none absolute right-full mr-2 w-56 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md"
-      style={{
-        top,
-      }}
+    <span
+      className={cn(
+        'pointer-events-none absolute right-full top-1/2 z-20 mr-2 w-56 -translate-y-1/2 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md',
+        'opacity-0 transition-[opacity,transform] duration-150 group-hover/minimap-bar:opacity-100',
+        visible && 'opacity-100',
+      )}
     >
-      <div className="mb-1 flex items-center gap-1.5">
-        <div
+      <span className="mb-1 flex items-center gap-1.5">
+        <span
           className={cn(
             'size-1.5 rounded-full',
             'bg-foreground/50',
@@ -431,11 +408,11 @@ function ChatMinimapHoverPreview({
         <span className="text-[10px] font-medium text-muted-foreground">
           {`User · #${index + 1}`}
         </span>
-      </div>
-      <p className="text-xs/relaxed text-foreground line-clamp-4">
+      </span>
+      <span className="line-clamp-4 text-left text-xs/relaxed text-foreground">
         {anchor.preview}
-      </p>
-    </div>
+      </span>
+    </span>
   )
 }
 

@@ -10,6 +10,8 @@ export interface DetachedTearoffTab {
 
 type CradleTabStore = UseBoundStore<StoreApi<TabStoreState>>
 
+const activeTearoffSessions = new Set<string>()
+
 function chatSessionIdOf(tab: { type: string, params: Record<string, string | undefined> }): string | null {
   return tab.type === 'chat' && typeof tab.params.sessionId === 'string'
     ? tab.params.sessionId
@@ -60,12 +62,25 @@ export function detachTearoffSessionTab(store: CradleTabStore, sessionId: string
   }
 }
 
+export function reserveTearoffSession(sessionId: string): boolean {
+  if (activeTearoffSessions.has(sessionId)) {
+    return false
+  }
+  activeTearoffSessions.add(sessionId)
+  return true
+}
+
+export function releaseTearoffSession(sessionId: string): void {
+  activeTearoffSessions.delete(sessionId)
+}
+
 export function restoreTearoffSessionTab(store: CradleTabStore, sessionId: string): string {
   return store.getState().openTab('chat', { sessionId })
 }
 
 export function installTearoffSessionRestore(store: CradleTabStore): () => void {
   return subscribeTearoffSessionClosed((sessionId) => {
+    releaseTearoffSession(sessionId)
     restoreTearoffSessionTab(store, sessionId)
   })
 }

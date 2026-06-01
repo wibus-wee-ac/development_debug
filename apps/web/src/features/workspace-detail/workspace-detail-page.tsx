@@ -545,7 +545,10 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const createSessionMutation = useMutation({
     ...postSessionsMutation(),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      ])
     },
   })
 

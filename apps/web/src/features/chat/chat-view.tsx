@@ -323,6 +323,7 @@ export function ChatView({
     messageIds,
     messageCount,
     status,
+    isStreaming,
     error,
     sendMessage,
     respondToToolApproval,
@@ -338,6 +339,7 @@ export function ChatView({
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
+    isStreaming,
     messageCount,
     isReady,
     composerModel,

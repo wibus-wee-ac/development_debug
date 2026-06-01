@@ -260,8 +260,11 @@ function useNewChatPageOwner(active: boolean) {
           workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
           runtimeKind: 'cli-tui',
         })
-        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) })
-        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+          queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+        ])
         void openTab('chat', { sessionId: session.id })
         return true
       }
@@ -297,8 +300,11 @@ function useNewChatPageOwner(active: boolean) {
           thinkingEffort: selection.thinkingEffort ?? undefined,
         },
       })
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) })
-      queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+      ])
       void openTab('chat', { sessionId: session.id })
       return true
     }

@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   BarChart3Icon,
+  ArchiveIcon,
   ChevronDownIcon,
   ChevronUpIcon,
   ClipboardCopyIcon,
@@ -14,6 +15,7 @@ import {
   FolderOpenIcon,
   FolderPlusIcon,
   GitBranchIcon,
+  LoaderCircleIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PackageIcon,
@@ -31,9 +33,9 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { useTranslation } from 'react-i18next'
 
 import {
-  deleteSessionsById,
   getSessionsByIdExportMarkdown,
   patchSessionsById,
+  postSessionsByIdArchive,
 } from '~/api-gen'
 import {
   getSessionsByIdQueryKey,
@@ -41,6 +43,7 @@ import {
   postWorkspacesByIdFilesFileMutation,
   postWorkspacesByIdFilesFolderMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import {
   ContextMenu,
@@ -62,19 +65,19 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
-import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/components/common/provider-icons'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
 import type { Workspace } from '~/lib/types'
+import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useSessionLayoutStore } from '~/store/session-layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
-import { detachTearoffSessionTab } from '~/tabs/tearoff-tabs'
+import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
@@ -340,6 +343,7 @@ function SessionItem({
   const { openNewTab, openTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
+  const isStreaming = useChatStore(chatSelectors.isSessionStreaming(session.id))
   const [isRenaming, setIsRenaming] = useState(false)
   const dragPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
@@ -380,13 +384,18 @@ function SessionItem({
   const invalidateSessionQueries = useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
     ])
   }, [queryClient, session.id, workspaceId])
 
-  const handleDelete = useCallback(async () => {
-    await deleteSessionsById({ path: { id: session.id } })
-    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+  const handleArchive = useCallback(async () => {
+    await postSessionsByIdArchive({ path: { id: session.id }, body: { archived: true } })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
+    ])
     if (isActive) {
       openTab('home')
     }
@@ -394,7 +403,10 @@ function SessionItem({
 
   const handleTogglePin = useCallback(async () => {
     await patchSessionsById({ path: { id: session.id }, body: { pinned: !session.pinned } })
-    queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) })
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+    ])
   }, [session.id, session.pinned, workspaceId, queryClient])
 
   const handleRename = useCallback(async (nextTitleRaw: string) => {
@@ -437,13 +449,19 @@ function SessionItem({
 
     const screenX = window.screenX + Math.round(window.outerWidth / 2)
     const screenY = window.screenY + Math.round(window.outerHeight / 2)
+    if (!reserveTearoffSession(session.id)) {
+      return
+    }
+
     void nativeIpc.window.tearOffSession(session.id, screenX, screenY)
       .then(() => {
         if (!isTearoffWindow) {
           detachTearoffSessionTab(useCradleTabStore, session.id)
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        releaseTearoffSession(session.id)
+      })
   }, [session.id])
 
   const checkSessionTearOff = useCallback(() => {
@@ -459,6 +477,9 @@ function SessionItem({
     dragWasTornOffRef.current = true
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
+    if (!reserveTearoffSession(session.id)) {
+      return true
+    }
 
     void nativeIpc.window.tearOffSession(session.id, pointer.screenX, pointer.screenY)
       .then(() => {
@@ -467,6 +488,7 @@ function SessionItem({
         }
       })
       .catch(() => {
+        releaseTearoffSession(session.id)
         dragWasTornOffRef.current = false
       })
 
@@ -565,12 +587,11 @@ function SessionItem({
       ]
       : []), // Hide export in production until we add a proper UI for it
     {
-      key: 'delete',
-      label: t('session.action.delete'),
-      icon: <Trash2Icon />,
-      testId: `session-menu-delete-${session.id}`,
-      invoke: handleDelete,
-      variant: 'destructive',
+      key: 'archive',
+      label: t('session.action.archive'),
+      icon: <ArchiveIcon />,
+      testId: `session-menu-archive-${session.id}`,
+      invoke: handleArchive,
     },
   ]
 
@@ -617,12 +638,22 @@ function SessionItem({
                 )
                 : null}
               <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
-              {isUnread && !isActive && (
+              {isUnread && !isActive && !isStreaming && (
                 <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={t('session.aria.newReply')} />
               )}
-              <span className="shrink-0 text-[11px] text-muted-foreground">
-                {formatRelativeTime(session.updatedAt, t)}
-              </span>
+              {isStreaming
+                ? (
+                  <LoaderCircleIcon
+                    className="size-3.5 shrink-0 animate-spin text-muted-foreground/70"
+                    aria-label={t('session.aria.running')}
+                    data-testid={`session-running-indicator-${session.id}`}
+                  />
+                )
+                : (
+                  <span className="shrink-0 text-[11px] text-muted-foreground">
+                    {formatRelativeTime(session.updatedAt, t)}
+                  </span>
+                )}
             </Link>
             <Menu>
               <MenuTrigger

@@ -53,6 +53,86 @@ export const tearoffSessionId = window.cradle?.env?.sessionId ?? null
  */
 export const platform = window.cradle?.env?.platform ?? 'darwin'
 
+// ── Desktop Chat Stream Bridge ────────────────────────────────────────────────
+
+export interface DesktopChatStartResponseRequest {
+  sessionId: string
+  body: {
+    text: string
+    files?: unknown[]
+    messages?: unknown[]
+    providerTargetId?: string
+    modelId?: string
+    thinkingEffort?: 'low' | 'medium' | 'high'
+    permissionMode?: 'bypassPermissions' | 'plan'
+  }
+}
+
+export interface DesktopChatSubscribeSessionRequest {
+  sessionId: string
+}
+
+export interface DesktopChatAbortRequest {
+  streamId: string
+}
+
+export interface DesktopChatStreamHandle {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  assistantMessageId?: string
+  userMessageId?: string
+}
+
+export interface DesktopChatStreamChunkEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  chunk: unknown
+}
+
+export interface DesktopChatStreamClosedEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  reason: 'done' | 'aborted' | 'upstream-closed'
+}
+
+export interface DesktopChatStreamErrorEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  message: string
+}
+
+export interface DesktopChatStreamDiagnostics {
+  streams: Array<{
+    sessionId: string
+    mode: 'response' | 'session'
+    runId: string | null
+    assistantMessageId?: string
+    userMessageId?: string
+    subscriberCount: number
+    replayChunkCount: number
+    keepAliveWithoutSubscribers: boolean
+    startedAtMs: number
+  }>
+}
+
+export interface DesktopChatStreamBridge {
+  startResponse: (request: DesktopChatStartResponseRequest) => Promise<DesktopChatStreamHandle>
+  subscribeSession: (request: DesktopChatSubscribeSessionRequest) => Promise<DesktopChatStreamHandle>
+  abort: (request: DesktopChatAbortRequest) => Promise<void>
+  diagnostics: () => Promise<DesktopChatStreamDiagnostics>
+  onChunk: (handler: (event: DesktopChatStreamChunkEvent) => void) => () => void
+  onClosed: (handler: (event: DesktopChatStreamClosedEvent) => void) => () => void
+  onError: (handler: (event: DesktopChatStreamErrorEvent) => void) => () => void
+}
+
+export function readDesktopChatStreamBridge(): DesktopChatStreamBridge | null {
+  return window.cradle?.chatStream ?? null
+}
+
 // ── IPC Proxy (typed) ─────────────────────────────────────────────────────────
 
 interface NativeServiceMethods {

@@ -348,30 +348,49 @@ function ComposerActions({
       {sessionTokens != null && sessionTokens > 0 && (
         <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
       )}
-      {isStreaming && (
+      {isStreaming && hasDraft && (
         <Button
           variant="outline"
           size="icon-xs"
-          onClick={onStop}
-          aria-label="Stop generation"
-          data-testid={stopButtonTestId}
+          disabled={disabled || sendDisabled}
+          onClick={() => onSend()}
+          aria-label={sendButtonAriaLabel ?? 'Send continuation'}
+          className={sendButtonClassName}
+          data-testid={sendButtonTestId}
         >
-          <SquareIcon className="size-3" aria-hidden="true" />
+          {isSending
+            ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+            : <SendHorizonalIcon aria-hidden="true" />}
         </Button>
       )}
-      <Button
-        variant="default"
-        size="icon-xs"
-        disabled={disabled || sendDisabled || !hasDraft}
-        onClick={() => onSend()}
-        aria-label={sendButtonAriaLabel ?? (isStreaming ? 'Send continuation' : 'Send message')}
-        className={sendButtonClassName}
-        data-testid={sendButtonTestId}
-      >
-        {isSending
-          ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-          : <SendHorizonalIcon aria-hidden="true" />}
-      </Button>
+      {isStreaming
+        ? (
+            <Button
+              variant="default"
+              size="icon-xs"
+              onClick={onStop}
+              aria-label="Stop generation"
+              className={sendButtonClassName}
+              data-testid={stopButtonTestId}
+            >
+              <SquareIcon className="size-3" aria-hidden="true" />
+            </Button>
+          )
+        : (
+            <Button
+              variant="default"
+              size="icon-xs"
+              disabled={disabled || sendDisabled || !hasDraft}
+              onClick={() => onSend()}
+              aria-label={sendButtonAriaLabel ?? 'Send message'}
+              className={sendButtonClassName}
+              data-testid={sendButtonTestId}
+            >
+              {isSending
+                ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+                : <SendHorizonalIcon aria-hidden="true" />}
+            </Button>
+          )}
     </div>
   )
 }
