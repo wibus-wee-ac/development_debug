@@ -16,7 +16,7 @@ import type { RuntimeKind } from '../provider-contracts/types'
 import { runtimeKinds } from '../provider-contracts/types'
 import * as Workspace from '../workspace/service'
 
-export type SessionStatus = 'idle' | 'streaming'
+export type SessionStatus = 'idle' | 'streaming' | 'error'
 export type SessionView = Session & { modelId: string | null, status: SessionStatus }
 
 const RuntimeKindSchema = z.enum(runtimeKinds)
@@ -56,31 +56,52 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
     return new Map()
   }
 
-  const activeRows = db()
+  const runRows = db()
     .select({
       chatSessionId: backendRuns.chatSessionId,
+      status: backendRuns.status,
+      startedAt: backendRuns.startedAt,
     })
     .from(backendRuns)
-    .where(and(
-      inArray(backendRuns.chatSessionId, sessionIds),
-      eq(backendRuns.status, 'streaming'),
-    ))
+    .where(inArray(backendRuns.chatSessionId, sessionIds))
+    .orderBy(desc(backendRuns.startedAt))
     .all()
 
-  return new Map(activeRows.map(row => [row.chatSessionId, 'streaming' as const]))
+  const statusesBySessionId = new Map<string, SessionStatus>()
+  const latestStatusBySessionId = new Map<string, typeof runRows[number]['status']>()
+
+  for (const row of runRows) {
+    if (row.status === 'streaming') {
+      statusesBySessionId.set(row.chatSessionId, 'streaming')
+      continue
+    }
+    if (!latestStatusBySessionId.has(row.chatSessionId)) {
+      latestStatusBySessionId.set(row.chatSessionId, row.status)
+    }
+  }
+
+  for (const [sessionId, latestStatus] of latestStatusBySessionId) {
+    if (!statusesBySessionId.has(sessionId) && latestStatus === 'failed') {
+      statusesBySessionId.set(sessionId, 'error')
+    }
+  }
+
+  return statusesBySessionId
 }
 
 function readSessionStatus(sessionId: string): SessionStatus {
-  return db()
-    .select({ id: backendRuns.id })
+  const runRows = db()
+    .select({ status: backendRuns.status })
     .from(backendRuns)
-    .where(and(
-      eq(backendRuns.chatSessionId, sessionId),
-      eq(backendRuns.status, 'streaming'),
-    ))
-    .get()
-    ? 'streaming'
-    : 'idle'
+    .where(eq(backendRuns.chatSessionId, sessionId))
+    .orderBy(desc(backendRuns.startedAt))
+    .all()
+
+  if (runRows.some(row => row.status === 'streaming')) {
+    return 'streaming'
+  }
+
+  return runRows[0]?.status === 'failed' ? 'error' : 'idle'
 }
 
 function toSessionView(session: Session, modelId: string | null, status: SessionStatus): SessionView {

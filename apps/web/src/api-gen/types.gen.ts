@@ -3270,6 +3270,7 @@ export type GetSessionsResponses = {
         modelId: string | unknown | null;
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | unknown | null;
         createdAt: number;
@@ -3306,6 +3307,7 @@ export type PostSessionsResponses = {
         modelId: string | unknown | null;
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | unknown | null;
         createdAt: number;
@@ -3357,6 +3359,7 @@ export type GetSessionsByIdResponses = {
         modelId: string | unknown | null;
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | unknown | null;
         createdAt: number;
@@ -3391,6 +3394,7 @@ export type PatchSessionsByIdResponses = {
         modelId: string | unknown | null;
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | unknown | null;
         createdAt: number;
@@ -3424,6 +3428,7 @@ export type PostSessionsByIdArchiveResponses = {
         modelId: string | unknown | null;
         linkedIssueId: string | unknown | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | unknown | null;
         createdAt: number;

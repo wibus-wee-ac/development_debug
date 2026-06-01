@@ -1,7 +1,7 @@
 # Session Module
 
 Session CRUD, pin toggle, soft archive/restore, message read, markdown export, and session-owned cleanup hooks.
-Session list/get responses also expose the currently requested model id from backend session bindings as `modelId` when a run has selected one.
+Session list/get responses also expose the currently requested model id from backend session bindings as `modelId` when a run has selected one, and a read-only `status` projection from chat-runtime-owned run rows so navigation surfaces can show active or errored sessions without opening them.
 Session titles are owned by this module. Chat Runtime may update `sessions.title` from provider-native title metadata, but provider adapters never write Session rows directly.
 Session lists default to active rows (`archivedAt` is null). Pass `archived=true` to list archived rows without deleting session-owned messages, usage, or runtime binding history.
 Provider-backed session creation resolves a stable agent persona and stores `agentId`, so CLI calls carrying the session context can be attributed to an Agent identity.
@@ -12,5 +12,5 @@ Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 ## Files
 
 - **index.ts**: Elysia route surface for CRUD, archive/restore, message listing, export, and linked-issue helpers.
-- **model.ts**: Session HTTP params/body/response schemas.
-- **service.ts**: Module semantics (CRUD + archive + export + cleanup), no-project chat workspace binding, provider-backed default agent binding and launchability checks, session-owned title updates, and session-owned delete hooks.
+- **model.ts**: Session HTTP params/body/response schemas, including the list/get `status` projection.
+- **service.ts**: Module semantics (CRUD + archive + export + cleanup), read-only run status projection, no-project chat workspace binding, provider-backed default agent binding and launchability checks, session-owned title updates, and session-owned delete hooks.

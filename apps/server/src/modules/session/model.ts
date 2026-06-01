@@ -14,6 +14,7 @@ const nullableRequiredString = t.Nullable(t.String({ minLength: 1 }))
 const sessionStatusSchema = t.Union([
   t.Literal('idle'),
   t.Literal('streaming'),
+  t.Literal('error'),
 ])
 
 export const SessionModel = {

@@ -18,7 +18,7 @@ export interface WorkspaceSession {
   modelId: string | null
   linkedIssueId: string | null
   runtimeKind: RuntimeKind
-  status: 'idle' | 'streaming'
+  status: 'idle' | 'streaming' | 'error'
   pinned: number
   archivedAt: number | null
   createdAt: number
@@ -48,7 +48,10 @@ function nullableString(value: unknown): string | null {
 }
 
 function readSessionStatus(value: unknown): WorkspaceSession['status'] {
-  return value === 'streaming' ? 'streaming' : 'idle'
+  if (value === 'streaming' || value === 'error') {
+    return value
+  }
+  return 'idle'
 }
 
 function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSession {
@@ -71,9 +74,10 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
   }
 }
 
-export function useAllSessions() {
+export function useAllSessions(archived?: boolean) {
+  const queryOptions = sessionListOptions(null, archived)
   const { data: rawSessions = [], isPending: loading } = useQuery({
-    ...getSessionsOptions(),
+    ...getSessionsOptions(queryOptions),
   })
   const sessions = rawSessions.map(asWorkspaceSession)
 
@@ -89,8 +93,8 @@ export function useAllSessions() {
   return { sessions, loading }
 }
 
-export function useSessions(workspaceId: string | null) {
-  const queryOptions = sessionListOptions(workspaceId)
+export function useSessions(workspaceId: string | null, archived?: boolean) {
+  const queryOptions = sessionListOptions(workspaceId, archived)
   const { data: rawSessions = [], isPending: loading } = useQuery({
     ...getSessionsOptions(queryOptions),
     enabled: Boolean(workspaceId),

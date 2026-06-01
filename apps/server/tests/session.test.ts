@@ -88,6 +88,7 @@ describe('session capability', () => {
           providerTargetId,
           agentId: null,
           modelId: null,
+          status: 'idle',
           archivedAt: null,
         }),
       )
@@ -100,17 +101,17 @@ describe('session capability', () => {
       )
       const list = await listRes.json()
       expect(list).toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null })]),
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null, status: 'idle' })]),
       )
 
       const allListRes = await app.handle(new Request('http://localhost/sessions'))
       expect(allListRes.status).toBe(200)
       expect(await allListRes.json()).toEqual(
-        expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null })]),
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, modelId: null, status: 'idle' })]),
       )
 
       const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
-      expect(await getRes.json()).toEqual(expect.objectContaining({ id: sessionId, modelId: null }))
+      expect(await getRes.json()).toEqual(expect.objectContaining({ id: sessionId, modelId: null, status: 'idle' }))
 
       const missingGet = await app.handle(new Request('http://localhost/sessions/missing'))
       expect(missingGet.status).toBe(404)
@@ -274,7 +275,92 @@ describe('session capability', () => {
         expect.objectContaining({
           id: sessionId,
           modelId: 'gpt-test',
+          status: 'idle',
         }),
+      )
+
+      const streamingRunId = randomUUID()
+      d.insert(backendRuns)
+        .values({
+          id: streamingRunId,
+          bindingId,
+          chatSessionId: sessionId,
+          messageId: assistantMessageId,
+          origin: 'user',
+          status: 'streaming',
+          startedAt: now,
+          finishedAt: null,
+        })
+        .run()
+
+      const streamingListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await streamingListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, status: 'streaming' })]),
+      )
+
+      const streamingGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await streamingGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'streaming' }),
+      )
+
+      d.update(backendRuns)
+        .set({
+          status: 'complete',
+          finishedAt: now + 1,
+        })
+        .where(eq(backendRuns.id, streamingRunId))
+        .run()
+
+      const completedGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await completedGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'idle' }),
+      )
+
+      const failedRunId = randomUUID()
+      d.insert(backendRuns)
+        .values({
+          id: failedRunId,
+          bindingId,
+          chatSessionId: sessionId,
+          messageId: assistantMessageId,
+          origin: 'user',
+          status: 'failed',
+          errorText: 'Provider failed',
+          startedAt: now + 2,
+          finishedAt: now + 3,
+        })
+        .run()
+
+      const failedListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await failedListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, status: 'error' })]),
+      )
+
+      const failedGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await failedGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'error' }),
+      )
+
+      d.insert(backendRuns)
+        .values({
+          id: randomUUID(),
+          bindingId,
+          chatSessionId: sessionId,
+          messageId: assistantMessageId,
+          origin: 'user',
+          status: 'complete',
+          startedAt: now + 4,
+          finishedAt: now + 5,
+        })
+        .run()
+
+      const recoveredGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await recoveredGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'idle' }),
       )
 
       const cliAgentId = randomUUID()
@@ -313,22 +399,9 @@ describe('session capability', () => {
           agentId: cliAgentId,
           providerTargetId: null,
           runtimeKind: 'cli-tui',
+          status: 'idle',
         }),
       )
-
-      const runId = randomUUID()
-      d.insert(backendRuns)
-        .values({
-          id: runId,
-          bindingId,
-          chatSessionId: sessionId,
-          messageId: assistantMessageId,
-          origin: 'user',
-          status: 'complete',
-          startedAt: now,
-          finishedAt: now + 1,
-        })
-        .run()
 
       const exportRes = await app.handle(
         new Request(`http://localhost/sessions/${sessionId}/export/markdown`),
