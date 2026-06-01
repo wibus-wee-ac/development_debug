@@ -11,6 +11,10 @@ const runtimeKindSchema = t.Union([
 
 const nullableString = t.Nullable(t.String())
 const nullableRequiredString = t.Nullable(t.String({ minLength: 1 }))
+const sessionStatusSchema = t.Union([
+  t.Literal('idle'),
+  t.Literal('streaming'),
+])
 
 export const SessionModel = {
   session: t.Object({
@@ -22,6 +26,7 @@ export const SessionModel = {
     modelId: nullableString,
     linkedIssueId: nullableString,
     runtimeKind: runtimeKindSchema,
+    status: sessionStatusSchema,
     pinned: t.Number(),
     archivedAt: t.Nullable(t.Number()),
     createdAt: t.Number(),

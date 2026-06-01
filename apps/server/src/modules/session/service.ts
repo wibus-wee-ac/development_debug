@@ -16,7 +16,8 @@ import type { RuntimeKind } from '../provider-contracts/types'
 import { runtimeKinds } from '../provider-contracts/types'
 import * as Workspace from '../workspace/service'
 
-export type SessionView = Session & { modelId: string | null }
+export type SessionStatus = 'idle' | 'streaming'
+export type SessionView = Session & { modelId: string | null, status: SessionStatus }
 
 const RuntimeKindSchema = z.enum(runtimeKinds)
 
@@ -50,10 +51,43 @@ function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, stri
   )
 }
 
-function toSessionView(session: Session, modelId: string | null): SessionView {
+function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStatus> {
+  if (sessionIds.length === 0) {
+    return new Map()
+  }
+
+  const activeRows = db()
+    .select({
+      chatSessionId: backendRuns.chatSessionId,
+    })
+    .from(backendRuns)
+    .where(and(
+      inArray(backendRuns.chatSessionId, sessionIds),
+      eq(backendRuns.status, 'streaming'),
+    ))
+    .all()
+
+  return new Map(activeRows.map(row => [row.chatSessionId, 'streaming' as const]))
+}
+
+function readSessionStatus(sessionId: string): SessionStatus {
+  return db()
+    .select({ id: backendRuns.id })
+    .from(backendRuns)
+    .where(and(
+      eq(backendRuns.chatSessionId, sessionId),
+      eq(backendRuns.status, 'streaming'),
+    ))
+    .get()
+    ? 'streaming'
+    : 'idle'
+}
+
+function toSessionView(session: Session, modelId: string | null, status: SessionStatus): SessionView {
   return {
     ...session,
     modelId,
+    status,
   }
 }
 
@@ -97,7 +131,12 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
         .all()
 
   const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
-  return rows.map(row => toSessionView(row, modelsBySessionId.get(row.id) ?? null))
+  const statusesBySessionId = listStatusesBySessionIds(rows.map(row => row.id))
+  return rows.map(row => toSessionView(
+    row,
+    modelsBySessionId.get(row.id) ?? null,
+    statusesBySessionId.get(row.id) ?? 'idle',
+  ))
 }
 
 export function setArchived(input: { id: string, archived: boolean }): SessionView | null {
@@ -133,7 +172,7 @@ export function get(id: string): SessionView | null {
       .where(eq(backendSessionBindings.chatSessionId, id))
       .get() ?? null
 
-  return toSessionView(row, binding?.requestedModelId ?? null)
+  return toSessionView(row, binding?.requestedModelId ?? null, readSessionStatus(id))
 }
 
 export function create(input: {
@@ -169,7 +208,7 @@ export function create(input: {
     .returning()
     .get()
 
-  return toSessionView(created, null)
+  return toSessionView(created, null, 'idle')
 }
 
 function resolveSessionWorkspaceId(input: { workspaceId?: string | null }): string | null {
