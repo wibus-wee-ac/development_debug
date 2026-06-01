@@ -1,0 +1,7 @@
+# Desktop Preload
+
+This directory owns the sandboxed Electron preload bridge exposed to renderer windows as `window.cradle`.
+
+## Files
+
+- `index.ts`: Exposes server URL/environment metadata, typed invoke/listener wrappers, window controls, desktop update events, tray action events, and desktop-owned chat stream IPC methods plus chunk/close/error event subscriptions.

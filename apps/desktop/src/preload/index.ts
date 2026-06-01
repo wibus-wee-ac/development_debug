@@ -12,6 +12,18 @@ const sessionId = getArg('session-id')
 const isTearoff = getArg('tearoff') === 'true'
 const surface = getArg('surface')
 
+const CHAT_STREAM_CHUNK_CHANNEL = 'chat-stream:chunk'
+const CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
+const CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
+
+function subscribeIpc<T>(channel: string, handler: (payload: T) => void): () => void {
+  const listener = (_event: Electron.IpcRendererEvent, payload: T) => handler(payload)
+  ipcRenderer.on(channel, listener)
+  return () => {
+    ipcRenderer.removeListener(channel, listener)
+  }
+}
+
 // Expose a minimal, typesafe API to the renderer
 const cradleElectron = {
   /** IPC invoke — matches the InvokableIpc interface from @cradle/ipc/client */
@@ -68,6 +80,17 @@ const cradleElectron = {
         ipcRenderer.removeListener('desktop-update:status-changed', listener)
       }
     },
+  },
+
+  /** Desktop-owned long-lived chat stream bridge */
+  chatStream: {
+    startResponse: (request: unknown) => ipcRenderer.invoke('chatStream.startResponse', request),
+    subscribeSession: (request: unknown) => ipcRenderer.invoke('chatStream.subscribeSession', request),
+    abort: (request: unknown) => ipcRenderer.invoke('chatStream.abort', request),
+    diagnostics: () => ipcRenderer.invoke('chatStream.diagnostics'),
+    onChunk: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CHUNK_CHANNEL, handler),
+    onClosed: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CLOSED_CHANNEL, handler),
+    onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler),
   },
 
   /** Desktop tray action bridge */

@@ -6,6 +6,14 @@ import { createServices, getIpcContext, IpcMethod, IpcService } from '@cradle/ip
 import { app, BrowserWindow, dialog, screen, shell as nativeLauncher } from 'electron'
 
 import { BrowserTabScriptsService } from './browser-tab-scripts'
+import type {
+  ChatStreamBroker,
+  DesktopChatAbortRequest,
+  DesktopChatStartResponseRequest,
+  DesktopChatStreamDiagnostics,
+  DesktopChatStreamHandle,
+  DesktopChatSubscribeSessionRequest,
+} from './chat-stream-broker'
 import type { MacBridgeManager } from './mac-bridge-manager'
 import type {
   MacAppshotAnimationTarget,
@@ -395,6 +403,7 @@ interface NativeServicesContext {
   getWindowManager: () => WindowManager | undefined
   getUpdateManager: () => DesktopUpdateManager | null
   getMacBridgeManager: () => MacBridgeManager | null
+  getChatStreamBroker: () => ChatStreamBroker | null
 }
 
 let nativeServicesContext: NativeServicesContext | null = null
@@ -409,6 +418,10 @@ function getUpdateManager(): DesktopUpdateManager | null {
 
 function getMacBridgeManager(): MacBridgeManager | null {
   return nativeServicesContext?.getMacBridgeManager() ?? null
+}
+
+function getChatStreamBroker(): ChatStreamBroker | null {
+  return nativeServicesContext?.getChatStreamBroker() ?? null
 }
 
 function readIpcSenderWindow(): BrowserWindow | null {
@@ -627,6 +640,40 @@ class DesktopUpdateService extends IpcService {
       throw new Error('Desktop update manager is not initialized')
     }
     return updateManager
+  }
+}
+
+// ── Desktop Chat Stream Service ───────────────────────────────────────────────
+
+class DesktopChatStreamService extends IpcService {
+  static readonly groupName = 'chatStream'
+
+  @IpcMethod()
+  async startResponse(request: DesktopChatStartResponseRequest): Promise<DesktopChatStreamHandle> {
+    return await this.readBroker().startResponse(getIpcContext().sender, request)
+  }
+
+  @IpcMethod()
+  async subscribeSession(request: DesktopChatSubscribeSessionRequest): Promise<DesktopChatStreamHandle> {
+    return await this.readBroker().subscribeSession(getIpcContext().sender, request)
+  }
+
+  @IpcMethod()
+  async abort(request: DesktopChatAbortRequest): Promise<void> {
+    this.readBroker().abortStream(getIpcContext().sender, request)
+  }
+
+  @IpcMethod()
+  async diagnostics(): Promise<DesktopChatStreamDiagnostics> {
+    return this.readBroker().diagnostics()
+  }
+
+  private readBroker(): ChatStreamBroker {
+    const broker = getChatStreamBroker()
+    if (!broker) {
+      throw new Error('Desktop chat stream broker is not initialized')
+    }
+    return broker
   }
 }
 
@@ -1023,5 +1070,12 @@ function readCaptureMimeType(filePath: string): MacAppshotImageAsset['mimeType']
 
 export function createNativeServices(context: NativeServicesContext) {
   nativeServicesContext = context
-  return createServices([NativeService, WindowService, DesktopUpdateService, MacCaptureService, BrowserTabScriptsService] as const)
+  return createServices([
+    NativeService,
+    WindowService,
+    DesktopUpdateService,
+    DesktopChatStreamService,
+    MacCaptureService,
+    BrowserTabScriptsService,
+  ] as const)
 }

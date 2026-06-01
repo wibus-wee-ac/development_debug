@@ -3,6 +3,7 @@ import { join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
+import { ChatStreamBroker } from './chat-stream-broker'
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
@@ -26,6 +27,7 @@ let windowManager: WindowManager | undefined
 let updateManager: DesktopUpdateManager | null = null
 let trayManager: TrayManager | null = null
 let macBridgeManager: MacBridgeManager | null = null
+let chatStreamBroker: ChatStreamBroker | null = null
 let isQuitting = false
 
 const MAIN_WINDOW_DEFAULT_WIDTH = 1280
@@ -298,6 +300,8 @@ function processPendingPluginInstallUrls(): void {
 
 async function shutdownDesktopRuntime(): Promise<void> {
   updateManager?.stopBackgroundChecks()
+  chatStreamBroker?.stop()
+  chatStreamBroker = null
   trayManager?.destroy()
   trayManager = null
   await macBridgeManager?.stop()
@@ -332,6 +336,7 @@ export async function startDesktopApp(): Promise<void> {
     getWindowManager: () => windowManager,
     getUpdateManager: () => updateManager,
     getMacBridgeManager: () => macBridgeManager,
+    getChatStreamBroker: () => chatStreamBroker,
   })
   updateManager.on('statusChanged', broadcastUpdateStatus)
 
@@ -355,6 +360,7 @@ export async function startDesktopApp(): Promise<void> {
     await activateDesktopPlugins()
 
     const serverUrl = await startServer()
+    chatStreamBroker = new ChatStreamBroker({ serverUrl })
 
     windowManager = new WindowManager(serverUrl)
 

@@ -75,6 +75,8 @@ export class WindowManager {
       show: false,
     })
 
+    this.sessionWindows.set(sessionId, win)
+
     let lastTearoffWindowSize = { width: targetBounds.width, height: targetBounds.height }
     const writeTearoffWindowSize = (): void => {
       if (win.isDestroyed()) {
@@ -93,28 +95,40 @@ export class WindowManager {
       win.show()
     })
 
-    if (process.env.ELECTRON_RENDERER_URL) {
-      const url = new URL('/tearoff.html', process.env.ELECTRON_RENDERER_URL)
-      url.searchParams.set('session', sessionId)
-      url.searchParams.set('tearoff', 'true')
-      await win.loadURL(url.toString())
-    }
-    else {
-      await win.loadFile(resolveDesktopRendererTearoffPath(), {
-        query: { session: sessionId, tearoff: 'true' },
-      })
-    }
-
-    this.sessionWindows.set(sessionId, win)
-
     win.on('closed', () => {
       writeTearoffWindowSize()
+      if (this.sessionWindows.get(sessionId) !== win) {
+        return
+      }
       this.sessionWindows.delete(sessionId)
       const mainWindow = this.mainWindow
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send('window:tearoff-session-closed', sessionId)
       }
     })
+
+    try {
+      if (process.env.ELECTRON_RENDERER_URL) {
+        const url = new URL('/tearoff.html', process.env.ELECTRON_RENDERER_URL)
+        url.searchParams.set('session', sessionId)
+        url.searchParams.set('tearoff', 'true')
+        await win.loadURL(url.toString())
+      }
+      else {
+        await win.loadFile(resolveDesktopRendererTearoffPath(), {
+          query: { session: sessionId, tearoff: 'true' },
+        })
+      }
+    }
+    catch (error) {
+      if (this.sessionWindows.get(sessionId) === win) {
+        this.sessionWindows.delete(sessionId)
+      }
+      if (!win.isDestroyed()) {
+        win.destroy()
+      }
+      throw error
+    }
 
     return win
   }

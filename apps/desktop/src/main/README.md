@@ -5,15 +5,18 @@
 ## 文件清单
 
 - `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
-- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、注册 `cradle://` protocol，并把 webview creation event 转发给 plugin loader。
+- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 `cradle://` protocol，并把 webview creation event 转发给 plugin loader。
+- `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames。
+- `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、subscriber cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
 - `desktop-assets.ts`：解析 Electron main process 在 dev 和 packaged runtime 中使用的 preload、main renderer、tear-off renderer asset 路径，兼容 electron-vite main chunk 输出目录。
 - `desktop-assets.test.ts`：覆盖 dev preload 路径从 `dist/main/chunks` 回溯到 `dist/preload/index.js`，以及 packaged preload / tear-off renderer 路径解析。
 - `browser-tab-scripts.ts`：拥有 Browser Panel webview 的 UserScript-like 注入 runtime，通过 IPC 接收 renderer 声明的脚本列表，使用 CDP `Page.addScriptToEvaluateOnNewDocument` 支持 `document-start`，并用 webContents lifecycle 支持 `document-end` / `document-idle`，同时负责 webContents listener cleanup。
 - `tray-manager.ts`：拥有 Electron native tray icon、native tray menu、tray action IPC，以及主窗口聚焦/转发流程。
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑，以及 tear-off window 的 size-only 持久化 helper；主窗口在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置，tear-off 只保存宽高不保存位置。
-- `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 从专用 renderer entry 初始化、按释放点选择目标 display，在释放点附近打开并限制在目标 workArea 内、只记忆宽高，并在关闭时通知 main renderer 恢复对应 main-window chat tab。
+- `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 从专用 renderer entry 初始化、按释放点选择目标 display，在释放点附近打开并限制在目标 workArea 内、只记忆宽高，同一 session 的重复 open 会聚合到已登记窗口，并在关闭时通知 main renderer 恢复对应 main-window chat tab。
+- `window-manager.test.ts`：覆盖 session tear-off window 并发 open 去重，以及 renderer load 失败时清理 pending session 窗口。
 - `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
-- `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、外部 AI 应用工作内容的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
+- `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、desktop chat stream broker IPC、外部 AI 应用工作内容的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
 - `native-editor-launcher.ts`：拥有 desktop native editor launch strategy，优先使用 macOS app launch，再回退到 common editor CLI commands。
 - `native-appshot-codex-assets.ts`：拥有 Codex Computer Use Appshot temp asset 的只读 projection，只读取 `/tmp/com.openai.sky.CUAService` 并把 Codex 私有图片产物转换为 Cradle IPC/report 可消费的 metadata 和 data URL。
 - `native-appshot-codex-assets.test.ts`：覆盖 Codex temp asset reader 的 root 边界、image 类型过滤、baseline inventory 过滤，以及 observer 对新产物的识别。

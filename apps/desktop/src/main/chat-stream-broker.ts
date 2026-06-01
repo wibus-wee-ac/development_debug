@@ -1,0 +1,503 @@
+/**
+ * Output: Main-process ownership for long-lived desktop chat streams.
+ * Input: Server chat SSE endpoints and renderer WebContents subscriptions.
+ * Position: Desktop main-process transport broker for chat streaming fanout.
+ */
+
+import type { WebContents } from 'electron'
+
+export const DESKTOP_CHAT_STREAM_CHUNK_CHANNEL = 'chat-stream:chunk'
+export const DESKTOP_CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
+export const DESKTOP_CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
+
+export type DesktopChatStreamMode = 'response' | 'session'
+
+export interface DesktopChatStartResponseRequest {
+  sessionId: string
+  body: {
+    text: string
+    files?: unknown[]
+    messages?: unknown[]
+    providerTargetId?: string
+    modelId?: string
+    thinkingEffort?: 'low' | 'medium' | 'high'
+    permissionMode?: 'bypassPermissions' | 'plan'
+  }
+}
+
+export interface DesktopChatSubscribeSessionRequest {
+  sessionId: string
+}
+
+export interface DesktopChatAbortRequest {
+  streamId: string
+}
+
+export interface DesktopChatStreamHandle {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  assistantMessageId?: string
+  userMessageId?: string
+}
+
+export interface DesktopChatStreamChunkEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  chunk: unknown
+}
+
+export interface DesktopChatStreamClosedEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  reason: 'done' | 'aborted' | 'upstream-closed'
+}
+
+export interface DesktopChatStreamErrorEvent {
+  streamId: string
+  sessionId: string
+  runId: string | null
+  message: string
+}
+
+export interface DesktopChatStreamDiagnostics {
+  streams: Array<{
+    sessionId: string
+    mode: DesktopChatStreamMode
+    runId: string | null
+    assistantMessageId?: string
+    userMessageId?: string
+    subscriberCount: number
+    replayChunkCount: number
+    keepAliveWithoutSubscribers: boolean
+    startedAtMs: number
+  }>
+}
+
+type ChatStreamFetch = typeof fetch
+
+interface ChatStreamBrokerOptions {
+  serverUrl: string
+  fetchFn?: ChatStreamFetch
+}
+
+interface UpstreamHandle {
+  sessionId: string
+  runId: string | null
+  assistantMessageId?: string
+  userMessageId?: string
+}
+
+interface StreamSubscriber {
+  streamId: string
+  webContents: WebContents
+  replayCursor: number
+}
+
+interface UpstreamEntry {
+  sessionId: string
+  mode: DesktopChatStreamMode
+  controller: AbortController
+  subscribers: Map<string, StreamSubscriber>
+  replayChunks: unknown[]
+  handlePromise: Promise<UpstreamHandle>
+  runId: string | null
+  assistantMessageId?: string
+  userMessageId?: string
+  keepAliveWithoutSubscribers: boolean
+  startedAtMs: number
+  closed: boolean
+}
+
+interface UpstreamRequest {
+  sessionId: string
+  mode: DesktopChatStreamMode
+  request: RequestInit
+  path: string
+  keepAliveWithoutSubscribers: boolean
+}
+
+const HEADER_RUN_ID = 'x-cradle-run-id'
+const HEADER_ASSISTANT_MESSAGE_ID = 'x-cradle-assistant-message-id'
+const HEADER_USER_MESSAGE_ID = 'x-cradle-user-message-id'
+
+export class ChatStreamBroker {
+  private readonly serverUrl: string
+  private readonly fetchFn: ChatStreamFetch
+  private readonly entriesBySessionId = new Map<string, UpstreamEntry>()
+  private nextStreamIndex = 0
+
+  constructor(options: ChatStreamBrokerOptions) {
+    this.serverUrl = options.serverUrl
+    this.fetchFn = options.fetchFn ?? fetch
+  }
+
+  async startResponse(
+    webContents: WebContents,
+    request: DesktopChatStartResponseRequest,
+  ): Promise<DesktopChatStreamHandle> {
+    const entry = this.readOrCreateEntry({
+      sessionId: request.sessionId,
+      mode: 'response',
+      path: `/chat/sessions/${encodeURIComponent(request.sessionId)}/response`,
+      keepAliveWithoutSubscribers: true,
+      request: {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request.body),
+      },
+    })
+    return await this.attachSubscriber(entry, webContents)
+  }
+
+  async subscribeSession(
+    webContents: WebContents,
+    request: DesktopChatSubscribeSessionRequest,
+  ): Promise<DesktopChatStreamHandle> {
+    const entry = this.readOrCreateEntry({
+      sessionId: request.sessionId,
+      mode: 'session',
+      path: `/chat/sessions/${encodeURIComponent(request.sessionId)}/stream`,
+      keepAliveWithoutSubscribers: false,
+      request: { method: 'GET' },
+    })
+    return await this.attachSubscriber(entry, webContents)
+  }
+
+  abortStream(webContents: WebContents, request: DesktopChatAbortRequest): void {
+    const located = this.findSubscriber(request.streamId)
+    if (!located || located.subscriber.webContents !== webContents) {
+      return
+    }
+    this.removeSubscriber(located.entry, request.streamId)
+    this.closeSubscriber(located.entry, located.subscriber, 'aborted')
+    this.abortEntryIfUnobserved(located.entry)
+  }
+
+  diagnostics(): DesktopChatStreamDiagnostics {
+    return {
+      streams: [...this.entriesBySessionId.values()].map(entry => ({
+        sessionId: entry.sessionId,
+        mode: entry.mode,
+        runId: entry.runId,
+        assistantMessageId: entry.assistantMessageId,
+        userMessageId: entry.userMessageId,
+        subscriberCount: entry.subscribers.size,
+        replayChunkCount: entry.replayChunks.length,
+        keepAliveWithoutSubscribers: entry.keepAliveWithoutSubscribers,
+        startedAtMs: entry.startedAtMs,
+      })),
+    }
+  }
+
+  stop(): void {
+    for (const entry of this.entriesBySessionId.values()) {
+      entry.closed = true
+      entry.controller.abort()
+      for (const subscriber of entry.subscribers.values()) {
+        this.closeSubscriber(entry, subscriber, 'aborted')
+      }
+      entry.subscribers.clear()
+    }
+    this.entriesBySessionId.clear()
+  }
+
+  private readOrCreateEntry(request: UpstreamRequest): UpstreamEntry {
+    const existing = this.entriesBySessionId.get(request.sessionId)
+    if (existing && !existing.closed) {
+      if (canReuseEntry(existing, request)) {
+        return existing
+      }
+      this.closeEntry(existing, 'aborted')
+      existing.controller.abort()
+    }
+
+    const controller = new AbortController()
+    const entry: UpstreamEntry = {
+      sessionId: request.sessionId,
+      mode: request.mode,
+      controller,
+      subscribers: new Map(),
+      replayChunks: [],
+      handlePromise: Promise.resolve({ sessionId: request.sessionId, runId: null }),
+      runId: null,
+      keepAliveWithoutSubscribers: request.keepAliveWithoutSubscribers,
+      startedAtMs: Date.now(),
+      closed: false,
+    }
+    entry.handlePromise = this.openUpstream(entry, request)
+    this.entriesBySessionId.set(request.sessionId, entry)
+    return entry
+  }
+
+  private async attachSubscriber(
+    entry: UpstreamEntry,
+    webContents: WebContents,
+  ): Promise<DesktopChatStreamHandle> {
+    const streamId = this.createStreamId(entry.sessionId)
+    const subscriber: StreamSubscriber = { streamId, webContents, replayCursor: 0 }
+    entry.subscribers.set(streamId, subscriber)
+    this.attachWebContentsCleanup(entry, subscriber)
+
+    try {
+      const handle = await entry.handlePromise
+      this.replayChunksToSubscriber(entry, subscriber)
+      return {
+        streamId,
+        sessionId: handle.sessionId,
+        runId: handle.runId,
+        assistantMessageId: handle.assistantMessageId,
+        userMessageId: handle.userMessageId,
+      }
+    }
+    catch (error) {
+      this.removeSubscriber(entry, streamId)
+      throw error
+    }
+  }
+
+  private attachWebContentsCleanup(entry: UpstreamEntry, subscriber: StreamSubscriber): void {
+    const remove = () => {
+      this.removeSubscriber(entry, subscriber.streamId)
+      this.abortEntryIfUnobserved(entry)
+    }
+    subscriber.webContents.once('destroyed', remove)
+  }
+
+  private async openUpstream(entry: UpstreamEntry, request: UpstreamRequest): Promise<UpstreamHandle> {
+    try {
+      const response = await this.fetchFn(new URL(request.path, this.serverUrl), {
+        ...request.request,
+        signal: entry.controller.signal,
+      })
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        throw new Error(`Chat stream upstream failed: ${response.status} ${body}`)
+      }
+
+      entry.runId = response.headers.get(HEADER_RUN_ID)
+      entry.assistantMessageId = response.headers.get(HEADER_ASSISTANT_MESSAGE_ID) ?? undefined
+      entry.userMessageId = response.headers.get(HEADER_USER_MESSAGE_ID) ?? undefined
+
+      const handle: UpstreamHandle = {
+        sessionId: entry.sessionId,
+        runId: entry.runId,
+        assistantMessageId: entry.assistantMessageId,
+        userMessageId: entry.userMessageId,
+      }
+      void this.pumpResponse(entry, response)
+      return handle
+    }
+    catch (error) {
+      const message = readErrorMessage(error)
+      this.errorSubscribers(entry, message)
+      this.entriesBySessionId.delete(entry.sessionId)
+      throw error
+    }
+  }
+
+  private async pumpResponse(entry: UpstreamEntry, response: Response): Promise<void> {
+    if (!response.body) {
+      this.errorSubscribers(entry, 'Chat stream upstream response had no body')
+      this.entriesBySessionId.delete(entry.sessionId)
+      return
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let doneFrameSeen = false
+
+    try {
+      while (true) {
+        const result = await reader.read()
+        if (result.done) {
+          break
+        }
+        buffer += decoder.decode(result.value, { stream: true })
+        const frames = splitCompleteSseFrames(buffer)
+        buffer = frames.remainder
+        for (const frame of frames.completeFrames) {
+          const value = readSseDataFrame(frame)
+          if (value === null) {
+            continue
+          }
+          if (value === '[DONE]') {
+            doneFrameSeen = true
+            this.closeEntry(entry, 'done')
+            return
+          }
+          const chunk = parseJsonObjectFrame(value)
+          this.forwardChunk(entry, chunk)
+        }
+      }
+
+      buffer += decoder.decode()
+      for (const frame of splitFinalSseFrames(buffer)) {
+        const value = readSseDataFrame(frame)
+        if (value === '[DONE]') {
+          doneFrameSeen = true
+          this.closeEntry(entry, 'done')
+          return
+        }
+        if (value) {
+          this.forwardChunk(entry, parseJsonObjectFrame(value))
+        }
+      }
+      this.closeEntry(entry, doneFrameSeen ? 'done' : 'upstream-closed')
+    }
+    catch (error) {
+      if (entry.controller.signal.aborted) {
+        this.closeEntry(entry, 'aborted')
+        return
+      }
+      this.errorSubscribers(entry, readErrorMessage(error))
+      this.entriesBySessionId.delete(entry.sessionId)
+    }
+  }
+
+  private forwardChunk(entry: UpstreamEntry, chunk: unknown): void {
+    entry.replayChunks.push(chunk)
+    for (const subscriber of entry.subscribers.values()) {
+      this.sendChunkToSubscriber(entry, subscriber, chunk)
+    }
+  }
+
+  private replayChunksToSubscriber(entry: UpstreamEntry, subscriber: StreamSubscriber): void {
+    for (const chunk of entry.replayChunks.slice(subscriber.replayCursor)) {
+      this.sendChunkToSubscriber(entry, subscriber, chunk)
+    }
+  }
+
+  private sendChunkToSubscriber(entry: UpstreamEntry, subscriber: StreamSubscriber, chunk: unknown): void {
+    if (subscriber.webContents.isDestroyed()) {
+      return
+    }
+    subscriber.webContents.send(DESKTOP_CHAT_STREAM_CHUNK_CHANNEL, {
+      streamId: subscriber.streamId,
+      sessionId: entry.sessionId,
+      runId: entry.runId,
+      chunk,
+    } satisfies DesktopChatStreamChunkEvent)
+    subscriber.replayCursor = entry.replayChunks.length
+  }
+
+  private closeEntry(entry: UpstreamEntry, reason: DesktopChatStreamClosedEvent['reason']): void {
+    if (entry.closed) {
+      return
+    }
+    entry.closed = true
+    for (const subscriber of entry.subscribers.values()) {
+      this.closeSubscriber(entry, subscriber, reason)
+    }
+    entry.subscribers.clear()
+    this.entriesBySessionId.delete(entry.sessionId)
+  }
+
+  private closeSubscriber(
+    entry: UpstreamEntry,
+    subscriber: StreamSubscriber,
+    reason: DesktopChatStreamClosedEvent['reason'],
+  ): void {
+    if (subscriber.webContents.isDestroyed()) {
+      return
+    }
+    subscriber.webContents.send(DESKTOP_CHAT_STREAM_CLOSED_CHANNEL, {
+      streamId: subscriber.streamId,
+      sessionId: entry.sessionId,
+      runId: entry.runId,
+      reason,
+    } satisfies DesktopChatStreamClosedEvent)
+  }
+
+  private errorSubscribers(entry: UpstreamEntry, message: string): void {
+    for (const subscriber of entry.subscribers.values()) {
+      if (subscriber.webContents.isDestroyed()) {
+        continue
+      }
+      subscriber.webContents.send(DESKTOP_CHAT_STREAM_ERROR_CHANNEL, {
+        streamId: subscriber.streamId,
+        sessionId: entry.sessionId,
+        runId: entry.runId,
+        message,
+      } satisfies DesktopChatStreamErrorEvent)
+    }
+    entry.subscribers.clear()
+  }
+
+  private removeSubscriber(entry: UpstreamEntry, streamId: string): void {
+    entry.subscribers.delete(streamId)
+  }
+
+  private abortEntryIfUnobserved(entry: UpstreamEntry): void {
+    if (entry.subscribers.size > 0 || entry.keepAliveWithoutSubscribers || entry.closed) {
+      return
+    }
+    entry.closed = true
+    entry.controller.abort()
+    this.entriesBySessionId.delete(entry.sessionId)
+  }
+
+  private findSubscriber(streamId: string): { entry: UpstreamEntry, subscriber: StreamSubscriber } | null {
+    for (const entry of this.entriesBySessionId.values()) {
+      const subscriber = entry.subscribers.get(streamId)
+      if (subscriber) {
+        return { entry, subscriber }
+      }
+    }
+    return null
+  }
+
+  private createStreamId(sessionId: string): string {
+    this.nextStreamIndex += 1
+    return `desktop-chat-${sessionId}-${Date.now()}-${this.nextStreamIndex}`
+  }
+}
+
+function canReuseEntry(existing: UpstreamEntry, request: UpstreamRequest): boolean {
+  if (request.mode === 'session') {
+    return true
+  }
+  return existing.mode === 'response'
+}
+
+function splitCompleteSseFrames(buffer: string): { completeFrames: string[], remainder: string } {
+  const normalized = buffer.replace(/\r\n/g, '\n')
+  const parts = normalized.split('\n\n')
+  return {
+    completeFrames: parts.slice(0, -1),
+    remainder: parts.at(-1) ?? '',
+  }
+}
+
+function splitFinalSseFrames(buffer: string): string[] {
+  return buffer
+    .replace(/\r\n/g, '\n')
+    .split('\n\n')
+    .filter(frame => frame.trim().length > 0)
+}
+
+function readSseDataFrame(frame: string): string | null {
+  const lines = frame.split('\n')
+  const dataLines = lines
+    .filter(line => line.startsWith('data:'))
+    .map(line => line.slice('data:'.length).trimStart())
+  if (dataLines.length === 0) {
+    return null
+  }
+  return dataLines.join('\n')
+}
+
+function parseJsonObjectFrame(value: string): unknown {
+  const parsed = JSON.parse(value) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Chat stream frame must be a JSON object')
+  }
+  return parsed
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : 'Chat stream failed'
+}
