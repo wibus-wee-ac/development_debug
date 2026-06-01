@@ -2,12 +2,12 @@
 // Input: Chat Runtime turn requests, Codex profile config, and app-server notifications.
 // Position: Runtime provider that streams Codex turns and supports true live steering.
 
+import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Buffer } from 'node:buffer'
 
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
@@ -15,18 +15,13 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
-import type { CreateEventInput } from '../../observability/contract'
-import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
-import type { CodexConfig } from '../../provider-contracts/provider-base'
-import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/provider-base'
-import type { RuntimeKind } from '../../provider-contracts/types'
-import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type {
   CancelTurnInput,
   ChatRuntime,
   ChatRuntimeCapabilities,
-  GetUiSlotStatesInput,
   GetCapabilitiesInput,
+  GetUiSlotStatesInput,
+  ResumeChatSessionInput,
   RuntimeAlertSeverity,
   RuntimeAlertUiSlotState,
   RuntimeApprovalStatus,
@@ -46,26 +41,32 @@ import type {
   RuntimePluginUiSlotState,
   RuntimeReasoningUiSlotState,
   RuntimeSearchUiSlotState,
+  RuntimeSession,
   RuntimeSkillsUiSlotState,
   RuntimeStatusUiSlotState,
   RuntimeTerminalUiSlotState,
-  ResumeChatSessionInput,
-  RuntimeSession,
   RuntimeTokenUsageBreakdown,
   RuntimeToolActivityStatus,
   RuntimeToolActivityUiSlotState,
-  RuntimeUsageUiSlotState,
   RuntimeUiSlotState,
+  RuntimeUsageUiSlotState,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
+import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import type { CreateEventInput } from '../../observability/contract'
+import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
+import type { CodexConfig } from '../../provider-contracts/provider-base'
+import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/provider-base'
+import type { RuntimeKind } from '../../provider-contracts/types'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
+import { buildDefaultCodexAppServerRequestResult } from './app-server-bridge'
+import { CODEX_APP_SERVER_CAPABILITIES } from './app-server-capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerClient } from './app-server-client'
-import { buildDefaultCodexAppServerRequestResult } from './app-server-bridge'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
@@ -73,7 +74,6 @@ import {
   mapCodexAppServerNotificationToChunks,
 } from './app-server-mapper'
 import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
-import { CODEX_APP_SERVER_CAPABILITIES } from './app-server-capabilities'
 import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlots } from './ui-slots'
 
@@ -2694,7 +2694,7 @@ function readCodexItemError(item: CodexThreadItem): string | null {
 }
 
 function projectMcpServersFromList(response: CodexListMcpServerStatusResponse | null): CodexMcpServerSnapshot[] {
-  return (response?.data ?? []).flatMap(server => {
+  return (response?.data ?? []).flatMap((server) => {
     if (typeof server.name !== 'string') {
       return []
     }

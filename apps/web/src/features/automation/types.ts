@@ -17,7 +17,7 @@ export interface AutomationInput {
 
 export interface AutomationArtifactRequest {
   name: string
-  kind?: string
+  kind?: 'markdown' | 'text' | 'json' | 'file_ref'
   description?: string
 }
 
@@ -81,4 +81,24 @@ export interface AutomationArtifact {
 
 export interface AutomationDefinitionSummary extends AutomationDefinition {
   latestRun?: AutomationRun | null
+}
+
+export interface CreateAutomationInput {
+  title: string
+  description?: string
+  enabled?: boolean
+  trigger: AutomationTrigger
+  recipe: {
+    kind: 'agent_task'
+    prompt: string
+    inputs: AutomationInput[]
+    artifactRequests: Array<Required<Pick<AutomationArtifactRequest, 'name' | 'kind'>> & Pick<AutomationArtifactRequest, 'description'>>
+    agentId?: string
+    providerTargetId?: string
+    runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat'
+    modelId?: string
+    thinkingEffort?: 'low' | 'medium' | 'high'
+  }
+  createdByKind?: 'agent' | 'user' | 'system'
+  createdById?: string | null
 }

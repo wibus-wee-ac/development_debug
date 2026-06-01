@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { getServerUrl } from '~/lib/electron'
 
-import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun } from './types'
+import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun, CreateAutomationInput } from './types'
 
 const AutomationTriggerSchema = z.object({
   type: z.literal('rrule'),
@@ -127,6 +127,12 @@ const RunAutomationNowResponseSchema = z.union([
   z.object({ run: AutomationRunSchema }).transform(payload => payload.run),
 ])
 
+const CreateAutomationResponseSchema = z.union([
+  AutomationDefinitionSchema,
+  z.object({ automation: AutomationDefinitionSchema }).transform(payload => payload.automation),
+  z.object({ definition: AutomationDefinitionSchema }).transform(payload => payload.definition),
+])
+
 async function requestAutomationJson(path: string, init?: RequestInit): Promise<unknown> {
   const response = await fetch(`${getServerUrl()}${path}`, {
     ...init,
@@ -153,6 +159,13 @@ async function attachLatestRun(definition: AutomationDefinition): Promise<Automa
 export async function listAutomationDefinitions(): Promise<AutomationDefinitionSummary[]> {
   const definitions = AutomationDefinitionCollectionSchema.parse(await requestAutomationJson('/automations')) satisfies AutomationDefinition[]
   return Promise.all(definitions.map(attachLatestRun))
+}
+
+export async function createAutomation(input: CreateAutomationInput): Promise<AutomationDefinition> {
+  return CreateAutomationResponseSchema.parse(await requestAutomationJson(
+    '/automations',
+    { method: 'POST', body: JSON.stringify(input) },
+  )) satisfies AutomationDefinition
 }
 
 export async function listAutomationRuns(automationId: string, limit = 20): Promise<AutomationRun[]> {
