@@ -21,12 +21,14 @@ export const sessions = sqliteTable('sessions', {
   linkedIssueId: text('linked_issue_id')
     .references(() => issues.id, { onDelete: 'set null' }),
   pinned: int('pinned').notNull().default(0),
+  archivedAt: int('archived_at'),
   ptyStartedAt: int('pty_started_at'),
   ...timestamps(),
 }, table => ({
   byWorkspace: index('sessions_workspace_id_idx').on(table.workspaceId),
   byProviderTarget: index('sessions_provider_target_id_idx').on(table.providerTargetId),
   byLinkedIssue: index('sessions_linked_issue_id_idx').on(table.linkedIssueId),
+  byArchived: index('sessions_archived_at_idx').on(table.archivedAt),
 }))
 
 export const messages = sqliteTable('messages', {

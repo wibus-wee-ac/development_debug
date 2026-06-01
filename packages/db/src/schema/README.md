@@ -13,7 +13,7 @@
 - **index.ts**: Schema barrel，聚合导出所有 context-specific schema 模块
 - **shared.ts**: 共享列片段与 `workspaces` 表；workspace records own project pin state for app sidebar ordering
 - **identity.ts**: Agent identity / credential 相关表
-- **chat.ts**: Product session、message、usage log、Chat Session continuation queue 相关表；`messages.message_json` 是 chat hydration 真相源，`messages.content` 是派生纯文本 cache，`chat_session_queue_items` 由 Chat Runtime 拥有，用于持久化 `queue` / `steer` follow-up 与 Claude Agent `bypassPermissions` / `plan` mode
+- **chat.ts**: Product session、message、usage log、Chat Session continuation queue 相关表；`sessions.archived_at` 是 Session-owned 软归档状态，默认列表隐藏但不删除 messages/usage/runtime history；`messages.message_json` 是 chat hydration 真相源，`messages.content` 是派生纯文本 cache，`chat_session_queue_items` 由 Chat Runtime 拥有，用于持久化 `queue` / `steer` follow-up 与 Claude Agent `bypassPermissions` / `plan` mode
 - **chronicle.ts**: Chronicle 本地活动记忆相关表，包含 screen snapshot、accessibility evidence/event history、activity session/segment/pipeline run、knowledge card/version/source、dream run/candidate、raw audio segment、audio transcript、speaker profile、memory、memory chunk/keyword/embedding index、model resource status 与 event
 - **external-sources.ts**: Plugin-provided external provider source、source record 与 external runtime target 表；Cradle 只写自己的 external-source namespace，不写外部产品 namespace，也不再把外部记录投影进 manual profile 表
 - **handoff.ts**: Agent-to-Agent handoff proposal lifecycle 表；只拥有交接 proposal/status/result，通过 ID 引用 chat session 和 agent identity
