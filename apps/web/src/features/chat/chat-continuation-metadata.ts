@@ -7,6 +7,7 @@
 import type { UIMessage } from 'ai'
 
 import type { ChatContextPart } from './chat-context-parts'
+import { toMessageContextParts } from './chat-context-parts'
 import type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
 
 export interface ChatContinuationMetadata {
@@ -50,7 +51,7 @@ export function createContinuationUserMessage(input: {
   const contextParts = input.queueItem.contextParts.length > 0 ? input.queueItem.contextParts : input.fallbackContextParts
   const files = input.queueItem.files.length > 0 ? input.queueItem.files : input.fallbackFiles
   const parts: UIMessage['parts'] = text ? [{ type: 'text', text }] : []
-  parts.push(...contextParts as UIMessage['parts'])
+  parts.push(...toMessageContextParts(contextParts) as UIMessage['parts'])
   parts.push(...files)
 
   return {

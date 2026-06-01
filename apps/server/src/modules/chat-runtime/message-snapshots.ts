@@ -1,6 +1,6 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
-import type { ChatContextPart } from './context-parts'
+import { toMessageParts, type ChatContextPart } from './context-parts'
 
 export function parseStoredMessageSnapshot(raw: string): UIMessage {
   return JSON.parse(raw) as UIMessage
@@ -20,7 +20,7 @@ export function createAssistantMessage(messageId: string, parts: UIMessage['part
 
 export function createUserMessage(messageId: string, text: string, files: FileUIPart[] = [], contextParts: ChatContextPart[] = []): UIMessage {
   const parts: UIMessage['parts'] = text ? [{ type: 'text', text }] : []
-  parts.push(...contextParts as UIMessage['parts'])
+  parts.push(...toMessageParts(contextParts))
   parts.push(...files)
 
   return {

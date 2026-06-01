@@ -17,17 +17,41 @@ export interface ChatSkillContextPart {
 }
 
 type MessagePart = UIMessage['parts'][number]
+type CradleSkillMessagePart = MessagePart & {
+  type: 'data-cradle-skill'
+  data: ChatSkillContextPart
+}
+
+function readSkillPayload(part: unknown): ChatSkillContextPart | null {
+  if (!part || typeof part !== 'object') {
+    return null
+  }
+  const record = part as { type?: unknown, data?: unknown }
+  if (record.type !== 'data-cradle-skill') {
+    return null
+  }
+  const data = record.data && typeof record.data === 'object'
+    ? record.data as { type?: unknown, name?: unknown, path?: unknown, scope?: unknown, description?: unknown }
+    : null
+  if (
+    data?.type !== 'data-cradle-skill'
+    || typeof data.name !== 'string'
+    || typeof data.path !== 'string'
+  ) {
+    return null
+  }
+  return data as ChatSkillContextPart
+}
 
 export function isChatSkillContextPart(part: MessagePart | unknown): part is ChatSkillContextPart & MessagePart {
-  return Boolean(part)
-    && typeof part === 'object'
-    && (part as { type?: unknown }).type === 'data-cradle-skill'
-    && typeof (part as { name?: unknown }).name === 'string'
-    && typeof (part as { path?: unknown }).path === 'string'
+  return readSkillPayload(part) !== null
 }
 
 export function toMessageParts(parts: ChatContextPart[] | undefined): MessagePart[] {
-  return (parts ?? []).map(part => part as MessagePart)
+  return (parts ?? []).map(part => ({
+    type: part.type,
+    data: part,
+  } as CradleSkillMessagePart))
 }
 
 export function describeChatContextPart(part: ChatContextPart): string {

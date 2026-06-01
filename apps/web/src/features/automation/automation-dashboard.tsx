@@ -14,10 +14,10 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
-import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
@@ -34,7 +34,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Switch } from '~/components/ui/switch'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { listSelectableComposerProfiles, pickComposerProfileId } from '~/features/composer-toolbar/composer-profile-selection'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
+import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
+import type { ThinkingEffort } from '~/features/composer-toolbar/types'
 import { cn } from '~/lib/cn'
+import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
 import { useAutomationArtifacts, useAutomationDefinitions, useAutomationRuns, useCreateAutomation, useRunAutomationNow } from './use-automations'
@@ -42,6 +50,8 @@ import { useAutomationArtifacts, useAutomationDefinitions, useAutomationRuns, us
 interface AutomationDashboardProps {
   onBack?: () => void
 }
+
+type AutomationRuntimeKind = NonNullable<CreateAutomationInput['recipe']['runtimeKind']>
 
 const STATUS_STYLES: Record<AutomationRunStatus, string> = {
   queued: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
@@ -69,14 +79,6 @@ const RunTimeSortKeySchema = z.union([
   z.undefined().transform(() => 0),
 ])
 
-const RUNTIME_KIND_OPTIONS = [
-  { value: 'standard', label: 'Standard' },
-  { value: 'claude-agent', label: 'Claude Agent' },
-  { value: 'codex', label: 'Codex' },
-  { value: 'jar-core', label: 'Jar Core' },
-  { value: 'acp-chat', label: 'ACP Chat' },
-] as const
-
 interface CreateAutomationDraft {
   title: string
   description: string
@@ -85,9 +87,9 @@ interface CreateAutomationDraft {
   timezone: string
   misfirePolicy: 'skip' | 'run_latest'
   providerTargetId: string
-  runtimeKind: CreateAutomationInput['recipe']['runtimeKind']
-  modelId: string
-  thinkingEffort: '' | 'low' | 'medium' | 'high'
+  runtimeKind: AutomationRuntimeKind
+  modelId: string | null
+  thinkingEffort: ThinkingEffort
   prompt: string
   artifactName: string
 }
@@ -102,18 +104,11 @@ function createDefaultDraft(providerTargetId = ''): CreateAutomationDraft {
     misfirePolicy: 'run_latest',
     providerTargetId,
     runtimeKind: 'standard',
-    modelId: '',
-    thinkingEffort: '',
+    modelId: null,
+    thinkingEffort: null,
     prompt: '',
     artifactName: 'automation-run.md',
   }
-}
-
-function defaultRuntimeForProviderKind(providerKind: string): CreateAutomationDraft['runtimeKind'] {
-  if (providerKind === 'anthropic') {
-    return 'claude-agent'
-  }
-  return 'standard'
 }
 
 function toCreateAutomationInput(draft: CreateAutomationDraft): CreateAutomationInput {
@@ -161,8 +156,8 @@ function toCreateAutomationInput(draft: CreateAutomationDraft): CreateAutomation
       }],
       providerTargetId,
       runtimeKind: draft.runtimeKind,
-      modelId: draft.modelId.trim() || undefined,
-      thinkingEffort: draft.thinkingEffort || undefined,
+      modelId: draft.modelId ?? undefined,
+      thinkingEffort: draft.thinkingEffort ?? undefined,
     },
     createdByKind: 'user',
   }
@@ -379,22 +374,121 @@ function CreateAutomationPanel({
   onSave: () => void
 }) {
   const { providerOptions, isLoading } = useProviderTargets()
-  const enabledProviderOptions = useMemo(
-    () => providerOptions.filter(option => option.enabled),
-    [providerOptions],
+  const selectableProfiles = useMemo(
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: draft.runtimeKind }),
+    [draft.runtimeKind, providerOptions],
+  )
+  const selectedProfileId = useMemo(
+    () => pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: draft.providerTargetId || null }),
+    [draft.providerTargetId, selectableProfiles],
+  )
+  const initialModelProfileIds = useMemo(() => [selectedProfileId], [selectedProfileId])
+  const {
+    modelsByProviderTargetId: modelsByProfileId,
+    loadingProviderTargetIds: loadingProfileIds,
+    requestProviderTargetModels: requestProfileModels,
+  } = useProviderTargetModelMap(
+    selectableProfiles,
+    initialModelProfileIds,
+  )
+  const models = useMemo(
+    () => selectedProfileId ? modelsByProfileId[selectedProfileId] ?? [] : [],
+    [modelsByProfileId, selectedProfileId],
+  )
+  const selectedModel = models.find(model => model.id === draft.modelId) ?? null
+  const selectedModelId = draft.modelId && models.some(model => model.id === draft.modelId)
+    ? draft.modelId
+    : models[0]?.id ?? null
+  const isLoadingModels = selectedProfileId ? loadingProfileIds.has(selectedProfileId) : false
+  const thinkingOptions = useMemo(() => THINKING_EFFORTS.map(option => ({
+    value: option.value,
+    label: option.value ?? 'Auto',
+    description: option.value ? `${option.value} reasoning effort` : 'Use the runtime default',
+  })), [])
+  const selectThinkingForModel = useCallback(
+    (model: ModelDescriptor | null): ThinkingEffort =>
+      selectSupportedThinkingValue(model, thinkingOptions, draft.thinkingEffort, null),
+    [draft.thinkingEffort, thinkingOptions],
   )
 
   useEffect(() => {
-    if (draft.providerTargetId || enabledProviderOptions.length === 0) {
+    if (!selectedProfileId) {
+      if (draft.providerTargetId || draft.modelId) {
+        onChange({ ...draft, providerTargetId: '', modelId: null, thinkingEffort: null })
+      }
       return
     }
-    const firstProvider = enabledProviderOptions[0]
+
+    if (draft.providerTargetId !== selectedProfileId) {
+      onChange({ ...draft, providerTargetId: selectedProfileId, modelId: null, thinkingEffort: null })
+    }
+  }, [draft, onChange, selectedProfileId])
+
+  useEffect(() => {
+    if (!selectedProfileId || draft.modelId !== null || models.length === 0) {
+      return
+    }
+    const firstModel = models[0]
     onChange({
       ...draft,
-      providerTargetId: firstProvider.id,
-      runtimeKind: defaultRuntimeForProviderKind(firstProvider.providerKind),
+      modelId: firstModel.id,
+      thinkingEffort: selectThinkingForModel(firstModel),
     })
-  }, [draft, enabledProviderOptions, onChange])
+  }, [draft, models, onChange, selectThinkingForModel, selectedProfileId])
+
+  const updateRuntimeKind = useCallback((runtimeKind: RuntimeKind) => {
+    if (runtimeKind === 'cli-tui') {
+      return
+    }
+    const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind })
+    const nextProviderTargetId = pickComposerProfileId({
+      profiles: nextProfiles,
+      lastProfileId: draft.providerTargetId || null,
+    })
+    onChange({
+      ...draft,
+      runtimeKind,
+      providerTargetId: nextProviderTargetId ?? '',
+      modelId: null,
+      thinkingEffort: null,
+    })
+  }, [draft, onChange, providerOptions])
+
+  const updateProviderTarget = useCallback((providerTargetId: string) => {
+    requestProfileModels(providerTargetId)
+    const nextModel = (modelsByProfileId[providerTargetId] ?? [])[0] ?? null
+    onChange({
+      ...draft,
+      providerTargetId,
+      modelId: nextModel?.id ?? null,
+      thinkingEffort: selectThinkingForModel(nextModel),
+    })
+  }, [draft, modelsByProfileId, onChange, requestProfileModels, selectThinkingForModel])
+
+  const updateModel = useCallback((modelId: string | null, providerTargetId: string) => {
+    if (!modelId) {
+      return
+    }
+    const nextModel = (modelsByProfileId[providerTargetId] ?? []).find(model => model.id === modelId) ?? null
+    onChange({
+      ...draft,
+      providerTargetId,
+      modelId,
+      thinkingEffort: selectThinkingForModel(nextModel),
+    })
+  }, [draft, modelsByProfileId, onChange, selectThinkingForModel])
+
+  const updateThinkingEffort = useCallback((thinkingEffort: ThinkingEffort) => {
+    onChange({ ...draft, thinkingEffort })
+  }, [draft, onChange])
+
+  const providerModelLabel = isLoading
+    ? 'Loading providers...'
+    : selectableProfiles.length === 0
+      ? 'No provider targets support the selected runtime'
+      : 'Uses the same provider and model picker as the composer.'
+
+  const effectiveSelectedModel = selectedModel ?? models.find(model => model.id === selectedModelId) ?? null
 
   return (
     <div className="flex min-h-full flex-col">
@@ -417,12 +511,14 @@ function CreateAutomationPanel({
 
       <div className="flex-1 overflow-y-auto px-5 py-4">
         <div className="mx-auto flex max-w-4xl flex-col gap-5">
-          {error ? (
+          {error
+? (
             <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
               <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
               <span>{error}</span>
             </div>
-          ) : null}
+          )
+: null}
 
           <section className="grid gap-4">
             <div className="flex items-center justify-between gap-4">
@@ -501,75 +597,38 @@ function CreateAutomationPanel({
           <section className="grid gap-4">
             <div>
               <h3 className="text-[13px] font-medium text-foreground">Runtime</h3>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">Provider-only is supported; no Agent identity is required.</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">{providerModelLabel}</p>
             </div>
-            <div className="grid grid-cols-[minmax(0,1.4fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.8fr)] gap-3">
-              <FormField label="Provider target" description={isLoading ? 'Loading providers...' : undefined}>
-                <Select
-                  value={draft.providerTargetId}
-                  onValueChange={(value) => {
-                    const provider = enabledProviderOptions.find(option => option.id === value)
-                    onChange({
-                      ...draft,
-                      providerTargetId: value,
-                      runtimeKind: provider ? defaultRuntimeForProviderKind(provider.providerKind) : draft.runtimeKind,
-                    })
-                  }}
-                  disabled={enabledProviderOptions.length === 0}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select provider" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {enabledProviderOptions.map(option => (
-                      <SelectItem key={option.id} value={option.id}>
-                        {option.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Runtime">
-                <Select
-                  value={draft.runtimeKind}
-                  onValueChange={value => onChange({ ...draft, runtimeKind: value as CreateAutomationDraft['runtimeKind'] })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RUNTIME_KIND_OPTIONS.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </FormField>
-              <FormField label="Model">
-                <Input
-                  value={draft.modelId}
-                  onChange={event => onChange({ ...draft, modelId: event.target.value })}
-                  placeholder="Optional"
-                  className="font-mono text-[12px]"
-                />
-              </FormField>
-              <FormField label="Thinking">
-                <Select
-                  value={draft.thinkingEffort}
-                  onValueChange={value => onChange({ ...draft, thinkingEffort: value as CreateAutomationDraft['thinkingEffort'] })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Default" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">Default</SelectItem>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-2 py-2">
+              <RuntimeSelector value={draft.runtimeKind} onChange={updateRuntimeKind} />
+              <ProviderModelPicker
+                providerTargets={selectableProfiles}
+                selectedProviderTargetId={selectedProfileId}
+                selectedModelId={selectedModelId}
+                selectedModel={effectiveSelectedModel}
+                modelsByProviderTargetId={modelsByProfileId}
+                loadingProviderTargetIds={loadingProfileIds}
+                thinkingValue={draft.thinkingEffort}
+                thinkingOptions={thinkingOptions}
+                isLoadingSelectedModels={isLoadingModels}
+                emptyProviderTargetsLabel="No compatible provider targets"
+                emptySelectionLabel="Select model"
+                menuSide="bottom"
+                menuAlign="start"
+                triggerTestId="automation-provider-model-selector"
+                getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
+                onRequestProviderTargetModels={requestProfileModels}
+                onSelectProviderTarget={updateProviderTarget}
+                onSelectModel={updateModel}
+                onSelectThinking={updateThinkingEffort}
+              />
+              {effectiveSelectedModel
+? (
+                <span className="ml-auto max-w-full truncate px-1 text-[11px] text-muted-foreground">
+                  {effectiveSelectedModel.id}
+                </span>
+              )
+: null}
             </div>
           </section>
 
@@ -628,7 +687,11 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<CreateAutomationDraft | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
-  const selectedDefinition = draft ? null : definitions.find(definition => definition.id === selectedId) ?? definitions[0] ?? null
+  const selectedDefinition = draft
+    ? null
+    : selectedId
+      ? definitions.find(definition => definition.id === selectedId) ?? null
+      : definitions[0] ?? null
   const selectedAutomationId = selectedDefinition?.id ?? null
   const runsQuery = useAutomationRuns(selectedAutomationId)
   const artifactsQuery = useAutomationArtifacts(selectedAutomationId)
@@ -742,7 +805,8 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
             <Badge variant="secondary">{definitions.length}</Badge>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
-            {draft ? (
+            {draft
+? (
               <button
                 type="button"
                 onClick={() => {
@@ -761,7 +825,8 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                   </p>
                 </div>
               </button>
-            ) : null}
+            )
+: null}
             {definitionsQuery.isLoading
 ? (
               <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
