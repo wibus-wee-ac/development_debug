@@ -9,31 +9,39 @@ export interface ChatSlashCommand {
   aliases?: string[]
 }
 
-export type ChatRuntimeUiSlotIconKey =
-  | 'alert'
-  | 'approvals'
-  | 'code-review'
-  | 'compact'
-  | 'config'
-  | 'crew'
-  | 'diff'
-  | 'feedback'
-  | 'filesystem'
-  | 'goal'
-  | 'ide-context'
-  | 'mcp'
-  | 'model'
-  | 'personality'
-  | 'plugin'
-  | 'plan'
-  | 'reasoning'
-  | 'search'
-  | 'side-chat'
-  | 'skills'
-  | 'status'
-  | 'terminal'
-  | 'tool-activity'
-  | 'usage'
+export type ChatRuntimeUiSlotSurface
+  = | 'slashCommand'
+    | 'toolbarPicker'
+    | 'composerState'
+    | 'runtimePanel'
+    | 'streamEvidence'
+    | 'recordOnly'
+
+export type ChatRuntimeUiSlotIconKey
+  = | 'alert'
+    | 'approvals'
+    | 'code-review'
+    | 'compact'
+    | 'config'
+    | 'crew'
+    | 'diff'
+    | 'feedback'
+    | 'filesystem'
+    | 'goal'
+    | 'ide-context'
+    | 'mcp'
+    | 'model'
+    | 'personality'
+    | 'plugin'
+    | 'plan'
+    | 'reasoning'
+    | 'search'
+    | 'side-chat'
+    | 'skills'
+    | 'status'
+    | 'terminal'
+    | 'tool-activity'
+    | 'usage'
 
 export interface ChatRuntimeUiSlot {
   id: string
@@ -44,6 +52,7 @@ export interface ChatRuntimeUiSlot {
   aliases?: string[]
   iconKey?: ChatRuntimeUiSlotIconKey
   commandText?: string
+  surfaces: ChatRuntimeUiSlotSurface[]
 }
 
 export interface ChatRuntimeCapabilities {
@@ -344,26 +353,26 @@ export interface ChatRuntimeConfigUiSlotState {
   updatedAt: number
 }
 
-export type ChatRuntimeUiSlotState =
-  | ChatRuntimeAlertUiSlotState
-  | ChatRuntimeApprovalsUiSlotState
-  | ChatRuntimeCompactUiSlotState
-  | ChatRuntimeConfigUiSlotState
-  | ChatRuntimeCrewUiSlotState
-  | ChatRuntimeDiffUiSlotState
-  | ChatRuntimeFilesystemUiSlotState
-  | ChatRuntimeGoalUiSlotState
-  | ChatRuntimeMcpUiSlotState
-  | ChatRuntimeModelUiSlotState
-  | ChatRuntimePlanUiSlotState
-  | ChatRuntimePluginUiSlotState
-  | ChatRuntimeReasoningUiSlotState
-  | ChatRuntimeSearchUiSlotState
-  | ChatRuntimeSkillsUiSlotState
-  | ChatRuntimeStatusUiSlotState
-  | ChatRuntimeTerminalUiSlotState
-  | ChatRuntimeToolActivityUiSlotState
-  | ChatRuntimeUsageUiSlotState
+export type ChatRuntimeUiSlotState
+  = | ChatRuntimeAlertUiSlotState
+    | ChatRuntimeApprovalsUiSlotState
+    | ChatRuntimeCompactUiSlotState
+    | ChatRuntimeConfigUiSlotState
+    | ChatRuntimeCrewUiSlotState
+    | ChatRuntimeDiffUiSlotState
+    | ChatRuntimeFilesystemUiSlotState
+    | ChatRuntimeGoalUiSlotState
+    | ChatRuntimeMcpUiSlotState
+    | ChatRuntimeModelUiSlotState
+    | ChatRuntimePlanUiSlotState
+    | ChatRuntimePluginUiSlotState
+    | ChatRuntimeReasoningUiSlotState
+    | ChatRuntimeSearchUiSlotState
+    | ChatRuntimeSkillsUiSlotState
+    | ChatRuntimeStatusUiSlotState
+    | ChatRuntimeTerminalUiSlotState
+    | ChatRuntimeToolActivityUiSlotState
+    | ChatRuntimeUsageUiSlotState
 
 export interface ChatRuntimeUiSlotStatesResponse {
   runtimeKind: string

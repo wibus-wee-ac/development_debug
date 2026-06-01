@@ -338,9 +338,9 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
               onClick={() => handleOptionClick(item)}
             >
               <SlashCommandIcon command={item} />
-              <span className="min-w-0 flex-1 flex flex-row gap-1.5 items-center">
-                <span className="flex min-w-0 items-baseline gap-1.5">
-                  <span className="truncate text-xs font-medium">
+              <span className="flex min-w-0 flex-1 flex-row items-center gap-1.5">
+                <span className="flex shrink-0 items-baseline gap-1.5">
+                  <span className="shrink-0 whitespace-nowrap text-xs font-medium">
                     {readCommandTitle(item)}
                   </span>
                   {item.argumentHint && (
@@ -360,7 +360,7 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
                   )}
                 </span>
                 {subtitle && (
-                  <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                  <span className="mt-0.5 block min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
                     {subtitle}
                   </span>
                 )}

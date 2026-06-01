@@ -25,6 +25,7 @@ import { ComposerSlotStates } from './composer-slot-states'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
+import type { SkillMentionItem } from './skill-mention-panel'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
@@ -42,6 +43,8 @@ interface ChatViewProps {
   availableFiles?: MentionItem[]
   /** Lazy workspace file search for @ mention */
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  /** Lazy skill search for $ mention */
+  searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
@@ -204,6 +207,7 @@ function ChatComposerSection({
   placeholder,
   availableFiles,
   searchFiles,
+  searchSkills,
   toolbar,
   contextBar,
   droppedPath,
@@ -221,6 +225,7 @@ function ChatComposerSection({
   placeholder?: string
   availableFiles: MentionItem[]
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
@@ -271,6 +276,7 @@ function ChatComposerSection({
             placeholder,
             availableFiles,
             searchFiles,
+            searchSkills,
             onFocusChange: onComposerFocusChange,
             sessionTokens: composerRuntime.tokenUsage.tokens,
             sessionContextWindow: composerRuntime.tokenUsage.contextWindow,
@@ -321,6 +327,7 @@ export function ChatView({
   sessionId,
   availableFiles = EMPTY_FILES,
   searchFiles,
+  searchSkills,
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
@@ -457,6 +464,7 @@ export function ChatView({
         placeholder={placeholder}
         availableFiles={availableFiles}
         searchFiles={searchFiles}
+        searchSkills={searchSkills}
         toolbar={composerToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}

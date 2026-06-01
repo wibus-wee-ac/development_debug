@@ -13,6 +13,7 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { createContinuationUserMessage } from './chat-continuation-metadata'
+import type { ChatContextPart } from './chat-context-parts'
 import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './chat-response-command'
 import {
   cancelChatResponse,
@@ -22,8 +23,8 @@ import {
   reorderChatSessionQueue,
   switchChatPermissionMode,
 } from './chat-response-command'
-import { ChatStreamingHandler } from './chat-streaming-handler'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
+import { ChatStreamingHandler } from './chat-streaming-handler'
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -59,6 +60,10 @@ export async function stopChatTurn(args: {
   chatStop: () => Promise<void> | void
 }): Promise<void> {
   await Promise.resolve(args.chatStop())
+}
+
+function runtimeUiSlotStatesQueryKey(sessionId: string): readonly unknown[] {
+  return ['chat', 'runtime-ui-slot-states', sessionId]
 }
 
 // ── Message Snapshot Types ──────────────────────────────────
@@ -140,6 +145,7 @@ function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: st
 // ── Hook ────────────────────────────────────────────────────
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
+const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 
 export function useChatSession(chatSessionId: string | null) {
@@ -211,7 +217,10 @@ export function useChatSession(chatSessionId: string | null) {
     queryKey: queueQueryKey,
     queryFn: () => listChatSessionQueue(chatSessionId!),
     enabled: !!chatSessionId,
-    refetchInterval: () => visibleStatus === 'streaming' ? 1000 : false,
+    refetchInterval: query => visibleStatus === 'streaming'
+      || query.state.data?.items.some(item => item.status === 'pending' || item.status === 'running')
+      ? 1000
+      : false,
   })
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
@@ -231,6 +240,19 @@ export function useChatSession(chatSessionId: string | null) {
       }
     }, delay)
   }, [queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
+
+  const refreshQueue = useCallback((delay = 0) => {
+    if (delay <= 0) {
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+      void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
+      return
+    }
+
+    window.setTimeout(() => {
+      void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+      void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
+    }, delay)
+  }, [queryClient, queueQueryKey])
 
   // ── Initial load ──
 
@@ -345,12 +367,12 @@ export function useChatSession(chatSessionId: string | null) {
           passiveStreamRef.current = null
         }
         scheduleSnapshotRefresh(0)
-        void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+        refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     })()
 
     return undefined
-  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, snapshotRowsQuery.data])
+  }, [chatSessionId, refreshQueue, scheduleSnapshotRefresh, snapshotRowsQuery.data])
 
   // ── Send message ──
 
@@ -358,9 +380,10 @@ export function useChatSession(chatSessionId: string | null) {
     text: string,
     opts?: SendMessageOptions,
     files: FileUIPart[] = [],
+    contextParts: ChatContextPart[] = [],
   ) => {
     const trimmedText = text.trim()
-    if (!chatSessionId || (!trimmedText && files.length === 0)) {
+    if (!chatSessionId || (!trimmedText && files.length === 0 && contextParts.length === 0)) {
       return
     }
 
@@ -374,6 +397,7 @@ export function useChatSession(chatSessionId: string | null) {
           mode: continuationMode,
           text: trimmedText,
           files,
+          contextParts,
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
@@ -384,17 +408,19 @@ export function useChatSession(chatSessionId: string | null) {
         useChatStore.getState().appendMessage(chatSessionId, createContinuationUserMessage({
           queueItem,
           fallbackText: trimmedText,
+          fallbackContextParts: contextParts,
           fallbackFiles: files,
         }))
         scheduleSnapshotRefresh(0)
       }
-      void queryClient.invalidateQueries({ queryKey: queueQueryKey })
+      refreshQueue()
       return
     }
 
     // 1. Optimistic user message
     const userMessageId = `user-${Date.now()}`
     const userParts: UIMessage['parts'] = trimmedText ? [{ type: 'text', text: trimmedText }] : []
+    userParts.push(...contextParts as UIMessage['parts'])
     userParts.push(...files)
     const userMessage: UIMessage = {
       id: userMessageId,
@@ -418,6 +444,7 @@ export function useChatSession(chatSessionId: string | null) {
         body: {
           text: trimmedText,
           files,
+          contextParts,
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
           thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
@@ -458,9 +485,11 @@ export function useChatSession(chatSessionId: string | null) {
       if (!wasLocallyAborted) {
         // Sync from server to get canonical message IDs
         scheduleSnapshotRefresh(0)
+        void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+        refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, queueQueryKey, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+  }, [chatSessionId, queryClient, refreshQueue, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
     if (!chatSessionId) {
@@ -534,25 +563,27 @@ export function useChatSession(chatSessionId: string | null) {
       })
       if (!controller.signal.aborted) {
         scheduleSnapshotRefresh(0)
+        void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+        refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, scheduleSnapshotRefresh, sessionBindingQueryKey])
+  }, [chatSessionId, queryClient, refreshQueue, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
   const cancelQueueItem = useCallback(async (queueItemId: string) => {
     if (!chatSessionId) {
       return
     }
     await cancelChatSessionQueueItem({ sessionId: chatSessionId, queueItemId })
-    void queryClient.invalidateQueries({ queryKey: queueQueryKey })
-  }, [chatSessionId, queryClient, queueQueryKey])
+    refreshQueue()
+  }, [chatSessionId, refreshQueue])
 
   const reorderQueueItems = useCallback(async (queueItemIds: string[]) => {
     if (!chatSessionId) {
       return
     }
     await reorderChatSessionQueue({ sessionId: chatSessionId, queueItemIds })
-    void queryClient.invalidateQueries({ queryKey: queueQueryKey })
-  }, [chatSessionId, queryClient, queueQueryKey])
+    refreshQueue()
+  }, [chatSessionId, refreshQueue])
 
   const setPermissionMode = useCallback(async (mode: ChatPermissionMode) => {
     if (!chatSessionId) {
@@ -581,12 +612,14 @@ export function useChatSession(chatSessionId: string | null) {
     try {
       await cancelChatResponse(chatSessionId)
       scheduleSnapshotRefresh(0)
+      refreshQueue()
+      refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
     }
     catch (error) {
       store.setSessionMeta(chatSessionId, { cancelling: false })
       console.warn('[useChatSession] failed to cancel server chat response', error)
     }
-  }, [chatSessionId, scheduleSnapshotRefresh])
+  }, [chatSessionId, refreshQueue, scheduleSnapshotRefresh])
 
   // ── isReady (always true once hydrated) ──
 

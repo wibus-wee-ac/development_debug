@@ -2,11 +2,14 @@ import type { FileUIPart, UIMessage } from 'ai'
 
 import { getServerUrl } from '~/lib/electron'
 
+import type { ChatContextPart } from './chat-context-parts'
+
 const SERVER_BASE = getServerUrl()
 
 export interface ChatResponseRequestBody {
   text: string
   files?: FileUIPart[]
+  contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
@@ -25,6 +28,7 @@ export interface ChatQueueItem {
   status: ChatQueueItemStatus
   text: string
   files: FileUIPart[]
+  contextParts: ChatContextPart[]
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
@@ -51,6 +55,7 @@ export function buildChatResponseRequestBody(
   return {
     text: body.text,
     files: body.files,
+    contextParts: body.contextParts,
     messages: body.messages,
     providerTargetId: body.providerTargetId ?? undefined,
     modelId: body.modelId ?? undefined,

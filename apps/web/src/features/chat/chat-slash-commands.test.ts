@@ -98,6 +98,7 @@ describe('chat slash commands', () => {
           aliases: ['objective'],
           iconKey: 'goal',
           commandText: '/goal ',
+          surfaces: ['slashCommand'],
         },
       ]),
       cradleCommands: [],
@@ -124,6 +125,7 @@ describe('chat slash commands', () => {
         argumentHint: '[model]',
         iconKey: 'model',
         commandText: '/model ',
+        surfaces: ['toolbarPicker'],
       },
       {
         id: 'codex:reasoning',
@@ -133,6 +135,7 @@ describe('chat slash commands', () => {
         argumentHint: '[low|medium|high]',
         iconKey: 'reasoning',
         commandText: '/reasoning ',
+        surfaces: ['toolbarPicker'],
       },
       {
         id: 'codex:compact',
@@ -142,6 +145,7 @@ describe('chat slash commands', () => {
         argumentHint: '[instructions]',
         iconKey: 'compact',
         commandText: '/compact ',
+        surfaces: ['slashCommand'],
       },
       {
         id: 'codex:mcp',
@@ -151,6 +155,7 @@ describe('chat slash commands', () => {
         argumentHint: '',
         iconKey: 'mcp',
         commandText: '/mcp ',
+        surfaces: ['runtimePanel'],
       },
     ])
 
@@ -167,6 +172,7 @@ describe('chat slash commands', () => {
         argumentHint: '[instructions]',
         iconKey: 'compact',
         commandText: '/compact ',
+        surfaces: ['slashCommand'],
       },
     ], [
       {
@@ -223,6 +229,7 @@ describe('chat slash commands', () => {
         argumentHint: '[instructions]',
         iconKey: 'compact',
         commandText: '/compact ',
+        surfaces: ['slashCommand'],
       },
       {
         id: 'codex:goal',
@@ -232,6 +239,7 @@ describe('chat slash commands', () => {
         argumentHint: '<objective>',
         iconKey: 'goal',
         commandText: '/goal ',
+        surfaces: ['slashCommand', 'composerState'],
       },
       {
         id: 'codex:model',
@@ -241,6 +249,7 @@ describe('chat slash commands', () => {
         argumentHint: '[model]',
         iconKey: 'model',
         commandText: '/model ',
+        surfaces: ['toolbarPicker'],
       },
       {
         id: 'codex:skills',
@@ -250,6 +259,7 @@ describe('chat slash commands', () => {
         argumentHint: '',
         iconKey: 'skills',
         commandText: '/skills ',
+        surfaces: ['runtimePanel'],
       },
       {
         id: 'codex:review',
@@ -259,6 +269,7 @@ describe('chat slash commands', () => {
         argumentHint: '',
         iconKey: 'code-review',
         commandText: '/review ',
+        surfaces: ['slashCommand'],
       },
       {
         id: 'codex:feedback',
@@ -268,6 +279,7 @@ describe('chat slash commands', () => {
         argumentHint: '',
         iconKey: 'feedback',
         commandText: '/feedback ',
+        surfaces: ['slashCommand'],
       },
     ], [
       {

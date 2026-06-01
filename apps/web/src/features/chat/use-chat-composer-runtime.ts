@@ -14,6 +14,7 @@ import { isElectron, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
 import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates } from './chat-capabilities'
+import type { ChatContextPart } from './chat-context-parts'
 import type { ChatRuntimeUiSlotState } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
@@ -39,6 +40,7 @@ export interface ChatComposerRuntime {
   send: (
     text: string,
     files: FileUIPart[],
+    contextParts: ChatContextPart[],
     options?: { invertContinuationMode?: boolean },
   ) => void
   stop: () => void
@@ -60,7 +62,7 @@ interface UseChatComposerRuntimeOptions {
   composerModel?: ModelDescriptor | null
   permissionMode?: SendMessageOptions['permissionMode']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
-  sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[]) => void | Promise<void>
+  sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[], contextParts?: ChatContextPart[]) => void | Promise<void>
   stop: () => void
 }
 
@@ -173,8 +175,8 @@ export function useChatComposerRuntime({
   })
 
   const send = useCallback(
-    (text: string, files: FileUIPart[], options?: { invertContinuationMode?: boolean }) => {
-      if (!isReady || (!text.trim() && files.length === 0)) {
+    (text: string, files: FileUIPart[], contextParts: ChatContextPart[], options?: { invertContinuationMode?: boolean }) => {
+      if (!isReady || (!text.trim() && files.length === 0 && contextParts.length === 0)) {
         return
       }
 
@@ -183,7 +185,7 @@ export function useChatComposerRuntime({
       const continuationMode = options?.invertContinuationMode
         ? invertContinuationMode(defaultContinuationMode)
         : defaultContinuationMode
-      void sendMessage(text, { ...overrides, permissionMode, continuationMode }, files)
+      void sendMessage(text, { ...overrides, permissionMode, continuationMode }, files, contextParts)
     },
     [chatPreferences?.continuationBehavior, isReady, permissionMode, sendMessage, sendOverridesRef],
   )

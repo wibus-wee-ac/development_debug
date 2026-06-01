@@ -1,5 +1,7 @@
 import type { UIMessage } from 'ai'
 
+import type { ChatSkillContextPart } from './chat-context-parts'
+import { isChatSkillContextPart } from './chat-context-parts'
 import type { ToolUiKind } from './tool-ui-classifier'
 
 export type MessagePart = UIMessage['parts'][number]
@@ -22,6 +24,7 @@ export type ChatRenderSegment
     | (MessagePartRefBase & { kind: 'reasoning' })
     | { kind: 'tool-call', messageId: string, toolCallId: string, key: string }
     | { kind: 'tool-group', items: ToolCallItemRef[], uiKind: ToolUiKind, key: string }
+    | (MessagePartRefBase & { kind: 'skill-context' })
     | (MessagePartRefBase & { kind: 'file-attachment' })
 
 export type ChatRenderItem
@@ -29,6 +32,7 @@ export type ChatRenderItem
     | { kind: 'reasoning', text: string, state?: 'streaming' | 'done', key: string }
     | { kind: 'tool-call', messageId: string, toolCallId: string, key: string }
     | { kind: 'tool-group', items: ToolCallItemRef[], uiKind: ToolUiKind, key: string }
+    | { kind: 'skill-context', part: ChatSkillContextPart, key: string }
     | { kind: 'file-attachment', part: FileMessagePart, key: string }
 
 export interface ExecutionPhaseSplit {
@@ -81,6 +85,14 @@ export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderS
         partIndex: i,
       })
     }
+    else if (isChatSkillContextPart(part)) {
+      items.push({
+        kind: 'skill-context',
+        key,
+        messageId: input.messageId,
+        partIndex: i,
+      })
+    }
     else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
       const toolCallId = (part as { toolCallId: string }).toolCallId
       items.push({ kind: 'tool-call', messageId: input.messageId, toolCallId, key })
@@ -112,6 +124,9 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
     }
     else if (part.type === 'file') {
       items.push({ kind: 'file-attachment', part, key })
+    }
+    else if (isChatSkillContextPart(part)) {
+      items.push({ kind: 'skill-context', part, key })
     }
     else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
       const toolCallId = (part as { toolCallId: string }).toolCallId

@@ -1,5 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon } from 'lucide-react'
+import { LoaderCircleIcon, PackageIcon, SendHorizonalIcon, SquareIcon, XIcon } from 'lucide-react'
 import type { KeyboardEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
@@ -8,6 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { cn } from '~/lib/cn'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
+import type { ChatContextPart, ChatSkillContextPart } from './chat-context-parts'
+import { readSkillContextLabel } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type {
   ComposerActionContextOptions,
@@ -26,6 +28,8 @@ import {
 } from './composer-attachments'
 import type { MentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
+import type { SkillMentionItem } from './skill-mention-panel'
+import { SkillMentionPanel } from './skill-mention-panel'
 import {
   CHAT_SLASH_COMMAND_LISTBOX_ID,
   getActiveSlashCommand,
@@ -47,6 +51,7 @@ function autoResize(el: HTMLTextAreaElement) {
 export type ComposerSendHandler = (
   text: string,
   files: FileUIPart[],
+  contextParts: ChatContextPart[],
   options?: { invertContinuationMode?: boolean },
 ) => void | boolean | Promise<void | boolean>
 
@@ -93,6 +98,8 @@ export interface ComposerViewOptions {
   placeholder?: string
   availableFiles?: MentionItem[]
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  availableSkills?: SkillMentionItem[]
+  searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   className?: string
   cardClassName?: string
   textareaClassName?: string
@@ -136,6 +143,7 @@ export interface ComposerProps {
 }
 
 const EMPTY_FILES: MentionItem[] = []
+const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
 
@@ -145,6 +153,9 @@ interface ComposerState {
   mentionQuery: string
   slashActive: boolean
   slashQuery: string
+  skillActive: boolean
+  skillQuery: string
+  contextParts: ChatContextPart[]
   selectedSlashCommand: ChatComposerSlashCommand | null
 }
 
@@ -155,6 +166,9 @@ type ComposerAction
     | { type: 'mention/selected', inputValue: string, query: string, keepOpen: boolean }
     | { type: 'slash/closed' }
     | { type: 'slash/selected', inputValue: string, command: ChatComposerSlashCommand | null }
+    | { type: 'skill/closed' }
+    | { type: 'skill/selected', inputValue: string, part: ChatSkillContextPart }
+    | { type: 'context-part/removed', index: number }
     | { type: 'pickers/closed' }
     | { type: 'external/appended', text: string }
     | { type: 'external/replaced', text: string }
@@ -166,6 +180,9 @@ const INITIAL_COMPOSER_STATE: ComposerState = {
   mentionQuery: '',
   slashActive: false,
   slashQuery: '',
+  skillActive: false,
+  skillQuery: '',
+  contextParts: [],
   selectedSlashCommand: null,
 }
 
@@ -185,6 +202,8 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         mentionQuery: action.keepOpen ? action.query : '',
         slashActive: false,
         slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
       }
     case 'slash/closed':
       return { ...state, slashActive: false }
@@ -196,13 +215,36 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         slashQuery: '',
         mentionActive: false,
         mentionQuery: '',
+        skillActive: false,
+        skillQuery: '',
         selectedSlashCommand: action.command,
+      }
+    case 'skill/closed':
+      return { ...state, skillActive: false }
+    case 'skill/selected':
+      return {
+        ...state,
+        inputValue: action.inputValue,
+        mentionActive: false,
+        mentionQuery: '',
+        slashActive: false,
+        slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
+        contextParts: [...state.contextParts, action.part],
+        selectedSlashCommand: null,
+      }
+    case 'context-part/removed':
+      return {
+        ...state,
+        contextParts: state.contextParts.filter((_, index) => index !== action.index),
       }
     case 'pickers/closed':
       return {
         ...state,
         mentionActive: false,
         slashActive: false,
+        skillActive: false,
       }
     case 'external/appended':
       return {
@@ -212,6 +254,8 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         mentionQuery: '',
         slashActive: false,
         slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
         selectedSlashCommand: null,
       }
     case 'external/replaced':
@@ -222,6 +266,9 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         mentionQuery: '',
         slashActive: false,
         slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
+        contextParts: [],
         selectedSlashCommand: null,
       }
     case 'drop/inserted':
@@ -232,11 +279,52 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         mentionQuery: '',
         slashActive: false,
         slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
         selectedSlashCommand: null,
       }
     default:
       return state
   }
+}
+
+function ComposerContextParts({
+  parts,
+  onRemove,
+}: {
+  parts: ChatContextPart[]
+  onRemove: (index: number) => void
+}) {
+  if (parts.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+      {parts.map((part, index) => {
+        if (part.type !== 'data-cradle-skill') {
+          return null
+        }
+        return (
+          <span
+            key={`${part.type}:${part.path}:${index}`}
+            className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground"
+          >
+            <PackageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0 truncate">{readSkillContextLabel(part)}</span>
+            <button
+              type="button"
+              className="-mr-1 grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+              aria-label={`Remove ${readSkillContextLabel(part)}`}
+              onClick={() => onRemove(index)}
+            >
+              <XIcon className="size-3" aria-hidden="true" />
+            </button>
+          </span>
+        )
+      })}
+    </div>
+  )
 }
 
 function formatTokenCount(tokens: number): string {
@@ -430,6 +518,8 @@ export function Composer({
     placeholder = 'Message...',
     availableFiles = EMPTY_FILES,
     searchFiles,
+    availableSkills = EMPTY_SKILLS,
+    searchSkills,
     className,
     cardClassName,
     textareaClassName,
@@ -472,6 +562,7 @@ export function Composer({
   // Track @ trigger position for path completion
   const mentionStartRef = useRef<number>(-1)
   const slashStartRef = useRef<number>(-1)
+  const skillStartRef = useRef<number>(-1)
   const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, visibleSlashCommands)
   const slashCommandPrefix = activeSlashCommand ? getSlashCommandPrefix(activeSlashCommand) : ''
   const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue.replace(LEADING_HORIZONTAL_WHITESPACE_RE, '') === slashCommandPrefix
@@ -483,7 +574,7 @@ export function Composer({
   const attachButtonTestId = testIds?.attachButton ?? 'chat-attach-btn'
   const sendButtonTestId = testIds?.sendButton ?? 'chat-send-btn'
   const stopButtonTestId = testIds?.stopButton ?? 'chat-stop-btn'
-  const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || Boolean(allowEmptySend)
+  const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || state.contextParts.length > 0 || Boolean(allowEmptySend)
   const effectiveDisabled = disabled || isSending
 
   const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -498,19 +589,49 @@ export function Composer({
     // Check for slash command trigger at the start of a message.
     if (slashTrigger) {
       mentionStartRef.current = -1
+      skillStartRef.current = -1
       slashStartRef.current = slashTrigger.start
       dispatch({
         type: 'input/changed',
         state: {
+          ...state,
           inputValue: value,
           mentionActive: false,
           mentionQuery: '',
           slashActive: true,
           slashQuery: slashTrigger.query,
+          skillActive: false,
+          skillQuery: '',
           selectedSlashCommand: slashTrigger.selectedCommand,
         },
       })
       return
+    }
+
+    // Check for $ skill trigger.
+    const dollarIdx = textBefore.lastIndexOf('$')
+    if (dollarIdx >= 0) {
+      const afterDollar = textBefore.slice(dollarIdx + 1)
+      if (!afterDollar.includes('\n') && !afterDollar.includes(' ')) {
+        mentionStartRef.current = -1
+        slashStartRef.current = -1
+        skillStartRef.current = dollarIdx
+        dispatch({
+          type: 'input/changed',
+          state: {
+            ...state,
+            inputValue: value,
+            mentionActive: false,
+            mentionQuery: '',
+            slashActive: false,
+            slashQuery: '',
+            skillActive: true,
+            skillQuery: afterDollar,
+            selectedSlashCommand,
+          },
+        })
+        return
+      }
     }
 
     // Check for @ trigger
@@ -522,14 +643,18 @@ export function Composer({
       if (!afterAt.includes('\n')) {
         mentionStartRef.current = atIdx
         slashStartRef.current = -1
+        skillStartRef.current = -1
         dispatch({
           type: 'input/changed',
           state: {
+            ...state,
             inputValue: value,
             mentionActive: true,
             mentionQuery: afterAt,
             slashActive: false,
             slashQuery: '',
+            skillActive: false,
+            skillQuery: '',
             selectedSlashCommand,
           },
         })
@@ -539,16 +664,20 @@ export function Composer({
     dispatch({
       type: 'input/changed',
       state: {
+        ...state,
         inputValue: value,
         mentionActive: false,
         mentionQuery: '',
         slashActive: false,
         slashQuery: '',
+        skillActive: false,
+        skillQuery: '',
         selectedSlashCommand,
       },
     })
     slashStartRef.current = -1
-  }, [state.selectedSlashCommand, visibleSlashCommands])
+    skillStartRef.current = -1
+  }, [state, visibleSlashCommands])
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
     // Replace @query with @path (inline text completion)
@@ -582,6 +711,42 @@ export function Composer({
       if (el) {
         el.focus()
         const pos = before.length + insertText.length
+        el.setSelectionRange(pos, pos)
+        autoResize(el)
+      }
+    })
+  }, [state.inputValue])
+
+  const handleSkillSelect = useCallback((item: SkillMentionItem) => {
+    const start = skillStartRef.current
+    if (start < 0) {
+      return
+    }
+
+    const before = state.inputValue.slice(0, start)
+    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
+    const after = state.inputValue.slice(cursor)
+    const separator = before && !before.endsWith(' ') ? ' ' : ''
+    const nextValue = `${before}${separator}${after}`.replace(/[ \t]{2,}/g, ' ')
+    skillStartRef.current = -1
+
+    dispatch({
+      type: 'skill/selected',
+      inputValue: nextValue,
+      part: {
+        type: 'data-cradle-skill',
+        name: item.name,
+        path: item.skillDir,
+        scope: item.scope,
+        description: item.description,
+      },
+    })
+
+    requestAnimationFrame(() => {
+      const el = textareaRef.current
+      if (el) {
+        el.focus()
+        const pos = Math.min(before.length + separator.length, nextValue.length)
         el.setSelectionRange(pos, pos)
         autoResize(el)
       }
@@ -657,14 +822,14 @@ export function Composer({
     if (disabled || isSending || sendDisabled) {
       return
     }
-    if (!allowEmptySend && !text && attachmentController.attachments.length === 0) {
+    if (!allowEmptySend && !text && attachmentController.attachments.length === 0 && state.contextParts.length === 0) {
       return
     }
 
     void (async () => {
       const result = options
-        ? await submit(text, attachmentController.attachments, options)
-        : await submit(text, attachmentController.attachments)
+        ? await submit(text, attachmentController.attachments, state.contextParts, options)
+        : await submit(text, attachmentController.attachments, state.contextParts)
       if (result === false) {
         return
       }
@@ -677,7 +842,7 @@ export function Composer({
         }
       })
     })()
-  }, [allowEmptySend, attachmentController, disabled, isSending, sendDisabled, state.inputValue, submit])
+  }, [allowEmptySend, attachmentController, disabled, isSending, sendDisabled, state.contextParts, state.inputValue, submit])
 
   const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
     attachmentController.handlePaste(event)
@@ -690,7 +855,7 @@ export function Composer({
     }
 
     // If a picker is active, let it handle Enter/Escape/arrows/Tab.
-    if (state.mentionActive || (state.slashActive && slashPanelHasResults)) {
+    if (state.mentionActive || state.skillActive || (state.slashActive && slashPanelHasResults)) {
       if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.key)) {
         return
       }
@@ -706,7 +871,7 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [handleSend, slashPanelHasResults, state.mentionActive, state.slashActive])
+  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
@@ -782,6 +947,14 @@ export function Composer({
         onClose={() => dispatch({ type: 'mention/closed' })}
         visible={state.mentionActive}
       />
+      <SkillMentionPanel
+        items={availableSkills}
+        query={state.skillQuery}
+        searchItems={searchSkills}
+        onSelect={handleSkillSelect}
+        onClose={() => dispatch({ type: 'skill/closed' })}
+        visible={state.skillActive}
+      />
       <SlashCommandPanel
         commands={visibleSlashCommands}
         listboxId={CHAT_SLASH_COMMAND_LISTBOX_ID}
@@ -855,6 +1028,10 @@ export function Composer({
           onRemove={attachmentController.removeAttachment}
           pendingAppshots={pendingAppshots}
           className={attachmentListClassName}
+        />
+        <ComposerContextParts
+          parts={state.contextParts}
+          onRemove={index => dispatch({ type: 'context-part/removed', index })}
         />
 
         {/* Action bar — subtle, blends with the card */}

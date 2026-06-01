@@ -104,6 +104,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   }, [session?.title, sessionId, store])
 
   const workspaceId = session?.workspaceId ?? null
+  const agentId = session?.agentId ?? null
 
   // Fetch workspace details — derive path/name from query data (not side-effects)
   const { data: workspace } = useQuery({
@@ -158,6 +159,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
         sessionProviderTargetId={sessionProviderTargetId}
         runtimeKind={session?.runtimeKind}
         workspaceId={workspaceId}
+        agentId={agentId}
       />
     </>
   )

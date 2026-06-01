@@ -1,7 +1,7 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import isEqual from 'fast-deep-equal'
-import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TargetIcon, TimerIcon } from 'lucide-react'
+import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, PackageIcon, TargetIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +19,8 @@ import { readCradleAppshotMetadata } from './appshot-attachment-model'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
+import type { ChatSkillContextPart } from './chat-context-parts'
+import { isChatSkillContextPart, readSkillContextLabel } from './chat-context-parts'
 import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
 import { groupMessagePartRefs, groupMessageParts, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
@@ -65,6 +67,16 @@ function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
           <div className="truncate text-[11px] text-muted-foreground">{part.mediaType}</div>
         </div>
       </div>
+    </div>
+  )
+}
+
+function SkillContextBlock({ part }: { part: ChatSkillContextPart }) {
+  return (
+    <div className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-background/55 px-2 py-1 text-xs text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]">
+      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="min-w-0 truncate font-medium">{readSkillContextLabel(part)}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{part.scope}</span>
     </div>
   )
 }
@@ -262,6 +274,8 @@ function renderSubagentItem(
       return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} animated={false} />
     case 'file-attachment':
       return <FileAttachmentBlock key={item.key} part={item.part} />
+    case 'skill-context':
+      return <SkillContextBlock key={item.key} part={item.part} />
     default:
       return null
   }
@@ -465,7 +479,8 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
         && left.hasText === right.hasText
     case 'reasoning':
     case 'file-attachment':
-      return (right.kind === 'reasoning' || right.kind === 'file-attachment')
+    case 'skill-context':
+      return (right.kind === 'reasoning' || right.kind === 'file-attachment' || right.kind === 'skill-context')
         && left.kind === right.kind
         && left.messageId === right.messageId
         && left.partIndex === right.partIndex
@@ -529,6 +544,11 @@ function areReasoningPartsEqual(
 function readFilePartFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): FileMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return part?.type === 'file' ? part : null
+}
+
+function readSkillContextPartFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): ChatSkillContextPart | null {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  return isChatSkillContextPart(part) ? part : null
 }
 
 function readPlainTextFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): string {
@@ -724,6 +744,22 @@ function MessageFilePartById({
   return <FileAttachmentBlock part={part} />
 }
 
+function MessageSkillContextPartById({
+  sessionId,
+  messageId,
+  partIndex,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+}) {
+  const part = useChatStore(state => readSkillContextPartFromState(state, sessionId, messageId, partIndex))
+  if (!part) {
+    return null
+  }
+  return <SkillContextBlock part={part} />
+}
+
 function MessageThinkingPlaceholderById({
   sessionId,
   messageId,
@@ -881,6 +917,14 @@ function MessageSegmentView({
     case 'file-attachment':
       return (
         <MessageFilePartById
+          sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
+        />
+      )
+    case 'skill-context':
+      return (
+        <MessageSkillContextPartById
           sessionId={sessionId}
           messageId={segment.messageId}
           partIndex={segment.partIndex}

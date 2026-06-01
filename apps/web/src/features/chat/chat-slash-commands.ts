@@ -160,11 +160,7 @@ function normalizeCommandName(name: string): string {
 }
 
 function isRuntimeUiSlotSlashCommand(slot: ChatRuntimeUiSlot): boolean {
-  return slot.id === 'codex:compact'
-    || slot.id === 'codex:goal'
-    || slot.id === 'codex:review'
-    || slot.id === 'codex:feedback'
-    || slot.id === 'codex:ide-context'
+  return slot.surfaces.includes('slashCommand')
 }
 
 export function createRuntimeSlashCommand(command: ChatSlashCommand, index = 0): ChatComposerSlashCommand {
