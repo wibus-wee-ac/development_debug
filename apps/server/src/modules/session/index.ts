@@ -9,7 +9,7 @@ export const session = new Elysia({
   prefix: '/sessions',
   detail: { tags: ['session'] },
 })
-  .get('/', ({ query }) => Session.list(query.workspaceId), {
+  .get('/', ({ query }) => Session.list(query), {
     detail: {
       'summary': 'List sessions',
       'x-cradle-cli': {
@@ -67,6 +67,23 @@ export const session = new Elysia({
     },
     params: SessionModel.idParams,
     body: SessionModel.updateBody,
+    response: { 200: SessionModel.session },
+  })
+  .post('/:id/archive', ({ params, body }) => {
+    const result = Session.setArchived({ id: params.id, archived: body.archived })
+    if (!result) {
+      throw new AppError({ code: 'session_not_found', status: 404, message: 'Session not found' })
+    }
+    return result
+  }, {
+    detail: {
+      'summary': 'Archive or restore session',
+      'x-cradle-cli': {
+        command: ['session', 'archive'],
+      },
+    },
+    params: SessionModel.idParams,
+    body: SessionModel.archiveBody,
     response: { 200: SessionModel.session },
   })
   .delete('/:id', ({ params }) => {

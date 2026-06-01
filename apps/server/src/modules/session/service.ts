@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
 import { agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
-import { desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -77,12 +77,17 @@ function assertTargetCompatibleWithRuntime(input: {
   }
 }
 
-export function list(workspaceId?: string): SessionView[] {
-  const rows = workspaceId
+export function list(input: { workspaceId?: string, archived?: boolean } = {}): SessionView[] {
+  const predicates = [
+    input.workspaceId ? eq(sessions.workspaceId, input.workspaceId) : undefined,
+    input.archived ? isNotNull(sessions.archivedAt) : isNull(sessions.archivedAt),
+  ].filter(predicate => predicate !== undefined)
+  const where = predicates.length > 0 ? and(...predicates) : undefined
+  const rows = where
     ? db()
         .select()
         .from(sessions)
-        .where(eq(sessions.workspaceId, workspaceId))
+        .where(where)
         .orderBy(desc(sessions.updatedAt))
         .all()
     : db()
@@ -93,6 +98,24 @@ export function list(workspaceId?: string): SessionView[] {
 
   const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
   return rows.map(row => toSessionView(row, modelsBySessionId.get(row.id) ?? null))
+}
+
+export function setArchived(input: { id: string, archived: boolean }): SessionView | null {
+  const record = db().select().from(sessions).where(eq(sessions.id, input.id)).get()
+  if (!record) {
+    return null
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  db()
+    .update(sessions)
+    .set({
+      archivedAt: input.archived ? now : null,
+      updatedAt: now,
+    })
+    .where(eq(sessions.id, input.id))
+    .run()
+  return get(input.id)
 }
 
 export function get(id: string): SessionView | null {

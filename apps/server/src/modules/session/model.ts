@@ -23,6 +23,7 @@ export const SessionModel = {
     linkedIssueId: nullableString,
     runtimeKind: runtimeKindSchema,
     pinned: t.Number(),
+    archivedAt: t.Nullable(t.Number()),
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -53,6 +54,7 @@ export const SessionModel = {
 
   listQuery: t.Object({
     workspaceId: t.Optional(t.String({ minLength: 1 })),
+    archived: t.Optional(t.Boolean()),
   }),
 
   createBody: t.Object({
@@ -67,5 +69,9 @@ export const SessionModel = {
   updateBody: t.Object({
     title: t.Optional(t.String({ minLength: 1 })),
     pinned: t.Optional(t.Boolean()),
+  }),
+
+  archiveBody: t.Object({
+    archived: t.Boolean(),
   }),
 }

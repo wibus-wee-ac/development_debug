@@ -88,6 +88,7 @@ describe('session capability', () => {
           providerTargetId,
           agentId: null,
           modelId: null,
+          archivedAt: null,
         }),
       )
       expect(d.select().from(agents).all()).toHaveLength(0)
@@ -156,6 +157,59 @@ describe('session capability', () => {
       )
       expect(missingPin.status).toBe(404)
       expect((await missingPin.json()).code).toBe('session_not_found')
+
+      const archiveRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}/archive`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ archived: true }),
+        }),
+      )
+      expect(archiveRes.status).toBe(200)
+      const archived = await archiveRes.json()
+      expect(archived).toEqual(expect.objectContaining({
+        id: sessionId,
+        archivedAt: expect.any(Number),
+      }))
+
+      const activeListAfterArchive = await (
+        await app.handle(
+          new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+        )
+      ).json()
+      expect(activeListAfterArchive).toEqual([])
+
+      const archivedList = await (
+        await app.handle(
+          new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}&archived=true`),
+        )
+      ).json()
+      expect(archivedList).toEqual([
+        expect.objectContaining({ id: sessionId, archivedAt: expect.any(Number) }),
+      ])
+
+      const restoreRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}/archive`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ archived: false }),
+        }),
+      )
+      expect(restoreRes.status).toBe(200)
+      expect(await restoreRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        archivedAt: null,
+      }))
+
+      const missingArchive = await app.handle(
+        new Request('http://localhost/sessions/missing/archive', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ archived: true }),
+        }),
+      )
+      expect(missingArchive.status).toBe(404)
+      expect((await missingArchive.json()).code).toBe('session_not_found')
 
       const userMessageId = randomUUID()
       const assistantMessageId = randomUUID()
