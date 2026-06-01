@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import { CircleDotIcon, ExternalLinkIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
@@ -12,6 +12,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '~/components/ui/empty'
+import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
 import { readTrayAwaits } from '~/features/desktop-tray/api'
 import type { TrayAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'
@@ -33,11 +34,14 @@ function formatRelativeTime(unixSeconds: number, t: TFunction<'awaits'>): string
 
 function AwaitRow({ item }: { item: TrayAwaitItem }) {
   const { t } = useTranslation('awaits')
-  const preloadChatRoute = () => {
+  const queryClient = useQueryClient()
+
+  const preloadChatSession = () => {
+    prefetchChatSession(queryClient, item.sessionId)
   }
 
   const openChat = () => {
-    preloadChatRoute()
+    preloadChatSession()
     useCradleTabStore.getState().openTab('chat', { sessionId: item.sessionId })
   }
 
@@ -63,8 +67,8 @@ function AwaitRow({ item }: { item: TrayAwaitItem }) {
         variant="outline"
         size="sm"
         onClick={openChat}
-        onFocus={preloadChatRoute}
-        onMouseEnter={preloadChatRoute}
+        onFocus={preloadChatSession}
+        onMouseEnter={preloadChatSession}
         className="shrink-0"
       >
         <ExternalLinkIcon className="size-3.5" />

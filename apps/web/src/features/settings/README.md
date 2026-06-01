@@ -9,7 +9,7 @@
 ## Files
 
 - **appearance-settings.tsx**: 外观设置页，负责主题切换；Settings Appearance 首屏在 theme options 与 stream animation controls ready 后记录 performance gate；主题选项暴露稳定 E2E selection anchors。
-- **chat-settings.tsx**: 对话设置页，负责默认 continuation behavior 的切换，并在 Chat section header 下方展示 session-owned archived sessions 列表与 restore 操作。
+- **chat-settings.tsx**: 对话设置页，负责默认 continuation behavior 的切换，并在 Chat section header 下方展示 session-owned archived sessions 列表与 restore 操作；restore response 会保留 session 列表使用的 latest-user-message activity timestamp。
 - **chronicle-settings.tsx**: 由 `features/chronicle` 拥有的 Settings > 记录页面；Settings Chronicle 首屏在 Chronicle config、status、resources、message sources、evidence、activity、knowledge、timeline、memories 和当前 profile 的 Agent Runtime model cache 首轮数据 ready 后记录 performance gate。
 - **desktop-update-settings.tsx**: Desktop 更新设置页，通过 Electron preload / IPC 管理 Velopack 更新状态、检查、下载与应用；Settings Desktop 首屏在 update status 初始化完成后记录 performance gate。
 - **external-work-import-settings.tsx**: Import 设置页，扫描 Server 与 Electron 设备上的外部 AI 应用工作内容，合并去重后提交到 Server 导入。

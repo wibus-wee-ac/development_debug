@@ -34,7 +34,7 @@ import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import { sessionsQueryKey, useWorkspaceSessions } from '~/features/workspace/use-session'
+import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
@@ -606,6 +606,13 @@ function useWorkspaceDetailOwner(workspaceId: string) {
         workspacePath: workspace.path,
         runtimeKind: 'cli-tui',
       })
+      updateSessionInSessionLists(queryClient, {
+        id: session.id,
+        title: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle'),
+        workspaceId,
+        agentId: opts.agentId,
+        runtimeKind: 'cli-tui',
+      }, { promote: true })
       openTab('chat', { sessionId: session.id })
       return
     }
@@ -622,6 +629,14 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       workspacePath: workspace.path,
       runtimeKind: opts.runtimeKind,
     })
+    updateSessionInSessionLists(queryClient, {
+      id: session.id,
+      title: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle'),
+      workspaceId,
+      providerTargetId: opts.providerTargetId ?? null,
+      modelId: opts.modelId ?? null,
+      runtimeKind: opts.runtimeKind,
+    }, { promote: true })
     openTab('chat', { sessionId: session.id })
 
     void (async () => {
@@ -635,6 +650,10 @@ function useWorkspaceDetailOwner(workspaceId: string) {
           throw new Error(`Failed to start chat response: ${response.status} ${body}`)
         }
         await response.body?.cancel()
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+        ])
       }
       catch (error) {
         toastManager.add({
@@ -936,7 +955,7 @@ function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspa
                   <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
                   <span className="flex-1 truncate text-foreground">{session.title || t('detail.session.fallbackTitle')}</span>
                   <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" suppressHydrationWarning>
-                    {timeAgo(session.updatedAt, now, t)}
+                    {timeAgo(session.listActivityAt, now, t)}
                   </time>
                 </Link>
               ))}

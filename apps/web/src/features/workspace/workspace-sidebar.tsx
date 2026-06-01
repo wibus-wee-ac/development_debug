@@ -66,6 +66,7 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/compone
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
@@ -94,14 +95,14 @@ function SessionRenameInput({
   initialTitle,
   sessionId,
   pinned,
-  updatedAt,
+  listActivityAt,
   onCommit,
   onCancel,
 }: {
   initialTitle: string
   sessionId: string
   pinned: boolean
-  updatedAt: number
+  listActivityAt: number
   onCommit: (nextTitle: string) => Promise<void>
   onCancel: () => void
 }) {
@@ -145,7 +146,7 @@ function SessionRenameInput({
         className="min-w-0 flex-1 bg-transparent text-left text-xs text-sidebar-foreground/90 outline-none placeholder:text-muted-foreground/40"
       />
       <span className="shrink-0 text-[11px] text-muted-foreground">
-        {formatRelativeTime(updatedAt, t)}
+        {formatRelativeTime(listActivityAt, t)}
       </span>
     </div>
   )
@@ -362,6 +363,15 @@ function SessionItem({
       runtimeKind: session.runtimeKind,
     })
   }, [session.id, session.runtimeKind, session.workspaceId, sessionTitle, workspaceId, workspacePath])
+
+  const prefetchSession = useCallback(() => {
+    prefetchChatSession(queryClient, session.id)
+  }, [queryClient, session.id])
+
+  const prepareSessionOpen = useCallback(() => {
+    recordSessionLayout()
+    prefetchSession()
+  }, [prefetchSession, recordSessionLayout])
 
   const releaseSessionDrag = useCallback(() => {
     dragCleanupRef.current?.()
@@ -619,7 +629,7 @@ function SessionItem({
             initialTitle={sessionTitle}
             sessionId={session.id}
             pinned={Boolean(session.pinned)}
-            updatedAt={session.updatedAt}
+            listActivityAt={session.listActivityAt}
             onCommit={handleRename}
             onCancel={handleRenameCancel}
           />
@@ -629,8 +639,10 @@ function SessionItem({
             <Link
               to="chat"
               params={{ sessionId: session.id }}
-              onClick={recordSessionLayout}
-              onPointerDown={recordSessionLayout}
+              onClick={prepareSessionOpen}
+              onFocus={prefetchSession}
+              onPointerDown={prepareSessionOpen}
+              onPointerEnter={prefetchSession}
               data-testid={`session-open-${session.id}`}
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
@@ -664,7 +676,7 @@ function SessionItem({
                 )
                 : (
                   <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {formatRelativeTime(session.updatedAt, t)}
+                    {formatRelativeTime(session.listActivityAt, t)}
                   </span>
                 )}
             </Link>

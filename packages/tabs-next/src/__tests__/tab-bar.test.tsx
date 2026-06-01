@@ -151,6 +151,7 @@ describe('tabBar', () => {
             closeIcon: <span data-testid="custom-close-icon">close</span>,
             newTabIcon: <span data-testid="custom-new-icon">new</span>,
             tabIcon: () => <span data-testid="custom-tab-icon">tab</span>,
+            tabBadge: () => <span data-testid="custom-tab-badge">badge</span>,
           }}
         />
       </TabsProvider>,
@@ -159,6 +160,35 @@ describe('tabBar', () => {
     expect(screen.getByTestId('custom-close-icon')).toBeTruthy()
     expect(screen.getByTestId('custom-new-icon')).toBeTruthy()
     expect(screen.getByTestId('custom-tab-icon')).toBeTruthy()
+    expect(screen.getByTestId('custom-tab-badge')).toBeTruthy()
+  })
+
+  it('keeps Meta number hints above tab badges', async () => {
+    const store = createTabStore(registry, { persistKey: `tabs-next-tab-bar-badge-priority-test-${Math.random()}` })
+    store.getState().openTab('chat', { sessionId: 'one' })
+    vi.useFakeTimers()
+
+    try {
+      render(
+        <TabsProvider store={store} registry={registry}>
+          <TabBar
+            customization={{
+              tabIcon: () => <span data-testid="custom-tab-icon">tab</span>,
+              tabBadge: () => <span data-testid="custom-tab-badge">badge</span>,
+            }}
+          />
+        </TabsProvider>,
+      )
+
+      fireEvent.keyDown(window, { key: 'Meta', metaKey: true })
+      await vi.advanceTimersByTimeAsync(250)
+
+      expect(screen.getByText('1')).toBeTruthy()
+      expect(screen.getByTestId('custom-tab-badge').parentElement?.className).toContain('opacity-0')
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 
   it('removes the global drag listener when unmounted during a drag', () => {

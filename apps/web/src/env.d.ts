@@ -41,6 +41,9 @@ interface Window {
     desktopUpdate: {
       onStatusChanged: (handler: (status: unknown) => void) => () => void
     }
+    desktopAppBadge?: {
+      setUnreadCount: (count: number) => Promise<unknown>
+    }
     // eslint-disable-next-line ts/no-explicit-any
     chatStream?: any
     desktopTray: {

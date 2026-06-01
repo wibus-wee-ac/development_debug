@@ -38,7 +38,9 @@ function normalizeArchivedSession(session: {
   archivedAt: number | unknown | null
   createdAt: number
   updatedAt: number
+  latestUserMessageAt: number | unknown | null
 }): WorkspaceSession {
+  const latestUserMessageAt = typeof session.latestUserMessageAt === 'number' ? session.latestUserMessageAt : null
   return {
     id: session.id,
     workspaceId: typeof session.workspaceId === 'string' ? session.workspaceId : null,
@@ -53,6 +55,8 @@ function normalizeArchivedSession(session: {
     archivedAt: typeof session.archivedAt === 'number' ? session.archivedAt : null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
+    latestUserMessageAt,
+    listActivityAt: latestUserMessageAt ?? session.createdAt,
   }
 }
 

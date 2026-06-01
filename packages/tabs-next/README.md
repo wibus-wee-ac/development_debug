@@ -14,7 +14,7 @@
 - `<TabRenderer>` renders every valid default tab context as an overlaid retained frame and switches visibility with CSS so already-loaded content remains mounted, stays out of the document flow while inactive, and does not return to fallback placeholders during tab switches. Routes marked `keepAlive: 'discardable'` still use React 19 `<Activity>` hidden mode for effect cleanup semantics.
 - Route-owned `preload(params)` hooks 允许 tab 定义在 open、activate、navigate 提交前预热延迟 route code，同时不把页面数据所有权移动到 tab runtime。
 - Route loaders are isolated behind a reducer-managed boundary so async loader transitions stay tied to the route params that triggered them.
-- `<TabBar>` exposes a single `TabBarCustomization` surface for chrome slots: close icon, new-tab icon, per-tab icon, and optional tooltip wrapper.
+- `<TabBar>` exposes a single `TabBarCustomization` surface for chrome slots: close icon, new-tab icon, per-tab icon, per-tab badge, and optional tooltip wrapper. Meta-key number hints own the leading slot while visible, then badge, then the normal route icon.
 - `<Link>` preserves anchor semantics while routing primary activation through the active tab and modifier or middle-click activation through a new tab.
 - `defineTab()` is kept as a migration helper. Long term, route owners should provide route metadata/capabilities directly.
 
@@ -45,7 +45,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
 - **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params and new-tab activation gestures.
 - **src/components/tab-renderer.tsx**: Overlaid retained-frame renderer with optional `useTabFrameActive()` state, React Activity support for discardable routes, and reducer-managed loader state.
-- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, shared chrome customization slots, and delayed Meta-key number hints for tab switching.
+- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, shared chrome customization slots, app-provided badge slots, and delayed Meta-key number hints for tab switching.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
 - **src/debug.ts**: Debug channel, storage keys, metrics, and snapshot utilities.
 - **src/cn.ts**: Package-local class name merge helper.

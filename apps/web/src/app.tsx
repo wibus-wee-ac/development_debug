@@ -12,6 +12,7 @@ import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsContent } from '~/features/settings/settings-content'
+import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
@@ -33,6 +34,11 @@ function getActiveLayoutSlotId(tab: { type: string, params: Record<string, strin
     return 'new-chat'
   }
   return null
+}
+
+function syncDesktopAppBadgeUnreadCount(count: number): void {
+  const promise = window.cradle?.desktopAppBadge?.setUnreadCount(count)
+  void promise?.catch(() => {})
 }
 
 export function App() {
@@ -73,6 +79,20 @@ function MainAppRuntime() {
   useThemeClass()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
+
+  useEffect(() => {
+    let previousUnreadCount = useSessionActivityStore.getState().unread.size
+    syncDesktopAppBadgeUnreadCount(previousUnreadCount)
+
+    return useSessionActivityStore.subscribe((state) => {
+      const unreadCount = state.unread.size
+      if (unreadCount === previousUnreadCount) {
+        return
+      }
+      previousUnreadCount = unreadCount
+      syncDesktopAppBadgeUnreadCount(unreadCount)
+    })
+  }, [])
 
   useEffect(() => {
     queueMicrotask(preloadCradleTabRoutes)

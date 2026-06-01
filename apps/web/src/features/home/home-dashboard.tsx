@@ -307,7 +307,7 @@ function RecentSessionRow({ session, workspaceName, t }: { session: WorkspaceSes
       </span>
       <span className="shrink-0 text-[11px] text-muted-foreground">{workspaceName}</span>
       <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground tabular-nums">
-        {formatRelativeTime(session.updatedAt, t)}
+        {formatRelativeTime(session.listActivityAt, t)}
       </span>
     </Link>
   )

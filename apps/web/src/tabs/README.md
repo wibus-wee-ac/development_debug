@@ -8,7 +8,7 @@ The registry exports the store instance consumed by the rest of the app.
 
 - **registry.ts**: Central registry mapping type strings to tab definitions; exports `useCradleTabStore` with main-window persistence by default and session-scoped persistence for Electron tear-off windows, exposes the live store on `window.__CRADLE_TAB_STORE__` in Vite dev for performance sampling, and installs Cradle-owned tab lifecycle bridges.
 - **route-preload.ts**: 后台 route chunk preload 入口；App shell 渲染后预热常用 tab 页面代码，但不接管页面数据所有权。
-- **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior and both paths preload the target route chunk before navigation.
+- **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates inside the current tab with tab-local history, while `openNewTab()` keeps explicit fresh-tab behavior. Chat targets call the chat-owned session prefetch boundary before navigation so transcript hydration can start before the Chat tab renders.
 - **tearoff-tabs.ts**: Main-window tear-off lifecycle helpers; reserve one active tear-off per chat session across drag/menu entry points, detach a chat tab from the main tab bar after the Electron tear-off opens, release the reservation when the window reports closed, and restore the tab.
 - **tearoff-tabs.test.ts**: Unit coverage for detaching torn-off chat tabs, restoring them on close, keeping the main tab bar non-empty, and session tear-off reservation release.
 - **terminal-panel-tab-lifecycle.ts**: Tab lifecycle bridge that derives chat/workspace terminal owner ids from tab params and stops bottom-panel terminal owners after their final owning tab closes.

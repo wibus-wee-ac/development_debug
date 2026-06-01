@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 
-import { onAnyChatRunEvent } from '~/features/chat/sse-chat-transport'
+import { onChatRunSettled } from '~/features/chat/sse-chat-transport'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
@@ -135,7 +135,7 @@ export function useGlobalEventListeners() {
   }, [visibleSessionId])
 
   useEffect(() => {
-    return onAnyChatRunEvent(({ chatSessionId }) => {
+    return onChatRunSettled(({ chatSessionId }) => {
       useSessionActivityStore.getState().recordActivity(chatSessionId)
     })
   }, [])

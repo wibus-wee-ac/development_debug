@@ -19,6 +19,7 @@ export interface TabBarCustomization {
   closeIcon?: React.ReactNode | (() => React.ReactNode)
   newTabIcon?: React.ReactNode | (() => React.ReactNode)
   tabIcon?: (tab: TabInstance) => React.ReactNode
+  tabBadge?: (tab: TabInstance) => React.ReactNode
   tooltip?: (tab: TabInstance, children: React.ReactElement) => React.ReactNode
 }
 
@@ -89,6 +90,7 @@ const SortableTabPill = memo(({
     zIndex: isDragging ? 10 : undefined,
   }
   const tabIcon = presentation?.icon ?? customization?.tabIcon?.(tab) ?? null
+  const tabBadge = customization?.tabBadge?.(tab) ?? null
   const shortcutSlot = shortcutHint === undefined
     ? null
     : (
@@ -99,7 +101,8 @@ const SortableTabPill = memo(({
           {shortcutHint}
         </span>
       )
-  const hasLeadingSlot = tabIcon || shortcutSlot
+  const hasLeadingSlot = tabIcon || tabBadge || shortcutSlot
+  const showBadgeSlot = Boolean(tabBadge) && !showShortcutHint
 
   const pill = (
     <div
@@ -136,10 +139,20 @@ const SortableTabPill = memo(({
             <span
               className={cn(
                 'absolute inset-0 flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
-                showShortcutHint ? 'scale-[0.92] opacity-0 blur-[2px]' : 'scale-100 opacity-100 blur-0',
+                showShortcutHint || showBadgeSlot ? 'scale-[0.92] opacity-0 blur-[2px]' : 'scale-100 opacity-100 blur-0',
               )}
             >
               {tabIcon}
+            </span>
+          )}
+          {tabBadge && (
+            <span
+              className={cn(
+                'absolute inset-0 flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
+                showBadgeSlot ? 'scale-100 opacity-100 blur-0' : 'scale-[0.92] opacity-0 blur-[2px]',
+              )}
+            >
+              {tabBadge}
             </span>
           )}
           {shortcutSlot && (

@@ -22,7 +22,7 @@ interface TerminalPanelState {
   registerOwner: (ownerId: string, cwd: string) => void
   addSession: (ownerId: string, cwd: string) => TerminalPanelSession
   activateSession: (ownerId: string, sessionId: string) => void
-  removeSession: (ownerId: string, sessionId: string) => void
+  removeSession: (ownerId: string, sessionId: string) => number | null
   removeOwner: (ownerId: string) => TerminalPanelSession[]
   updateSessionTitle: (ownerId: string, sessionId: string, title: string) => void
 }
@@ -54,6 +54,21 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
           return state
         }
 
+        if (owner) {
+          const index = owner.nextIndex
+          const session = createSession(ownerId, cwd, index)
+          return {
+            owners: {
+              ...state.owners,
+              [ownerId]: {
+                sessions: [session],
+                activeSessionId: session.id,
+                nextIndex: index + 1,
+              },
+            },
+          }
+        }
+
         return {
           owners: {
             ...state.owners,
@@ -63,20 +78,28 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
       })
     },
     addSession: (ownerId, cwd) => {
-      const owner = get().owners[ownerId] ?? buildInitialOwnerState(ownerId, cwd)
-      const index = owner.nextIndex
-      const session = createSession(ownerId, cwd, index)
+      let session = createSession(ownerId, cwd, 1)
 
-      set(state => ({
-        owners: {
-          ...state.owners,
-          [ownerId]: {
-            sessions: [...owner.sessions, session],
-            activeSessionId: session.id,
-            nextIndex: index + 1,
+      set((state) => {
+        const owner = state.owners[ownerId] ?? {
+          sessions: [],
+          activeSessionId: null,
+          nextIndex: 1,
+        }
+        const index = owner.nextIndex
+        session = createSession(ownerId, cwd, index)
+
+        return {
+          owners: {
+            ...state.owners,
+            [ownerId]: {
+              sessions: [...owner.sessions, session],
+              activeSessionId: session.id,
+              nextIndex: index + 1,
+            },
           },
-        },
-      }))
+        }
+      })
 
       return session
     },
@@ -99,19 +122,29 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
       })
     },
     removeSession: (ownerId, sessionId) => {
+      let remainingCount: number | null = null
+
       set((state) => {
         const owner = state.owners[ownerId]
         if (!owner) {
           return state
         }
 
-        const removed = owner.sessions.find(session => session.id === sessionId)
+        if (!owner.sessions.some(session => session.id === sessionId)) {
+          return state
+        }
+
         const sessions = owner.sessions.filter(session => session.id !== sessionId)
+        remainingCount = sessions.length
         if (sessions.length === 0) {
           return {
             owners: {
               ...state.owners,
-              [ownerId]: buildInitialOwnerState(ownerId, removed?.cwd ?? owner.sessions[0]?.cwd ?? ''),
+              [ownerId]: {
+                sessions: [],
+                activeSessionId: null,
+                nextIndex: owner.nextIndex,
+              },
             },
           }
         }
@@ -127,6 +160,8 @@ export const useTerminalPanelStore = create<TerminalPanelState>()(
           },
         }
       })
+
+      return remainingCount
     },
     removeOwner: (ownerId) => {
       const owner = get().owners[ownerId]

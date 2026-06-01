@@ -1,6 +1,6 @@
 import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
-import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
+import { GlobeIcon, MessageCircleMoreIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,6 +10,7 @@ import { ResourcesPopover } from '~/features/devtool/resources/resources-popover
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, nativeIpc, platform, subscribePointerOutsideWindow } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
+import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
@@ -41,6 +42,7 @@ export function AppHeader({
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
+  const unreadSessionIds = useSessionActivityStore(s => s.unread)
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
   const isDrillIn = isSettingsActive
@@ -135,7 +137,25 @@ export function AppHeader({
       const Icon = route.icon as React.ComponentType<{ className?: string }>
       return <Icon className="size-3 shrink-0" />
     },
-  }), [])
+    tabBadge: (tab: TabInstance) => {
+      if (tab.type !== 'chat') {
+        return null
+      }
+      const sessionId = (tab.params as { sessionId?: string }).sessionId
+      if (!sessionId || !unreadSessionIds.has(sessionId)) {
+        return null
+      }
+      return (
+        <span
+          aria-hidden="true"
+          className="relative inline-flex size-4 items-center justify-center text-primary"
+        >
+          <MessageCircleMoreIcon className="size-3.5" />
+          <span className="absolute right-0 top-0 size-1.5 rounded-full bg-primary ring-2 ring-background" />
+        </span>
+      )
+    },
+  }), [unreadSessionIds])
 
   return (
     <div

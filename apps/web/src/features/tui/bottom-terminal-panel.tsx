@@ -3,7 +3,7 @@
 // Position: Owned by TUI; chat/workspace pages only register this component as layout panel content.
 
 import { PlusIcon, SquareTerminalIcon, XIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -28,37 +28,42 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
   const removeSession = useTerminalPanelStore(state => state.removeSession)
   const updateSessionTitle = useTerminalPanelStore(state => state.updateSessionTitle)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
+  const setBottomPanelOpen = useLayoutStore(state => state.setBottomPanelOpen)
   const [cwdBySessionId, setCwdBySessionId] = useState<Record<string, string | null>>({})
 
   useEffect(() => {
-    registerOwner(ownerId, cwd)
-  }, [cwd, ownerId, registerOwner])
+    if (!bottomPanelOpen) {
+      return
+    }
 
-  const sessions = useMemo(() => owner?.sessions ?? [], [owner?.sessions])
+    registerOwner(ownerId, cwd)
+  }, [bottomPanelOpen, cwd, ownerId, registerOwner])
+
+  const sessions = owner?.sessions ?? []
   const activeSessionId = owner?.activeSessionId ?? sessions[0]?.id ?? null
 
-  const handleAddSession = useCallback(() => {
+  function handleAddSession() {
     addSession(ownerId, cwd)
-  }, [addSession, cwd, ownerId])
+  }
 
-  const handleRemoveSession = useCallback((sessionId: string) => {
+  function handleRemoveSession(sessionId: string) {
     void stopShell(sessionId).catch(() => {})
-    removeSession(ownerId, sessionId)
-  }, [ownerId, removeSession])
+    const remainingCount = removeSession(ownerId, sessionId)
+    if (remainingCount === 0) {
+      setBottomPanelOpen(false)
+    }
+  }
 
-  const handleMetadata = useCallback((sessionId: string, metadata: TerminalMetadata) => {
+  function handleMetadata(sessionId: string, metadata: TerminalMetadata) {
     if (metadata.title) {
       updateSessionTitle(ownerId, sessionId, metadata.title)
     }
     if (metadata.cwd) {
       setCwdBySessionId(prev => ({ ...prev, [sessionId]: metadata.cwd }))
     }
-  }, [ownerId, updateSessionTitle])
+  }
 
-  const activeSession = useMemo(
-    () => sessions.find(session => session.id === activeSessionId) ?? sessions[0] ?? null,
-    [activeSessionId, sessions],
-  )
+  const activeSession = sessions.find(session => session.id === activeSessionId) ?? sessions[0] ?? null
 
   if (!activeSession) {
     return (
@@ -78,7 +83,12 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
           visible={bottomPanelOpen}
           stopOnUnmount={false}
           onMetadata={metadata => handleMetadata(activeSession.id, metadata)}
-          onExited={() => removeSession(ownerId, activeSession.id)}
+          onExited={() => {
+            const remainingCount = removeSession(ownerId, activeSession.id)
+            if (remainingCount === 0) {
+              setBottomPanelOpen(false)
+            }
+          }}
         />
       </div>
       <div className="flex w-56 shrink-0 flex-col border-l border-border/70 bg-background" data-testid="bottom-terminal-session-tabs">
@@ -125,17 +135,15 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
                     </span>
                   )}
                 </button>
-                {sessions.length > 1 && (
-                  <button
-                    type="button"
-                    aria-label={`Close ${session.title}`}
-                    data-testid={`bottom-terminal-close-${session.id}`}
-                    className="mr-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 focus:opacity-100"
-                    onClick={() => handleRemoveSession(session.id)}
-                  >
-                    <XIcon className="size-2.5" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  aria-label={`Close ${session.title}`}
+                  data-testid={`bottom-terminal-close-${session.id}`}
+                  className="mr-1 rounded p-0.5 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-foreground/10 focus:opacity-100"
+                  onClick={() => handleRemoveSession(session.id)}
+                >
+                  <XIcon className="size-2.5" />
+                </button>
               </div>
             )
           })}

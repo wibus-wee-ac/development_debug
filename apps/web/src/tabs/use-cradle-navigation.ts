@@ -1,20 +1,31 @@
 import { useTabNavigation } from '@cradle/tabs-next'
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
 
+import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
 import { useCradleTabStore } from '~/tabs/registry'
 
 export function useCradleNavigation() {
   const { navigateInTab, openInNewTab } = useTabNavigation()
+  const queryClient = useQueryClient()
+
+  const prefetchTarget = useCallback((type: string, params?: Record<string, string | undefined>) => {
+    if (type === 'chat' && params?.sessionId) {
+      prefetchChatSession(queryClient, params.sessionId)
+    }
+  }, [queryClient])
 
   /** Navigate in the current tab; pinned tabs fall back to opening or activating another tab. */
   const openTab = useCallback((type: string, params?: Record<string, string | undefined>) => {
+    prefetchTarget(type, params)
     return navigateInTab(type, params)
-  }, [navigateInTab])
+  }, [navigateInTab, prefetchTarget])
 
   /** Always open a new tab. */
   const openNewTab = useCallback((type: string, params?: Record<string, string | undefined>) => {
+    prefetchTarget(type, params)
     return openInNewTab(type, params)
-  }, [openInNewTab])
+  }, [openInNewTab, prefetchTarget])
 
   return { openTab, openNewTab }
 }

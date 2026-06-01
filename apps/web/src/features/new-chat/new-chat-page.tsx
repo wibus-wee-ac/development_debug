@@ -24,7 +24,7 @@ import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import type { MentionItem } from '~/features/chat/mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import { sessionsQueryKey, useWorkspaceSessions } from '~/features/workspace/use-session'
+import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
@@ -249,6 +249,13 @@ function useNewChatPageOwner(active: boolean) {
           workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
           runtimeKind: 'cli-tui',
         })
+        updateSessionInSessionLists(queryClient, {
+          id: session.id,
+          title: trimmedText.slice(0, 80) || effectiveAgent.name,
+          workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
+          agentId: effectiveAgent.id,
+          runtimeKind: 'cli-tui',
+        }, { promote: true })
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
           queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
@@ -280,6 +287,14 @@ function useNewChatPageOwner(active: boolean) {
         workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
         runtimeKind: selection.runtimeKind,
       })
+      updateSessionInSessionLists(queryClient, {
+        id: session.id,
+        title: trimmedText.slice(0, 80) || effectiveProfile.name,
+        workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
+        providerTargetId: effectiveProfile.id,
+        modelId: effectiveModel?.id ?? null,
+        runtimeKind: selection.runtimeKind,
+      }, { promote: true })
       void startChatResponse({
         sessionId: session.id,
         body: {
@@ -288,6 +303,18 @@ function useNewChatPageOwner(active: boolean) {
           modelId: effectiveModel?.id ?? undefined,
           thinkingEffort: selection.thinkingEffort ?? undefined,
         },
+      }).then(async (response) => {
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          throw new Error(`Failed to start chat response: ${response.status} ${body}`)
+        }
+        await response.body?.cancel()
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+        ])
+      }).catch((err) => {
+        console.error('[NewChatPage] start response failed:', err)
       })
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
@@ -582,7 +609,7 @@ export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useN
                 </span>
               </div>
               <time className="text-[11px] text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70" suppressHydrationWarning>
-                {timeAgo(session.updatedAt, owner.now, t)}
+                {timeAgo(session.listActivityAt, owner.now, t)}
               </time>
             </m.button>
           ))}
