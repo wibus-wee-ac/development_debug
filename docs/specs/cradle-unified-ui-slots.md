@@ -43,28 +43,39 @@ right aside 更适合承载可并行查看的辅助信息，例如文件、works
 
 | Cradle UI slot | Provider/native source | Current projection in Cradle | Gap / note | Scope |
 | --- | --- | --- | --- | --- |
-| Goal / active objective | `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/goal/updated`, `thread/goal/cleared`, user-message action | provider-owned goal slot state renders next to Composer; `/goal` slash row comes from provider slot capability; completed user messages can draft the provider `/goal` command | 还缺真正的 provider command execution flow；当前 message action 只生成 provider command draft，不由 Cradle 写 goal state | in-scope |
-| Session / run status | `turn/*`, `thread/status/changed`, `turn/completed`, `error`, `model/rerouted`, `thread/tokenUsage/updated` | `RuntimeSessionPanel` runtime/UI status, run metadata, queue, provider session | 已有基础，但还不是完整的统一 run summary | in-scope |
+| Goal / active objective | `thread/goal/set`, `thread/goal/get`, `thread/goal/clear`, `thread/goal/updated`, `thread/goal/cleared`, user-message action | provider-owned goal slot state renders next to Composer when the slot declares `composerState`; `/goal` slash row comes from provider slot capability; completed user messages can draft the provider `/goal` command; Codex `/goal ...` is executed through `thread/goal/set` | Cradle 只 draft / 发送 provider command，不写 provider goal state | in-scope |
+| Session / run status | `turn/*`, `thread/status/changed`, `turn/completed`, `error`, `model/rerouted`, `thread/tokenUsage/updated` | `RuntimeSessionPanel` runtime/UI status, run metadata, queue, provider session, plus provider-declared `runtimePanel` status cards | 已形成 session-level summary；后续可继续增强详情页 | in-scope |
 | Task / TODO | `turn/plan/updated`, `item/plan/delta`, Claude `TodoWrite`, task tools | `RuntimeSessionPanel` Todos, `ChatView` TodoProgress | TODO 是可跟踪状态项，必须能形成 session-level snapshot；Claude 有，Codex plan 还缺稳定投影到 session TODO snapshot | in-scope |
-| Plan | `turn/plan/updated`, `item/plan/delta`, `plan` tool | chat tool block can render plan text | Plan 是 reasoning / execution strategy 的时序投影；有展示，但没有独立 plan 槽位和 session-level 汇总 | in-scope |
-| Tool activity feed | `item/started`, `item/completed`, `serverRequest/resolved`, `item/reasoning/*` | tool blocks and recent tools list | 有碎片化展示，缺统一 activity feed view | in-scope |
-| Diff / file change | `item/fileChange/*`, `fs/writeFile`, `fs/remove`, `gitDiffToRemote` | tool block edit/diff preview | 有局部预览，缺 session-level diff summary | in-scope |
-| Terminal / process | `command/exec`, `process/*`, `thread/shellCommand` | TUI panel and terminal tool blocks | 能力分散在多个 surfaces 里 | in-scope |
-| MCP | `mcpServer/oauth/login`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/tool/call`, `mcpServer/elicitation/request` | tool block / devtool fragments | 有 activity surface，缺统一 MCP session summary | in-scope |
-| Approvals / elicitation | `item/*/requestApproval`, `item/tool/requestUserInput`, `item/permissions/requestApproval`, `mcpServer/elicitation/request` | native approval continuation in chat | 有流程，缺专门审批中心 | in-scope |
-| Filesystem | `fs/readFile`, `fs/readDirectory`, `fs/watch`, `fs/unwatch`, `fs/copy`, `fs/getMetadata` | workspace file tree / editor / preview | 有文件 UI，缺 session-level fs activity summary | in-scope |
-| Skills / hooks | `skills/list`, `skills/config/write`, `hooks/list`, `skills/changed` | Skills feature, settings, workspace detail | 有管理面，缺 runtime projection 槽位 | in-scope |
-| Plugin / marketplace | `plugin/*`, `marketplace/*`, `app/list` | devtool plugin views, plugin sidebar | 有管理面，缺运行态汇总槽位 | in-scope |
-| Search / history / timeline | `thread/search`, `thread/list`, `thread/read`, `thread/turns/list`, `thread/turns/items/list`, `fuzzyFileSearch`, `getConversationSummary` | global search, chat export | 有搜索入口，缺 session timeline explorer slot | in-scope |
-| Crew / delegation / review | `review/start`, `collabAgentToolCall`, `issue-agent`, subagent output | issue-agent and subagent rendering | 有碎片，缺 crew/review overview slot | in-scope |
+| Plan | `turn/plan/updated`, `item/plan/delta`, `plan` tool | chat tool blocks render stream evidence; provider-owned plan slot renders a Runtime tab summary | Plan state 不写入 Cradle TODO；它保持 provider-owned plan projection | in-scope |
+| Tool activity feed | `item/started`, `item/completed`, `serverRequest/resolved`, `item/reasoning/*` | message tool blocks render stream evidence; Runtime tab shows recent tool activity summary | 更深的 timeline explorer 仍可作为后续详情面 | in-scope |
+| Diff / file change | `item/fileChange/*`, `fs.writeFile`, `fs.remove`, `gitDiffToRemote` | inline edit/diff previews, workspace Changes route, Runtime tab diff summary | session-level summary 已有；专门 diff explorer 仍由 workspace changes 面承载 | in-scope |
+| Terminal / process | `command/exec`, `process/*`, `thread/shellCommand` | TUI panel, terminal tool blocks, Runtime tab terminal summary | 能力仍分布在不同 surface，但已有统一 session summary | in-scope |
+| MCP | `mcpServer/oauth/login`, `mcpServerStatus/list`, `mcpServer/resource/read`, `mcpServer/tool/call`, `mcpServer/elicitation/request` | tool blocks plus provider-owned Runtime tab MCP summary | OAuth/detail 操作仍属于 provider/native flow | in-scope |
+| Approvals / elicitation | `item/*/requestApproval`, `item/tool/requestUserInput`, `item/permissions/requestApproval`, `mcpServer/elicitation/request` | native approval continuation in chat plus Runtime tab approval summary | 专门审批中心可后续扩展；当前已有 session summary | in-scope |
+| Filesystem | `fs/readFile`, `fs/readDirectory`, `fs/watch`, `fs/unwatch`, `fs/copy`, `fs/getMetadata` | workspace file tree / editor / preview plus Runtime tab fs activity summary | 文件生命周期仍由 workspace/filesystem owner 管理 | in-scope |
+| Skills / hooks | `skills/list`, `skills/config/write`, `hooks/list`, `skills/changed` | Skills feature, settings, workspace detail, Runtime tab skills summary | Cradle 只读 skills namespace，不写 provider/agent skills namespace | in-scope |
+| Plugin / marketplace | `plugin/*`, `marketplace/*`, `app/list` | plugin/sidebar management views plus Runtime tab plugin/app summary | 插件生命周期仍由 plugin owner 管理 | in-scope |
+| Search / history / timeline | `thread/search`, `thread/list`, `thread/read`, `thread/turns/list`, `thread/turns/items/list`, `fuzzyFileSearch`, `getConversationSummary` | global search, chat export, Runtime tab search summary | 深层 timeline explorer 可后续增强 | in-scope |
+| Crew / delegation / review | `review/start`, `collabAgentToolCall`, `issue-agent`, subagent output | issue-agent/subagent message evidence plus Runtime tab crew summary; `streamEvidence` marks slots whose evidence appears in the chat stream | stream evidence 由 message/tool block 消费，不重复生成 side panel event log | in-scope |
 | Workspace / issue / kanban | Cradle-owned source | workspace sidebar, kanban, issue-agent | 已是 Cradle 语义，不依赖 app-server | in-scope |
-| Usage / observability | Cradle-owned source | usage dashboard, devtool observability | 已有数据面，但不在任务主线槽位里 | in-scope |
-| Attention / context | Cradle-owned source | Jarvis context, viewport, selection | 起步阶段，未成为统一产品层 | in-scope |
+| Usage / observability | Cradle-owned source plus provider rate-limit sources | usage dashboard, devtool observability, Runtime tab provider usage summary | Cradle usage和 provider rate limit 是两个 owner；Runtime tab 只做摘要 | in-scope |
+| Attention / context | Cradle-owned source | Jarvis context provider plus Runtime tab Attention summary for visible message range, scroll, focus, freshness | 这是 Cradle-owned slot，不进入 provider UI slot contract | in-scope |
 | Account / login | `account/login/start`, `account/login/cancel`, `account/logout`, `account/rateLimits/read`, `account/chatgptAuthTokens/refresh` | no dedicated product slot yet | 记录但不进入当前实现范围 | record-only |
 | Remote control | `remoteControl/enable`, `remoteControl/disable`, `remoteControl/status/read` | no dedicated product slot yet | 记录但不进入当前实现范围 | record-only |
 | Windows sandbox | `windowsSandbox/setupStart`, `windowsSandbox/readiness`, `windowsSandbox/setupCompleted` | no dedicated product slot yet | 记录但不进入当前实现范围 | record-only |
-| Config / model / capability | `model/list`, `modelProvider/capabilities/read`, `config/read/write/batchWrite`, `experimentalFeature/list`, `permissionProfile/list`, `getAuthStatus`, `externalAgentConfig/import` | settings / agent management | 有配置面，缺 session-level capability summary | in-scope |
-| Alert / recovery | `warning`, `guardianWarning`, `deprecationNotice`, `configWarning`, `thread/compacted`, `rollback`, `archive/unarchive`, `backgroundTerminals/clean` | chat error banner and partial state hints | 缺统一告警与恢复中心 | in-scope |
+| Config / model / capability | `model/list`, `modelProvider/capabilities/read`, `config/read/write/batchWrite`, `experimentalFeature/list`, `permissionProfile/list`, `getAuthStatus`, `externalAgentConfig/import` | settings / agent management; provider model menu remains owner of model switching; `toolbarPicker` slots expose option summaries; Runtime tab shows model/reasoning/config summaries | model/reasoning/config 不进入 slash panel | in-scope |
+| Alert / recovery | `warning`, `guardianWarning`, `deprecationNotice`, `configWarning`, `thread/compacted`, `rollback`, `archive/unarchive`, `backgroundTerminals/clean` | chat error banner plus Runtime tab alert/recovery summary | 更复杂的恢复中心可后续增强；当前已有 session summary | in-scope |
+
+## 当前 surface contract
+
+Provider 暴露的是 `RuntimeUiSlot.surfaces`，Cradle 按 surface 分流，而不是按 provider 名称或固定 slot id 分流：
+
+- `slashCommand`：进入 slash panel，例如 Codex `/goal`、`/compact`、`/review`。
+- `composerState`：进入 composer rail，目前用于 active goal 这类主工作流状态。
+- `toolbarPicker`：进入 composer toolbar option placeholder，用于 model / reasoning / config 这类可选配置摘要；不替换现有 provider model menu。
+- `runtimePanel`：进入 Right Aside Runtime tab，显示 provider-owned session summary cards。
+- `streamEvidence`：由 chat message/tool blocks 消费 provider-emitted chunks，例如 tool activity、crew/subagent、diff、terminal 等执行证据；不再重复造一套 side-panel event log。
+- `recordOnly`：只保留能力证据，不进入当前 UI 实现范围。
 
 ## 结论
 
