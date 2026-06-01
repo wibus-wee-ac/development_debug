@@ -137,6 +137,7 @@ import { register as registerSearchChronicle } from './search/chronicle'
 import { register as registerSearchThreads } from './search/threads'
 import { register as registerSecretDelete } from './secret/delete'
 import { register as registerSecretList } from './secret/list'
+import { register as registerSessionArchive } from './session/archive'
 import { register as registerSessionAwaitCancel } from './session/await-cancel'
 import { register as registerSessionAwaitCreate } from './session/await-create'
 import { register as registerSessionAwaitGet } from './session/await-get'
@@ -335,6 +336,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerSearchThreads(program)
   registerSecretDelete(program)
   registerSecretList(program)
+  registerSessionArchive(program)
   registerSessionAwaitCancel(program)
   registerSessionAwaitCreate(program)
   registerSessionAwaitGet(program)

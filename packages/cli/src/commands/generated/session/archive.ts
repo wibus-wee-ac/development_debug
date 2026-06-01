@@ -3,28 +3,29 @@ import type { CliOperationSpec } from '../../../runtime/types'
 import type { Command } from 'commander'
 
 const spec = {
-  "arguments": [],
+  "arguments": [
+    {
+      "name": "id",
+      "required": true,
+      "target": "path.id",
+      "type": "string"
+    }
+  ],
   "command": [
     "session",
-    "list"
+    "archive"
   ],
-  "description": "List sessions",
+  "description": "Archive or restore session",
   "flags": [
     {
-      "name": "workspaceId",
-      "required": false,
-      "target": "query.workspaceId",
-      "type": "string"
-    },
-    {
       "name": "archived",
-      "required": false,
-      "target": "query.archived",
+      "required": true,
+      "target": "body.archived",
       "type": "boolean"
     }
   ],
-  "method": "get",
-  "path": "/sessions/"
+  "method": "post",
+  "path": "/sessions/{id}/archive"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {
