@@ -3,10 +3,12 @@ import { getEventScreenCoordinates, isPointerOutsideWindow, Link } from '@cradle
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
-  BarChart3Icon,
   ArchiveIcon,
+  BarChart3Icon,
+  CalendarClockIcon,
   ChevronDownIcon,
   ChevronUpIcon,
+  CircleAlertIcon,
   ClipboardCopyIcon,
   CopyIcon,
   ExternalLinkIcon,
@@ -345,6 +347,8 @@ function SessionItem({
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id))
   const isStreaming = session.status === 'streaming' || hasLocalStreamingState
+  const latestLocalError = useChatStore(chatSelectors.latestError(session.id))
+  const hasError = !isStreaming && (session.status === 'error' || Boolean(latestLocalError))
   const [isRenaming, setIsRenaming] = useState(false)
   const dragPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
@@ -632,7 +636,17 @@ function SessionItem({
               data-testid={`session-open-${session.id}`}
               className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
-              <RuntimeIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+              {hasError
+                ? (
+                  <CircleAlertIcon
+                    className="size-3.5 shrink-0 text-destructive/80"
+                    aria-label={t('session.aria.error')}
+                    data-testid={`session-error-indicator-${session.id}`}
+                  />
+                )
+                : (
+                  <RuntimeIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+                )}
               {session.pinned
                 ? (
                   <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${session.id}`} />
@@ -1351,6 +1365,13 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             collapsed={collapsed}
             onClick={openSearch}
             dataTestId="nav-search"
+          />
+          <TopNavItem
+            icon={<CalendarClockIcon className="size-3.5" />}
+            label={t('nav.automation')}
+            collapsed={collapsed}
+            to="automation"
+            dataTestId="nav-automation"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}
