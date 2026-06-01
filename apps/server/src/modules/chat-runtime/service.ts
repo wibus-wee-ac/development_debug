@@ -438,6 +438,39 @@ function attachBinding(input: {
     .get()
 }
 
+function reportRuntimeSessionTitle(input: {
+  sessionId: string
+  title: string
+}): void {
+  const title = normalizeRuntimeSessionTitle(input.title)
+  if (!title) {
+    return
+  }
+
+  const session = db()
+    .select({ title: sessions.title })
+    .from(sessions)
+    .where(eq(sessions.id, input.sessionId))
+    .get()
+  if (!session || session.title === title) {
+    return
+  }
+
+  db()
+    .update(sessions)
+    .set({
+      title,
+      updatedAt: currentUnixSeconds(),
+    })
+    .where(eq(sessions.id, input.sessionId))
+    .run()
+}
+
+function normalizeRuntimeSessionTitle(title: string): string | null {
+  const normalized = title.replace(/\s+/g, ' ').trim()
+  return normalized.length > 0 ? normalized : null
+}
+
 function readRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -2650,6 +2683,7 @@ async function executeRun(
       systemPrompt: input.systemPrompt,
       history: input.history,
       originalMessages: input.originalMessages,
+      reportSessionTitle: title => reportRuntimeSessionTitle({ sessionId: activeRun.sessionId, title }),
     })) {
       if (activeRun.terminalStatus) {
         break

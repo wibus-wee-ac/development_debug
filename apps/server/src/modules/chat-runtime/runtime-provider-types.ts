@@ -71,6 +71,7 @@ export interface StreamTurnInput {
   }
   systemPrompt?: string
   history?: UIMessage[]
+  reportSessionTitle?: (title: string) => void
 }
 
 export interface CancelTurnInput {

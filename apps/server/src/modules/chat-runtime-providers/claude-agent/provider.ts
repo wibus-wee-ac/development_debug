@@ -1,5 +1,5 @@
 import type { Options, Query, SDKUserMessage, SlashCommand } from '@anthropic-ai/claude-agent-sdk'
-import { query } from '@anthropic-ai/claude-agent-sdk'
+import { getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
@@ -30,6 +30,11 @@ import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from
 interface ClaudeAgentProviderDeps {
   readSecret: (credentialRef: string) => string
   resolveSkillPaths?: (workspacePath: string) => string[]
+}
+
+interface ClaudeAgentSessionInfo {
+  summary?: string
+  customTitle?: string
 }
 
 const RUNTIME_KIND: RuntimeKind = 'claude-agent'
@@ -171,6 +176,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
       if (input.runtimeSession.providerSessionId && effectiveModel) {
         await activeQuery.setModel(effectiveModel)
       }
+      if (input.runtimeSession.providerSessionId) {
+        await this.reportClaudeSessionTitle(input.runtimeSession.providerSessionId, input.reportSessionTitle)
+      }
       inputStream.push(userContent)
 
       for await (const message of activeQuery) {
@@ -220,6 +228,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
         if (result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId) {
           input.runtimeSession.providerSessionId = result.sessionId
+          await this.reportClaudeSessionTitle(result.sessionId, input.reportSessionTitle)
         }
 
         if (result.usage) {
@@ -297,6 +306,21 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return
     }
     entry.query.setPermissionMode(input.mode)
+  }
+
+  private async reportClaudeSessionTitle(sessionId: string, reportSessionTitle?: (title: string) => void): Promise<void> {
+    if (!reportSessionTitle) {
+      return
+    }
+
+    const info = await getSessionInfo(sessionId).catch(() => undefined)
+    const title = normalizeClaudeSessionTitle(
+      (info as ClaudeAgentSessionInfo | undefined)?.customTitle
+      ?? (info as ClaudeAgentSessionInfo | undefined)?.summary,
+    )
+    if (title) {
+      reportSessionTitle(title)
+    }
   }
 }
 
@@ -676,6 +700,11 @@ function buildClaudeAgentModelEnv(config: {
   }
 
   return env
+}
+
+function normalizeClaudeSessionTitle(title: string | null | undefined): string | null {
+  const normalized = title?.replace(/\s+/g, ' ').trim() ?? ''
+  return normalized.length > 0 ? normalized : null
 }
 
 function readNonEmptyEnvValue(value: string | undefined): string | undefined {
