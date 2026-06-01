@@ -654,7 +654,12 @@ describe('codexProvider app-server integration', () => {
       params: {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
-        message: 'Upstream model request failed',
+        error: {
+          message: 'Upstream model request failed',
+          codexErrorInfo: null,
+          additionalDetails: null,
+        },
+        willRetry: false,
         code: 'invalid_request',
         details: {
           model: 'mimo-v2.5-pro',
@@ -676,7 +681,10 @@ describe('codexProvider app-server integration', () => {
             {
               method: 'error',
               params: expect.objectContaining({
-                message: 'Upstream model request failed',
+                error: expect.objectContaining({
+                  message: 'Upstream model request failed',
+                }),
+                willRetry: false,
                 code: 'invalid_request',
               }),
             },
@@ -685,12 +693,79 @@ describe('codexProvider app-server integration', () => {
         notification: {
           method: 'error',
           params: expect.objectContaining({
-            message: 'Upstream model request failed',
+            error: expect.objectContaining({
+              message: 'Upstream model request failed',
+            }),
+            willRetry: false,
             code: 'invalid_request',
           }),
         },
       },
     })
+  })
+
+  it('keeps streaming when Codex app-server reports a retryable transport error', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-retryable-error',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Keep going after reconnect'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'error',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        error: {
+          message: 'Reconnecting... 1/5',
+          codexErrorInfo: null,
+          additionalDetails: 'stream disconnected before completion',
+        },
+        willRetry: true,
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Recovered',
+      },
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: { type: 'text-start', id: 'assistant-message-1' },
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'text-delta', id: 'assistant-message-1', delta: 'Recovered' },
+      { type: 'text-end', id: 'assistant-message-1' },
+    ])
   })
 
   it('resumes existing app-server threads before starting the turn', async () => {

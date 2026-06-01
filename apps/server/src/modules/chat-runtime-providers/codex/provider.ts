@@ -75,7 +75,7 @@ interface CodexStreamDiagnostics {
 }
 
 interface ThreadResponse {
-  thread?: { id?: string }
+  thread?: { id?: string, name?: string | null }
 }
 
 interface TurnResponse {
@@ -90,6 +90,17 @@ interface TurnNotificationParams {
 
 interface ItemNotificationParams {
   item?: { type?: string, id?: string }
+}
+
+interface ErrorNotificationParams {
+  message?: string
+  willRetry?: boolean
+  error?: { message?: string }
+}
+
+interface ThreadNameUpdatedNotificationParams {
+  threadId?: string
+  threadName?: string
 }
 
 interface CodexProviderErrorData {
@@ -214,14 +225,18 @@ export class CodexProvider implements ChatRuntime {
 
     try {
       await client.initialize()
-      const threadId = await startOrResumeThread(client, input.runtimeSession, {
+      const threadStart = await startOrResumeThread(client, input.runtimeSession, {
         model: effectiveModel,
         cwd: workspacePath,
         approvalPolicy: config.approvalPolicy,
         sandbox: config.sandboxMode,
         config: codexConfig,
       })
+      const threadId = threadStart.threadId
       input.runtimeSession.providerSessionId = threadId
+      if (threadStart.title) {
+        input.reportSessionTitle?.(threadStart.title)
+      }
       if (shouldInjectReconstructedHistory) {
         await injectCradleTranscriptHistory(client, threadId, input.transcript?.history ?? input.history)
       }
@@ -256,6 +271,12 @@ export class CodexProvider implements ChatRuntime {
         if (notification.method === 'turn/started' && !activeEntry.turnId) {
           activeEntry.turnId = getTurnId(notification)
         }
+        if (notification.method === 'thread/name/updated') {
+          const title = readThreadNameUpdate(notification, threadId)
+          if (title) {
+            input.reportSessionTitle?.(title)
+          }
+        }
         if (notification.method === 'turn/completed') {
           const turn = (notification.params as TurnNotificationParams | undefined)?.turn
           if (turn?.status === 'failed') {
@@ -264,6 +285,9 @@ export class CodexProvider implements ChatRuntime {
           break
         }
         if (notification.method === 'error') {
+          if (isRetryableCodexAppServerError(notification)) {
+            continue
+          }
           throw createCodexAppServerError(notification, diagnostics)
         }
       }
@@ -374,7 +398,7 @@ async function startOrResumeThread(
     sandbox: CodexConfig['sandboxMode']
     config: Record<string, unknown>
   },
-): Promise<string> {
+): Promise<{ threadId: string, title: string | null }> {
   const baseParams = {
     model: params.model,
     cwd: params.cwd,
@@ -392,7 +416,10 @@ async function startOrResumeThread(
   if (!threadId) {
     throw new Error('Codex app-server did not return a thread id')
   }
-  return threadId
+  return {
+    threadId,
+    title: normalizeProviderTitle(response.thread?.name),
+  }
 }
 
 async function injectCradleTranscriptHistory(
@@ -669,6 +696,19 @@ function getNotificationTurnId(notification: CodexAppServerMessage): string | nu
   return (notification.params as { turnId?: string } | undefined)?.turnId ?? getTurnId(notification)
 }
 
+function readThreadNameUpdate(notification: CodexAppServerMessage, expectedThreadId: string): string | null {
+  const params = notification.params as ThreadNameUpdatedNotificationParams | undefined
+  if (!params || params.threadId !== expectedThreadId) {
+    return null
+  }
+  return normalizeProviderTitle(params.threadName)
+}
+
+function normalizeProviderTitle(title: string | null | undefined): string | null {
+  const normalized = title?.replace(/\s+/g, ' ').trim() ?? ''
+  return normalized.length > 0 ? normalized : null
+}
+
 function incrementCount(counts: Record<string, number>, key: string): void {
   counts[key] = (counts[key] ?? 0) + 1
 }
@@ -693,9 +733,14 @@ function createCodexTurnFailureError(
 }
 
 function createCodexAppServerError(notification: CodexAppServerMessage, diagnostics: CodexStreamDiagnostics): CodexProviderError {
-  const message = (notification.params as { message?: string } | undefined)?.message ?? 'Codex app-server error'
+  const params = notification.params as ErrorNotificationParams | undefined
+  const message = params?.error?.message ?? params?.message ?? 'Codex app-server error'
   const errorText = `${message} (raw=${formatCodexDiagnostics(diagnostics)})`
   return createCodexProviderError(errorText, diagnostics, notification)
+}
+
+function isRetryableCodexAppServerError(notification: CodexAppServerMessage): boolean {
+  return (notification.params as ErrorNotificationParams | undefined)?.willRetry === true
 }
 
 function createCodexEmptyStreamError(errorText: string, diagnostics: CodexStreamDiagnostics): CodexProviderError {

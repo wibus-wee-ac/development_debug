@@ -1,3 +1,6 @@
+// GENERATED CODE! DO NOT MODIFY BY HAND!
+// Run `pnpm --filter @cradle/server generate:codex-app-server-capabilities` after regenerating Codex app-server protocol bindings.
+
 // Output: Cradle-owned metadata for the generated Codex app-server protocol surface.
 // Input: Generated Codex app-server ClientRequest, ServerRequest, and ServerNotification bindings.
 // Position: Codex provider capability inventory used by bridge APIs, UI display, and tests.
