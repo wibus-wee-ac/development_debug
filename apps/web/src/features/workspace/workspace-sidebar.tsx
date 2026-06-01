@@ -63,7 +63,6 @@ import {
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
-import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
@@ -83,12 +82,11 @@ import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession }
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
-import { sessionsQueryKey, useSessions } from './use-session'
+import { sessionsQueryKey, useAllSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useToggleWorkspacePin, useWorkspaces, WORKSPACES_QUERY_KEY } from './use-workspace'
 
 type WorkspaceTranslation = TFunction<'workspace'>
 const SESSION_PREVIEW_LIMIT = 5
-const COLLAPSED_WORKSPACE_POPOVER_CLOSE_DELAY = 140
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
 
@@ -713,10 +711,12 @@ function SessionItem({
 
 function WorkspaceGroup({
   workspace,
+  sessions,
   onDelete,
   onTogglePin,
 }: {
   workspace: Workspace
+  sessions: WorkspaceSession[]
   onDelete: (id: string) => void
   onTogglePin: (id: string, pinned: boolean) => void
 }) {
@@ -731,7 +731,6 @@ function WorkspaceGroup({
     kind: 'file' | 'folder'
   } | null>(null)
   const workspacePinned = Boolean(workspace.pinned)
-  const { sessions } = useSessions(expanded ? workspace.id : null)
   const renameWorkspaceMutation = useMutation({
     ...patchWorkspacesByIdMutation(),
     onSuccess: () => {
@@ -749,7 +748,7 @@ function WorkspaceGroup({
       if (pinDiff !== 0) {
         return pinDiff
       }
-      return b.createdAt - a.createdAt
+      return 0
     })
   }, [sessions])
   const hasHiddenSessions = sortedSessions.length > SESSION_PREVIEW_LIMIT
@@ -1096,145 +1095,6 @@ function WorkspaceGroup({
   )
 }
 
-function CollapsedWorkspaceItem({
-  workspace,
-  onDelete,
-  onTogglePin,
-}: {
-  workspace: Workspace
-  onDelete: (id: string) => void
-  onTogglePin: (id: string, pinned: boolean) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const closeTimerRef = useRef<number | null>(null)
-  const workspacePinned = Boolean(workspace.pinned)
-  const isActive = useIsActiveTab('workspace-detail', { workspaceId: workspace.id })
-
-  const cancelClose = useCallback(() => {
-    if (closeTimerRef.current === null) {
-      return
-    }
-
-    window.clearTimeout(closeTimerRef.current)
-    closeTimerRef.current = null
-  }, [])
-
-  const scheduleClose = useCallback(() => {
-    cancelClose()
-    closeTimerRef.current = window.setTimeout(() => {
-      closeTimerRef.current = null
-      setOpen(false)
-    }, COLLAPSED_WORKSPACE_POPOVER_CLOSE_DELAY)
-  }, [cancelClose])
-
-  useEffect(() => {
-    return cancelClose
-  }, [cancelClose])
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={(
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={cn(
-                  'relative flex size-10 items-center justify-center rounded-lg',
-                  'text-muted-foreground/70 transition-colors duration-150',
-                  'hover:bg-accent/50 hover:text-sidebar-foreground',
-                  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                  isActive && 'bg-accent/80 text-sidebar-foreground',
-                )}
-                aria-label={workspace.name}
-                data-testid={`workspace-avatar-${workspace.id}`}
-                onPointerEnter={() => {
-                  cancelClose()
-                  setOpen(true)
-                }}
-                onPointerLeave={scheduleClose}
-                onFocus={() => {
-                  cancelClose()
-                  setOpen(true)
-                }}
-                onBlur={scheduleClose}
-              >
-                <FolderOpenIcon className="size-5 text-muted-foreground/70" aria-hidden="true" />
-                {workspacePinned && (
-                  <span className="absolute -right-0.5 -top-0.5 flex size-3 items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-sidebar">
-                    <PinIcon className="size-2" aria-hidden="true" />
-                  </span>
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>{workspace.name}</TooltipContent>
-          </Tooltip>
-        )}
-      />
-      <PopoverContent
-        side="right"
-        align="start"
-        sideOffset={6}
-        className="w-80 gap-0 p-2"
-        onPointerEnter={cancelClose}
-        onPointerLeave={scheduleClose}
-        onOpenAutoFocus={event => event.preventDefault()}
-        data-testid={`workspace-popover-${workspace.id}`}
-      >
-        <WorkspaceGroup
-          workspace={workspace}
-          onDelete={onDelete}
-          onTogglePin={onTogglePin}
-        />
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-function CollapsedWorkspaceRail({
-  workspaces,
-  onAddWorkspace,
-  adding,
-  onDelete,
-  onTogglePin,
-}: {
-  workspaces: Workspace[]
-  onAddWorkspace: () => void
-  adding: boolean
-  onDelete: (id: string) => void
-  onTogglePin: (id: string, pinned: boolean) => void
-}) {
-  const { t } = useTranslation('workspace')
-
-  return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5 px-1 py-2" data-testid="workspace-avatar-rail">
-      {workspaces.map(workspace => (
-        <CollapsedWorkspaceItem
-          key={workspace.id}
-          workspace={workspace}
-          onDelete={onDelete}
-          onTogglePin={onTogglePin}
-        />
-      ))}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="mt-1 size-10 rounded-lg text-muted-foreground/70 hover:bg-accent hover:text-accent-foreground active:scale-[0.96] transition-[background-color,color,scale]"
-            onClick={onAddWorkspace}
-            disabled={adding}
-            data-testid="add-workspace-avatar-btn"
-          >
-            <PlusIcon className="size-3.5" aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="right" sideOffset={8}>{t('sidebar.action.addProject')}</TooltipContent>
-      </Tooltip>
-    </div>
-  )
-}
-
 // ── Top nav items ─────────────────────────────────────────────────────────────
 
 interface NavItemProps {
@@ -1316,6 +1176,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
 export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { t } = useTranslation('workspace')
   const { workspaces } = useWorkspaces()
+  const { sessions } = useAllSessions()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
   const { togglePin } = useToggleWorkspacePin()
@@ -1328,6 +1189,23 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       return a.name.localeCompare(b.name)
     })
   }, [workspaces])
+  const sessionsByWorkspaceId = useMemo(() => {
+    const grouped = new Map<string, WorkspaceSession[]>()
+    for (const session of sessions) {
+      if (!session.workspaceId) {
+        continue
+      }
+
+      const workspaceSessions = grouped.get(session.workspaceId)
+      if (workspaceSessions) {
+        workspaceSessions.push(session)
+      }
+      else {
+        grouped.set(session.workspaceId, [session])
+      }
+    }
+    return grouped
+  }, [sessions])
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const handleOpenSettings = useCallback(() => {
     const activeTabId = useCradleTabStore.getState().activeTabId
@@ -1481,6 +1359,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
                     <WorkspaceGroup
                       key={workspace.id}
                       workspace={workspace}
+                      sessions={sessionsByWorkspaceId.get(workspace.id) ?? []}
                       onDelete={handleDelete}
                       onTogglePin={handleToggleWorkspacePin}
                     />

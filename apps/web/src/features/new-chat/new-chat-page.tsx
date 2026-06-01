@@ -24,13 +24,13 @@ import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import type { MentionItem } from '~/features/chat/mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
+import { sessionsQueryKey, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { useSessionLayoutStore } from '~/store/session-layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -140,7 +140,7 @@ function useNewChatPageOwner(active: boolean) {
   }, [selectedWorkspaceId, workspaces])
 
   const selectedWorkspace = workspaces.find(w => w.id === selectedProjectWorkspaceId) ?? null
-  const { sessions, loading: sessionsLoading } = useSessions(selectedProjectWorkspaceId)
+  const { sessions, loading: sessionsLoading } = useWorkspaceSessions(selectedProjectWorkspaceId)
   const now = useNow(60_000, active)
   const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
@@ -163,18 +163,7 @@ function useNewChatPageOwner(active: boolean) {
     && !composerState.isLoadingModels
 
   const recentSessions = useMemo(() => {
-    const top: typeof sessions = []
-    for (const s of sessions) {
-      if (top.length < 6) {
-        top.push(s)
-        top.sort((a, b) => b.updatedAt - a.updatedAt)
-      }
-      else if (s.updatedAt > top.at(-1)!.updatedAt) {
-        top[top.length - 1] = s
-        top.sort((a, b) => b.updatedAt - a.updatedAt)
-      }
-    }
-    return top
+    return sessions.slice(0, 6)
   }, [sessions])
 
   const sendDisabled = selection.runtimeKind === 'cli-tui'

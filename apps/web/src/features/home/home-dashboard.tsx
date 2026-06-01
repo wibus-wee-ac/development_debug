@@ -415,7 +415,6 @@ export function HomeDashboard() {
       session,
       workspaceName: session.workspaceId ? (workspaceNameById.get(session.workspaceId) ?? '') : '',
     }))
-    .sort((a, b) => b.session.updatedAt - a.session.updatedAt)
     .slice(0, 10)
 
   const scheduledTasks = (automationDefinitionsQuery.data ?? [])

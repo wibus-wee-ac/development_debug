@@ -34,13 +34,11 @@ import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import type { WorkspaceSession } from '~/features/workspace/use-session'
-import { sessionsQueryKey, useSessions } from '~/features/workspace/use-session'
+import { sessionsQueryKey, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
-import type { Workspace } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -493,7 +491,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     refetchInterval: 10_000,
   })
 
-  const { sessions } = useSessions(workspaceId)
+  const { sessions } = useWorkspaceSessions(workspaceId)
 
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
   const { data: workflowRule } = useQuery({
@@ -508,18 +506,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     : (workflowRule?.global ?? null)
 
   const recentSessions = useMemo(() => {
-    const top: typeof sessions = []
-    for (const s of sessions) {
-      if (top.length < 10) {
-        top.push(s)
-        top.sort((a, b) => b.updatedAt - a.updatedAt)
-      }
-      else if (s.updatedAt > top.at(-1)!.updatedAt) {
-        top[top.length - 1] = s
-        top.sort((a, b) => b.updatedAt - a.updatedAt)
-      }
-    }
-    return top
+    return sessions.slice(0, 10)
   }, [sessions])
 
   const headings = useMemo(() => {

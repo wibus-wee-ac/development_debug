@@ -1,13 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import {
   getSessionsOptions,
   getSessionsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
+import { queryRefreshPolicy } from '~/lib/query-refresh-policy'
 import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
+
+const SESSION_LIST_REFRESH_INTERVAL_MS = 10_000
 
 export interface WorkspaceSession {
   id: string
@@ -74,40 +77,41 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
   }
 }
 
+function asSessionLayoutRecords(sessions: WorkspaceSession[]) {
+  return sessions.map(session => ({
+    sessionId: session.id,
+    sessionTitle: session.title,
+    workspaceId: session.workspaceId,
+    runtimeKind: session.runtimeKind,
+  }))
+}
+
 export function useAllSessions(archived?: boolean) {
   const queryOptions = sessionListOptions(null, archived)
   const { data: rawSessions = [], isPending: loading } = useQuery({
     ...getSessionsOptions(queryOptions),
+    ...queryRefreshPolicy('active', { refetchInterval: SESSION_LIST_REFRESH_INTERVAL_MS }),
   })
-  const sessions = rawSessions.map(asWorkspaceSession)
+  const sessions = useMemo(() => rawSessions.map(asWorkspaceSession), [rawSessions])
 
   useEffect(() => {
-    useSessionLayoutStore.getState().upsertSessions(sessions.map(session => ({
-      sessionId: session.id,
-      sessionTitle: session.title,
-      workspaceId: session.workspaceId,
-      runtimeKind: session.runtimeKind,
-    })))
+    useSessionLayoutStore.getState().upsertSessions(asSessionLayoutRecords(sessions))
   }, [sessions])
 
   return { sessions, loading }
 }
 
-export function useSessions(workspaceId: string | null, archived?: boolean) {
+export function useWorkspaceSessions(workspaceId: string | null, archived?: boolean) {
   const queryOptions = sessionListOptions(workspaceId, archived)
   const { data: rawSessions = [], isPending: loading } = useQuery({
     ...getSessionsOptions(queryOptions),
+    ...queryRefreshPolicy('active', { refetchInterval: SESSION_LIST_REFRESH_INTERVAL_MS }),
     enabled: Boolean(workspaceId),
   })
-  const sessions = rawSessions.map(asWorkspaceSession)
+  const sessions = useMemo(() => rawSessions.map(asWorkspaceSession), [rawSessions])
 
   useEffect(() => {
-    useSessionLayoutStore.getState().upsertSessions(sessions.map(session => ({
-      sessionId: session.id,
-      sessionTitle: session.title,
-      workspaceId: session.workspaceId,
-      runtimeKind: session.runtimeKind,
-    })))
+    useSessionLayoutStore.getState().upsertSessions(asSessionLayoutRecords(sessions))
   }, [sessions])
 
   return { sessions, loading }
