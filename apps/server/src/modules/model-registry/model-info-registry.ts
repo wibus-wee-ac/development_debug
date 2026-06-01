@@ -196,6 +196,22 @@ function findModelFuzzy(data: ModelsDevData, modelId: string): { model: ModelsDe
     }
   }
 
+  // 3.5. Try normalizing dots ↔ hyphens (e.g. "claude-opus-4-7" ↔ "claude-opus-4.7")
+  const dotsToHyphens = modelId.replace(/\./g, '-')
+  if (dotsToHyphens !== modelId) {
+    const match = findModel(data, dotsToHyphens)
+    if (match) {
+      return { model: match, matchType: 'fuzzy' }
+    }
+  }
+  const hyphensToDots = modelId.replace(/-(?=\d)/g, '.')
+  if (hyphensToDots !== modelId && hyphensToDots !== dotsToHyphens) {
+    const match = findModel(data, hyphensToDots)
+    if (match) {
+      return { model: match, matchType: 'fuzzy' }
+    }
+  }
+
   // 4. Try finding registry models that are prefixes of this modelId
   const lower = modelId.toLowerCase()
   for (const provider of Object.values(data)) {
@@ -235,6 +251,22 @@ function findModelFuzzyWithId(data: ModelsDevData, modelId: string): { id: strin
   const withoutVersion = modelId.replace(VERSION_SUFFIX_RE, '')
   if (withoutVersion !== modelId && withoutVersion !== withoutDate) {
     const match = findModelWithProvider(data, withoutVersion)
+    if (match) {
+      return { ...match, matchType: 'fuzzy' }
+    }
+  }
+
+  // 3.5. Normalize dots ↔ hyphens
+  const dotsToHyphens = modelId.replace(/\./g, '-')
+  if (dotsToHyphens !== modelId) {
+    const match = findModelWithProvider(data, dotsToHyphens)
+    if (match) {
+      return { ...match, matchType: 'fuzzy' }
+    }
+  }
+  const hyphensToDots = modelId.replace(/-(?=\d)/g, '.')
+  if (hyphensToDots !== modelId && hyphensToDots !== dotsToHyphens) {
+    const match = findModelWithProvider(data, hyphensToDots)
     if (match) {
       return { ...match, matchType: 'fuzzy' }
     }
