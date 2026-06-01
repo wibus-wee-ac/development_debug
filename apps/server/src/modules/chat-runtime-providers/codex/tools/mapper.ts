@@ -38,6 +38,12 @@ export interface CodexAppServerItem {
   action?: { type: string, query?: string | null, url?: string | null, pattern?: string | null } | null
 }
 
+export interface CodexAppServerServerRequestItem {
+  method: string
+  id: number
+  params?: unknown
+}
+
 export function readCodexToolName(item: CodexAppServerItem): string {
   switch (item.type) {
     case 'commandExecution':
@@ -54,6 +60,16 @@ export function readCodexToolName(item: CodexAppServerItem): string {
       return 'web_search'
     case 'plan':
       return 'plan'
+    case 'imageView':
+      return 'image_view'
+    case 'imageGeneration':
+      return 'image_generation'
+    case 'enteredReviewMode':
+      return 'review_mode_entered'
+    case 'exitedReviewMode':
+      return 'review_mode_exited'
+    case 'contextCompaction':
+      return 'context_compaction'
     default:
       return item.type
   }
@@ -110,6 +126,18 @@ export function buildCodexToolArgs(item: CodexAppServerItem): unknown {
       return { query: item.query ?? '', action: item.action }
     case 'plan':
       return { text: item.text ?? '' }
+    case 'imageView':
+      return { path: (item as { path?: string }).path ?? '' }
+    case 'imageGeneration':
+      return {
+        status: item.status,
+        revisedPrompt: (item as { revisedPrompt?: string | null }).revisedPrompt ?? null,
+      }
+    case 'enteredReviewMode':
+    case 'exitedReviewMode':
+      return { review: (item as { review?: string }).review ?? '' }
+    case 'contextCompaction':
+      return { id: item.id }
     default:
       return {}
   }
@@ -163,8 +191,69 @@ export function buildCodexToolResult(
       }
     case 'plan':
       return { plan: item.text ?? '' }
+    case 'imageView':
+      return { path: (item as { path?: string }).path ?? '' }
+    case 'imageGeneration':
+      return {
+        status: item.status,
+        revisedPrompt: (item as { revisedPrompt?: string | null }).revisedPrompt ?? null,
+        result: (item as { result?: string }).result ?? '',
+        savedPath: (item as { savedPath?: string }).savedPath ?? null,
+      }
+    case 'enteredReviewMode':
+    case 'exitedReviewMode':
+      return { review: (item as { review?: string }).review ?? '' }
+    case 'contextCompaction':
+      return { id: item.id }
     default:
       return {}
+  }
+}
+
+export function buildCodexServerRequestToolInput(request: CodexAppServerServerRequestItem): BuiltinToolCallInputPayload {
+  return createBuiltinToolCallInputPayload({
+    identifier: CodexToolIdentifier,
+    apiName: readCodexServerRequestToolName(request.method),
+    args: request.params ?? {},
+  })
+}
+
+export function buildCodexServerRequestToolOutput(
+  request: CodexAppServerServerRequestItem,
+  result: unknown,
+): BuiltinToolCallResultPayload {
+  return createBuiltinToolCallResultPayload({
+    identifier: CodexToolIdentifier,
+    apiName: readCodexServerRequestToolName(request.method),
+    args: request.params ?? {},
+    result,
+  })
+}
+
+export function readCodexServerRequestToolName(method: string): string {
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+      return 'approval.command_execution'
+    case 'item/fileChange/requestApproval':
+      return 'approval.file_change'
+    case 'item/tool/requestUserInput':
+      return 'tool.request_user_input'
+    case 'mcpServer/elicitation/request':
+      return 'mcp.elicitation'
+    case 'item/permissions/requestApproval':
+      return 'approval.permissions'
+    case 'item/tool/call':
+      return 'dynamic_tool.call'
+    case 'account/chatgptAuthTokens/refresh':
+      return 'account.chatgpt_auth_tokens.refresh'
+    case 'attestation/generate':
+      return 'attestation.generate'
+    case 'applyPatchApproval':
+      return 'approval.apply_patch'
+    case 'execCommandApproval':
+      return 'approval.exec_command'
+    default:
+      return method
   }
 }
 

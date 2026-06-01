@@ -6103,6 +6103,102 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
 
 export type GetChatSessionsBySessionIdRuntimeStatusResponse = GetChatSessionsBySessionIdRuntimeStatusResponses[keyof GetChatSessionsBySessionIdRuntimeStatusResponses];
 
+export type GetChatSessionsBySessionIdCodexAppServerCapabilitiesData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/codex/app-server/capabilities';
+};
+
+export type GetChatSessionsBySessionIdCodexAppServerCapabilitiesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        protocol: string;
+        generatorVersion: string;
+        generatedDate: string;
+        clientMethods: Array<{
+            method: string;
+            paramsType: string | unknown | null;
+            category: string;
+            operation: string;
+            interaction: 'request' | 'stream';
+        }>;
+        serverRequests: Array<{
+            method: string;
+            paramsType: string;
+            category: string;
+        }>;
+        serverNotifications: Array<{
+            method: string;
+            paramsType: string;
+            category: string;
+        }>;
+    };
+};
+
+export type GetChatSessionsBySessionIdCodexAppServerCapabilitiesResponse = GetChatSessionsBySessionIdCodexAppServerCapabilitiesResponses[keyof GetChatSessionsBySessionIdCodexAppServerCapabilitiesResponses];
+
+export type PostChatSessionsBySessionIdCodexAppServerInvokeData = {
+    body: {
+        method: string;
+        params?: unknown;
+        providerTargetId?: string;
+        modelId?: string;
+    };
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/codex/app-server/invoke';
+};
+
+export type PostChatSessionsBySessionIdCodexAppServerInvokeResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        method: string;
+        capability: {
+            method: string;
+            paramsType: string | unknown | null;
+            category: string;
+            operation: string;
+            interaction: 'request' | 'stream';
+        };
+        result: unknown;
+    };
+};
+
+export type PostChatSessionsBySessionIdCodexAppServerInvokeResponse = PostChatSessionsBySessionIdCodexAppServerInvokeResponses[keyof PostChatSessionsBySessionIdCodexAppServerInvokeResponses];
+
+export type PostChatSessionsBySessionIdCodexAppServerStreamData = {
+    body: {
+        method: string;
+        params?: unknown;
+        providerTargetId?: string;
+        modelId?: string;
+        closeOnMethods?: Array<string>;
+    };
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/codex/app-server/stream';
+};
+
+export type PostChatSessionsBySessionIdCodexAppServerStreamResponses = {
+    /**
+     * Server-sent events with `request_started`, `notification`, `server_request`, `result`, `error`, and `done` events.
+     */
+    200: string;
+};
+
+export type PostChatSessionsBySessionIdCodexAppServerStreamResponse = PostChatSessionsBySessionIdCodexAppServerStreamResponses[keyof PostChatSessionsBySessionIdCodexAppServerStreamResponses];
+
 export type GetChatSessionsBySessionIdMessagesData = {
     body?: never;
     path: {

@@ -29,7 +29,7 @@ import { resolveProviderTarget } from '../provider-targets/service'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { estimateCost } from '../usage/pricing'
-import { getRuntimeRegistry } from './chat-runtime-provider-registry'
+import { getRuntimeRegistry, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import {
   createAssistantMessage,
   createUserMessage,
@@ -38,6 +38,13 @@ import {
   parseStoredMessageSnapshot as parseTrustedStoredMessageSnapshot,
 } from './message-snapshots'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
+import {
+  CodexAppServerBridge,
+  getCodexAppServerCapabilities,
+  type CodexAppServerCapabilityManifest,
+  type CodexAppServerInvokeResponse,
+} from '../chat-runtime-providers/codex/app-server-bridge'
+import * as Secrets from '../secrets/service'
 import type {
   ChatPermissionMode,
   ChatRuntime,
@@ -280,6 +287,18 @@ export interface EnqueueSessionQueueItemInput {
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
   permissionMode?: ChatPermissionMode
+}
+
+export interface CodexAppServerInvokeInput {
+  sessionId: string
+  method: string
+  params?: unknown
+  providerTargetId?: string
+  modelId?: string
+}
+
+export interface CodexAppServerStreamInput extends CodexAppServerInvokeInput {
+  closeOnMethods?: string[]
 }
 
 // ── in-memory run state ──
@@ -1442,6 +1461,114 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
     modelId:
       readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
     systemPrompt: resolveSessionSystemPrompt(context.session),
+  })
+}
+
+export function getCodexAppServerCapabilityManifest(): CodexAppServerCapabilityManifest {
+  return getCodexAppServerCapabilities()
+}
+
+export async function invokeCodexAppServer(input: CodexAppServerInvokeInput): Promise<CodexAppServerInvokeResponse> {
+  const context = await resolveCodexAppServerBridgeContext(input)
+  return createCodexAppServerBridge().invoke({
+    ...context,
+    method: input.method,
+    params: input.params,
+  })
+}
+
+export async function openCodexAppServerStream(input: CodexAppServerStreamInput): Promise<ReadableStream<Uint8Array>> {
+  const context = await resolveCodexAppServerBridgeContext(input)
+  return createCodexAppServerBridge().openEventStream({
+    ...context,
+    method: input.method,
+    params: input.params,
+    closeOnMethods: input.closeOnMethods,
+  })
+}
+
+async function resolveCodexAppServerBridgeContext(input: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+}) {
+  const context = getSessionRunContext(input.sessionId, { providerTargetId: input.providerTargetId })
+  if (!context) {
+    throw new AppError({
+      code: 'chat_session_not_found',
+      status: 404,
+      message: 'Chat session not found',
+      details: { sessionId: input.sessionId },
+    })
+  }
+  if ((context.session.runtimeKind ?? 'standard') !== 'codex') {
+    throw new AppError({
+      code: 'chat_runtime_not_codex',
+      status: 400,
+      message: 'Codex app-server calls require a Codex chat runtime session',
+      details: { sessionId: input.sessionId, runtimeKind: context.session.runtimeKind ?? 'standard' },
+    })
+  }
+  assertRuntimeCompatibleTarget(context, input.providerTargetId)
+
+  const runtime = getRuntimeRegistry().get('codex')
+  if (!runtime) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: 'Runtime is not available: codex',
+    })
+  }
+
+  const binding = getBinding(input.sessionId)
+  const reusableBinding
+    = binding?.providerTargetId === context.providerTarget.id
+      && binding.runtimeKind === 'codex'
+      ? binding
+      : undefined
+  const runtimeSession = reusableBinding
+    ? await runtime.resumeChatSession({
+        runtimeSession: {
+          id: input.sessionId,
+          chatSessionId: input.sessionId,
+          providerTargetId: context.providerTarget.id,
+          runtimeKind: 'codex',
+          providerSessionId: reusableBinding.backendSessionId,
+          providerStateSnapshot: reusableBinding.backendStateSnapshot,
+        },
+        profile: context.profile,
+        workspacePath: context.workspacePath,
+        modelId: input.modelId,
+      })
+    : await runtime.startChatSession({
+        chatSessionId: input.sessionId,
+        profile: context.profile,
+        workspacePath: context.workspacePath,
+        modelId: input.modelId,
+      })
+
+  attachBinding({
+    sessionId: input.sessionId,
+    providerTargetId: context.providerTarget.id,
+    runtimeKind: runtimeSession.runtimeKind,
+    runtimeSession,
+    requestedModelId:
+      input.modelId
+      ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
+  })
+
+  return {
+    runtimeSession,
+    profile: context.profile,
+    workspacePath: context.workspacePath,
+    modelId: input.modelId,
+  }
+}
+
+function createCodexAppServerBridge(): CodexAppServerBridge {
+  return new CodexAppServerBridge({
+    readSecret: secretRef => Secrets.readSecret(secretRef),
+    resolveSkillPaths: resolveRuntimeSkillPaths,
   })
 }
 

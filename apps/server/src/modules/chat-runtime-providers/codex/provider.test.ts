@@ -6,12 +6,12 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
-import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
+import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
 import { CodexProvider } from './provider'
 
 class FakeCodexAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
-  readonly options: CodexAppServerClientOptions
+  options: CodexAppServerClientOptions
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
 
@@ -62,6 +62,23 @@ class FakeCodexAppServerClient {
       return
     }
     this.notifications.push(message)
+  }
+
+  async pushServerRequest(request: CodexAppServerServerRequest): Promise<unknown> {
+    if (!this.options.serverRequestHandler) {
+      throw new Error('Expected a Codex app-server server request handler')
+    }
+    const result = await this.options.serverRequestHandler(request)
+    this.pushNotification({
+      method: 'serverRequest/handled',
+      params: {
+        id: request.id,
+        method: request.method,
+        params: request.params,
+        result,
+      },
+    })
+    return result
   }
 }
 
@@ -116,7 +133,10 @@ function createProvider(client: FakeCodexAppServerClient): CodexProvider {
     readSecret: () => 'sk-secret',
     resolveSkillPaths: () => ['/tmp/cradle-skill'],
     recordObservability: vi.fn(),
-    createAppServerClient: () => client,
+    createAppServerClient: (options) => {
+      client.options = options
+      return client
+    },
   })
 }
 
@@ -1030,12 +1050,73 @@ describe('codexProvider app-server integration', () => {
       { type: 'tool-input-start', toolCallId: 'file-1', toolName: 'file_change' },
       { type: 'tool-input-available', toolCallId: 'file-1', toolName: 'file_change', input: codexInput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }) },
       { type: 'tool-output-available', toolCallId: 'file-1', output: codexOutput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }, { filenames: ['src/app.ts'], status: 'completed', type: 'fileChange' }) },
-      { type: 'tool-input-start', toolCallId: 'mcp-1', toolName: 'github/search' },
-      { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github/search', input: codexInput('github/search', { query: 'cradle' }) },
+      { type: 'tool-input-start', toolCallId: 'mcp-1', toolName: 'github_search' },
+      { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github_search', input: codexInput('github/search', { query: 'cradle' }) },
       { type: 'tool-output-available', toolCallId: 'mcp-1', output: codexOutput('github/search', { query: 'cradle' }, { server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] }, content: [{ type: 'text', text: 'ok' }] }) },
       { type: 'tool-input-start', toolCallId: 'web-1', toolName: 'web_search' },
       { type: 'tool-input-available', toolCallId: 'web-1', toolName: 'web_search', input: codexInput('web_search', { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }) },
       { type: 'tool-output-available', toolCallId: 'web-1', output: codexOutput('web_search', { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }, { query: 'Cradle', action: { type: 'search', query: 'Cradle' } }) },
+    ])
+  })
+
+  it('handles Codex app-server server requests as standardized tool chunks', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-server-request',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Run a command that needs approval'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    const params = { command: 'rm -rf build' }
+    await expect(client.pushServerRequest({
+      id: 42,
+      method: 'item/commandExecution/requestApproval',
+      params,
+    })).resolves.toEqual({ decision: 'decline' })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-start',
+        toolCallId: 'server-request-42',
+        toolName: 'server_request_item_commandExecution_requestApproval',
+      },
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      {
+        type: 'tool-input-available',
+        toolCallId: 'server-request-42',
+        toolName: 'server_request_item_commandExecution_requestApproval',
+        input: codexInput('approval.command_execution', params),
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'server-request-42',
+        output: codexOutput('approval.command_execution', params, { decision: 'decline' }),
+      },
     ])
   })
 })

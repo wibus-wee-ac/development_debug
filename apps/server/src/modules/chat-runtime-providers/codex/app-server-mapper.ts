@@ -7,6 +7,8 @@ import type { UIMessageChunk } from 'ai'
 import { createBoundedTextCollector, type BoundedTextCollector } from '../bounded-text-collector'
 import type { CodexAppServerItem } from './app-server-tool-payload'
 import {
+  buildCodexServerRequestToolInput,
+  buildCodexServerRequestToolOutput,
   buildCodexToolInput,
   buildCodexToolOutput,
   readCodexToolError,
@@ -34,6 +36,13 @@ interface ItemNotificationParams {
 interface DeltaNotificationParams {
   itemId?: string
   delta?: string
+}
+
+interface ServerRequestHandledParams {
+  id?: number
+  method?: string
+  params?: unknown
+  result?: unknown
 }
 
 export function createCodexAppServerMapperState(textItemId: string): CodexAppServerMapperState {
@@ -65,6 +74,14 @@ export function mapCodexAppServerNotificationToChunks(
     case 'command/exec/outputDelta':
     case 'item/commandExecution/outputDelta':
       return mapCommandOutputDelta(notification.params, state)
+    case 'item/fileChange/outputDelta':
+    case 'item/plan/delta':
+    case 'item/mcpToolCall/progress':
+      return mapToolProgressDelta(notification.params)
+    case 'item/fileChange/patchUpdated':
+      return mapFileChangePatchUpdated(notification.params)
+    case 'serverRequest/handled':
+      return mapHandledServerRequest(notification.params)
     default:
       return []
   }
@@ -115,7 +132,7 @@ function mapStartedItem(item: CodexAppServerItem | null, state: CodexAppServerMa
 }
 
 function mapStartedToolItem(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
-  const toolName = readCodexToolName(item)
+  const toolName = toSafeToolName(readCodexToolName(item))
   const input = buildCodexToolInput(item)
   if (item.type === 'commandExecution') {
     state.commandById.set(item.id, item.command ?? '')
@@ -214,6 +231,60 @@ function mapCommandOutputDelta(rawParams: unknown, state: CodexAppServerMapperSt
   collector.append(params.delta)
   state.commandOutputById.set(params.itemId, collector)
   return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: params.delta }]
+}
+
+function mapToolProgressDelta(rawParams: unknown): UIMessageChunk[] {
+  const params = rawParams as { itemId?: string, delta?: string, message?: string }
+  const delta = params.delta ?? params.message
+  if (!params.itemId || !delta) {
+    return []
+  }
+  return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: delta }]
+}
+
+function mapFileChangePatchUpdated(rawParams: unknown): UIMessageChunk[] {
+  const params = rawParams as { itemId?: string, changes?: Array<{ path?: string }> }
+  if (!params.itemId) {
+    return []
+  }
+  return [{
+    type: 'tool-output-available',
+    toolCallId: params.itemId,
+    preliminary: true,
+    output: {
+      type: 'cradle.codex.file-change.patch-updated.v1',
+      filenames: params.changes?.map(change => change.path).filter(Boolean) ?? [],
+      changes: params.changes ?? [],
+    },
+  }]
+}
+
+function mapHandledServerRequest(rawParams: unknown): UIMessageChunk[] {
+  const params = rawParams as ServerRequestHandledParams
+  if (typeof params.id !== 'number' || !params.method) {
+    return []
+  }
+  const request = { id: params.id, method: params.method, params: params.params }
+  const toolCallId = `server-request-${params.id}`
+  const toolName = toSafeToolName(`server_request_${params.method}`)
+  return [
+    { type: 'tool-input-start', toolCallId, toolName },
+    {
+      type: 'tool-input-available',
+      toolCallId,
+      toolName,
+      input: buildCodexServerRequestToolInput(request),
+    },
+    {
+      type: 'tool-output-available',
+      toolCallId,
+      output: buildCodexServerRequestToolOutput(request, params.result),
+    },
+  ]
+}
+
+function toSafeToolName(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/g, '_')
 }
 
 function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {

@@ -137,6 +137,20 @@ const runtimeSessionRunSchema = t.Object({
   ]),
 })
 
+const codexAppServerCapabilitySchema = t.Object({
+  method: t.String(),
+  paramsType: t.Nullable(t.String()),
+  category: t.String(),
+  operation: t.String(),
+  interaction: t.Union([t.Literal('request'), t.Literal('stream')]),
+})
+
+const codexAppServerServerMessageSchema = t.Object({
+  method: t.String(),
+  paramsType: t.String(),
+  category: t.String(),
+})
+
 export const ChatRuntimeModel = {
   sessionIdParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
@@ -171,6 +185,36 @@ export const ChatRuntimeModel = {
 
   permissionModeResponse: t.Object({
     ok: t.Boolean(),
+  }),
+
+  codexAppServerCapabilities: t.Object({
+    protocol: t.String(),
+    generatorVersion: t.String(),
+    generatedDate: t.String(),
+    clientMethods: t.Array(codexAppServerCapabilitySchema),
+    serverRequests: t.Array(codexAppServerServerMessageSchema),
+    serverNotifications: t.Array(codexAppServerServerMessageSchema),
+  }),
+
+  codexAppServerInvokeBody: t.Object({
+    method: t.String({ minLength: 1 }),
+    params: t.Optional(t.Any()),
+    providerTargetId: t.Optional(t.String()),
+    modelId: t.Optional(t.String()),
+  }),
+
+  codexAppServerStreamBody: t.Object({
+    method: t.String({ minLength: 1 }),
+    params: t.Optional(t.Any()),
+    providerTargetId: t.Optional(t.String()),
+    modelId: t.Optional(t.String()),
+    closeOnMethods: t.Optional(t.Array(t.String({ minLength: 1 }))),
+  }),
+
+  codexAppServerInvokeResponse: t.Object({
+    method: t.String(),
+    capability: codexAppServerCapabilitySchema,
+    result: t.Any(),
   }),
 
   capabilities: t.Object({

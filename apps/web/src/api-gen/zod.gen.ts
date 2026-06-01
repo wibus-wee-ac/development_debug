@@ -1669,6 +1669,33 @@ export const zGetChatSessionsBySessionIdRuntimeStatusPath = z.object({
     sessionId: z.string().min(1)
 });
 
+export const zGetChatSessionsBySessionIdCodexAppServerCapabilitiesPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdCodexAppServerInvokeBody = z.object({
+    method: z.string().min(1),
+    params: z.unknown().optional(),
+    providerTargetId: z.string().optional(),
+    modelId: z.string().optional()
+});
+
+export const zPostChatSessionsBySessionIdCodexAppServerInvokePath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdCodexAppServerStreamBody = z.object({
+    method: z.string().min(1),
+    params: z.unknown().optional(),
+    providerTargetId: z.string().optional(),
+    modelId: z.string().optional(),
+    closeOnMethods: z.array(z.string().min(1)).optional()
+});
+
+export const zPostChatSessionsBySessionIdCodexAppServerStreamPath = z.object({
+    sessionId: z.string().min(1)
+});
+
 export const zGetChatSessionsBySessionIdMessagesPath = z.object({
     sessionId: z.string().min(1)
 });

@@ -23,10 +23,17 @@ export interface CodexAppServerMessage {
   }
 }
 
+export interface CodexAppServerServerRequest extends CodexAppServerMessage {
+  id: RequestId
+  method: string
+}
+
 export interface CodexAppServerClientOptions {
   codexPath?: string
   apiKey?: string
   config?: Record<string, unknown>
+  serverRequestHandler?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
+  exposeServerRequestsAsNotifications?: boolean
 }
 
 export class CodexAppServerClient {
@@ -38,11 +45,15 @@ export class CodexAppServerClient {
 
   private readonly notificationQueue: CodexAppServerMessage[] = []
   private readonly notificationWaiters: Array<(message: CodexAppServerMessage) => void> = []
+  private readonly serverRequestHandler?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
+  private readonly exposeServerRequestsAsNotifications: boolean
   private nextRequestId = 1
   private closed = false
   private stderrText = ''
 
   constructor(options: CodexAppServerClientOptions = {}) {
+    this.serverRequestHandler = options.serverRequestHandler
+    this.exposeServerRequestsAsNotifications = options.exposeServerRequestsAsNotifications ?? true
     const args = ['app-server', '--listen', 'stdio://']
     if (options.config) {
       for (const override of serializeConfigOverrides(options.config)) {
@@ -156,6 +167,11 @@ export class CodexAppServerClient {
       return
     }
 
+    if (message.id !== undefined && message.method) {
+      void this.handleServerRequest(message as CodexAppServerServerRequest)
+      return
+    }
+
     if (message.id !== undefined) {
       const pending = this.pendingRequests.get(message.id)
       if (!pending) {
@@ -171,6 +187,48 @@ export class CodexAppServerClient {
       return
     }
 
+    this.pushNotification(message)
+  }
+
+  private async handleServerRequest(message: CodexAppServerServerRequest): Promise<void> {
+    if (!this.serverRequestHandler) {
+      this.child.stdin.write(`${JSON.stringify({
+        id: message.id,
+        error: {
+          code: -32601,
+          message: `Cradle does not handle Codex app-server request: ${message.method}`,
+        },
+      })}\n`)
+      return
+    }
+
+    try {
+      const result = await this.serverRequestHandler(message)
+      if (this.exposeServerRequestsAsNotifications) {
+        this.pushNotification({
+          method: 'serverRequest/handled',
+          params: {
+            id: message.id,
+            method: message.method,
+            params: message.params,
+            result,
+          },
+        })
+      }
+      this.child.stdin.write(`${JSON.stringify({ id: message.id, result })}\n`)
+    }
+    catch (error) {
+      this.child.stdin.write(`${JSON.stringify({
+        id: message.id,
+        error: {
+          code: -32000,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })}\n`)
+    }
+  }
+
+  private pushNotification(message: CodexAppServerMessage): void {
     const waiter = this.notificationWaiters.shift()
     if (waiter) {
       waiter(message)

@@ -34,6 +34,7 @@ import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerClient } from './app-server-client'
+import { buildDefaultCodexAppServerRequestResult } from './app-server-bridge'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
@@ -182,7 +183,11 @@ export class CodexProvider implements ChatRuntime {
     const workspacePath = snapshot.workspacePath ?? '.'
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
     const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile, effectiveModel)
-    const client = this.createAppServerClient({ apiKey, config: codexConfig })
+    const client = this.createAppServerClient({
+      apiKey,
+      config: codexConfig,
+      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
+    })
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
     const shouldInjectReconstructedHistory = !input.runtimeSession.providerSessionId

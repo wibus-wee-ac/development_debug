@@ -163,6 +163,68 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.runtimeStatus },
   })
+  // GET /chat/sessions/:sessionId/codex/app-server/capabilities -> generated Codex app-server surface
+  .get('/sessions/:sessionId/codex/app-server/capabilities', ({ params }) => {
+    ChatRuntime.getRuntimeSessionStatus(params.sessionId)
+    return ChatRuntime.getCodexAppServerCapabilityManifest()
+  }, {
+    detail: {
+      summary: 'Get Codex app-server protocol capabilities exposed by Cradle',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.codexAppServerCapabilities },
+  })
+  // POST /chat/sessions/:sessionId/codex/app-server/invoke -> invoke any generated app-server method
+  .post('/sessions/:sessionId/codex/app-server/invoke', async ({ params, body }) => {
+    return await ChatRuntime.invokeCodexAppServer({
+      sessionId: params.sessionId,
+      method: body.method,
+      params: body.params,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
+      modelId: body.modelId?.trim() || undefined,
+    })
+  }, {
+    detail: {
+      summary: 'Invoke a Codex app-server JSON-RPC method through the session runtime',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.codexAppServerInvokeBody,
+    response: { 200: ChatRuntimeModel.codexAppServerInvokeResponse },
+  })
+  // POST /chat/sessions/:sessionId/codex/app-server/stream -> invoke app-server method and stream notifications
+  .post('/sessions/:sessionId/codex/app-server/stream', async ({ params, body }) => {
+    const stream = await ChatRuntime.openCodexAppServerStream({
+      sessionId: params.sessionId,
+      method: body.method,
+      params: body.params,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
+      modelId: body.modelId?.trim() || undefined,
+      closeOnMethods: body.closeOnMethods,
+    })
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      },
+    })
+  }, {
+    detail: {
+      summary: 'Invoke a Codex app-server method and stream raw notifications as SSE',
+      responses: {
+        200: {
+          description: 'Server-sent events with `request_started`, `notification`, `server_request`, `result`, `error`, and `done` events.',
+          content: {
+            'text/event-stream': {
+              schema: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.codexAppServerStreamBody,
+  })
   // GET /chat/sessions/:sessionId/messages → historical message snapshot rows
   .get('/sessions/:sessionId/messages', ({ params }) => {
     return ChatRuntime.getMessageGroups(params.sessionId)

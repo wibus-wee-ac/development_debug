@@ -1,7 +1,9 @@
-import { BotIcon, CheckIcon } from 'lucide-react'
+import { CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 
+import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
@@ -58,9 +60,16 @@ function KanbanListRowView({
   const [pressed, setPressed] = useState(false)
   const openTimerRef = useRef<number | null>(null)
   const { workspaces } = useWorkspaces()
+  const { agents } = useAgents()
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const labels = issue.labels
+  const delegatedAgent = agents.find(agent => (
+    agent.id === issue.delegateAgentId
+    || agent.providerTargetId === issue.delegateAgentProfileId
+  )) ?? null
+  const showAssigneeAvatar = displayProperties.assignee && issue.assigneeId
+  const showAgentAvatar = displayProperties.agentIndicator && delegatedAgent
 
   useEffect(() => {
     return () => {
@@ -199,10 +208,6 @@ function KanbanListRowView({
           selected || highlighted ? 'opacity-100' : 'opacity-50 group-hover/row:opacity-100',
         )}
         >
-          {displayProperties.agentIndicator && (issue.delegateAgentId || issue.delegateAgentProfileId) && (
-            <BotIcon className="size-3 text-muted-foreground" />
-          )}
-
           {displayProperties.labels && labels.length > 0 && (
             <span className="flex items-center gap-1">
               {labels.slice(0, 2).map(l => <LabelChip key={l} label={l} />)}
@@ -215,8 +220,21 @@ function KanbanListRowView({
             </span>
           )}
 
-          {displayProperties.assignee && issue.assigneeId && (
-            <AssigneeAvatar name={issue.assigneeId} size={16} />
+          {(showAssigneeAvatar || showAgentAvatar) && (
+            <span className="flex min-w-[23px] justify-end">
+              <span className="flex items-center -space-x-1.5 *:ring-2 *:ring-background">
+                {showAssigneeAvatar && <AssigneeAvatar name={issue.assigneeId} size={16} />}
+                {showAgentAvatar && (
+                  <AgentAvatar
+                    name={delegatedAgent.name}
+                    avatarUrl={delegatedAgent.avatarUrl}
+                    avatarStyle={delegatedAgent.avatarStyle}
+                    avatarSeed={delegatedAgent.avatarSeed}
+                    size={16}
+                  />
+                )}
+              </span>
+            </span>
           )}
 
           {displayProperties.createdAt && issue.createdAt && (
