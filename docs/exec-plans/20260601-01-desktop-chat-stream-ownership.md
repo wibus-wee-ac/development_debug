@@ -16,12 +16,16 @@ After this change, Electron Desktop owns long-lived chat transport in the main p
 - [x] (2026-06-01 00:22 +0800) Statically inspected the current chat streaming flow in `apps/web/src/features/chat/use-chat-session.ts`, `apps/web/src/features/chat/chat-response-command.ts`, `apps/web/src/features/chat/sse-chat-transport.ts`, `apps/desktop/src/preload/index.ts`, `apps/desktop/src/main/main-app.ts`, `apps/desktop/src/main/window-manager.ts`, and `apps/server/src/modules/chat-runtime/service.ts`.
 - [x] (2026-06-01 00:22 +0800) Confirmed that the existing working tree already contains unrelated uncommitted chat runtime and provider changes. This plan must not revert or rewrite those changes.
 - [x] (2026-06-01 00:22 +0800) Created this ExecPlan as `docs/exec-plans/20260601-01-desktop-chat-stream-ownership.md`.
-- [ ] Implement the desktop main-process chat stream broker.
-- [ ] Expose the broker through preload IPC methods and push events.
-- [ ] Add an Electron-aware renderer chat transport that preserves the existing web HTTP SSE path.
-- [ ] Route `useChatSession` send, passive join, and approval continuation through the transport abstraction.
-- [ ] Add focused tests for broker fanout, renderer transport, and existing web fallback behavior.
-- [ ] Run focused validation and record the results in this document.
+- [x] (2026-06-01 12:20 +0800) Implemented `apps/desktop/src/main/chat-stream-broker.ts` with one upstream stream per session, renderer subscriber fanout, done/error/abort cleanup, passive final-unsubscribe abort, response-stream no-subscriber retention, and diagnostics.
+- [x] (2026-06-01 12:20 +0800) Exposed the broker through `chatStream.*` IPC methods in `apps/desktop/src/main/native-services.ts` and preload methods/events in `apps/desktop/src/preload/index.ts`.
+- [x] (2026-06-01 12:20 +0800) Added `apps/web/src/features/chat/chat-stream-transport.ts`, preserving HTTP SSE fallback and using Electron IPC when `window.cradle.chatStream` is available.
+- [x] (2026-06-01 12:20 +0800) Routed `useChatSession` send, passive join, and approval continuation through the new transport abstraction.
+- [x] (2026-06-01 12:20 +0800) Added focused tests for broker fanout/cleanup/retention and renderer Electron/error/HTTP fallback transport behavior.
+- [x] (2026-06-01 12:20 +0800) Ran focused desktop and web validation and recorded results below.
+- [x] (2026-06-01 12:27 +0800) Tightened broker reuse rules so a `POST /response` request cannot accidentally reuse a passive `GET /stream` upstream entry, and added regression coverage for that edge case.
+- [x] (2026-06-01 12:32 +0800) Added main-process replay buffering so renderer windows that subscribe after an upstream has already emitted initial AI SDK chunks receive the full accepted chunk prefix before live chunks.
+- [x] (2026-06-01 12:36 +0800) Added per-subscriber replay cursors so a fast upstream cannot cause an early subscriber to receive live chunks and then receive the same chunks again during handle resolution replay.
+- [x] (2026-06-01 13:44 +0800) Started Electron Desktop with `--remoteDebuggingPort 9222`, connected through CDP, confirmed `window.cradle.chatStream` is exposed in the renderer, opened a tear-off window for the same session, and confirmed idle broker diagnostics can be queried. The full real-stream two-window diagnostic run was intentionally stopped after the user said it was no longer needed.
 
 ## Surprises & Discoveries
 
@@ -33,6 +37,18 @@ After this change, Electron Desktop owns long-lived chat transport in the main p
   Evidence: `apps/web/src/features/chat/use-chat-session.ts` calls `startChatResponse` for `POST /chat/sessions/:id/response` when sending or continuing after tool approval, and calls `subscribeChatSessionStream` for `GET /chat/sessions/:id/stream` when passively joining an already-streaming session.
 - Observation: The existing IPC proxy is request/response oriented and should not be forced to carry a `ReadableStream`.
   Evidence: `packages/ipc/src/client.ts` exposes `createIpcProxy` over `ipc.invoke`, while existing desktop push flows such as desktop update status use `webContents.send` plus preload event listeners.
+- Observation: `@cradle/web`'s package `test` script ignores the extra path after `--` and runs the full `src` suite.
+  Evidence: `pnpm --filter @cradle/web test -- src/features/chat/chat-stream-transport.test.ts` ran 55 files and failed on pre-existing `agent-management` and `kanban` tests. The focused command that works for this plan is `pnpm --filter @cradle/web exec vitest run --config vite.config.ts --environment jsdom src/features/chat/chat-stream-transport.test.ts`.
+- Observation: Broad `@cradle/web` typecheck is currently blocked by unrelated worktree errors outside this stream ownership change.
+  Evidence: `pnpm --filter @cradle/web exec tsc --noEmit` still fails after the chat transport errors were fixed, with errors in `src/features/agent-management`, `src/features/chronicle`, `src/features/system-agent/jarvis-popover.tsx`, `src/features/workspace-detail`, `src/features/workspace`, `src/tabs/chat.tab.tsx`, and `../../packages/streamdown/src/plugins/remark-incomplete.ts`.
+- Observation: A response-start request must not reuse an existing passive session subscription entry, even when both target the same session.
+  Evidence: During completion audit, `ChatStreamBroker.readOrCreateEntry` originally reused any non-closed session entry. The new `canReuseEntry` logic reuses all entries for passive subscriptions but only reuses response entries for response-start requests. `chat-stream-broker.test.ts` now proves `POST /response` opens a new upstream request when a passive entry exists.
+- Observation: Moving late-join ownership from server SSE to main-process fanout requires preserving server replay semantics in the broker.
+  Evidence: The server's `openRunEventStream` replays `activeRun.chunkBuffer` to late subscribers. Without broker-level replay, a second renderer subscribing after `start` and `text-start` chunks would miss the protocol prefix required by AI SDK stream reconstruction. `ChatStreamBroker` now stores accepted chunks in `replayChunks`, diagnostics expose `replayChunkCount`, and `chat-stream-broker.test.ts` proves a late subscriber receives buffered chunks before live chunks without opening a second upstream fetch.
+- Observation: Broker replay must be per subscriber, not just per upstream entry.
+  Evidence: An early subscriber is added before the upstream handle resolves. If the server body yields chunks immediately, that subscriber can receive live chunks before `attachSubscriber` resumes. The broker now stores `replayCursor` on each subscriber, and `chat-stream-broker.test.ts` proves fast upstream chunks are not duplicated during handle-resolution replay.
+- Observation: The Electron runtime smoke path proves preload wiring and tear-off availability, but it does not replace the full manual streaming acceptance scenario.
+  Evidence: `pnpm --filter @cradle/desktop dev --remoteDebuggingPort 9222` launched Electron with CDP on port 9222, `window.cradle.chatStream` exposed `abort`, `diagnostics`, `onChunk`, `onClosed`, `onError`, `startResponse`, and `subscribeSession`, and `window.cradle.ipc.invoke('window.tearOffSession', ...)` opened a tear-off target. The user then explicitly stopped further real-stream validation, so no live `subscriberCount: 2` diagnostic sample was recorded.
 
 ## Decision Log
 
@@ -56,9 +72,25 @@ After this change, Electron Desktop owns long-lived chat transport in the main p
   Rationale: The user explicitly identified Electron as the core runtime. Keeping ordinary browser deployments on the current HTTP SSE transport avoids broad web behavior changes while fixing the desktop-specific connection pool problem.
   Date/Author: 2026-06-01 / Codex
 
+- Decision: Response-start requests may replace a passive session entry, but passive subscriptions may reuse any active entry for the same session.
+  Rationale: A passive `GET /stream` entry observes an already active run and is safe to share with other observers. A `POST /response` entry creates or continues a run and carries request body semantics, so reusing a passive entry could silently drop the user's intended send.
+  Date/Author: 2026-06-01 / Codex
+
+- Decision: The desktop broker buffers accepted upstream chunks and replays them to late renderer subscribers.
+  Rationale: Renderer projection intentionally stays in `ChatStreamingHandler`, but late subscribers still need the AI SDK protocol prefix. Buffering accepted chunks in main preserves server replay behavior while keeping UI message projection out of Electron main.
+  Date/Author: 2026-06-01 / Codex
+
+- Decision: Track replay progress on each renderer subscriber.
+  Rationale: Entry-level replay state is too coarse because a subscriber may receive live chunks before the IPC invoke result returns. A per-subscriber cursor keeps replay idempotent without changing the renderer transport contract.
+  Date/Author: 2026-06-01 / Codex
+
 ## Outcomes & Retrospective
 
 This section will be updated after implementation. The expected outcome is that Electron Desktop chat streaming uses one main-process upstream stream per active session or run while every open renderer window still sees the live response. The non-Electron web path should continue using the existing HTTP SSE request flow.
+
+As of 2026-06-01 12:20 +0800, the source implementation and focused automated coverage are complete. Electron Desktop now has a main-process broker and preload IPC bridge, and renderer chat starts or joins streams through `chat-stream-transport.ts`. Focused tests prove single-upstream fanout, cleanup, response-stream retention, Electron stream reconstruction, Electron error propagation, and HTTP SSE fallback. The remaining gap is manual two-window Desktop validation against a real streaming run.
+
+As of 2026-06-01 13:44 +0800, Electron runtime smoke validation also confirms the desktop app launches with the new preload bridge, the renderer can call `window.cradle.chatStream.diagnostics()`, and a tear-off window can be opened from the main window. The full real-stream two-window diagnostic scenario was intentionally not completed because the user said no further manual validation was needed. The implementation should be treated as source-complete with focused automated coverage and partial runtime smoke evidence, not as fully manually accepted against a live provider stream.
 
 ## Context and Orientation
 
@@ -132,12 +164,28 @@ Run focused desktop validation:
 
 The expected result is TypeScript success and a Vitest run where the broker tests pass. If the desktop package does not currently expose a Vitest script, use the package's existing test convention or add the focused test to the nearest configured desktop test runner; record the exact command and output here.
 
+Recorded result from 2026-06-01 12:20 +0800:
+
+    pnpm --filter @cradle/desktop typecheck
+    Result: passed.
+
+    pnpm --filter @cradle/desktop exec vitest run src/main/chat-stream-broker.test.ts
+    Result: 1 file passed, 6 tests passed after the response-vs-passive reuse, late-subscriber replay, and replay-cursor regressions were added.
+
 Run focused web validation:
 
     pnpm --filter @cradle/web test -- src/features/chat/chat-stream-transport.test.ts src/features/chat/use-chat-session.test.ts
     pnpm --filter @cradle/web exec tsc --noEmit
 
 The expected result is that the new transport tests pass. If broad web typecheck fails because of unrelated existing worktree errors, record the failing files and still keep the focused test result.
+
+Recorded result from 2026-06-01 12:20 +0800:
+
+    pnpm --filter @cradle/web exec vitest run --config vite.config.ts --environment jsdom src/features/chat/chat-stream-transport.test.ts
+    Result: 1 file passed, 3 tests passed.
+
+    pnpm --filter @cradle/web exec tsc --noEmit
+    Result: failed on pre-existing unrelated type errors outside the changed chat transport files. The failing areas are `src/features/agent-management`, `src/features/chronicle`, `src/features/system-agent/jarvis-popover.tsx`, `src/features/workspace-detail`, `src/features/workspace`, `src/tabs/chat.tab.tsx`, and `../../packages/streamdown/src/plugins/remark-incomplete.ts`.
 
 Run a manual desktop check in development:
 
@@ -147,6 +195,25 @@ In the running app, open a chat session in the main window, detach the same sess
 
     chatStream diagnostics:
       session session_123: upstream=1 subscribers=2 mode=response runId=run_456
+
+Recorded partial runtime smoke result from 2026-06-01 13:44 +0800:
+
+    pnpm --filter @cradle/desktop dev --remoteDebuggingPort 9222
+    Result: Electron launched, server started on `http://127.0.0.1:21423`, and CDP was available on port 9222.
+
+    agent-browser connect 9222
+    Result: connected.
+
+    window.cradle.chatStream
+    Result: exposed `abort`, `diagnostics`, `onChunk`, `onClosed`, `onError`, `startResponse`, and `subscribeSession`.
+
+    window.cradle.chatStream.diagnostics()
+    Result before starting a stream: `{ "streams": [] }`.
+
+    window.cradle.ipc.invoke('window.tearOffSession', sessionId, 180, 160)
+    Result: a `Cradle Tear-Off` target opened for the requested session.
+
+    Full two-window live stream result: intentionally not recorded because the user stopped further manual validation.
 
 ## Validation and Acceptance
 
@@ -163,6 +230,8 @@ The renderer Electron transport test creates a stream through a mocked `window.c
 The renderer HTTP fallback test verifies that when `window.cradle.chatStream` is absent, the transport still calls the existing HTTP SSE path and parses frames through `parseJsonEventStream` and `uiMessageChunkSchema`.
 
 Manual acceptance requires opening two Electron windows on the same active chat session and confirming that ordinary short requests such as message snapshot refresh, queue list, cancel, and runtime status no longer stall behind a pile of renderer-owned chat SSE streams.
+
+For this implementation pass, manual acceptance was waived by the user after partial runtime smoke validation. Future release verification should still run the full scenario above and capture a diagnostic sample with `subscriberCount: 2` during an active stream.
 
 ## Idempotence and Recovery
 
@@ -266,12 +335,12 @@ In `apps/desktop/src/main/chat-stream-broker.ts`, define types and a class simil
       message: string
     }
 
-    export class DesktopChatStreamBroker {
+    export class ChatStreamBroker {
       constructor(options: { serverUrl: string })
       startResponse(sender: Electron.WebContents, request: DesktopChatStartResponseRequest): Promise<DesktopChatStreamHandle>
       subscribeSession(sender: Electron.WebContents, request: DesktopChatSubscribeSessionRequest): Promise<DesktopChatStreamHandle>
-      abortRendererStream(streamId: string): void
-      readDiagnostics(): DesktopChatStreamDiagnostics
+      abortStream(sender: Electron.WebContents, request: { streamId: string }): void
+      diagnostics(): DesktopChatStreamDiagnostics
       stop(): void
     }
 
@@ -282,8 +351,8 @@ In `apps/desktop/src/preload/index.ts`, expose:
     chatStream: {
       startResponse: (request: DesktopChatStartResponseRequest) => Promise<DesktopChatStreamHandle>
       subscribeSession: (request: DesktopChatSubscribeSessionRequest) => Promise<DesktopChatStreamHandle>
-      abort: (streamId: string) => Promise<void>
-      getDiagnostics: () => Promise<DesktopChatStreamDiagnostics>
+      abort: (request: { streamId: string }) => Promise<void>
+      diagnostics: () => Promise<DesktopChatStreamDiagnostics>
       onChunk: (handler: (event: DesktopChatStreamChunkEvent) => void) => () => void
       onClosed: (handler: (event: DesktopChatStreamClosedEvent) => void) => () => void
       onError: (handler: (event: DesktopChatStreamErrorEvent) => void) => () => void
@@ -296,7 +365,6 @@ In `apps/web/src/features/chat/chat-stream-transport.ts`, expose renderer-facing
       assistantMessageId?: string
       userMessageId?: string
       stream: ReadableStream<UIMessageChunk>
-      abort: () => void
     }
 
     export function startChatResponseStream(args: {
@@ -305,11 +373,21 @@ In `apps/web/src/features/chat/chat-stream-transport.ts`, expose renderer-facing
       signal?: AbortSignal
     }): Promise<ChatStreamTransportResult>
 
-    export function subscribeChatSessionChunkStream(args: {
+    export function subscribeChatSessionStreamForSession(args: {
       sessionId: string
       signal?: AbortSignal
     }): Promise<ChatStreamTransportResult>
 
 These functions should use `window.cradle.chatStream` only when Electron exposes it. Otherwise they should call the existing HTTP fetch functions and parse the `Response` body with the existing SSE parser.
+
+Revision note, 2026-06-01 12:36 +0800: Added per-subscriber replay cursors to prevent duplicate chunks when upstream data arrives before IPC handle resolution, added a focused race regression test, and reran desktop typecheck plus broker and renderer transport focused tests.
+
+Revision note, 2026-06-01 13:44 +0800: Recorded partial Electron runtime smoke validation, the user-requested stop before full real-stream manual acceptance, and the remaining future-release manual diagnostic check.
+
+Revision note, 2026-06-01 12:32 +0800: Added broker-side accepted chunk replay for late renderer subscribers, exposed `replayChunkCount` diagnostics, added focused regression coverage, reran desktop typecheck plus broker and renderer transport focused tests, and reran web typecheck to confirm only unrelated pre-existing errors remain.
+
+Revision note, 2026-06-01 12:27 +0800: Tightened broker entry reuse semantics so response-start requests do not reuse passive session entries, added a focused regression test, reran desktop typecheck plus broker and renderer transport focused tests, and recorded the updated validation count.
+
+Revision note, 2026-06-01 12:20 +0800: Implemented the desktop-owned chat stream transport across Electron main, preload, renderer chat transport, `useChatSession`, tests, and README documentation. Recorded focused validation results and the remaining manual desktop validation gap.
 
 Revision note, 2026-06-01: Initial ExecPlan created after static analysis of Cradle's Electron window creation, preload IPC boundary, renderer chat streaming hook, and server chat-runtime SSE ownership. The plan chooses desktop-owned long-lived chat transport while preserving server canonical run ownership and renderer UI projection ownership.
