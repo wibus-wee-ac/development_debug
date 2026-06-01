@@ -2,11 +2,12 @@
 
 Owns the Codex app-server runtime adapter for Chat Runtime. This directory translates between Cradle `UIMessage` state and the Codex JSON-RPC app-server protocol.
 Codex tool identity and the `{ identifier, apiName, args, result }` envelope are owned by `tools/`; this provider only maps app-server protocol items into that stable contract.
+Codex thread names are read from app-server `thread/start`/`thread/resume` responses and `thread/name/updated` notifications, then reported through Chat Runtime's title callback. Cradle owns the final `sessions.title` write.
 
 ## Files
 
-- `provider.ts`: Codex `ChatRuntime` implementation; starts/resumes app-server threads, injects reconstructed Cradle history through `thread/inject_items`, starts turns, streams notifications, and handles live steering/cancellation.
-- `provider.test.ts`: Regression tests for Codex thread startup, provider config, transcript reconstruction, streaming, steering, cancellation, and diagnostics.
+- `provider.ts`: Codex `ChatRuntime` implementation; starts/resumes app-server threads, projects app-server thread names to Chat Runtime, injects reconstructed Cradle history through `thread/inject_items`, starts turns, streams notifications, and handles live steering/cancellation.
+- `provider.test.ts`: Regression tests for Codex thread startup, provider title projection, provider config, transcript reconstruction, streaming, steering, cancellation, and diagnostics.
 - `app-server-client.ts`: Newline-delimited JSON-RPC client for a per-turn Codex app-server process.
 - `app-server-client.test.ts`: Client path and transport tests.
 - `app-server-mapper.ts`: Maps Codex app-server notifications into AI SDK `UIMessageChunk` events carrying Cradle-owned tool envelopes.
