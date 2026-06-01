@@ -39,6 +39,8 @@ export interface TabBarProps {
 interface TabPillProps {
   tab: TabInstance
   isActive: boolean
+  shortcutHint?: number
+  showShortcutHint: boolean
   presentation?: TabPresentation
   customization?: TabBarCustomization
   tabClassName?: string
@@ -51,9 +53,26 @@ function renderIconSlot(slot: React.ReactNode | (() => React.ReactNode) | undefi
   return typeof slot === 'function' ? slot() : slot
 }
 
+function readNumberShortcutIndex(event: KeyboardEvent): number | null {
+  if (/^[1-9]$/.test(event.key)) {
+    return Number(event.key) - 1
+  }
+
+  const digitMatch = /^(?:Digit|Numpad)([1-9])$/.exec(event.code)
+  if (!digitMatch) {
+    return null
+  }
+
+  return Number(digitMatch[1]) - 1
+}
+
+const metaTabHintDelayMs = 300
+
 const SortableTabPill = memo(({
   tab,
   isActive,
+  shortcutHint,
+  showShortcutHint,
   presentation,
   customization,
   tabClassName,
@@ -70,6 +89,17 @@ const SortableTabPill = memo(({
     zIndex: isDragging ? 10 : undefined,
   }
   const tabIcon = presentation?.icon ?? customization?.tabIcon?.(tab) ?? null
+  const shortcutSlot = shortcutHint === undefined
+    ? null
+    : (
+        <span
+          aria-hidden="true"
+          className="inline-flex size-4 items-center justify-center rounded-sm bg-foreground/6 font-mono text-[10px] font-medium leading-none tabular-nums text-foreground/65"
+        >
+          {shortcutHint}
+        </span>
+      )
+  const hasLeadingSlot = tabIcon || shortcutSlot
 
   const pill = (
     <div
@@ -100,9 +130,28 @@ const SortableTabPill = memo(({
           : cn('opacity-70 hover:opacity-100! text-muted-foreground hover:text-foreground/70', tabClassName),
       )}
     >
-      {tabIcon && (
-        <span className="shrink-0 flex items-center">
-          {tabIcon}
+      {hasLeadingSlot && (
+        <span className="relative flex size-4 shrink-0 items-center justify-center">
+          {tabIcon && (
+            <span
+              className={cn(
+                'absolute inset-0 flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
+                showShortcutHint ? 'scale-[0.92] opacity-0 blur-[2px]' : 'scale-100 opacity-100 blur-0',
+              )}
+            >
+              {tabIcon}
+            </span>
+          )}
+          {shortcutSlot && (
+            <span
+              className={cn(
+                'absolute inset-0 flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
+                showShortcutHint ? 'scale-100 opacity-100 blur-0' : 'scale-[0.92] opacity-0 blur-[2px]',
+              )}
+            >
+              {shortcutSlot}
+            </span>
+          )}
         </span>
       )}
       <span className="truncate select-none">{presentation?.label ?? tab.label}</span>
@@ -147,7 +196,9 @@ export const TabBar = memo(({
   const pointerRef = useRef<ScreenCoordinates | null>(null)
   const dragWasTornOffRef = useRef(false)
   const dragCleanupRef = useRef<(() => void) | null>(null)
+  const metaHintTimerRef = useRef<number | null>(null)
   const [activeDragTab, setActiveDragTab] = useState<TabInstance | null>(null)
+  const [showMetaTabHints, setShowMetaTabHints] = useState(false)
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
@@ -174,6 +225,64 @@ export const TabBar = memo(({
     store.getState().closeTab(id)
     onTabClosed?.(id)
   }, [onTabClosed, store])
+
+  const clearMetaHintTimer = useCallback(() => {
+    if (metaHintTimerRef.current === null) {
+      return
+    }
+    window.clearTimeout(metaHintTimerRef.current)
+    metaHintTimerRef.current = null
+  }, [])
+
+  const hideMetaTabHints = useCallback(() => {
+    clearMetaHintTimer()
+    setShowMetaTabHints(false)
+  }, [clearMetaHintTimer])
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Meta' && !event.repeat && metaHintTimerRef.current === null) {
+        metaHintTimerRef.current = window.setTimeout(() => {
+          metaHintTimerRef.current = null
+          setShowMetaTabHints(true)
+        }, metaTabHintDelayMs)
+      }
+
+      if (!event.metaKey || event.altKey || event.shiftKey) {
+        return
+      }
+
+      const shortcutIndex = readNumberShortcutIndex(event)
+      if (shortcutIndex === null) {
+        return
+      }
+
+      const targetTab = tabs[shortcutIndex]
+      if (!targetTab) {
+        return
+      }
+
+      event.preventDefault()
+      handleActivate(targetTab.id)
+    }
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === 'Meta') {
+        hideMetaTabHints()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keyup', handleKeyUp, true)
+    window.addEventListener('blur', hideMetaTabHints)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keyup', handleKeyUp, true)
+      window.removeEventListener('blur', hideMetaTabHints)
+      hideMetaTabHints()
+    }
+  }, [handleActivate, hideMetaTabHints, tabs])
 
   const checkTearOff = useCallback((activeId: string | number) => {
     dragCleanupRef.current?.()
@@ -272,11 +381,13 @@ export const TabBar = memo(({
         data-testid="tab-bar"
       >
         <SortableContext items={sortableTabIds} strategy={horizontalListSortingStrategy}>
-          {tabs.map(tab => (
+          {tabs.map((tab, index) => (
             <SortableTabPill
               key={tab.id}
               tab={tab}
               isActive={tab.id === activeTabId}
+              shortcutHint={index < 9 ? index + 1 : undefined}
+              showShortcutHint={showMetaTabHints}
               presentation={tabPresentation?.[tab.id]}
               customization={customization}
               tabClassName={tabClassName}

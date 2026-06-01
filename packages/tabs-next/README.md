@@ -45,7 +45,7 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
 - **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params and new-tab activation gestures.
 - **src/components/tab-renderer.tsx**: Overlaid retained-frame renderer with optional `useTabFrameActive()` state, React Activity support for discardable routes, and reducer-managed loader state.
-- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, and shared chrome customization slots.
+- **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, shared chrome customization slots, and delayed Meta-key number hints for tab switching.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
 - **src/debug.ts**: Debug channel, storage keys, metrics, and snapshot utilities.
 - **src/cn.ts**: Package-local class name merge helper.
