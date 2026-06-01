@@ -54,7 +54,7 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
-import { isChatSkillContextPart } from '../../chat-runtime/context-parts'
+import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { CreateEventInput } from '../../observability/contract'
@@ -67,7 +67,7 @@ import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { buildDefaultCodexAppServerRequestResult } from './app-server-bridge'
 import { CODEX_APP_SERVER_CAPABILITIES } from './app-server-capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
-import { CodexAppServerClient } from './app-server-client'
+import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
@@ -711,6 +711,10 @@ export class CodexProvider implements ChatRuntime {
     const client = this.createAppServerClient({
       apiKey,
       config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: input.runtimeSession.chatSessionId,
+        workspaceId: input.workspaceId,
+      }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
     })
 
@@ -916,6 +920,10 @@ export class CodexProvider implements ChatRuntime {
     const client = this.createAppServerClient({
       apiKey,
       config: codexConfig,
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: input.runtimeSession.chatSessionId,
+        workspaceId: input.workspaceId,
+      }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
     })
     const abortController = new AbortController()
@@ -2933,7 +2941,11 @@ function buildCodexConfig(
     ? config.skillPaths
     : resolveSkillPaths(workspacePath)
   const instructionPaths = [...skillPaths, ...(systemPromptFile ? [systemPromptFile] : [])]
-  const codexConfig: Record<string, unknown> = {}
+  const codexConfig: Record<string, unknown> = {
+    network_access: "enabled",
+    show_raw_agent_reasoning: true,
+    disable_response_storage: true
+  }
   const mcpServers = buildCodexMcpServersConfig()
   codexConfig.approval_policy = config.approvalPolicy
   codexConfig.sandbox_mode = config.sandboxMode
@@ -3013,8 +3025,9 @@ function projectCodexUserInput(message: RuntimeMessageInput, runtimeLabel: strin
       }
       continue
     }
-    if (isChatSkillContextPart(part)) {
-      input.push({ type: 'skill', name: part.name, path: part.path })
+    const skillPart = readChatSkillContextPart(part)
+    if (skillPart) {
+      input.push({ type: 'skill', name: skillPart.name, path: skillPart.path })
       continue
     }
     unsupportedParts.push(part.type)
