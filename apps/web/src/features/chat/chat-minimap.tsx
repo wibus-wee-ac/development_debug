@@ -327,7 +327,7 @@ function ChatMinimapInner({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         onClick={e => scrollToEventMessage(e.clientY)}
-        className="pointer-events-auto relative flex h-[min(70vh,520px)] min-h-40 w-10 cursor-pointer flex-col items-center justify-center gap-3 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="pointer-events-auto relative flex min-h-40 w-10 cursor-pointer flex-col items-center justify-center gap-3 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {anchors.map((anchor, i) => {
           return (
@@ -394,7 +394,7 @@ function ChatMinimapHoverPreview({
     <span
       className={cn(
         'pointer-events-none absolute right-full top-1/2 z-20 mr-2 w-56 -translate-y-1/2 rounded-lg border border-border bg-popover p-2.5 text-popover-foreground shadow-md',
-        'opacity-0 transition-[opacity,transform] duration-150 group-hover/minimap-bar:opacity-100',
+        'opacity-0 group-hover/minimap-bar:opacity-100',
         visible && 'opacity-100',
       )}
     >

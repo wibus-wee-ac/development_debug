@@ -2,6 +2,15 @@ import { getServerUrl } from '~/lib/electron'
 
 const SERVER_BASE = getServerUrl()
 
+export function runtimeCapabilitiesQueryKey(sessionId: string | null): readonly unknown[] {
+  return ['chat', 'runtime-capabilities', sessionId ?? 'no-session']
+}
+
+export function runtimeUiSlotStatesQueryKey(sessionId: string | null, runtimeKind?: string | null): readonly unknown[] {
+  const key = ['chat', 'runtime-ui-slot-states', sessionId ?? 'no-session'] as const
+  return runtimeKind ? [...key, runtimeKind] : key
+}
+
 export interface ChatSlashCommand {
   name: string
   description: string
@@ -14,6 +23,7 @@ export type ChatRuntimeUiSlotSurface
     | 'toolbarPicker'
     | 'composerState'
     | 'runtimePanel'
+    // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
     | 'streamEvidence'
     | 'recordOnly'
 
@@ -184,6 +194,33 @@ export interface ChatRuntimeToolActivityUiSlotState {
   updatedAt: number
 }
 
+export interface ChatRuntimeCrewCollaborationMode {
+  name: string
+  mode: string | null
+  model: string | null
+  reasoningEffort: string | null
+}
+
+export interface ChatRuntimeCrewAgentItem {
+  threadId: string
+  status: string | null
+  message: string | null
+}
+
+export interface ChatRuntimeCrewCallItem {
+  id: string
+  tool: string
+  status: ChatRuntimeToolActivityStatus
+  senderThreadId: string | null
+  receiverThreadIds: string[]
+  prompt: string | null
+  model: string | null
+  reasoningEffort: string | null
+  agents: ChatRuntimeCrewAgentItem[]
+  startedAt: number | null
+  completedAt: number | null
+}
+
 export interface ChatRuntimeMcpServerSummary {
   name: string
   status: ChatRuntimeMcpServerStatus
@@ -323,6 +360,8 @@ export interface ChatRuntimeCrewUiSlotState {
   failedCount: number
   recentItems: ChatRuntimeToolActivityItem[]
   collaborationModeCount: number
+  collaborationModes: ChatRuntimeCrewCollaborationMode[]
+  calls: ChatRuntimeCrewCallItem[]
   updatedAt: number
 }
 

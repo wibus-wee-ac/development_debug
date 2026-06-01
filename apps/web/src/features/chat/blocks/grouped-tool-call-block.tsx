@@ -22,11 +22,19 @@ import type { ComponentType } from 'react'
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
+import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 import { hasTerminalDetails } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall } from '../tool-ui-classifier'
-import { TerminalExecutionDetails } from './tool-call-block'
+import {
+  FileDiffExecutionDetails,
+  hasFileDiffInlineContent,
+  readFileDiffPayload,
+  readFileDiffTarget,
+  TerminalExecutionDetails,
+} from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
 
@@ -62,6 +70,24 @@ const PLURAL_TITLES: Partial<Record<ToolUiKind, string>> = {
   'file-diff': 'Edit files',
   'search': 'Search files',
   'notebook-diff': 'Edit notebooks',
+}
+
+function isDiffKind(uiKind: ToolUiKind): boolean {
+  return uiKind === 'file-diff' || uiKind === 'notebook-diff'
+}
+
+function hasExpandableDetails(part: RenderableToolPart, uiKind: ToolUiKind): boolean {
+  if (uiKind === 'terminal') {
+    return hasTerminalDetails(part.input, part.output, part.errorText, part.argumentsText)
+  }
+  if (isDiffKind(uiKind)) {
+    if (part.errorText) {
+      return true
+    }
+    const payload = readFileDiffPayload(part.input, part.output, part.argumentsText)
+    return hasFileDiffInlineContent(payload.input, payload.output)
+  }
+  return false
 }
 
 function basename(value: string): string {
@@ -100,12 +126,25 @@ function OverallStatusIcon({ state, animated = true }: { state: ToolState, anima
   return <ClockIcon className={cn('size-3.5 text-amber-500 dark:text-amber-400', animated && 'animate-pulse')} aria-hidden />
 }
 
-export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items: ToolCallItem[], uiKind: ToolUiKind, animated?: boolean }) {
+export function GroupedToolCallBlock({
+  items,
+  uiKind,
+  animated = true,
+  workspaceDiffTarget,
+}: {
+  items: ToolCallItem[]
+  uiKind: ToolUiKind
+  animated?: boolean
+  workspaceDiffTarget?: { workspaceId: string, ownerId?: string | null }
+}) {
   const firstDescriptor = describeToolCall(items[0].part)
   const Icon = TOOL_ICON_MAP[uiKind]
   const overallState = getOverallState(items)
   const isRunning = overallState === 'input-available'
   const groupTitle = PLURAL_TITLES[uiKind] ?? firstDescriptor.title
+  const openWorkspaceDiffTab = useBrowserPanelStore(s => s.openWorkspaceDiffTab)
+  const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
+  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
   const [expandedItems, setExpandedItems] = useState<Set<string>>(() => {
     return new Set(
       items
@@ -125,6 +164,19 @@ export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items
       }
       return next
     })
+  }
+
+  const openWorkspaceDiff = (path: string) => {
+    if (!workspaceDiffTarget) {
+      return
+    }
+    const tabId = openWorkspaceDiffTab({
+      workspaceId: workspaceDiffTarget.workspaceId,
+      title: 'All Changes',
+      ownerId: workspaceDiffTarget.ownerId,
+    })
+    setBrowserPanelOpen(true, workspaceDiffTarget.ownerId)
+    requestScrollToFilePath({ path, tabId })
   }
 
   const content = (
@@ -175,8 +227,22 @@ export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items
           const descriptor = describeToolCall(item.part)
           const label = getItemLabel(descriptor.target, uiKind)
           const isLast = idx === items.length - 1
-          const expandable = uiKind === 'terminal' && hasTerminalDetails(item.part.input, item.part.output, item.part.errorText, item.part.argumentsText)
+          const expandable = hasExpandableDetails(item.part, uiKind)
+          const workspaceDiffPath = isDiffKind(uiKind)
+            ? readFileDiffTarget(item.part.input, item.part.output, item.part.argumentsText)
+            : null
+          const canOpenWorkspaceDiff = !!workspaceDiffTarget && !!workspaceDiffPath
+          const interactive = expandable || canOpenWorkspaceDiff
           const expanded = expandedItems.has(item.key)
+          const handleItemClick = () => {
+            if (expandable) {
+              toggleItem(item.key)
+              return
+            }
+            if (workspaceDiffPath) {
+              openWorkspaceDiff(workspaceDiffPath)
+            }
+          }
           return (
             <div key={item.key} className="relative py-0.5 pl-7">
               {/* Horizontal branch */}
@@ -189,11 +255,11 @@ export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items
                 type="button"
                 className={cn(
                   'flex min-w-0 w-full items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px]',
-                  expandable && 'transition-colors duration-100 hover:bg-muted/35 active:bg-muted/50',
+                  interactive && 'transition-colors duration-100 hover:bg-muted/35 active:bg-muted/50',
                 )}
-                disabled={!expandable}
+                disabled={!interactive}
                 aria-expanded={expandable ? expanded : undefined}
-                onClick={() => toggleItem(item.key)}
+                onClick={handleItemClick}
               >
                 {expandable && (
                   <ChevronRightIcon
@@ -216,12 +282,24 @@ export function GroupedToolCallBlock({ items, uiKind, animated = true }: { items
               </button>
               {expandable && expanded && (
                 <div className="mt-1 pr-1.5">
-                  <TerminalExecutionDetails
-                    input={item.part.input}
-                    output={item.part.output}
-                    errorText={item.part.errorText}
-                    argumentsText={item.part.argumentsText}
-                  />
+                  {uiKind === 'terminal'
+                    ? (
+                        <TerminalExecutionDetails
+                          input={item.part.input}
+                          output={item.part.output}
+                          errorText={item.part.errorText}
+                          argumentsText={item.part.argumentsText}
+                        />
+                      )
+                    : (
+                        <FileDiffExecutionDetails
+                          input={item.part.input}
+                          output={item.part.output}
+                          errorText={item.part.errorText}
+                          argumentsText={item.part.argumentsText}
+                          state={item.part.state}
+                        />
+                      )}
                 </div>
               )}
             </div>

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { ComponentType, FocusEvent, KeyboardEvent, PointerEvent, ReactElement, ReactNode } from 'react'
-import { Activity, Children, cloneElement, useEffect, useMemo, useState } from 'react'
+import { Activity, cloneElement, useEffect, useMemo, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -28,6 +28,8 @@ import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 import { projectChatTodos, readTodoCompletion } from '../chat-todo-projection'
 import { readTerminalOutputSections } from '../terminal-tool-details'
@@ -53,6 +55,7 @@ interface ToolCallBlockProps {
   input?: unknown
   output?: unknown
   errorText?: string
+  workspaceDiffTarget?: { workspaceId: string, ownerId?: string | null }
   onApprovalResponse?: (approval: { id: string, approved: boolean }) => void
   children?: ReactNode
 }
@@ -122,13 +125,23 @@ function safePercent(value: number | null, max: number): number {
   return Math.min(100, Math.max(0, (value / max) * 100))
 }
 
+function hasRenderableChildren(children: ReactNode): boolean {
+  if (children === null || children === undefined || typeof children === 'boolean') {
+    return false
+  }
+  if (Array.isArray(children)) {
+    return children.some(hasRenderableChildren)
+  }
+  return true
+}
+
 interface EditDiffPreview {
   filePath: string
   oldContent: string
   newContent: string
 }
 
-function readEditDiffPreview(input: ToolPayload, output: ToolPayload): EditDiffPreview | null {
+export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): EditDiffPreview | null {
   const filePath = input.filePath ?? output.filePath
   if (!filePath) {
     return null
@@ -185,6 +198,46 @@ function readEditPayloadSize(input: ToolPayload): number {
     input.contentText,
   ].filter((value): value is string => value !== null)
   return parts.reduce((total, value) => total + value.length, 0)
+}
+
+function hasDiffPreviewContent(input: ToolPayload, output: ToolPayload, errorText?: string): boolean {
+  return !!errorText
+    || hasFileDiffPayloadContent(input, output)
+}
+
+export function hasFileDiffPayloadContent(input: ToolPayload, output: ToolPayload): boolean {
+  return readEditDiffPreview(input, output) !== null
+    || readEditTarget(input, output) !== null
+    || readEditPayloadSize(input) > 0
+    || output.gitDiff.patch.length > 0
+    || output.structuredPatch.length > 0
+}
+
+export function hasFileDiffInlineContent(input: ToolPayload, output: ToolPayload): boolean {
+  return readEditDiffPreview(input, output) !== null
+    || readEditPayloadSize(input) > 0
+    || output.gitDiff.patch.length > 0
+    || output.structuredPatch.length > 0
+}
+
+function hasDiffHeroContent(input: ToolPayload, output: ToolPayload): boolean {
+  return hasFileDiffPayloadContent(input, output)
+}
+
+export function readFileDiffPayload(input: unknown, output: unknown, argumentsText?: string): { input: ToolPayload, output: ToolPayload } {
+  const inputPayload = readToolInputPayload(input, argumentsText)
+  const outputPayload = readToolPayload(output)
+  return { input: inputPayload, output: outputPayload }
+}
+
+export function readFileDiffTarget(input: unknown, output: unknown, argumentsText?: string): string | null {
+  const payload = readFileDiffPayload(input, output, argumentsText)
+  return readEditTarget(payload.input, payload.output)
+}
+
+export function hasFileDiffDetails(input: unknown, output: unknown, argumentsText?: string, errorText?: string): boolean {
+  const payload = readFileDiffPayload(input, output, argumentsText)
+  return hasDiffPreviewContent(payload.input, payload.output, errorText)
 }
 
 function readReplaceAll(input: ToolPayload, output: ToolPayload): boolean {
@@ -428,7 +481,7 @@ function FileReadSummary({ output }: { output: ToolPayload }) {
   )
 }
 
-function DiffSummary({ input, output, state }: { input: ToolPayload, output: ToolPayload, state: ToolState }) {
+function DiffSummary({ input, output, state, defaultOpen = false }: { input: ToolPayload, output: ToolPayload, state: ToolState, defaultOpen?: boolean }) {
   const editPreview = readEditDiffPreview(input, output)
   if (editPreview) {
     return (
@@ -436,7 +489,7 @@ function DiffSummary({ input, output, state }: { input: ToolPayload, output: Too
         filePath={editPreview.filePath}
         oldContent={editPreview.oldContent}
         newContent={editPreview.newContent}
-        defaultOpen={false}
+        defaultOpen={defaultOpen}
       />
     )
   }
@@ -474,6 +527,38 @@ function DiffSummary({ input, output, state }: { input: ToolPayload, output: Too
     return <RawValue value={lines.join('\n')} className="max-h-64" />
   }
   return <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">File change prepared.</p>
+}
+
+export function FileDiffExecutionDetails({
+  input,
+  output,
+  errorText,
+  argumentsText,
+  state,
+  className,
+}: {
+  input: unknown
+  output: unknown
+  errorText?: string
+  argumentsText?: string
+  state: ToolState
+  className?: string
+}) {
+  const inputPayload = readToolInputPayload(input, argumentsText)
+  const outputPayload = readToolPayload(output)
+
+  return (
+    <div className={cn('grid gap-2', className)}>
+      {errorText && (
+        <DetailSection title="Error">
+          <RawValue value={errorText} className="max-h-40 bg-destructive/5" />
+        </DetailSection>
+      )}
+      {hasFileDiffPayloadContent(inputPayload, outputPayload) && (
+        <DiffSummary input={inputPayload} output={outputPayload} state={state} defaultOpen />
+      )}
+    </div>
+  )
 }
 
 function SearchSummary({ output }: { output: ToolPayload }) {
@@ -793,9 +878,8 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
     case 'file-read':
       return output.file !== null
     case 'file-diff':
-      return readEditDiffPreview(input, output) !== null
-        || readEditTarget(input, output) !== null
-        || readEditPayloadSize(input) > 0
+    case 'notebook-diff':
+      return hasDiffHeroContent(input, output)
     case 'web':
       return output.results.some(item => item.content.length > 0)
     case 'subagent':
@@ -812,7 +896,7 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, onApprovalResponse, children }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, workspaceDiffTarget, onApprovalResponse, children }: ToolCallBlockProps) {
   const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
   const outputPayload = useMemo(() => readToolPayload(output), [output])
   const descriptor = useMemo(() => {
@@ -835,33 +919,61 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
     || outputPayload.backgroundTaskId !== null
     || readTerminalOutputSections(outputPayload, errorText).length > 0
   )
-  const hasChildren = Children.count(children) > 0
-  const expandable = hasTerminalPanel || hasChildren
-  const [expanded, setExpanded] = useState(() => isError(state) && hasTerminalPanel)
+  const hasDiffPanel = (descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff') && (
+    !!errorText || hasFileDiffInlineContent(inputPayload, outputPayload)
+  )
+  const workspaceDiffPath = descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff'
+    ? readEditTarget(inputPayload, outputPayload)
+    : null
+  const canOpenWorkspaceDiff = !!workspaceDiffTarget && !!workspaceDiffPath
+  const openWorkspaceDiffTab = useBrowserPanelStore(s => s.openWorkspaceDiffTab)
+  const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
+  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
+  const hasChildren = hasRenderableChildren(children)
+  const expandable = hasTerminalPanel || hasDiffPanel || hasChildren
+  const interactive = expandable || canOpenWorkspaceDiff
+  const [expanded, setExpanded] = useState(() => isError(state) && (hasTerminalPanel || hasDiffPanel))
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
 
   useEffect(() => {
-    if (errored && hasTerminalPanel) {
+    if (errored && (hasTerminalPanel || hasDiffPanel)) {
       setExpanded(true)
     }
-  }, [errored, hasTerminalPanel])
+  }, [errored, hasDiffPanel, hasTerminalPanel])
+
+  const openWorkspaceDiff = () => {
+    if (!workspaceDiffTarget || !workspaceDiffPath) {
+      return
+    }
+    const tabId = openWorkspaceDiffTab({
+      workspaceId: workspaceDiffTarget.workspaceId,
+      title: 'All Changes',
+      ownerId: workspaceDiffTarget.ownerId,
+    })
+    setBrowserPanelOpen(true, workspaceDiffTarget.ownerId)
+    requestScrollToFilePath({ path: workspaceDiffPath, tabId })
+  }
 
   const toggleExpanded = () => {
     if (expandable) {
       setExpanded(value => !value)
+      return
+    }
+    if (canOpenWorkspaceDiff) {
+      openWorkspaceDiff()
     }
   }
 
   const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!expandable) {
+    if (!interactive) {
       return
     }
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
-      setExpanded(value => !value)
+      toggleExpanded()
     }
   }
 
@@ -871,13 +983,13 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
         className={cn(
           'overflow-hidden rounded-lg mx-1 -px-1 bg-card border-border border',
           errored && 'ring-1 ring-destructive/30',
-          expandable && 'select-none',
+          interactive && 'select-none',
         )}
       >
         <div
-          className={cn('flex h-8 items-center gap-2 px-3', expandable && 'cursor-pointer')}
-          role={expandable ? 'button' : undefined}
-          tabIndex={expandable ? 0 : undefined}
+          className={cn('flex h-8 items-center gap-2 px-3', interactive && 'cursor-pointer')}
+          role={interactive ? 'button' : undefined}
+          tabIndex={interactive ? 0 : undefined}
           aria-expanded={expandable ? expanded : undefined}
           onClick={toggleExpanded}
           onKeyDown={handleHeaderKeyDown}
@@ -994,7 +1106,19 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
           </div>
         )}
 
-        {(!hasTerminalPanel || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
+        {hasDiffPanel && expanded && (
+          <div className="px-3 pb-3">
+            <FileDiffExecutionDetails
+              input={input}
+              output={output}
+              errorText={errorText}
+              argumentsText={argumentsText}
+              state={state}
+            />
+          </div>
+        )}
+
+        {(!(hasTerminalPanel || hasDiffPanel) || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
           <div className="px-3 pb-3">
             <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} />
           </div>
@@ -1036,7 +1160,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
   )
 
   const frameProps = {
-    className: 'py-1.5',
+    'className': 'py-1.5',
     'data-testid': `chat-tool-call-${toolCallId}`,
     'data-tool-name': toolName,
     'data-tool-kind': descriptor.kind,

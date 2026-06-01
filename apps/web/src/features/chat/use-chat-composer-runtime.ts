@@ -13,9 +13,9 @@ import { useChatPreferencesQuery } from '~/features/settings/use-chat-preference
 import { isElectron, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
-import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates } from './chat-capabilities'
+import type { ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
+import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import type { ChatContextPart } from './chat-context-parts'
-import type { ChatRuntimeUiSlotState } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CRADLE_APPSHOT_SLASH_COMMAND,
@@ -45,6 +45,7 @@ export interface ChatComposerRuntime {
   ) => void
   stop: () => void
   slashCommands: ChatComposerSlashCommand[]
+  uiSlots: ChatRuntimeUiSlot[]
   slotStates: ChatRuntimeUiSlotState[]
   supportsAttachments: boolean
   tokenUsage: {
@@ -90,14 +91,14 @@ export function useChatComposerRuntime({
 }: UseChatComposerRuntimeOptions): ChatComposerRuntime {
   const { data: chatPreferences } = useChatPreferencesQuery()
   const { data: runtimeCapabilities } = useQuery({
-    queryKey: ['chat', 'runtime-capabilities', sessionId ?? 'no-session'] as const,
+    queryKey: runtimeCapabilitiesQueryKey(sessionId),
     queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 60_000,
     retry: false,
   })
   const { data: runtimeUiSlotStates } = useQuery({
-    queryKey: ['chat', 'runtime-ui-slot-states', sessionId ?? 'no-session', runtimeCapabilities?.runtimeKind ?? 'unknown'] as const,
+    queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeCapabilities?.runtimeKind),
     queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 2_000,
@@ -153,9 +154,14 @@ export function useChatComposerRuntime({
     return createRuntimeUiSlotCommands(runtimeCapabilities?.uiSlots ?? [], runtimeUiSlotStates?.states ?? [])
   }, [runtimeCapabilities?.uiSlots, runtimeUiSlotStates?.states])
   const goalCommandText = useMemo(() => {
-    const goalCommand = runtimeSlotCommands.find(command => command.id === 'codex:goal')
+    const goalSlotIds = new Set(
+      (runtimeCapabilities?.uiSlots ?? [])
+        .filter(isGoalComposerSlot)
+        .map(slot => slot.id),
+    )
+    const goalCommand = runtimeSlotCommands.find(command => goalSlotIds.has(command.id))
     return goalCommand?.action.kind === 'insertText' ? goalCommand.action.text : null
-  }, [runtimeSlotCommands])
+  }, [runtimeCapabilities?.uiSlots, runtimeSlotCommands])
   const slashCommands = useMemo(() => mergeChatSlashCommands({
     runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
     runtimeUiSlotCommands: runtimeSlotCommands,
@@ -197,6 +203,7 @@ export function useChatComposerRuntime({
     send,
     stop,
     slashCommands,
+    uiSlots: runtimeCapabilities?.uiSlots ?? [],
     slotStates: runtimeUiSlotStates?.states ?? [],
     supportsAttachments,
     tokenUsage: {
@@ -206,8 +213,13 @@ export function useChatComposerRuntime({
   }
 }
 
+function isGoalComposerSlot(slot: ChatRuntimeUiSlot): boolean {
+  return slot.surfaces.includes('composerState')
+    && (slot.iconKey === 'goal' || slot.name.trim().toLowerCase() === 'goal')
+}
+
 function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {
-  return states.some(state => {
+  return states.some((state) => {
     if (state.kind === 'goal') {
       return state.status === 'active'
     }

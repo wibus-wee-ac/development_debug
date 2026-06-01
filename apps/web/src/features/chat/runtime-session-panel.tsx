@@ -2,7 +2,9 @@
 // Input: Session metadata, visible chat status, run display metadata, and tool entities.
 // Position: Chat feature panel rendered inside the app right aside.
 
-import { ActivityIcon, CircleIcon, ListTodoIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { ActivityIcon, CircleIcon, EyeIcon, ListTodoIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import { useSyncExternalStore } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { Progress } from '~/components/ui/progress'
@@ -10,9 +12,13 @@ import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
+import type { ChatRuntimeUiSlotState } from './chat-capabilities'
+import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
+import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from './chat-context'
 import { readTodoCompletion } from './chat-todo-projection'
 import type { ChatToolEntity } from './chat-tool-entities'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
+import { RuntimeUiSlotPanel } from './runtime-ui-slot-panel'
 import type { ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
@@ -43,6 +49,29 @@ export function RuntimeSessionPanel({
 }: RuntimeSessionPanelProps) {
   const visibleStatus = useChatStore(sessionId ? chatSelectors.visibleStatus(sessionId) : () => 'idle' as const)
   const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
+  const attentionSnapshot = useSyncExternalStore(
+    subscribeChatAttentionSnapshots,
+    () => readChatAttentionSnapshot(sessionId),
+    () => null,
+  )
+  const { data: runtimeCapabilities } = useQuery({
+    queryKey: runtimeCapabilitiesQueryKey(sessionId),
+    queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
+    enabled: !!sessionId,
+    staleTime: 60_000,
+    retry: false,
+  })
+  const { data: runtimeUiSlotStates, isLoading: runtimeUiSlotStatesLoading } = useQuery({
+    queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeCapabilities?.runtimeKind),
+    queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
+    enabled: !!sessionId,
+    staleTime: 2_000,
+    refetchInterval: query => statusShouldPoll(runtimeStatus?.status)
+      || shouldPollRuntimeSlotStates(query.state.data?.states ?? [])
+      ? 2_000
+      : false,
+    retry: false,
+  })
   const todoSnapshot = useSessionTodos(sessionId)
   const lastAssistantId = useChatStore(
     sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined,
@@ -71,6 +100,34 @@ export function RuntimeSessionPanel({
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
+      <RuntimeUiSlotPanel
+        slots={runtimeCapabilities?.uiSlots ?? []}
+        states={runtimeUiSlotStates?.states ?? []}
+        loading={runtimeUiSlotStatesLoading}
+      />
+
+      <div className="border-t" />
+
+      <section className="space-y-2">
+        <PanelHeading icon={EyeIcon} label="Attention" />
+        {attentionSnapshot
+          ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
+              <Metric label="Scroll" value={formatScrollRatio(attentionSnapshot.scrollRatio)} />
+              <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
+              <Metric label="Freshness" value={formatSnapshotFreshness(attentionSnapshot.updatedAt)} />
+            </div>
+          )
+          : (
+            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+              No chat attention snapshot for this session
+            </p>
+          )}
+      </section>
+
+      <div className="border-t" />
+
       <section className="space-y-2">
         <PanelHeading icon={ListTodoIcon} label="Todos" />
         {!todoSnapshot || todoSnapshot.todos.length === 0
@@ -285,6 +342,56 @@ function formatElapsed(startedAt: number | null | undefined, endedAt: number | n
   return `${(ms / 1_000).toFixed(1)} s`
 }
 
+function formatAttentionRange(snapshot: NonNullable<ReturnType<typeof readChatAttentionSnapshot>>): string {
+  if (snapshot.firstVisibleIndex === null || snapshot.lastVisibleIndex === null) {
+    return `${snapshot.messageCount} messages`
+  }
+  return `${snapshot.firstVisibleIndex + 1}-${snapshot.lastVisibleIndex + 1}/${snapshot.messageCount}`
+}
+
+function formatScrollRatio(value: number): string {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
+}
+
+function formatSnapshotFreshness(updatedAt: number): string {
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - updatedAt) / 1_000))
+  if (ageSeconds < 5) {
+    return 'live'
+  }
+  if (ageSeconds < 60) {
+    return `${ageSeconds}s ago`
+  }
+  return `${Math.floor(ageSeconds / 60)}m ago`
+}
+
 function safePercent(value: number, total: number): number {
   return total <= 0 ? 0 : Math.round((value / total) * 100)
+}
+
+function statusShouldPoll(status: RuntimeSessionStatusKind | undefined): boolean {
+  return status === 'streaming' || status === 'pending' || status === 'cancelling'
+}
+
+function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {
+  return states.some((state) => {
+    if (state.kind === 'goal') {
+      return state.status === 'active'
+    }
+    if (state.kind === 'compact') {
+      return state.status === 'running' || state.isCompactRelevant === true
+    }
+    if (state.kind === 'status') {
+      return state.status === 'active'
+    }
+    if (state.kind === 'toolActivity') {
+      return typeof state.activeCount === 'number' && state.activeCount > 0
+    }
+    if (state.kind === 'mcp') {
+      return Boolean(state.recentProgress)
+    }
+    if (state.kind === 'crew') {
+      return typeof state.activeCount === 'number' && state.activeCount > 0
+    }
+    return false
+  })
 }

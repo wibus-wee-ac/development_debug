@@ -1,14 +1,12 @@
 import { AlertCircleIcon, ExternalLinkIcon, ListTodoIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
 import { Progress } from '~/components/ui/progress'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { Skeleton } from '~/components/ui/skeleton'
 import { toastManager } from '~/components/ui/toast'
-import { cn } from '~/lib/cn'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
@@ -21,10 +19,11 @@ import { CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import type { SessionTodoSnapshot } from './chat-todo-projection'
 import { readTodoCompletion } from './chat-todo-projection'
 import { Composer } from './composer'
-import { ComposerSlotStates } from './composer-slot-states'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
+import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
+import { RuntimeToolbarOptions } from './runtime-toolbar-options'
 import type { SkillMentionItem } from './skill-mention-panel'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
@@ -94,19 +93,6 @@ function ChatMessageListPane({
         className="h-full **:data-[slot=scroll-area-scrollbar]:flex **:data-[slot=scroll-area-scrollbar]:opacity-100 **:data-[slot=scroll-area-thumb]:bg-foreground/25"
       >
         <div className="mx-auto max-w-208 px-4 pr-12 pt-4">
-          {messageCount === 0 && !isReady && (
-            <div className="space-y-6 py-4">
-              {['loading-left-1', 'loading-right', 'loading-left-2'].map((skeletonId, i) => (
-                <div key={skeletonId} className={cn('flex gap-3', i % 2 !== 0 && 'justify-end')}>
-                  {i % 2 === 0 && <Skeleton className="size-7 rounded-full shrink-0 mt-0.5" />}
-                  <div className="space-y-1.5 max-w-[60%]">
-                    <Skeleton className="h-4 w-full rounded-xl" />
-                    <Skeleton className={cn('h-4 rounded-xl', i === 0 ? 'w-3/4' : 'w-2/3')} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
           {messageCount === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">
@@ -243,7 +229,7 @@ function ChatComposerSection({
           onReorder={onReorderQueueItems}
           className="mb-2"
         />
-        <ComposerSlotStates states={composerRuntime.slotStates} />
+        <ComposerSlotStates slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
         <Composer
           send={{
             submit: composerRuntime.send,
@@ -416,6 +402,12 @@ export function ChatView({
       : `${composerRuntime.goalCommandText} `
     setGoalDraft({ text: `${commandText}${text.trim()}`, ts: Date.now() })
   }, [composerRuntime.goalCommandText])
+  const runtimeToolbar = useMemo(() => (
+    <>
+      {composerToolbar}
+      <RuntimeToolbarOptions slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
+    </>
+  ), [composerRuntime.slotStates, composerRuntime.uiSlots, composerToolbar])
 
   return (
     <div
@@ -465,7 +457,7 @@ export function ChatView({
         availableFiles={availableFiles}
         searchFiles={searchFiles}
         searchSkills={searchSkills}
-        toolbar={composerToolbar}
+        toolbar={runtimeToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         goalDraft={goalDraft}

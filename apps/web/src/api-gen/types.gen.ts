@@ -3275,6 +3275,7 @@ export type GetSessionsResponses = {
         archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
+        latestUserMessageAt: number | unknown | null;
     }>;
 };
 
@@ -3312,6 +3313,7 @@ export type PostSessionsResponses = {
         archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
+        latestUserMessageAt: number | unknown | null;
     };
 };
 
@@ -3364,6 +3366,7 @@ export type GetSessionsByIdResponses = {
         archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
+        latestUserMessageAt: number | unknown | null;
     };
 };
 
@@ -3399,6 +3402,7 @@ export type PatchSessionsByIdResponses = {
         archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
+        latestUserMessageAt: number | unknown | null;
     };
 };
 
@@ -3433,6 +3437,7 @@ export type PostSessionsByIdArchiveResponses = {
         archivedAt: number | unknown | null;
         createdAt: number;
         updatedAt: number;
+        latestUserMessageAt: number | unknown | null;
     };
 };
 

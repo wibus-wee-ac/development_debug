@@ -83,7 +83,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
   const effectiveItems = searchItems ? remoteItems : items
 
   const fzfIndex = useMemo(
-    () => new Fzf(effectiveItems, { selector: item => item.searchText, limit: maxResults }),
+    () => new Fzf(effectiveItems as AutocompletePanelItem[], { selector: item => item.searchText, limit: maxResults }),
     [effectiveItems, maxResults],
   )
 
@@ -91,7 +91,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
     if (!query) {
       return effectiveItems.slice(0, maxResults).map(item => ({ item, positions: new Set<number>() }))
     }
-    return fzfIndex.find(query)
+    return fzfIndex.find(query).map(result => ({ ...result, item: result.item as TItem }))
   }, [effectiveItems, fzfIndex, maxResults, query])
 
   const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
@@ -182,8 +182,8 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
       keyHandlerRef.current(e)
     }
 
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
   }, [])
 
   const handleOptionClick = useCallback((item: TItem) => {
@@ -219,6 +219,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
                 : 'text-foreground/80 hover:bg-accent/40',
             )}
             onMouseEnter={() => setActiveIndex(idx)}
+            onMouseDown={event => event.preventDefault()}
             onClick={() => handleOptionClick(item)}
           >
             {renderItem({ item, positions, active: idx === effectiveActiveIndex })}

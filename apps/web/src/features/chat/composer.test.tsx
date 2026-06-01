@@ -211,7 +211,7 @@ describe('composer attachments', () => {
         filename: 'diagram.png',
         url: 'data:image/png;base64,test',
       },
-    ])
+    ], [])
     await waitFor(() => {
       expect(screen.queryByText('diagram.png')).toBeNull()
     })
@@ -244,7 +244,7 @@ describe('composer attachments', () => {
         filename: 'screenshot.png',
         url: expect.stringMatching(/^data:image\/png;base64,/),
       }),
-    ])
+    ], [])
   })
 
   it('ignores pasted files when the current model does not support attachments', async () => {
@@ -312,7 +312,7 @@ describe('composer attachments', () => {
 
     fireEvent.click(screen.getByTestId('chat-send-btn'))
 
-    expect(onSend).toHaveBeenCalledWith('', [appshotPart])
+    expect(onSend).toHaveBeenCalledWith('', [appshotPart], [])
   })
 
   it('prepends newly injected AppShot parts before existing attachments', async () => {
@@ -374,7 +374,7 @@ describe('composer attachments', () => {
     expect(await screen.findByTestId('chat-appshot-card')).toBeTruthy()
     fireEvent.click(screen.getByTestId('chat-send-btn'))
 
-    expect(onSend).toHaveBeenCalledWith('', [appshotPart, existingPart])
+    expect(onSend).toHaveBeenCalledWith('', [appshotPart, existingPart], [])
   })
 
   it('renders a composer AppShot placeholder without a transition snapshot', async () => {
@@ -482,72 +482,7 @@ describe('composer slash commands', () => {
     fireEvent.change(textarea, { target: { value: '/compact keep recent context' } })
     fireEvent.click(screen.getByTestId('chat-send-btn'))
 
-    expect(onSend).toHaveBeenCalledWith('/compact keep recent context', [])
-  })
-
-  it('dispatches Cradle UI slash commands without sending raw text or changing input', () => {
-    const onSend = vi.fn()
-    const onSlashCommandAction = vi.fn()
-    const cradleGoalCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open goal editor',
-      argumentHint: '',
-      source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
-    }
-
-    render(
-      <TooltipProvider>
-        <Composer
-          onSend={onSend}
-          onSlashCommandAction={onSlashCommandAction}
-          slashCommands={[cradleGoalCommand]}
-        />
-      </TooltipProvider>,
-    )
-
-    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: '/' } })
-    fireEvent.click(screen.getByRole('option', { name: '/goal Cradle' }))
-
-    expect(onSlashCommandAction).toHaveBeenCalledWith(cradleGoalCommand, {}, {
-      readActionContext: expect.any(Function),
-    })
-    expect(onSend).not.toHaveBeenCalled()
-    expect(textarea.value).toBe('/')
-    expect(screen.queryByRole('option', { name: '/goal Cradle' })).toBeNull()
-  })
-
-  it('lets Cradle UI slash commands explicitly replace the trigger with returned text', async () => {
-    const onSend = vi.fn()
-    const onSlashCommandAction = vi.fn(async () => ({ insertText: '/goal Keep tests green ' }))
-    const cradleGoalCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open goal editor',
-      argumentHint: '',
-      source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
-    }
-
-    render(
-      <TooltipProvider>
-        <Composer
-          onSend={onSend}
-          onSlashCommandAction={onSlashCommandAction}
-          slashCommands={[cradleGoalCommand]}
-        />
-      </TooltipProvider>,
-    )
-
-    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
-    fireEvent.change(textarea, { target: { value: '/' } })
-    fireEvent.click(screen.getByRole('option', { name: '/goal Cradle' }))
-
-    await waitFor(() => {
-      expect(textarea.value).toBe('/goal Keep tests green ')
-    })
+    expect(onSend).toHaveBeenCalledWith('/compact keep recent context', [], [])
   })
 
   it('attaches files returned by Cradle UI slash commands', async () => {
@@ -624,7 +559,7 @@ describe('composer slash commands', () => {
       mediaType: 'image/png',
       filename: 'appshot.png',
       url: 'data:image/png;base64,test',
-    }])
+    }], [])
   })
 
   it('measures AppShot animation destination from the matching pending slot', () => {
@@ -983,13 +918,13 @@ describe('composer slash commands', () => {
     const onSend = vi.fn()
     const deferred = createDeferred<{ insertText: string }>()
     const onSlashCommandAction = vi.fn(() => deferred.promise)
-    const cradleGoalCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open goal editor',
+    const cradleCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
       argumentHint: '',
       source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
     }
 
     render(
@@ -997,17 +932,17 @@ describe('composer slash commands', () => {
         <Composer
           onSend={onSend}
           onSlashCommandAction={onSlashCommandAction}
-          slashCommands={[cradleGoalCommand]}
+          slashCommands={[cradleCommand]}
         />
       </TooltipProvider>,
     )
 
     const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '/' } })
-    fireEvent.click(screen.getByRole('option', { name: '/goal Cradle' }))
+    fireEvent.click(screen.getByRole('option', { name: '/appshot Cradle' }))
     fireEvent.change(textarea, { target: { value: 'manual edit' } })
 
-    deferred.resolve({ insertText: '/goal from callback ' })
+    deferred.resolve({ insertText: '/appshot from callback ' })
     await Promise.resolve()
 
     await waitFor(() => {
@@ -1018,25 +953,25 @@ describe('composer slash commands', () => {
 
   it('does not show Cradle UI slash commands without an action handler', () => {
     const onSend = vi.fn()
-    const cradleGoalCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open goal editor',
+    const cradleCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
       argumentHint: '',
       source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
     }
 
     render(
       <TooltipProvider>
-        <Composer onSend={onSend} slashCommands={[cradleGoalCommand]} />
+        <Composer onSend={onSend} slashCommands={[cradleCommand]} />
       </TooltipProvider>,
     )
 
     const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '/' } })
 
-    expect(screen.queryByRole('option', { name: '/goal Cradle' })).toBeNull()
+    expect(screen.queryByRole('option', { name: '/appshot Cradle' })).toBeNull()
   })
 
   it('shows unavailable Cradle UI slash commands without dispatching them', () => {
@@ -1081,21 +1016,21 @@ describe('composer slash commands', () => {
   it('keeps duplicate command names selectable by source', () => {
     const onSend = vi.fn()
     const onSlashCommandAction = vi.fn()
-    const cradleGoalCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open goal editor',
+    const cradleAppshotCommand: ChatComposerSlashCommand = {
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
       argumentHint: '',
       source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
     }
-    const runtimeGoalCommand: ChatComposerSlashCommand = {
-      id: 'runtime:goal:0',
-      name: 'goal',
-      description: 'Provider goal command',
-      argumentHint: '<objective>',
+    const runtimeAppshotCommand: ChatComposerSlashCommand = {
+      id: 'runtime:appshot:0',
+      name: 'appshot',
+      description: 'Provider appshot command',
+      argumentHint: '',
       source: 'runtime',
-      action: { kind: 'insertText', text: '/goal ' },
+      action: { kind: 'insertText', text: '/appshot ' },
     }
 
     render(
@@ -1103,7 +1038,7 @@ describe('composer slash commands', () => {
         <Composer
           onSend={onSend}
           onSlashCommandAction={onSlashCommandAction}
-          slashCommands={[cradleGoalCommand, runtimeGoalCommand]}
+          slashCommands={[cradleAppshotCommand, runtimeAppshotCommand]}
         />
       </TooltipProvider>,
     )
@@ -1111,15 +1046,15 @@ describe('composer slash commands', () => {
     const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
     fireEvent.change(textarea, { target: { value: '/' } })
 
-    expect(screen.getByRole('option', { name: '/goal Cradle' })).toBeTruthy()
-    expect(screen.getByRole('option', { name: '/goal Runtime' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: '/appshot Cradle' })).toBeTruthy()
+    expect(screen.getByRole('option', { name: '/appshot Runtime' })).toBeTruthy()
     expect(screen.getAllByRole('option')).toHaveLength(2)
     expect(screen.getAllByText('Cradle').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Runtime').length).toBeGreaterThan(0)
 
-    fireEvent.click(screen.getByRole('option', { name: '/goal Runtime' }))
+    fireEvent.click(screen.getByRole('option', { name: '/appshot Runtime' }))
 
-    expect(textarea.value).toBe('/goal ')
+    expect(textarea.value).toBe('/appshot ')
   })
 
   it('replaces slash triggers after leading spaces and keeps argument hints active', () => {
@@ -1168,7 +1103,7 @@ describe('composer slash commands', () => {
 
     fireEvent.keyDown(textarea, { key: 'Enter' })
 
-    expect(onSend).toHaveBeenCalledWith('/zz', [])
+    expect(onSend).toHaveBeenCalledWith('/zz', [], [])
   })
 
   it('does not send bare slash when pressing Enter while commands are visible', () => {
@@ -1200,7 +1135,7 @@ describe('composer slash commands', () => {
     fireEvent.keyDown(textarea, { key: 'Enter' })
 
     expect(onSend).toHaveBeenCalledOnce()
-    expect(onSend).toHaveBeenCalledWith('/zz', [])
+    expect(onSend).toHaveBeenCalledWith('/zz', [], [])
   })
 
   it('links the textarea to the visible slash command listbox and active option', () => {

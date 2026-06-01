@@ -1,6 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { LoaderCircleIcon, PackageIcon, SendHorizonalIcon, SquareIcon, XIcon } from 'lucide-react'
-import type { KeyboardEvent } from 'react'
+import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -8,8 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { cn } from '~/lib/cn'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
-import type { ChatContextPart, ChatSkillContextPart } from './chat-context-parts'
-import { readSkillContextLabel } from './chat-context-parts'
+import type { ChatContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type {
   ComposerActionContextOptions,
@@ -28,6 +26,8 @@ import {
 } from './composer-attachments'
 import type { MentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
+import type { PromptEditorController, PromptEditorSnapshot, PromptEditorTriggerRange } from './prompt-editor'
+import { PromptEditor } from './prompt-editor'
 import type { SkillMentionItem } from './skill-mention-panel'
 import { SkillMentionPanel } from './skill-mention-panel'
 import {
@@ -36,17 +36,9 @@ import {
   getSlashCommandPanelItems,
   getSlashCommandPrefix,
   getVisibleSlashCommands,
-  readSlashTriggerState,
   replaceSlashTrigger,
 } from './slash-command-input'
 import { SlashCommandPanel } from './slash-command-panel'
-
-/** Shrinks the textarea to content height, capped at 240 px. */
-function autoResize(el: HTMLTextAreaElement) {
-  el.style.height = 'auto'
-  const h = Math.min(el.scrollHeight, 240)
-  el.style.height = `${h}px`
-}
 
 export type ComposerSendHandler = (
   text: string,
@@ -163,16 +155,12 @@ type ComposerAction
   = | { type: 'input/changed', state: ComposerState }
     | { type: 'input/cleared' }
     | { type: 'mention/closed' }
-    | { type: 'mention/selected', inputValue: string, query: string, keepOpen: boolean }
+    | { type: 'mention/selected' }
     | { type: 'slash/closed' }
     | { type: 'slash/selected', inputValue: string, command: ChatComposerSlashCommand | null }
     | { type: 'skill/closed' }
-    | { type: 'skill/selected', inputValue: string, part: ChatSkillContextPart }
-    | { type: 'context-part/removed', index: number }
+    | { type: 'skill/selected' }
     | { type: 'pickers/closed' }
-    | { type: 'external/appended', text: string }
-    | { type: 'external/replaced', text: string }
-    | { type: 'drop/inserted', inputValue: string }
 
 const INITIAL_COMPOSER_STATE: ComposerState = {
   inputValue: '',
@@ -197,9 +185,8 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
     case 'mention/selected':
       return {
         ...state,
-        inputValue: action.inputValue,
-        mentionActive: action.keepOpen,
-        mentionQuery: action.keepOpen ? action.query : '',
+        mentionActive: false,
+        mentionQuery: '',
         slashActive: false,
         slashQuery: '',
         skillActive: false,
@@ -224,20 +211,13 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
     case 'skill/selected':
       return {
         ...state,
-        inputValue: action.inputValue,
         mentionActive: false,
         mentionQuery: '',
         slashActive: false,
         slashQuery: '',
         skillActive: false,
         skillQuery: '',
-        contextParts: [...state.contextParts, action.part],
         selectedSlashCommand: null,
-      }
-    case 'context-part/removed':
-      return {
-        ...state,
-        contextParts: state.contextParts.filter((_, index) => index !== action.index),
       }
     case 'pickers/closed':
       return {
@@ -246,85 +226,9 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
         slashActive: false,
         skillActive: false,
       }
-    case 'external/appended':
-      return {
-        ...state,
-        inputValue: state.inputValue ? `${state.inputValue} ${action.text}` : action.text,
-        mentionActive: false,
-        mentionQuery: '',
-        slashActive: false,
-        slashQuery: '',
-        skillActive: false,
-        skillQuery: '',
-        selectedSlashCommand: null,
-      }
-    case 'external/replaced':
-      return {
-        ...state,
-        inputValue: action.text,
-        mentionActive: false,
-        mentionQuery: '',
-        slashActive: false,
-        slashQuery: '',
-        skillActive: false,
-        skillQuery: '',
-        contextParts: [],
-        selectedSlashCommand: null,
-      }
-    case 'drop/inserted':
-      return {
-        ...state,
-        inputValue: action.inputValue,
-        mentionActive: false,
-        mentionQuery: '',
-        slashActive: false,
-        slashQuery: '',
-        skillActive: false,
-        skillQuery: '',
-        selectedSlashCommand: null,
-      }
     default:
       return state
   }
-}
-
-function ComposerContextParts({
-  parts,
-  onRemove,
-}: {
-  parts: ChatContextPart[]
-  onRemove: (index: number) => void
-}) {
-  if (parts.length === 0) {
-    return null
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-      {parts.map((part, index) => {
-        if (part.type !== 'data-cradle-skill') {
-          return null
-        }
-        return (
-          <span
-            key={`${part.type}:${part.path}:${index}`}
-            className="inline-flex h-6 max-w-full items-center gap-1.5 rounded-md bg-muted px-2 text-xs text-foreground"
-          >
-            <PackageIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <span className="min-w-0 truncate">{readSkillContextLabel(part)}</span>
-            <button
-              type="button"
-              className="-mr-1 grid size-5 shrink-0 place-items-center rounded-sm text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-              aria-label={`Remove ${readSkillContextLabel(part)}`}
-              onClick={() => onRemove(index)}
-            >
-              <XIcon className="size-3" aria-hidden="true" />
-            </button>
-          </span>
-        )
-      })}
-    </div>
-  )
 }
 
 function formatTokenCount(tokens: number): string {
@@ -523,7 +427,6 @@ export function Composer({
     className,
     cardClassName,
     textareaClassName,
-    textareaRows = 2,
     attachmentListClassName,
     actionBarClassName,
     toolbarClassName,
@@ -543,7 +446,7 @@ export function Composer({
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
   const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const attachmentController = useComposerAttachments({ supportsAttachments })
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const promptEditorRef = useRef<PromptEditorController>(null)
   const actionTargetRef = useRef<HTMLDivElement>(null)
   const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
     actionTargetRef.current = element
@@ -559,10 +462,9 @@ export function Composer({
   )
   const slashPanelHasResults = state.slashActive && slashPanelItems.length > 0
 
-  // Track @ trigger position for path completion
-  const mentionStartRef = useRef<number>(-1)
-  const slashStartRef = useRef<number>(-1)
-  const skillStartRef = useRef<number>(-1)
+  const mentionRangeRef = useRef<PromptEditorTriggerRange | null>(null)
+  const slashRangeRef = useRef<PromptEditorTriggerRange | null>(null)
+  const skillRangeRef = useRef<PromptEditorTriggerRange | null>(null)
   const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, visibleSlashCommands)
   const slashCommandPrefix = activeSlashCommand ? getSlashCommandPrefix(activeSlashCommand) : ''
   const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue.replace(LEADING_HORIZONTAL_WHITESPACE_RE, '') === slashCommandPrefix
@@ -577,189 +479,55 @@ export function Composer({
   const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || state.contextParts.length > 0 || Boolean(allowEmptySend)
   const effectiveDisabled = disabled || isSending
 
-  const handleInput = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const value = e.target.value
-    autoResize(e.target)
-    const selectedSlashCommand = getActiveSlashCommand(value, state.selectedSlashCommand, visibleSlashCommands)
+  const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
+    const selectedSlashCommand = snapshot.trigger?.kind === 'slash'
+      ? snapshot.trigger.selectedCommand
+      : getActiveSlashCommand(snapshot.text, state.selectedSlashCommand, visibleSlashCommands)
 
-    const cursor = e.target.selectionStart ?? value.length
-    const textBefore = value.slice(0, cursor)
-    const slashTrigger = readSlashTriggerState(value, cursor, visibleSlashCommands, state.selectedSlashCommand)
+    mentionRangeRef.current = snapshot.trigger?.kind === 'file' ? snapshot.trigger.range : null
+    slashRangeRef.current = snapshot.trigger?.kind === 'slash' ? snapshot.trigger.range : null
+    skillRangeRef.current = snapshot.trigger?.kind === 'skill' ? snapshot.trigger.range : null
 
-    // Check for slash command trigger at the start of a message.
-    if (slashTrigger) {
-      mentionStartRef.current = -1
-      skillStartRef.current = -1
-      slashStartRef.current = slashTrigger.start
-      dispatch({
-        type: 'input/changed',
-        state: {
-          ...state,
-          inputValue: value,
-          mentionActive: false,
-          mentionQuery: '',
-          slashActive: true,
-          slashQuery: slashTrigger.query,
-          skillActive: false,
-          skillQuery: '',
-          selectedSlashCommand: slashTrigger.selectedCommand,
-        },
-      })
-      return
-    }
-
-    // Check for $ skill trigger.
-    const dollarIdx = textBefore.lastIndexOf('$')
-    if (dollarIdx >= 0) {
-      const afterDollar = textBefore.slice(dollarIdx + 1)
-      if (!afterDollar.includes('\n') && !afterDollar.includes(' ')) {
-        mentionStartRef.current = -1
-        slashStartRef.current = -1
-        skillStartRef.current = dollarIdx
-        dispatch({
-          type: 'input/changed',
-          state: {
-            ...state,
-            inputValue: value,
-            mentionActive: false,
-            mentionQuery: '',
-            slashActive: false,
-            slashQuery: '',
-            skillActive: true,
-            skillQuery: afterDollar,
-            selectedSlashCommand,
-          },
-        })
-        return
-      }
-    }
-
-    // Check for @ trigger
-    const atIdx = textBefore.lastIndexOf('@')
-
-    if (atIdx >= 0) {
-      const afterAt = textBefore.slice(atIdx + 1)
-      // Show panel if typing after @ without newline
-      if (!afterAt.includes('\n')) {
-        mentionStartRef.current = atIdx
-        slashStartRef.current = -1
-        skillStartRef.current = -1
-        dispatch({
-          type: 'input/changed',
-          state: {
-            ...state,
-            inputValue: value,
-            mentionActive: true,
-            mentionQuery: afterAt,
-            slashActive: false,
-            slashQuery: '',
-            skillActive: false,
-            skillQuery: '',
-            selectedSlashCommand,
-          },
-        })
-        return
-      }
-    }
     dispatch({
       type: 'input/changed',
       state: {
         ...state,
-        inputValue: value,
-        mentionActive: false,
-        mentionQuery: '',
-        slashActive: false,
-        slashQuery: '',
-        skillActive: false,
-        skillQuery: '',
+        inputValue: snapshot.text,
+        contextParts: snapshot.contextParts,
+        mentionActive: snapshot.trigger?.kind === 'file',
+        mentionQuery: snapshot.trigger?.kind === 'file' ? snapshot.trigger.query : '',
+        slashActive: snapshot.trigger?.kind === 'slash',
+        slashQuery: snapshot.trigger?.kind === 'slash' ? snapshot.trigger.query : '',
+        skillActive: snapshot.trigger?.kind === 'skill',
+        skillQuery: snapshot.trigger?.kind === 'skill' ? snapshot.trigger.query : '',
         selectedSlashCommand,
       },
     })
-    slashStartRef.current = -1
-    skillStartRef.current = -1
   }, [state, visibleSlashCommands])
 
   const handleMentionSelect = useCallback((item: MentionItem) => {
-    // Replace @query with @path (inline text completion)
-    const start = mentionStartRef.current
-    if (start < 0) {
+    const range = mentionRangeRef.current
+    if (!range) {
       return
     }
-
-    const before = state.inputValue.slice(0, start)
-    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
-    const after = state.inputValue.slice(cursor)
-    // Directories: no trailing space (user may continue typing sub-path)
-    // Files: add trailing space for convenience
-    const suffix = item.type === 'directory' ? '/' : ' '
-    const insertText = `@${item.path}${suffix}`
-
-    const newValue = `${before}${insertText}${after}`
-    // Keep mention active for directories so user can keep navigating
-    if (item.type === 'directory') {
-      mentionStartRef.current = start
-      dispatch({ type: 'mention/selected', inputValue: newValue, query: `${item.path}/`, keepOpen: true })
-    }
-    else {
-      mentionStartRef.current = -1
-      dispatch({ type: 'mention/selected', inputValue: newValue, query: '', keepOpen: false })
-    }
-
-    // Refocus and position cursor after the inserted path
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        const pos = before.length + insertText.length
-        el.setSelectionRange(pos, pos)
-        autoResize(el)
-      }
-    })
-  }, [state.inputValue])
+    promptEditorRef.current?.insertFileMention(item, range)
+    dispatch({ type: 'mention/selected' })
+  }, [])
 
   const handleSkillSelect = useCallback((item: SkillMentionItem) => {
-    const start = skillStartRef.current
-    if (start < 0) {
+    const range = skillRangeRef.current
+    if (!range) {
       return
     }
-
-    const before = state.inputValue.slice(0, start)
-    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
-    const after = state.inputValue.slice(cursor)
-    const separator = before && !before.endsWith(' ') ? ' ' : ''
-    const nextValue = `${before}${separator}${after}`.replace(/[ \t]{2,}/g, ' ')
-    skillStartRef.current = -1
-
-    dispatch({
-      type: 'skill/selected',
-      inputValue: nextValue,
-      part: {
-        type: 'data-cradle-skill',
-        name: item.name,
-        path: item.skillDir,
-        scope: item.scope,
-        description: item.description,
-      },
-    })
-
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        const pos = Math.min(before.length + separator.length, nextValue.length)
-        el.setSelectionRange(pos, pos)
-        autoResize(el)
-      }
-    })
-  }, [state.inputValue])
+    promptEditorRef.current?.insertSkillMention(item, range)
+    dispatch({ type: 'skill/selected' })
+  }, [])
 
   const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
-    const cursor = textareaRef.current?.selectionStart ?? state.inputValue.length
-    const start = slashStartRef.current >= 0 ? slashStartRef.current : 0
+    const range = slashRangeRef.current ?? { from: 1, to: Math.max(1, state.inputValue.length + 1) }
+    const inputSnapshot = state.inputValue
 
     if (command.action.kind === 'uiAction') {
-      slashStartRef.current = -1
-      const inputSnapshot = state.inputValue
       dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
       void (async () => {
         if (!onSlashCommandAction) {
@@ -775,46 +543,23 @@ export function Composer({
           return
         }
 
-        const currentValue = textareaRef.current?.value ?? inputSnapshot
+        const currentValue = promptEditorRef.current?.getText() ?? inputSnapshot
         if (currentValue !== inputSnapshot) {
           return
         }
 
-        const next = replaceSlashTrigger(inputSnapshot, cursor, start, result.insertText)
+        const next = replaceSlashTrigger(inputSnapshot, range.to - 1, range.from - 1, result.insertText)
         dispatch({ type: 'slash/selected', inputValue: next.value, command: null })
-        requestAnimationFrame(() => {
-          const el = textareaRef.current
-          if (el) {
-            el.focus()
-            el.setSelectionRange(next.cursor, next.cursor)
-            autoResize(el)
-          }
-        })
+        promptEditorRef.current?.replaceRangeWithText(range, result.insertText)
       })()
-      requestAnimationFrame(() => {
-        const el = textareaRef.current
-        if (el) {
-          el.focus()
-          el.setSelectionRange(cursor, cursor)
-          autoResize(el)
-        }
-      })
+      requestAnimationFrame(() => promptEditorRef.current?.focus())
       return
     }
 
     const insertText = command.action.text
-    const next = replaceSlashTrigger(state.inputValue, cursor, start, insertText)
-    slashStartRef.current = -1
+    const next = replaceSlashTrigger(state.inputValue, range.to - 1, range.from - 1, insertText)
     dispatch({ type: 'slash/selected', inputValue: next.value, command })
-
-    requestAnimationFrame(() => {
-      const el = textareaRef.current
-      if (el) {
-        el.focus()
-        el.setSelectionRange(next.cursor, next.cursor)
-        autoResize(el)
-      }
-    })
+    promptEditorRef.current?.replaceRangeWithText(range, insertText)
   }, [attachmentController, onSlashCommandAction, state.inputValue])
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
@@ -834,23 +579,18 @@ export function Composer({
         return
       }
       attachmentController.clearAttachments()
+      promptEditorRef.current?.clear()
       dispatch({ type: 'input/cleared' })
-      requestAnimationFrame(() => {
-        const el = textareaRef.current
-        if (el) {
-          el.style.height = 'auto'
-        }
-      })
     })()
   }, [allowEmptySend, attachmentController, disabled, isSending, sendDisabled, state.contextParts, state.inputValue, submit])
 
-  const handlePaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    attachmentController.handlePaste(event)
+  const handlePaste = useCallback((event: ClipboardEvent) => {
+    attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)
   }, [attachmentController])
 
-  const handleKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't interfere with IME composition (e.g. Chinese input)
-    if (e.nativeEvent.isComposing) {
+    if (e.isComposing) {
       return
     }
 
@@ -878,8 +618,7 @@ export function Composer({
     if (!appendText) {
       return
     }
-    dispatch({ type: 'external/appended', text: appendText })
-    textareaRef.current?.focus()
+    promptEditorRef.current?.appendText(appendText)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendTextKey])
 
@@ -887,8 +626,7 @@ export function Composer({
     if (typeof replaceText !== 'string') {
       return
     }
-    dispatch({ type: 'external/replaced', text: replaceText })
-    textareaRef.current?.focus()
+    promptEditorRef.current?.setText(replaceText)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replaceTextKey])
 
@@ -905,36 +643,25 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appendExternalFilePartsKey])
 
-  // Close mention on blur after a short delay (to allow click selection)
-  useEffect(() => {
-    const el = textareaRef.current
-    if (!el) {
-      return
-    }
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const handleBlur = () => {
-      onFocusChange?.(false)
-      timer = setTimeout(() => {
+  const handleEditorFocusChange = useCallback((focused: boolean) => {
+    onFocusChange?.(focused)
+    if (!focused) {
+      window.setTimeout(() => {
         dispatch({ type: 'pickers/closed' })
       }, 150)
     }
-    const handleFocus = () => {
-      if (timer) {
-        clearTimeout(timer)
-        timer = null
-      }
-      onFocusChange?.(true)
-    }
-    el.addEventListener('blur', handleBlur)
-    el.addEventListener('focus', handleFocus)
-    return () => {
-      el.removeEventListener('blur', handleBlur)
-      el.removeEventListener('focus', handleFocus)
-      if (timer) {
-        clearTimeout(timer)
-      }
-    }
   }, [onFocusChange])
+
+  const handleEditorDrop = useCallback((event: DragEvent) => {
+    const path = event.dataTransfer ? readWorkspaceFileDragText(event.dataTransfer) : ''
+    if (!path) {
+      return false
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    promptEditorRef.current?.appendText(path)
+    return true
+  }, [])
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -981,7 +708,7 @@ export function Composer({
           supportsAttachments={attachmentController.supportsAttachments}
           testId={fileInputTestId}
         />
-        {/* Textarea */}
+        {/* Prompt editor */}
         <div className="relative">
           {slashArgumentHint && (
             <div
@@ -993,33 +720,23 @@ export function Composer({
               <span className="text-muted-foreground/45">{slashArgumentHint}</span>
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            value={state.inputValue}
-            onChange={handleInput}
+          <PromptEditor
+            ref={promptEditorRef}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            onDrop={(e) => {
-              e.preventDefault()
-              e.stopPropagation()
-              const path = readWorkspaceFileDragText(e.dataTransfer)
-              if (path) {
-                dispatch({ type: 'drop/inserted', inputValue: state.inputValue ? `${state.inputValue} ${path}` : path })
-              }
-            }}
-            onDragOver={e => e.preventDefault()}
+            onDrop={handleEditorDrop}
+            onChange={handleEditorChange}
+            onFocusChange={handleEditorFocusChange}
             placeholder={placeholder}
             disabled={effectiveDisabled}
-            aria-label={textareaAriaLabel}
-            aria-controls={slashPanelHasResults ? CHAT_SLASH_COMMAND_LISTBOX_ID : undefined}
-            aria-expanded={state.slashActive}
-            aria-activedescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
-            data-testid={textareaTestId}
-            rows={textareaRows}
-            className={cn(
-              'relative block w-full resize-none bg-transparent px-4 pt-3.5 pb-2 text-sm text-foreground placeholder:text-muted-foreground/40 outline-none min-h-16 max-h-60 rounded-t-xl disabled:opacity-50',
-              textareaClassName,
-            )}
+            ariaLabel={textareaAriaLabel}
+            ariaControls={slashPanelHasResults ? CHAT_SLASH_COMMAND_LISTBOX_ID : undefined}
+            ariaExpanded={state.slashActive}
+            ariaActiveDescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
+            testId={textareaTestId}
+            className={textareaClassName}
+            selectedSlashCommand={state.selectedSlashCommand}
+            slashCommands={visibleSlashCommands}
           />
         </div>
 
@@ -1028,10 +745,6 @@ export function Composer({
           onRemove={attachmentController.removeAttachment}
           pendingAppshots={pendingAppshots}
           className={attachmentListClassName}
-        />
-        <ComposerContextParts
-          parts={state.contextParts}
-          onRemove={index => dispatch({ type: 'context-part/removed', index })}
         />
 
         {/* Action bar — subtle, blends with the card */}

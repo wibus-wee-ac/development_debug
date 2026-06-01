@@ -38,23 +38,23 @@ describe('chat slash commands', () => {
 
   it('keeps Cradle commands and runtime commands visible when names overlap', () => {
     const cradleCommand: ChatComposerSlashCommand = {
-      id: 'cradle:goal',
-      name: 'goal',
-      description: 'Open Cradle goal editor',
+      id: 'cradle:appshot',
+      name: 'appshot',
+      description: 'Capture the frontmost app window',
       argumentHint: '',
       source: 'cradle',
-      action: { kind: 'uiAction', actionId: 'open-goal-editor' },
+      action: { kind: 'uiAction', actionId: 'capture-appshot' },
     }
 
     const commands = mergeChatSlashCommands({
       cradleCommands: [cradleCommand],
       runtimeCommands: [
-        { name: 'goal', description: 'Provider goal command', argumentHint: '<objective>' },
+        { name: 'appshot', description: 'Provider appshot command', argumentHint: '' },
       ],
     })
 
-    expect(commands.map(command => command.id)).toEqual(['cradle:goal', 'runtime:goal:0'])
-    expect(commands.map(command => command.name)).toEqual(['goal', 'goal'])
+    expect(commands.map(command => command.id)).toEqual(['cradle:appshot', 'runtime:appshot:0'])
+    expect(commands.map(command => command.name)).toEqual(['appshot', 'appshot'])
     expect(hasDuplicateSlashCommandName(commands, commands[0]!)).toBe(true)
     expect(hasDuplicateSlashCommandName(commands, commands[1]!)).toBe(true)
   })
