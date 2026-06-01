@@ -32,8 +32,19 @@ export interface CodexAppServerClientOptions {
   codexPath?: string
   apiKey?: string
   config?: Record<string, unknown>
+  env?: Record<string, string | undefined>
   serverRequestHandler?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
   exposeServerRequestsAsNotifications?: boolean
+}
+
+export function buildCradleCodexAppServerEnv(input: {
+  chatSessionId: string
+  workspaceId?: string | null
+}): Record<string, string | undefined> {
+  return {
+    CRADLE_CHAT_SESSION_ID: input.chatSessionId,
+    CRADLE_WORKSPACE_ID: input.workspaceId ?? undefined,
+  }
 }
 
 export class CodexAppServerClient {
@@ -61,7 +72,7 @@ export class CodexAppServerClient {
       }
     }
 
-    const env = { ...process.env }
+    const env = { ...process.env, ...options.env }
     env.CODEX_HOME = prepareCodexAppServerHome()
     if (options.apiKey) {
       env.CRADLE_CODEX_API_KEY = options.apiKey

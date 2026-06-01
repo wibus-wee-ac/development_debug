@@ -22,7 +22,7 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
-import { isChatSkillContextPart } from '../../chat-runtime/context-parts'
+import { isChatSkillContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../chat-runtime/stream-trace'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
@@ -677,7 +677,10 @@ function readSelectedSkillNames(message: RuntimeMessageInput): string[] {
   if (typeof message === 'string') {
     return []
   }
-  return message.parts.flatMap(part => isChatSkillContextPart(part) ? [part.name] : [])
+  return message.parts.flatMap((part) => {
+    const skillPart = readChatSkillContextPart(part)
+    return skillPart ? [skillPart.name] : []
+  })
 }
 
 function readClaudeAgentModelId(

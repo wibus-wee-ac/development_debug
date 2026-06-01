@@ -28,6 +28,7 @@ export type RuntimeUiSlotSurface
     | 'toolbarPicker'
     | 'composerState'
     | 'runtimePanel'
+    // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
     | 'streamEvidence'
     | 'recordOnly'
 
@@ -193,6 +194,33 @@ export interface RuntimeToolActivityUiSlotState {
   updatedAt: number
 }
 
+export interface RuntimeCrewCollaborationMode {
+  name: string
+  mode: string | null
+  model: string | null
+  reasoningEffort: string | null
+}
+
+export interface RuntimeCrewAgentItem {
+  threadId: string
+  status: string | null
+  message: string | null
+}
+
+export interface RuntimeCrewCallItem {
+  id: string
+  tool: string
+  status: RuntimeToolActivityStatus
+  senderThreadId: string | null
+  receiverThreadIds: string[]
+  prompt: string | null
+  model: string | null
+  reasoningEffort: string | null
+  agents: RuntimeCrewAgentItem[]
+  startedAt: number | null
+  completedAt: number | null
+}
+
 export interface RuntimeMcpServerSummary {
   name: string
   status: RuntimeMcpServerStatus
@@ -332,6 +360,8 @@ export interface RuntimeCrewUiSlotState {
   failedCount: number
   recentItems: RuntimeToolActivityItem[]
   collaborationModeCount: number
+  collaborationModes: RuntimeCrewCollaborationMode[]
+  calls: RuntimeCrewCallItem[]
   updatedAt: number
 }
 
@@ -406,6 +436,7 @@ export interface StartChatSessionInput {
   profile: RuntimeProviderTargetProfile
   workspacePath: string
   modelId?: string
+  previousProviderStateSnapshot?: string | null
 }
 
 export interface ResumeChatSessionInput {

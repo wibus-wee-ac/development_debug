@@ -1,6 +1,6 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
-import { toMessageParts, type ChatContextPart } from './context-parts'
+import { toOrderedUserMessageParts, type ChatContextPart } from './context-parts'
 
 export function parseStoredMessageSnapshot(raw: string): UIMessage {
   return JSON.parse(raw) as UIMessage
@@ -8,6 +8,12 @@ export function parseStoredMessageSnapshot(raw: string): UIMessage {
 
 export function normalizeMessageSnapshot(message: UIMessage): UIMessage {
   return message
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 export function createAssistantMessage(messageId: string, parts: UIMessage['parts'] = []): UIMessage {
@@ -19,8 +25,7 @@ export function createAssistantMessage(messageId: string, parts: UIMessage['part
 }
 
 export function createUserMessage(messageId: string, text: string, files: FileUIPart[] = [], contextParts: ChatContextPart[] = []): UIMessage {
-  const parts: UIMessage['parts'] = text ? [{ type: 'text', text }] : []
-  parts.push(...toMessageParts(contextParts))
+  const parts = toOrderedUserMessageParts(text, contextParts) as UIMessage['parts']
   parts.push(...files)
 
   return {
@@ -28,6 +33,30 @@ export function createUserMessage(messageId: string, text: string, files: FileUI
     role: 'user',
     parts,
   }
+}
+
+export function annotateGoalMessage(message: UIMessage, objective: string): UIMessage {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      cradle: {
+        ...cradleMetadata,
+        goal: { objective },
+      },
+    },
+  } as UIMessage
+}
+
+export function readGoalMessageObjective(message: UIMessage): string | null {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  const goal = readRecord(cradleMetadata.goal)
+  return typeof goal.objective === 'string' && goal.objective.trim().length > 0
+    ? goal.objective.trim()
+    : null
 }
 
 export function extractMessageText(message: UIMessage): string {

@@ -32,11 +32,13 @@ import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import type { ChatContextPart } from './context-parts'
 import {
+  annotateGoalMessage,
   createAssistantMessage,
   createUserMessage,
   extractMessageText,
   normalizeMessageSnapshot,
   parseStoredMessageSnapshot as parseTrustedStoredMessageSnapshot,
+  readGoalMessageObjective,
 } from './message-snapshots'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import {
@@ -583,6 +585,7 @@ function annotateContinuationMessage(
 
 function createDraftTurn(input: {
   sessionId: string
+  runtimeKind: RuntimeKind
   userText: string
   files: FileUIPart[]
   contextParts: ChatContextPart[]
@@ -595,8 +598,12 @@ function createDraftTurn(input: {
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
   const now = currentUnixSeconds()
+  const goalObjective = input.runtimeKind === 'codex' ? readCodexGoalCommandObjective(input.userText) : null
+  const userText = goalObjective ?? input.userText
   const userMessage = annotateContinuationMessage(
-    createUserMessage(userMessageId, input.userText, input.files, input.contextParts),
+    goalObjective
+      ? annotateGoalMessage(createUserMessage(userMessageId, userText, input.files, input.contextParts), goalObjective)
+      : createUserMessage(userMessageId, userText, input.files, input.contextParts),
     input.continuation ?? null,
   )
   const assistantMessage = createAssistantMessage(assistantMessageId)
@@ -1511,6 +1518,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
         chatSessionId: sessionId,
         profile: context.profile,
         workspacePath: context.workspacePath,
+        previousProviderStateSnapshot: null,
       })
 
   return runtime.getCapabilities({
@@ -1681,6 +1689,7 @@ async function resolveCodexAppServerBridgeContext(input: {
         profile: context.profile,
         workspacePath: context.workspacePath,
         modelId: input.modelId,
+        previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
       })
 
   attachBinding({
@@ -1696,6 +1705,7 @@ async function resolveCodexAppServerBridgeContext(input: {
   return {
     runtimeSession,
     profile: context.profile,
+    workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
     modelId: input.modelId,
   }
@@ -1824,6 +1834,7 @@ export async function createRun(input: {
           profile: context.profile,
           workspacePath: context.workspacePath,
           modelId: input.modelId,
+          previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
         })
 
     if (pendingState.cancelled) {
@@ -1887,6 +1898,7 @@ export async function createRun(input: {
           })
         : createDraftTurn({
             sessionId: input.sessionId,
+            runtimeKind,
             userText,
             files,
             contextParts,
@@ -2826,7 +2838,9 @@ async function executeRun(
     }
 
     flushPendingRunDelta(activeRun)
-    finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics)
+    finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics, {
+      allowEmptyAssistantOutput: isProviderNativeNoOutputCommandTurn(activeRun, input.message),
+    })
     profile.streamFinishedAtMs = performance.now()
   }
  catch (error) {
@@ -4053,7 +4067,10 @@ interface TurnOutputValidationResult {
   errorText: string | null
 }
 
-function validateTurnOutput(diagnostics: TurnOutputDiagnostics): TurnOutputValidationResult {
+function validateTurnOutput(
+  diagnostics: TurnOutputDiagnostics,
+  options: { allowEmptyAssistantOutput?: boolean } = {},
+): TurnOutputValidationResult {
   const hasTextOutput
     = diagnostics.assistantTextCharCount > 0 || diagnostics.reasoningTextCharCount > 0
   const hasToolOutput = diagnostics.toolEventCount > 0
@@ -4061,7 +4078,7 @@ function validateTurnOutput(diagnostics: TurnOutputDiagnostics): TurnOutputValid
     = diagnostics.commandEventCount > 0 || diagnostics.commandOutputCharCount > 0
   const hasFileChangeOutput = diagnostics.fileChangeEventCount > 0
 
-  if (hasTextOutput || hasToolOutput || hasCommandOutput || hasFileChangeOutput) {
+  if (hasTextOutput || hasToolOutput || hasCommandOutput || hasFileChangeOutput || options.allowEmptyAssistantOutput) {
     return { ok: true, errorText: null }
   }
 
@@ -4074,18 +4091,43 @@ function validateTurnOutput(diagnostics: TurnOutputDiagnostics): TurnOutputValid
 function resolveTerminalChunkWithDiagnostics(
   chunk: UIMessageChunk,
   diagnostics: TurnOutputDiagnostics,
+  options: { allowEmptyAssistantOutput?: boolean } = {},
 ): UIMessageChunk {
   if (chunk.type !== 'finish') {
     return chunk
   }
 
-  const validation = validateTurnOutput(diagnostics)
+  const validation = validateTurnOutput(diagnostics, options)
   if (validation.ok) {
     return chunk
   }
 
   const errorText = validation.errorText ?? 'Provider finished without assistant output events'
   return { type: 'error', errorText }
+}
+
+function isProviderNativeNoOutputCommandTurn(activeRun: ActiveRun, message: UIMessage): boolean {
+  if (activeRun.runtimeSession.runtimeKind !== 'codex') {
+    return false
+  }
+  return readGoalMessageObjective(message) !== null || isCodexGoalCommandText(extractMessageText(message))
+}
+
+function isCodexGoalCommandText(text: string): boolean {
+  return readCodexGoalCommandObjective(text) !== null
+}
+
+function readCodexGoalCommandObjective(text: string): string | null {
+  const normalized = text.trimStart()
+  if (!normalized.startsWith('/goal')) {
+    return null
+  }
+  const nextChar = normalized.charAt('/goal'.length)
+  if (nextChar && nextChar !== ' ' && nextChar !== '\t') {
+    return null
+  }
+  const objective = normalized.slice('/goal'.length).trim()
+  return objective.length > 0 ? objective : null
 }
 
 function resolveTurnFailureObservabilityCode(chunk: UIMessageChunk): string {

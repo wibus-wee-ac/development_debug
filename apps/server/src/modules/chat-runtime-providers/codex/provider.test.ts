@@ -184,6 +184,49 @@ class FakeCodexAppServerClient {
     if (method === 'thread/resume') {
       return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
     }
+    if (method === 'thread/turns/list') {
+      return {
+        data: [
+          {
+            id: 'history-turn-1',
+            itemsView: 'full',
+            status: 'completed',
+            error: null,
+            startedAt: 1,
+            completedAt: 2,
+            durationMs: 1000,
+            items: [
+              {
+                type: 'userMessage',
+                id: 'history-user-item',
+                content: [{ type: 'text', text: 'Earlier Codex request', text_elements: [] }],
+              },
+              {
+                type: 'agentMessage',
+                id: 'history-agent-item',
+                text: 'Earlier Codex answer',
+                phase: null,
+                memoryCitation: null,
+              },
+              {
+                type: 'mcpToolCall',
+                id: 'history-mcp-item',
+                server: 'github',
+                tool: 'search',
+                status: 'completed',
+                arguments: { query: 'cradle' },
+                pluginId: null,
+                result: { content: [], structuredContent: { total: 1 }, _meta: null },
+                error: null,
+                durationMs: 12,
+              },
+            ],
+          },
+        ],
+        nextCursor: null,
+        backwardsCursor: null,
+      }
+    }
     if (method === 'turn/start') {
       return { turn: { id: 'codex-turn-1', status: 'inProgress' } }
     }
@@ -334,12 +377,13 @@ describe('codexProvider app-server integration', () => {
       slashCommands: [],
       skills: [],
       uiSlots: expect.arrayContaining([
-        expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal' }),
-        expect.objectContaining({ id: 'codex:mcp', name: 'mcp', iconKey: 'mcp' }),
-        expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review' }),
-        expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact' }),
-        expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model' }),
-        expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status' }),
+        expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:mcp', name: 'mcp', iconKey: 'mcp', surfaces: ['runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
+        expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model', surfaces: ['toolbarPicker', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:reasoning', name: 'reasoning', iconKey: 'reasoning', surfaces: ['toolbarPicker', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status', surfaces: ['runtimePanel'] }),
       ]),
     })
   })
@@ -409,7 +453,7 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
-  it('dispatches goal slash commands to Codex thread goal state', async () => {
+  it('sets goal slash commands through Codex thread goals and continues active goals', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const runtimeSession = createRuntimeSession()
@@ -421,24 +465,54 @@ describe('codexProvider app-server integration', () => {
       workspaceId: 'workspace-1',
     })
 
-    await expect(stream.next()).resolves.toEqual({
-      done: false,
-      value: { type: 'finish', finishReason: 'stop' },
-    })
-    await expect(stream.next()).resolves.toEqual({
-      done: true,
-      value: undefined,
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', objective: 'Ship provider-owned slots' },
+      })
     })
 
     expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/goal/set'])
     expect(client.requests[1]).toEqual({
       method: 'thread/goal/set',
+      params: { threadId: 'codex-thread-1', objective: 'Ship provider-owned slots' },
+    })
+    expect(client.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.anything(),
+    })
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', status: 'active' },
+      })
+    })
+    client.pushNotification({
+      method: 'turn/started',
       params: {
         threadId: 'codex-thread-1',
-        objective: 'Ship provider-owned slots',
-        status: 'active',
-        tokenBudget: null,
+        turn: { id: 'codex-turn-1', status: 'inProgress' },
       },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/status/changed',
+      params: {
+        threadId: 'codex-thread-1',
+        status: { type: 'idle' },
+      },
+    })
+    await vi.waitFor(() => {
+      expect(client.requests.filter(request => request.method === 'thread/goal/set')).toHaveLength(3)
     })
     expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
       codex: {
@@ -449,6 +523,73 @@ describe('codexProvider app-server integration', () => {
         },
       },
     })
+
+    client.pushNotification({
+      method: 'turn/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-2', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/goal/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-2',
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'complete',
+          tokenBudget: null,
+          tokensUsed: 10,
+          timeUsedSeconds: 2,
+          createdAt: 1,
+          updatedAt: 3,
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/goal/cleared',
+      params: {
+        threadId: 'codex-thread-1',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-2', status: 'completed' },
+      },
+    })
+
+    await drainPromise
+    expect(client.requests).toContainEqual({
+      method: 'thread/goal/clear',
+      params: { threadId: 'codex-thread-1' },
+    })
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'complete',
+        },
+      },
+    })
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'goal',
+        slotId: 'codex:goal',
+        threadId: 'codex-thread-1',
+        objective: 'Ship provider-owned slots',
+        status: 'complete',
+      }),
+    ]))
   })
 
   it('projects Codex token usage notifications into compact UI slot state', async () => {
@@ -1332,6 +1473,161 @@ describe('codexProvider app-server integration', () => {
     await drainStream(stream)
   })
 
+  it('injects previous Codex native history before starting a fresh replacement thread', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const previousProviderStateSnapshot = JSON.stringify({
+      workspacePath: '/tmp/cradle-workspace',
+      models: { currentModelId: 'gpt-5-codex' },
+      codex: {
+        nativeHistory: {
+          threadId: 'previous-thread',
+          itemsView: 'full',
+          fetchedAt: 10,
+          complete: true,
+          turnCount: 1,
+          itemCount: 4,
+          nextCursor: null,
+          error: null,
+          turns: [
+            {
+              id: 'previous-turn-1',
+              itemsView: 'full',
+              status: 'completed',
+              error: null,
+              startedAt: 1,
+              completedAt: 2,
+              durationMs: 1000,
+              items: [
+                {
+                  type: 'userMessage',
+                  id: 'previous-user-item',
+                  content: [{ type: 'text', text: 'Earlier Codex request', text_elements: [] }],
+                },
+                {
+                  type: 'reasoning',
+                  id: 'previous-reasoning-item',
+                  summary: ['I checked the prior native history.'],
+                  content: ['The important fact is already known.'],
+                },
+                {
+                  type: 'agentMessage',
+                  id: 'previous-agent-item',
+                  text: 'Earlier Codex answer',
+                  phase: null,
+                  memoryCitation: null,
+                },
+                {
+                  type: 'mcpToolCall',
+                  id: 'previous-mcp-item',
+                  server: 'github',
+                  tool: 'search',
+                  status: 'completed',
+                  arguments: { query: 'cradle' },
+                  pluginId: null,
+                  result: { content: [], structuredContent: { total: 1 }, _meta: null },
+                  error: null,
+                  durationMs: 12,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    })
+    const runtimeSession = await provider.startChatSession({
+      chatSessionId: 'chat-session-1',
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      modelId: 'gpt-5-codex',
+      previousProviderStateSnapshot,
+    })
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        previousNativeHistory: {
+          threadId: 'previous-thread',
+          itemsView: 'full',
+          turnCount: 1,
+          itemCount: 4,
+        },
+      },
+    })
+
+    const stream = provider.streamTurn({
+      runId: 'run-codex-native-history-reconstruction',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue from native history'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method).slice(0, 3)).toEqual(['thread/start', 'thread/inject_items', 'turn/start'])
+    })
+
+    expect(client.requests[1]).toEqual({
+      method: 'thread/inject_items',
+      params: {
+        threadId: 'codex-thread-1',
+        items: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: 'Earlier Codex request' }],
+          },
+          {
+            type: 'reasoning',
+            summary: [{ type: 'summary_text', text: 'I checked the prior native history.' }],
+            content: [{ type: 'reasoning_text', text: 'The important fact is already known.' }],
+            encrypted_content: null,
+          },
+          {
+            type: 'message',
+            role: 'assistant',
+            content: [{ type: 'output_text', text: 'Earlier Codex answer' }],
+          },
+          {
+            type: 'function_call',
+            name: 'github/search',
+            arguments: JSON.stringify({ query: 'cradle' }),
+            call_id: 'previous-mcp-item',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'previous-mcp-item',
+            output: JSON.stringify({
+              server: 'github',
+              tool: 'search',
+              result: { content: [], structuredContent: { total: 1 }, _meta: null },
+              content: [],
+            }),
+          },
+        ],
+      },
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Recovered native history',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
   it('passes external OpenAI-compatible targets as explicit Codex model providers', async () => {
     const clients: FakeCodexAppServerClient[] = []
     const appServerOptions: CodexAppServerClientOptions[] = []
@@ -1422,6 +1718,56 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
+  it('passes Cradle session context into the Codex app-server environment', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Use Cradle context'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(appServerOptions[0]?.env).toEqual({
+        CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+        CRADLE_WORKSPACE_ID: 'workspace-1',
+      })
+    })
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
   it('streams app-server notifications and applies live steer to the active turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
@@ -1489,6 +1835,75 @@ describe('codexProvider app-server integration', () => {
     ]))
     expect(runtimeSession.providerSessionId).toBe('codex-thread-1')
     expect(client.close).toHaveBeenCalledOnce()
+  })
+
+  it('pauses an active Codex goal before interrupting a cancelled turn', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-cancel-goal',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Keep working on the active goal'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'thread/goal/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'active',
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Working',
+      },
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: expect.objectContaining({ type: 'text-start' }),
+    })
+
+    await provider.cancelTurn({
+      runtimeSession,
+      profile: createProfile(),
+    })
+
+    expect(client.requests.slice(-2)).toEqual([
+      {
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', status: 'paused' },
+      },
+      {
+        method: 'turn/interrupt',
+        params: { threadId: 'codex-thread-1', turnId: 'codex-turn-1' },
+      },
+    ])
+    expect(client.close).toHaveBeenCalledOnce()
+    await stream.return(undefined)
   })
 
   it('maps image attachments in live steer input', async () => {
@@ -1576,7 +1991,7 @@ describe('codexProvider app-server integration', () => {
       })) {
         // Drain stream to force input projection.
       }
-    }).rejects.toThrow('Codex provider only supports text and image input; unsupported parts: file (brief.pdf) (application/pdf)')
+    }).rejects.toThrow('Codex provider only supports text, image, and skill input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(client.requests).toEqual([])
   })
@@ -1720,9 +2135,10 @@ describe('codexProvider app-server integration', () => {
   it('resumes existing app-server threads before starting the turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('existing-thread')
     const stream = provider.streamTurn({
       runId: 'run-codex-test',
-      runtimeSession: createRuntimeSession('existing-thread'),
+      runtimeSession,
       profile: createProfile(),
       message: createUserMessage('Continue'),
       workspaceId: 'workspace-1',
@@ -1734,6 +2150,45 @@ describe('codexProvider app-server integration', () => {
         method: 'thread/resume',
         params: expect.objectContaining({ threadId: 'existing-thread', excludeTurns: true }),
       }))
+    })
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method).slice(0, 3)).toEqual([
+        'thread/resume',
+        'thread/turns/list',
+        'turn/start',
+      ])
+    })
+    expect(client.requests[1]).toEqual({
+      method: 'thread/turns/list',
+      params: {
+        threadId: 'existing-thread',
+        cursor: null,
+        limit: 100,
+        sortDirection: 'asc',
+        itemsView: 'full',
+      },
+    })
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        nativeHistory: {
+          threadId: 'existing-thread',
+          itemsView: 'full',
+          complete: true,
+          turnCount: 1,
+          itemCount: 3,
+          turns: [
+            {
+              id: 'history-turn-1',
+              itemsView: 'full',
+              items: [
+                { type: 'userMessage', id: 'history-user-item' },
+                { type: 'agentMessage', id: 'history-agent-item', text: 'Earlier Codex answer' },
+                { type: 'mcpToolCall', id: 'history-mcp-item', server: 'github', tool: 'search' },
+              ],
+            },
+          ],
+        },
+      },
     })
     client.pushNotification({
       method: 'item/agentMessage/delta',
@@ -1749,7 +2204,11 @@ describe('codexProvider app-server integration', () => {
       // Drain stream.
     }
 
-    expect(client.requests.map(request => request.method).slice(0, 2)).toEqual(['thread/resume', 'turn/start'])
+    expect(client.requests.map(request => request.method).slice(0, 3)).toEqual([
+      'thread/resume',
+      'thread/turns/list',
+      'turn/start',
+    ])
   })
 
   it('keeps separate agent message items as separate text segments', async () => {

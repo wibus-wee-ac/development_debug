@@ -17,7 +17,11 @@ import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from
 import * as Workspace from '../workspace/service'
 
 export type SessionStatus = 'idle' | 'streaming' | 'error'
-export type SessionView = Session & { modelId: string | null, status: SessionStatus }
+export type SessionView = Session & {
+  modelId: string | null
+  status: SessionStatus
+  latestUserMessageAt: number | null
+}
 
 const RuntimeKindSchema = z.enum(runtimeKinds)
 
@@ -104,15 +108,24 @@ function readSessionStatus(sessionId: string): SessionStatus {
   return runRows[0]?.status === 'failed' ? 'error' : 'idle'
 }
 
-function toSessionView(session: Session, modelId: string | null, status: SessionStatus): SessionView {
+function toSessionView(
+  session: Session,
+  modelId: string | null,
+  status: SessionStatus,
+  latestUserMessageAt: number | null = null,
+): SessionView {
   return {
     ...session,
     modelId,
     status,
+    latestUserMessageAt,
   }
 }
 
-function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined): Session[] {
+function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined): Array<{
+  session: Session
+  latestUserMessageAt: number | null
+}> {
   const latestUserMessages = db()
     .select({
       sessionId: messages.sessionId,
@@ -124,7 +137,10 @@ function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined):
     .as('latest_user_messages')
 
   const query = db()
-    .select({ session: sessions })
+    .select({
+      session: sessions,
+      latestUserMessageAt: latestUserMessages.latestUserMessageAt,
+    })
     .from(sessions)
     .leftJoin(latestUserMessages, eq(sessions.id, latestUserMessages.sessionId))
     .orderBy(
@@ -132,7 +148,21 @@ function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined):
       desc(sessions.createdAt),
     )
 
-  return (where ? query.where(where).all() : query.all()).map(row => row.session)
+  return (where ? query.where(where).all() : query.all()).map(row => ({
+    session: row.session,
+    latestUserMessageAt: row.latestUserMessageAt ?? null,
+  }))
+}
+
+function readLatestUserMessageAt(sessionId: string): number | null {
+  const row = db()
+    .select({
+      latestUserMessageAt: max(messages.createdAt),
+    })
+    .from(messages)
+    .where(and(eq(messages.sessionId, sessionId), eq(messages.role, 'user')))
+    .get()
+  return row?.latestUserMessageAt ?? null
 }
 
 function assertTargetCompatibleWithRuntime(input: {
@@ -163,12 +193,14 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
   const where = predicates.length > 0 ? and(...predicates) : undefined
   const rows = listRowsByLatestUserMessage(where)
 
-  const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
-  const statusesBySessionId = listStatusesBySessionIds(rows.map(row => row.id))
+  const sessionIds = rows.map(row => row.session.id)
+  const modelsBySessionId = listRequestedModelsBySessionIds(sessionIds)
+  const statusesBySessionId = listStatusesBySessionIds(sessionIds)
   return rows.map(row => toSessionView(
-    row,
-    modelsBySessionId.get(row.id) ?? null,
-    statusesBySessionId.get(row.id) ?? 'idle',
+    row.session,
+    modelsBySessionId.get(row.session.id) ?? null,
+    statusesBySessionId.get(row.session.id) ?? 'idle',
+    row.latestUserMessageAt,
   ))
 }
 
@@ -205,7 +237,7 @@ export function get(id: string): SessionView | null {
       .where(eq(backendSessionBindings.chatSessionId, id))
       .get() ?? null
 
-  return toSessionView(row, binding?.requestedModelId ?? null, readSessionStatus(id))
+  return toSessionView(row, binding?.requestedModelId ?? null, readSessionStatus(id), readLatestUserMessageAt(id))
 }
 
 export function create(input: {

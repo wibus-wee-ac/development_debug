@@ -461,6 +461,7 @@ const contextPartSchema = t.Union([
       t.Literal('agent'),
     ]),
     description: t.Union([t.String(), t.Null()]),
+    position: t.Optional(t.Number({ minimum: 0 })),
   }, { additionalProperties: false }),
 ])
 

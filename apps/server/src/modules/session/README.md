@@ -1,7 +1,7 @@
 # Session Module
 
 Session CRUD, pin toggle, soft archive/restore, message read, markdown export, and session-owned cleanup hooks.
-Session list/get responses also expose the currently requested model id from backend session bindings as `modelId` when a run has selected one, and a read-only `status` projection from chat-runtime-owned run rows so navigation surfaces can show active or errored sessions without opening them.
+Session list/get responses also expose the currently requested model id from backend session bindings as `modelId` when a run has selected one, a read-only `status` projection from chat-runtime-owned run rows so navigation surfaces can show active or errored sessions without opening them, and `latestUserMessageAt` so session list timestamps use the same semantic clock as list ordering instead of mutable session metadata updates.
 Session titles are owned by this module. Chat Runtime may update `sessions.title` from provider-native title metadata, but provider adapters never write Session rows directly.
 Session lists default to active rows (`archivedAt` is null) sorted by latest user message time, falling back to session creation time before a user turn exists. Pass `archived=true` to list archived rows without deleting session-owned messages, usage, or runtime binding history.
 Provider-backed session creation resolves a stable agent persona and stores `agentId`, so CLI calls carrying the session context can be attributed to an Agent identity.

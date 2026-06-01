@@ -7,7 +7,7 @@ import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import { getRegisteredMcpServers } from '../../../plugins'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
-import { CodexAppServerClient } from './app-server-client'
+import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
 import {
   CODEX_APP_SERVER_CAPABILITIES,
   CODEX_APP_SERVER_CLIENT_METHOD_SET,
@@ -39,6 +39,7 @@ export interface CodexAppServerBridgeContext {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
   workspacePath: string
+  workspaceId?: string | null
   modelId?: string
 }
 
@@ -164,10 +165,18 @@ export class CodexAppServerBridge {
     return this.deps.createAppServerClient?.({
       apiKey,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: context.runtimeSession.chatSessionId,
+        workspaceId: context.workspaceId,
+      }),
       serverRequestHandler: options.serverRequestHandler,
     }) ?? new CodexAppServerClient({
       apiKey,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: context.runtimeSession.chatSessionId,
+        workspaceId: context.workspaceId,
+      }),
       serverRequestHandler: options.serverRequestHandler,
     })
   }

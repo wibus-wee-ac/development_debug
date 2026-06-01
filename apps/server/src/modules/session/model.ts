@@ -32,6 +32,7 @@ export const SessionModel = {
     archivedAt: t.Nullable(t.Number()),
     createdAt: t.Number(),
     updatedAt: t.Number(),
+    latestUserMessageAt: t.Nullable(t.Number()),
   }),
 
   message: t.Object({

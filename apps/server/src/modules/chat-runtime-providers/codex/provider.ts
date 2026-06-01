@@ -15,6 +15,8 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
+import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
+import { readGoalMessageObjective } from '../../chat-runtime/message-snapshots'
 import type {
   CancelTurnInput,
   ChatRuntime,
@@ -54,7 +56,6 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
-import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { CreateEventInput } from '../../observability/contract'
@@ -75,6 +76,9 @@ import {
   mapCodexAppServerNotificationToChunks,
 } from './app-server-mapper'
 import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
+import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
+import type { Turn } from './app-server-protocol/v2/Turn'
+import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
 import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlots } from './ui-slots'
 
@@ -102,19 +106,28 @@ interface ActiveCodexTurn {
 interface CodexStreamDiagnostics {
   totalEvents: number
   mappedEvents: number
+  completedTurnEvents: number
   eventTypeCounts: Record<string, number>
   itemTypeCounts: Record<string, number>
   sampleEvents: Array<Record<string, unknown>>
   errorEvents: Array<Record<string, unknown>>
 }
 
-interface CodexGoalCommand {
-  objective: string
-}
-
 interface CodexThreadStatus {
   type?: string
   activeFlags?: string[]
+}
+
+interface CodexNativeHistorySnapshot {
+  threadId: string
+  itemsView: 'full'
+  fetchedAt: number
+  complete: boolean
+  turns: Turn[]
+  turnCount: number
+  itemCount: number
+  nextCursor: string | null
+  error: string | null
 }
 
 interface CodexThreadSettings {
@@ -154,10 +167,6 @@ interface ThreadGoalGetResponse {
     createdAt?: number
     updatedAt?: number
   } | null
-}
-
-interface ThreadGoalSetResponse {
-  goal?: ThreadGoalGetResponse['goal']
 }
 
 interface CodexTokenUsageBreakdown {
@@ -372,6 +381,12 @@ interface CodexThreadItem {
   server?: string
   tool?: string
   status?: string
+  senderThreadId?: string
+  receiverThreadIds?: string[]
+  prompt?: string | null
+  model?: string | null
+  reasoningEffort?: string | null
+  agentsStates?: Record<string, { status?: string | null, message?: string | null } | undefined>
   error?: { message?: string } | string | null
   result?: unknown
   changes?: Array<{ path?: string }>
@@ -408,6 +423,12 @@ interface CodexToolActivitySnapshot {
     status: RuntimeToolActivityStatus
     startedAt: number | null
     completedAt: number | null
+    senderThreadId?: string | null
+    receiverThreadIds?: string[]
+    prompt?: string | null
+    model?: string | null
+    reasoningEffort?: string | null
+    agentsStates?: Record<string, { status?: string | null, message?: string | null } | undefined>
   }>
   updatedAt: number
 }
@@ -532,7 +553,7 @@ interface CodexAppsListResponse {
 }
 
 interface CodexCollaborationModeListResponse {
-  data?: Array<{ name?: string }>
+  data?: Array<{ id?: string, name?: string, mode?: string | null, model?: string | null, reasoning_effort?: string | null }>
 }
 
 interface McpServerStatusUpdatedNotificationParams {
@@ -555,16 +576,9 @@ interface CodexProviderSnapshot {
   }
   codex?: {
     compact?: CodexCompactSnapshot
-    goal?: {
-      threadId: string
-      objective: string
-      status: RuntimeGoalStatus
-      tokenBudget: number | null
-      tokensUsed: number
-      timeUsedSeconds: number
-      createdAt: number
-      updatedAt: number
-    }
+    goal?: CodexGoalSnapshot | null
+    nativeHistory?: CodexNativeHistorySnapshot
+    previousNativeHistory?: CodexNativeHistorySnapshot
     model?: {
       threadId: string
       modelId: string | null
@@ -598,6 +612,23 @@ interface CodexProviderSnapshot {
   [key: string]: unknown
 }
 
+interface CodexGoalSnapshot {
+  threadId: string
+  objective: string
+  status: RuntimeGoalStatus
+  tokenBudget: number | null
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+}
+
+interface CodexGoalUpdatedNotificationParams {
+  threadId?: string
+  turnId?: string | null
+  goal?: ThreadGoalGetResponse['goal']
+}
+
 interface CodexProviderErrorData {
   details: null
   runtimeKind: RuntimeKind
@@ -620,6 +651,8 @@ const MAX_DIAGNOSTIC_STRING_LENGTH = 2_000
 const MAX_DIAGNOSTIC_ARRAY_ITEMS = 20
 const MAX_DIAGNOSTIC_OBJECT_KEYS = 40
 const MAX_DIAGNOSTIC_DEPTH = 4
+const ACTIVE_GOAL_CONTINUATION_DELAY_MS = 250
+const CODEX_THREAD_TURNS_LIST_LIMIT = 100
 
 class CodexProviderError extends Error {
   readonly code: string
@@ -652,13 +685,24 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    const previousNativeHistory = readRestorableCodexNativeHistory(input.previousProviderStateSnapshot)
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       providerTargetId: input.profile.providerTargetId,
       runtimeKind: RUNTIME_KIND,
       providerSessionId: null,
-      providerStateSnapshot: JSON.stringify({ workspacePath: input.workspacePath, models: { currentModelId: input.modelId } }),
+      providerStateSnapshot: JSON.stringify({
+        workspacePath: input.workspacePath,
+        models: { currentModelId: input.modelId },
+        ...(previousNativeHistory
+          ? {
+              codex: {
+                previousNativeHistory,
+              },
+            }
+          : {}),
+      }),
     }
   }
 
@@ -886,9 +930,10 @@ export class CodexProvider implements ChatRuntime {
       if (configState) {
         states.push(configState)
       }
-      const goalState = projectCodexGoalState(goalResult.status === 'fulfilled'
-        ? goalResult.value.goal
-        : readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.goal ?? null)
+      const goalState = projectCodexGoalState(readCodexGoalStateSource(
+        goalResult.status === 'fulfilled' ? goalResult.value.goal : undefined,
+        readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.goal ?? null,
+      ))
       if (goalState) {
         states.push(goalState)
       }
@@ -908,7 +953,7 @@ export class CodexProvider implements ChatRuntime {
     const effectiveModel = input.modelId ?? config.model
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
     const userPromptText = extractUiMessageText(input.message).trim()
-    const goalCommand = parseGoalCommand(userPromptText)
+    const goalCommandObjective = readCodexGoalCommandObjective(input.message)
     if (!apiKey) {
       throw new Error('Codex provider requires an API key')
     }
@@ -966,38 +1011,49 @@ export class CodexProvider implements ChatRuntime {
         input.reportSessionTitle?.(threadStart.title)
       }
       if (shouldInjectReconstructedHistory) {
+        await injectCodexNativeHistory(client, threadId, readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.previousNativeHistory)
         await injectCradleTranscriptHistory(client, threadId, input.transcript?.history ?? input.history)
       }
-
-      if (goalCommand) {
-        const goalResponse = await client.request('thread/goal/set', {
-          threadId,
-          objective: goalCommand.objective,
-          status: 'active',
-          tokenBudget: null,
-        }) as ThreadGoalSetResponse
-        const goalState = projectCodexGoalState(goalResponse.goal ?? null)
-        if (goalState) {
-          writeCodexGoalSnapshot(input.runtimeSession, goalState)
-        }
-        yield { type: 'finish', finishReason: 'stop' }
-        return
+      else {
+        await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
       }
 
-      const turnResponse = await client.request('turn/start', {
-        threadId,
-        input: userInput,
-        cwd: workspacePath,
-        approvalPolicy: config.approvalPolicy,
-        sandboxPolicy: toSandboxPolicy(config.sandboxMode, workspacePath, config.additionalDirectories),
-        model: effectiveModel,
-        effort: config.reasoningEffort,
-      }) as TurnResponse
-      const turnId = turnResponse.turn?.id ?? turnResponse.turnId ?? null
-      activeEntry = { client, abortController, threadId, turnId }
-      this.activeTurns.set(sessionId, activeEntry)
+      let turnId: string | null = null
+      if (goalCommandObjective) {
+        const goal = await setCodexThreadGoal(client, input.runtimeSession, threadId, goalCommandObjective)
+        if (!hasActiveGoal(goal)) {
+          return
+        }
+        activeEntry = { client, abortController, threadId, turnId }
+        this.activeTurns.set(sessionId, activeEntry)
+        if (!await continueActiveGoal(client, threadId, abortController.signal)) {
+          return
+        }
+      }
+      else {
+        const turnResponse = await client.request('turn/start', {
+          threadId,
+          input: userInput,
+          cwd: workspacePath,
+          approvalPolicy: config.approvalPolicy,
+          sandboxPolicy: toSandboxPolicy(config.sandboxMode, workspacePath, config.additionalDirectories),
+          model: effectiveModel,
+          effort: config.reasoningEffort,
+        }) as TurnResponse
+        turnId = turnResponse.turn?.id ?? turnResponse.turnId ?? null
+      }
+      if (!activeEntry) {
+        activeEntry = { client, abortController, threadId, turnId }
+        this.activeTurns.set(sessionId, activeEntry)
+      }
 
-      for await (const notification of readTurnNotifications(client, threadId, turnId, abortController.signal)) {
+      for await (const notification of readTurnNotifications(
+        client,
+        threadId,
+        turnId,
+        abortController.signal,
+        () => readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
+      )) {
         if (abortController.signal.aborted) {
           break
         }
@@ -1011,8 +1067,8 @@ export class CodexProvider implements ChatRuntime {
           yield chunk
         }
 
-        if (notification.method === 'turn/started' && !activeEntry.turnId) {
-          activeEntry.turnId = getTurnId(notification)
+        if (notification.method === 'turn/started') {
+          activeEntry.turnId = getTurnId(notification) ?? activeEntry.turnId
         }
         if (notification.method === 'thread/name/updated') {
           const title = readThreadNameUpdate(notification, threadId)
@@ -1032,12 +1088,15 @@ export class CodexProvider implements ChatRuntime {
         projectCodexFilesystemSnapshot(input.runtimeSession, notification, threadId)
         projectCodexSearchSnapshot(input.runtimeSession, notification, threadId)
         projectCodexUsageSnapshot(input.runtimeSession, notification, threadId)
+        projectCodexGoalSnapshot(input.runtimeSession, notification)
+        if (isCompletedGoalUpdate(notification)) {
+          await client.request('thread/goal/clear', { threadId }).catch(() => undefined)
+        }
         if (notification.method === 'turn/completed') {
           const turn = (notification.params as TurnNotificationParams | undefined)?.turn
           if (turn?.status === 'failed') {
             throw createCodexTurnFailureError(turn.error?.message, diagnostics, notification)
           }
-          break
         }
         if (notification.method === 'error') {
           if (isRetryableCodexAppServerError(notification)) {
@@ -1046,6 +1105,7 @@ export class CodexProvider implements ChatRuntime {
           throw createCodexAppServerError(notification, diagnostics)
         }
       }
+      await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
 
       for (const chunk of closeOpenCodexAppServerReasoning(mapperState)) {
         diagnostics.mappedEvents += 1
@@ -1127,6 +1187,12 @@ export class CodexProvider implements ChatRuntime {
     if (!entry) {
       return
     }
+    if (hasActiveGoal(readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal)) {
+      await entry.client.request('thread/goal/set', {
+        threadId: entry.threadId,
+        status: 'paused',
+      }).catch(() => undefined)
+    }
     entry.abortController.abort()
     if (entry.turnId) {
       await entry.client.request('turn/interrupt', {
@@ -1161,15 +1227,6 @@ function projectCodexGoalState(goal: ThreadGoalGetResponse['goal']): RuntimeUiSl
   }
 }
 
-function parseGoalCommand(text: string): CodexGoalCommand | null {
-  const match = text.match(/^\/goal(?:\s+([\s\S]*))?$/i)
-  if (!match) {
-    return null
-  }
-  const objective = (match[1] ?? '').trim()
-  return objective ? { objective } : null
-}
-
 function isCodexGoalStatus(value: unknown): value is RuntimeGoalStatus {
   return value === 'active'
     || value === 'paused'
@@ -1177,6 +1234,47 @@ function isCodexGoalStatus(value: unknown): value is RuntimeGoalStatus {
     || value === 'usageLimited'
     || value === 'budgetLimited'
     || value === 'complete'
+}
+
+function hasActiveGoal(goal: CodexGoalSnapshot | null | undefined): boolean {
+  return goal?.status === 'active' && typeof goal.objective === 'string' && goal.objective.trim().length > 0
+}
+
+function readCodexGoalCommandObjective(message: RuntimeMessageInput): string | null {
+  if (typeof message !== 'string') {
+    const objective = readGoalMessageObjective(message)
+    if (objective) {
+      return objective
+    }
+  }
+  const normalized = extractUiMessageText(message).trimStart()
+  if (!normalized.startsWith('/goal')) {
+    return null
+  }
+  const nextChar = normalized.charAt('/goal'.length)
+  if (nextChar && nextChar !== ' ' && nextChar !== '\t') {
+    return null
+  }
+  const objective = normalized.slice('/goal'.length).trim()
+  return objective.length > 0 ? objective : null
+}
+
+async function setCodexThreadGoal(
+  client: CodexAppServerClientLike,
+  runtimeSession: RuntimeSession,
+  threadId: string,
+  objective: string,
+): Promise<CodexGoalSnapshot | null> {
+  const response = await client.request('thread/goal/set', {
+    threadId,
+    objective,
+  }) as ThreadGoalGetResponse
+  const goalState = projectCodexGoalState(response.goal ?? null)
+  if (!goalState) {
+    return null
+  }
+  writeCodexGoalSnapshot(runtimeSession, goalState)
+  return readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.goal ?? null
 }
 
 function writeCodexGoalSnapshot(runtimeSession: RuntimeSession, state: RuntimeUiSlotState): void {
@@ -1200,6 +1298,67 @@ function writeCodexGoalSnapshot(runtimeSession: RuntimeSession, state: RuntimeUi
       },
     },
   })
+}
+
+function clearCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
+  const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
+  if (snapshot.codex?.goal?.status === 'complete') {
+    return
+  }
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    codex: {
+      ...snapshot.codex,
+      goal: null,
+    },
+  })
+}
+
+function projectCodexGoalSnapshot(
+  runtimeSession: RuntimeSession,
+  notification: CodexAppServerMessage,
+): void {
+  if (notification.method === 'thread/goal/updated') {
+    const goal = (notification.params as CodexGoalUpdatedNotificationParams | undefined)?.goal
+    const goalState = projectCodexGoalState(goal ?? null)
+    if (goalState) {
+      writeCodexGoalSnapshot(runtimeSession, goalState)
+    }
+    return
+  }
+
+  if (notification.method === 'thread/goal/cleared') {
+    clearCodexGoalSnapshot(runtimeSession)
+  }
+}
+
+function readCodexGoalStateSource(
+  appServerGoal: ThreadGoalGetResponse['goal'] | undefined,
+  snapshotGoal: CodexGoalSnapshot | null,
+): ThreadGoalGetResponse['goal'] {
+  if (appServerGoal) {
+    return appServerGoal
+  }
+  if (snapshotGoal?.status === 'complete') {
+    return snapshotGoal
+  }
+  return appServerGoal ?? null
+}
+
+function isCompletedGoalUpdate(notification: CodexAppServerMessage): boolean {
+  if (notification.method !== 'thread/goal/updated') {
+    return false
+  }
+  const params = notification.params as CodexGoalUpdatedNotificationParams | undefined
+  return params?.goal?.status === 'complete'
+}
+
+function isIdleThreadStatus(notification: CodexAppServerMessage): boolean {
+  if (notification.method !== 'thread/status/changed') {
+    return false
+  }
+  const params = notification.params as ThreadStatusChangedNotificationParams | undefined
+  return params?.status?.type === 'idle'
 }
 
 function writeCodexThreadSnapshot(
@@ -1682,6 +1841,16 @@ function writeCodexToolActivityItem(
     status: input.status,
     startedAt: input.startedAt ?? current?.startedAt ?? null,
     completedAt: input.completedAt ?? current?.completedAt ?? null,
+    ...(input.item.type === 'collabAgentToolCall'
+      ? {
+          senderThreadId: typeof input.item.senderThreadId === 'string' ? input.item.senderThreadId : current?.senderThreadId ?? null,
+          receiverThreadIds: Array.isArray(input.item.receiverThreadIds) ? input.item.receiverThreadIds.filter(id => typeof id === 'string') : current?.receiverThreadIds ?? [],
+          prompt: typeof input.item.prompt === 'string' ? input.item.prompt : current?.prompt ?? null,
+          model: typeof input.item.model === 'string' ? input.item.model : current?.model ?? null,
+          reasoningEffort: typeof input.item.reasoningEffort === 'string' ? input.item.reasoningEffort : current?.reasoningEffort ?? null,
+          agentsStates: input.item.agentsStates ?? current?.agentsStates ?? {},
+        }
+      : {}),
   }
   const items = [
     nextItem,
@@ -2372,8 +2541,32 @@ function projectCodexCrewState(
 ): RuntimeCrewUiSlotState | null {
   const activity = snapshot.codex?.toolActivity
   const crewItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
-  const collaborationModeCount = collaborationModes?.data?.length ?? 0
-  if (crewItems.length === 0 && collaborationModeCount === 0) {
+  const modes = (collaborationModes?.data ?? []).flatMap((mode) => {
+    const name = mode.name ?? mode.id
+    if (!name) {
+      return []
+    }
+    return [{
+      name,
+      mode: mode.mode ?? null,
+      model: mode.model ?? null,
+      reasoningEffort: mode.reasoning_effort ?? null,
+    }]
+  })
+  const calls = crewItems.map(item => ({
+    id: item.id,
+    tool: item.label,
+    status: item.status,
+    senderThreadId: item.senderThreadId ?? null,
+    receiverThreadIds: item.receiverThreadIds ?? [],
+    prompt: item.prompt ?? null,
+    model: item.model ?? null,
+    reasoningEffort: item.reasoningEffort ?? null,
+    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}),
+    startedAt: item.startedAt,
+    completedAt: item.completedAt,
+  }))
+  if (calls.length === 0 && modes.length === 0) {
     return null
   }
   return {
@@ -2384,9 +2577,26 @@ function projectCodexCrewState(
     completedCount: crewItems.filter(item => item.status === 'completed').length,
     failedCount: crewItems.filter(item => item.status === 'failed').length,
     recentItems: crewItems,
-    collaborationModeCount,
-    updatedAt: Math.max(activity?.updatedAt ?? 0, collaborationModeCount > 0 ? Date.now() : 0),
+    collaborationModeCount: modes.length,
+    collaborationModes: modes,
+    calls,
+    updatedAt: Math.max(activity?.updatedAt ?? 0, modes.length > 0 ? Date.now() : 0),
   }
+}
+
+function readCrewAgents(
+  receiverThreadIds: string[],
+  agentsStates: Record<string, { status?: string | null, message?: string | null } | undefined>,
+) {
+  const ids = new Set([
+    ...receiverThreadIds,
+    ...Object.keys(agentsStates),
+  ])
+  return Array.from(ids, threadId => ({
+    threadId,
+    status: agentsStates[threadId]?.status ?? null,
+    message: agentsStates[threadId]?.message ?? null,
+  }))
 }
 
 function projectCodexUsageSnapshot(
@@ -2889,13 +3099,134 @@ async function injectCradleTranscriptHistory(
   await client.request('thread/inject_items', params)
 }
 
+async function injectCodexNativeHistory(
+  client: CodexAppServerClientLike,
+  threadId: string,
+  nativeHistory: CodexNativeHistorySnapshot | undefined,
+): Promise<void> {
+  if (!nativeHistory?.turns.length) {
+    return
+  }
+
+  const items = projectCodexNativeTurnsToCodexItems(nativeHistory.turns)
+  if (items.length === 0) {
+    return
+  }
+
+  const params: ThreadInjectItemsParams = {
+    threadId,
+    items: items as ThreadInjectItemsParams['items'],
+  }
+  await client.request('thread/inject_items', params)
+}
+
+async function hydrateCodexNativeHistory(
+  client: CodexAppServerClientLike,
+  runtimeSession: RuntimeSession,
+  threadId: string,
+): Promise<void> {
+  try {
+    const turns = await listFullCodexTurns(client, threadId)
+    writeCodexNativeHistorySnapshot(runtimeSession, {
+      threadId,
+      itemsView: 'full',
+      fetchedAt: Date.now(),
+      complete: true,
+      turns,
+      turnCount: turns.length,
+      itemCount: countCodexTurnItems(turns),
+      nextCursor: null,
+      error: null,
+    })
+  }
+  catch (error) {
+    writeCodexNativeHistorySnapshot(runtimeSession, {
+      threadId,
+      itemsView: 'full',
+      fetchedAt: Date.now(),
+      complete: false,
+      turns: [],
+      turnCount: 0,
+      itemCount: 0,
+      nextCursor: null,
+      error: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+async function listFullCodexTurns(
+  client: CodexAppServerClientLike,
+  threadId: string,
+): Promise<Turn[]> {
+  const turns: Turn[] = []
+  let cursor: string | null = null
+  const seenCursors = new Set<string>()
+  do {
+    const response = await client.request('thread/turns/list', {
+      threadId,
+      cursor,
+      limit: CODEX_THREAD_TURNS_LIST_LIMIT,
+      sortDirection: 'asc',
+      itemsView: 'full',
+    }) as ThreadTurnsListResponse
+    turns.push(...(Array.isArray(response.data) ? response.data : []))
+    const nextCursor = typeof response.nextCursor === 'string' && response.nextCursor.length > 0
+      ? response.nextCursor
+      : null
+    if (nextCursor && seenCursors.has(nextCursor)) {
+      throw new Error(`Codex thread/turns/list returned a repeated cursor: ${nextCursor}`)
+    }
+    if (nextCursor) {
+      seenCursors.add(nextCursor)
+    }
+    cursor = nextCursor
+  } while (cursor)
+  return turns
+}
+
+function writeCodexNativeHistorySnapshot(
+  runtimeSession: RuntimeSession,
+  nativeHistory: CodexNativeHistorySnapshot,
+): void {
+  const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    codex: {
+      ...snapshot.codex,
+      nativeHistory,
+    },
+  })
+}
+
+function countCodexTurnItems(turns: Turn[]): number {
+  return turns.reduce((count, turn) => count + turn.items.length, 0)
+}
+
+function readRestorableCodexNativeHistory(raw: string | null | undefined): CodexNativeHistorySnapshot | undefined {
+  if (!raw) {
+    return undefined
+  }
+  try {
+    const nativeHistory = readCodexProviderSnapshot(raw).codex?.nativeHistory
+    if (!nativeHistory || nativeHistory.itemsView !== 'full' || !Array.isArray(nativeHistory.turns) || nativeHistory.turns.length === 0) {
+      return undefined
+    }
+    return nativeHistory
+  }
+  catch {
+    return undefined
+  }
+}
+
 async function* readTurnNotifications(
   client: CodexAppServerClientLike,
   threadId: string,
   initialTurnId: string | null,
   signal: AbortSignal,
+  readGoal: () => CodexGoalSnapshot | null | undefined,
 ): AsyncGenerator<CodexAppServerMessage, void, void> {
   let turnId = initialTurnId
+  let turnCompleted = false
   while (!signal.aborted) {
     let notification: CodexAppServerMessage | null
     try {
@@ -2916,6 +3247,7 @@ async function* readTurnNotifications(
     }
     if (notification.method === 'turn/started') {
       turnId = getTurnId(notification)
+      turnCompleted = false
       yield notification
       continue
     }
@@ -2925,9 +3257,57 @@ async function* readTurnNotifications(
     }
     yield notification
     if (notification.method === 'turn/completed') {
-      return
+      turnCompleted = true
+      if (!hasActiveGoal(readGoal())) {
+        return
+      }
+      continue
+    }
+    if (turnCompleted && isIdleThreadStatus(notification)) {
+      if (!hasActiveGoal(readGoal())) {
+        return
+      }
+      if (!await continueActiveGoal(client, threadId, signal)) {
+        return
+      }
+      turnId = null
+      turnCompleted = false
+    }
+    if (turnCompleted) {
+      if (!hasActiveGoal(readGoal())) {
+        return
+      }
     }
   }
+}
+
+async function continueActiveGoal(
+  client: CodexAppServerClientLike,
+  threadId: string,
+  signal: AbortSignal,
+): Promise<boolean> {
+  if (!await waitForActiveGoalContinuationDelay(signal)) {
+    return false
+  }
+  await client.request('thread/goal/set', { threadId, status: 'active' })
+  return true
+}
+
+function waitForActiveGoalContinuationDelay(signal: AbortSignal): Promise<boolean> {
+  if (signal.aborted) {
+    return Promise.resolve(false)
+  }
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve(true)
+    }, ACTIVE_GOAL_CONTINUATION_DELAY_MS)
+    const onAbort = () => {
+      clearTimeout(timer)
+      resolve(false)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 function buildCodexConfig(
@@ -2942,9 +3322,9 @@ function buildCodexConfig(
     : resolveSkillPaths(workspacePath)
   const instructionPaths = [...skillPaths, ...(systemPromptFile ? [systemPromptFile] : [])]
   const codexConfig: Record<string, unknown> = {
-    network_access: "enabled",
+    network_access: 'enabled',
     show_raw_agent_reasoning: true,
-    disable_response_storage: true
+    disable_response_storage: true,
   }
   const mcpServers = buildCodexMcpServersConfig()
   codexConfig.approval_policy = config.approvalPolicy
@@ -3096,6 +3476,7 @@ function createDiagnostics(): CodexStreamDiagnostics {
   return {
     totalEvents: 0,
     mappedEvents: 0,
+    completedTurnEvents: 0,
     eventTypeCounts: {},
     itemTypeCounts: {},
     sampleEvents: [],
@@ -3107,6 +3488,9 @@ function collectCodexStreamDiagnostics(diagnostics: CodexStreamDiagnostics, noti
   const method = notification.method ?? 'response'
   diagnostics.totalEvents += 1
   incrementCount(diagnostics.eventTypeCounts, method)
+  if (method === 'turn/completed') {
+    diagnostics.completedTurnEvents += 1
+  }
   const itemType = (notification.params as ItemNotificationParams | undefined)?.item?.type
   if (itemType) {
     incrementCount(diagnostics.itemTypeCounts, itemType)
@@ -3174,7 +3558,7 @@ function incrementCount(counts: Record<string, number>, key: string): void {
 }
 
 function validateCodexStreamOutput(diagnostics: CodexStreamDiagnostics): { ok: boolean, errorText: string | null } {
-  if (diagnostics.mappedEvents > 0) {
+  if (diagnostics.mappedEvents > 0 || diagnostics.completedTurnEvents > 0) {
     return { ok: true, errorText: null }
   }
   return {

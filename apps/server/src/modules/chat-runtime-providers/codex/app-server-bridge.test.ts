@@ -167,4 +167,31 @@ describe('CodexAppServerBridge stream lifecycle', () => {
     expect(events.map(event => event.event)).toEqual(['request_started', 'result', 'notification', 'done'])
     expect(client.close).toHaveBeenCalledOnce()
   })
+
+  it('passes Cradle session context into bridge app-server clients', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const client = new FakeBridgeAppServerClient({
+      'config/read': { config: {} },
+    })
+    const bridge = new CodexAppServerBridge({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        return client
+      },
+    })
+
+    await bridge.invoke({
+      ...createBridgeContext(),
+      workspaceId: 'workspace-1',
+      method: 'config/read',
+      params: { cwd: '/tmp/cradle-workspace' },
+    })
+
+    expect(appServerOptions[0]?.env).toEqual({
+      CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+      CRADLE_WORKSPACE_ID: 'workspace-1',
+    })
+  })
 })

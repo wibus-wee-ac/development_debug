@@ -3,10 +3,18 @@
 // Position: Provider-owned tests for keeping Cradle-managed Codex runs out of user Codex config.
 
 import { join } from 'node:path'
+import { EventEmitter } from 'node:events'
+import { Readable, Writable } from 'node:stream'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { resolveCodexAppServerHome } from './app-server-client'
+import { buildCradleCodexAppServerEnv, CodexAppServerClient, resolveCodexAppServerHome } from './app-server-client'
+
+const spawnMock = vi.hoisted(() => vi.fn())
+
+vi.mock('node:child_process', () => ({
+  spawn: spawnMock,
+}))
 
 describe('resolveCodexAppServerHome', () => {
   it('uses the Cradle data directory before database path fallback', () => {
@@ -37,5 +45,37 @@ describe('resolveCodexAppServerHome', () => {
       },
       homeDir: '/Users/test',
     })).toBe(join('/Users/test', '.cradle', 'runtimes', 'codex-app-server'))
+  })
+})
+
+describe('CodexAppServerClient', () => {
+  it('passes Cradle context environment into the app-server process', () => {
+    spawnMock.mockReturnValueOnce({
+      stdin: new Writable({ write: (_chunk, _encoding, callback) => callback() }),
+      stdout: new Readable({ read: () => undefined }),
+      stderr: new EventEmitter(),
+      once: vi.fn(),
+      kill: vi.fn(),
+    })
+
+    const client = new CodexAppServerClient({
+      codexPath: 'codex-test',
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: 'chat-session-1',
+        workspaceId: 'workspace-1',
+      }),
+    })
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      'codex-test',
+      ['app-server', '--listen', 'stdio://'],
+      expect.objectContaining({
+        env: expect.objectContaining({
+          CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+          CRADLE_WORKSPACE_ID: 'workspace-1',
+        }),
+      }),
+    )
+    client.close()
   })
 })
