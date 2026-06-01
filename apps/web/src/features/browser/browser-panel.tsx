@@ -18,7 +18,11 @@ import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-previe
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
 import type { BrowserPanelScriptRunAt, BrowserPanelTab } from '~/store/browser-panel'
-import { handleBrowserPanelTabShortcut, useBrowserPanelStore } from '~/store/browser-panel'
+import {
+  DEFAULT_BROWSER_PANEL_OWNER_ID,
+  handleBrowserPanelTabShortcut,
+  useBrowserPanelStore,
+} from '~/store/browser-panel'
 
 import { BROWSER_TAB_SCRIPT_PRESETS, getBrowserTabScriptsByIds } from './browser-tab-scripts'
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
@@ -111,8 +115,10 @@ function ElectronWebview({ url, webviewRef }: ElectronWebviewProps) {
 }
 
 interface BrowserPanelProps {
+  ownerId?: string | null
   activeSessionId?: string | null
   activeSessionTitle?: string | null
+  onCloseLastTab?: (ownerId: string) => void
 }
 
 function getTabFallbackTitle(tab: BrowserPanelTab): string {
@@ -132,10 +138,18 @@ function getSourceSessionTitle(tab: BrowserPanelTab): string | null {
   return tab.sessionTitle || `Session ${tab.sessionId.slice(0, 8)}`
 }
 
-export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null }: BrowserPanelProps) {
-  const tabs = useBrowserPanelStore(state => state.tabs)
-  const activeTabId = useBrowserPanelStore(state => state.activeTabId)
-  const requestedTab = useBrowserPanelStore(state => state.requestedTab)
+const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
+
+export function BrowserPanel({
+  ownerId = null,
+  activeSessionId = null,
+  activeSessionTitle = null,
+  onCloseLastTab,
+}: BrowserPanelProps) {
+  const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
+  const tabs = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.tabs ?? EMPTY_BROWSER_PANEL_TABS)
+  const activeTabId = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.activeTabId ?? null)
+  const requestedTab = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.requestedTab ?? null)
   const createTab = useBrowserPanelStore(state => state.createTab)
   const fulfillRequestedTab = useBrowserPanelStore(state => state.fulfillRequestedTab)
   const closeTab = useBrowserPanelStore(state => state.closeTab)
@@ -161,8 +175,8 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
     if (!requestedTab) {
       return
     }
-    fulfillRequestedTab(requestedTab.id)
-  }, [fulfillRequestedTab, requestedTab])
+    fulfillRequestedTab(requestedTab.id, ownerId)
+  }, [fulfillRequestedTab, ownerId, requestedTab])
 
   // Sync URL input with active tab
   const activeTabUrl = activeBrowserTab?.url
@@ -177,7 +191,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
     (tabId: string, el: WebviewElement) => {
       // eslint-disable-next-line ts/no-explicit-any
       const handleTitleUpdated = (e: any) => {
-        updateTab(tabId, { title: e.title })
+        updateTab(tabId, { title: e.title }, ownerId)
       }
       // eslint-disable-next-line ts/no-explicit-any
       const handleDidNavigate = (e: any) => {
@@ -188,21 +202,21 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           url: e.url,
           canGoBack: el.canGoBack(),
           canGoForward: el.canGoForward(),
-        })
+        }, ownerId)
       }
       const handleDidStartLoading = () => {
-        updateTab(tabId, { loading: true })
+        updateTab(tabId, { loading: true }, ownerId)
       }
       const handleDidStopLoading = () => {
         updateTab(tabId, {
           loading: false,
           canGoBack: el.canGoBack(),
           canGoForward: el.canGoForward(),
-        })
+        }, ownerId)
       }
       // eslint-disable-next-line ts/no-explicit-any
       const handleFavicon = (e: any) => {
-        updateTab(tabId, { favicon: e.favicons?.[0] ?? null })
+        updateTab(tabId, { favicon: e.favicons?.[0] ?? null }, ownerId)
       }
 
       el.addEventListener('page-title-updated', handleTitleUpdated)
@@ -228,7 +242,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
         el.removeEventListener('dom-ready', handleDomReady)
       }
     },
-    [updateTab],
+    [ownerId, updateTab],
   )
 
   const getWebviewRef = useCallback(
@@ -393,9 +407,9 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       const nextScriptIds = activeBrowserTab.scriptIds.includes(scriptId)
         ? activeBrowserTab.scriptIds.filter(id => id !== scriptId)
         : [...activeBrowserTab.scriptIds, scriptId]
-      setBrowserTabScripts(activeBrowserTab.id, nextScriptIds)
+      setBrowserTabScripts(activeBrowserTab.id, nextScriptIds, ownerId)
     },
-    [activeBrowserTab, setBrowserTabScripts],
+    [activeBrowserTab, ownerId, setBrowserTabScripts],
   )
 
   const handleAddCustomScript = useCallback(() => {
@@ -417,8 +431,8 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       label,
       runAt,
       source,
-    })
-  }, [activeBrowserTab, addBrowserTabCustomScript])
+    }, ownerId)
+  }, [activeBrowserTab, addBrowserTabCustomScript, ownerId])
 
   const handleUrlSubmit = useCallback(
     (e: React.FormEvent) => {
@@ -433,18 +447,25 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       const wv = webviewMapRef.current.get(activeBrowserTab.id)
       if (wv) {
         loadBrowserTabUrl(wv, url)
-        navigateTo(activeBrowserTab.id, url)
+        navigateTo(activeBrowserTab.id, url, ownerId)
       }
     },
-    [activeBrowserTab, urlInput, navigateTo],
+    [activeBrowserTab, ownerId, urlInput, navigateTo],
   )
 
   const handleNewTab = useCallback(() => {
     if (browserTabCount >= MAX_TABS) {
       return
     }
-    createTab('about:blank', { sessionId: activeSessionId, sessionTitle: activeSessionTitle })
-  }, [activeSessionId, activeSessionTitle, browserTabCount, createTab])
+    createTab('about:blank', { sessionId: activeSessionId, sessionTitle: activeSessionTitle }, ownerId)
+  }, [activeSessionId, activeSessionTitle, browserTabCount, createTab, ownerId])
+
+  const handleCloseTab = useCallback((tabId: string) => {
+    const closeResult = closeTab(tabId, ownerId)
+    if (closeResult.closedLastTab) {
+      onCloseLastTab?.(resolvedOwnerId)
+    }
+  }, [closeTab, onCloseLastTab, ownerId, resolvedOwnerId])
 
   // Empty state
   if (tabs.length === 0) {
@@ -475,7 +496,11 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
       data-testid="browser-panel"
       data-browser-panel-ready="true"
       onKeyDownCapture={(event) => {
-        handleBrowserPanelTabShortcut(event.nativeEvent, { panelOpen: true })
+        handleBrowserPanelTabShortcut(event.nativeEvent, {
+          panelOpen: true,
+          ownerId,
+          onCloseLastTab,
+        })
       }}
     >
       {/* Tab bar */}
@@ -497,7 +522,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
           >
             <button
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => setActiveTab(tab.id, ownerId)}
               className="flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md py-1 pl-2.5 pr-1 text-left transition-transform active:scale-[0.96]"
               aria-current={tab.id === activeTabId ? 'page' : undefined}
             >
@@ -540,7 +565,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
             </button>
             <button
               type="button"
-              onClick={() => closeTab(tab.id)}
+              onClick={() => handleCloseTab(tab.id)}
               aria-label={`Close ${tab.title || getTabFallbackTitle(tab)}`}
               className="mr-0.5 flex size-6 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
             >
@@ -678,6 +703,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                   workspaceId: activeWorkspaceFileTab.workspaceId,
                   path: activeWorkspaceFileTab.path,
                   view: 'preview',
+                  ownerId,
                 })}
               className={cn(
                 'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
@@ -697,6 +723,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                   workspaceId: activeWorkspaceFileTab.workspaceId,
                   path: activeWorkspaceFileTab.path,
                   view: 'editor',
+                  ownerId,
                 })}
               className={cn(
                 'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
@@ -738,7 +765,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
             return (
               <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
                 <div className="absolute inset-0 min-h-0 flex flex-col">
-                  <WorkspaceDiffViewer tabId={tab.id} workspaceId={tab.workspaceId} paths={tab.paths} />
+                  <WorkspaceDiffViewer ownerId={ownerId} tabId={tab.id} workspaceId={tab.workspaceId} paths={tab.paths} />
                 </div>
               </Activity>
             )
@@ -759,6 +786,7 @@ export function BrowserPanel({ activeSessionId = null, activeSessionTitle = null
                         workspaceId: tab.workspaceId,
                         path: tab.path,
                         view: 'editor',
+                        ownerId,
                       })}
                   />
                 )}

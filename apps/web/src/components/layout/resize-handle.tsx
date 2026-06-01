@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -10,6 +10,8 @@ interface ResizeHandleProps {
   value: ResizeValue
   /** Called with the new clamped value on every pointer move */
   onChange: (v: number) => void
+  /** Called once with the final clamped value when the drag commits. */
+  onChangeEnd?: (v: number) => void
   onDragStart?: () => void
   onDragEnd?: () => void
   min?: ResizeValue
@@ -27,17 +29,18 @@ function readResizeValue(value: ResizeValue): number {
   return typeof value === 'function' ? value() : value
 }
 
-export function ResizeHandle({
+export const ResizeHandle = memo(({
   direction,
   value,
   onChange,
+  onChangeEnd,
   onDragStart,
   onDragEnd,
   min = 0,
   max = Infinity,
   inverted = false,
   className,
-}: ResizeHandleProps) {
+}: ResizeHandleProps) => {
   const [active, setActive] = useState(false)
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -49,14 +52,17 @@ export function ResizeHandle({
     const axis = direction === 'horizontal' ? 'clientX' : 'clientY'
     const start = e[axis]
     const startVal = readResizeValue(value)
+    let latestValue = startVal
 
     const onMove = (me: PointerEvent) => {
       const delta = (me[axis] - start) * (inverted ? -1 : 1)
-      onChange(Math.max(readResizeValue(min), Math.min(readResizeValue(max), startVal + delta)))
+      latestValue = Math.max(readResizeValue(min), Math.min(readResizeValue(max), startVal + delta))
+      onChange(latestValue)
     }
 
     const onUp = () => {
       setActive(false)
+      onChangeEnd?.(latestValue)
       onDragEnd?.()
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
@@ -89,4 +95,5 @@ export function ResizeHandle({
       />
     </div>
   )
-}
+})
+ResizeHandle.displayName = 'ResizeHandle'

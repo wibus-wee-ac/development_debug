@@ -5,8 +5,8 @@ import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { GitFileStatus } from '~/lib/types'
-import { useBrowserPanelStore } from '~/store/browser-panel'
-import { useLayoutStore } from '~/store/layout'
+import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
+import { DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID, useLayoutStore } from '~/store/layout'
 
 import { groupGitFileStatuses } from './changes-grouping'
 import { ChangesPanel } from './changes-panel'
@@ -61,12 +61,18 @@ beforeEach(() => {
   cleanup()
   vi.clearAllMocks()
   useBrowserPanelStore.setState({
+    activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+    owners: {},
     tabs: [],
     activeTabId: null,
     requestedTab: null,
     scrollToFilePath: null,
   })
-  useLayoutStore.setState({ browserPanelOpen: false })
+  useLayoutStore.setState({
+    activeBrowserPanelOwnerId: DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID,
+    browserPanelOpen: false,
+    browserPanelOpenByOwnerId: {},
+  })
   gitQueryMocks.useGitFileStatuses.mockReturnValue({
     data: [{ path: 'src/app.tsx', status: 'modified' }],
     isLoading: false,

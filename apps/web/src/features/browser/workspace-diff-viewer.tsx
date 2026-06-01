@@ -17,13 +17,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
-import { useBrowserPanelStore } from '~/store/browser-panel'
+import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 
 import { useGitDiff } from '../git/use-git'
 
 type DiffStyle = 'split' | 'unified'
 
 interface WorkspaceDiffViewerProps {
+  ownerId?: string | null
   tabId: string
   workspaceId: string
   paths?: string[]
@@ -95,7 +96,7 @@ export function WorkspaceDiffViewer(props: WorkspaceDiffViewerProps) {
   )
 }
 
-function WorkspaceDiffViewerContent({ tabId, workspaceId, paths }: WorkspaceDiffViewerProps) {
+function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: WorkspaceDiffViewerProps) {
   const { data: patch, isLoading, isError } = useGitDiff(workspaceId, paths)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
   const viewerRef = useRef<CodeViewHandle<undefined>>(null)
@@ -110,7 +111,8 @@ function WorkspaceDiffViewerContent({ tabId, workspaceId, paths }: WorkspaceDiff
   const { items, pathToItemId } = diffData
 
   // Listen for scroll-to-file requests from the Changes Panel
-  const scrollToFilePath = useBrowserPanelStore(s => s.scrollToFilePath)
+  const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
+  const scrollToFilePath = useBrowserPanelStore(s => s.owners[resolvedOwnerId]?.scrollToFilePath ?? null)
   const clearScrollToFilePath = useBrowserPanelStore(s => s.clearScrollToFilePath)
 
   const scrollToPath = useStableCallback((path: string) => {
@@ -138,8 +140,8 @@ function WorkspaceDiffViewerContent({ tabId, workspaceId, paths }: WorkspaceDiff
       return
     }
     scrollToPath(scrollToFilePath.path)
-    clearScrollToFilePath()
-  }, [scrollToFilePath, tabId, scrollToPath, clearScrollToFilePath])
+    clearScrollToFilePath(ownerId)
+  }, [clearScrollToFilePath, ownerId, scrollToFilePath, tabId, scrollToPath])
 
   // Flush pending scroll once items are loaded
   useEffect(() => {

@@ -7,10 +7,10 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, nativeIpc, platform, subscribePointerOutsideWindow } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
 
@@ -18,13 +18,28 @@ interface AppHeaderProps {
   hasAside?: boolean
   hasBrowserPanel?: boolean
   hasPanel?: boolean
+  browserPanelOwnerId?: string | null
+  browserPanelOpen?: boolean
   sessionScoped?: boolean
 }
 
-export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel = false, sessionScoped = false }: AppHeaderProps) {
+export function AppHeader({
+  hasAside = false,
+  hasBrowserPanel = false,
+  hasPanel = false,
+  browserPanelOwnerId = null,
+  browserPanelOpen = false,
+  sessionScoped = false,
+}: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
-  const { bottomPanelOpen, asideOpen, toggleBottomPanel, toggleAside, sidebarCollapsed, toggleSidebar, browserPanelOpen, toggleBrowserPanel } = useLayoutStore()
+  const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
+  const asideOpen = useLayoutStore(s => s.asideOpen)
+  const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
+  const toggleAside = useLayoutStore(s => s.toggleAside)
+  const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
+  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
+  const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
@@ -178,7 +193,7 @@ export function AppHeader({ hasAside = false, hasBrowserPanel = false, hasPanel 
             variant="ghost"
             size="icon-xs"
             className={cn('text-muted-foreground', browserPanelOpen && 'text-foreground')}
-            onClick={toggleBrowserPanel}
+            onClick={() => toggleBrowserPanel(browserPanelOwnerId)}
             aria-label={t('header.action.toggleBrowserPanel')}
             aria-pressed={browserPanelOpen}
             title={t('header.action.toggleBrowserPanel')}

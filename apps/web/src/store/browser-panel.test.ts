@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  DEFAULT_BROWSER_PANEL_OWNER_ID,
   handleBrowserPanelTabShortcut,
   handleBrowserPanelTabShortcutPayload,
   useBrowserPanelStore,
@@ -24,6 +25,8 @@ describe('browser panel shortcuts', () => {
   beforeEach(() => {
     cleanup()
     useBrowserPanelStore.setState({
+      activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+      owners: {},
       tabs: [],
       activeTabId: null,
       requestedTab: null,
@@ -138,6 +141,22 @@ describe('browser panel shortcuts', () => {
     expect(useBrowserPanelStore.getState().requestedTab).toBeNull()
   })
 
+  it('keeps browser panel tabs scoped to their owning app tab', () => {
+    const firstOwnerTabId = useBrowserPanelStore.getState().createTab('https://example.com', undefined, 'app-tab-a')
+    useBrowserPanelStore.getState().setActiveOwner('app-tab-b')
+
+    expect(useBrowserPanelStore.getState().tabs).toEqual([])
+
+    const secondOwnerTabId = useBrowserPanelStore.getState().createTab('https://openai.com')
+
+    expect(useBrowserPanelStore.getState().tabs.map(tab => tab.id)).toEqual([secondOwnerTabId])
+
+    useBrowserPanelStore.getState().setActiveOwner('app-tab-a')
+
+    expect(useBrowserPanelStore.getState().tabs.map(tab => tab.id)).toEqual([firstOwnerTabId])
+    expect(useBrowserPanelStore.getState().activeTabId).toBe(firstOwnerTabId)
+  })
+
   it('does not consume shortcuts when the browser panel is closed', () => {
     useBrowserPanelStore.getState().createTab('https://example.com')
     const event = commandKeyEvent('w')
@@ -148,7 +167,7 @@ describe('browser panel shortcuts', () => {
     expect(event.preventDefault).not.toHaveBeenCalled()
   })
 
-  it('does not consume shortcuts when a workspace file tab is active', () => {
+  it('closes the active workspace file panel tab on command W', () => {
     useBrowserPanelStore.getState().openWorkspaceFileTab({
       workspaceId: 'workspace-1',
       path: 'src/index.ts',
@@ -156,10 +175,34 @@ describe('browser panel shortcuts', () => {
     })
     const event = commandKeyEvent('w')
 
-    expect(handleBrowserPanelTabShortcut(event, { panelOpen: true })).toBe(false)
+    expect(handleBrowserPanelTabShortcut(event, { panelOpen: true })).toBe(true)
 
-    expect(useBrowserPanelStore.getState().tabs).toHaveLength(1)
-    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(useBrowserPanelStore.getState().tabs).toHaveLength(0)
+    expect(event.preventDefault).toHaveBeenCalled()
+    expect(event.stopImmediatePropagation).toHaveBeenCalled()
+  })
+
+  it('notifies when command W closes the final browser panel tab', () => {
+    useBrowserPanelStore.getState().createTab('https://example.com')
+    const onCloseLastTab = vi.fn()
+    const event = commandKeyEvent('w')
+
+    expect(handleBrowserPanelTabShortcut(event, { panelOpen: true, onCloseLastTab })).toBe(true)
+
+    expect(onCloseLastTab).toHaveBeenCalledWith(DEFAULT_BROWSER_PANEL_OWNER_ID)
+    expect(useBrowserPanelStore.getState().tabs).toHaveLength(0)
+  })
+
+  it('does not notify when command W leaves other browser panel tabs open', () => {
+    const firstTabId = useBrowserPanelStore.getState().createTab('https://example.com')
+    useBrowserPanelStore.getState().createTab('https://openai.com')
+    const onCloseLastTab = vi.fn()
+    const event = commandKeyEvent('w')
+
+    expect(handleBrowserPanelTabShortcut(event, { panelOpen: true, onCloseLastTab })).toBe(true)
+
+    expect(onCloseLastTab).not.toHaveBeenCalled()
+    expect(useBrowserPanelStore.getState().tabs.map(tab => tab.id)).toEqual([firstTabId])
   })
 
   it('scopes file scroll requests to a workspace diff tab', () => {

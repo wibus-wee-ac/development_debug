@@ -7,7 +7,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useBrowserPanelStore } from '~/store/browser-panel'
+import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 
 import { BrowserPanel } from './browser-panel'
 
@@ -65,6 +65,8 @@ describe('browserPanel rendering', () => {
     diffViewerRender.mockClear()
     installTestWebviewPrototype()
     useBrowserPanelStore.setState({
+      activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+      owners: {},
       tabs: [],
       activeTabId: null,
       requestedTab: null,

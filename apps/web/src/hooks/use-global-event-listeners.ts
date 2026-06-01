@@ -60,7 +60,12 @@ export function useGlobalEventListeners() {
       }
 
       // ── Tab shortcuts ──────────────────────────────────────────────
-      if (handleBrowserPanelTabShortcut(e, { panelOpen: useLayoutStore.getState().browserPanelOpen })) {
+      const layoutState = useLayoutStore.getState()
+      if (handleBrowserPanelTabShortcut(e, {
+        panelOpen: layoutState.browserPanelOpen,
+        ownerId: layoutState.activeBrowserPanelOwnerId,
+        onCloseLastTab: ownerId => useLayoutStore.getState().setBrowserPanelOpen(false, ownerId),
+      })) {
         return
       }
 
@@ -116,8 +121,11 @@ export function useGlobalEventListeners() {
 
   useEffect(() => {
     return window.cradle?.ipc.on(BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL, (payload) => {
+      const layoutState = useLayoutStore.getState()
       handleBrowserPanelTabShortcutPayload(payload, {
-        panelOpen: useLayoutStore.getState().browserPanelOpen,
+        panelOpen: layoutState.browserPanelOpen,
+        ownerId: layoutState.activeBrowserPanelOwnerId,
+        onCloseLastTab: ownerId => useLayoutStore.getState().setBrowserPanelOpen(false, ownerId),
       })
     }) ?? (() => {})
   }, [])

@@ -6,12 +6,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useLayoutStore } from './layout'
+import { DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID, useLayoutStore } from './layout'
 
 describe('layout store updates', () => {
   beforeEach(() => {
     useLayoutStore.setState({
+      activeBrowserPanelOwnerId: DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID,
       browserPanelOpen: true,
+      browserPanelOpenByOwnerId: { [DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID]: true },
       browserPanelRatio: 0.4,
       bottomPanelOpen: true,
     })

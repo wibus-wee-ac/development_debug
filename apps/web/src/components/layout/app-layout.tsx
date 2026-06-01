@@ -21,7 +21,7 @@ import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
 import type { BrowserTabSource } from '~/store/browser-panel'
-import { useBrowserPanelStore } from '~/store/browser-panel'
+import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -44,38 +44,44 @@ function parseBrowserTabRequest(payload: unknown): string | undefined {
 }
 
 function installBrowserUseBridge({
+  ownerId,
   openBrowserPanel,
   closeBrowserPanel,
   readBrowserTabSource,
 }: {
+  ownerId: string | null
   openBrowserPanel: () => void
   closeBrowserPanel: () => void
   readBrowserTabSource: () => BrowserTabSource
 }): BrowserBridgeCleanup {
+  const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
   const requestBrowserTab = (payload: unknown) => {
     openBrowserPanel()
-    useBrowserPanelStore.getState().requestTab(parseBrowserTabRequest(payload), readBrowserTabSource())
+    useBrowserPanelStore.getState().requestTab(parseBrowserTabRequest(payload), readBrowserTabSource(), ownerId)
   }
   const createBrowserTab = (url?: string) => {
     openBrowserPanel()
-    return useBrowserPanelStore.getState().createTab(url, readBrowserTabSource())
+    return useBrowserPanelStore.getState().createTab(url, readBrowserTabSource(), ownerId)
   }
   const activateBrowserTab = (tabId: string) => {
     const state = useBrowserPanelStore.getState()
-    if (!state.tabs.some(tab => tab.kind === 'browser' && tab.id === tabId)) {
+    const ownerState = state.owners[resolvedOwnerId]
+    if (!ownerState?.tabs.some(tab => tab.kind === 'browser' && tab.id === tabId)) {
       return false
     }
     openBrowserPanel()
-    state.setActiveTab(tabId)
+    state.setActiveTab(tabId, ownerId)
     return true
   }
   const getActiveBrowserTab = () => {
     const state = useBrowserPanelStore.getState()
-    return state.tabs.find(tab => tab.kind === 'browser' && tab.id === state.activeTabId)?.id
+    const ownerState = state.owners[resolvedOwnerId]
+    return ownerState?.tabs.find(tab => tab.kind === 'browser' && tab.id === ownerState.activeTabId)?.id
   }
   const hideBrowserPanel = (tabId?: string) => {
     const state = useBrowserPanelStore.getState()
-    if (tabId && !state.tabs.some(tab => tab.kind === 'browser' && tab.id === tabId)) {
+    const ownerState = state.owners[resolvedOwnerId]
+    if (tabId && !ownerState?.tabs.some(tab => tab.kind === 'browser' && tab.id === tabId)) {
       return false
     }
     closeBrowserPanel()
@@ -163,6 +169,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   }))
   const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
   const activeSessionTitle = activeTab?.type === 'chat' ? activeTab.label : null
+  const activeBrowserPanelOwnerId = activeTab?.id ?? null
   const activeSessionLayout = useSessionLayoutStore(state =>
     activeSessionId ? state.sessions[activeSessionId] : undefined)
   const layoutContract = deriveActiveLayoutContract({
@@ -194,10 +201,12 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
   const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
-  const browserPanelOpen = useLayoutStore(state => state.browserPanelOpen)
+  const browserPanelOpen = useLayoutStore(state =>
+    activeBrowserPanelOwnerId ? state.browserPanelOpenByOwnerId[activeBrowserPanelOwnerId] ?? false : false)
   const browserPanelRatio = useLayoutStore(state => state.browserPanelRatio)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
+  const setActiveBrowserPanelOwner = useLayoutStore(state => state.setActiveBrowserPanelOwner)
   const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
@@ -208,17 +217,26 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
       sessionTitle: activeSessionTitle,
     }
   }, [activeSessionId, activeSessionTitle])
+  const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
+    setBrowserPanelOpen(false, ownerId)
+  }, [setBrowserPanelOpen])
+
+  useEffect(() => {
+    useBrowserPanelStore.getState().setActiveOwner(activeBrowserPanelOwnerId)
+    setActiveBrowserPanelOwner(activeBrowserPanelOwnerId)
+  }, [activeBrowserPanelOwnerId, setActiveBrowserPanelOwner])
 
   useEffect(() => {
     if (!isElectron) {
       return
     }
     return installBrowserUseBridge({
-      openBrowserPanel: () => setBrowserPanelOpen(true),
-      closeBrowserPanel: () => setBrowserPanelOpen(false),
+      ownerId: activeBrowserPanelOwnerId,
+      openBrowserPanel: () => setBrowserPanelOpen(true, activeBrowserPanelOwnerId),
+      closeBrowserPanel: () => setBrowserPanelOpen(false, activeBrowserPanelOwnerId),
       readBrowserTabSource,
     })
-  }, [readBrowserTabSource, setBrowserPanelOpen])
+  }, [activeBrowserPanelOwnerId, readBrowserTabSource, setBrowserPanelOpen])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -227,6 +245,8 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
         hasAside={resolvedHasAside}
         hasBrowserPanel={resolvedHasBrowserPanel}
         hasPanel={resolvedHasPanel}
+        browserPanelOwnerId={activeBrowserPanelOwnerId}
+        browserPanelOpen={browserPanelOpen}
         sessionScoped={sessionScoped}
       />
 
@@ -275,7 +295,12 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
             >
               {browserPanelMounted && (
                 <Activity mode={browserPanelVisible ? 'visible' : 'hidden'} name="browser-panel">
-                  <BrowserPanel activeSessionId={activeSessionId} activeSessionTitle={activeSessionTitle} />
+                  <BrowserPanel
+                    ownerId={activeBrowserPanelOwnerId}
+                    activeSessionId={activeSessionId}
+                    activeSessionTitle={activeSessionTitle}
+                    onCloseLastTab={handleCloseLastBrowserPanelTab}
+                  />
                 </Activity>
               )}
             </div>
