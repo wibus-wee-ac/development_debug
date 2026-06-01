@@ -17,21 +17,48 @@ import type {
   PostAgentsImportLocalConfigPreviewResponse,
   PostAgentsImportLocalConfigResponse,
 } from '~/api-gen/types.gen'
+import type { Agent as AgentRecord } from '~/lib/types'
 
 export const AGENTS_QUERY_KEY = getAgentsQueryKey()
 
-export type Agent = GetAgentsResponse[number]
+type AgentResponse = GetAgentsResponse[number]
+
+export type Agent = AgentRecord
 export type CreateAgentInput = PostAgentsData['body']
 export type UpdateAgentInput = PatchAgentsByIdData['body']
 export type PreviewLocalConfigImportResult = PostAgentsImportLocalConfigPreviewResponse
 export type ImportLocalConfigResult = PostAgentsImportLocalConfigResponse
 
+function nullableString(value: unknown): string | null {
+  return typeof value === 'string' ? value : null
+}
+
+function normalizeAgent(agent: AgentResponse): Agent {
+  return {
+    id: agent.id,
+    name: agent.name,
+    description: nullableString(agent.description),
+    avatarUrl: nullableString(agent.avatarUrl),
+    avatarStyle: agent.avatarStyle,
+    avatarSeed: agent.avatarSeed,
+    providerTargetId: nullableString(agent.providerTargetId),
+    modelId: nullableString(agent.modelId),
+    thinkingEffort: agent.thinkingEffort,
+    runtimeKind: agent.runtimeKind,
+    configJson: agent.configJson,
+    enabled: agent.enabled,
+    createdAt: agent.createdAt,
+    updatedAt: agent.updatedAt,
+  }
+}
+
 export function useAgents() {
   const queryClient = useQueryClient()
 
-  const { data: agents = [], isLoading, isSuccess } = useQuery({
+  const { data: agentResponses = [], isLoading, isSuccess } = useQuery({
     ...getAgentsOptions(),
   })
+  const agents = agentResponses.map(normalizeAgent)
 
   const createAgent = useMutation({
     ...postAgentsMutation(),

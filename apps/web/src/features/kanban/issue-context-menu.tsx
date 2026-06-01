@@ -147,7 +147,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
     const [, id] = value.split(':', 2)
     const agent = delegateAgents.find(candidate => candidate.id === id)
-    if (!agent?.providerTargetId) {
+    if (typeof agent?.providerTargetId !== 'string' || !agent.providerTargetId) {
       return
     }
     delegateIssue.mutate({

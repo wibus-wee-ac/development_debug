@@ -269,7 +269,7 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
 
     const [, id] = value.split(':', 2)
     const agent = agentCandidates.find(candidate => candidate.id === id)
-    if (!agent?.providerTargetId) {
+    if (typeof agent?.providerTargetId !== 'string' || !agent.providerTargetId) {
       return
     }
     delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, providerTargetId: agent.providerTargetId })

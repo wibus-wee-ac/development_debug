@@ -11,22 +11,12 @@ import { cn } from '~/lib/cn'
 
 import { buildAvatarUrl } from './avatar-url'
 
-const avatarSizeClass = {
-  16: 'size-4',
-  18: 'size-[18px]',
-  20: 'size-5',
-  22: 'size-[22px]',
-  24: 'size-6',
-} as const
-
-type AgentAvatarSize = keyof typeof avatarSizeClass
-
 export interface AgentAvatarProps {
   name?: string | null
   avatarUrl?: unknown
   avatarStyle?: string | null
   avatarSeed?: string | null
-  size?: AgentAvatarSize
+  size?: number
   className?: string
 }
 
@@ -55,10 +45,10 @@ export function AgentAvatar({
     <Avatar
       size="sm"
       className={cn(
-        avatarSizeClass[size],
         'overflow-hidden rounded-full bg-muted',
         className,
       )}
+      style={{ width: size, height: size }}
     >
       {imageUrl && (
         <AvatarImage
