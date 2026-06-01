@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { Message, Session } from '@cradle/db'
 import { agents, backendRuns, backendSessionBindings, messages, sessions } from '@cradle/db'
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, max, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -11,9 +11,9 @@ import {
   buildSessionRuntimeConfigJson,
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
-import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { runtimeKinds } from '../provider-contracts/types'
+import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import * as Workspace from '../workspace/service'
 
 export type SessionStatus = 'idle' | 'streaming' | 'error'
@@ -112,6 +112,29 @@ function toSessionView(session: Session, modelId: string | null, status: Session
   }
 }
 
+function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined): Session[] {
+  const latestUserMessages = db()
+    .select({
+      sessionId: messages.sessionId,
+      latestUserMessageAt: max(messages.createdAt).as('latest_user_message_at'),
+    })
+    .from(messages)
+    .where(eq(messages.role, 'user'))
+    .groupBy(messages.sessionId)
+    .as('latest_user_messages')
+
+  const query = db()
+    .select({ session: sessions })
+    .from(sessions)
+    .leftJoin(latestUserMessages, eq(sessions.id, latestUserMessages.sessionId))
+    .orderBy(
+      desc(sql<number>`coalesce(${latestUserMessages.latestUserMessageAt}, ${sessions.createdAt})`),
+      desc(sessions.createdAt),
+    )
+
+  return (where ? query.where(where).all() : query.all()).map(row => row.session)
+}
+
 function assertTargetCompatibleWithRuntime(input: {
   providerTargetId: string
   runtimeKind: RuntimeKind
@@ -138,18 +161,7 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
     input.archived ? isNotNull(sessions.archivedAt) : isNull(sessions.archivedAt),
   ].filter(predicate => predicate !== undefined)
   const where = predicates.length > 0 ? and(...predicates) : undefined
-  const rows = where
-    ? db()
-        .select()
-        .from(sessions)
-        .where(where)
-        .orderBy(desc(sessions.updatedAt))
-        .all()
-    : db()
-        .select()
-        .from(sessions)
-        .orderBy(desc(sessions.updatedAt))
-        .all()
+  const rows = listRowsByLatestUserMessage(where)
 
   const modelsBySessionId = listRequestedModelsBySessionIds(rows.map(row => row.id))
   const statusesBySessionId = listStatusesBySessionIds(rows.map(row => row.id))
