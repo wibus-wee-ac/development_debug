@@ -66,7 +66,7 @@ function readNumberShortcutIndex(event: KeyboardEvent): number | null {
   return Number(digitMatch[1]) - 1
 }
 
-const metaTabHintDelayMs = 300
+const metaTabHintDelayMs = 200
 
 const SortableTabPill = memo(({
   tab,
