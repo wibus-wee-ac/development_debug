@@ -54,6 +54,7 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
+import { isChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { CreateEventInput } from '../../observability/contract'
@@ -609,6 +610,7 @@ type MessagePart = UIMessage['parts'][number]
 type CodexUserInput = { type: 'text', text: string, text_elements: [] }
   | { type: 'image', detail?: 'high' | 'original', url: string }
   | { type: 'localImage', detail?: 'high' | 'original', path: string }
+  | { type: 'skill', name: string, path: string }
 
 const RUNTIME_KIND: RuntimeKind = 'codex'
 const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
@@ -3011,11 +3013,15 @@ function projectCodexUserInput(message: RuntimeMessageInput, runtimeLabel: strin
       }
       continue
     }
+    if (isChatSkillContextPart(part)) {
+      input.push({ type: 'skill', name: part.name, path: part.path })
+      continue
+    }
     unsupportedParts.push(part.type)
   }
 
   if (unsupportedParts.length > 0) {
-    throw new Error(`${runtimeLabel} only supports text and image input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw new Error(`${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (input.length === 0) {
     throw new Error(`${runtimeLabel} requires non-empty text or image input`)
@@ -3041,10 +3047,15 @@ function describeUnsupportedFilePart(part: Extract<MessagePart, { type: 'file' }
 
 function describeCodexUserInput(input: CodexUserInput[], text: string): string {
   const imageCount = input.filter(item => item.type === 'image' || item.type === 'localImage').length
-  if (imageCount === 0) {
+  const skillCount = input.filter(item => item.type === 'skill').length
+  if (imageCount === 0 && skillCount === 0) {
     return text
   }
-  const suffix = `[${imageCount} image${imageCount === 1 ? '' : 's'}]`
+  const suffixParts = [
+    imageCount > 0 ? `${imageCount} image${imageCount === 1 ? '' : 's'}` : '',
+    skillCount > 0 ? `${skillCount} skill${skillCount === 1 ? '' : 's'}` : '',
+  ].filter(Boolean)
+  const suffix = `[${suffixParts.join(', ')}]`
   return text ? `${text}\n${suffix}` : suffix
 }
 

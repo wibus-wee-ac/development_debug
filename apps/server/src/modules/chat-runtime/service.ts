@@ -30,6 +30,7 @@ import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compa
 import type { RuntimeKind } from '../provider-contracts/types'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
+import type { ChatContextPart } from './context-parts'
 import {
   createAssistantMessage,
   createUserMessage,
@@ -267,6 +268,7 @@ export interface ChatSessionQueueItemDto {
   status: ChatSessionQueueStatus
   text: string
   files: FileUIPart[]
+  contextParts: ChatContextPart[]
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | null
@@ -284,6 +286,7 @@ export interface EnqueueSessionQueueItemInput {
   mode: ChatSessionQueueMode
   text?: string
   files?: FileUIPart[]
+  contextParts?: ChatContextPart[]
   providerTargetId?: string
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
@@ -582,6 +585,7 @@ function createDraftTurn(input: {
   sessionId: string
   userText: string
   files: FileUIPart[]
+  contextParts: ChatContextPart[]
   continuation?: { mode: ChatSessionQueueMode, queueItemId?: string }
 }): {
   userMessageId: string
@@ -592,7 +596,7 @@ function createDraftTurn(input: {
   const assistantMessageId = randomUUID()
   const now = currentUnixSeconds()
   const userMessage = annotateContinuationMessage(
-    createUserMessage(userMessageId, input.userText, input.files),
+    createUserMessage(userMessageId, input.userText, input.files, input.contextParts),
     input.continuation ?? null,
   )
   const assistantMessage = createAssistantMessage(assistantMessageId)
@@ -1126,8 +1130,28 @@ function parseQueueFiles(filesJson: string): FileUIPart[] {
   }
 }
 
+function parseQueueContextParts(contextPartsJson: string): ChatContextPart[] {
+  try {
+    return JSON.parse(contextPartsJson) as ChatContextPart[]
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'chat_queue_item_invalid',
+      status: 500,
+      message: 'Stored chat queue item is invalid',
+      details: {
+        reason: error instanceof Error ? error.message : 'Invalid context part payload',
+      },
+    })
+  }
+}
+
 function serializeQueueFiles(files: FileUIPart[]): string {
   return JSON.stringify(files)
+}
+
+function serializeQueueContextParts(contextParts: ChatContextPart[]): string {
+  return JSON.stringify(contextParts)
 }
 
 function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSessionQueueItemDto {
@@ -1138,6 +1162,7 @@ function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSes
     status: row.status as ChatSessionQueueStatus,
     text: row.text,
     files: parseQueueFiles(row.filesJson),
+    contextParts: parseQueueContextParts(row.contextPartsJson),
     providerTargetId: row.providerTargetId,
     modelId: row.modelId,
     thinkingEffort: row.thinkingEffort as ChatSessionQueueItemDto['thinkingEffort'],
@@ -1687,6 +1712,7 @@ export async function createRun(input: {
   sessionId: string
   text?: string
   files?: FileUIPart[]
+  contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
@@ -1709,9 +1735,10 @@ export async function createRun(input: {
   try {
     const userText = input.text ?? ''
     const files = input.files ?? []
+    const contextParts = input.contextParts ?? []
     const requestMessages = input.messages
     const lastRequestMessage = requestMessages?.at(-1)
-    if (!requestMessages && !userText.trim() && files.length === 0) {
+    if (!requestMessages && !userText.trim() && files.length === 0 && contextParts.length === 0) {
       throw new AppError({
         code: 'chat_message_empty',
         status: 400,
@@ -1862,6 +1889,7 @@ export async function createRun(input: {
             sessionId: input.sessionId,
             userText,
             files,
+            contextParts,
             continuation: input.continuationMode
               ? { mode: input.continuationMode, queueItemId: input.queueItemId }
               : undefined,
@@ -1994,6 +2022,7 @@ export async function streamResponse(input: {
   sessionId: string
   text?: string
   files?: FileUIPart[]
+  contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
@@ -2371,11 +2400,12 @@ export async function enqueueSessionQueueItem(
 
   const text = input.text?.trim() ?? ''
   const files = input.files ?? []
-  if (!text && files.length === 0) {
+  const contextParts = input.contextParts ?? []
+  if (!text && files.length === 0 && contextParts.length === 0) {
     throw new AppError({
       code: 'chat_queue_item_empty',
       status: 400,
-      message: 'Chat queue item requires text or at least one file attachment',
+      message: 'Chat queue item requires text, context, or at least one file attachment',
       details: { sessionId: input.sessionId },
     })
   }
@@ -2393,6 +2423,7 @@ export async function enqueueSessionQueueItem(
       status: 'pending',
       text,
       filesJson: serializeQueueFiles(files),
+      contextPartsJson: serializeQueueContextParts(contextParts),
       providerTargetId: input.providerTargetId?.trim() || null,
       modelId: input.modelId?.trim() || null,
       thinkingEffort: input.thinkingEffort ?? null,
@@ -2413,6 +2444,7 @@ export async function enqueueSessionQueueItem(
       sessionId: input.sessionId,
       text,
       files,
+      contextParts,
     })
     if (steered) {
       return steered
@@ -2428,6 +2460,7 @@ async function tryApplyLiveSteer(input: {
   sessionId: string
   text: string
   files: FileUIPart[]
+  contextParts: ChatContextPart[]
 }): Promise<ChatSessionQueueItemDto | null> {
   const runId = activeRunIdsBySession.get(input.sessionId)
   if (!runId) {
@@ -2476,7 +2509,7 @@ async function tryApplyLiveSteer(input: {
   }
 
   const steerMessage = annotateContinuationMessage(
-    createUserMessage(randomUUID(), input.text, input.files),
+    createUserMessage(randomUUID(), input.text, input.files, input.contextParts),
     { mode: 'steer', queueItemId: input.queueItemId },
   )
   try {
@@ -3856,6 +3889,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
           sessionId,
           text: claimed.text,
           files: parseQueueFiles(claimed.filesJson),
+          contextParts: parseQueueContextParts(claimed.contextPartsJson),
           providerTargetId: claimed.providerTargetId ?? undefined,
           modelId: claimed.modelId ?? undefined,
           thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | undefined,

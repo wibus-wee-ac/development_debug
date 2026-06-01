@@ -34,4 +34,5 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0050_nebulous_preak.sql**: Chat Runtime queue migration，为 `chat_session_queue_items` 增加 `permission_mode`，保留排队 continuation 的 runtime permission mode
 - **0053_military_longshot.sql**: Session Await delivery recovery migration，为 `session_awaits` 增加 `resume_text` 与 `failure_kind`，区分 source failure 和 delivery failure 并支持恢复投递重试
 - **0054_session_archive.sql**: Session lifecycle migration，为 `sessions` 增加 `archived_at` 和查询索引，支持软归档而不是删除历史
+- **0055_military_earthquake.sql**: Drizzle Kit 生成的 Chat Runtime queue context migration，为 `chat_session_queue_items` 增加 `context_parts_json`
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

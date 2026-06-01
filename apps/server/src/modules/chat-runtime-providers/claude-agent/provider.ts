@@ -22,6 +22,7 @@ import type {
   SteerTurnInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
+import { isChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../chat-runtime/stream-trace'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
@@ -407,11 +408,14 @@ function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: str
       }
       continue
     }
+    if (isChatSkillContextPart(part)) {
+      continue
+    }
     unsupportedParts.push(part.type)
   }
 
   if (unsupportedParts.length > 0) {
-    throw new Error(`${runtimeLabel} only supports text and image input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw new Error(`${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (blocks.length === 0) {
     throw new Error(`${runtimeLabel} requires non-empty text or image input`)
@@ -605,6 +609,13 @@ function buildClaudeQueryOptions(input: {
   if (config.skills === 'all' || (Array.isArray(config.skills) && config.skills.length > 0)) {
     queryOptions.skills = config.skills
   }
+  if ('message' in input.input && input.input.message) {
+    const selectedSkills = readSelectedSkillNames(input.input.message)
+    if (selectedSkills.length > 0 && queryOptions.skills !== 'all') {
+      const configuredSkills = Array.isArray(queryOptions.skills) ? queryOptions.skills : []
+      queryOptions.skills = [...new Set([...configuredSkills, ...selectedSkills])]
+    }
+  }
   if (config.tools) {
     queryOptions.tools = config.tools
   }
@@ -660,6 +671,13 @@ function buildClaudeQueryOptions(input: {
   queryOptions.env = env
 
   return queryOptions
+}
+
+function readSelectedSkillNames(message: RuntimeMessageInput): string[] {
+  if (typeof message === 'string') {
+    return []
+  }
+  return message.parts.flatMap(part => isChatSkillContextPart(part) ? [part.name] : [])
 }
 
 function readClaudeAgentModelId(

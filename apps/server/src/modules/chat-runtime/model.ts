@@ -62,6 +62,14 @@ const runtimeUiSlotSchema = t.Object({
     t.Literal('usage'),
   ])),
   commandText: t.Optional(t.String()),
+  surfaces: t.Array(t.Union([
+    t.Literal('slashCommand'),
+    t.Literal('toolbarPicker'),
+    t.Literal('composerState'),
+    t.Literal('runtimePanel'),
+    t.Literal('streamEvidence'),
+    t.Literal('recordOnly'),
+  ])),
 })
 
 const runtimeGoalStatusSchema = t.Union([
@@ -439,6 +447,23 @@ const filePartSchema = t.Object({
   providerMetadata: t.Optional(t.Any()),
 }, { additionalProperties: true })
 
+const contextPartSchema = t.Union([
+  t.Object({
+    type: t.Literal('data-cradle-skill'),
+    name: t.String({ minLength: 1 }),
+    path: t.String({ minLength: 1 }),
+    scope: t.Union([
+      t.Literal('builtin'),
+      t.Literal('legacy'),
+      t.Literal('global'),
+      t.Literal('repository'),
+      t.Literal('workspace'),
+      t.Literal('agent'),
+    ]),
+    description: t.Union([t.String(), t.Null()]),
+  }, { additionalProperties: false }),
+])
+
 const queueModeSchema = t.Union([t.Literal('queue'), t.Literal('steer')])
 const permissionModeSchema = t.Union([
   t.Literal('bypassPermissions'),
@@ -475,6 +500,7 @@ const queueItemSchema = t.Object({
   status: queueStatusSchema,
   text: t.String(),
   files: t.Array(filePartSchema),
+  contextParts: t.Array(contextPartSchema),
   providerTargetId: t.Union([t.String(), t.Null()]),
   modelId: t.Union([t.String(), t.Null()]),
   thinkingEffort: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Null()]),
@@ -571,6 +597,7 @@ export const ChatRuntimeModel = {
   responseBody: t.Object({
     text: t.Optional(t.String()),
     files: t.Optional(t.Array(filePartSchema)),
+    contextParts: t.Optional(t.Array(contextPartSchema)),
     messages: t.Optional(t.Array(uiMessageSchema)),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
@@ -674,6 +701,7 @@ export const ChatRuntimeModel = {
     mode: queueModeSchema,
     text: t.Optional(t.String({ minLength: 1 })),
     files: t.Optional(t.Array(filePartSchema)),
+    contextParts: t.Optional(t.Array(contextPartSchema)),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high')])),

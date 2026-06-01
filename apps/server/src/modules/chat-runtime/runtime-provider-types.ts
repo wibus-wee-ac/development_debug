@@ -23,31 +23,39 @@ export interface RuntimeSlashCommand {
   aliases?: string[]
 }
 
-export type RuntimeUiSlotIconKey =
-  | 'alert'
-  | 'approvals'
-  | 'code-review'
-  | 'compact'
-  | 'config'
-  | 'diff'
-  | 'feedback'
-  | 'filesystem'
-  | 'goal'
-  | 'crew'
-  | 'ide-context'
-  | 'mcp'
-  | 'model'
-  | 'personality'
-  | 'plugin'
-  | 'plan'
-  | 'reasoning'
-  | 'search'
-  | 'side-chat'
-  | 'skills'
-  | 'status'
-  | 'terminal'
-  | 'tool-activity'
-  | 'usage'
+export type RuntimeUiSlotSurface
+  = | 'slashCommand'
+    | 'toolbarPicker'
+    | 'composerState'
+    | 'runtimePanel'
+    | 'streamEvidence'
+    | 'recordOnly'
+
+export type RuntimeUiSlotIconKey
+  = | 'alert'
+    | 'approvals'
+    | 'code-review'
+    | 'compact'
+    | 'config'
+    | 'diff'
+    | 'feedback'
+    | 'filesystem'
+    | 'goal'
+    | 'crew'
+    | 'ide-context'
+    | 'mcp'
+    | 'model'
+    | 'personality'
+    | 'plugin'
+    | 'plan'
+    | 'reasoning'
+    | 'search'
+    | 'side-chat'
+    | 'skills'
+    | 'status'
+    | 'terminal'
+    | 'tool-activity'
+    | 'usage'
 
 export interface RuntimeUiSlot {
   id: string
@@ -58,6 +66,7 @@ export interface RuntimeUiSlot {
   aliases?: string[]
   iconKey?: RuntimeUiSlotIconKey
   commandText?: string
+  surfaces: RuntimeUiSlotSurface[]
 }
 
 export type RuntimeUiSlotStateKind = 'alert' | 'approvals' | 'compact' | 'config' | 'crew' | 'diff' | 'filesystem' | 'goal' | 'mcp' | 'model' | 'plan' | 'plugin' | 'reasoning' | 'search' | 'skills' | 'status' | 'terminal' | 'toolActivity' | 'usage'
@@ -353,26 +362,26 @@ export interface RuntimeConfigUiSlotState {
   updatedAt: number
 }
 
-export type RuntimeUiSlotState =
-  | RuntimeAlertUiSlotState
-  | RuntimeApprovalsUiSlotState
-  | RuntimeCompactUiSlotState
-  | RuntimeConfigUiSlotState
-  | RuntimeCrewUiSlotState
-  | RuntimeDiffUiSlotState
-  | RuntimeFilesystemUiSlotState
-  | RuntimeGoalUiSlotState
-  | RuntimeMcpUiSlotState
-  | RuntimeModelUiSlotState
-  | RuntimePlanUiSlotState
-  | RuntimePluginUiSlotState
-  | RuntimeReasoningUiSlotState
-  | RuntimeSearchUiSlotState
-  | RuntimeSkillsUiSlotState
-  | RuntimeStatusUiSlotState
-  | RuntimeTerminalUiSlotState
-  | RuntimeToolActivityUiSlotState
-  | RuntimeUsageUiSlotState
+export type RuntimeUiSlotState
+  = | RuntimeAlertUiSlotState
+    | RuntimeApprovalsUiSlotState
+    | RuntimeCompactUiSlotState
+    | RuntimeConfigUiSlotState
+    | RuntimeCrewUiSlotState
+    | RuntimeDiffUiSlotState
+    | RuntimeFilesystemUiSlotState
+    | RuntimeGoalUiSlotState
+    | RuntimeMcpUiSlotState
+    | RuntimeModelUiSlotState
+    | RuntimePlanUiSlotState
+    | RuntimePluginUiSlotState
+    | RuntimeReasoningUiSlotState
+    | RuntimeSearchUiSlotState
+    | RuntimeSkillsUiSlotState
+    | RuntimeStatusUiSlotState
+    | RuntimeTerminalUiSlotState
+    | RuntimeToolActivityUiSlotState
+    | RuntimeUsageUiSlotState
 
 export interface ChatRuntimeCapabilities {
   runtimeKind: RuntimeKind

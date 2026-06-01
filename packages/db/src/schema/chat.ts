@@ -104,6 +104,7 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   }).notNull().default('pending'),
   text: text('text').notNull(),
   filesJson: text('files_json').notNull().default('[]'),
+  contextPartsJson: text('context_parts_json').notNull().default('[]'),
   providerTargetId: text('provider_target_id')
     .references(() => providerTargets.id, { onDelete: 'set null' }),
   modelId: text('model_id'),
