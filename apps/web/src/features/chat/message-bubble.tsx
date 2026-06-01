@@ -19,8 +19,8 @@ import { readCradleAppshotMetadata } from './appshot-attachment-model'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
-import type { ChatSkillContextPart } from './chat-context-parts'
-import { isChatSkillContextPart, readSkillContextLabel } from './chat-context-parts'
+import type { ChatSkillContextMessagePart } from './chat-context-parts'
+import { isChatSkillContextPart, readSkillContextLabel, readSkillContextPart } from './chat-context-parts'
 import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
 import { groupMessagePartRefs, groupMessageParts, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
@@ -71,12 +71,13 @@ function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
   )
 }
 
-function SkillContextBlock({ part }: { part: ChatSkillContextPart }) {
+function SkillContextBlock({ part }: { part: ChatSkillContextMessagePart }) {
+  const skill = readSkillContextPart(part)
   return (
     <div className="my-1 inline-flex max-w-full items-center gap-1.5 rounded-md bg-background/55 px-2 py-1 text-xs text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]">
       <PackageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 truncate font-medium">{readSkillContextLabel(part)}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{part.scope}</span>
+      <span className="min-w-0 truncate font-medium">{readSkillContextLabel(skill)}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{skill.scope}</span>
     </div>
   )
 }

@@ -18,7 +18,7 @@ import { readDesktopChatStreamBridge } from '~/lib/electron'
 
 import type { ChatResponseRequestBody } from './chat-response-command'
 import { startChatResponse, subscribeChatSessionStream } from './chat-response-command'
-import { buildUIMessageChunkStreamFromResponse } from './sse-chat-transport'
+import { buildUIMessageChunkStreamFromResponse, emitChatRunActivity } from './sse-chat-transport'
 
 export interface ChatStreamTransportResult {
   streamId: string | null
@@ -233,6 +233,11 @@ function routeDesktopEvent(event: BufferedDesktopEvent): void {
         closeDesktopStreamWithError(state, result.error)
         return
       }
+      emitChatRunActivity({
+        chatSessionId: event.event.sessionId,
+        messageId: readChunkMessageId(result.value),
+        chunk: result.value,
+      })
       state.controller.enqueue(result.value)
       return
     }
@@ -273,6 +278,16 @@ function closeDesktopStreamWithError(state: DesktopStreamState, error: unknown):
 
 function readDesktopEventStreamId(event: BufferedDesktopEvent): string {
   return event.event.streamId
+}
+
+function readChunkMessageId(chunk: UIMessageChunk): string | null {
+  if (chunk.type === 'start') {
+    return chunk.messageId ?? null
+  }
+  if ('toolCallId' in chunk && typeof chunk.toolCallId === 'string') {
+    return null
+  }
+  return null
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
