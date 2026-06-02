@@ -4,6 +4,8 @@ import { AppError } from '../../errors/app-error'
 import { ExternalProviderSourcesModel } from './model'
 import * as ExternalProviderSources from './service'
 
+const nullableString = t.Union([t.String(), t.Null()])
+
 export const externalProviderSources = new Elysia({
   detail: { tags: ['external-provider-sources'] },
 })
@@ -61,8 +63,8 @@ export const externalProviderSources = new Elysia({
         providerKind: t.Union([t.Literal('anthropic'), t.Literal('openai-compatible'), t.Literal('cli-tool')]),
         displayName: t.String(),
         enabled: t.Boolean(),
-        credentialRef: t.Nullable(t.String()),
-        iconSlug: t.Nullable(t.String()),
+        credentialRef: nullableString,
+        iconSlug: nullableString,
         lastResolvedFingerprint: t.String(),
         createdAt: t.Number(),
         updatedAt: t.Number(),
@@ -101,8 +103,8 @@ export const externalProviderSources = new Elysia({
         providerKind: t.Union([t.Literal('anthropic'), t.Literal('openai-compatible'), t.Literal('cli-tool')]),
         displayName: t.String(),
         enabled: t.Boolean(),
-        credentialRef: t.Nullable(t.String()),
-        iconSlug: t.Nullable(t.String()),
+        credentialRef: nullableString,
+        iconSlug: nullableString,
         lastResolvedFingerprint: t.String(),
         createdAt: t.Number(),
         updatedAt: t.Number(),

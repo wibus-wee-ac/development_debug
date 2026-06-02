@@ -49,6 +49,7 @@ describe('session capability', () => {
 
       const workspaceId = randomUUID()
       const providerTargetId = randomUUID()
+      const secondaryProviderTargetId = randomUUID()
       d.insert(workspaces)
         .values({
           id: workspaceId,
@@ -61,6 +62,14 @@ describe('session capability', () => {
           id: providerTargetId,
           kind: 'manual',
           displayName: 'Test Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+      d.insert(providerTargets)
+        .values({
+          id: secondaryProviderTargetId,
+          kind: 'manual',
+          displayName: 'Secondary Provider Target',
           providerKind: 'openai-compatible',
         })
         .run()
@@ -279,6 +288,37 @@ describe('session capability', () => {
         }),
       )
 
+      const providerModelPatchRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            providerTargetId: secondaryProviderTargetId,
+            modelId: 'gpt-secondary',
+          }),
+        }),
+      )
+      expect(providerModelPatchRes.status).toBe(200)
+      expect(await providerModelPatchRes.json()).toEqual(expect.objectContaining({
+        providerTargetId: secondaryProviderTargetId,
+        modelId: 'gpt-secondary',
+      }))
+      expect(
+        d.select().from(backendSessionBindings).where(eq(backendSessionBindings.id, bindingId)).get(),
+      ).toEqual(expect.objectContaining({
+        providerTargetId: secondaryProviderTargetId,
+        requestedModelId: 'gpt-secondary',
+        backendSessionId: null,
+      }))
+
+      const getWithPatchedProviderRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}`),
+      )
+      expect(await getWithPatchedProviderRes.json()).toEqual(expect.objectContaining({
+        providerTargetId: secondaryProviderTargetId,
+        modelId: 'gpt-secondary',
+      }))
+
       const streamingRunId = randomUUID()
       d.insert(backendRuns)
         .values({
@@ -408,7 +448,7 @@ describe('session capability', () => {
       )
       const exportBody = await exportRes.json()
       expect(exportBody.markdown).toContain('# Renamed Chat')
-      expect(exportBody.markdown).toContain('Model: gpt-test')
+      expect(exportBody.markdown).toContain('Model: gpt-secondary')
       expect(exportBody.markdown).toContain('## User')
       expect(exportBody.markdown).toContain('Hello')
       expect(exportBody.markdown).toContain('## Assistant')

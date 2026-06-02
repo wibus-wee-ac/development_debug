@@ -1,9 +1,12 @@
 import { t } from 'elysia'
 import { z } from 'zod'
 
+const nullableString = t.Union([t.String(), t.Null()])
+const nullableProfileRef = t.Union([t.String({ description: 'ID of the agent profile to use for Jarvis' }), t.Null()])
+
 export const PreferencesModel = {
   chatPreferences: t.Object({
-    modelId: t.Nullable(t.String()),
+    modelId: nullableString,
     configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
     continuationBehavior: t.Union([
       t.Literal('queue'),
@@ -11,7 +14,7 @@ export const PreferencesModel = {
     ], { default: 'queue' }),
   }, { additionalProperties: false }),
   chatPreferencesUpdate: t.Object({
-    modelId: t.Nullable(t.String()),
+    modelId: nullableString,
     configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
     continuationBehavior: t.Optional(t.Union([
       t.Literal('queue'),
@@ -19,7 +22,7 @@ export const PreferencesModel = {
     ], { default: 'queue' })),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
-    profileId: t.Nullable(t.String({ description: 'ID of the agent profile to use for Jarvis' })),
+    profileId: nullableProfileRef,
     model: t.Optional(t.String({ description: 'Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)' })),
     thinkingLevel: t.Union([
       t.Literal('minimal'),

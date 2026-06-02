@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -43,18 +43,18 @@ async function createProfileAndSession(app: ElysiaApp, workspaceRoot: string) {
   }))
   const credential = await credentialRes.json() as { id: string }
 
-  const profileRes = await app.handle(new Request('http://localhost/profiles/profile-observability', {
+  const targetRes = await app.handle(new Request('http://localhost/provider-targets/provider-target-observability', {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      name: 'Observability Profile',
+      displayName: 'Observability Provider',
       providerKind: 'openai-compatible',
       enabled: true,
-      config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
+      connectionConfig: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
       credentialRef: credential.id,
     }),
   }))
-  expect(profileRes.status).toBe(200)
+  expect(targetRes.status).toBe(200)
 
   const sessionRes = await app.handle(new Request('http://localhost/sessions', {
     method: 'POST',
@@ -63,7 +63,7 @@ async function createProfileAndSession(app: ElysiaApp, workspaceRoot: string) {
       id: 'session-observability',
       workspaceId: 'workspace-observability',
       title: 'Observability Session',
-      agentProfileId: 'profile-observability',
+      providerTargetId: 'provider-target-observability',
     }),
   }))
   expect(sessionRes.status).toBe(200)
@@ -98,13 +98,139 @@ async function flushObservability(app: ElysiaApp): Promise<void> {
 }
 
 describe('observability capability', () => {
+  it('records local producer errors and exports a redacted diagnostics bundle', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const logFile = join(dataDir, 'server.log')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousLogFile = process.env.CRADLE_LOG_FILE
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousPluginsDir = process.env.CRADLE_PLUGINS_DIR
+    const previousExternalPluginsDirs = process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_LOG_FILE = logFile
+    process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
+
+    writeFileSync(
+      logFile,
+      [
+        `path=${process.env.HOME ?? ''}/Library/Application Support/@cradle/desktop/data`,
+        'api_key=sk-observability-test-local-producer',
+        'token=private-preview-token',
+        'authorization: Bearer private-preview-bearer',
+      ].join('\n'),
+    )
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+
+      const eventRes = await app.handle(new Request('http://localhost/observability/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          source: 'renderer',
+          code: 'RENDERER_UNHANDLED_ERROR',
+          severity: 'error',
+          category: 'diagnostics',
+          message: 'renderer crashed while opening settings',
+          attrs: {
+            error: {
+              stack: `Error: boom\n    at ${process.env.HOME ?? ''}/Cradle/apps/web/src/main.tsx:1:1\n    api_key=sk-renderer-secret-value`,
+            },
+          },
+        }),
+      }))
+      expect(eventRes.status).toBe(200)
+      expect(await eventRes.json()).toEqual({ ok: true })
+
+      await flushObservability(app)
+
+      const incidentsRes = await app.handle(new Request('http://localhost/observability/incidents?code=RENDERER_UNHANDLED_ERROR'))
+      expect(incidentsRes.status).toBe(200)
+      const incidents = await incidentsRes.json() as Array<{ code: string, status: string }>
+      expect(incidents).toEqual([expect.objectContaining({ code: 'RENDERER_UNHANDLED_ERROR', status: 'open' })])
+
+      const exportRes = await app.handle(new Request('http://localhost/observability/export'))
+      expect(exportRes.status).toBe(200)
+      const bundle = await exportRes.json() as {
+        schema: string
+        metadata: { [key: string]: unknown }
+        redaction: { [key: string]: unknown }
+        events: Array<{ code: string, attrs?: { error?: { stack?: string } } }>
+        incidents: Array<{ code: string }>
+        timeline: Array<Record<string, unknown>>
+        logs: { serverLog?: { available?: boolean, path?: string | null, tail?: string } }
+      }
+      expect(bundle.schema).toBe('cradle.diagnostics.bundle.v1')
+      expect(bundle.metadata).toEqual(expect.objectContaining({
+        app: expect.any(Object),
+        server: expect.any(Object),
+        runtime: expect.any(Object),
+        os: expect.any(Object),
+      }))
+      expect(bundle.redaction).toEqual(expect.objectContaining({ applied: true, version: 1 }))
+      expect(bundle.events).toEqual([expect.objectContaining({ code: 'RENDERER_UNHANDLED_ERROR' })])
+      expect(bundle.events[0]?.attrs?.error?.stack).toContain('~/Cradle/apps/web/src/main.tsx')
+      expect(bundle.events[0]?.attrs?.error?.stack).not.toContain('sk-renderer-secret-value')
+      expect(bundle.incidents).toEqual([expect.objectContaining({ code: 'RENDERER_UNHANDLED_ERROR' })])
+      expect(bundle.timeline).toEqual([])
+      expect(bundle.logs.serverLog).toEqual(expect.objectContaining({ available: true }))
+      expect(bundle.logs.serverLog?.tail).not.toContain(process.env.HOME ?? 'unreachable-home')
+      expect(bundle.logs.serverLog?.tail).toContain('~/Library/Application Support/@cradle/desktop/data')
+      expect(bundle.logs.serverLog?.tail).not.toContain('sk-observability-test-local-producer')
+      expect(bundle.logs.serverLog?.tail).not.toContain('private-preview-token')
+      expect(bundle.logs.serverLog?.tail).not.toContain('private-preview-bearer')
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousLogFile === undefined) {
+        delete process.env.CRADLE_LOG_FILE
+      }
+      else {
+        process.env.CRADLE_LOG_FILE = previousLogFile
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      if (previousPluginsDir === undefined) {
+        delete process.env.CRADLE_PLUGINS_DIR
+      }
+      else {
+        process.env.CRADLE_PLUGINS_DIR = previousPluginsDir
+      }
+      if (previousExternalPluginsDirs === undefined) {
+        delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      }
+      else {
+        process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previousExternalPluginsDirs
+      }
+    }
+  })
+
   it('records empty-output failures, opens an incident at threshold, and exports the related bundle', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-observability-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousPluginsDir = process.env.CRADLE_PLUGINS_DIR
+    const previousExternalPluginsDirs = process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new Request(input).url
@@ -194,6 +320,18 @@ describe('observability capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+      if (previousPluginsDir === undefined) {
+        delete process.env.CRADLE_PLUGINS_DIR
+      }
+      else {
+        process.env.CRADLE_PLUGINS_DIR = previousPluginsDir
+      }
+      if (previousExternalPluginsDirs === undefined) {
+        delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      }
+      else {
+        process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previousExternalPluginsDirs
+      }
     }
   })
 
@@ -202,8 +340,12 @@ describe('observability capability', () => {
     const workspaceRoot = makeTempDir('cradle-observability-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousPluginsDir = process.env.CRADLE_PLUGINS_DIR
+    const previousExternalPluginsDirs = process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = new Request(input).url
@@ -261,6 +403,18 @@ describe('observability capability', () => {
       }
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      if (previousPluginsDir === undefined) {
+        delete process.env.CRADLE_PLUGINS_DIR
+      }
+      else {
+        process.env.CRADLE_PLUGINS_DIR = previousPluginsDir
+      }
+      if (previousExternalPluginsDirs === undefined) {
+        delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      }
+      else {
+        process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previousExternalPluginsDirs
       }
     }
   })

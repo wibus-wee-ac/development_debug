@@ -1,6 +1,27 @@
 import { t } from 'elysia'
 
 export const ObservabilityModel = {
+  createEventBody: t.Object({
+    source: t.String(),
+    code: t.String(),
+    severity: t.String(),
+    category: t.String(),
+    message: t.String(),
+    attrs: t.Optional(t.Record(t.String(), t.Unknown())),
+    chatSessionId: t.Optional(t.String()),
+    runId: t.Optional(t.String()),
+    messageId: t.Optional(t.String()),
+    traceId: t.Optional(t.String()),
+    dedupeKey: t.Optional(t.String()),
+    parentEventId: t.Optional(t.String()),
+    occurredAt: t.Optional(t.Number()),
+    recordedAt: t.Optional(t.Number()),
+  }),
+
+  createEventResponse: t.Object({
+    ok: t.Literal(true),
+  }),
+
   event: t.Object({
     id: t.String(),
     schemaVersion: t.Number(),
@@ -40,7 +61,10 @@ export const ObservabilityModel = {
   }),
 
   bundle: t.Object({
+    schema: t.String(),
     exportedAt: t.Number(),
+    metadata: t.Record(t.String(), t.Unknown()),
+    redaction: t.Record(t.String(), t.Unknown()),
     events: t.Array(t.Object({
       id: t.String(),
       schemaVersion: t.Number(),
@@ -78,6 +102,7 @@ export const ObservabilityModel = {
       attrs: t.Optional(t.Record(t.String(), t.Unknown())),
     })),
     timeline: t.Array(t.Record(t.String(), t.Unknown())),
+    logs: t.Record(t.String(), t.Unknown()),
   }),
 
   eventsQuery: t.Object({

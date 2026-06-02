@@ -24,6 +24,15 @@ export const OBSERVABILITY_CODES = {
   turnStreamFailed: 'TURN_STREAM_FAILED',
   domainEventHandlerFailed: 'DOMAIN_EVENT_HANDLER_FAILED',
   providerEmptyEventStream: 'PROVIDER_EMPTY_EVENT_STREAM',
+  rendererUnhandledError: 'RENDERER_UNHANDLED_ERROR',
+  rendererUnhandledRejection: 'RENDERER_UNHANDLED_REJECTION',
+  rendererRenderError: 'RENDERER_RENDER_ERROR',
+  desktopMainUncaughtException: 'DESKTOP_MAIN_UNCAUGHT_EXCEPTION',
+  desktopMainUnhandledRejection: 'DESKTOP_MAIN_UNHANDLED_REJECTION',
+  serverUncaughtException: 'SERVER_UNCAUGHT_EXCEPTION',
+  serverUnhandledRejection: 'SERVER_UNHANDLED_REJECTION',
+  serverBootstrapFatal: 'SERVER_BOOTSTRAP_FATAL',
+  httpUnhandledError: 'HTTP_UNHANDLED_ERROR',
 } as const
 
 export interface CreateEventInput {

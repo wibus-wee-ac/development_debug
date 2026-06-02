@@ -3,6 +3,8 @@ import { Elysia } from 'elysia'
 
 import { AppError } from '../errors/app-error'
 import { getLogger } from '../logging/logger'
+import { OBSERVABILITY_CODES } from '../modules/observability/contract'
+import { record } from '../modules/observability/service'
 import { normalizeValidationError } from './validation'
 
 function createJsonErrorResponse(
@@ -26,7 +28,7 @@ function createJsonErrorResponse(
 }
 
 export function createErrorHandler(): ErrorHandler {
-  return ({ code, error, set }) => {
+  return ({ code, error, request, set }) => {
     if (error instanceof AppError) {
       return createJsonErrorResponse(set.headers, error.status, {
         code: error.code,
@@ -51,6 +53,20 @@ export function createErrorHandler(): ErrorHandler {
     }
 
     getLogger().error('unhandled error', { err: error })
+    record({
+      source: 'http',
+      code: OBSERVABILITY_CODES.httpUnhandledError,
+      severity: 'error',
+      category: 'system',
+      message: 'Unhandled HTTP request error',
+      attrs: {
+        method: request.method,
+        path: new URL(request.url).pathname,
+        error: error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { value: String(error) },
+      },
+    })
     return createJsonErrorResponse(set.headers, 500, {
       code: 'internal_server_error',
       message: 'Internal Server Error',

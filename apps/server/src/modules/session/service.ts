@@ -410,6 +410,8 @@ export function update(input: {
   id: string
   title?: string
   pinned?: boolean
+  providerTargetId?: string | null
+  modelId?: string | null
 }): SessionView | null {
   const record = db().select().from(sessions).where(eq(sessions.id, input.id)).get()
   if (!record) {
@@ -418,6 +420,7 @@ export function update(input: {
 
   const now = Math.floor(Date.now() / 1000)
   const patch: Partial<typeof sessions.$inferInsert> = { updatedAt: now }
+  const nextProviderTargetId = input.providerTargetId ?? record.providerTargetId
 
   if (input.title !== undefined) {
     patch.title = input.title
@@ -425,9 +428,120 @@ export function update(input: {
   if (input.pinned !== undefined) {
     patch.pinned = input.pinned ? 1 : 0
   }
+  if (input.providerTargetId !== undefined) {
+    if (!input.providerTargetId) {
+      throw new AppError({
+        code: 'invalid_session_input',
+        status: 400,
+        message: 'Provider-backed sessions require a provider target',
+        details: { sessionId: input.id },
+      })
+    }
+    const target = resolveProviderTarget(input.providerTargetId)
+    assertProviderTargetCompatibleWithRuntime(input.providerTargetId, record.runtimeKind)
+    if (!target.enabled) {
+      throw new AppError({
+        code: 'invalid_session_input',
+        status: 409,
+        message: 'Provider target is disabled',
+        details: { sessionId: input.id, providerTargetId: input.providerTargetId },
+      })
+    }
+    patch.providerTargetId = input.providerTargetId
+    if (record.agentId && input.providerTargetId !== record.providerTargetId) {
+      patch.agentId = null
+    }
+  }
 
   db().update(sessions).set(patch).where(eq(sessions.id, input.id)).run()
+
+  if (input.modelId !== undefined || input.providerTargetId !== undefined) {
+    upsertSessionRequestedModel({
+      session: record,
+      providerTargetId: nextProviderTargetId,
+      modelId: input.modelId,
+      now,
+    })
+  }
+
   return get(input.id)
+}
+
+function upsertSessionRequestedModel(input: {
+  session: Session
+  providerTargetId: string | null
+  modelId?: string | null
+  now: number
+}): void {
+  if (!input.providerTargetId) {
+    return
+  }
+
+  const existing = db()
+    .select()
+    .from(backendSessionBindings)
+    .where(eq(backendSessionBindings.chatSessionId, input.session.id))
+    .get()
+  const providerChanged = existing?.providerTargetId !== input.providerTargetId
+  const runtimeChanged = existing?.runtimeKind !== input.session.runtimeKind
+  const requestedModelId = input.modelId === undefined
+    ? providerChanged || runtimeChanged ? null : existing?.requestedModelId ?? null
+    : input.modelId
+
+  if (existing) {
+    const backendStateSnapshot = providerChanged || runtimeChanged
+      ? JSON.stringify({ models: { currentModelId: requestedModelId } })
+      : writeRequestedModelToProviderStateSnapshot(existing.backendStateSnapshot, requestedModelId)
+    db()
+      .update(backendSessionBindings)
+      .set({
+        providerTargetId: input.providerTargetId,
+        runtimeKind: input.session.runtimeKind,
+        backendSessionId: providerChanged || runtimeChanged ? null : existing.backendSessionId,
+        backendStateSnapshot,
+        requestedModelId,
+        updatedAt: input.now,
+      })
+      .where(eq(backendSessionBindings.id, existing.id))
+      .run()
+    return
+  }
+
+  if (requestedModelId === null) {
+    return
+  }
+
+  db()
+    .insert(backendSessionBindings)
+    .values({
+      id: randomUUID(),
+      chatSessionId: input.session.id,
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.session.runtimeKind,
+      backendSessionId: null,
+      backendStateSnapshot: JSON.stringify({ models: { currentModelId: requestedModelId } }),
+      requestedModelId,
+      createdAt: input.now,
+      updatedAt: input.now,
+    })
+    .run()
+}
+
+function writeRequestedModelToProviderStateSnapshot(
+  raw: string | null,
+  modelId: string | null,
+): string {
+  const snapshot = raw ? JSON.parse(raw) as Record<string, unknown> : {}
+  const models = snapshot.models && typeof snapshot.models === 'object' && !Array.isArray(snapshot.models)
+    ? snapshot.models as Record<string, unknown>
+    : {}
+  return JSON.stringify({
+    ...snapshot,
+    models: {
+      ...models,
+      currentModelId: modelId,
+    },
+  })
 }
 
 export function updateTitle(input: { id: string, title: string }): void {

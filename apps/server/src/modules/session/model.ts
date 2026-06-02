@@ -76,6 +76,8 @@ export const SessionModel = {
   updateBody: t.Object({
     title: t.Optional(t.String({ minLength: 1 })),
     pinned: t.Optional(t.Boolean()),
+    providerTargetId: t.Optional(nullableRequiredString),
+    modelId: t.Optional(nullableRequiredString),
   }),
 
   archiveBody: t.Object({

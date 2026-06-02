@@ -1,10 +1,28 @@
 import { flushLogger, getLogger } from './logging/logger'
+import { OBSERVABILITY_CODES } from './modules/observability/contract'
+import type { CreateEventInput } from './modules/observability/contract'
+import { flushEvents, record } from './modules/observability/service'
 
 interface RuntimeServer {
   stop: () => void | Promise<void>
 }
 
-function recordFatalError(message: string, err: unknown): void {
+function serializeRuntimeError(err: unknown): Record<string, unknown> {
+  if (err instanceof Error) {
+    return {
+      name: err.name,
+      message: err.message,
+      stack: err.stack,
+    }
+  }
+  return { value: String(err) }
+}
+
+async function recordFatalError(
+  message: string,
+  err: unknown,
+  code: CreateEventInput['code'] = OBSERVABILITY_CODES.serverBootstrapFatal,
+): Promise<void> {
   const logger = getLogger()
   if (err instanceof Error) {
     logger.error(message, { err })
@@ -12,18 +30,37 @@ function recordFatalError(message: string, err: unknown): void {
   else {
     logger.error(message, { reason: err })
   }
+  try {
+    record({
+      source: 'server',
+      code,
+      severity: 'fatal',
+      category: 'system',
+      message,
+      attrs: {
+        error: serializeRuntimeError(err),
+        pid: process.pid,
+      },
+    })
+    await flushEvents()
+  }
+  catch (observabilityError) {
+    logger.error('failed to persist fatal observability event', { err: observabilityError })
+  }
   flushLogger()
 }
 
 function installProcessFatalHandlers(): void {
   process.on('unhandledRejection', (reason) => {
-    recordFatalError('unhandled promise rejection', reason)
-    process.exit(1)
+    void recordFatalError('unhandled promise rejection', reason, OBSERVABILITY_CODES.serverUnhandledRejection).finally(() => {
+      process.exit(1)
+    })
   })
 
   process.on('uncaughtException', (err) => {
-    recordFatalError('uncaught exception', err)
-    process.exit(1)
+    void recordFatalError('uncaught exception', err, OBSERVABILITY_CODES.serverUncaughtException).finally(() => {
+      process.exit(1)
+    })
   })
 
   process.on('warning', (warning) => {
@@ -89,6 +126,7 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  recordFatalError('fatal bootstrap error', err)
-  process.exit(1)
+  void recordFatalError('fatal bootstrap error', err).finally(() => {
+    process.exit(1)
+  })
 })

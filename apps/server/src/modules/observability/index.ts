@@ -1,6 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { z } from 'zod'
 
+import type { CreateEventInput } from './contract'
 import { ObservabilityModel } from './model'
 import * as Observability from './service'
 
@@ -44,10 +45,37 @@ const ObservabilityExportQuerySchema = z.object({
   sinceUnix: OptionalNonNegativeIntegerSchema,
 }).passthrough()
 
+const CreateObservabilityEventBodySchema = z.object({
+  source: z.custom<CreateEventInput['source']>(),
+  code: z.string().min(1),
+  severity: z.custom<CreateEventInput['severity']>(),
+  category: z.custom<CreateEventInput['category']>(),
+  message: z.string().min(1),
+  attrs: z.record(z.string(), z.unknown()).optional(),
+  chatSessionId: z.string().optional(),
+  runId: z.string().optional(),
+  messageId: z.string().optional(),
+  traceId: z.string().optional(),
+  dedupeKey: z.string().optional(),
+  parentEventId: z.string().optional(),
+  occurredAt: z.number().optional(),
+  recordedAt: z.number().optional(),
+}).passthrough()
+
 export const observability = new Elysia({
   prefix: '/observability',
   detail: { tags: ['observability'] },
 })
+  .post('/events', ({ body }) => {
+    Observability.record(CreateObservabilityEventBodySchema.parse(body))
+    return { ok: true as const }
+  }, {
+    detail: {
+      summary: 'Record observability event',
+    },
+    body: ObservabilityModel.createEventBody,
+    response: { 200: ObservabilityModel.createEventResponse },
+  })
   .get('/events', ({ query }) => Observability.getEvents(ObservabilityEventsQuerySchema.parse(query)), {
     detail: {
       'summary': 'List observability events',

@@ -2,8 +2,8 @@ import { t } from 'elysia'
 
 import { modelCapabilitiesSchema } from '../provider-contracts/model'
 
-const nullableString = t.Nullable(t.String())
-const nullableProfileRef = t.Nullable(t.String({ minLength: 1 }))
+const nullableString = t.Union([t.String(), t.Null()])
+const nullableProfileRef = t.Union([t.String({ minLength: 1 }), t.Null()])
 
 export const ProfilesModel = {
   agentProfile: t.Object({

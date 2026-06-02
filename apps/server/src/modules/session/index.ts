@@ -46,11 +46,16 @@ export const session = new Elysia({
     response: { 200: SessionModel.session },
   })
   .patch('/:id', ({ params, body }) => {
-    if (body.title === undefined && body.pinned === undefined) {
+    if (
+      body.title === undefined
+      && body.pinned === undefined
+      && body.providerTargetId === undefined
+      && body.modelId === undefined
+    ) {
       throw new AppError({
         code: 'invalid_session_input',
         status: 400,
-        message: 'at least one of title or pinned is required',
+        message: 'at least one session field is required',
       })
     }
     const result = Session.update({ id: params.id, ...body })

@@ -14,6 +14,7 @@ const recordStatusSchema = t.Union([
   t.Literal('unsupported'),
   t.Literal('error'),
 ])
+const nullableString = t.Union([t.String(), t.Null()])
 
 const warningSchema = t.Object({
   code: t.String(),
@@ -60,20 +61,20 @@ export const ExternalProviderSourcesModel = {
     pluginName: t.String(),
     sourceId: t.String(),
     label: t.String(),
-    description: t.Nullable(t.String()),
+    description: nullableString,
     enabled: t.Boolean(),
     capabilities: t.Record(t.String(), t.Any()),
     inventory: t.Record(t.String(), t.Any()),
     warnings: t.Array(warningSchema),
     lastSyncStatus: sourceStatusSchema,
-    lastSyncMessage: t.Nullable(t.String()),
-    lastSyncError: t.Nullable(t.String()),
-    lastSyncAt: t.Nullable(t.Number()),
+    lastSyncMessage: nullableString,
+    lastSyncError: nullableString,
+    lastSyncAt: t.Union([t.Number(), t.Null()]),
     registeredAt: t.Number(),
   }),
   record: t.Object({
     id: t.String(),
-    providerTargetId: t.Nullable(t.String()),
+    providerTargetId: nullableString,
     sourceKey: t.String(),
     externalId: t.String(),
     app: t.String(),

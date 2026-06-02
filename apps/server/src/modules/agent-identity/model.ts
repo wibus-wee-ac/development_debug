@@ -51,7 +51,7 @@ interface AgentIdentityRecord {
   updatedAt: number
 }
 
-const nullableString = t.Nullable(t.String())
+const nullableString = t.Union([t.String(), t.Null()])
 
 const agentRecord = t.Object({
   id: t.String(),
@@ -70,7 +70,7 @@ const agentRecord = t.Object({
   updatedAt: t.Number(),
 })
 
-const nullableAgentRecord = t.Nullable(agentRecord)
+const nullableAgentRecord = t.Union([agentRecord, t.Null()])
 
 const importSourceRefresh = t.Object({
   sourceKey: t.String(),

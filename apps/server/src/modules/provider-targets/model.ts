@@ -8,6 +8,7 @@ import { modelCapabilitiesSchema } from '../provider-contracts/model'
 
 const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
 const providerKind = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')])
+const nullableString = t.Union([t.String(), t.Null()])
 
 export const ProviderTargetsModel = {
   providerTarget: t.Object({
@@ -16,14 +17,14 @@ export const ProviderTargetsModel = {
     providerKind,
     displayName: t.String(),
     enabled: t.Boolean(),
-    iconSlug: t.Nullable(t.String()),
+    iconSlug: nullableString,
     connectionConfigJson: t.String(),
-    credentialRef: t.Nullable(t.String()),
+    credentialRef: nullableString,
     enabledModelsJson: t.String(),
     customModelsJson: t.String(),
-    sourceKey: t.Nullable(t.String()),
-    externalRecordId: t.Nullable(t.String()),
-    sourceFingerprint: t.Nullable(t.String()),
+    sourceKey: nullableString,
+    externalRecordId: nullableString,
+    sourceFingerprint: nullableString,
     createdAt: t.Number(),
     updatedAt: t.Number(),
   }),
@@ -33,8 +34,8 @@ export const ProviderTargetsModel = {
     providerKind,
     enabled: t.Optional(t.Boolean()),
     connectionConfig: t.Record(t.String(), t.Unknown()),
-    credentialRef: t.Optional(t.Nullable(t.String())),
-    iconSlug: t.Optional(t.Nullable(t.String())),
+    credentialRef: t.Optional(nullableString),
+    iconSlug: t.Optional(nullableString),
   }),
 
   idParams: t.Object({

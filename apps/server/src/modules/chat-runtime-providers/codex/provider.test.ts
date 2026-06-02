@@ -14,6 +14,8 @@ class FakeCodexAppServerClient {
   options: CodexAppServerClientOptions
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
+  threadStartName: string | null = 'Codex native title'
+  threadReadName: string | null = 'Codex native title'
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
@@ -172,7 +174,7 @@ class FakeCodexAppServerClient {
       return {
         thread: {
           id: 'codex-thread-1',
-          name: 'Codex native title',
+          name: this.threadStartName,
           modelProvider: 'openai',
           status: { type: 'active', activeFlags: ['waitingOnApproval'] },
         },
@@ -184,6 +186,9 @@ class FakeCodexAppServerClient {
     }
     if (method === 'thread/resume') {
       return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
+    }
+    if (method === 'thread/read') {
+      return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: this.threadReadName } }
     }
     if (method === 'thread/turns/list') {
       return {
@@ -1567,6 +1572,55 @@ describe('codexProvider app-server integration', () => {
     for await (const _chunk of stream) {
       // Drain stream.
     }
+  })
+
+  it('reads the final Codex thread title after the turn finishes when start and notifications omit it', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadStartName = null
+    client.threadReadName = 'Final Codex title'
+    const provider = createProvider(client)
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-final-title',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Start the session'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    expect(reportSessionTitle).not.toHaveBeenCalled()
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+
+    expect(client.requests.map(request => request.method)).toContain('thread/read')
+    expect(reportSessionTitle).toHaveBeenCalledWith('Final Codex title')
   })
 
   it('reconstructs Cradle transcript into Codex thread history before starting a fresh turn', async () => {

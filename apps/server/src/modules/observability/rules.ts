@@ -16,6 +16,17 @@ export interface IncidentRuleResult {
 
 const EMPTY_OUTPUT_WINDOW_MS = 5 * 60 * 1000
 const EMPTY_OUTPUT_THRESHOLD = 3
+const FATAL_EVENT_CODES = new Set<string>([
+  OBSERVABILITY_CODES.rendererUnhandledError,
+  OBSERVABILITY_CODES.rendererUnhandledRejection,
+  OBSERVABILITY_CODES.rendererRenderError,
+  OBSERVABILITY_CODES.desktopMainUncaughtException,
+  OBSERVABILITY_CODES.desktopMainUnhandledRejection,
+  OBSERVABILITY_CODES.serverUncaughtException,
+  OBSERVABILITY_CODES.serverUnhandledRejection,
+  OBSERVABILITY_CODES.serverBootstrapFatal,
+  OBSERVABILITY_CODES.httpUnhandledError,
+])
 const EventDedupeKeySchema = z.object({
   code: z.string(),
   dedupeKey: z.string().optional(),
@@ -68,6 +79,19 @@ export function evaluateIncidentRules(input: IncidentRuleInput): IncidentRuleRes
         severity: event.severity,
         source: event.source,
         message: 'Domain event handler failed',
+        event,
+      }),
+    })
+  }
+
+  if (FATAL_EVENT_CODES.has(event.code) && isErrorSeverity(event.severity)) {
+    results.push({
+      incident: createIncidentFromEvent({
+        dedupeKey: EventDedupeKeySchema.parse(event),
+        code: event.code,
+        severity: event.severity,
+        source: event.source,
+        message: event.message,
         event,
       }),
     })

@@ -1129,6 +1129,10 @@ export class CodexProvider implements ChatRuntime {
           throw createCodexAppServerError(notification, diagnostics)
         }
       }
+      const finalTitle = await readLatestThreadTitle(client, threadId)
+      if (finalTitle) {
+        input.reportSessionTitle?.(finalTitle)
+      }
       await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
 
       for (const chunk of closeOpenCodexAppServerReasoning(mapperState)) {
@@ -3606,6 +3610,16 @@ function readThreadNameUpdate(notification: CodexAppServerMessage, expectedThrea
     return null
   }
   return normalizeProviderTitle(params.threadName)
+}
+
+async function readLatestThreadTitle(client: CodexAppServerClientLike, threadId: string): Promise<string | null> {
+  try {
+    const response = await client.request('thread/read', { threadId, includeTurns: false }) as ThreadResponse
+    return normalizeProviderTitle(response.thread?.name)
+  }
+  catch {
+    return null
+  }
 }
 
 function normalizeProviderTitle(title: string | null | undefined): string | null {
