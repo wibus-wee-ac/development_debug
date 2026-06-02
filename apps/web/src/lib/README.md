@@ -14,6 +14,7 @@ Used across features and components in the renderer.
 - **ipc-options.ts**: IPC instrumentation policy helper，决定何时允许捕获调用栈
 - **asset-precache.ts**: Production asset precache service worker registration helper，启动后在 shell 可见之后注册 Vite 生成的静态资源缓存。
 - **plugin-host.ts**: Web plugin host，读取 server 返回的 governed plugin descriptors，按 `routeSegment` 和 `layers.web.status` 加载 web bundle，提供 plugin-scoped route client / notification bridge，投影 renderer-local web layer lifecycle，并在 deactivation 时清理 web plugin subscriptions
+- **observability-client.ts**: Renderer private-preview observability producer，捕获 React/window 未处理错误并 fire-and-forget 写入 server-owned observability API；失败静默，避免错误上报影响 UI。
 - **plugin-store.ts**: Plugin panel / command 的 Zustand store，记录 contribution ids、panel URL route keys、command handler metadata 和 renderer-local web layer state
 - **plugin-store.test.ts**: 覆盖 web panel registration 保存 route segment / local id、web command registration 保存 owner-scoped handler metadata，并在 unregister 时清理 contribution。
 - **query-refresh-policy.ts**: Shared TanStack Query refresh policy for workspace data, including static, background, active, and interactive timing profiles.

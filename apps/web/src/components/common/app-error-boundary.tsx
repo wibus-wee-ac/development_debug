@@ -7,6 +7,7 @@ import { Component } from 'react'
 import { Translation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
+import { reportRendererError } from '~/lib/observability-client'
 
 interface AppErrorBoundaryProps {
   children: ReactNode
@@ -27,6 +28,14 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     console.error('Unhandled React render error', error, errorInfo)
+    reportRendererError({
+      code: 'RENDERER_RENDER_ERROR',
+      message: 'Unhandled React render error',
+      error,
+      attrs: {
+        componentStack: errorInfo.componentStack,
+      },
+    })
   }
 
   private handleRetry = (): void => {

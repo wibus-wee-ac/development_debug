@@ -1,7 +1,7 @@
 import './styles.css'
 
 import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, Suspense, lazy } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
@@ -9,6 +9,7 @@ import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
 import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
+import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsContent } from '~/features/settings/settings-content'
@@ -19,6 +20,12 @@ import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { preloadCradleTabRoutes } from '~/tabs/route-preload'
 import { installTearoffSessionRestore } from '~/tabs/tearoff-tabs'
+
+const OnboardingPage = lazy(() =>
+  import('~/features/onboarding/onboarding-page').then(m => ({
+    default: m.OnboardingPage,
+  })),
+)
 
 function getActiveLayoutSlotId(tab: { type: string, params: Record<string, string | undefined> } | undefined): string | null {
   if (!tab) {
@@ -53,6 +60,7 @@ function MainAppRuntime() {
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
+  const onboardingCompleted = useOnboardingStore(s => s.completed)
 
   const activeSlotId = useCradleTabStore((s) => {
     const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)
@@ -187,6 +195,13 @@ function MainAppRuntime() {
           </div>
         </TabsProvider>
       </LayoutSlotsProvider>
+
+      {/* Onboarding overlay — shown until the user completes or skips setup */}
+      {!onboardingCompleted && (
+        <Suspense fallback={null}>
+          <OnboardingPage />
+        </Suspense>
+      )}
     </AppEnvironmentProviders>
   )
 }

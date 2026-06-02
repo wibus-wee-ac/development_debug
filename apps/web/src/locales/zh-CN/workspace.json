@@ -52,6 +52,7 @@
   "fileTree.status.empty": "工作区为空",
   "fileTree.status.noWorkspace": "未关联工作区",
   "fileTree.toast.createFailed": "无法创建文件",
+  "fileTree.toast.loadFailed": "无法加载文件夹",
   "fileTree.toast.openDefaultFailed": "无法打开文件",
   "fileTree.toast.revealFailed": "无法在 Finder 中显示文件",
   "fileTree.toast.renameFailed": "无法重命名文件",

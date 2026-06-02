@@ -1,0 +1,52 @@
+{
+  "nav.next": "Continuar",
+  "nav.back": "Atrás",
+  "nav.skip": "Omitir",
+  "nav.getStarted": "Empezar",
+  "nav.stepOf": "{{current}} de {{total}}",
+
+  "step.welcome.eyebrow": "Bienvenido a Cradle",
+  "step.welcome.headline": "Tu espacio de trabajo de IA, totalmente bajo tu control",
+  "step.welcome.description": "Cradle es una plataforma de IA de código abierto que reúne tus modelos, agentes y espacios de trabajo en un solo lugar—diseñada para ingenieros que buscan profundidad.",
+  "step.welcome.feature.1": "Trae tus propios modelos y proveedores",
+  "step.welcome.feature.2": "Sesiones persistentes, historial completo",
+  "step.welcome.feature.3": "Agentes con uso real de herramientas",
+
+  "step.chat.eyebrow": "Chat de IA potente",
+  "step.chat.headline": "Un compositor diseñado para trabajo real",
+  "step.chat.description": "Envía mensajes, adjunta archivos, referencia el contexto del espacio de trabajo e invoca agentes—todo desde una interfaz centrada en el teclado.",
+  "step.chat.feature.1": "Adjunta archivos, código y capturas",
+  "step.chat.feature.2": "Markdown enriquecido y renderizado de código",
+  "step.chat.feature.3": "Cambia de modelo a mitad de sesión",
+
+  "step.workspace.eyebrow": "Gestión de espacios de trabajo",
+  "step.workspace.headline": "Cada proyecto, siempre en contexto",
+  "step.workspace.description": "Conecta tus directorios locales y deja que Cradle indexe tu código. Los agentes leen el gráfico completo del proyecto para que no tengas que pegar archivos manualmente.",
+  "step.workspace.feature.1": "Importa proyectos con un clic",
+  "step.workspace.feature.2": "Memoria persistente del espacio de trabajo",
+  "step.workspace.feature.3": "Contexto de archivo con conciencia de Git",
+
+  "step.agents.eyebrow": "Agentes y habilidades",
+  "step.agents.headline": "Agentes que realmente hacen cosas",
+  "step.agents.description": "Ejecuta bucles de agentes de varios pasos respaldados por herramientas reales—navega por la web, ejecuta comandos shell, administra archivos y llama a cualquier API.",
+  "step.agents.feature.1": "Ejecución autónoma de múltiples pasos",
+  "step.agents.feature.2": "Paquetes de habilidades para tareas especializadas",
+  "step.agents.feature.3": "Aprobaciones humanas en el bucle",
+
+  "step.done.eyebrow": "Todo listo",
+  "step.done.headline": "Comienza a construir hoy",
+  "step.done.description": "Cradle está listo. Abre un nuevo chat, conecta un espacio de trabajo o explora la configuración para configurar tus modelos y proveedores preferidos.",
+  "step.done.action.newChat": "Nuevo chat",
+  "step.done.action.addWorkspace": "Agregar espacio de trabajo",
+  "step.done.action.settings": "Configuración",
+
+  "preview.chat.user": "Analiza el módulo auth y sugiere mejoras",
+  "preview.chat.assistant": "Analizaré `apps/server/src/auth` ahora.\n\n**Resumen de hallazgos**\n- La lógica de actualización JWT no rota el token de actualización al usarlo\n- El hash de contraseñas usa bcrypt con costo 10—considera argon2id\n- Falta middleware de limitación de velocidad en `/auth/login`",
+  "preview.chat.thinking": "Pensando…",
+  "preview.workspace.project": "mi-aplicación",
+  "preview.workspace.branch": "feat/auth-refactor",
+  "preview.agent.task": "Corregir las pruebas auth fallidas y actualizar la config de CI",
+  "preview.agent.step1": "Leyendo salida de pruebas…",
+  "preview.agent.step2": "Parcheando `auth.test.ts`…",
+  "preview.agent.step3": "Actualizando `.github/workflows/ci.yml`…"
+}

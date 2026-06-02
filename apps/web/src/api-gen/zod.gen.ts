@@ -3,19 +3,13 @@
 import * as z from 'zod';
 
 export const zPutPreferencesChatBody = z.object({
-    modelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullable(),
+    modelId: z.string().nullable(),
     configSelections: z.record(z.string(), z.unknown()),
     continuationBehavior: z.enum(['queue', 'steer']).optional()
 });
 
 export const zPutPreferencesJarvisBody = z.object({
-    profileId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullable(),
+    profileId: z.string().nullable(),
     model: z.string().optional(),
     thinkingLevel: z.enum([
         'minimal',
@@ -194,14 +188,8 @@ export const zPutProfilesByIdBody = z.object({
     providerKind: z.enum(['openai-compatible', 'anthropic']),
     enabled: z.boolean(),
     config: z.record(z.string(), z.unknown()),
-    credentialRef: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
-    iconSlug: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    credentialRef: z.string().min(1).nullish(),
+    iconSlug: z.string().nullish()
 });
 
 export const zPutProfilesByIdPath = z.object({
@@ -209,10 +197,7 @@ export const zPutProfilesByIdPath = z.object({
 });
 
 export const zPatchProfilesByIdIconBody = z.object({
-    iconSlug: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullable()
+    iconSlug: z.string().nullable()
 });
 
 export const zPatchProfilesByIdIconPath = z.object({
@@ -267,14 +252,8 @@ export const zPutProviderTargetsByProviderTargetIdBody = z.object({
     providerKind: z.enum(['openai-compatible', 'anthropic']),
     enabled: z.boolean().optional(),
     connectionConfig: z.record(z.string(), z.unknown()),
-    credentialRef: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    iconSlug: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    credentialRef: z.string().nullish(),
+    iconSlug: z.string().nullish()
 });
 
 export const zPutProviderTargetsByProviderTargetIdPath = z.object({
@@ -348,14 +327,8 @@ export const zPostExternalWorkImportUploadPreviewBody = z.object({
         ]),
         path: z.string().min(1),
         content: z.string(),
-        workspacePath: z.union([
-            z.string().min(1),
-            z.unknown()
-        ]).nullish(),
-        modifiedAt: z.union([
-            z.number(),
-            z.unknown()
-        ]).nullish()
+        workspacePath: z.string().min(1).nullish(),
+        modifiedAt: z.number().nullish()
     }))
 });
 
@@ -384,38 +357,17 @@ export const zPostExternalWorkImportImportBody = z.object({
             'subagent'
         ]),
         title: z.string(),
-        summary: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullable(),
-        sourcePath: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullable(),
+        summary: z.string().nullable(),
+        sourcePath: z.string().nullable(),
         externalId: z.string(),
         fingerprint: z.string(),
-        workspacePath: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullable(),
-        createdAt: z.union([
-            z.number(),
-            z.unknown()
-        ]).nullable(),
-        updatedAt: z.union([
-            z.number(),
-            z.unknown()
-        ]).nullable(),
+        workspacePath: z.string().nullable(),
+        createdAt: z.number().nullable(),
+        updatedAt: z.number().nullable(),
         duplicate: z.boolean(),
-        duplicateImportId: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullable(),
+        duplicateImportId: z.string().nullable(),
         importable: z.boolean(),
-        reason: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullable(),
+        reason: z.string().nullable(),
         payloadJson: z.string()
     }))
 });
@@ -478,22 +430,13 @@ export const zPostProvidersModelsBody = z.object({
         enabledModels: z.array(z.string()).optional(),
         maxMessages: z.number().optional()
     }),
-    secretRef: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).optional(),
-    profileId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).optional(),
+    secretRef: z.string().min(1).nullish(),
+    profileId: z.string().min(1).nullish(),
     providerTargetKind: z.union([
         z.string(),
         z.unknown()
     ]).optional(),
-    providerTargetId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).optional()
+    providerTargetId: z.string().min(1).nullish()
 });
 
 export const zGetProvidersTargetsByProviderTargetIdModelsCachePath = z.object({
@@ -519,20 +462,11 @@ export const zGetAgentsQuery = z.object({
 
 export const zPostAgentsBody = z.object({
     name: z.string().min(1),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     avatarStyle: z.string().min(1),
     avatarSeed: z.string().min(1),
-    providerTargetId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    modelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().nullish(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -560,20 +494,11 @@ export const zGetAgentsByIdPath = z.object({
 
 export const zPatchAgentsByIdBody = z.object({
     name: z.string().min(1).optional(),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     avatarStyle: z.string().min(1).optional(),
     avatarSeed: z.string().min(1).optional(),
-    providerTargetId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    modelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().nullish(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -613,10 +538,7 @@ export const zGetAutomationsQuery = z.object({
 
 export const zPostAutomationsBody = z.object({
     id: z.string().min(1).optional(),
-    workspaceId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().min(1).nullish(),
     title: z.string().min(1),
     description: z.string().optional(),
     enabled: z.boolean().optional(),
@@ -680,10 +602,7 @@ export const zPostAutomationsBody = z.object({
         'user',
         'system'
     ]).optional(),
-    createdById: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish()
+    createdById: z.string().min(1).nullish()
 });
 
 export const zDeleteAutomationsByIdPath = z.object({
@@ -757,10 +676,7 @@ export const zPatchAutomationsByIdBody = z.object({
         'user',
         'system'
     ]).optional(),
-    createdById: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish()
+    createdById: z.string().min(1).nullish()
 });
 
 export const zPatchAutomationsByIdPath = z.object({
@@ -813,15 +729,9 @@ export const zGetSessionsQuery = z.object({
 });
 
 export const zPostSessionsBody = z.object({
-    workspaceId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().min(1).nullish(),
     title: z.string().min(1),
-    providerTargetId: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
+    providerTargetId: z.string().min(1).nullish(),
     agentId: z.string().min(1).optional(),
     runtimeKind: z.enum([
         'standard',
@@ -844,7 +754,9 @@ export const zGetSessionsByIdPath = z.object({
 
 export const zPatchSessionsByIdBody = z.object({
     title: z.string().min(1).optional(),
-    pinned: z.boolean().optional()
+    pinned: z.boolean().optional(),
+    providerTargetId: z.string().min(1).nullish(),
+    modelId: z.string().min(1).nullish()
 });
 
 export const zPatchSessionsByIdPath = z.object({
@@ -892,18 +804,9 @@ export const zPostSessionAwaitsBody = z.object({
     workspaceId: z.string().min(1),
     source: z.string().min(1),
     filterJson: z.string().min(1),
-    reason: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    expiresAt: z.union([
-        z.number(),
-        z.unknown()
-    ]).nullish(),
-    fireAt: z.union([
-        z.number(),
-        z.unknown()
-    ]).nullish()
+    reason: z.string().nullish(),
+    expiresAt: z.number().nullish(),
+    fireAt: z.number().nullish()
 });
 
 export const zGetSessionAwaitsByIdPath = z.object({
@@ -916,10 +819,7 @@ export const zPostSessionAwaitsByIdCancelPath = z.object({
 
 export const zPostSessionAwaitsByIdTriggerBody = z.object({
     resumeText: z.string().min(1).regex(/.*\S.*/),
-    resumePayloadJson: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    resumePayloadJson: z.string().nullish()
 });
 
 export const zPostSessionAwaitsByIdTriggerPath = z.object({
@@ -928,10 +828,7 @@ export const zPostSessionAwaitsByIdTriggerPath = z.object({
 
 export const zPostSessionAwaitsByIdRetryDeliveryBody = z.object({
     resumeText: z.string().min(1).regex(/.*\S.*/).optional(),
-    resumePayloadJson: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    resumePayloadJson: z.string().nullish()
 });
 
 export const zPostSessionAwaitsByIdRetryDeliveryPath = z.object({
@@ -992,10 +889,7 @@ export const zGetIssuesStatusesQuery = z.object({
 export const zPostIssuesStatusesBody = z.object({
     workspaceId: z.string().min(1),
     name: z.string().min(1),
-    color: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    color: z.string().nullish(),
     category: z.enum([
         'triage',
         'backlog',
@@ -1017,10 +911,7 @@ export const zDeleteIssuesStatusesByIdPath = z.object({
 
 export const zPatchIssuesStatusesByIdBody = z.object({
     name: z.string().min(1).optional(),
-    color: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    color: z.string().nullish()
 });
 
 export const zPatchIssuesStatusesByIdPath = z.object({
@@ -1034,14 +925,8 @@ export const zGetIssuesMilestonesQuery = z.object({
 export const zPostIssuesMilestonesBody = z.object({
     workspaceId: z.string().min(1),
     title: z.string().min(1),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    dueDate: z.union([
-        z.number(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
+    dueDate: z.number().nullish(),
     status: z.enum(['open', 'closed']).optional()
 });
 
@@ -1051,14 +936,8 @@ export const zDeleteIssuesMilestonesByIdPath = z.object({
 
 export const zPatchIssuesMilestonesByIdBody = z.object({
     title: z.string().min(1).optional(),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    dueDate: z.union([
-        z.number(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
+    dueDate: z.number().nullish(),
     status: z.enum(['open', 'closed']).optional()
 });
 
@@ -1086,10 +965,7 @@ export const zGetIssuesQuery = z.object({
 export const zPostIssuesBody = z.object({
     workspaceId: z.string().min(1),
     title: z.string().min(1),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     priority: z.enum([
         'none',
         'low',
@@ -1098,22 +974,10 @@ export const zPostIssuesBody = z.object({
         'urgent'
     ]).optional(),
     labels: z.array(z.string()).optional(),
-    milestoneId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    parentIssueId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    statusId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    statusName: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish()
+    milestoneId: z.string().nullish(),
+    parentIssueId: z.string().nullish(),
+    statusId: z.string().nullish(),
+    statusName: z.string().min(1).nullish()
 });
 
 export const zDeleteIssuesByIdPath = z.object({
@@ -1126,10 +990,7 @@ export const zGetIssuesByIdPath = z.object({
 
 export const zPatchIssuesByIdBody = z.object({
     title: z.string().min(1).optional(),
-    description: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    description: z.string().nullish(),
     priority: z.enum([
         'none',
         'low',
@@ -1138,30 +999,12 @@ export const zPatchIssuesByIdBody = z.object({
         'urgent'
     ]).optional(),
     labels: z.array(z.string()).optional(),
-    milestoneId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    parentIssueId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    statusId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    statusName: z.union([
-        z.string().min(1),
-        z.unknown()
-    ]).nullish(),
-    assigneeKind: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    assigneeId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    milestoneId: z.string().nullish(),
+    parentIssueId: z.string().nullish(),
+    statusId: z.string().nullish(),
+    statusName: z.string().min(1).nullish(),
+    assigneeKind: z.string().nullish(),
+    assigneeId: z.string().nullish(),
     order: z.number().optional()
 });
 
@@ -1172,10 +1015,7 @@ export const zPatchIssuesByIdPath = z.object({
 export const zPatchIssuesBulkBody = z.object({
     issueIds: z.array(z.string()),
     update: z.object({
-        statusId: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        statusId: z.string().nullish(),
         priority: z.enum([
             'none',
             'low',
@@ -1184,18 +1024,9 @@ export const zPatchIssuesBulkBody = z.object({
             'urgent'
         ]).optional(),
         labels: z.array(z.string()).optional(),
-        milestoneId: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
-        assigneeKind: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
-        assigneeId: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish()
+        milestoneId: z.string().nullish(),
+        assigneeKind: z.string().nullish(),
+        assigneeId: z.string().nullish()
     })
 });
 
@@ -1258,10 +1089,7 @@ export const zGetKanbanBoardsQuery = z.object({
 export const zPostKanbanBoardsBody = z.object({
     workspaceId: z.string().min(1),
     name: z.string().min(1),
-    filterConfig: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    filterConfig: z.string().nullish()
 });
 
 export const zDeleteKanbanBoardsByIdPath = z.object({
@@ -1270,10 +1098,7 @@ export const zDeleteKanbanBoardsByIdPath = z.object({
 
 export const zPatchKanbanBoardsByIdBody = z.object({
     name: z.string().min(1).optional(),
-    filterConfig: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    filterConfig: z.string().nullish()
 });
 
 export const zPatchKanbanBoardsByIdPath = z.object({
@@ -1319,14 +1144,8 @@ export const zPostSkillsBody = z.object({
     name: z.string().min(1).regex(/.*\S.*/),
     description: z.string().min(1).regex(/.*\S.*/),
     body: z.string(),
-    workspaceId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
-    agentId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().min(1).regex(/.*\S.*/).nullish(),
+    agentId: z.string().min(1).regex(/.*\S.*/).nullish(),
     frontmatter: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -1368,14 +1187,8 @@ export const zPutSkillsDocumentBody = z.object({
         'agent'
     ]),
     name: z.string().min(1).regex(/.*\S.*/),
-    workspaceId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
-    agentId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().min(1).regex(/.*\S.*/).nullish(),
+    agentId: z.string().min(1).regex(/.*\S.*/).nullish(),
     document: z.object({
         name: z.string().min(1).regex(/.*\S.*/),
         description: z.string().min(1).regex(/.*\S.*/),
@@ -1395,14 +1208,8 @@ export const zPostSkillsImportBody = z.object({
     ]),
     sourceDir: z.string().min(1).regex(/.*\S.*/),
     overwrite: z.boolean().optional(),
-    workspaceId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
-    agentId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish()
+    workspaceId: z.string().min(1).regex(/.*\S.*/).nullish(),
+    agentId: z.string().min(1).regex(/.*\S.*/).nullish()
 });
 
 export const zPostSkillsExportBody = z.object({
@@ -1418,14 +1225,8 @@ export const zPostSkillsExportBody = z.object({
     destinationDir: z.string().min(1).regex(/.*\S.*/),
     confirmedNonCradleOwnedWrite: z.boolean(),
     overwrite: z.boolean().optional(),
-    workspaceId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
-    agentId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish()
+    workspaceId: z.string().min(1).regex(/.*\S.*/).nullish(),
+    agentId: z.string().min(1).regex(/.*\S.*/).nullish()
 });
 
 export const zPostSkillsFetchSourceBody = z.object({
@@ -1444,14 +1245,8 @@ export const zPostSkillsImportFromFetchBody = z.object({
         'agent'
     ]),
     overwrite: z.boolean().optional(),
-    workspaceId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish(),
-    agentId: z.union([
-        z.string().min(1).regex(/.*\S.*/),
-        z.unknown()
-    ]).nullish()
+    workspaceId: z.string().min(1).regex(/.*\S.*/).nullish(),
+    agentId: z.string().min(1).regex(/.*\S.*/).nullish()
 });
 
 export const zPostSkillsCancelFetchBody = z.object({
@@ -1479,10 +1274,7 @@ export const zGetWorkflowRulesByWorkspaceIdQuery = z.object({
 });
 
 export const zPutWorkflowRulesByWorkspaceIdBody = z.object({
-    agentProfileId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    agentProfileId: z.string().nullish(),
     content: z.string()
 });
 
@@ -1540,6 +1332,14 @@ export const zGetWorkspacesByIdGitDiffPath = z.object({
 
 export const zGetWorkspacesByIdGitDiffQuery = z.object({
     paths: z.string().optional()
+});
+
+export const zGetWorkspacesByIdGitMergeBasePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdGitMergeBaseQuery = z.object({
+    baseBranch: z.string().min(1)
 });
 
 export const zPostWorkspacesByIdPackBody = z.object({
@@ -1604,6 +1404,21 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
+    contextParts: z.array(z.object({
+        type: z.string(),
+        name: z.string().min(1),
+        path: z.string().min(1),
+        scope: z.enum([
+            'builtin',
+            'legacy',
+            'global',
+            'repository',
+            'workspace',
+            'agent'
+        ]),
+        description: z.string().nullable(),
+        position: z.number().gte(0).optional()
+    })).optional(),
     messages: z.array(z.object({
         id: z.string(),
         role: z.enum(['user', 'assistant']),
@@ -1643,6 +1458,21 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
+    contextParts: z.array(z.object({
+        type: z.string(),
+        name: z.string().min(1),
+        path: z.string().min(1),
+        scope: z.enum([
+            'builtin',
+            'legacy',
+            'global',
+            'repository',
+            'workspace',
+            'agent'
+        ]),
+        description: z.string().nullable(),
+        position: z.number().gte(0).optional()
+    })).optional(),
     providerTargetId: z.string().optional(),
     modelId: z.string().optional(),
     thinkingEffort: z.enum([
@@ -1671,6 +1501,10 @@ export const zDeleteChatSessionsBySessionIdQueueByQueueItemIdPath = z.object({
 });
 
 export const zGetChatSessionsBySessionIdCapabilitiesPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdUiSlotStatesPath = z.object({
     sessionId: z.string().min(1)
 });
 
@@ -1788,19 +1622,10 @@ export const zPostChronicleSnapshotsBody = z.object({
             'absent',
             'unknown'
         ]).optional(),
-        confidence: z.union([
-            z.number().gte(0).lte(1),
-            z.unknown()
-        ]).nullish(),
-        detector: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        confidence: z.number().gte(0).lte(1).nullish(),
+        detector: z.string().nullish(),
         discard: z.boolean().optional(),
-        reason: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        reason: z.string().nullish(),
         metadata: z.record(z.string(), z.unknown()).optional()
     }).optional(),
     accessibility: z.object({
@@ -1812,23 +1637,11 @@ export const zPostChronicleSnapshotsBody = z.object({
             'error'
         ]).optional(),
         provider: z.string().optional(),
-        accessibilityPath: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
-        text: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        accessibilityPath: z.string().nullish(),
+        text: z.string().nullish(),
         elementCount: z.number().gte(0).optional(),
-        appBundleId: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
-        windowTitle: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        appBundleId: z.string().nullish(),
+        windowTitle: z.string().nullish(),
         tree: z.array(z.unknown()).optional(),
         metadata: z.record(z.string(), z.unknown()).optional()
     }).optional(),
@@ -1868,10 +1681,7 @@ export const zPostChronicleModelResourcesByCategoryVerifyPath = z.object({
 
 export const zPostChronicleModelResourcesByCategoryInstallBody = z.object({
     source: z.enum(['manifest', 'local-files']).optional(),
-    sourceRoot: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    sourceRoot: z.string().nullish(),
     files: z.array(z.object({
         relativePath: z.string().min(1),
         sourcePath: z.string().min(1)
@@ -1904,24 +1714,12 @@ export const zPostChronicleMessageSourcesBody = z.object({
     platform: z.string(),
     label: z.string().min(1),
     enabled: z.boolean(),
-    workspaceId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    teamId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    botTokenRef: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().nullish(),
+    teamId: z.string().nullish(),
+    botTokenRef: z.string().nullish(),
     channelIds: z.array(z.string()),
     realtimeMode: z.enum(['polling', 'events-api']).optional(),
-    signingSecretRef: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    signingSecretRef: z.string().nullish()
 });
 
 export const zDeleteChronicleMessageSourcesBySourceIdPath = z.object({
@@ -1931,24 +1729,12 @@ export const zDeleteChronicleMessageSourcesBySourceIdPath = z.object({
 export const zPatchChronicleMessageSourcesBySourceIdBody = z.object({
     label: z.string().min(1).optional(),
     enabled: z.boolean().optional(),
-    workspaceId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    teamId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    botTokenRef: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().nullish(),
+    teamId: z.string().nullish(),
+    botTokenRef: z.string().nullish(),
     channelIds: z.array(z.string()).optional(),
     realtimeMode: z.enum(['polling', 'events-api']).optional(),
-    signingSecretRef: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    signingSecretRef: z.string().nullish()
 });
 
 export const zPatchChronicleMessageSourcesBySourceIdPath = z.object({
@@ -1973,10 +1759,7 @@ export const zGetChronicleAudioTranscriptsQuery = z.object({
 
 export const zPostChronicleAudioTranscriptsBody = z.object({
     sourceId: z.string().min(1),
-    title: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    title: z.string().nullish(),
     source: z.enum([
         'asr',
         'manual',
@@ -1989,49 +1772,19 @@ export const zPostChronicleAudioTranscriptsBody = z.object({
         'error'
     ]).optional(),
     startedAt: z.string().min(1),
-    endedAt: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    language: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    appBundleId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    windowTitle: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    audioPath: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    transcriptPath: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    endedAt: z.string().nullish(),
+    language: z.string().nullish(),
+    appBundleId: z.string().nullish(),
+    windowTitle: z.string().nullish(),
+    audioPath: z.string().nullish(),
+    transcriptPath: z.string().nullish(),
     segments: z.array(z.object({
         startMs: z.number().gte(0),
-        endMs: z.union([
-            z.number().gte(0),
-            z.unknown()
-        ]).nullish(),
-        speakerLabel: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        endMs: z.number().gte(0).nullish(),
+        speakerLabel: z.string().nullish(),
         text: z.string().min(1),
-        confidence: z.union([
-            z.number().gte(0).lte(1),
-            z.unknown()
-        ]).nullish(),
-        language: z.union([
-            z.string(),
-            z.unknown()
-        ]).nullish(),
+        confidence: z.number().gte(0).lte(1).nullish(),
+        language: z.string().nullish(),
         metadata: z.record(z.string(), z.unknown()).optional()
     })),
     metadata: z.record(z.string(), z.unknown()).optional()
@@ -2040,19 +1793,10 @@ export const zPostChronicleAudioTranscriptsBody = z.object({
 export const zPostChronicleSpeakerProfilesBody = z.object({
     displayName: z.string().min(1),
     aliases: z.array(z.string()).optional(),
-    embedding: z.union([
-        z.array(z.number()),
-        z.unknown()
-    ]).nullish(),
-    embeddingModelId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    embedding: z.array(z.number()).nullish(),
+    embeddingModelId: z.string().nullish(),
     sampleCount: z.number().gte(0).optional(),
-    lastSeenAt: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    lastSeenAt: z.string().nullish(),
     metadata: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -2117,15 +1861,9 @@ export const zPostChronicleAudioRawSegmentsBySourceIdProcessingResultBody = z.ob
         'ready',
         'error'
     ]).optional(),
-    transcriptSourceId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    transcriptSourceId: z.string().nullish(),
     speakerProfileIds: z.array(z.string()).optional(),
-    errorMessage: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    errorMessage: z.string().nullish(),
     metadata: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -2145,24 +1883,12 @@ export const zPostChronicleAccessibilityEventsBody = z.object({
     sourceId: z.string().min(1),
     capturedAt: z.string().min(1),
     provider: z.string().optional(),
-    appBundleId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    pid: z.union([
-        z.number(),
-        z.unknown()
-    ]).nullish(),
+    appBundleId: z.string().nullish(),
+    pid: z.number().nullish(),
     notification: z.string().min(1),
     droppedBefore: z.number().gte(0).optional(),
-    snapshotId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
-    accessibilitySnapshotId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    snapshotId: z.string().nullish(),
+    accessibilitySnapshotId: z.string().nullish(),
     metadata: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -2289,10 +2015,7 @@ export const zPatchChronicleKnowledgeCardsByKnowledgeIdBody = z.object({
         'archived',
         'deleted'
     ]).optional(),
-    mergedIntoId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    mergedIntoId: z.string().nullish(),
     metadata: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -2375,10 +2098,7 @@ export const zPostChroniclePrivacyRedactBody = z.object({
 });
 
 export const zPostChroniclePrivacyExportBody = z.object({
-    workspaceId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish(),
+    workspaceId: z.string().nullish(),
     limit: z.number().gte(1).optional(),
     includeMemories: z.boolean().optional(),
     includeMessages: z.boolean().optional(),
@@ -2481,6 +2201,23 @@ export const zGetObservabilityEventsQuery = z.object({
     limit: z.string().optional()
 });
 
+export const zPostObservabilityEventsBody = z.object({
+    source: z.string(),
+    code: z.string(),
+    severity: z.string(),
+    category: z.string(),
+    message: z.string(),
+    attrs: z.record(z.string(), z.unknown()).optional(),
+    chatSessionId: z.string().optional(),
+    runId: z.string().optional(),
+    messageId: z.string().optional(),
+    traceId: z.string().optional(),
+    dedupeKey: z.string().optional(),
+    parentEventId: z.string().optional(),
+    occurredAt: z.number().optional(),
+    recordedAt: z.number().optional()
+});
+
 export const zGetObservabilityIncidentsQuery = z.object({
     dedupeKey: z.string().optional(),
     chatSessionId: z.string().optional(),
@@ -2506,10 +2243,7 @@ export const zGetIssuesByIdDelegationPath = z.object({
 
 export const zPostIssuesByIdDelegationBody = z.object({
     agentId: z.string().min(1),
-    providerTargetId: z.union([
-        z.string(),
-        z.unknown()
-    ]).nullish()
+    providerTargetId: z.string().nullish()
 });
 
 export const zPostIssuesByIdDelegationPath = z.object({

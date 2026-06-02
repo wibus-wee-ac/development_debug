@@ -1,4 +1,7 @@
 {
+  "agent.availableAgents": "Agents",
+  "agent.noAgentsConfigured": "No agents configured",
+  "agent.none": "No agent",
   "assignee.aiAgents": "AI Agents",
   "assignee.currentUser": "Me",
   "assignee.noAgentsConfigured": "No agents configured",
@@ -85,6 +88,7 @@
   "priority.medium": "Medium",
   "priority.none": "None",
   "priority.urgent": "Urgent",
+  "property.agent": "Agent",
   "property.assignee": "Assignee",
   "property.labels": "Labels",
   "property.milestone": "Milestone",

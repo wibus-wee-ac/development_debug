@@ -1,9 +1,7 @@
 import {
   ClipboardIcon,
-  ExternalLinkIcon,
   FolderOpenIcon,
   LifeBuoyIcon,
-  SendIcon,
   Share2Icon,
 } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
@@ -19,8 +17,6 @@ import { Spinner } from '~/components/ui/spinner'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
-
-const FEEDBACK_URL = 'https://github.com/wibus-wee/Cradle/issues/new'
 
 type SupportStatus = 'idle' | 'working' | 'ready' | 'error'
 type ObservabilityExportBundle = GetObservabilityExportResponses[200]
@@ -75,10 +71,14 @@ const ObservabilityIncidentSchema = z.object({
 })
 
 const ObservabilityExportBundleSchema = z.object({
+  schema: z.string(),
   exportedAt: z.number(),
+  metadata: z.record(z.string(), z.unknown()),
+  redaction: z.record(z.string(), z.unknown()),
   events: z.array(ObservabilityEventSchema),
   incidents: z.array(ObservabilityIncidentSchema),
   timeline: z.array(z.record(z.string(), z.unknown())),
+  logs: z.record(z.string(), z.unknown()),
 })
 
 function createSupportTemplate(copy: SupportTemplateCopy): string {
@@ -136,6 +136,15 @@ export function SupportSettings() {
     diagnostics: t('support.template.diagnostics'),
     diagnosticsNote: t('support.template.diagnosticsNote'),
   }), [t])
+  const handoff = useMemo(() => [
+    t('support.privateHandoff.title'),
+    '',
+    t('support.privateHandoff.step1'),
+    t('support.privateHandoff.step2'),
+    t('support.privateHandoff.step3'),
+    '',
+    template,
+  ].join('\n'), [t, template])
   const canOpenDataPath = isElectron && !!nativeIpc
   const settingsSupportReady = template.length > 0
 
@@ -151,7 +160,7 @@ export function SupportSettings() {
       const bundle = ObservabilityExportBundleSchema.parse(data) satisfies ObservabilityExportBundle
       const exportedAt = bundle.exportedAt
       const payload = {
-        schema: 'cradle.preview.diagnostics.v1',
+        schema: 'cradle.private-preview.diagnostics.v2',
         exportedAt,
         source: 'settings.support',
         note: t('support.diagnostics.note'),
@@ -168,7 +177,7 @@ export function SupportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [])
+  }, [t])
 
   const copyFeedbackTemplate = useCallback(async () => {
     setStatus('working')
@@ -182,15 +191,21 @@ export function SupportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [template])
+  }, [t, template])
 
-  const openFeedback = useCallback(async () => {
-    if (isElectron && nativeIpc) {
-      await nativeIpc.native.openExternal(FEEDBACK_URL)
-      return
+  const copyPrivateHandoff = useCallback(async () => {
+    setStatus('working')
+    setMessage(null)
+    try {
+      await navigator.clipboard.writeText(handoff)
+      setStatus('ready')
+      setMessage(t('support.status.handoffCopied'))
     }
-    window.open(FEEDBACK_URL, '_blank', 'noopener,noreferrer')
-  }, [])
+    catch (error) {
+      setStatus('error')
+      setMessage(error instanceof Error ? error.message : String(error))
+    }
+  }, [handoff, t])
 
   const openDataDirectory = useCallback(async () => {
     if (!nativeIpc) {
@@ -264,11 +279,11 @@ export function SupportSettings() {
           type="button"
           size="sm"
           variant="outline"
-          onClick={() => void openFeedback()}
+          onClick={() => void copyPrivateHandoff()}
+          disabled={status === 'working'}
         >
-          <SendIcon className="size-3.5" aria-hidden="true" />
-          {t('support.action.open')}
-          <ExternalLinkIcon className="size-3" aria-hidden="true" />
+          <ClipboardIcon className="size-3.5" aria-hidden="true" />
+          {t('support.action.copy')}
         </Button>
       </SettingsRow>
 

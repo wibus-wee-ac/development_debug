@@ -25,11 +25,11 @@ export type GetHealthResponses = {
             external: number;
         };
         cpu: {
-            percent: number | unknown | null;
+            percent: number | null;
             userMicros: number;
             systemMicros: number;
-            sampleMs: number | unknown | null;
-            usedMicros: number | unknown | null;
+            sampleMs: number | null;
+            usedMicros: number | null;
             windowReady: boolean;
         };
         timestamp: number;
@@ -50,7 +50,7 @@ export type GetPreferencesChatResponses = {
      * Response for status 200
      */
     200: {
-        modelId: string | unknown | null;
+        modelId: string | null;
         configSelections: {
             [key: string]: unknown;
         };
@@ -62,7 +62,7 @@ export type GetPreferencesChatResponse = GetPreferencesChatResponses[keyof GetPr
 
 export type PutPreferencesChatData = {
     body: {
-        modelId: string | unknown | null;
+        modelId: string | null;
         configSelections: {
             [key: string]: unknown;
         };
@@ -96,7 +96,10 @@ export type GetPreferencesJarvisResponses = {
      * Response for status 200
      */
     200: {
-        profileId: string | unknown | null;
+        /**
+         * ID of the agent profile to use for Jarvis
+         */
+        profileId: string | null;
         /**
          * Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)
          */
@@ -109,7 +112,10 @@ export type GetPreferencesJarvisResponse = GetPreferencesJarvisResponses[keyof G
 
 export type PutPreferencesJarvisData = {
     body: {
-        profileId: string | unknown | null;
+        /**
+         * ID of the agent profile to use for Jarvis
+         */
+        profileId: string | null;
         /**
          * Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)
          */
@@ -260,7 +266,7 @@ export type GetWorkspacesResolveResponses = {
         pinned: number;
         createdAt: number;
         updatedAt: number;
-    } | unknown | null;
+    } | null;
 };
 
 export type GetWorkspacesResolveResponse = GetWorkspacesResolveResponses[keyof GetWorkspacesResolveResponses];
@@ -370,7 +376,7 @@ export type GetWorkspacesByIdFilesContentResponses = {
      * Response for status 200
      */
     200: {
-        content: string | unknown | null;
+        content: string | null;
     };
 };
 
@@ -400,9 +406,9 @@ export type PutWorkspacesByIdFilesContentResponses = {
             owner: string;
             consentRequired: boolean;
             consentConfirmed: boolean;
-            workspacePath: string | unknown | null;
+            workspacePath: string | null;
             relativePath: string;
-            targetPath: string | unknown | null;
+            targetPath: string | null;
         };
     };
 };
@@ -482,9 +488,9 @@ export type PostWorkspacesByIdFilesFileResponses = {
             owner: string;
             consentRequired: boolean;
             consentConfirmed: boolean;
-            workspacePath: string | unknown | null;
+            workspacePath: string | null;
             relativePath: string;
-            targetPath: string | unknown | null;
+            targetPath: string | null;
         };
     };
 };
@@ -514,9 +520,9 @@ export type PostWorkspacesByIdFilesFolderResponses = {
             owner: string;
             consentRequired: boolean;
             consentConfirmed: boolean;
-            workspacePath: string | unknown | null;
+            workspacePath: string | null;
             relativePath: string;
-            targetPath: string | unknown | null;
+            targetPath: string | null;
         };
     };
 };
@@ -547,18 +553,18 @@ export type PatchWorkspacesByIdFilesPathResponses = {
             owner: string;
             consentRequired: boolean;
             consentConfirmed: boolean;
-            workspacePath: string | unknown | null;
+            workspacePath: string | null;
             relativePath: string;
-            targetPath: string | unknown | null;
+            targetPath: string | null;
         };
         destinationBoundary: {
             classification: string;
             owner: string;
             consentRequired: boolean;
             consentConfirmed: boolean;
-            workspacePath: string | unknown | null;
+            workspacePath: string | null;
             relativePath: string;
-            targetPath: string | unknown | null;
+            targetPath: string | null;
         };
     };
 };
@@ -606,7 +612,7 @@ export type GetWorkspacesByIdResponses = {
         pinned: number;
         createdAt: number;
         updatedAt: number;
-    } | unknown | null;
+    } | null;
 };
 
 export type GetWorkspacesByIdResponse = GetWorkspacesByIdResponses[keyof GetWorkspacesByIdResponses];
@@ -635,7 +641,7 @@ export type PatchWorkspacesByIdResponses = {
         pinned: number;
         createdAt: number;
         updatedAt: number;
-    } | unknown | null;
+    } | null;
 };
 
 export type PatchWorkspacesByIdResponse = PatchWorkspacesByIdResponses[keyof PatchWorkspacesByIdResponses];
@@ -655,13 +661,13 @@ export type GetFilesystemBrowseResponses = {
      */
     200: {
         current: string;
-        parent: string | unknown | null;
+        parent: string | null;
         entries: Array<{
             name: string;
             path: string;
             type: 'directory' | 'file';
-            size: number | unknown | null;
-            modifiedAt: number | unknown | null;
+            size: number | null;
+            modifiedAt: number | null;
         }>;
     };
 };
@@ -730,7 +736,7 @@ export type GetUsageSummaryResponses = {
         totalTurns: number;
         byAgent: Array<{
             providerTargetId: string;
-            providerTargetName: string | unknown | null;
+            providerTargetName: string | null;
             totalTokens: number;
             count: number;
         }>;
@@ -763,7 +769,7 @@ export type GetUsageStatsResponses = {
         peakDay: {
             date: string;
             totalTokens: number;
-        } | unknown | null;
+        } | null;
         todayTokens: number;
     };
 };
@@ -894,9 +900,9 @@ export type GetProfilesResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         enabled: boolean;
         configJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         customModels: string;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -943,9 +949,9 @@ export type GetProfilesByIdResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         enabled: boolean;
         configJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         customModels: string;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -961,8 +967,8 @@ export type PutProfilesByIdData = {
         config: {
             [key: string]: unknown;
         };
-        credentialRef?: string | unknown | null;
-        iconSlug?: string | unknown | null;
+        credentialRef?: string | null;
+        iconSlug?: string | null;
     };
     path: {
         id: string;
@@ -981,9 +987,9 @@ export type PutProfilesByIdResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         enabled: boolean;
         configJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         customModels: string;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -993,7 +999,7 @@ export type PutProfilesByIdResponse = PutProfilesByIdResponses[keyof PutProfiles
 
 export type PatchProfilesByIdIconData = {
     body: {
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
     };
     path: {
         id: string;
@@ -1012,9 +1018,9 @@ export type PatchProfilesByIdIconResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         enabled: boolean;
         configJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         customModels: string;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -1109,14 +1115,14 @@ export type GetProviderTargetsResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         displayName: string;
         enabled: boolean;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         connectionConfigJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         enabledModelsJson: string;
         customModelsJson: string;
-        sourceKey: string | unknown | null;
-        externalRecordId: string | unknown | null;
-        sourceFingerprint: string | unknown | null;
+        sourceKey: string | null;
+        externalRecordId: string | null;
+        sourceFingerprint: string | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -1152,8 +1158,8 @@ export type PutProviderTargetsByProviderTargetIdData = {
         connectionConfig: {
             [key: string]: unknown;
         };
-        credentialRef?: string | unknown | null;
-        iconSlug?: string | unknown | null;
+        credentialRef?: string | null;
+        iconSlug?: string | null;
     };
     path: {
         providerTargetId: string;
@@ -1172,14 +1178,14 @@ export type PutProviderTargetsByProviderTargetIdResponses = {
         providerKind: 'openai-compatible' | 'anthropic';
         displayName: string;
         enabled: boolean;
-        iconSlug: string | unknown | null;
+        iconSlug: string | null;
         connectionConfigJson: string;
-        credentialRef: string | unknown | null;
+        credentialRef: string | null;
         enabledModelsJson: string;
         customModelsJson: string;
-        sourceKey: string | unknown | null;
-        externalRecordId: string | unknown | null;
-        sourceFingerprint: string | unknown | null;
+        sourceKey: string | null;
+        externalRecordId: string | null;
+        sourceFingerprint: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -1303,7 +1309,7 @@ export type GetExternalProviderSourcesResponses = {
         pluginName: string;
         sourceId: string;
         label: string;
-        description: string | unknown | null;
+        description: string | null;
         enabled: boolean;
         capabilities: {
             [key: string]: unknown;
@@ -1317,9 +1323,9 @@ export type GetExternalProviderSourcesResponses = {
             severity: 'info' | 'warning' | 'error';
         }>;
         lastSyncStatus: 'never' | 'ok' | 'warning' | 'error';
-        lastSyncMessage: string | unknown | null;
-        lastSyncError: string | unknown | null;
-        lastSyncAt: number | unknown | null;
+        lastSyncMessage: string | null;
+        lastSyncError: string | null;
+        lastSyncAt: number | null;
         registeredAt: number;
     }>;
 };
@@ -1387,7 +1393,7 @@ export type GetExternalProviderSourcesRecordsResponses = {
      */
     200: Array<{
         id: string;
-        providerTargetId: string | unknown | null;
+        providerTargetId: string | null;
         sourceKey: string;
         externalId: string;
         app: string;
@@ -1433,8 +1439,8 @@ export type GetExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntim
         providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool';
         displayName: string;
         enabled: boolean;
-        credentialRef: string | unknown | null;
-        iconSlug: string | unknown | null;
+        credentialRef: string | null;
+        iconSlug: string | null;
         lastResolvedFingerprint: string;
         createdAt: number;
         updatedAt: number;
@@ -1466,8 +1472,8 @@ export type PatchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRunt
         providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool';
         displayName: string;
         enabled: boolean;
-        credentialRef: string | unknown | null;
-        iconSlug: string | unknown | null;
+        credentialRef: string | null;
+        iconSlug: string | null;
         lastResolvedFingerprint: string;
         createdAt: number;
         updatedAt: number;
@@ -1492,16 +1498,16 @@ export type GetExternalWorkImportRecordsResponses = {
         sourceApp: 'claude' | 'codex' | 'cursor' | 'windsurf' | 'gemini' | 'unknown';
         sourceScope: 'server' | 'electron-upload';
         sourceKind: 'settings' | 'project' | 'session' | 'instruction' | 'mcp' | 'command' | 'hook' | 'skill' | 'plugin' | 'subagent';
-        sourcePath: string | unknown | null;
+        sourcePath: string | null;
         externalId: string;
         fingerprint: string;
         title: string;
-        summary: string | unknown | null;
-        workspaceId: string | unknown | null;
-        sessionId: string | unknown | null;
-        messageId: string | unknown | null;
+        summary: string | null;
+        workspaceId: string | null;
+        sessionId: string | null;
+        messageId: string | null;
         status: 'imported' | 'skipped' | 'error';
-        statusReason: string | unknown | null;
+        statusReason: string | null;
         importedAt: number;
         createdAt: number;
         updatedAt: number;
@@ -1533,17 +1539,17 @@ export type PostExternalWorkImportPreviewResponses = {
             sourceScope: 'server' | 'electron-upload';
             sourceKind: 'settings' | 'project' | 'session' | 'instruction' | 'mcp' | 'command' | 'hook' | 'skill' | 'plugin' | 'subagent';
             title: string;
-            summary: string | unknown | null;
-            sourcePath: string | unknown | null;
+            summary: string | null;
+            sourcePath: string | null;
             externalId: string;
             fingerprint: string;
-            workspacePath: string | unknown | null;
-            createdAt: number | unknown | null;
-            updatedAt: number | unknown | null;
+            workspacePath: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             duplicate: boolean;
-            duplicateImportId: string | unknown | null;
+            duplicateImportId: string | null;
             importable: boolean;
-            reason: string | unknown | null;
+            reason: string | null;
             payloadJson: string;
         }>;
         warnings: Array<string>;
@@ -1558,8 +1564,8 @@ export type PostExternalWorkImportUploadPreviewData = {
             sourceApp: 'claude' | 'codex' | 'cursor' | 'windsurf' | 'gemini' | 'unknown';
             path: string;
             content: string;
-            workspacePath?: string | unknown | null;
-            modifiedAt?: number | unknown | null;
+            workspacePath?: string | null;
+            modifiedAt?: number | null;
         }>;
     };
     path?: never;
@@ -1578,17 +1584,17 @@ export type PostExternalWorkImportUploadPreviewResponses = {
             sourceScope: 'server' | 'electron-upload';
             sourceKind: 'settings' | 'project' | 'session' | 'instruction' | 'mcp' | 'command' | 'hook' | 'skill' | 'plugin' | 'subagent';
             title: string;
-            summary: string | unknown | null;
-            sourcePath: string | unknown | null;
+            summary: string | null;
+            sourcePath: string | null;
             externalId: string;
             fingerprint: string;
-            workspacePath: string | unknown | null;
-            createdAt: number | unknown | null;
-            updatedAt: number | unknown | null;
+            workspacePath: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             duplicate: boolean;
-            duplicateImportId: string | unknown | null;
+            duplicateImportId: string | null;
             importable: boolean;
-            reason: string | unknown | null;
+            reason: string | null;
             payloadJson: string;
         }>;
         warnings: Array<string>;
@@ -1605,17 +1611,17 @@ export type PostExternalWorkImportImportData = {
             sourceScope: 'server' | 'electron-upload';
             sourceKind: 'settings' | 'project' | 'session' | 'instruction' | 'mcp' | 'command' | 'hook' | 'skill' | 'plugin' | 'subagent';
             title: string;
-            summary: string | unknown | null;
-            sourcePath: string | unknown | null;
+            summary: string | null;
+            sourcePath: string | null;
             externalId: string;
             fingerprint: string;
-            workspacePath: string | unknown | null;
-            createdAt: number | unknown | null;
-            updatedAt: number | unknown | null;
+            workspacePath: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             duplicate: boolean;
-            duplicateImportId: string | unknown | null;
+            duplicateImportId: string | null;
             importable: boolean;
-            reason: string | unknown | null;
+            reason: string | null;
             payloadJson: string;
         }>;
     };
@@ -1641,23 +1647,23 @@ export type PostExternalWorkImportImportResponses = {
                 sourceApp: string;
                 sourceScope: string;
                 sourceKind: string;
-                sourcePath: string | unknown | null;
+                sourcePath: string | null;
                 externalId: string;
                 fingerprint: string;
                 title: string;
-                summary: string | unknown | null;
-                workspaceId: string | unknown | null;
-                sessionId: string | unknown | null;
-                messageId: string | unknown | null;
+                summary: string | null;
+                workspaceId: string | null;
+                sessionId: string | null;
+                messageId: string | null;
                 status: string;
-                statusReason: string | unknown | null;
+                statusReason: string | null;
                 importedAt: number;
                 createdAt: number;
                 updatedAt: number;
-            } | unknown | null;
-            sessionId: string | unknown | null;
-            workspaceId: string | unknown | null;
-            reason: string | unknown | null;
+            } | null;
+            sessionId: string | null;
+            workspaceId: string | null;
+            reason: string | null;
         }>;
     };
 };
@@ -1889,10 +1895,10 @@ export type PostProvidersModelsData = {
             enabledModels?: Array<string>;
             maxMessages?: number;
         };
-        secretRef?: string | unknown;
-        profileId?: string | unknown;
+        secretRef?: string | null;
+        profileId?: string | null;
         providerTargetKind?: string | unknown;
-        providerTargetId?: string | unknown;
+        providerTargetId?: string | null;
     };
     path?: never;
     query?: never;
@@ -2069,7 +2075,7 @@ export type PostProvidersModelLookupResponses = {
             registryModelId?: string;
             registryModelLabel?: string;
         };
-    } | unknown;
+    } | null;
 };
 
 export type PostProvidersModelLookupResponse = PostProvidersModelLookupResponses[keyof PostProvidersModelLookupResponses];
@@ -2134,12 +2140,12 @@ export type GetAgentsResponses = {
     200: Array<{
         id: string;
         name: string;
-        description: string | unknown | null;
-        avatarUrl: string | unknown | null;
+        description: string | null;
+        avatarUrl: string | null;
         avatarStyle: string;
         avatarSeed: string;
-        providerTargetId: string | unknown | null;
-        modelId: string | unknown | null;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson: string;
@@ -2154,11 +2160,11 @@ export type GetAgentsResponse = GetAgentsResponses[keyof GetAgentsResponses];
 export type PostAgentsData = {
     body: {
         name: string;
-        description?: string | unknown | null;
+        description?: string | null;
         avatarStyle: string;
         avatarSeed: string;
-        providerTargetId?: string | unknown | null;
-        modelId?: string | unknown | null;
+        providerTargetId?: string | null;
+        modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson?: string;
@@ -2175,12 +2181,12 @@ export type PostAgentsResponses = {
     200: {
         id: string;
         name: string;
-        description: string | unknown | null;
-        avatarUrl: string | unknown | null;
+        description: string | null;
+        avatarUrl: string | null;
         avatarStyle: string;
         avatarSeed: string;
-        providerTargetId: string | unknown | null;
-        modelId: string | unknown | null;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson: string;
@@ -2228,12 +2234,12 @@ export type GetAgentsByIdResponses = {
     200: {
         id: string;
         name: string;
-        description: string | unknown | null;
-        avatarUrl: string | unknown | null;
+        description: string | null;
+        avatarUrl: string | null;
         avatarStyle: string;
         avatarSeed: string;
-        providerTargetId: string | unknown | null;
-        modelId: string | unknown | null;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson: string;
@@ -2248,11 +2254,11 @@ export type GetAgentsByIdResponse = GetAgentsByIdResponses[keyof GetAgentsByIdRe
 export type PatchAgentsByIdData = {
     body: {
         name?: string;
-        description?: string | unknown | null;
+        description?: string | null;
         avatarStyle?: string;
         avatarSeed?: string;
-        providerTargetId?: string | unknown | null;
-        modelId?: string | unknown | null;
+        providerTargetId?: string | null;
+        modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson?: string;
@@ -2272,12 +2278,12 @@ export type PatchAgentsByIdResponses = {
     200: {
         id: string;
         name: string;
-        description: string | unknown | null;
-        avatarUrl: string | unknown | null;
+        description: string | null;
+        avatarUrl: string | null;
         avatarStyle: string;
         avatarSeed: string;
-        providerTargetId: string | unknown | null;
-        modelId: string | unknown | null;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         configJson: string;
@@ -2312,32 +2318,32 @@ export type PostAgentsImportLocalConfigResponses = {
                 sourceKind: 'cc-switch' | 'local-config';
                 sourceLabel: string;
                 externalRecordId: string;
-                providerTargetId: string | unknown | null;
+                providerTargetId: string | null;
                 agentName: string;
                 resolvedProviderName: string;
                 name: string;
-                modelId: string | unknown | null;
-                endpoint: string | unknown | null;
+                modelId: string | null;
+                endpoint: string | null;
                 importable: boolean;
                 alreadyConfigured: boolean;
-                reason: string | unknown | null;
+                reason: string | null;
                 notes: Array<string>;
                 agent: {
                     id: string;
                     name: string;
-                    description: string | unknown | null;
-                    avatarUrl: string | unknown | null;
+                    description: string | null;
+                    avatarUrl: string | null;
                     avatarStyle: string;
                     avatarSeed: string;
-                    providerTargetId: string | unknown | null;
-                    modelId: string | unknown | null;
+                    providerTargetId: string | null;
+                    modelId: string | null;
                     thinkingEffort: string;
                     runtimeKind: string;
                     configJson: string;
                     enabled: boolean;
                     createdAt: number;
                     updatedAt: number;
-                } | unknown | null;
+                } | null;
             }>;
             sourceRefreshes: Array<{
                 sourceKey: string;
@@ -2346,7 +2352,7 @@ export type PostAgentsImportLocalConfigResponses = {
                 recordsSeen: number;
                 recordsProjected: number;
                 recordsMissing: number;
-                message: string | unknown | null;
+                message: string | null;
             }>;
         };
         created: number;
@@ -2357,26 +2363,26 @@ export type PostAgentsImportLocalConfigResponses = {
             candidateId: string;
             sourceKind: 'cc-switch' | 'local-config';
             externalRecordId: string;
-            providerTargetId: string | unknown | null;
+            providerTargetId: string | null;
             runtimeKind: 'claude-agent' | 'codex' | 'cli-tui';
             status: 'created' | 'existing' | 'skipped';
-            reason: string | unknown | null;
+            reason: string | null;
             agent: {
                 id: string;
                 name: string;
-                description: string | unknown | null;
-                avatarUrl: string | unknown | null;
+                description: string | null;
+                avatarUrl: string | null;
                 avatarStyle: string;
                 avatarSeed: string;
-                providerTargetId: string | unknown | null;
-                modelId: string | unknown | null;
+                providerTargetId: string | null;
+                modelId: string | null;
                 thinkingEffort: string;
                 runtimeKind: string;
                 configJson: string;
                 enabled: boolean;
                 createdAt: number;
                 updatedAt: number;
-            } | unknown | null;
+            } | null;
         }>;
     };
 };
@@ -2405,32 +2411,32 @@ export type PostAgentsImportLocalConfigPreviewResponses = {
             sourceKind: 'cc-switch' | 'local-config';
             sourceLabel: string;
             externalRecordId: string;
-            providerTargetId: string | unknown | null;
+            providerTargetId: string | null;
             agentName: string;
             resolvedProviderName: string;
             name: string;
-            modelId: string | unknown | null;
-            endpoint: string | unknown | null;
+            modelId: string | null;
+            endpoint: string | null;
             importable: boolean;
             alreadyConfigured: boolean;
-            reason: string | unknown | null;
+            reason: string | null;
             notes: Array<string>;
             agent: {
                 id: string;
                 name: string;
-                description: string | unknown | null;
-                avatarUrl: string | unknown | null;
+                description: string | null;
+                avatarUrl: string | null;
                 avatarStyle: string;
                 avatarSeed: string;
-                providerTargetId: string | unknown | null;
-                modelId: string | unknown | null;
+                providerTargetId: string | null;
+                modelId: string | null;
                 thinkingEffort: string;
                 runtimeKind: string;
                 configJson: string;
                 enabled: boolean;
                 createdAt: number;
                 updatedAt: number;
-            } | unknown | null;
+            } | null;
         }>;
         sourceRefreshes: Array<{
             sourceKey: string;
@@ -2439,7 +2445,7 @@ export type PostAgentsImportLocalConfigPreviewResponses = {
             recordsSeen: number;
             recordsProjected: number;
             recordsMissing: number;
-            message: string | unknown | null;
+            message: string | null;
         }>;
     };
 };
@@ -2462,7 +2468,7 @@ export type GetAutomationsResponses = {
      */
     200: Array<{
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2502,9 +2508,9 @@ export type GetAutomationsResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -2515,7 +2521,7 @@ export type GetAutomationsResponse = GetAutomationsResponses[keyof GetAutomation
 export type PostAutomationsData = {
     body: {
         id?: string;
-        workspaceId?: string | unknown | null;
+        workspaceId?: string | null;
         title: string;
         description?: string;
         enabled?: boolean;
@@ -2555,7 +2561,7 @@ export type PostAutomationsData = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind?: 'agent' | 'user' | 'system';
-        createdById?: string | unknown | null;
+        createdById?: string | null;
     };
     path?: never;
     query?: never;
@@ -2568,7 +2574,7 @@ export type PostAutomationsResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2608,9 +2614,9 @@ export type PostAutomationsResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2653,7 +2659,7 @@ export type GetAutomationsByIdResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2693,9 +2699,9 @@ export type GetAutomationsByIdResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2743,7 +2749,7 @@ export type PatchAutomationsByIdData = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind?: 'agent' | 'user' | 'system';
-        createdById?: string | unknown | null;
+        createdById?: string | null;
     };
     path: {
         id: string;
@@ -2758,7 +2764,7 @@ export type PatchAutomationsByIdResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2798,9 +2804,9 @@ export type PatchAutomationsByIdResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2823,7 +2829,7 @@ export type PostAutomationsByIdEnableResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2863,9 +2869,9 @@ export type PostAutomationsByIdEnableResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2888,7 +2894,7 @@ export type PostAutomationsByIdDisableResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         title: string;
         description: string;
         enabled: boolean;
@@ -2928,9 +2934,9 @@ export type PostAutomationsByIdDisableResponses = {
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
         createdByKind: 'agent' | 'user' | 'system';
-        createdById: string | unknown | null;
-        lastRunAt: number | unknown | null;
-        nextRunAt: number | unknown | null;
+        createdById: string | null;
+        lastRunAt: number | null;
+        nextRunAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2957,9 +2963,9 @@ export type PostAutomationsByIdRunResponses = {
     200: {
         id: string;
         automationDefinitionId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         triggerType: 'manual' | 'scheduled';
-        occurrenceKey: string | unknown | null;
+        occurrenceKey: string | null;
         status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
         triggerSnapshot: {
             type: string;
@@ -2996,14 +3002,14 @@ export type PostAutomationsByIdRunResponses = {
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
-        chatSessionId: string | unknown | null;
-        backendRunId: string | unknown | null;
+        chatSessionId: string | null;
+        backendRunId: string | null;
         artifactCount: number;
-        errorText: string | unknown | null;
-        scheduledFor: number | unknown | null;
-        claimedAt: number | unknown | null;
-        startedAt: number | unknown | null;
-        finishedAt: number | unknown | null;
+        errorText: string | null;
+        scheduledFor: number | null;
+        claimedAt: number | null;
+        startedAt: number | null;
+        finishedAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -3027,9 +3033,9 @@ export type GetAutomationsByIdRunsResponses = {
     200: Array<{
         id: string;
         automationDefinitionId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         triggerType: 'manual' | 'scheduled';
-        occurrenceKey: string | unknown | null;
+        occurrenceKey: string | null;
         status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
         triggerSnapshot: {
             type: string;
@@ -3066,14 +3072,14 @@ export type GetAutomationsByIdRunsResponses = {
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
-        chatSessionId: string | unknown | null;
-        backendRunId: string | unknown | null;
+        chatSessionId: string | null;
+        backendRunId: string | null;
         artifactCount: number;
-        errorText: string | unknown | null;
-        scheduledFor: number | unknown | null;
-        claimedAt: number | unknown | null;
-        startedAt: number | unknown | null;
-        finishedAt: number | unknown | null;
+        errorText: string | null;
+        scheduledFor: number | null;
+        claimedAt: number | null;
+        startedAt: number | null;
+        finishedAt: number | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -3098,9 +3104,9 @@ export type GetAutomationsByIdRunsByRunIdResponses = {
     200: {
         id: string;
         automationDefinitionId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         triggerType: 'manual' | 'scheduled';
-        occurrenceKey: string | unknown | null;
+        occurrenceKey: string | null;
         status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
         triggerSnapshot: {
             type: string;
@@ -3137,14 +3143,14 @@ export type GetAutomationsByIdRunsByRunIdResponses = {
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
-        chatSessionId: string | unknown | null;
-        backendRunId: string | unknown | null;
+        chatSessionId: string | null;
+        backendRunId: string | null;
         artifactCount: number;
-        errorText: string | unknown | null;
-        scheduledFor: number | unknown | null;
-        claimedAt: number | unknown | null;
-        startedAt: number | unknown | null;
-        finishedAt: number | unknown | null;
+        errorText: string | null;
+        scheduledFor: number | null;
+        claimedAt: number | null;
+        startedAt: number | null;
+        finishedAt: number | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -3169,11 +3175,11 @@ export type GetAutomationsByIdRunsByRunIdArtifactsResponses = {
     200: Array<{
         id: string;
         automationRunId: string;
-        automationDefinitionId: string | unknown | null;
+        automationDefinitionId: string | null;
         kind: 'markdown' | 'text' | 'json' | 'file_ref';
         name: string;
-        mimeType: string | unknown | null;
-        content: string | unknown | null;
+        mimeType: string | null;
+        content: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -3200,11 +3206,11 @@ export type GetAutomationsByIdArtifactsResponses = {
     200: Array<{
         id: string;
         automationRunId: string;
-        automationDefinitionId: string | unknown | null;
+        automationDefinitionId: string | null;
         kind: 'markdown' | 'text' | 'json' | 'file_ref';
         name: string;
-        mimeType: string | unknown | null;
-        content: string | unknown | null;
+        mimeType: string | null;
+        content: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -3232,11 +3238,11 @@ export type GetAutomationsByIdArtifactsByArtifactIdResponses = {
     200: {
         id: string;
         automationRunId: string;
-        automationDefinitionId: string | unknown | null;
+        automationDefinitionId: string | null;
         kind: 'markdown' | 'text' | 'json' | 'file_ref';
         name: string;
-        mimeType: string | unknown | null;
-        content: string | unknown | null;
+        mimeType: string | null;
+        content: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -3263,19 +3269,19 @@ export type GetSessionsResponses = {
      */
     200: Array<{
         id: string;
-        workspaceId: string | unknown | null;
-        title: string | unknown | null;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        modelId: string | unknown | null;
-        linkedIssueId: string | unknown | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
-        archivedAt: number | unknown | null;
+        archivedAt: number | null;
         createdAt: number;
         updatedAt: number;
-        latestUserMessageAt: number | unknown | null;
+        latestUserMessageAt: number | null;
     }>;
 };
 
@@ -3283,9 +3289,9 @@ export type GetSessionsResponse = GetSessionsResponses[keyof GetSessionsResponse
 
 export type PostSessionsData = {
     body: {
-        workspaceId?: string | unknown | null;
+        workspaceId?: string | null;
         title: string;
-        providerTargetId?: string | unknown | null;
+        providerTargetId?: string | null;
         agentId?: string;
         runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         id?: string;
@@ -3301,19 +3307,19 @@ export type PostSessionsResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
-        title: string | unknown | null;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        modelId: string | unknown | null;
-        linkedIssueId: string | unknown | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
-        archivedAt: number | unknown | null;
+        archivedAt: number | null;
         createdAt: number;
         updatedAt: number;
-        latestUserMessageAt: number | unknown | null;
+        latestUserMessageAt: number | null;
     };
 };
 
@@ -3354,19 +3360,19 @@ export type GetSessionsByIdResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
-        title: string | unknown | null;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        modelId: string | unknown | null;
-        linkedIssueId: string | unknown | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
-        archivedAt: number | unknown | null;
+        archivedAt: number | null;
         createdAt: number;
         updatedAt: number;
-        latestUserMessageAt: number | unknown | null;
+        latestUserMessageAt: number | null;
     };
 };
 
@@ -3376,6 +3382,8 @@ export type PatchSessionsByIdData = {
     body: {
         title?: string;
         pinned?: boolean;
+        providerTargetId?: string | null;
+        modelId?: string | null;
     };
     path: {
         id: string;
@@ -3390,19 +3398,19 @@ export type PatchSessionsByIdResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
-        title: string | unknown | null;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        modelId: string | unknown | null;
-        linkedIssueId: string | unknown | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
-        archivedAt: number | unknown | null;
+        archivedAt: number | null;
         createdAt: number;
         updatedAt: number;
-        latestUserMessageAt: number | unknown | null;
+        latestUserMessageAt: number | null;
     };
 };
 
@@ -3425,19 +3433,19 @@ export type PostSessionsByIdArchiveResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
-        title: string | unknown | null;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        modelId: string | unknown | null;
-        linkedIssueId: string | unknown | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
         runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
-        archivedAt: number | unknown | null;
+        archivedAt: number | null;
         createdAt: number;
         updatedAt: number;
-        latestUserMessageAt: number | unknown | null;
+        latestUserMessageAt: number | null;
     };
 };
 
@@ -3459,15 +3467,15 @@ export type GetSessionsByIdMessagesResponses = {
     200: Array<{
         id: string;
         sessionId: string;
-        parentMessageId: string | unknown | null;
-        parentToolCallId: string | unknown | null;
-        taskId: string | unknown | null;
+        parentMessageId: string | null;
+        parentToolCallId: string | null;
+        taskId: string | null;
         depth: number;
         role: 'user' | 'assistant';
         status: 'streaming' | 'complete' | 'aborted' | 'failed';
         content: string;
         messageJson: string;
-        errorText: string | unknown | null;
+        errorText: string | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -3529,7 +3537,7 @@ export type GetSessionsByIdLinkedIssueResponses = {
      * Response for status 200
      */
     200: {
-        issueId: string | unknown | null;
+        issueId: string | null;
     };
 };
 
@@ -3577,17 +3585,17 @@ export type GetSessionAwaitsResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     }>;
 };
 
@@ -3599,9 +3607,9 @@ export type PostSessionAwaitsData = {
         workspaceId: string;
         source: string;
         filterJson: string;
-        reason?: string | unknown | null;
-        expiresAt?: number | unknown | null;
-        fireAt?: number | unknown | null;
+        reason?: string | null;
+        expiresAt?: number | null;
+        fireAt?: number | null;
     };
     path?: never;
     query?: never;
@@ -3619,17 +3627,17 @@ export type PostSessionAwaitsResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -3655,17 +3663,17 @@ export type GetSessionAwaitsByIdResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -3691,17 +3699,17 @@ export type PostSessionAwaitsByIdCancelResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -3710,7 +3718,7 @@ export type PostSessionAwaitsByIdCancelResponse = PostSessionAwaitsByIdCancelRes
 export type PostSessionAwaitsByIdTriggerData = {
     body: {
         resumeText: string;
-        resumePayloadJson?: string | unknown | null;
+        resumePayloadJson?: string | null;
     };
     path: {
         id: string;
@@ -3730,17 +3738,17 @@ export type PostSessionAwaitsByIdTriggerResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -3749,7 +3757,7 @@ export type PostSessionAwaitsByIdTriggerResponse = PostSessionAwaitsByIdTriggerR
 export type PostSessionAwaitsByIdRetryDeliveryData = {
     body: {
         resumeText?: string;
-        resumePayloadJson?: string | unknown | null;
+        resumePayloadJson?: string | null;
     };
     path: {
         id: string;
@@ -3769,17 +3777,17 @@ export type PostSessionAwaitsByIdRetryDeliveryResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -3801,8 +3809,8 @@ export type GetSessionAwaitsSummaryResponses = {
     200: {
         awaiting: boolean;
         pendingCount: number;
-        primarySource: string | unknown | null;
-        reason: string | unknown | null;
+        primarySource: string | null;
+        reason: string | null;
     };
 };
 
@@ -3876,17 +3884,17 @@ export type PostSessionAwaitsByIdBypassCheckResponses = {
         source: string;
         filterJson: string;
         status: 'pending' | 'triggered' | 'expired' | 'cancelled' | 'failed';
-        reason: string | unknown | null;
-        resumeText: string | unknown | null;
-        resumePayloadJson: string | unknown | null;
-        failureKind: string | unknown | null;
-        bypassedChecksJson: string | unknown | null;
+        reason: string | null;
+        resumeText: string | null;
+        resumePayloadJson: string | null;
+        failureKind: string | null;
+        bypassedChecksJson: string | null;
         createdAt: number;
-        triggeredAt: number | unknown | null;
-        expiresAt: number | unknown | null;
-        fireAt: number | unknown | null;
-        lastCheckedAt: number | unknown | null;
-        lastErrorText: string | unknown | null;
+        triggeredAt: number | null;
+        expiresAt: number | null;
+        fireAt: number | null;
+        lastCheckedAt: number | null;
+        lastErrorText: string | null;
     };
 };
 
@@ -4006,7 +4014,7 @@ export type GetIssuesStatusesResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        color: string | unknown | null;
+        color: string | null;
         category: string;
         order: number;
         createdAt: number;
@@ -4019,7 +4027,7 @@ export type PostIssuesStatusesData = {
     body: {
         workspaceId: string;
         name: string;
-        color?: string | unknown | null;
+        color?: string | null;
         category?: 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled';
     };
     path?: never;
@@ -4035,7 +4043,7 @@ export type PostIssuesStatusesResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        color: string | unknown | null;
+        color: string | null;
         category: string;
         order: number;
         createdAt: number;
@@ -4088,7 +4096,7 @@ export type DeleteIssuesStatusesByIdResponse = DeleteIssuesStatusesByIdResponses
 export type PatchIssuesStatusesByIdData = {
     body: {
         name?: string;
-        color?: string | unknown | null;
+        color?: string | null;
     };
     path: {
         id: string;
@@ -4105,7 +4113,7 @@ export type PatchIssuesStatusesByIdResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        color: string | unknown | null;
+        color: string | null;
         category: string;
         order: number;
         createdAt: number;
@@ -4131,8 +4139,8 @@ export type GetIssuesMilestonesResponses = {
         id: string;
         workspaceId: string;
         title: string;
-        description: string | unknown | null;
-        dueDate: number | unknown | null;
+        description: string | null;
+        dueDate: number | null;
         status: 'open' | 'closed';
         createdAt: number;
         updatedAt: number;
@@ -4145,8 +4153,8 @@ export type PostIssuesMilestonesData = {
     body: {
         workspaceId: string;
         title: string;
-        description?: string | unknown | null;
-        dueDate?: number | unknown | null;
+        description?: string | null;
+        dueDate?: number | null;
         status?: 'open' | 'closed';
     };
     path?: never;
@@ -4162,8 +4170,8 @@ export type PostIssuesMilestonesResponses = {
         id: string;
         workspaceId: string;
         title: string;
-        description: string | unknown | null;
-        dueDate: number | unknown | null;
+        description: string | null;
+        dueDate: number | null;
         status: 'open' | 'closed';
         createdAt: number;
         updatedAt: number;
@@ -4195,8 +4203,8 @@ export type DeleteIssuesMilestonesByIdResponse = DeleteIssuesMilestonesByIdRespo
 export type PatchIssuesMilestonesByIdData = {
     body: {
         title?: string;
-        description?: string | unknown | null;
-        dueDate?: number | unknown | null;
+        description?: string | null;
+        dueDate?: number | null;
         status?: 'open' | 'closed';
     };
     path: {
@@ -4214,8 +4222,8 @@ export type PatchIssuesMilestonesByIdResponses = {
         id: string;
         workspaceId: string;
         title: string;
-        description: string | unknown | null;
-        dueDate: number | unknown | null;
+        description: string | null;
+        dueDate: number | null;
         status: 'open' | 'closed';
         createdAt: number;
         updatedAt: number;
@@ -4242,19 +4250,19 @@ export type GetIssuesSearchResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4286,19 +4294,19 @@ export type GetIssuesResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4312,13 +4320,16 @@ export type PostIssuesData = {
     body: {
         workspaceId: string;
         title: string;
-        description?: string | unknown | null;
+        description?: string | null;
         priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels?: Array<string>;
-        milestoneId?: string | unknown | null;
-        parentIssueId?: string | unknown | null;
-        statusId?: string | unknown | null;
-        statusName?: string | unknown | null;
+        milestoneId?: string | null;
+        parentIssueId?: string | null;
+        statusId?: string | null;
+        /**
+         * Issue status name or slug, for example "In Progress" or "in_progress".
+         */
+        statusName?: string | null;
     };
     path?: never;
     query?: never;
@@ -4333,19 +4344,19 @@ export type PostIssuesResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4392,19 +4403,19 @@ export type GetIssuesByIdResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4417,15 +4428,18 @@ export type GetIssuesByIdResponse = GetIssuesByIdResponses[keyof GetIssuesByIdRe
 export type PatchIssuesByIdData = {
     body: {
         title?: string;
-        description?: string | unknown | null;
+        description?: string | null;
         priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels?: Array<string>;
-        milestoneId?: string | unknown | null;
-        parentIssueId?: string | unknown | null;
-        statusId?: string | unknown | null;
-        statusName?: string | unknown | null;
-        assigneeKind?: string | unknown | null;
-        assigneeId?: string | unknown | null;
+        milestoneId?: string | null;
+        parentIssueId?: string | null;
+        statusId?: string | null;
+        /**
+         * Issue status name or slug, for example "In Progress" or "in_progress".
+         */
+        statusName?: string | null;
+        assigneeKind?: string | null;
+        assigneeId?: string | null;
         order?: number;
     };
     path: {
@@ -4443,19 +4457,19 @@ export type PatchIssuesByIdResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4469,12 +4483,12 @@ export type PatchIssuesBulkData = {
     body: {
         issueIds: Array<string>;
         update: {
-            statusId?: string | unknown | null;
+            statusId?: string | null;
             priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent';
             labels?: Array<string>;
-            milestoneId?: string | unknown | null;
-            assigneeKind?: string | unknown | null;
-            assigneeId?: string | unknown | null;
+            milestoneId?: string | null;
+            assigneeKind?: string | null;
+            assigneeId?: string | null;
         };
     };
     path?: never;
@@ -4514,19 +4528,19 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4554,15 +4568,15 @@ export type GetIssuesByIdCommentsResponses = {
         issueId: string;
         content: string;
         authorKind: 'user' | 'agent' | 'system' | 'system.delegated' | 'system.undelegated';
-        authorId: string | unknown | null;
+        authorId: string | null;
         author: {
             kind: 'user' | 'agent' | 'system';
-            id: string | unknown | null;
+            id: string | null;
             displayName: string;
-            avatarUrl: string | unknown | null;
-            label: string | unknown | null;
+            avatarUrl: string | null;
+            label: string | null;
         };
-        agentActivityId: string | unknown | null;
+        agentActivityId: string | null;
         createdAt: number;
     }>;
 };
@@ -4589,15 +4603,15 @@ export type PostIssuesByIdCommentsResponses = {
         issueId: string;
         content: string;
         authorKind: 'user' | 'agent' | 'system' | 'system.delegated' | 'system.undelegated';
-        authorId: string | unknown | null;
+        authorId: string | null;
         author: {
             kind: 'user' | 'agent' | 'system';
-            id: string | unknown | null;
+            id: string | null;
             displayName: string;
-            avatarUrl: string | unknown | null;
-            label: string | unknown | null;
+            avatarUrl: string | null;
+            label: string | null;
         };
-        agentActivityId: string | unknown | null;
+        agentActivityId: string | null;
         createdAt: number;
     };
 };
@@ -4713,19 +4727,19 @@ export type PostIssuesByIdContextRefsResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4753,19 +4767,19 @@ export type DeleteIssuesByIdContextRefsByIndexResponses = {
         id: string;
         workspaceId: string;
         number: number;
-        statusId: string | unknown | null;
-        milestoneId: string | unknown | null;
-        parentIssueId: string | unknown | null;
+        statusId: string | null;
+        milestoneId: string | null;
+        parentIssueId: string | null;
         title: string;
-        description: string | unknown | null;
+        description: string | null;
         priority: 'none' | 'low' | 'medium' | 'high' | 'urgent';
         labels: Array<string>;
-        assigneeKind: string | unknown | null;
-        assigneeId: string | unknown | null;
+        assigneeKind: string | null;
+        assigneeId: string | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
-        delegateAgentId: string | unknown | null;
-        delegateAgentProfileId: string | unknown | null;
+        delegateAgentId: string | null;
+        delegateAgentProfileId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4792,7 +4806,7 @@ export type GetKanbanBoardsResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        filterConfig: string | unknown | null;
+        filterConfig: string | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -4804,7 +4818,7 @@ export type PostKanbanBoardsData = {
     body: {
         workspaceId: string;
         name: string;
-        filterConfig?: string | unknown | null;
+        filterConfig?: string | null;
     };
     path?: never;
     query?: never;
@@ -4819,7 +4833,7 @@ export type PostKanbanBoardsResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        filterConfig: string | unknown | null;
+        filterConfig: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -4850,7 +4864,7 @@ export type DeleteKanbanBoardsByIdResponse = DeleteKanbanBoardsByIdResponses[key
 export type PatchKanbanBoardsByIdData = {
     body: {
         name?: string;
-        filterConfig?: string | unknown | null;
+        filterConfig?: string | null;
     };
     path: {
         id: string;
@@ -4867,7 +4881,7 @@ export type PatchKanbanBoardsByIdResponses = {
         id: string;
         workspaceId: string;
         name: string;
-        filterConfig: string | unknown | null;
+        filterConfig: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -4893,9 +4907,9 @@ export type GetSearchThreadsResponses = {
      */
     200: Array<{
         sessionId: string;
-        workspaceId: string | unknown | null;
-        workspaceName: string | unknown | null;
-        sessionTitle: string | unknown | null;
+        workspaceId: string | null;
+        workspaceName: string | null;
+        sessionTitle: string | null;
         titleRanges: Array<{
             start: number;
             end: number;
@@ -4936,8 +4950,8 @@ export type GetSearchChronicleResponses = {
     200: Array<{
         type: 'memory' | 'knowledge';
         id: string;
-        workspaceId: string | unknown | null;
-        workspaceName: string | unknown | null;
+        workspaceId: string | null;
+        workspaceName: string | null;
         title: string;
         titleRanges: Array<{
             start: number;
@@ -4979,13 +4993,13 @@ export type GetSkillsResponses = {
      */
     200: Array<{
         name: string;
-        description: string | unknown | null;
+        description: string | null;
         location: string;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         rootDir: string;
         skillDir: string;
         active: boolean;
-        shadowedBy: string | unknown | null;
+        shadowedBy: string | null;
     }>;
 };
 
@@ -4997,8 +5011,8 @@ export type PostSkillsData = {
         name: string;
         description: string;
         body: string;
-        workspaceId?: string | unknown | null;
-        agentId?: string | unknown | null;
+        workspaceId?: string | null;
+        agentId?: string | null;
         frontmatter?: {
             [key: string]: unknown;
         };
@@ -5014,7 +5028,7 @@ export type PostSkillsResponses = {
      */
     200: {
         name: string;
-        description: string | unknown | null;
+        description: string | null;
         location: string;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         rootDir: string;
@@ -5069,7 +5083,7 @@ export type GetSkillsDocumentResponses = {
      */
     200: {
         name: string;
-        description: string | unknown | null;
+        description: string | null;
         location: string;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         rootDir: string;
@@ -5087,8 +5101,8 @@ export type PutSkillsDocumentData = {
     body: {
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         name: string;
-        workspaceId?: string | unknown | null;
-        agentId?: string | unknown | null;
+        workspaceId?: string | null;
+        agentId?: string | null;
         document: {
             name: string;
             description: string;
@@ -5109,7 +5123,7 @@ export type PutSkillsDocumentResponses = {
      */
     200: {
         name: string;
-        description: string | unknown | null;
+        description: string | null;
         location: string;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         rootDir: string;
@@ -5128,8 +5142,8 @@ export type PostSkillsImportData = {
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         sourceDir: string;
         overwrite?: boolean;
-        workspaceId?: string | unknown | null;
-        agentId?: string | unknown | null;
+        workspaceId?: string | null;
+        agentId?: string | null;
     };
     path?: never;
     query?: never;
@@ -5142,7 +5156,7 @@ export type PostSkillsImportResponses = {
      */
     200: {
         name: string;
-        description: string | unknown | null;
+        description: string | null;
         location: string;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         rootDir: string;
@@ -5163,8 +5177,8 @@ export type PostSkillsExportData = {
         destinationDir: string;
         confirmedNonCradleOwnedWrite: boolean;
         overwrite?: boolean;
-        workspaceId?: string | unknown | null;
-        agentId?: string | unknown | null;
+        workspaceId?: string | null;
+        agentId?: string | null;
     };
     path?: never;
     query?: never;
@@ -5216,7 +5230,7 @@ export type PostSkillsFetchSourceResponses = {
             skillDir: string;
             relativePath: string;
             name: string;
-            description: string | unknown | null;
+            description: string | null;
         }>;
     };
 };
@@ -5229,8 +5243,8 @@ export type PostSkillsImportFromFetchData = {
         selectedDirs: Array<string>;
         scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
         overwrite?: boolean;
-        workspaceId?: string | unknown | null;
-        agentId?: string | unknown | null;
+        workspaceId?: string | null;
+        agentId?: string | null;
     };
     path?: never;
     query?: never;
@@ -5244,7 +5258,7 @@ export type PostSkillsImportFromFetchResponses = {
     200: {
         imported: Array<{
             name: string;
-            description: string | unknown | null;
+            description: string | null;
             location: string;
             scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             rootDir: string;
@@ -5298,7 +5312,7 @@ export type GetWorkflowRulesByWorkspaceIdListResponses = {
      */
     200: Array<{
         type: 'global' | 'agent';
-        agentProfileId: string | unknown | null;
+        agentProfileId: string | null;
         content: string;
     }>;
 };
@@ -5343,8 +5357,8 @@ export type GetWorkflowRulesByWorkspaceIdResponses = {
      * Response for status 200
      */
     200: {
-        global: string | unknown | null;
-        profileSpecific: string | unknown | null;
+        global: string | null;
+        profileSpecific: string | null;
     };
 };
 
@@ -5352,7 +5366,7 @@ export type GetWorkflowRulesByWorkspaceIdResponse = GetWorkflowRulesByWorkspaceI
 
 export type PutWorkflowRulesByWorkspaceIdData = {
     body: {
-        agentProfileId?: string | unknown | null;
+        agentProfileId?: string | null;
         content: string;
     };
     path: {
@@ -5388,7 +5402,7 @@ export type GetWorkspacesByIdGitStatusResponses = {
      */
     200: {
         branch: string;
-        tracking: string | unknown | null;
+        tracking: string | null;
         ahead: number;
         behind: number;
         isDetached: boolean;
@@ -5466,8 +5480,8 @@ export type GetWorkspacesByIdGitRemotesResponses = {
      */
     200: Array<{
         name: string;
-        fetchUrl: string | unknown | null;
-        pushUrl: string | unknown | null;
+        fetchUrl: string | null;
+        pushUrl: string | null;
     }>;
 };
 
@@ -5566,6 +5580,28 @@ export type GetWorkspacesByIdGitDiffResponses = {
 
 export type GetWorkspacesByIdGitDiffResponse = GetWorkspacesByIdGitDiffResponses[keyof GetWorkspacesByIdGitDiffResponses];
 
+export type GetWorkspacesByIdGitMergeBaseData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        baseBranch: string;
+    };
+    url: '/workspaces/{id}/git/merge-base';
+};
+
+export type GetWorkspacesByIdGitMergeBaseResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        mergeBaseSha: string | null;
+    };
+};
+
+export type GetWorkspacesByIdGitMergeBaseResponse = GetWorkspacesByIdGitMergeBaseResponses[keyof GetWorkspacesByIdGitMergeBaseResponses];
+
 export type PostWorkspacesByIdPackData = {
     body: {
         style: 'xml' | 'markdown' | 'plain';
@@ -5610,12 +5646,12 @@ export type GetAcpRegistryResponses = {
         id: string;
         name: string;
         version: string;
-        description: string | unknown | null;
-        repository?: string | unknown | null;
-        website?: string | unknown | null;
+        description: string | null;
+        repository?: string | null;
+        website?: string | null;
         authors?: Array<string>;
-        license?: string | unknown | null;
-        icon?: string | unknown | null;
+        license?: string | null;
+        icon?: string | null;
         distribution: {
             binary?: unknown;
             npx?: unknown;
@@ -5661,12 +5697,12 @@ export type GetAcpAgentsResponses = {
     200: Array<{
         id: string;
         name: string;
-        version: string | unknown | null;
+        version: string | null;
         distributionType: string;
-        installPath: string | unknown | null;
-        cmd: string | unknown | null;
-        args: string | unknown | null;
-        env: string | unknown | null;
+        installPath: string | null;
+        cmd: string | null;
+        args: string | null;
+        env: string | null;
         status: string;
         createdAt: number;
         updatedAt: number;
@@ -5711,12 +5747,12 @@ export type GetAcpAgentsByAgentIdResponses = {
     200: {
         id: string;
         name: string;
-        version: string | unknown | null;
+        version: string | null;
         distributionType: string;
-        installPath: string | unknown | null;
-        cmd: string | unknown | null;
-        args: string | unknown | null;
-        env: string | unknown | null;
+        installPath: string | null;
+        cmd: string | null;
+        args: string | null;
+        env: string | null;
         status: string;
         createdAt: number;
         updatedAt: number;
@@ -5763,12 +5799,12 @@ export type PutAcpAgentsByAgentIdInstallationResponses = {
     200: {
         id: string;
         name: string;
-        version: string | unknown | null;
+        version: string | null;
         distributionType: string;
-        installPath: string | unknown | null;
-        cmd: string | unknown | null;
-        args: string | unknown | null;
-        env: string | unknown | null;
+        installPath: string | null;
+        cmd: string | null;
+        args: string | null;
+        env: string | null;
         status: string;
         createdAt: number;
         updatedAt: number;
@@ -5794,8 +5830,8 @@ export type GetAcpAuditResponses = {
         id: number;
         agentId: string;
         action: string;
-        path: string | unknown | null;
-        details: string | unknown | null;
+        path: string | null;
+        details: string | null;
         createdAt: number;
     }>;
 };
@@ -5832,6 +5868,14 @@ export type PostChatSessionsBySessionIdResponseData = {
             url: string;
             providerMetadata?: unknown;
             [key: string]: unknown;
+        }>;
+        contextParts?: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
         }>;
         messages?: Array<{
             id: string;
@@ -5909,14 +5953,22 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                 providerMetadata?: unknown;
                 [key: string]: unknown;
             }>;
-            providerTargetId: string | unknown;
-            modelId: string | unknown;
+            contextParts: Array<{
+                type: string;
+                name: string;
+                path: string;
+                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+                description: string | null;
+                position?: number;
+            }>;
+            providerTargetId: string | null;
+            modelId: string | null;
             thinkingEffort: string | unknown;
             permissionMode: string | unknown;
             position: number;
-            sourceRunId: string | unknown;
-            startedRunId: string | unknown;
-            errorText: string | unknown;
+            sourceRunId: string | null;
+            startedRunId: string | null;
+            errorText: string | null;
             createdAt: number;
             updatedAt: number;
         }>;
@@ -5936,6 +5988,14 @@ export type PostChatSessionsBySessionIdQueueData = {
             url: string;
             providerMetadata?: unknown;
             [key: string]: unknown;
+        }>;
+        contextParts?: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
         }>;
         providerTargetId?: string;
         modelId?: string;
@@ -5967,14 +6027,22 @@ export type PostChatSessionsBySessionIdQueueResponses = {
             providerMetadata?: unknown;
             [key: string]: unknown;
         }>;
-        providerTargetId: string | unknown;
-        modelId: string | unknown;
+        contextParts: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        }>;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: string | unknown;
         permissionMode: string | unknown;
         position: number;
-        sourceRunId: string | unknown;
-        startedRunId: string | unknown;
-        errorText: string | unknown;
+        sourceRunId: string | null;
+        startedRunId: string | null;
+        errorText: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -6012,14 +6080,22 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                 providerMetadata?: unknown;
                 [key: string]: unknown;
             }>;
-            providerTargetId: string | unknown;
-            modelId: string | unknown;
+            contextParts: Array<{
+                type: string;
+                name: string;
+                path: string;
+                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+                description: string | null;
+                position?: number;
+            }>;
+            providerTargetId: string | null;
+            modelId: string | null;
             thinkingEffort: string | unknown;
             permissionMode: string | unknown;
             position: number;
-            sourceRunId: string | unknown;
-            startedRunId: string | unknown;
-            errorText: string | unknown;
+            sourceRunId: string | null;
+            startedRunId: string | null;
+            errorText: string | null;
             createdAt: number;
             updatedAt: number;
         }>;
@@ -6056,14 +6132,22 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
             providerMetadata?: unknown;
             [key: string]: unknown;
         }>;
-        providerTargetId: string | unknown;
-        modelId: string | unknown;
+        contextParts: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        }>;
+        providerTargetId: string | null;
+        modelId: string | null;
         thinkingEffort: string | unknown;
         permissionMode: string | unknown;
         position: number;
-        sourceRunId: string | unknown;
-        startedRunId: string | unknown;
-        errorText: string | unknown;
+        sourceRunId: string | null;
+        startedRunId: string | null;
+        errorText: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -6092,11 +6176,290 @@ export type GetChatSessionsBySessionIdCapabilitiesResponses = {
             argumentHint: string;
             aliases?: Array<string>;
         }>;
+        uiSlots: Array<{
+            id: string;
+            name: string;
+            label: string;
+            description: string;
+            argumentHint: string;
+            aliases?: Array<string>;
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            commandText?: string;
+            surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
+        }>;
         skills: Array<string>;
     };
 };
 
 export type GetChatSessionsBySessionIdCapabilitiesResponse = GetChatSessionsBySessionIdCapabilitiesResponses[keyof GetChatSessionsBySessionIdCapabilitiesResponses];
+
+export type GetChatSessionsBySessionIdUiSlotStatesData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/ui-slot-states';
+};
+
+export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        states: Array<{
+            kind: string;
+            slotId: string;
+            threadId: string;
+            objective: string;
+            status: string;
+            tokenBudget: number | null;
+            tokensUsed: number;
+            timeUsedSeconds: number;
+            createdAt: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            status: string;
+            isCompactRelevant: boolean;
+            total: {
+                totalTokens: number;
+                inputTokens: number;
+                cachedInputTokens: number;
+                outputTokens: number;
+                reasoningOutputTokens: number;
+            };
+            last: {
+                totalTokens: number;
+                inputTokens: number;
+                cachedInputTokens: number;
+                outputTokens: number;
+                reasoningOutputTokens: number;
+            };
+            modelContextWindow: number | null;
+            autoCompactTokenLimit: number | null;
+            usagePercent: number | null;
+            autoCompactPercent: number | null;
+            lastCompactedAt: number | null;
+            compactionItemId: string | null;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            status: string;
+            activeFlags: Array<string>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            modelId: string | null;
+            modelLabel: string | null;
+            modelProvider: string | null;
+            serviceTier: string | null;
+            supportsImages: boolean | null;
+            supportsWebSearch: boolean | null;
+            supportsNamespaceTools: boolean | null;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            effort: string | null;
+            summary: string | null;
+            supportedEfforts: Array<{
+                id: string;
+                description: string;
+            }>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            explanation: string | null;
+            steps: Array<{
+                step: string;
+                status: string;
+            }>;
+            currentStep: string | null;
+            pendingCount: number;
+            inProgressCount: number;
+            completedCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            activeCount: number;
+            completedCount: number;
+            failedCount: number;
+            recentItems: Array<{
+                id: string;
+                type: string;
+                label: string;
+                status: string;
+                startedAt: number | null;
+                completedAt: number | null;
+            }>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            serverCount: number;
+            readyCount: number;
+            failedCount: number;
+            needsLoginCount: number;
+            recentProgress: string | null;
+            servers: Array<{
+                name: string;
+                status: string;
+                authStatus: string;
+                toolCount: number;
+                resourceCount: number;
+                error: string | null;
+            }>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            fileCount: number;
+            addedLines: number;
+            removedLines: number;
+            hasDiff: boolean;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            activeCount: number;
+            completedCount: number;
+            failedCount: number;
+            lastCommand: string | null;
+            lastOutputPreview: string | null;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            pendingCount: number;
+            approvedCount: number;
+            deniedCount: number;
+            recentItems: Array<{
+                id: string;
+                targetItemId: string | null;
+                status: string;
+                label: string;
+                riskLevel: string | null;
+                rationale: string | null;
+                startedAt: number | null;
+                completedAt: number | null;
+            }>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string | null;
+            warningCount: number;
+            errorCount: number;
+            recentItems: Array<{
+                id: string;
+                severity: string;
+                message: string;
+                source: string;
+                updatedAt: number;
+            }>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            changedPathCount: number;
+            recentPaths: Array<string>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            enabledCount: number;
+            disabledCount: number;
+            errorCount: number;
+            roots: Array<string>;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            installedCount: number;
+            enabledCount: number;
+            appCount: number;
+            marketplaceCount: number;
+            errorCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            recentResultCount: number;
+            recentQuery: string | null;
+            fuzzySessionActive: boolean;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            activeCount: number;
+            completedCount: number;
+            failedCount: number;
+            recentItems: Array<{
+                id: string;
+                type: string;
+                label: string;
+                status: string;
+                startedAt: number | null;
+                completedAt: number | null;
+            }>;
+            collaborationModeCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            usedPercent: number | null;
+            secondaryUsedPercent: number | null;
+            creditsBalance: string | null;
+            hasCredits: boolean | null;
+            rateLimitReachedType: string | null;
+            planType: string | null;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            modelId: string | null;
+            approvalPolicy: string | null;
+            sandboxMode: string | null;
+            allowedApprovalPolicyCount: number | null;
+            allowedSandboxModeCount: number | null;
+            featureRequirementCount: number | null;
+            webSearchModeCount: number | null;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type GetChatSessionsBySessionIdUiSlotStatesResponse = GetChatSessionsBySessionIdUiSlotStatesResponses[keyof GetChatSessionsBySessionIdUiSlotStatesResponses];
 
 export type GetChatSessionsBySessionIdRuntimeStatusData = {
     body?: never;
@@ -6115,33 +6478,34 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
         sessionId: string;
         status: 'idle' | 'pending' | 'streaming' | 'cancelling';
         runtimeKind: string;
-        providerTargetId: string | unknown;
-        providerSessionId: string | unknown;
-        modelId: string | unknown;
+        providerTargetId: string | null;
+        providerSessionId: string | null;
+        modelId: string | null;
         permissionMode: string | unknown;
-        pendingQueueItemId: string | unknown;
+        pendingQueueItemId: string | null;
+        hasActiveGoal: boolean;
         activeRun: {
             runId: string;
-            messageId: string | unknown;
+            messageId: string | null;
             status: string;
             startedAt: number;
-            finishedAt: number | unknown;
-            modelId: string | unknown;
-            providerSessionId: string | unknown;
-            queueItemId: string | unknown;
+            finishedAt: number | null;
+            modelId: string | null;
+            providerSessionId: string | null;
+            queueItemId: string | null;
             permissionMode: string | unknown;
-        } | unknown;
+        } | null;
         latestRun: {
             runId: string;
-            messageId: string | unknown;
+            messageId: string | null;
             status: string;
             startedAt: number;
-            finishedAt: number | unknown;
-            modelId: string | unknown;
-            providerSessionId: string | unknown;
-            queueItemId: string | unknown;
+            finishedAt: number | null;
+            modelId: string | null;
+            providerSessionId: string | null;
+            queueItemId: string | null;
             permissionMode: string | unknown;
-        } | unknown;
+        } | null;
         queue: {
             pending: number;
             running: number;
@@ -6170,7 +6534,7 @@ export type GetChatSessionsBySessionIdCodexAppServerCapabilitiesResponses = {
         generatedDate: string;
         clientMethods: Array<{
             method: string;
-            paramsType: string | unknown | null;
+            paramsType: string | null;
             category: string;
             operation: string;
             interaction: 'request' | 'stream';
@@ -6212,7 +6576,7 @@ export type PostChatSessionsBySessionIdCodexAppServerInvokeResponses = {
         method: string;
         capability: {
             method: string;
-            paramsType: string | unknown | null;
+            paramsType: string | null;
             category: string;
             operation: string;
             interaction: 'request' | 'stream';
@@ -6275,9 +6639,9 @@ export type GetChatSessionsBySessionIdMessagesResponses = {
             }>;
             [key: string]: unknown;
         };
-        parentMessageId: string | unknown;
-        parentToolCallId: string | unknown;
-        taskId: string | unknown;
+        parentMessageId: string | null;
+        parentToolCallId: string | null;
+        taskId: string | null;
         depth: number;
     }>;
 };
@@ -6300,10 +6664,10 @@ export type GetChatRunsByRunIdTraceResponses = {
     200: {
         runId: string;
         sessionId: string;
-        messageId: string | unknown;
+        messageId: string | null;
         status: 'streaming' | 'complete' | 'aborted' | 'failed';
         startedAt: number;
-        finishedAt: number | unknown;
+        finishedAt: number | null;
         path: string;
         recordCount: number;
         records: Array<{
@@ -6315,8 +6679,8 @@ export type GetChatRunsByRunIdTraceResponses = {
             runId: string;
             messageId: string;
             runtimeKind: string;
-            providerSessionId: string | unknown;
-            toolCallId: string | unknown;
+            providerSessionId: string | null;
+            toolCallId: string | null;
             payload: unknown;
         }>;
     };
@@ -6342,10 +6706,10 @@ export type GetChatSessionsBySessionIdTracesResponses = {
         traces: Array<{
             runId: string;
             sessionId: string;
-            messageId: string | unknown;
+            messageId: string | null;
             status: 'streaming' | 'complete' | 'aborted' | 'failed';
             startedAt: number;
-            finishedAt: number | unknown;
+            finishedAt: number | null;
             path: string;
             recordCount: number;
             records: Array<{
@@ -6357,8 +6721,8 @@ export type GetChatSessionsBySessionIdTracesResponses = {
                 runId: string;
                 messageId: string;
                 runtimeKind: string;
-                providerSessionId: string | unknown;
-                toolCallId: string | unknown;
+                providerSessionId: string | null;
+                toolCallId: string | null;
                 payload: unknown;
             }>;
         }>;
@@ -6525,7 +6889,7 @@ export type PostChronicleSummarizeResponses = {
      */
     200: {
         summary: string;
-        memoryId: string | unknown | null;
+        memoryId: string | null;
         status: 'success' | 'error';
     };
 };
@@ -6548,10 +6912,10 @@ export type PostChronicleSnapshotsData = {
         windowTitle?: string;
         closedEyes?: {
             status?: 'open' | 'closed' | 'absent' | 'unknown';
-            confidence?: number | unknown | null;
-            detector?: string | unknown | null;
+            confidence?: number | null;
+            detector?: string | null;
             discard?: boolean;
-            reason?: string | unknown | null;
+            reason?: string | null;
             metadata?: {
                 [key: string]: unknown;
             };
@@ -6560,11 +6924,11 @@ export type PostChronicleSnapshotsData = {
             sourceId: string;
             status?: 'ready' | 'permission-denied' | 'unavailable' | 'error';
             provider?: string;
-            accessibilityPath?: string | unknown | null;
-            text?: string | unknown | null;
+            accessibilityPath?: string | null;
+            text?: string | null;
             elementCount?: number;
-            appBundleId?: string | unknown | null;
-            windowTitle?: string | unknown | null;
+            appBundleId?: string | null;
+            windowTitle?: string | null;
             tree?: Array<unknown>;
             metadata?: {
                 [key: string]: unknown;
@@ -6586,15 +6950,15 @@ export type PostChronicleSnapshotsResponses = {
     200: {
         id: string;
         sourceId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         capturedAt: number;
         displayId: number;
         segmentDir: string;
         framePath: string;
-        artifactPath: string | unknown | null;
-        ocrText: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        artifactPath: string | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         metadataJson: string;
         createdAt: number;
         updatedAt: number;
@@ -6629,10 +6993,10 @@ export type GetChronicleMemoriesResponses = {
         createdAt: string;
         createdAtUnix: number;
         content: string;
-        modelId: string | unknown | null;
-        matchKind: string | unknown | null;
-        keywordScore: number | unknown | null;
-        semanticScore: number | unknown | null;
+        modelId: string | null;
+        matchKind: string | null;
+        keywordScore: number | null;
+        semanticScore: number | null;
     }>;
 };
 
@@ -6671,33 +7035,33 @@ export type GetChronicleStatusResponses = {
     200: {
         available: boolean;
         running: boolean;
-        pid: number | unknown | null;
-        lastCaptureAt: number | unknown | null;
-        lastSummaryAt: number | unknown | null;
-        lastErrorAt: number | unknown | null;
-        lastError: string | unknown | null;
-        lastExitCode: number | unknown | null;
-        lastExitAt: number | unknown | null;
+        pid: number | null;
+        lastCaptureAt: number | null;
+        lastSummaryAt: number | null;
+        lastErrorAt: number | null;
+        lastError: string | null;
+        lastExitCode: number | null;
+        lastExitAt: number | null;
         totalSnapshots: number;
         totalSummaries: number;
         totalMessages: number;
-        lastMessageAt: number | unknown | null;
+        lastMessageAt: number | null;
         totalAccessibilitySnapshots: number;
-        lastAccessibilitySnapshotAt: number | unknown | null;
+        lastAccessibilitySnapshotAt: number | null;
         totalAccessibilityEvents: number;
-        lastAccessibilityEventAt: number | unknown | null;
+        lastAccessibilityEventAt: number | null;
         totalAudioTranscripts: number;
-        lastAudioTranscriptAt: number | unknown | null;
+        lastAudioTranscriptAt: number | null;
         totalAudioRawSegments: number;
-        lastAudioRawSegmentAt: number | unknown | null;
+        lastAudioRawSegmentAt: number | null;
         totalActivitySegments: number;
-        lastActivitySegmentAt: number | unknown | null;
+        lastActivitySegmentAt: number | null;
         totalPipelineRuns: number;
-        lastPipelineRunAt: number | unknown | null;
+        lastPipelineRunAt: number | null;
         totalKnowledgeCards: number;
-        lastKnowledgeCardAt: number | unknown | null;
+        lastKnowledgeCardAt: number | null;
         totalDreamRuns: number;
-        lastDreamRunAt: number | unknown | null;
+        lastDreamRunAt: number | null;
         dreamSchedulerEnabled: boolean;
         dreamSchedulerRunning: boolean;
         dreamSchedulerIntervalMs: number;
@@ -6711,7 +7075,7 @@ export type GetChronicleStatusResponses = {
         closedEyesDiscardEnabled: boolean;
         closedEyesMode: 'auto' | 'always-record' | 'always-pause';
         audioSource: 'microphone' | 'system' | 'mixed';
-        configuredModel: string | unknown | null;
+        configuredModel: string | null;
     };
 };
 
@@ -6730,9 +7094,9 @@ export type GetChronicleResourcesResponses = {
      */
     200: {
         running: boolean;
-        pid: number | unknown | null;
-        rssMB: number | unknown | null;
-        cpuPercent: number | unknown | null;
+        pid: number | null;
+        rssMB: number | null;
+        cpuPercent: number | null;
     };
 };
 
@@ -6751,9 +7115,9 @@ export type GetChronicleDaemonResourcesResponses = {
      */
     200: {
         running: boolean;
-        pid: number | unknown | null;
-        rssMB: number | unknown | null;
-        cpuPercent: number | unknown | null;
+        pid: number | null;
+        rssMB: number | null;
+        cpuPercent: number | null;
     };
 };
 
@@ -6775,10 +7139,10 @@ export type GetChronicleModelResourcesResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6804,10 +7168,10 @@ export type PostChronicleModelResourcesReconcileResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6833,10 +7197,10 @@ export type PostChronicleModelResourcesInstallAllResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6871,10 +7235,10 @@ export type PostChronicleModelResourcesByCategoryVerifyResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6887,7 +7251,7 @@ export type PostChronicleModelResourcesByCategoryVerifyResponse = PostChronicleM
 export type PostChronicleModelResourcesByCategoryInstallData = {
     body: {
         source?: 'manifest' | 'local-files';
-        sourceRoot?: string | unknown | null;
+        sourceRoot?: string | null;
         files?: Array<{
             relativePath: string;
             sourcePath: string;
@@ -6909,10 +7273,10 @@ export type PostChronicleModelResourcesByCategoryInstallResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6940,10 +7304,10 @@ export type DeleteChronicleModelResourcesByCategoryResponses = {
         category: 'ocr' | 'audio-vad' | 'audio-asr' | 'speaker' | 'embedding' | 'pii';
         status: 'available' | 'missing' | 'installing' | 'installed' | 'error';
         displayName: string;
-        path: string | unknown | null;
-        version: string | unknown | null;
-        message: string | unknown | null;
-        sizeBytes: number | unknown | null;
+        path: string | null;
+        version: string | null;
+        message: string | null;
+        sizeBytes: number | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -6969,16 +7333,16 @@ export type GetChronicleMessageSourcesResponses = {
         platform: string;
         label: string;
         enabled: boolean;
-        workspaceId: string | unknown | null;
-        teamId: string | unknown | null;
-        botTokenRef: string | unknown | null;
+        workspaceId: string | null;
+        teamId: string | null;
+        botTokenRef: string | null;
         channelIds: Array<string>;
         realtimeMode: 'polling' | 'events-api' | 'socket-mode';
-        signingSecretRef: string | unknown | null;
+        signingSecretRef: string | null;
         status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled';
-        lastSyncAt: number | unknown | null;
-        lastMessageAt: number | unknown | null;
-        lastError: string | unknown | null;
+        lastSyncAt: number | null;
+        lastMessageAt: number | null;
+        lastError: string | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -6991,12 +7355,12 @@ export type PostChronicleMessageSourcesData = {
         platform: string;
         label: string;
         enabled: boolean;
-        workspaceId?: string | unknown | null;
-        teamId?: string | unknown | null;
-        botTokenRef?: string | unknown | null;
+        workspaceId?: string | null;
+        teamId?: string | null;
+        botTokenRef?: string | null;
         channelIds: Array<string>;
         realtimeMode?: 'polling' | 'events-api';
-        signingSecretRef?: string | unknown | null;
+        signingSecretRef?: string | null;
     };
     path?: never;
     query?: never;
@@ -7012,16 +7376,16 @@ export type PostChronicleMessageSourcesResponses = {
         platform: string;
         label: string;
         enabled: boolean;
-        workspaceId: string | unknown | null;
-        teamId: string | unknown | null;
-        botTokenRef: string | unknown | null;
+        workspaceId: string | null;
+        teamId: string | null;
+        botTokenRef: string | null;
         channelIds: Array<string>;
         realtimeMode: 'polling' | 'events-api' | 'socket-mode';
-        signingSecretRef: string | unknown | null;
+        signingSecretRef: string | null;
         status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled';
-        lastSyncAt: number | unknown | null;
-        lastMessageAt: number | unknown | null;
-        lastError: string | unknown | null;
+        lastSyncAt: number | null;
+        lastMessageAt: number | null;
+        lastError: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -7053,12 +7417,12 @@ export type PatchChronicleMessageSourcesBySourceIdData = {
     body: {
         label?: string;
         enabled?: boolean;
-        workspaceId?: string | unknown | null;
-        teamId?: string | unknown | null;
-        botTokenRef?: string | unknown | null;
+        workspaceId?: string | null;
+        teamId?: string | null;
+        botTokenRef?: string | null;
         channelIds?: Array<string>;
         realtimeMode?: 'polling' | 'events-api';
-        signingSecretRef?: string | unknown | null;
+        signingSecretRef?: string | null;
     };
     path: {
         sourceId: string;
@@ -7076,16 +7440,16 @@ export type PatchChronicleMessageSourcesBySourceIdResponses = {
         platform: string;
         label: string;
         enabled: boolean;
-        workspaceId: string | unknown | null;
-        teamId: string | unknown | null;
-        botTokenRef: string | unknown | null;
+        workspaceId: string | null;
+        teamId: string | null;
+        botTokenRef: string | null;
         channelIds: Array<string>;
         realtimeMode: 'polling' | 'events-api' | 'socket-mode';
-        signingSecretRef: string | unknown | null;
+        signingSecretRef: string | null;
         status: 'idle' | 'syncing' | 'ready' | 'error' | 'disabled';
-        lastSyncAt: number | unknown | null;
-        lastMessageAt: number | unknown | null;
-        lastError: string | unknown | null;
+        lastSyncAt: number | null;
+        lastMessageAt: number | null;
+        lastError: string | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -7143,13 +7507,13 @@ export type GetChronicleMessagesResponses = {
         sourceId: string;
         platform: string;
         channelId: string;
-        channelName: string | unknown | null;
-        userName: string | unknown | null;
+        channelName: string | null;
+        userName: string | null;
         text: string;
         messageTs: string;
         messageAt: string;
         messageAtUnix: number;
-        permalink: string | unknown | null;
+        permalink: string | null;
     }>;
 };
 
@@ -7171,28 +7535,28 @@ export type GetChronicleAudioTranscriptsResponses = {
     200: Array<{
         id: string;
         sourceId: string;
-        memoryId: string | unknown | null;
-        title: string | unknown | null;
+        memoryId: string | null;
+        title: string | null;
         source: 'asr' | 'manual' | 'imported';
         status: 'recording' | 'completed' | 'imported' | 'error';
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
-        language: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        language: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         segmentCount: number;
         previewText: string;
         segments: Array<{
             id: string;
             segmentIndex: number;
             startMs: number;
-            endMs: number | unknown | null;
-            speakerLabel: string | unknown | null;
+            endMs: number | null;
+            speakerLabel: string | null;
             text: string;
-            confidence: number | unknown | null;
-            language: string | unknown | null;
+            confidence: number | null;
+            language: string | null;
         }>;
     }>;
 };
@@ -7202,23 +7566,23 @@ export type GetChronicleAudioTranscriptsResponse = GetChronicleAudioTranscriptsR
 export type PostChronicleAudioTranscriptsData = {
     body: {
         sourceId: string;
-        title?: string | unknown | null;
+        title?: string | null;
         source?: 'asr' | 'manual' | 'imported';
         status?: 'recording' | 'completed' | 'imported' | 'error';
         startedAt: string;
-        endedAt?: string | unknown | null;
-        language?: string | unknown | null;
-        appBundleId?: string | unknown | null;
-        windowTitle?: string | unknown | null;
-        audioPath?: string | unknown | null;
-        transcriptPath?: string | unknown | null;
+        endedAt?: string | null;
+        language?: string | null;
+        appBundleId?: string | null;
+        windowTitle?: string | null;
+        audioPath?: string | null;
+        transcriptPath?: string | null;
         segments: Array<{
             startMs: number;
-            endMs?: number | unknown | null;
-            speakerLabel?: string | unknown | null;
+            endMs?: number | null;
+            speakerLabel?: string | null;
             text: string;
-            confidence?: number | unknown | null;
-            language?: string | unknown | null;
+            confidence?: number | null;
+            language?: string | null;
             metadata?: {
                 [key: string]: unknown;
             };
@@ -7239,28 +7603,28 @@ export type PostChronicleAudioTranscriptsResponses = {
     200: {
         id: string;
         sourceId: string;
-        memoryId: string | unknown | null;
-        title: string | unknown | null;
+        memoryId: string | null;
+        title: string | null;
         source: 'asr' | 'manual' | 'imported';
         status: 'recording' | 'completed' | 'imported' | 'error';
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
-        language: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        language: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         segmentCount: number;
         previewText: string;
         segments: Array<{
             id: string;
             segmentIndex: number;
             startMs: number;
-            endMs: number | unknown | null;
-            speakerLabel: string | unknown | null;
+            endMs: number | null;
+            speakerLabel: string | null;
             text: string;
-            confidence: number | unknown | null;
-            language: string | unknown | null;
+            confidence: number | null;
+            language: string | null;
         }>;
     };
 };
@@ -7280,18 +7644,18 @@ export type GetChronicleSpeakerProfilesResponses = {
      */
     200: Array<{
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         displayName: string;
         normalizedLabel: string;
         aliases: Array<string>;
-        embedding: Array<number> | unknown | null;
-        embeddingDimensions: number | unknown | null;
-        embeddingModelId: string | unknown | null;
+        embedding: Array<number> | null;
+        embeddingDimensions: number | null;
+        embeddingModelId: string | null;
         sampleCount: number;
-        lastSeenAt: string | unknown | null;
-        lastSeenAtUnix: number | unknown | null;
-        sourceTranscriptId: string | unknown | null;
-        sourceSegmentId: string | unknown | null;
+        lastSeenAt: string | null;
+        lastSeenAtUnix: number | null;
+        sourceTranscriptId: string | null;
+        sourceSegmentId: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -7308,10 +7672,10 @@ export type PostChronicleSpeakerProfilesData = {
     body: {
         displayName: string;
         aliases?: Array<string>;
-        embedding?: Array<number> | unknown | null;
-        embeddingModelId?: string | unknown | null;
+        embedding?: Array<number> | null;
+        embeddingModelId?: string | null;
         sampleCount?: number;
-        lastSeenAt?: string | unknown | null;
+        lastSeenAt?: string | null;
         metadata?: {
             [key: string]: unknown;
         };
@@ -7327,18 +7691,18 @@ export type PostChronicleSpeakerProfilesResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         displayName: string;
         normalizedLabel: string;
         aliases: Array<string>;
-        embedding: Array<number> | unknown | null;
-        embeddingDimensions: number | unknown | null;
-        embeddingModelId: string | unknown | null;
+        embedding: Array<number> | null;
+        embeddingDimensions: number | null;
+        embeddingModelId: string | null;
         sampleCount: number;
-        lastSeenAt: string | unknown | null;
-        lastSeenAtUnix: number | unknown | null;
-        sourceTranscriptId: string | unknown | null;
-        sourceSegmentId: string | unknown | null;
+        lastSeenAt: string | null;
+        lastSeenAtUnix: number | null;
+        sourceTranscriptId: string | null;
+        sourceSegmentId: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -7458,9 +7822,9 @@ export type PostChronicleAudioRawSegmentsBySourceIdProcessingResultData = {
         vadStatus?: 'not-implemented' | 'pending' | 'ready' | 'error';
         asrStatus?: 'not-implemented' | 'pending' | 'ready' | 'error';
         speakerStatus?: 'not-implemented' | 'pending' | 'ready' | 'error';
-        transcriptSourceId?: string | unknown | null;
+        transcriptSourceId?: string | null;
         speakerProfileIds?: Array<string>;
-        errorMessage?: string | unknown | null;
+        errorMessage?: string | null;
         metadata?: {
             [key: string]: unknown;
         };
@@ -7520,15 +7884,15 @@ export type GetChronicleAccessibilitySnapshotsResponses = {
     200: Array<{
         id: string;
         sourceId: string;
-        snapshotId: string | unknown | null;
+        snapshotId: string | null;
         capturedAt: string;
         capturedAtUnix: number;
         status: 'ready' | 'permission-denied' | 'unavailable' | 'error';
         provider: string;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         elementCount: number;
-        text: string | unknown | null;
+        text: string | null;
         tree: Array<unknown>;
         metadata: {
             [key: string]: unknown;
@@ -7554,13 +7918,13 @@ export type GetChronicleAccessibilityEventsResponses = {
     200: Array<{
         id: string;
         sourceId: string;
-        snapshotId: string | unknown | null;
-        accessibilitySnapshotId: string | unknown | null;
+        snapshotId: string | null;
+        accessibilitySnapshotId: string | null;
         capturedAt: string;
         capturedAtUnix: number;
         provider: string;
-        appBundleId: string | unknown | null;
-        pid: number | unknown | null;
+        appBundleId: string | null;
+        pid: number | null;
         notification: string;
         droppedBefore: number;
         metadata: {
@@ -7576,12 +7940,12 @@ export type PostChronicleAccessibilityEventsData = {
         sourceId: string;
         capturedAt: string;
         provider?: string;
-        appBundleId?: string | unknown | null;
-        pid?: number | unknown | null;
+        appBundleId?: string | null;
+        pid?: number | null;
         notification: string;
         droppedBefore?: number;
-        snapshotId?: string | unknown | null;
-        accessibilitySnapshotId?: string | unknown | null;
+        snapshotId?: string | null;
+        accessibilitySnapshotId?: string | null;
         metadata?: {
             [key: string]: unknown;
         };
@@ -7598,13 +7962,13 @@ export type PostChronicleAccessibilityEventsResponses = {
     200: {
         id: string;
         sourceId: string;
-        snapshotId: string | unknown | null;
-        accessibilitySnapshotId: string | unknown | null;
+        snapshotId: string | null;
+        accessibilitySnapshotId: string | null;
         capturedAt: string;
         capturedAtUnix: number;
         provider: string;
-        appBundleId: string | unknown | null;
-        pid: number | unknown | null;
+        appBundleId: string | null;
+        pid: number | null;
         notification: string;
         droppedBefore: number;
         metadata: {
@@ -7637,9 +8001,9 @@ export type GetChronicleActivitySegmentsResponses = {
         endedAtUnix: number;
         durationSeconds: number;
         segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-        frontApp: string | unknown | null;
-        title: string | unknown | null;
-        summary: string | unknown | null;
+        frontApp: string | null;
+        title: string | null;
+        summary: string | null;
         sourceCounts: {
             [key: string]: unknown;
         };
@@ -7678,9 +8042,9 @@ export type GetChronicleActivitySegmentsBySegmentIdResponses = {
         endedAtUnix: number;
         durationSeconds: number;
         segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-        frontApp: string | unknown | null;
-        title: string | unknown | null;
-        summary: string | unknown | null;
+        frontApp: string | null;
+        title: string | null;
+        summary: string | null;
         sourceCounts: {
             [key: string]: unknown;
         };
@@ -7720,9 +8084,9 @@ export type PostChronicleActivitySegmentsBySegmentIdTriageResponses = {
             endedAtUnix: number;
             durationSeconds: number;
             segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-            frontApp: string | unknown | null;
-            title: string | unknown | null;
-            summary: string | unknown | null;
+            frontApp: string | null;
+            title: string | null;
+            summary: string | null;
             sourceCounts: {
                 [key: string]: unknown;
             };
@@ -7737,16 +8101,16 @@ export type PostChronicleActivitySegmentsBySegmentIdTriageResponses = {
         };
         run: {
             id: string;
-            sessionId: string | unknown | null;
-            segmentId: string | unknown | null;
+            sessionId: string | null;
+            segmentId: string | null;
             trigger: 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize';
             stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization';
             status: 'queued' | 'running' | 'success' | 'error' | 'skipped';
             startedAt: string;
             startedAtUnix: number;
-            endedAt: string | unknown | null;
-            endedAtUnix: number | unknown | null;
-            errorMessage: string | unknown | null;
+            endedAt: string | null;
+            endedAtUnix: number | null;
+            errorMessage: string | null;
             snapshotsCount: number;
             messagesCount: number;
             audioTranscriptsCount: number;
@@ -7758,7 +8122,7 @@ export type PostChronicleActivitySegmentsBySegmentIdTriageResponses = {
                 [key: string]: unknown;
             };
         };
-        memoryId: string | unknown | null;
+        memoryId: string | null;
         knowledgeCards?: Array<{
             id: string;
             title: string;
@@ -7773,7 +8137,7 @@ export type PostChronicleActivitySegmentsBySegmentIdTriageResponses = {
             contentHash: string;
             version: number;
             status: 'active' | 'merged' | 'archived' | 'deleted';
-            mergedIntoId: string | unknown | null;
+            mergedIntoId: string | null;
             pinned: boolean;
             metadata: {
                 [key: string]: unknown;
@@ -7813,9 +8177,9 @@ export type PostChronicleActivitySegmentsBySegmentIdSummarizeResponses = {
             endedAtUnix: number;
             durationSeconds: number;
             segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-            frontApp: string | unknown | null;
-            title: string | unknown | null;
-            summary: string | unknown | null;
+            frontApp: string | null;
+            title: string | null;
+            summary: string | null;
             sourceCounts: {
                 [key: string]: unknown;
             };
@@ -7830,16 +8194,16 @@ export type PostChronicleActivitySegmentsBySegmentIdSummarizeResponses = {
         };
         run: {
             id: string;
-            sessionId: string | unknown | null;
-            segmentId: string | unknown | null;
+            sessionId: string | null;
+            segmentId: string | null;
             trigger: 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize';
             stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization';
             status: 'queued' | 'running' | 'success' | 'error' | 'skipped';
             startedAt: string;
             startedAtUnix: number;
-            endedAt: string | unknown | null;
-            endedAtUnix: number | unknown | null;
-            errorMessage: string | unknown | null;
+            endedAt: string | null;
+            endedAtUnix: number | null;
+            errorMessage: string | null;
             snapshotsCount: number;
             messagesCount: number;
             audioTranscriptsCount: number;
@@ -7851,7 +8215,7 @@ export type PostChronicleActivitySegmentsBySegmentIdSummarizeResponses = {
                 [key: string]: unknown;
             };
         };
-        memoryId: string | unknown | null;
+        memoryId: string | null;
         knowledgeCards?: Array<{
             id: string;
             title: string;
@@ -7866,7 +8230,7 @@ export type PostChronicleActivitySegmentsBySegmentIdSummarizeResponses = {
             contentHash: string;
             version: number;
             status: 'active' | 'merged' | 'archived' | 'deleted';
-            mergedIntoId: string | unknown | null;
+            mergedIntoId: string | null;
             pinned: boolean;
             metadata: {
                 [key: string]: unknown;
@@ -7906,9 +8270,9 @@ export type PostChronicleActivitySegmentsBySegmentIdCrystallizeResponses = {
             endedAtUnix: number;
             durationSeconds: number;
             segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-            frontApp: string | unknown | null;
-            title: string | unknown | null;
-            summary: string | unknown | null;
+            frontApp: string | null;
+            title: string | null;
+            summary: string | null;
             sourceCounts: {
                 [key: string]: unknown;
             };
@@ -7923,16 +8287,16 @@ export type PostChronicleActivitySegmentsBySegmentIdCrystallizeResponses = {
         };
         run: {
             id: string;
-            sessionId: string | unknown | null;
-            segmentId: string | unknown | null;
+            sessionId: string | null;
+            segmentId: string | null;
             trigger: 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize';
             stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization';
             status: 'queued' | 'running' | 'success' | 'error' | 'skipped';
             startedAt: string;
             startedAtUnix: number;
-            endedAt: string | unknown | null;
-            endedAtUnix: number | unknown | null;
-            errorMessage: string | unknown | null;
+            endedAt: string | null;
+            endedAtUnix: number | null;
+            errorMessage: string | null;
             snapshotsCount: number;
             messagesCount: number;
             audioTranscriptsCount: number;
@@ -7944,7 +8308,7 @@ export type PostChronicleActivitySegmentsBySegmentIdCrystallizeResponses = {
                 [key: string]: unknown;
             };
         };
-        memoryId: string | unknown | null;
+        memoryId: string | null;
         knowledgeCards?: Array<{
             id: string;
             title: string;
@@ -7959,7 +8323,7 @@ export type PostChronicleActivitySegmentsBySegmentIdCrystallizeResponses = {
             contentHash: string;
             version: number;
             status: 'active' | 'merged' | 'archived' | 'deleted';
-            mergedIntoId: string | unknown | null;
+            mergedIntoId: string | null;
             pinned: boolean;
             metadata: {
                 [key: string]: unknown;
@@ -8014,16 +8378,16 @@ export type GetChroniclePipelineRunsResponses = {
      */
     200: Array<{
         id: string;
-        sessionId: string | unknown | null;
-        segmentId: string | unknown | null;
+        sessionId: string | null;
+        segmentId: string | null;
         trigger: 'snapshot' | 'message' | 'audio-raw' | 'audio-transcript' | 'memory' | 'manual' | 'summarize';
         stage: 'collection' | 'segmentation' | 'triage' | 'summarization' | 'crystallization';
         status: 'queued' | 'running' | 'success' | 'error' | 'skipped';
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
-        errorMessage: string | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        errorMessage: string | null;
         snapshotsCount: number;
         messagesCount: number;
         audioTranscriptsCount: number;
@@ -8069,7 +8433,7 @@ export type GetChronicleKnowledgeCardsResponses = {
         contentHash: string;
         version: number;
         status: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId: string | unknown | null;
+        mergedIntoId: string | null;
         pinned: boolean;
         metadata: {
             [key: string]: unknown;
@@ -8123,7 +8487,7 @@ export type PostChronicleKnowledgeCardsResponses = {
         contentHash: string;
         version: number;
         status: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId: string | unknown | null;
+        mergedIntoId: string | null;
         pinned: boolean;
         metadata: {
             [key: string]: unknown;
@@ -8191,19 +8555,19 @@ export type GetChronicleKnowledgeCardsByKnowledgeIdFilesResponses = {
         knowledgeId: string;
         source: 'attached' | 'memory' | 'snapshot' | 'activity';
         filename: string;
-        contentType: string | unknown | null;
-        sizeBytes: number | unknown | null;
-        filePath: string | unknown | null;
+        contentType: string | null;
+        sizeBytes: number | null;
+        filePath: string | null;
         embedded: boolean;
-        evidenceType: string | unknown | null;
-        evidenceId: string | unknown | null;
+        evidenceType: string | null;
+        evidenceId: string | null;
         metadata: {
             [key: string]: unknown;
         };
-        createdAt: string | unknown | null;
-        createdAtUnix: number | unknown | null;
-        updatedAt: string | unknown | null;
-        updatedAtUnix: number | unknown | null;
+        createdAt: string | null;
+        createdAtUnix: number | null;
+        updatedAt: string | null;
+        updatedAtUnix: number | null;
     }>;
 };
 
@@ -8238,7 +8602,7 @@ export type PostChronicleKnowledgeCardsByKnowledgeIdVersionsRestoreResponses = {
         contentHash: string;
         version: number;
         status: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId: string | unknown | null;
+        mergedIntoId: string | null;
         pinned: boolean;
         metadata: {
             [key: string]: unknown;
@@ -8299,7 +8663,7 @@ export type GetChronicleKnowledgeCardsByKnowledgeIdResponses = {
         contentHash: string;
         version: number;
         status: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId: string | unknown | null;
+        mergedIntoId: string | null;
         pinned: boolean;
         metadata: {
             [key: string]: unknown;
@@ -8326,7 +8690,7 @@ export type PatchChronicleKnowledgeCardsByKnowledgeIdData = {
         tags?: Array<string>;
         pinned?: boolean;
         status?: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId?: string | unknown | null;
+        mergedIntoId?: string | null;
         metadata?: {
             [key: string]: unknown;
         };
@@ -8356,7 +8720,7 @@ export type PatchChronicleKnowledgeCardsByKnowledgeIdResponses = {
         contentHash: string;
         version: number;
         status: 'active' | 'merged' | 'archived' | 'deleted';
-        mergedIntoId: string | unknown | null;
+        mergedIntoId: string | null;
         pinned: boolean;
         metadata: {
             [key: string]: unknown;
@@ -8385,13 +8749,13 @@ export type GetChronicleDreamRunsResponses = {
      */
     200: Array<{
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         runType: 'archive' | 'merge' | 'prune' | 'restore' | 'dry-run';
         status: 'running' | 'completed' | 'failed';
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
         inputCount: number;
         outputCount: number;
         mergedCount: number;
@@ -8404,7 +8768,7 @@ export type GetChronicleDreamRunsResponses = {
         result: {
             [key: string]: unknown;
         };
-        errorMessage: string | unknown | null;
+        errorMessage: string | null;
     }>;
 };
 
@@ -8431,13 +8795,13 @@ export type PostChronicleDreamRunsResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         runType: 'archive' | 'merge' | 'prune' | 'restore' | 'dry-run';
         status: 'running' | 'completed' | 'failed';
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
         inputCount: number;
         outputCount: number;
         mergedCount: number;
@@ -8450,7 +8814,7 @@ export type PostChronicleDreamRunsResponses = {
         result: {
             [key: string]: unknown;
         };
-        errorMessage: string | unknown | null;
+        errorMessage: string | null;
     };
 };
 
@@ -8477,13 +8841,13 @@ export type GetChronicleTimelineResponses = {
         displayId: number;
         segmentDir: string;
         framePath: string;
-        ocrText: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
-        platform?: string | unknown | null;
-        channelId?: string | unknown | null;
-        channelName?: string | unknown | null;
-        userName?: string | unknown | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
+        platform?: string | null;
+        channelId?: string | null;
+        channelName?: string | null;
+        userName?: string | null;
     }>;
 };
 
@@ -8510,8 +8874,8 @@ export type GetChronicleEventsResponses = {
         type: 'config' | 'daemon' | 'snapshot' | 'memory' | 'summarize' | 'model-resource' | 'message' | 'audio' | 'activity';
         status: 'info' | 'success' | 'warning' | 'error';
         message: string;
-        snapshotId: string | unknown | null;
-        memoryId: string | unknown | null;
+        snapshotId: string | null;
+        memoryId: string | null;
         attrs: {
             [key: string]: unknown;
         };
@@ -8575,10 +8939,10 @@ export type GetChronicleMemoriesSearchResponses = {
         createdAt: string;
         createdAtUnix: number;
         content: string;
-        modelId: string | unknown | null;
-        matchKind: string | unknown | null;
-        keywordScore: number | unknown | null;
-        semanticScore: number | unknown | null;
+        modelId: string | null;
+        matchKind: string | null;
+        keywordScore: number | null;
+        semanticScore: number | null;
     }>;
 };
 
@@ -8624,10 +8988,10 @@ export type GetChronicleMemoriesByMemoryIdResponses = {
         createdAt: string;
         createdAtUnix: number;
         content: string;
-        modelId: string | unknown | null;
-        matchKind: string | unknown | null;
-        keywordScore: number | unknown | null;
-        semanticScore: number | unknown | null;
+        modelId: string | null;
+        matchKind: string | null;
+        keywordScore: number | null;
+        semanticScore: number | null;
     };
 };
 
@@ -8660,10 +9024,10 @@ export type PatchChronicleMemoriesByMemoryIdResponses = {
         createdAt: string;
         createdAtUnix: number;
         content: string;
-        modelId: string | unknown | null;
-        matchKind: string | unknown | null;
-        keywordScore: number | unknown | null;
-        semanticScore: number | unknown | null;
+        modelId: string | null;
+        matchKind: string | null;
+        keywordScore: number | null;
+        semanticScore: number | null;
     };
 };
 
@@ -8699,7 +9063,7 @@ export type PostChroniclePrivacyRedactResponse = PostChroniclePrivacyRedactRespo
 
 export type PostChroniclePrivacyExportData = {
     body: {
-        workspaceId?: string | unknown | null;
+        workspaceId?: string | null;
         limit?: number;
         includeMemories?: boolean;
         includeMessages?: boolean;
@@ -8768,8 +9132,8 @@ export type GetChroniclePrivacyBreadcrumbsResponses = {
         kind: string;
         status: 'info' | 'success' | 'warning' | 'error';
         message: string;
-        snapshotId: string | unknown | null;
-        memoryId: string | unknown | null;
+        snapshotId: string | null;
+        memoryId: string | null;
         attrs: {
             [key: string]: unknown;
         };
@@ -8818,14 +9182,14 @@ export type GetApiActivitySessionsResponses = {
      */
     200: Array<{
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
-        durationSeconds: number | unknown | null;
-        frontApp: string | unknown | null;
-        title: string | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        durationSeconds: number | null;
+        frontApp: string | null;
+        title: string | null;
         segmentCount: number;
         snapshotCount: number;
         messageCount: number;
@@ -8833,7 +9197,7 @@ export type GetApiActivitySessionsResponses = {
         audioRawSegmentCount: number;
         accessibilitySnapshotCount: number;
         isMeeting: boolean;
-        meetingTitle: string | unknown | null;
+        meetingTitle: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -8857,14 +9221,14 @@ export type GetApiActivitySessionByIdResponses = {
      */
     200: {
         id: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         startedAt: string;
         startedAtUnix: number;
-        endedAt: string | unknown | null;
-        endedAtUnix: number | unknown | null;
-        durationSeconds: number | unknown | null;
-        frontApp: string | unknown | null;
-        title: string | unknown | null;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        durationSeconds: number | null;
+        frontApp: string | null;
+        title: string | null;
         segmentCount: number;
         snapshotCount: number;
         messageCount: number;
@@ -8872,7 +9236,7 @@ export type GetApiActivitySessionByIdResponses = {
         audioRawSegmentCount: number;
         accessibilitySnapshotCount: number;
         isMeeting: boolean;
-        meetingTitle: string | unknown | null;
+        meetingTitle: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -8885,9 +9249,9 @@ export type GetApiActivitySessionByIdResponses = {
             endedAtUnix: number;
             durationSeconds: number;
             segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-            frontApp: string | unknown | null;
-            title: string | unknown | null;
-            summary: string | unknown | null;
+            frontApp: string | null;
+            title: string | null;
+            summary: string | null;
             sourceCounts: {
                 [key: string]: unknown;
             };
@@ -8921,16 +9285,16 @@ export type GetApiActivitySessionByIdSnapshotsResponses = {
     200: Array<{
         id: string;
         sourceId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         capturedAt: string;
         capturedAtUnix: number;
         displayId: number;
         segmentDir: string;
         framePath: string;
-        artifactPath: string | unknown | null;
-        ocrText: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        artifactPath: string | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -8959,16 +9323,16 @@ export type GetApiActivitySnapshotByIdResponses = {
     200: {
         id: string;
         sourceId: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         capturedAt: string;
         capturedAtUnix: number;
         displayId: number;
         segmentDir: string;
         framePath: string;
-        artifactPath: string | unknown | null;
-        ocrText: string | unknown | null;
-        appBundleId: string | unknown | null;
-        windowTitle: string | unknown | null;
+        artifactPath: string | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
         metadata: {
             [key: string]: unknown;
         };
@@ -8997,8 +9361,8 @@ export type GetApiActivitySnapshotByIdOcrResponses = {
     200: {
         snapshotId: string;
         sourceId: string;
-        ocrText: string | unknown | null;
-        ocrPath: string | unknown | null;
+        ocrText: string | null;
+        ocrPath: string | null;
         capturedAt: string;
         capturedAtUnix: number;
     };
@@ -9021,20 +9385,20 @@ export type GetApiActivityMonitorStatusResponses = {
         enabled: boolean;
         available: boolean;
         running: boolean;
-        pid: number | unknown | null;
+        pid: number | null;
         monitorStatus: 'disabled' | 'running' | 'unavailable';
         captureStatus: 'idle' | 'capturing' | 'error';
         pipelineStatus: 'disabled' | 'running' | 'idle';
         audioStatus: 'disabled' | 'armed' | 'unavailable';
-        lastCaptureAt: string | unknown | null;
-        lastCaptureAtUnix: number | unknown | null;
-        lastActivityAt: string | unknown | null;
-        lastActivityAtUnix: number | unknown | null;
-        lastPipelineRunAt: string | unknown | null;
-        lastPipelineRunAtUnix: number | unknown | null;
-        lastErrorAt: string | unknown | null;
-        lastErrorAtUnix: number | unknown | null;
-        lastError: string | unknown | null;
+        lastCaptureAt: string | null;
+        lastCaptureAtUnix: number | null;
+        lastActivityAt: string | null;
+        lastActivityAtUnix: number | null;
+        lastPipelineRunAt: string | null;
+        lastPipelineRunAtUnix: number | null;
+        lastErrorAt: string | null;
+        lastErrorAtUnix: number | null;
+        lastError: string | null;
         totals: {
             snapshots: number;
             activitySessions: number;
@@ -9131,12 +9495,12 @@ export type GetApiMemoryStatusResponses = {
         pendingActivitySegments: number;
         crystallizedActivitySegments: number;
         totalPipelineRuns: number;
-        lastMemoryAt: string | unknown | null;
-        lastMemoryAtUnix: number | unknown | null;
-        lastKnowledgeCardAt: string | unknown | null;
-        lastKnowledgeCardAtUnix: number | unknown | null;
-        lastPipelineRunAt: string | unknown | null;
-        lastPipelineRunAtUnix: number | unknown | null;
+        lastMemoryAt: string | null;
+        lastMemoryAtUnix: number | null;
+        lastKnowledgeCardAt: string | null;
+        lastKnowledgeCardAtUnix: number | null;
+        lastPipelineRunAt: string | null;
+        lastPipelineRunAtUnix: number | null;
         searchIndex: {
             chunkCount: number;
             keywordCount: number;
@@ -9172,8 +9536,8 @@ export type PostApiMemoryCrystallizeResponses = {
     200: {
         status: 'success' | 'error' | 'skipped';
         message: string;
-        segmentId: string | unknown | null;
-        result: unknown | null;
+        segmentId: string | null;
+        result: unknown;
     };
 };
 
@@ -9194,10 +9558,10 @@ export type GetDesktopTrayAwaitsResponses = {
         id: string;
         sessionId: string;
         title: string;
-        workspaceId: string | unknown | null;
+        workspaceId: string | null;
         workspaceName: string;
         source: string;
-        reason: string | unknown | null;
+        reason: string | null;
         createdAt: number;
     }>;
 };
@@ -9221,10 +9585,10 @@ export type GetDesktopTrayResponses = {
             id: string;
             sessionId: string;
             title: string;
-            workspaceId: string | unknown | null;
+            workspaceId: string | null;
             workspaceName: string;
             runtimeKind: string;
-            modelId: string | unknown | null;
+            modelId: string | null;
             updatedAt: number;
             detail: string;
         }>;
@@ -9232,10 +9596,10 @@ export type GetDesktopTrayResponses = {
             id: string;
             sessionId: string;
             title: string;
-            workspaceId: string | unknown | null;
+            workspaceId: string | null;
             workspaceName: string;
             runtimeKind: string;
-            modelId: string | unknown | null;
+            modelId: string | null;
             updatedAt: number;
             detail: string;
         }>;
@@ -9249,8 +9613,8 @@ export type GetDesktopTrayResponses = {
             id: string;
             label: string;
             description: string;
-            accelerator: string | unknown | null;
-            badge: string | unknown | null;
+            accelerator: string | null;
+            badge: string | null;
             enabled: boolean;
         }>;
     };
@@ -9280,9 +9644,9 @@ export type GetTerminalSessionsResourcesResponses = {
             startedAt: number;
             cols: number;
             rows: number;
-            rssMB: number | unknown | null;
-            cpuPercent: number | unknown | null;
-            descendantCount: number | unknown | null;
+            rssMB: number | null;
+            cpuPercent: number | null;
+            descendantCount: number | null;
         }>;
         totals: {
             cliTuiRssMB: number;
@@ -9427,6 +9791,41 @@ export type GetObservabilityEventsResponses = {
 
 export type GetObservabilityEventsResponse = GetObservabilityEventsResponses[keyof GetObservabilityEventsResponses];
 
+export type PostObservabilityEventsData = {
+    body: {
+        source: string;
+        code: string;
+        severity: string;
+        category: string;
+        message: string;
+        attrs?: {
+            [key: string]: unknown;
+        };
+        chatSessionId?: string;
+        runId?: string;
+        messageId?: string;
+        traceId?: string;
+        dedupeKey?: string;
+        parentEventId?: string;
+        occurredAt?: number;
+        recordedAt?: number;
+    };
+    path?: never;
+    query?: never;
+    url: '/observability/events';
+};
+
+export type PostObservabilityEventsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostObservabilityEventsResponse = PostObservabilityEventsResponses[keyof PostObservabilityEventsResponses];
+
 export type GetObservabilityIncidentsData = {
     body?: never;
     path?: never;
@@ -9503,7 +9902,14 @@ export type GetObservabilityExportResponses = {
      * Response for status 200
      */
     200: {
+        schema: string;
         exportedAt: number;
+        metadata: {
+            [key: string]: unknown;
+        };
+        redaction: {
+            [key: string]: unknown;
+        };
         events: Array<{
             id: string;
             schemaVersion: number;
@@ -9547,6 +9953,9 @@ export type GetObservabilityExportResponses = {
         timeline: Array<{
             [key: string]: unknown;
         }>;
+        logs: {
+            [key: string]: unknown;
+        };
     };
 };
 
@@ -9588,10 +9997,10 @@ export type GetIssuesByIdDelegationResponses = {
     200: {
         issueId: string;
         delegated: boolean;
-        providerTargetId: string | unknown | null;
-        agentId: string | unknown | null;
-        agentSessionId: string | unknown | null;
-        chatSessionId: string | unknown | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        agentSessionId: string | null;
+        chatSessionId: string | null;
     };
 };
 
@@ -9600,7 +10009,7 @@ export type GetIssuesByIdDelegationResponse = GetIssuesByIdDelegationResponses[k
 export type PostIssuesByIdDelegationData = {
     body: {
         agentId: string;
-        providerTargetId?: string | unknown | null;
+        providerTargetId?: string | null;
     };
     path: {
         id: string;
@@ -9617,8 +10026,8 @@ export type PostIssuesByIdDelegationResponses = {
         id: string;
         issueId: string;
         providerTargetId: string;
-        agentId: string | unknown | null;
-        chatSessionId: string | unknown | null;
+        agentId: string | null;
+        chatSessionId: string | null;
         status: 'created' | 'active' | 'completed' | 'stopped' | 'failed';
         isCurrentDelegation: boolean;
         createdAt: number;
@@ -9645,8 +10054,8 @@ export type GetIssuesByIdAgentSessionsResponses = {
         id: string;
         issueId: string;
         providerTargetId: string;
-        agentId: string | unknown | null;
-        chatSessionId: string | unknown | null;
+        agentId: string | null;
+        chatSessionId: string | null;
         status: 'created' | 'active' | 'completed' | 'stopped' | 'failed';
         isCurrentDelegation: boolean;
         createdAt: number;
@@ -9674,8 +10083,8 @@ export type GetIssueAgentSessionsByAgentSessionIdActivitiesResponses = {
         agentSessionId: string;
         type: 'thought' | 'action' | 'response' | 'elicitation' | 'error' | 'prompt';
         content: string;
-        signal: string | unknown | null;
-        signalMetadata: string | unknown | null;
+        signal: string | null;
+        signalMetadata: string | null;
         createdAt: number;
     }>;
 };
@@ -9727,8 +10136,8 @@ export type PostIssueAgentSessionsByAgentSessionIdRerunResponses = {
         id: string;
         issueId: string;
         providerTargetId: string;
-        agentId: string | unknown | null;
-        chatSessionId: string | unknown | null;
+        agentId: string | null;
+        chatSessionId: string | null;
         status: 'created' | 'active' | 'completed' | 'stopped' | 'failed';
         isCurrentDelegation: boolean;
         createdAt: number;

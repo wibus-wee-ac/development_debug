@@ -14,6 +14,8 @@ interface ComposerStateConfig {
   context: ComposerContext
   /** For 'chat' context — the session's bound provider target */
   boundProviderTargetId?: string
+  /** For 'chat' context — the session's bound requested model */
+  boundModelId?: string | null
   /** For 'chat' context — the session's runtime kind */
   boundRuntimeKind?: RuntimeKind
 }
@@ -42,7 +44,7 @@ export interface ComposerStateResult {
 const EMPTY_MODELS: ModelDescriptor[] = []
 
 export function useComposerState(config: ComposerStateConfig): ComposerStateResult {
-  const { context, boundProviderTargetId, boundRuntimeKind } = config
+  const { context, boundProviderTargetId, boundModelId, boundRuntimeKind } = config
 
   // Persisted state
   const lastRuntimeKind = useNewChatStore(s => s.lastRuntimeKind)
@@ -132,12 +134,18 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (manualModelId && models.some(m => m.id === manualModelId)) {
       return manualModelId
     }
+    if (context === 'chat') {
+      if (boundModelId && models.some(m => m.id === boundModelId)) {
+        return boundModelId
+      }
+      return models[0]?.id ?? null
+    }
     const persisted = profileId ? lastModelByProfile[profileId] : undefined
     if (persisted && models.some(m => m.id === persisted)) {
       return persisted
     }
     return models[0]?.id ?? null
-  }, [runtimeKind, manualModelId, models, profileId, lastModelByProfile])
+  }, [runtimeKind, manualModelId, models, context, boundModelId, profileId, lastModelByProfile])
 
   const effectiveAgent = useMemo(
     () => cliTuiAgents.find(agent => agent.id === agentId) ?? null,

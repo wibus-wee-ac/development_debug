@@ -21,7 +21,7 @@ import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/lib/types'
 
 import { SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
@@ -32,7 +32,7 @@ import type {
   ExternalProviderRuntimeTargetView,
   ExternalProviderSourceView,
 } from './provider-settings-utils'
-import { presetForProviderKind, PROVIDER_KIND_LABELS } from './provider-settings-utils'
+import { isApiProviderKind, presetForProviderKind, PROVIDER_KIND_LABELS } from './provider-settings-utils'
 import type { EditableCustomModel } from './provider-target-model-settings'
 import {
   CustomModelsJsonSchema,
@@ -82,7 +82,7 @@ function toRuntimeTargetView(target: {
   id: string
   sourceKey: string
   externalRecordId: string
-  providerKind: 'openai-compatible' | 'anthropic'
+  providerKind: ProviderKind
   displayName: string
   enabled: boolean
   credentialRef: unknown | null
@@ -98,9 +98,12 @@ function toRuntimeTargetView(target: {
   }
 }
 
-function createProviderTargetRequestBody(record: ExternalProviderRecordView) {
+function createProviderTargetRequestBody(
+  record: ExternalProviderRecordView,
+  providerKind: ApiProviderKind,
+) {
   return {
-    providerKind: record.providerKind,
+    providerKind,
     label: record.name,
     config: {},
     secretRef: null,
@@ -145,6 +148,8 @@ export function ExternalProviderRecordDetailPanel({
       record.providerTargetId ? { kind: 'external' as const, id: record.providerTargetId } : null,
     [record.providerTargetId],
   )
+  const apiProviderKind = isApiProviderKind(record.providerKind) ? record.providerKind : null
+  const apiProviderTarget = apiProviderKind ? providerTarget : null
   const [runtimeTarget, setRuntimeTarget] = useState<ExternalProviderRuntimeTargetView | null>(null)
   const [models, setModels] = useState<ModelDescriptor[]>([])
   const [enabledModels, setEnabledModels] = useState<string[]>([])
@@ -174,12 +179,12 @@ export function ExternalProviderRecordDetailPanel({
             setRuntimeTarget(toRuntimeTargetView(next))
           }
         }),
-      providerTarget
+      apiProviderTarget
         ? Promise.all([
             queryClient
               .fetchQuery(
                 getProvidersTargetsByProviderTargetIdModelsCacheOptions({
-                  path: { providerTargetId: providerTarget.id },
+                  path: { providerTargetId: apiProviderTarget.id },
                 }),
               )
               .then((next) => {
@@ -192,7 +197,7 @@ export function ExternalProviderRecordDetailPanel({
                   setModels([])
                 }
               }),
-            loadProviderTargetModelSettings(providerTarget)
+            loadProviderTargetModelSettings(apiProviderTarget)
               .then((next) => {
                 if (active) {
                   setEnabledModels(enabledModelsFromConfig(next.configJson))
@@ -216,16 +221,16 @@ export function ExternalProviderRecordDetailPanel({
     return () => {
       active = false
     }
-  }, [providerTarget, queryClient, record.externalId, record.sourceKey])
+  }, [apiProviderTarget, queryClient, record.externalId, record.sourceKey])
 
   const refreshModels = useCallback(async () => {
-    if (!providerTarget) {
+    if (!apiProviderKind || !apiProviderTarget) {
       return
     }
     setLoadingModels(true)
     try {
       const next = await fetchModels.mutateAsync({
-        body: createProviderTargetRequestBody(record),
+        body: createProviderTargetRequestBody(record, apiProviderKind),
       })
       setModels(next as ModelDescriptor[])
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
@@ -240,17 +245,17 @@ export function ExternalProviderRecordDetailPanel({
  finally {
       setLoadingModels(false)
     }
-  }, [fetchModels, providerTarget, queryClient, record])
+  }, [apiProviderKind, apiProviderTarget, fetchModels, queryClient, record])
 
   const handleEnabledModelsChange = useCallback(
     async (next: string[]) => {
       const previous = enabledModels
-      if (!providerTarget) {
+      if (!apiProviderTarget) {
         return
       }
       setEnabledModels(next)
       try {
-        const settings = await updateProviderTargetModelVisibility(providerTarget, next)
+        const settings = await updateProviderTargetModelVisibility(apiProviderTarget, next)
         setEnabledModels(enabledModelsFromConfig(settings.configJson))
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         onUpdated?.()
@@ -264,7 +269,7 @@ export function ExternalProviderRecordDetailPanel({
         })
       }
     },
-    [enabledModels, onUpdated, providerTarget, queryClient],
+    [apiProviderTarget, enabledModels, onUpdated, queryClient],
   )
 
   const handleModelRegistryMapped = useCallback(
@@ -279,12 +284,12 @@ export function ExternalProviderRecordDetailPanel({
   const handleCustomModelsChange = useCallback(
     async (next: EditableCustomModel[]) => {
       const previous = customModels
-      if (!providerTarget) {
+      if (!apiProviderTarget) {
         return
       }
       setCustomModels(next)
       try {
-        setCustomModels(await updateProviderTargetCustomModels(providerTarget, next))
+        setCustomModels(await updateProviderTargetCustomModels(apiProviderTarget, next))
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         void refreshModels()
         onUpdated?.()
@@ -298,7 +303,7 @@ export function ExternalProviderRecordDetailPanel({
         })
       }
     },
-    [customModels, onUpdated, providerTarget, queryClient, refreshModels],
+    [apiProviderTarget, customModels, onUpdated, queryClient, refreshModels],
   )
 
   const toggleEnabled = useCallback(
@@ -469,7 +474,7 @@ export function ExternalProviderRecordDetailPanel({
           </>
         )}
 
-        {providerTarget && (
+        {apiProviderTarget && (
           <section className="flex flex-col gap-4">
             <ModelsPanel
               loading={loadingModels || loadingTarget}
@@ -483,14 +488,18 @@ export function ExternalProviderRecordDetailPanel({
           </section>
         )}
 
-        <Separator className="bg-foreground/6" />
+        {apiProviderTarget && (
+          <>
+            <Separator className="bg-foreground/6" />
 
-        <section className="flex flex-col gap-4">
-          <CustomModelsEditor
-            models={customModels}
-            onChange={next => void handleCustomModelsChange(next)}
-          />
-        </section>
+            <section className="flex flex-col gap-4">
+              <CustomModelsEditor
+                models={customModels}
+                onChange={next => void handleCustomModelsChange(next)}
+              />
+            </section>
+          </>
+        )}
       </div>
     </div>
   )

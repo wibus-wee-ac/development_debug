@@ -22,6 +22,7 @@ interface LayoutState {
   toggleSidebar: () => void
   setAsideWidth: (w: number) => void
   setBottomPanelHeight: (h: number) => void
+  setAsideOpen: (open: boolean) => void
   toggleAside: () => void
   setAsideActiveTab: (tab: string) => void
   openAsideTab: (tab: string) => void
@@ -68,10 +69,11 @@ export const useLayoutStore = create<LayoutState>()(
       browserPanelOpenByOwnerId: {},
       browserPanelRatio: 0.4,
       setSidebarWidth: sidebarWidth => set(s => s.sidebarWidth === sidebarWidth ? s : { sidebarWidth }),
-      setSidebarCollapsed: sidebarCollapsed => set({ sidebarCollapsed }),
+      setSidebarCollapsed: sidebarCollapsed => set(s => s.sidebarCollapsed === sidebarCollapsed ? s : { sidebarCollapsed }),
       toggleSidebar: () => set(s => ({ sidebarCollapsed: !s.sidebarCollapsed })),
       setAsideWidth: asideWidth => set(s => s.asideWidth === asideWidth ? s : { asideWidth }),
       setBottomPanelHeight: bottomPanelHeight => set(s => s.bottomPanelHeight === bottomPanelHeight ? s : { bottomPanelHeight }),
+      setAsideOpen: (asideOpen: boolean) => set(s => s.asideOpen === asideOpen ? s : { asideOpen }),
       toggleAside: () => set(s => ({ asideOpen: !s.asideOpen })),
       setAsideActiveTab: (asideActiveTab: string) => set({ asideActiveTab }),
       openAsideTab: (tab: string) => set({ asideOpen: true, asideActiveTab: tab }),

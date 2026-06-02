@@ -1,0 +1,52 @@
+{
+  "nav.next": "继续",
+  "nav.back": "返回",
+  "nav.skip": "跳过",
+  "nav.getStarted": "开始使用",
+  "nav.stepOf": "{{current}} / {{total}}",
+
+  "step.welcome.eyebrow": "欢迎来到 Cradle",
+  "step.welcome.headline": "属于你的 AI 工作台，完全掌控",
+  "step.welcome.description": "Cradle 是一款开源 AI 平台，将你的模型、Agent 和工作区整合在一处——专为追求深度的工程师打造。",
+  "step.welcome.feature.1": "自带模型与服务提供商",
+  "step.welcome.feature.2": "持久化会话，完整历史",
+  "step.welcome.feature.3": "具备真实工具调用的 Agent",
+
+  "step.chat.eyebrow": "强大的 AI 对话",
+  "step.chat.headline": "为真实工作而设计的对话框",
+  "step.chat.description": "发送消息、附加文件、引用工作区上下文、调用 Agent——一切尽在这个键盘优先的界面。",
+  "step.chat.feature.1": "附加文件、代码与截图",
+  "step.chat.feature.2": "富文本 Markdown 与代码渲染",
+  "step.chat.feature.3": "会话中随时切换模型",
+
+  "step.workspace.eyebrow": "工作区管理",
+  "step.workspace.headline": "每个项目，随时在上下文中",
+  "step.workspace.description": "连接本地目录并让 Cradle 为你索引代码。Agent 可读取完整项目图，无需手动粘贴文件。",
+  "step.workspace.feature.1": "一键导入项目",
+  "step.workspace.feature.2": "持久化工作区记忆",
+  "step.workspace.feature.3": "Git 感知的文件上下文",
+
+  "step.agents.eyebrow": "Agent 与技能",
+  "step.agents.headline": "真正能做事的 Agent",
+  "step.agents.description": "运行由真实工具驱动的多步 Agent 循环——浏览网页、执行 Shell 命令、管理文件、调用任意 API。",
+  "step.agents.feature.1": "多步自主执行",
+  "step.agents.feature.2": "专项任务技能包",
+  "step.agents.feature.3": "人在回路审批",
+
+  "step.done.eyebrow": "一切就绪",
+  "step.done.headline": "立即开始构建",
+  "step.done.description": "Cradle 已准备好。打开新对话、连接工作区，或前往设置配置你偏好的模型与服务提供商。",
+  "step.done.action.newChat": "新对话",
+  "step.done.action.addWorkspace": "添加工作区",
+  "step.done.action.settings": "设置",
+
+  "preview.chat.user": "分析 auth 模块并提出改进建议",
+  "preview.chat.assistant": "我现在分析 `apps/server/src/auth`。\n\n**发现摘要**\n- JWT 刷新逻辑在使用时未轮换刷新令牌\n- 密码哈希使用 cost 10 的 bcrypt——考虑改用 argon2id\n- `/auth/login` 缺少频率限制中间件",
+  "preview.chat.thinking": "思考中…",
+  "preview.workspace.project": "我的应用",
+  "preview.workspace.branch": "feat/auth-refactor",
+  "preview.agent.task": "修复失败的 auth 测试并更新 CI 配置",
+  "preview.agent.step1": "读取测试输出…",
+  "preview.agent.step2": "修补 `auth.test.ts`…",
+  "preview.agent.step3": "更新 `.github/workflows/ci.yml`…"
+}

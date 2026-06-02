@@ -26,8 +26,8 @@
   "relative.minutesAgo": "{{count}} minutes ago",
   "relative.monthsAgo": "{{count}} months ago",
   "send.tooltip": "Send",
-  "workspace.addProject": "Add project",
   "workspace.adding": "Adding...",
+  "workspace.addProject": "Add project",
   "workspace.adhoc": "No project",
   "workspace.group": "Workspaces"
 }

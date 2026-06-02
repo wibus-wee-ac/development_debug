@@ -71,6 +71,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
     enabled: !!sessionId,
   })
   const sessionProviderTargetId = session?.providerTargetId ?? null
+  const sessionModelId = session?.modelId ?? null
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
@@ -157,6 +158,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
       <ChatRuntimeView
         sessionId={sessionId}
         sessionProviderTargetId={sessionProviderTargetId}
+        sessionModelId={sessionModelId}
         runtimeKind={session?.runtimeKind}
         workspaceId={workspaceId}
         agentId={agentId}

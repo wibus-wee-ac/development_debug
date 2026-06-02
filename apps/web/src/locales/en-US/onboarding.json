@@ -1,0 +1,52 @@
+{
+  "nav.next": "Continue",
+  "nav.back": "Back",
+  "nav.skip": "Skip",
+  "nav.getStarted": "Get started",
+  "nav.stepOf": "{{current}} of {{total}}",
+
+  "step.welcome.eyebrow": "Welcome to Cradle",
+  "step.welcome.headline": "Your AI workspace, fully under your control",
+  "step.welcome.description": "Cradle is an open-source AI platform that connects your models, agents, and workspaces in one place — built for engineers who want depth, not handholding.",
+  "step.welcome.feature.1": "Bring your own models & providers",
+  "step.welcome.feature.2": "Persistent sessions, full history",
+  "step.welcome.feature.3": "Agents with real tool-use",
+
+  "step.chat.eyebrow": "Powerful AI Chat",
+  "step.chat.headline": "A composer built for real work",
+  "step.chat.description": "Send messages, attach files, reference workspace context, and invoke agents — all from a single, keyboard-native interface.",
+  "step.chat.feature.1": "Attach files, code, and screenshots",
+  "step.chat.feature.2": "Rich markdown & code rendering",
+  "step.chat.feature.3": "Switch models mid-session",
+
+  "step.workspace.eyebrow": "Workspace Management",
+  "step.workspace.headline": "Every project, always in context",
+  "step.workspace.description": "Connect your local directories and let Cradle index your code. Agents read the full project graph so you don't have to paste files manually.",
+  "step.workspace.feature.1": "Import projects with one click",
+  "step.workspace.feature.2": "Persistent workspace memory",
+  "step.workspace.feature.3": "Git-aware file context",
+
+  "step.agents.eyebrow": "Agents & Skills",
+  "step.agents.headline": "Agents that actually do things",
+  "step.agents.description": "Run multi-step agent loops backed by real tools — browse the web, execute shell commands, manage files, and call any API.",
+  "step.agents.feature.1": "Multi-step autonomous execution",
+  "step.agents.feature.2": "Skill packs for specialised tasks",
+  "step.agents.feature.3": "Human-in-the-loop approvals",
+
+  "step.done.eyebrow": "You're all set",
+  "step.done.headline": "Start building today",
+  "step.done.description": "Cradle is ready. Open a new chat, connect a workspace, or explore the settings to configure your preferred models and providers.",
+  "step.done.action.newChat": "New chat",
+  "step.done.action.addWorkspace": "Add workspace",
+  "step.done.action.settings": "Settings",
+
+  "preview.chat.user": "Analyse the auth module and suggest improvements",
+  "preview.chat.assistant": "I'll analyse `apps/server/src/auth` now.\n\n**Summary of findings**\n- JWT refresh logic doesn't rotate the refresh token on use\n- Password hashing uses bcrypt with cost 10 — consider argon2id\n- Rate-limiting middleware is missing on `/auth/login`",
+  "preview.chat.thinking": "Thinking…",
+  "preview.workspace.project": "my-app",
+  "preview.workspace.branch": "feat/auth-refactor",
+  "preview.agent.task": "Fix the failing auth tests and update the CI config",
+  "preview.agent.step1": "Reading test output…",
+  "preview.agent.step2": "Patching `auth.test.ts`…",
+  "preview.agent.step3": "Updating `.github/workflows/ci.yml`…"
+}

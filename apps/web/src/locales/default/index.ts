@@ -14,6 +14,7 @@ import git from './git'
 import home from './home'
 import kanban from './kanban'
 import newChat from './new-chat'
+import onboarding from './onboarding'
 import packCodebase from './pack-codebase'
 import search from './search'
 import settings from './settings'
@@ -35,6 +36,7 @@ const resources = {
   home,
   kanban,
   'new-chat': newChat,
+  onboarding,
   'pack-codebase': packCodebase,
   search,
   settings,

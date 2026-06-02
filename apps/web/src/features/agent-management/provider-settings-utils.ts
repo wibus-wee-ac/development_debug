@@ -42,7 +42,7 @@ export interface ExternalProviderRecordView {
   externalId: string
   app: string
   name: string
-  providerKind: ApiProviderKind
+  providerKind: ProviderKind
   status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error'
   runtimeTargetEnabled: boolean
   metadata: Record<string, unknown>
@@ -53,7 +53,7 @@ export interface ExternalProviderRuntimeTargetView {
   id: string
   sourceKey: string
   externalRecordId: string
-  providerKind: ApiProviderKind
+  providerKind: ProviderKind
   displayName: string
   enabled: boolean
   credentialRef: string | null
@@ -111,4 +111,8 @@ export function presetForProviderKind(providerKind: ProviderKind): ProviderPrese
 
 export function presetForProfile(profile: AgentProfile): ProviderPreset {
   return presetForProviderKind(profile.providerKind)
+}
+
+export function isApiProviderKind(providerKind: ProviderKind): providerKind is ApiProviderKind {
+  return providerKind === 'openai-compatible' || providerKind === 'anthropic'
 }

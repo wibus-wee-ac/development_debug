@@ -8,6 +8,7 @@ import { chatTab } from './chat.tab'
 import { homeTab } from './home.tab'
 import { kanbanBoardTab } from './kanban-board.tab'
 import { newChatTab } from './new-chat.tab'
+import { onboardingTab } from './onboarding.tab'
 import { pluginPanelTab } from './plugin-panel.tab'
 import { installTerminalPanelTabLifecycle } from './terminal-panel-tab-lifecycle'
 import { usageTab } from './usage.tab'
@@ -23,6 +24,7 @@ export const cradleRegistry = {
   'workspace-detail': workspaceDetailTab,
   'usage': usageTab,
   'plugin-panel': pluginPanelTab,
+  'onboarding': onboardingTab,
 } as const
 
 const tabPersistKey = isTearoffWindow

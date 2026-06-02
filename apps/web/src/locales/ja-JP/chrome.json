@@ -14,6 +14,7 @@
   "rightAside.tab.await": "フィード",
   "rightAside.tab.changes": "変更",
   "rightAside.tab.files": "ファイル",
+  "rightAside.tab.git": "Git",
   "rightAside.tab.issue": "Issue",
   "rightAside.tab.runtime": "Runtime"
 }
