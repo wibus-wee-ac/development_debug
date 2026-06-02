@@ -55,6 +55,13 @@ interface SessionMeta {
   localDriverMessageId?: string
 }
 
+interface AssistantDisplaySplit {
+  sourceMessageId: string
+  tailMessageId: string
+  splitParts: UIMessage['parts']
+  insertedMessageIds: string[]
+}
+
 // ── State Interface ─────────────────────────────────────────
 
 interface ChatState {
@@ -75,11 +82,13 @@ interface ChatState {
   // --- Session Meta ---
   sessionMetaMap: Map<string, SessionMeta>
   activeGoalMap: Map<string, ChatActiveGoal>
+  assistantDisplaySplitMap: Map<string, AssistantDisplaySplit>
 
   // --- Actions: Messages ---
   setMessages: (sessionId: string, messages: UIMessage[]) => void
   updateMessage: (sessionId: string, messageId: string, updater: (msg: UIMessage) => UIMessage) => void
   appendMessage: (sessionId: string, message: UIMessage) => void
+  insertLiveSteerMessage: (sessionId: string, message: UIMessage, sourceMessageId?: string | null) => void
   removeMessage: (sessionId: string, messageId: string) => void
   upsertToolEntity: (entity: ChatToolEntity) => void
   patchToolEntity: (
@@ -107,6 +116,7 @@ interface ChatState {
   moveRunDisplayMeta: (fromMessageId: string, toMessageId: string) => void
   markRunFirstEvent: (messageId: string, timestampMs: number) => void
   markRunFirstContent: (messageId: string, timestampMs: number) => void
+  projectStreamingMessageForDisplay: (sessionId: string, message: UIMessage) => UIMessage
 
   // --- Actions: Session Meta ---
   setSessionMeta: (sessionId: string, meta: Partial<SessionMeta>) => void
@@ -149,12 +159,14 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       errorMap: new Map(),
       sessionMetaMap: new Map(),
       activeGoalMap: new Map(),
+      assistantDisplaySplitMap: new Map(),
 
       // --- Messages ---
 
       setMessages: (sessionId, messages) => {
         set((state) => {
-          const normalizedMessages = messages.map(normalizeMessageForToolEntities)
+          const displayMessages = applyAssistantDisplaySplits(messages, state.assistantDisplaySplitMap)
+          const normalizedMessages = displayMessages.map(normalizeMessageForToolEntities)
           const projectedMessages = normalizedMessages.map(item => item.message)
           const currentMessages = state.messagesMap.get(sessionId)
           const nextMessages = currentMessages
@@ -263,6 +275,111 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             }
             if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
               draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+            }
+          })
+        })
+      },
+
+      insertLiveSteerMessage: (sessionId, message, sourceMessageId) => {
+        set((state) => {
+          const messages = state.messagesMap.get(sessionId)
+          if (!messages) {
+            return state
+          }
+          if (messages.some(current => current.id === message.id)) {
+            return state
+          }
+
+          const effectiveSourceMessageId = sourceMessageId ?? findActiveAssistantMessageId(state, sessionId)
+          const sourceIndex = effectiveSourceMessageId
+            ? messages.findIndex(current => current.id === effectiveSourceMessageId && current.role === 'assistant')
+            : -1
+          if (sourceIndex === -1) {
+            const normalizedMessage = normalizeMessageForToolEntities(message)
+            const toolState = withToolEntitiesForMessages(
+              state.toolCallIdsByMessageId,
+              state.toolEntitiesMap,
+              [normalizedMessage.message],
+              normalizedMessage.toolEntities,
+            )
+            return produce(state, (draft) => {
+              draft.messagesMap.get(sessionId)!.push(normalizedMessage.message as Draft<UIMessage>)
+              if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
+                draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
+              }
+              if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
+                draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+              }
+            })
+          }
+
+          const sourceMessage = messages[sourceIndex]
+          const split = state.assistantDisplaySplitMap.get(sourceMessage.id)
+          const tailMessageId = split?.tailMessageId ?? `${sourceMessage.id}:steer-tail`
+          const sourceHead = trimTrailingEmptyParts(split ? sourceMessage.parts : cloneMessageParts(sourceMessage.parts))
+          const tailMessage = projectAssistantTailMessage(sourceMessage, sourceHead, tailMessageId)
+          const shouldKeepTailPlaceholder = state.generatingMessageIds.has(sourceMessage.id)
+            || state.passiveStreamingMessageIds.has(sourceMessage.id)
+            || state.sessionMetaMap.get(sessionId)?.localDriverMessageId === sourceMessage.id
+          const insertedMessageIds = split ? [...split.insertedMessageIds, message.id] : [message.id]
+          const nextMessages = [
+            ...messages.slice(0, sourceIndex),
+            { ...sourceMessage, parts: sourceHead },
+            message,
+            ...(shouldKeepTailPlaceholder || hasVisibleMessageParts(tailMessage.parts) ? [tailMessage] : []),
+            ...messages.slice(sourceIndex + 1).filter(current => current.id !== tailMessageId),
+          ]
+          const normalizedMessages = nextMessages.map(normalizeMessageForToolEntities)
+          const projectedMessages = normalizedMessages.map(item => item.message)
+          const currentMessageIds = new Set(messages.map(current => current.id))
+          const nextMessageIds = new Set(projectedMessages.map(current => current.id))
+          const removedMessageIds = [...currentMessageIds].filter(id => !nextMessageIds.has(id))
+          const toolState = withToolEntitiesForMessages(
+            state.toolCallIdsByMessageId,
+            state.toolEntitiesMap,
+            projectedMessages,
+            normalizedMessages.flatMap(item => item.toolEntities),
+            removedMessageIds,
+          )
+
+          return produce(state, (draft) => {
+            draft.messagesMap.set(sessionId, projectedMessages)
+            draft.assistantDisplaySplitMap.set(sourceMessage.id, {
+              sourceMessageId: sourceMessage.id,
+              tailMessageId,
+              splitParts: cloneMessageParts(sourceHead),
+              insertedMessageIds,
+            } as Draft<AssistantDisplaySplit>)
+            draft.generatingMessageIds.delete(sourceMessage.id)
+            draft.passiveStreamingMessageIds.delete(sourceMessage.id)
+            if (state.generatingMessageIds.has(sourceMessage.id)) {
+              draft.generatingMessageIds.add(tailMessageId)
+            }
+            if (state.passiveStreamingMessageIds.has(sourceMessage.id)) {
+              draft.passiveStreamingMessageIds.add(tailMessageId)
+            }
+            const sourceController = state.activeAbortControllers.get(sourceMessage.id)
+            if (sourceController) {
+              draft.activeAbortControllers.delete(sourceMessage.id)
+              draft.activeAbortControllers.set(tailMessageId, sourceController)
+            }
+            const runMeta = state.runDisplayMetaMap.get(sourceMessage.id)
+            if (runMeta && !state.runDisplayMetaMap.has(tailMessageId)) {
+              draft.runDisplayMetaMap.set(tailMessageId, { ...runMeta } as Draft<ChatRunDisplayMeta>)
+            }
+            for (const [, meta] of draft.sessionMetaMap) {
+              if (meta.localDriverMessageId === sourceMessage.id) {
+                meta.localDriverMessageId = tailMessageId
+              }
+            }
+            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
+              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
+            }
+            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
+              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+            }
+            for (const removedMessageId of removedMessageIds) {
+              draft.errorMap.delete(removedMessageId)
             }
           })
         })
@@ -647,6 +764,11 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         })
       },
 
+      projectStreamingMessageForDisplay: (sessionId, message) => {
+        const state = get()
+        return projectStreamingMessageThroughSplits(message, state.assistantDisplaySplitMap, new Set())
+      },
+
       // --- Session Meta ---
 
       setSessionMeta: (sessionId, meta) => {
@@ -957,6 +1079,207 @@ function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMes
   })
 
   return hasChanges ? nextMessages : currentMessages
+}
+
+function applyAssistantDisplaySplits(
+  messages: UIMessage[],
+  splits: Map<string, AssistantDisplaySplit>,
+): UIMessage[] {
+  if (splits.size === 0) {
+    return messages
+  }
+  const splitSourceIds = new Set([...splits.keys()])
+  const insertedMessageIds = new Set([...splits.values()].flatMap(split => split.insertedMessageIds))
+  const result: UIMessage[] = []
+
+  for (const message of messages) {
+    if (message.id.includes(':steer-tail')) {
+      continue
+    }
+    if (insertedMessageIds.has(message.id)) {
+      const sourceIndex = findSplitSourceIndexForInsertedMessage(result, splits, message.id)
+      if (sourceIndex !== -1) {
+        const sourceMessage = result[sourceIndex]
+        const split = splits.get(sourceMessage.id)
+        if (split) {
+          result.splice(sourceIndex + 1, 0, message, projectAssistantTailMessage(sourceMessage, split.splitParts, split.tailMessageId))
+          continue
+        }
+      }
+    }
+    if (splitSourceIds.has(message.id)) {
+      const split = splits.get(message.id)
+      result.push(split ? { ...message, parts: cloneMessageParts(split.splitParts) } : message)
+      continue
+    }
+    result.push(message)
+  }
+
+  return result
+}
+
+function findSplitSourceIndexForInsertedMessage(
+  messages: UIMessage[],
+  splits: Map<string, AssistantDisplaySplit>,
+  insertedMessageId: string,
+): number {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const split = splits.get(messages[index].id)
+    if (split?.insertedMessageIds.includes(insertedMessageId)) {
+      return index
+    }
+  }
+  return -1
+}
+
+function findActiveAssistantMessageId(state: ChatState, sessionId: string): string | null {
+  const messages = state.messagesMap.get(sessionId) ?? EMPTY_MESSAGES
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (
+      message.role === 'assistant'
+      && (
+        state.generatingMessageIds.has(message.id)
+        || state.passiveStreamingMessageIds.has(message.id)
+        || state.sessionMetaMap.get(sessionId)?.localDriverMessageId === message.id
+      )
+    ) {
+      return message.id
+    }
+  }
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index]
+    if (message.role === 'assistant') {
+      return message.id
+    }
+  }
+  return null
+}
+
+function cloneMessageParts(parts: UIMessage['parts']): UIMessage['parts'] {
+  return structuredClone(parts) as UIMessage['parts']
+}
+
+function trimTrailingEmptyParts(parts: UIMessage['parts']): UIMessage['parts'] {
+  const nextParts = [...parts]
+  while (nextParts.length > 0 && isEmptyDisplayPart(nextParts[nextParts.length - 1])) {
+    nextParts.pop()
+  }
+  return nextParts
+}
+
+function isEmptyDisplayPart(part: MessagePart): boolean {
+  if (part.type === 'text') {
+    return part.text.length === 0
+  }
+  if (part.type === 'reasoning') {
+    const value = readReasoningPart(part).text ?? readReasoningPart(part).reasoning
+    return !value
+  }
+  return false
+}
+
+function hasVisibleMessageParts(parts: UIMessage['parts']): boolean {
+  return parts.some(part => !isEmptyDisplayPart(part))
+}
+
+function projectAssistantTailMessage(
+  sourceMessage: UIMessage,
+  splitParts: UIMessage['parts'],
+  tailMessageId: string,
+): UIMessage {
+  return {
+    ...sourceMessage,
+    id: tailMessageId,
+    parts: projectTailParts(sourceMessage.parts, splitParts),
+  }
+}
+
+function projectStreamingMessageThroughSplits(
+  message: UIMessage,
+  splits: Map<string, AssistantDisplaySplit>,
+  seenMessageIds: Set<string>,
+): UIMessage {
+  const split = splits.get(message.id)
+  if (!split || seenMessageIds.has(message.id)) {
+    return message
+  }
+  seenMessageIds.add(message.id)
+  return projectStreamingMessageThroughSplits(
+    projectAssistantTailMessage(message, split.splitParts, split.tailMessageId),
+    splits,
+    seenMessageIds,
+  )
+}
+
+function projectTailParts(sourceParts: UIMessage['parts'], splitParts: UIMessage['parts']): UIMessage['parts'] {
+  const tailParts: UIMessage['parts'] = []
+  let sourceIndex = 0
+
+  for (let splitIndex = 0; splitIndex < splitParts.length; splitIndex++) {
+    const splitPart = splitParts[splitIndex]
+    const sourcePart = sourceParts[sourceIndex]
+    if (!sourcePart) {
+      return tailParts
+    }
+    if (!areSameStreamPart(sourcePart, splitPart)) {
+      break
+    }
+
+    const remainder = projectPartRemainder(sourcePart, splitPart)
+    if (remainder) {
+      tailParts.push(remainder)
+      tailParts.push(...cloneMessageParts(sourceParts.slice(sourceIndex + 1)))
+      return trimLeadingEmptyParts(tailParts)
+    }
+    sourceIndex += 1
+  }
+
+  tailParts.push(...cloneMessageParts(sourceParts.slice(sourceIndex)))
+  return trimLeadingEmptyParts(tailParts)
+}
+
+function trimLeadingEmptyParts(parts: UIMessage['parts']): UIMessage['parts'] {
+  const nextParts = [...parts]
+  while (nextParts.length > 0 && isEmptyDisplayPart(nextParts[0])) {
+    nextParts.shift()
+  }
+  return nextParts
+}
+
+function areSameStreamPart(sourcePart: MessagePart, splitPart: MessagePart): boolean {
+  if (sourcePart.type !== splitPart.type) {
+    return false
+  }
+  if (sourcePart.type === 'dynamic-tool' || sourcePart.type.startsWith('tool-')) {
+    return readDynamicToolPart(sourcePart).toolCallId === readDynamicToolPart(splitPart).toolCallId
+  }
+  return true
+}
+
+function projectPartRemainder(sourcePart: MessagePart, splitPart: MessagePart): MessagePart | null {
+  if (sourcePart.type === 'text' && splitPart.type === 'text') {
+    const remainder = slicePrefix(sourcePart.text, splitPart.text)
+    return remainder ? { ...sourcePart, text: remainder } : null
+  }
+  if (sourcePart.type === 'reasoning' && splitPart.type === 'reasoning') {
+    const sourceReasoning = readReasoningPart(sourcePart)
+    const splitReasoning = readReasoningPart(splitPart)
+    const sourceText = sourceReasoning.text ?? sourceReasoning.reasoning ?? ''
+    const splitText = splitReasoning.text ?? splitReasoning.reasoning ?? ''
+    const remainder = slicePrefix(sourceText, splitText)
+    if (!remainder) {
+      return null
+    }
+    return sourceReasoning.text !== undefined
+      ? { ...sourcePart, text: remainder }
+      : { ...sourcePart, reasoning: remainder } as MessagePart
+  }
+  return null
+}
+
+function slicePrefix(sourceText: string, prefixText: string): string {
+  return sourceText.startsWith(prefixText) ? sourceText.slice(prefixText.length) : sourceText
 }
 
 function areMessagesEqual(currentMessage: UIMessage, incomingMessage: UIMessage): boolean {

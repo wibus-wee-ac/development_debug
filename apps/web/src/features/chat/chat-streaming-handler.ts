@@ -140,7 +140,8 @@ export class ChatStreamingHandler {
       if (hasVisibleContent(message)) {
         store.markRunFirstContent(messageId, receivedAtMs)
       }
-      store.updateMessage(this.sessionId, messageId, () => message)
+      const displayMessage = store.projectStreamingMessageForDisplay(this.sessionId, message)
+      store.updateMessage(this.sessionId, displayMessage.id, () => displayMessage)
     }
     this.pendingMessages.clear()
     this.lastFlushAtMs = performance.now()

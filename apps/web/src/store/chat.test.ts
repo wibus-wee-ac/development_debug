@@ -21,6 +21,7 @@ function resetChatStore(): void {
     runDisplayMetaMap: new Map(),
     errorMap: new Map(),
     sessionMetaMap: new Map(),
+    assistantDisplaySplitMap: new Map(),
   }))
 }
 
@@ -135,5 +136,70 @@ describe('chat store tool entity normalization', () => {
     const state = useChatStore.getState()
     expect(chatSelectors.visibleStatus('session-1')(state)).toBe('streaming')
     expect(chatSelectors.latestError('session-1')(state)).toBeUndefined()
+  })
+
+  it('inserts live steer messages before the assistant tail and keeps later deltas in a new bubble', () => {
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Before steer.' }],
+    }])
+    useChatStore.getState().startGeneration('session-1', 'assistant-1', new AbortController())
+
+    useChatStore.getState().insertLiveSteerMessage('session-1', {
+      id: 'continuation-steer-1',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Please adjust.' }],
+      metadata: {
+        cradle: {
+          continuation: {
+            mode: 'steer',
+            queueItemId: 'steer-1',
+          },
+        },
+      },
+    } as UIMessage)
+
+    const afterInsert = useChatStore.getState()
+    expect(afterInsert.messagesMap.get('session-1')?.map(message => message.id)).toEqual([
+      'assistant-1',
+      'continuation-steer-1',
+      'assistant-1:steer-tail',
+    ])
+    expect(chatSelectors.isStreamingMessage('assistant-1')(afterInsert)).toBe(false)
+    expect(chatSelectors.isStreamingMessage('assistant-1:steer-tail')(afterInsert)).toBe(true)
+
+    const projected = useChatStore.getState().projectStreamingMessageForDisplay('session-1', {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Before steer. After steer.' }],
+    })
+    useChatStore.getState().updateMessage('session-1', projected.id, () => projected)
+
+    expect(useChatStore.getState().messagesMap.get('session-1')).toEqual([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Before steer.' }],
+      },
+      {
+        id: 'continuation-steer-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Please adjust.' }],
+        metadata: {
+          cradle: {
+            continuation: {
+              mode: 'steer',
+              queueItemId: 'steer-1',
+            },
+          },
+        },
+      },
+      {
+        id: 'assistant-1:steer-tail',
+        role: 'assistant',
+        parts: [{ type: 'text', text: ' After steer.' }],
+      },
+    ])
   })
 })

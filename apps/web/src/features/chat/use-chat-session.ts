@@ -447,7 +447,7 @@ export function useChatSession(chatSessionId: string | null) {
         },
       })
       if (queueItem.mode === 'steer' && queueItem.status === 'completed') {
-        useChatStore.getState().appendMessage(chatSessionId, createContinuationUserMessage({
+        useChatStore.getState().insertLiveSteerMessage(chatSessionId, createContinuationUserMessage({
           queueItem,
           fallbackText: trimmedText,
           fallbackContextParts: contextParts,
