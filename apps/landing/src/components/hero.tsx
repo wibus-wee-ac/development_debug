@@ -27,9 +27,10 @@ export function Hero() {
 
     const sectionH = section.offsetHeight
     const iconH = icon.offsetHeight
-    // Icon starts at vertical center; final position is ~30% from top
-    // offset = (50% - target%) of section height
-    const targetTop = sectionH * 0.28
+    // Read icon's actual rendered position within the section
+    const sectionTop = section.getBoundingClientRect().top
+    const iconTop = icon.getBoundingClientRect().top
+    const targetTop = iconTop - sectionTop
     const centerY = (sectionH - iconH) / 2
     const offsetY = centerY - targetTop
 
@@ -42,7 +43,7 @@ export function Hero() {
     // Phase 1: Icon appears at center
     tl.to('.hero-icon', {
       scale: 1, opacity: 1, filter: 'blur(0px)',
-      duration: 1.2, ease: 'expo.out',
+      duration: 0.8, ease: 'expo.out',
     })
     // Phase 2: Icon moves up to final position
     .to('.hero-icon', {
@@ -77,8 +78,8 @@ export function Hero() {
         alignItems: 'center',
         justifyContent: 'flex-start',
         textAlign: 'center',
-        paddingTop: '28vh',
-        paddingBottom: 80,
+        paddingTop: 'clamp(48px, 18dvh, 180px)',
+        paddingBottom: 60,
         paddingLeft: 24,
         paddingRight: 24,
         position: 'relative',
@@ -92,7 +93,7 @@ export function Hero() {
           className="hero-icon"
           style={{
             position: 'relative',
-            marginBottom: 56,
+            marginBottom: 'clamp(20px, 3dvh, 48px)',
           }}
         >
         {/* Ambient glow */}
@@ -109,7 +110,7 @@ export function Hero() {
         />
         <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 40, width: 180, height: 180 }}>
           <img
-            src="/icon-192.webp"
+            src="/icon.png"
             alt="Cradle"
             width={180}
             height={180}
@@ -141,7 +142,7 @@ export function Hero() {
           lineHeight: 0.95,
           letterSpacing: '-0.04em',
           color: 'var(--color-neutral-9)',
-          marginBottom: 24,
+          marginBottom: 'clamp(14px, 2dvh, 24px)',
         }}
       >
         One layer above
@@ -157,7 +158,7 @@ export function Hero() {
           lineHeight: 1.6,
           color: 'var(--color-neutral-6)',
           maxWidth: 520,
-          marginBottom: 40,
+          marginBottom: 'clamp(20px, 3dvh, 40px)',
         }}
       >
         Your AI coding tools are brilliant. Managing them is a mess. Cradle is the command center

@@ -35,8 +35,10 @@ export function Nav() {
         display: 'flex',
         alignItems: 'center',
         transition: 'background 0.25s, border-color 0.25s',
-        background: 'transparent',
-        borderBottom: '1px solid transparent',
+        background: scrolled ? 'rgba(20,20,20,0.88)' : 'transparent',
+        backdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
+        borderBottom: scrolled ? '1px solid var(--color-border)' : '1px solid transparent',
       }}
     >
       <div style={{

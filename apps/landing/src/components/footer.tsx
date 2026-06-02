@@ -19,9 +19,9 @@ export function Footer() {
         </span>
       </div>
       <span style={{ fontSize: 11, color: 'var(--color-neutral-4)' }}>·</span>
-      <span style={{ fontSize: 12, color: 'var(--color-neutral-5)' }}>
+      <a href="https://x.com/wibus_wee" style={{ fontSize: 12, color: 'var(--color-neutral-5)' }} target="_blank" rel="noopener noreferrer">
         By wibus.Song
-      </span>
+      </a>
     </footer>
   )
 }
