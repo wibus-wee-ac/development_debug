@@ -1,7 +1,7 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import isEqual from 'fast-deep-equal'
-import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, PackageIcon, TargetIcon, TimerIcon } from 'lucide-react'
+import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TargetIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -27,6 +27,7 @@ import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-
 import { groupMessagePartRefs, groupMessageParts, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
 import type { ChatToolEntity } from './chat-tool-entities'
 import { readSubagentOutputMessage } from './chat-tool-entities'
+import { SkillMentionToken } from './skill-mention-token'
 import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
@@ -126,13 +127,7 @@ function SkillContextBlock({ part }: { part: ChatSkillContextMessagePart }) {
   if (!skill) {
     return null
   }
-  return (
-    <span className="mx-1 inline-flex max-w-full align-baseline items-center gap-1.5 rounded-md bg-background/55 px-2 py-1 text-xs text-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.55)]">
-      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 truncate font-medium">{readSkillContextLabel(skill)}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{skill.scope}</span>
-    </span>
-  )
+  return <SkillMentionToken name={readSkillContextLabel(skill)} className="mx-1" />
 }
 
 function RunDebugCaption({ messageId }: { messageId: string }) {
@@ -454,7 +449,6 @@ interface MessageBubbleProps {
     approvalId: string
     approved: boolean
   }) => void
-  onSetGoalFromMessage?: (messageId: string, text: string) => void
 }
 
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
@@ -887,12 +881,10 @@ function MessageCopyActionById({
   sessionId,
   messageId,
   isUser,
-  onSetGoalFromMessage,
 }: {
   sessionId: string
   messageId: string
   isUser: boolean
-  onSetGoalFromMessage?: MessageBubbleProps['onSetGoalFromMessage']
 }) {
   const hasPlainText = useChatStore(state => readPlainTextPresenceFromState(state, sessionId, messageId))
   const [copied, setCopied] = useState(false)
@@ -921,14 +913,6 @@ function MessageCopyActionById({
     }, 1500)
   }, [messageId, sessionId])
 
-  const handleSetGoal = useCallback(() => {
-    const plainText = readPlainTextFromState(useChatStore.getState(), sessionId, messageId).trim()
-    if (!plainText) {
-      return
-    }
-    onSetGoalFromMessage?.(messageId, plainText)
-  }, [messageId, onSetGoalFromMessage, sessionId])
-
   if (!hasPlainText) {
     return null
   }
@@ -951,18 +935,6 @@ function MessageCopyActionById({
           ? <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
           : <CopyIcon className="size-3.5" aria-hidden="true" />}
       </Button>
-      {isUser && onSetGoalFromMessage && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          onClick={handleSetGoal}
-          className="text-muted-foreground/50 hover:text-foreground"
-          aria-label="Set message as goal"
-        >
-          <TargetIcon className="size-3.5" aria-hidden="true" />
-        </Button>
-      )}
     </div>
   )
 }
@@ -1037,14 +1009,12 @@ function MessageBubbleSegmentsView({
   segments,
   isStreaming,
   onToolApprovalResponse,
-  onSetGoalFromMessage,
 }: {
   sessionId: string
   frame: MessageFrame
   segments: ChatRenderSegment[]
   isStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
-  onSetGoalFromMessage?: MessageBubbleProps['onSetGoalFromMessage']
 }) {
   const isUser = frame.role === 'user'
   const isAssistant = frame.role === 'assistant'
@@ -1140,7 +1110,6 @@ function MessageBubbleSegmentsView({
             sessionId={sessionId}
             messageId={frame.id}
             isUser={isUser}
-            onSetGoalFromMessage={onSetGoalFromMessage}
           />
         )}
       </div>
@@ -1152,12 +1121,10 @@ export function MessageBubbleById({
   sessionId,
   messageId,
   onToolApprovalResponse,
-  onSetGoalFromMessage,
 }: {
   sessionId: string | null
   messageId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
-  onSetGoalFromMessage?: MessageBubbleProps['onSetGoalFromMessage']
 }) {
   const storeSessionId = sessionId ?? ''
   const frame = useChatStore(
@@ -1181,12 +1148,11 @@ export function MessageBubbleById({
       segments={segments}
       isStreaming={isStreaming}
       onToolApprovalResponse={onToolApprovalResponse}
-      onSetGoalFromMessage={onSetGoalFromMessage}
     />
   )
 }
 
-function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse, onSetGoalFromMessage }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const isExportPresentation = presentation === 'export'
@@ -1261,14 +1227,6 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       copyFeedbackTimerRef.current = null
     }, 1500)
   }, [plainText])
-
-  const handleSetGoal = useCallback(() => {
-    const text = plainText.trim()
-    if (!text) {
-      return
-    }
-    onSetGoalFromMessage?.(message.id, text)
-  }, [message.id, onSetGoalFromMessage, plainText])
 
   /* ─── Render items ─── */
   function renderItem(item: ChatRenderItem) {
@@ -1404,18 +1362,6 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
                 ? <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
                 : <CopyIcon className="size-3.5" aria-hidden="true" />}
             </Button>
-            {isUser && onSetGoalFromMessage && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={handleSetGoal}
-                className="text-muted-foreground/50 hover:text-foreground"
-                aria-label="Set message as goal"
-              >
-                <TargetIcon className="size-3.5" aria-hidden="true" />
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -1430,6 +1376,5 @@ export const MessageBubble = memo(
     && prevProps.isStreaming === nextProps.isStreaming
     && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
     && prevProps.presentation === nextProps.presentation
-    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse
-    && prevProps.onSetGoalFromMessage === nextProps.onSetGoalFromMessage,
+    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse,
 )

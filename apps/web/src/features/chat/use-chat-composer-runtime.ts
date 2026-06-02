@@ -9,6 +9,7 @@ import { useCallback, useMemo } from 'react'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
+import { useGitStatus } from '~/features/git/use-git'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { isElectron, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
@@ -36,7 +37,6 @@ interface ChatComposerSendOverrides {
 export interface ChatComposerRuntime {
   disabled: boolean
   isStreaming: boolean
-  goalCommandText: string | null
   send: (
     text: string,
     files: FileUIPart[],
@@ -60,6 +60,7 @@ interface UseChatComposerRuntimeOptions {
   isStreaming: boolean
   messageCount: number
   isReady: boolean
+  workspaceId?: string | null
   composerModel?: ModelDescriptor | null
   permissionMode?: SendMessageOptions['permissionMode']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
@@ -77,12 +78,43 @@ function invertContinuationMode(mode: NonNullable<SendMessageOptions['continuati
   return mode === 'queue' ? 'steer' : 'queue'
 }
 
+function readCodexReviewAvailability({
+  workspaceId,
+  gitStatusLoading,
+  gitStatusUnavailable,
+}: {
+  workspaceId?: string | null
+  gitStatusLoading: boolean
+  gitStatusUnavailable: boolean
+}): ChatComposerSlashCommand['availability'] {
+  if (!workspaceId) {
+    return {
+      enabled: false,
+      reason: 'Requires a workspace-backed Git repository.',
+    }
+  }
+  if (gitStatusLoading) {
+    return {
+      enabled: false,
+      reason: 'Checking Git repository.',
+    }
+  }
+  if (gitStatusUnavailable) {
+    return {
+      enabled: false,
+      reason: 'Git repository unavailable.',
+    }
+  }
+  return undefined
+}
+
 export function useChatComposerRuntime({
   sessionId,
   status,
   isStreaming,
   messageCount,
   isReady,
+  workspaceId,
   composerModel,
   permissionMode,
   sendOverridesRef,
@@ -115,6 +147,10 @@ export function useChatComposerRuntime({
     return sessionBinding?.providerTargetId ? { id: sessionBinding.providerTargetId } : null
   }, [sessionBinding?.providerTargetId])
   const { models: sessionModels } = useProviderTargetModels(boundProviderTarget)
+  const hasCodexReviewSlot = useMemo(() => {
+    return Boolean(runtimeCapabilities?.uiSlots.some(slot => slot.id === 'codex:review'))
+  }, [runtimeCapabilities?.uiSlots])
+  const gitStatusQuery = useGitStatus(hasCodexReviewSlot ? workspaceId : null)
   const currentSessionModel = useMemo(() => {
     if (composerModel) {
       return composerModel
@@ -152,16 +188,14 @@ export function useChatComposerRuntime({
   }, [supportsAttachments])
   const runtimeSlotCommands = useMemo(() => {
     return createRuntimeUiSlotCommands(runtimeCapabilities?.uiSlots ?? [], runtimeUiSlotStates?.states ?? [])
-  }, [runtimeCapabilities?.uiSlots, runtimeUiSlotStates?.states])
-  const goalCommandText = useMemo(() => {
-    const goalSlotIds = new Set(
-      (runtimeCapabilities?.uiSlots ?? [])
-        .filter(isGoalComposerSlot)
-        .map(slot => slot.id),
-    )
-    const goalCommand = runtimeSlotCommands.find(command => goalSlotIds.has(command.id))
-    return goalCommand?.action.kind === 'insertText' ? goalCommand.action.text : null
-  }, [runtimeCapabilities?.uiSlots, runtimeSlotCommands])
+      .map(command => command.id === 'codex:review'
+        ? withSlashCommandAvailability(command, readCodexReviewAvailability({
+            workspaceId,
+            gitStatusLoading: gitStatusQuery.isLoading,
+            gitStatusUnavailable: gitStatusQuery.isError,
+          }))
+        : command)
+  }, [gitStatusQuery.isError, gitStatusQuery.isLoading, runtimeCapabilities?.uiSlots, runtimeUiSlotStates?.states, workspaceId])
   const slashCommands = useMemo(() => mergeChatSlashCommands({
     runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
     runtimeUiSlotCommands: runtimeSlotCommands,
@@ -199,7 +233,6 @@ export function useChatComposerRuntime({
   return {
     disabled: !isReady,
     isStreaming,
-    goalCommandText,
     send,
     stop,
     slashCommands,
@@ -211,11 +244,6 @@ export function useChatComposerRuntime({
       contextWindow: sessionContextWindow,
     },
   }
-}
-
-function isGoalComposerSlot(slot: ChatRuntimeUiSlot): boolean {
-  return slot.surfaces.includes('composerState')
-    && (slot.iconKey === 'goal' || slot.name.trim().toLowerCase() === 'goal')
 }
 
 function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {

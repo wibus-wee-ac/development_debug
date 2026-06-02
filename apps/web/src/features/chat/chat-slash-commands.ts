@@ -62,6 +62,7 @@ export type ChatSlashCommandIconKey
 
 export type ChatSlashCommandAction
   = | { kind: 'insertText', text: string }
+    | { kind: 'submitText', text: string, requiresEmptyComposer?: boolean }
     | { kind: 'uiAction', actionId: string }
 
 export type ChatSlashCommandStateVisual = {
@@ -91,6 +92,8 @@ export interface ChatComposerSlashCommand {
 }
 
 export const CRADLE_APPSHOT_SLASH_ACTION_ID = 'capture-appshot'
+export const CODEX_REVIEW_SLASH_ACTION_ID = 'codex-review-mode'
+export const CODEX_FEEDBACK_SLASH_ACTION_ID = 'codex-feedback-dialog'
 
 export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
   id: 'cradle:appshot',
@@ -163,6 +166,19 @@ function isRuntimeUiSlotSlashCommand(slot: ChatRuntimeUiSlot): boolean {
   return slot.surfaces.includes('slashCommand')
 }
 
+function readCodexRuntimeUiSlotAction(slot: ChatRuntimeUiSlot, commandText: string): ChatSlashCommandAction {
+  switch (slot.id) {
+    case 'codex:compact':
+      return { kind: 'submitText', text: commandText.trim(), requiresEmptyComposer: true }
+    case 'codex:review':
+      return { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID }
+    case 'codex:feedback':
+      return { kind: 'uiAction', actionId: CODEX_FEEDBACK_SLASH_ACTION_ID }
+    default:
+      return { kind: 'insertText', text: commandText }
+  }
+}
+
 export function createRuntimeSlashCommand(command: ChatSlashCommand, index = 0): ChatComposerSlashCommand {
   const name = normalizeCommandName(command.name)
   return {
@@ -179,6 +195,7 @@ export function createRuntimeSlashCommand(command: ChatSlashCommand, index = 0):
 export function createRuntimeUiSlotCommand(slot: ChatRuntimeUiSlot, slotStates: ChatRuntimeUiSlotState[] = []): ChatComposerSlashCommand {
   const name = normalizeCommandName(slot.name)
   const state = readRuntimeUiSlotCommandState(slot, slotStates)
+  const commandText = slot.commandText ?? `/${name} `
   return {
     id: slot.id,
     name,
@@ -187,7 +204,7 @@ export function createRuntimeUiSlotCommand(slot: ChatRuntimeUiSlot, slotStates: 
     argumentHint: slot.argumentHint,
     aliases: slot.aliases,
     source: 'runtime',
-    action: { kind: 'insertText', text: slot.commandText ?? `/${name} ` },
+    action: readCodexRuntimeUiSlotAction(slot, commandText),
     presentation: 'slot',
     iconKey: slot.iconKey,
     stateLabel: state?.label,

@@ -4,9 +4,11 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
+import { postChatSessionsBySessionIdCodexAppServerInvoke } from '~/api-gen/sdk.gen'
 import { Progress } from '~/components/ui/progress'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
+import { getServerUrl } from '~/lib/electron'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
@@ -15,9 +17,12 @@ import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
+import { CODEX_FEEDBACK_SLASH_ACTION_ID, CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import type { SessionTodoSnapshot } from './chat-todo-projection'
 import { readTodoCompletion } from './chat-todo-projection'
+import type { CodexFeedbackPayload } from './codex-feedback-dialog'
+import { CodexFeedbackDialog } from './codex-feedback-dialog'
+import { CodexReviewModeDialog } from './codex-review-mode-dialog'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import { ComposerSlotStates } from './composer-slot-states'
@@ -27,6 +32,7 @@ import { RuntimeToolbarOptions } from './runtime-toolbar-options'
 import type { SkillMentionItem } from './skill-mention-panel'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
+import { useRuntimeSessionStatus } from './use-runtime-session-status'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
 import type { ChatQueueItem } from './use-chat-session'
@@ -59,9 +65,18 @@ interface ChatViewProps {
   /** Placeholder text for composer */
   placeholder?: string
   runtimeKind?: RuntimeKind
+  workspaceId?: string | null
 }
 
 const EMPTY_FILES: MentionItem[] = []
+
+function readFeedbackUploadThreadId(result: unknown): string | null {
+  if (!result || typeof result !== 'object' || !('threadId' in result)) {
+    return null
+  }
+  const threadId = (result as { threadId?: unknown }).threadId
+  return typeof threadId === 'string' && threadId.length > 0 ? threadId : null
+}
 
 function ChatMessageListPane({
   sessionId,
@@ -72,7 +87,6 @@ function ChatMessageListPane({
   isReady,
   scrollRuntime,
   onToolApprovalResponse,
-  onSetGoalFromMessage,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -82,7 +96,6 @@ function ChatMessageListPane({
   isReady: boolean
   scrollRuntime: ChatScrollRuntime
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-  onSetGoalFromMessage?: (messageId: string, text: string) => void
 }) {
   const { t } = useTranslation('chat')
 
@@ -114,7 +127,6 @@ function ChatMessageListPane({
                 sessionId={sessionId}
                 messageId={messageId}
                 onToolApprovalResponse={onToolApprovalResponse}
-                onSetGoalFromMessage={onSetGoalFromMessage}
               />
             ))}
           </Virtualizer>
@@ -197,7 +209,6 @@ function ChatComposerSection({
   toolbar,
   contextBar,
   droppedPath,
-  goalDraft,
   onComposerFocusChange,
 }: {
   todoSnapshot: SessionTodoSnapshot | null
@@ -215,7 +226,6 @@ function ChatComposerSection({
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
-  goalDraft: { text: string, ts: number } | null
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
@@ -253,8 +263,6 @@ function ChatComposerSection({
             contextBar,
           }}
           externalSignals={{
-            replaceText: goalDraft?.text,
-            replaceTextKey: goalDraft?.ts,
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
             appendTextKey: droppedPath?.ts,
           }}
@@ -320,6 +328,7 @@ export function ChatView({
   composerModel,
   placeholder,
   runtimeKind: _runtimeKind,
+  workspaceId,
 }: ChatViewProps) {
   const {
     messageIds,
@@ -336,15 +345,18 @@ export function ChatView({
     reorderQueueItems,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
-  const [goalDraft, setGoalDraft] = useState<{ text: string, ts: number } | null>(null)
+  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
+  const [reviewModeDialogOpen, setReviewModeDialogOpen] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
     isStreaming,
     messageCount,
     isReady,
+    workspaceId,
     composerModel,
     sendOverridesRef,
     sendMessage,
@@ -360,7 +372,18 @@ export function ChatView({
     context: ComposerSlashCommandActionContext,
     tools?: ComposerSlashCommandActionTools,
   ): Promise<void | ComposerSlashCommandActionResult> => {
-    if (command.action.kind !== 'uiAction' || command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
+    if (command.action.kind !== 'uiAction') {
+      return
+    }
+    if (command.action.actionId === CODEX_FEEDBACK_SLASH_ACTION_ID) {
+      setFeedbackDialogOpen(true)
+      return { insertText: '' }
+    }
+    if (command.action.actionId === CODEX_REVIEW_SLASH_ACTION_ID) {
+      setReviewModeDialogOpen(true)
+      return { insertText: '' }
+    }
+    if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
       return
     }
     if (!appshotRuntime.hasNativeCapture) {
@@ -393,15 +416,64 @@ export function ChatView({
     }
   }, [appshotRuntime, composerRuntime.supportsAttachments])
 
-  const handleSetGoalFromMessage = useCallback((_: string, text: string) => {
-    if (!composerRuntime.goalCommandText) {
-      return
+  const submitCodexReviewPrompt = useCallback((prompt: string) => {
+    composerRuntime.send(prompt, [], [])
+  }, [composerRuntime])
+
+  const resolveCodexReviewMergeBase = useCallback(async (baseBranch: string) => {
+    if (!workspaceId) {
+      return null
     }
-    const commandText = composerRuntime.goalCommandText.endsWith(' ')
-      ? composerRuntime.goalCommandText
-      : `${composerRuntime.goalCommandText} `
-    setGoalDraft({ text: `${commandText}${text.trim()}`, ts: Date.now() })
-  }, [composerRuntime.goalCommandText])
+    const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}/git/merge-base`, getServerUrl())
+    url.searchParams.set('baseBranch', baseBranch)
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to resolve merge base (${response.status}).`)
+    }
+    const payload = await response.json() as { mergeBaseSha?: unknown }
+    return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
+  }, [workspaceId])
+
+  const submitCodexFeedback = useCallback(async (payload: CodexFeedbackPayload) => {
+    if (!sessionId) {
+      toastManager.add({
+        type: 'error',
+        title: 'Feedback is unavailable',
+        description: 'Open a Codex chat session before sending feedback.',
+      })
+      return false
+    }
+
+    try {
+      const response = await postChatSessionsBySessionIdCodexAppServerInvoke({
+        path: { sessionId },
+        body: {
+          method: 'feedback/upload',
+          params: {
+            ...payload,
+            threadId: runtimeStatus?.providerSessionId ?? null,
+          },
+        },
+        throwOnError: true,
+      })
+      const correlationId = readFeedbackUploadThreadId(response.data?.result)
+      toastManager.add({
+        type: 'success',
+        title: 'Feedback uploaded',
+        description: correlationId ? `Feedback ID: ${correlationId}` : undefined,
+      })
+      return true
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Feedback upload failed',
+        description: error instanceof Error ? error.message : 'Unknown feedback upload error.',
+      })
+      return false
+    }
+  }, [runtimeStatus?.providerSessionId, sessionId])
+
   const runtimeToolbar = useMemo(() => (
     <>
       {composerToolbar}
@@ -441,7 +513,6 @@ export function ChatView({
         isReady={isReady}
         scrollRuntime={scrollRuntime}
         onToolApprovalResponse={respondToToolApproval}
-        onSetGoalFromMessage={composerRuntime.goalCommandText ? handleSetGoalFromMessage : undefined}
       />
 
       <ChatComposerSection
@@ -460,8 +531,21 @@ export function ChatView({
         toolbar={runtimeToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
-        goalDraft={goalDraft}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
+      />
+
+      <CodexFeedbackDialog
+        open={feedbackDialogOpen}
+        onOpenChange={setFeedbackDialogOpen}
+        onSubmit={submitCodexFeedback}
+      />
+
+      <CodexReviewModeDialog
+        open={reviewModeDialogOpen}
+        workspaceId={workspaceId}
+        onOpenChange={setReviewModeDialogOpen}
+        onSubmitPrompt={submitCodexReviewPrompt}
+        resolveMergeBase={resolveCodexReviewMergeBase}
       />
     </div>
   )

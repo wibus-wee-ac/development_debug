@@ -540,12 +540,10 @@ function ChangeFileRow({
       onClick={() => onClick(file.path)}
     >
       <WorkspaceFileIcon path={file.path} />
-      <span className="min-w-0 flex-1 truncate text-foreground/85">{display.name}</span>
-      {display.directory && (
-        <span className="min-w-0 max-w-24 shrink truncate text-[10px] text-muted-foreground/45">
-          {display.directory}
-        </span>
-      )}
+      <span className="shrink-0 truncate text-foreground/85">{display.name}</span>
+      <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground/45">
+        {display.directory}
+      </span>
       <span
         className={cn(
           'flex h-4 min-w-4 shrink-0 items-center justify-center rounded-sm px-1 text-[9px] font-semibold uppercase tabular-nums',

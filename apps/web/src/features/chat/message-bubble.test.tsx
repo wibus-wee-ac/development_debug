@@ -419,8 +419,7 @@ describe('message bubble', () => {
     expect(screen.queryByTestId('message-bubble-thinking-placeholder')).toBeNull()
   })
 
-  it('offers a provider goal action on completed user messages', () => {
-    const onSetGoalFromMessage = vi.fn()
+  it('does not offer a separate set-goal action on completed user messages', () => {
     const userMessage: UIMessage = {
       id: 'user-goal',
       role: 'user',
@@ -432,18 +431,14 @@ describe('message bubble', () => {
         <MessageBubble
           message={userMessage}
           isStreaming={false}
-          onSetGoalFromMessage={onSetGoalFromMessage}
         />
       </TooltipProvider>,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
-
-    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal', 'Refactor the runtime slot state')
+    expect(screen.queryByRole('button', { name: 'Set message as goal' })).toBeNull()
   })
 
   it('projects Codex goal slash messages as objective timeline items', () => {
-    const onSetGoalFromMessage = vi.fn()
     const userMessage: UIMessage = {
       id: 'user-goal-command',
       role: 'user',
@@ -455,7 +450,6 @@ describe('message bubble', () => {
         <MessageBubble
           message={userMessage}
           isStreaming={false}
-          onSetGoalFromMessage={onSetGoalFromMessage}
         />
       </TooltipProvider>,
     )
@@ -463,14 +457,10 @@ describe('message bubble', () => {
     expect(screen.getByText('Goal')).toBeTruthy()
     expect(screen.getByText('Refactor runtime slots')).toBeTruthy()
     expect(screen.queryByText('/goal Refactor runtime slots')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
-
-    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal-command', 'Refactor runtime slots')
+    expect(screen.queryByRole('button', { name: 'Set message as goal' })).toBeNull()
   })
 
   it('projects Codex goal slash messages in the store-backed renderer', () => {
-    const onSetGoalFromMessage = vi.fn()
     const userMessage: UIMessage = {
       id: 'user-goal-command-store',
       role: 'user',
@@ -486,7 +476,6 @@ describe('message bubble', () => {
         <MessageBubbleById
           sessionId="session-1"
           messageId={userMessage.id}
-          onSetGoalFromMessage={onSetGoalFromMessage}
         />
       </TooltipProvider>,
     )
@@ -494,10 +483,7 @@ describe('message bubble', () => {
     expect(screen.getByText('Goal')).toBeTruthy()
     expect(screen.getByText('Refactor store-backed slots')).toBeTruthy()
     expect(screen.queryByText('/goal Refactor store-backed slots')).toBeNull()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Set message as goal' }))
-
-    expect(onSetGoalFromMessage).toHaveBeenCalledWith('user-goal-command-store', 'Refactor store-backed slots')
+    expect(screen.queryByRole('button', { name: 'Set message as goal' })).toBeNull()
   })
 
   it('opens Cradle AppShot previews and toggles accessibility text', () => {

@@ -304,7 +304,7 @@ export async function getDiff(workspaceId: string, paths?: string[]): Promise<st
     const trackedDiff
       = trackedPaths?.length === 0
         ? ''
-        : await runGitDiff(workspacePath, [
+        : await runGitCommand(workspacePath, [
             'diff',
             'HEAD',
             ...(trackedPaths ? ['--', ...trackedPaths] : []),
@@ -312,10 +312,21 @@ export async function getDiff(workspaceId: string, paths?: string[]): Promise<st
     const untrackedDiffs: string[] = []
     for (const path of untrackedPaths) {
       untrackedDiffs.push(
-        await runGitDiff(workspacePath, ['diff', '--no-index', '--', '/dev/null', path], [1]),
+        await runGitCommand(workspacePath, ['diff', '--no-index', '--', '/dev/null', path], [1]),
       )
     }
     return joinDiffs([trackedDiff, ...untrackedDiffs])
+  }
+ catch (error) {
+    throw mapGitError(workspaceId, error)
+  }
+}
+
+export async function getMergeBase(workspaceId: string, baseBranch: string): Promise<{ mergeBaseSha: string | null }> {
+  const workspacePath = getWorkspacePath(workspaceId)
+  try {
+    const mergeBaseSha = await runGitCommand(workspacePath, ['merge-base', 'HEAD', baseBranch])
+    return { mergeBaseSha: mergeBaseSha.trim() || null }
   }
  catch (error) {
     throw mapGitError(workspaceId, error)
@@ -340,7 +351,7 @@ function collectUntrackedDiffPaths(status: StatusResult, selectedPaths?: string[
   return new Set(selectedPaths.filter(path => untrackedPaths.has(path)))
 }
 
-async function runGitDiff(
+async function runGitCommand(
   cwd: string,
   args: string[],
   allowedExitCodes: number[] = [],

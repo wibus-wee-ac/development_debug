@@ -4110,7 +4110,8 @@ function isProviderNativeNoOutputCommandTurn(activeRun: ActiveRun, message: UIMe
   if (activeRun.runtimeSession.runtimeKind !== 'codex') {
     return false
   }
-  return readGoalMessageObjective(message) !== null || isCodexGoalCommandText(extractMessageText(message))
+  const text = extractMessageText(message)
+  return readGoalMessageObjective(message) !== null || isCodexGoalCommandText(text) || isCodexCompactCommandText(text)
 }
 
 function isCodexGoalCommandText(text: string): boolean {
@@ -4128,6 +4129,15 @@ function readCodexGoalCommandObjective(text: string): string | null {
   }
   const objective = normalized.slice('/goal'.length).trim()
   return objective.length > 0 ? objective : null
+}
+
+function isCodexCompactCommandText(text: string): boolean {
+  const normalized = text.trim()
+  if (!normalized.startsWith('/compact')) {
+    return false
+  }
+  const nextChar = normalized.charAt('/compact'.length)
+  return !nextChar || nextChar === ' ' || nextChar === '\t'
 }
 
 function resolveTurnFailureObservabilityCode(chunk: UIMessageChunk): string {

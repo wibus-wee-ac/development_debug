@@ -100,3 +100,11 @@ export const git = new Elysia({
     query: GitModel.diffQuery,
     response: { 200: t.String() },
   })
+  .get('/:id/git/merge-base', ({ params, query }) => Git.getMergeBase(params.id, query.baseBranch), {
+    detail: {
+      summary: 'Get git merge base',
+    },
+    params: GitModel.idParams,
+    query: GitModel.mergeBaseQuery,
+    response: { 200: GitModel.mergeBaseView },
+  })

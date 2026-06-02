@@ -456,6 +456,18 @@ describe('composer slash commands', () => {
     action: { kind: 'insertText', text: '/compact ' },
   }
 
+  const codexCompactCommand: ChatComposerSlashCommand = {
+    id: 'codex:compact',
+    name: 'compact',
+    label: 'Compact',
+    description: 'Compact this conversation context.',
+    argumentHint: '[instructions]',
+    source: 'runtime',
+    action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true },
+    presentation: 'slot',
+    iconKey: 'compact',
+  }
+
   function createDeferred<T>() {
     let resolve!: (value: T) => void
     const promise = new Promise<T>((res) => {
@@ -483,6 +495,24 @@ describe('composer slash commands', () => {
     fireEvent.click(screen.getByTestId('chat-send-btn'))
 
     expect(onSend).toHaveBeenCalledWith('/compact keep recent context', [], [])
+  })
+
+  it('submits Codex compact slash commands without inserting command text', async () => {
+    const onSend = vi.fn()
+    render(
+      <TooltipProvider>
+        <Composer onSend={onSend} slashCommands={[codexCompactCommand]} />
+      </TooltipProvider>,
+    )
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '/' } })
+    fireEvent.click(screen.getByRole('option', { name: 'Compact Runtime' }))
+
+    await waitFor(() => {
+      expect(onSend).toHaveBeenCalledWith('/compact', [], [])
+    })
+    expect(textarea.textContent).toBe('')
   })
 
   it('attaches files returned by Cradle UI slash commands', async () => {

@@ -592,6 +592,158 @@ describe('codexProvider app-server integration', () => {
     ]))
   })
 
+  it('sets metadata-projected goal messages through Codex thread goals', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-goal-metadata',
+      runtimeSession,
+      profile: createProfile(),
+      message: {
+        id: 'user-goal-metadata',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Ship metadata-projected goals' }],
+        metadata: {
+          cradle: {
+            goal: { objective: 'Ship metadata-projected goals' },
+          },
+        },
+      },
+      workspaceId: 'workspace-1',
+    })
+
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', objective: 'Ship metadata-projected goals' },
+      })
+    })
+    expect(client.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.anything(),
+    })
+
+    client.pushNotification({
+      method: 'turn/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/goal/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship metadata-projected goals',
+          status: 'complete',
+          tokenBudget: null,
+          tokensUsed: 1,
+          timeUsedSeconds: 1,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'thread/goal/cleared',
+      params: { threadId: 'codex-thread-1' },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await drainPromise
+    expect(client.requests).toContainEqual({
+      method: 'thread/goal/clear',
+      params: { threadId: 'codex-thread-1' },
+    })
+  })
+
+  it('starts compact slash commands through Codex thread compaction', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-compact',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('/compact'),
+      workspaceId: 'workspace-1',
+    })
+    const chunksPromise = (async () => {
+      const chunks: UIMessageChunk[] = []
+      for await (const chunk of stream) {
+        chunks.push(chunk)
+      }
+      return chunks
+    })()
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/compact/start',
+        params: { threadId: 'codex-thread-1' },
+      })
+    })
+    expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/compact/start'])
+    expect(client.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.anything(),
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'compact-turn-1',
+        startedAtMs: 40,
+        item: { id: 'compact-1', type: 'contextCompaction' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'compact-turn-1',
+        completedAtMs: 50,
+        item: { id: 'compact-1', type: 'contextCompaction' },
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'compact-turn-1', status: 'completed' },
+      },
+    })
+
+    await expect(chunksPromise).resolves.toEqual([
+      { type: 'tool-input-start', toolCallId: 'compact-1', toolName: 'context_compaction' },
+      { type: 'tool-input-available', toolCallId: 'compact-1', toolName: 'context_compaction', input: codexInput('context_compaction', { id: 'compact-1' }) },
+      { type: 'tool-output-available', toolCallId: 'compact-1', output: codexOutput('context_compaction', { id: 'compact-1' }, { id: 'compact-1' }) },
+    ])
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        compact: {
+          threadId: 'codex-thread-1',
+          turnId: 'compact-turn-1',
+          status: 'compacted',
+          compactionItemId: 'compact-1',
+          lastCompactedAt: 50,
+        },
+      },
+    })
+  })
+
   it('projects Codex token usage notifications into compact UI slot state', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)

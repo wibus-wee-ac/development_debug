@@ -24,6 +24,10 @@ export const GitModel = {
     paths: t.Optional(t.String()),
   }),
 
+  mergeBaseQuery: t.Object({
+    baseBranch: t.String({ minLength: 1 }),
+  }),
+
   statusView: t.Object({
     branch: t.String(),
     tracking: nullableString,
@@ -70,5 +74,9 @@ export const GitModel = {
     gravatarHash: t.String(),
     date: t.String(),
     timestamp: t.Number(),
+  }),
+
+  mergeBaseView: t.Object({
+    mergeBaseSha: nullableString,
   }),
 }

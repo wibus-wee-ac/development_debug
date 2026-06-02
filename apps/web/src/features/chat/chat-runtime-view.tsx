@@ -77,6 +77,7 @@ export function ChatRuntimeView({
         key={sessionId}
         sessionId={sessionId}
         runtimeKind={runtimeKind}
+        workspaceId={workspaceId}
         searchFiles={searchFiles}
         searchSkills={searchSkills}
         composerToolbar={composerToolbar}

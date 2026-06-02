@@ -556,11 +556,33 @@ export function Composer({
       return
     }
 
+    if (command.action.kind === 'submitText') {
+      const submitText = command.action.text
+      const hasComposerPayload = attachmentController.attachments.length > 0 || state.contextParts.length > 0
+      if (disabled || isSending || sendDisabled || (command.action.requiresEmptyComposer && hasComposerPayload)) {
+        requestAnimationFrame(() => promptEditorRef.current?.focus())
+        return
+      }
+
+      dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
+      void (async () => {
+        const result = await submit(submitText, [], [])
+        if (result === false) {
+          return
+        }
+        attachmentController.clearAttachments()
+        promptEditorRef.current?.clear()
+        dispatch({ type: 'input/cleared' })
+      })()
+      requestAnimationFrame(() => promptEditorRef.current?.focus())
+      return
+    }
+
     const insertText = command.action.text
     const next = replaceSlashTrigger(state.inputValue, range.to - 1, range.from - 1, insertText)
     dispatch({ type: 'slash/selected', inputValue: next.value, command })
     promptEditorRef.current?.replaceRangeWithText(range, insertText)
-  }, [attachmentController, onSlashCommandAction, state.inputValue])
+  }, [attachmentController, disabled, isSending, onSlashCommandAction, sendDisabled, state.contextParts.length, state.inputValue, submit])
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()

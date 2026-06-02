@@ -22,6 +22,7 @@ import type { ChatContextPart, ChatSkillContextPart } from './chat-context-parts
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type { MentionItem } from './mention-panel'
 import type { SkillMentionItem } from './skill-mention-panel'
+import { formatSkillMentionTokenLabel, SKILL_MENTION_TOKEN_CLASS } from './skill-mention-token'
 import { getActiveSlashCommand } from './slash-command-input'
 
 const PLACEHOLDER_PLUGIN_KEY = new PluginKey<{ placeholder: string }>('chatPromptPlaceholder')
@@ -145,7 +146,7 @@ const skillMentionSpec: NodeSpec = {
     return [
       'span',
       {
-        'class': 'inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline text-[0.8125em] font-medium leading-none text-primary ring-1 ring-primary/15',
+        'class': SKILL_MENTION_TOKEN_CLASS,
         'data-skill-mention-name': node.attrs.name,
         'data-skill-mention-display-name': text,
         'data-skill-mention-path': node.attrs.path,
@@ -153,7 +154,7 @@ const skillMentionSpec: NodeSpec = {
         'data-skill-mention-scope': node.attrs.scope,
         'contenteditable': 'false',
       },
-      `$${text}`,
+      formatSkillMentionTokenLabel(String(text)),
     ]
   },
   parseDOM: [{
@@ -629,7 +630,7 @@ function createMentionNodeView(node: ProseMirrorNode): NodeView {
     dom.setAttribute(name, value)
   }
   dom.textContent = node.type.name === 'skillMention'
-    ? `$${node.attrs.displayName || node.attrs.name}`
+    ? formatSkillMentionTokenLabel(String(node.attrs.displayName || node.attrs.name))
     : String(node.attrs.label)
   dom.contentEditable = 'false'
 
@@ -652,7 +653,7 @@ function fileMentionDomAttrs(node: ProseMirrorNode): Record<string, string> {
 function skillMentionDomAttrs(node: ProseMirrorNode): Record<string, string> {
   const text = String(node.attrs.displayName || node.attrs.name)
   return {
-    'class': 'inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline text-[0.8125em] font-medium leading-none text-primary ring-1 ring-primary/15',
+    'class': SKILL_MENTION_TOKEN_CLASS,
     'data-skill-mention-name': String(node.attrs.name),
     'data-skill-mention-display-name': text,
     'data-skill-mention-path': String(node.attrs.path),

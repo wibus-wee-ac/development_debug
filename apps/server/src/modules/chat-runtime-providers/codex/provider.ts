@@ -954,6 +954,7 @@ export class CodexProvider implements ChatRuntime {
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
     const userPromptText = extractUiMessageText(input.message).trim()
     const goalCommandObjective = readCodexGoalCommandObjective(input.message)
+    const compactCommandRequested = isCodexCompactCommand(input.message)
     if (!apiKey) {
       throw new Error('Codex provider requires an API key')
     }
@@ -1029,6 +1030,9 @@ export class CodexProvider implements ChatRuntime {
         if (!await continueActiveGoal(client, threadId, abortController.signal)) {
           return
         }
+      }
+      else if (compactCommandRequested) {
+        await client.request('thread/compact/start', { threadId })
       }
       else {
         const turnResponse = await client.request('turn/start', {
@@ -1257,6 +1261,15 @@ function readCodexGoalCommandObjective(message: RuntimeMessageInput): string | n
   }
   const objective = normalized.slice('/goal'.length).trim()
   return objective.length > 0 ? objective : null
+}
+
+function isCodexCompactCommand(message: RuntimeMessageInput): boolean {
+  const normalized = extractUiMessageText(message).trim()
+  if (!normalized.startsWith('/compact')) {
+    return false
+  }
+  const nextChar = normalized.charAt('/compact'.length)
+  return !nextChar || nextChar === ' ' || nextChar === '\t'
 }
 
 async function setCodexThreadGoal(

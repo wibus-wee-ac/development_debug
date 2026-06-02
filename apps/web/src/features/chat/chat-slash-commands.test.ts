@@ -8,6 +8,8 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
+  CODEX_FEEDBACK_SLASH_ACTION_ID,
+  CODEX_REVIEW_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
   createRuntimeSlashCommand,
@@ -113,6 +115,68 @@ describe('chat slash commands', () => {
       action: { kind: 'insertText', text: '/goal ' },
     })
     expect(commands.some(command => command.presentation === 'slot')).toBe(true)
+  })
+
+  it('projects Codex compact slots as immediate submit commands', () => {
+    const [command] = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:compact',
+        name: 'compact',
+        label: 'Compact',
+        description: 'Compact this conversation context.',
+        argumentHint: '[instructions]',
+        iconKey: 'compact',
+        commandText: '/compact ',
+        surfaces: ['slashCommand', 'runtimePanel'],
+      },
+    ])
+
+    expect(command).toMatchObject({
+      id: 'codex:compact',
+      name: 'compact',
+      source: 'runtime',
+      presentation: 'slot',
+      action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true },
+    })
+  })
+
+  it('projects Codex review and feedback slots as host UI actions instead of raw slash text', () => {
+    const commands = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:review',
+        name: 'review',
+        label: 'Code review',
+        description: 'Review unstaged changes or compare with a branch.',
+        argumentHint: '[target]',
+        aliases: ['code-review'],
+        iconKey: 'code-review',
+        commandText: '/review ',
+        surfaces: ['slashCommand'],
+      },
+      {
+        id: 'codex:feedback',
+        name: 'feedback',
+        label: 'Feedback',
+        description: 'Send feedback about this chat.',
+        argumentHint: '',
+        iconKey: 'feedback',
+        commandText: '/feedback ',
+        surfaces: ['slashCommand'],
+      },
+    ])
+
+    expect(commands).toEqual([
+      expect.objectContaining({
+        id: 'codex:review',
+        action: { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID },
+      }),
+      expect.objectContaining({
+        id: 'codex:feedback',
+        action: { kind: 'uiAction', actionId: CODEX_FEEDBACK_SLASH_ACTION_ID },
+      }),
+    ])
+    expect(commands[0]?.availability).toBeUndefined()
+    expect(commands[1]?.availability).toBeUndefined()
   })
 
   it('does not project picker and metadata slots into slash commands', () => {

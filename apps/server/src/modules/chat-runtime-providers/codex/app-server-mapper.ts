@@ -123,6 +123,7 @@ function mapStartedItem(item: CodexAppServerItem | null, state: CodexAppServerMa
     case 'collabAgentToolCall':
     case 'webSearch':
     case 'plan':
+    case 'contextCompaction':
       return mapStartedToolItem(item, state)
     default:
       return []
@@ -159,6 +160,7 @@ function mapCompletedItem(item: CodexAppServerItem | null, state: CodexAppServer
     case 'collabAgentToolCall':
     case 'webSearch':
     case 'plan':
+    case 'contextCompaction':
       return mapCompletedToolItem(item, state)
     default:
       return []

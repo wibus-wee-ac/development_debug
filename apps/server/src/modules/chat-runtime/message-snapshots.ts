@@ -1,13 +1,31 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
-import { toOrderedUserMessageParts, type ChatContextPart } from './context-parts'
+import type { ChatContextPart } from './context-parts'
+import { isChatSkillContextPart, readChatSkillContextPart, toOrderedUserMessageParts } from './context-parts'
 
 export function parseStoredMessageSnapshot(raw: string): UIMessage {
-  return JSON.parse(raw) as UIMessage
+  return normalizeMessageSnapshot(JSON.parse(raw) as UIMessage)
 }
 
 export function normalizeMessageSnapshot(message: UIMessage): UIMessage {
-  return message
+  if (message.role !== 'user' || !message.parts.some(part => isChatSkillContextPart(part) && typeof readChatSkillContextPart(part)?.position === 'number')) {
+    return message
+  }
+
+  const text = message.parts
+    .flatMap(part => part.type === 'text' ? [part.text] : [])
+    .join('')
+  const contextParts = message.parts.flatMap((part) => {
+    const contextPart = readChatSkillContextPart(part)
+    return contextPart ? [contextPart] : []
+  })
+  const orderedParts = toOrderedUserMessageParts(text, contextParts) as UIMessage['parts']
+  orderedParts.push(...message.parts.filter(part => part.type !== 'text' && !isChatSkillContextPart(part)))
+
+  return {
+    ...message,
+    parts: orderedParts,
+  }
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
