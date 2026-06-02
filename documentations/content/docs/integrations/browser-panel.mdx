@@ -1,29 +1,115 @@
 ---
 title: Browser panel
-description: Use the Electron webview browser panel for navigation and agent browser workflows.
+description: Use the Electron webview browser panel for browsing, popup routing, and page-to-chat prompt submission.
 ---
 
-Browser panel 是 Cradle 桌面环境中的浏览器视图。它适合用户查看网页，也可作为 browser-use plugin 的桥接界面。
+Browser panel 是 Cradle 桌面环境里的右侧浏览器视图。它的产品目标是接近一个轻量 Chrome tab：用户可以浏览网页、让站点打开新页面、保留浏览 session，并允许页面通过受控 host API 把 prompt 发回左侧 Chat。
 
 ## 先认识这个功能
 
-Browser panel 支持 URL navigation、back、forward、reload 和有限的 script injection preset。当前证据显示最多支持多个 tabs，但具体上限以当前 store 实现为准。
+Browser panel 支持：
+
+- URL navigation、back、forward、reload。
+- 多个 Browser Panel tabs。
+- 持久 Electron webview partition：`persist:browser`。
+- 站点权限请求默认放行，使它更像普通浏览器使用场景。
+- `window.open` 和 target popup 重新路由为 Browser Panel tab。
+- Browser Panel script presets 和 custom script injection。
+- 页面内 API：`window.codex.sendPrompt(...)`。
+
+`browser-use` plugin 可以观察并自动化这些 webview，但它不是 Browser panel 的 owner。
 
 ## 使用方式
 
 1. 打开 Browser panel。
 2. 输入 URL。
 3. 使用 back、forward 或 reload。
-4. 在需要 agent automation 时确认 browser-use plugin 状态。
+4. 如果网页调用 `window.open` 或打开 target popup，Cradle 会在 Browser Panel 内创建新 tab。
+5. 在需要 agent automation 时确认 browser-use plugin 状态。
+
+## 页面向 Chat 发送 prompt
+
+Browser Panel webview 内的页面可以调用：
+
+```ts
+await window.codex?.sendPrompt('Improve this page.')
+```
+
+也可以传附件：
+
+```ts
+await window.codex?.sendPrompt({
+  text: 'Review this design and suggest improvements.',
+  attachments: [
+    {
+      filename: 'screen.png',
+      mediaType: 'image/png',
+      url: 'data:image/png;base64,...',
+    },
+  ],
+})
+```
+
+支持的输入形态：
+
+| Input | Notes |
+| --- | --- |
+| `sendPrompt(text)` | 发送纯文本 prompt。 |
+| `sendPrompt({ text })` | 对象形态。 |
+| `sendPrompt({ prompt })` | `prompt` 是 `text` 的别名。 |
+| `sendPrompt(text, attachments)` | 第二参数传附件数组。 |
+| `attachments` / `files` | 支持 string URL、data URL、object、`Blob`、`File`。 |
+
+附件会被 Browser Panel host 转成 AI SDK `FileUIPart[]`，再交给 Chat 的 mounted composer send path。它不是简单填输入框，而是直接提交到对应 chat session。
+
+## Session 选择规则
+
+`sendPrompt` 的目标 session 按下面顺序决定：
+
+1. 如果 Browser Panel tab 是从某个 chat session 创建的，优先发送回这个 source session。
+2. 如果 tab 没有 source session，发送到当前 active chat session。
+3. 如果目标 ChatView 没有 mounted，host 会忽略请求并在 console 输出 warning。
+
+这个规则避免右侧网页跳到新页面后丢失和左侧 chat 的关系。
+
+## Owner 边界
+
+| Boundary | Owner | Responsibility |
+| --- | --- | --- |
+| Electron webview creation | Desktop host | 安装 Browser Panel guest preload、配置 session、处理 popup routing、通知 plugin loader。 |
+| Browser Panel tabs | `apps/web/src/features/browser` | renderer-side tab state、webview event sync、URL controls、`sendPrompt` host message ingestion。 |
+| Prompt ingress | `apps/web/src/features/chat` | session-scoped registry，把外部 prompt 交给 mounted ChatView composer send path。 |
+| Browser automation | `plugins/browser-use` | 通过 desktop plugin SDK 监听 webview creation，用 CDP 自动化 webview。 |
+
+关键点：`window.codex.sendPrompt(...)` 属于 Browser Panel / Chat 这条 host-owned ingress，不属于 `browser-use` plugin。`browser-use` 只负责 agent-to-browser automation，不负责 page-to-chat prompt API。
 
 ## 安全提醒
 
-Webview 会加载外部网页。不要在不可信页面中输入敏感信息，也不要批准你不理解的脚本注入或 automation 请求。
+Browser Panel 以桌面 webview 的方式加载外部网页。当前设计刻意偏向“像 Chrome 一样可用”，不是 strict sandbox 产品形态。不要把这个 API 当成远程网页通用安全能力；它是 Cradle desktop Browser Panel 内部的 host bridge。
 
 ## 使用前先知道
 
-Browser panel 是 Electron-only 能力。纯 Web 环境可能不可用。
+Browser panel 是 Electron-only 能力。纯 Web 环境不可用。`window.codex` 只会出现在 Browser Panel guest page 里，不是主 renderer 的通用 API。
+
+## 手动验证
+
+在 Cradle desktop 打开 Browser Panel 后，可以在页面 DevTools 里运行：
+
+```ts
+await window.codex?.sendPrompt({
+  text: 'Summarize this page.',
+  attachments: [
+    new File(['hello'], 'note.txt', { type: 'text/plain' }),
+  ],
+})
+```
+
+预期结果：
+
+- 左侧 Chat 收到并发送 prompt。
+- 如果 tab 有 source session，prompt 回到 source session。
+- 如果页面执行 `window.open('https://example.com')`，右侧 Browser Panel 新增 tab。
 
 ## 继续阅读
 
-阅读 [Browser use](../agents/browser-use.mdx) 和 [Plugins](./plugins.mdx)。
+阅读 [Browser use](../agents/browser-use.mdx)、[Browser Use plugin](../developers/plugins/browser-use.mdx) 和 [Plugins](./plugins.mdx)。
