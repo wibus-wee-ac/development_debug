@@ -19,7 +19,7 @@ Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负�
 - **avatar-url.ts**: Agent Runtime avatar URL helper 的兼容 re-export，供 Agent Management 列表与详情页继续使用同一导入入口
 - **custom-models-editor.tsx**: Provider 自定义模型编辑器，支持手动添加模型、models.dev 匹配补全与可访问的模型操作按钮
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback
-- **external-provider-record-detail-panel.tsx**: Connected provider 详情面板，只展示用户可识别的连接来源、登录状态、应用、端点与默认模型；同步 warning 仅在开发环境以 Dev only 标记显示，同时通过 provider-target API 编辑 Cradle-owned model visibility/custom models，并通过全局 model registry API 保存 models.dev mapping；CLI Tool external target 跳过 provider 模型目录编辑；external provider 启停后刷新 agents 与 provider targets query
+- **external-provider-record-detail-panel.tsx**: 历史外部 provider record 详情面板，只展示用户可识别的来源、登录状态、应用、端点与默认模型；当前 Settings Providers 入口不再渲染外部 provider record 分组。
 - **index.ts**: Agent Management 功能模块的 barrel export
 - **provider-list-groups.ts**: Provider sidebar 的纯排序 / 分组 helper，只为 Cradle-owned manual provider profiles 生成分组，并把 enabled profile 排在 disabled profile 前
 - **provider-list-groups.test.ts**: Provider sidebar 分组排序回归测试，覆盖 enabled-first 与 manual profile 分组语义

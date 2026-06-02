@@ -1,6 +1,5 @@
 import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
-import isEqual from 'fast-deep-equal'
 import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TargetIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -24,10 +23,10 @@ import type { ChatSkillContextMessagePart } from './chat-context-parts'
 import { isChatSkillContextPart, readSkillContextLabel, readSkillContextPart } from './chat-context-parts'
 import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
-import { groupMessagePartRefs, groupMessageParts, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
-import type { ChatToolEntity } from './chat-tool-entities'
-import { readSubagentOutputMessage } from './chat-tool-entities'
+import { groupMessagePartRefs, groupMessageParts, readRenderableToolPart, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
+import { readSubagentOutputMessage, toolNameFromPart } from './chat-tool-entities'
 import { SkillMentionToken } from './skill-mention-token'
+import type { RenderableToolPart } from './tool-ui-classifier'
 import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
@@ -263,18 +262,17 @@ function hasActiveNonTextProgress(items: ChatRenderItem[]): boolean {
       return item.state === 'streaming'
     }
     if (item.kind === 'tool-call') {
-      return isToolCallActive(item.toolCallId)
+      return isToolPartActive(item.part)
     }
     if (item.kind === 'tool-group') {
-      return item.items.some(toolItem => isToolCallActive(toolItem.toolCallId))
+      return item.items.some(toolItem => isToolPartActive(toolItem.part))
     }
     return false
   })
 }
 
-function isToolCallActive(toolCallId: string): boolean {
-  const state = useChatStore.getState().toolEntitiesMap.get(toolCallId)?.state
-  return typeof state === 'string' && ACTIVE_TOOL_STATES.has(state)
+function isToolPartActive(part: RenderableToolPart): boolean {
+  return ACTIVE_TOOL_STATES.has(part.state)
 }
 
 function hasActiveNonTextSegmentProgress(
@@ -289,18 +287,18 @@ function hasActiveNonTextSegmentProgress(
       return part?.type === 'reasoning' && (part as { state?: 'streaming' | 'done' }).state === 'streaming'
     }
     if (segment.kind === 'tool-call') {
-      return isToolCallActiveInState(state, segment.toolCallId)
+      return isToolPartActiveInState(state, sessionId, segment.messageId, segment.partIndex)
     }
     if (segment.kind === 'tool-group') {
-      return segment.items.some(toolItem => isToolCallActiveInState(state, toolItem.toolCallId))
+      return segment.items.some(toolItem => isToolPartActiveInState(state, sessionId, toolItem.messageId, toolItem.partIndex))
     }
     return false
   })
 }
 
-function isToolCallActiveInState(state: ChatStoreSnapshot, toolCallId: string): boolean {
-  const toolState = state.toolEntitiesMap.get(toolCallId)?.state
-  return typeof toolState === 'string' && ACTIVE_TOOL_STATES.has(toolState)
+function isToolPartActiveInState(state: ChatStoreSnapshot, sessionId: string, messageId: string, partIndex: number): boolean {
+  const part = readRenderableToolPartFromState(state, sessionId, messageId, partIndex)
+  return part ? isToolPartActive(part) : false
 }
 
 /* ─── Subagent part render ──────────────────────────────────────── */
@@ -327,11 +325,11 @@ function renderSubagentItem(
       return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
     case 'tool-call': {
       return (
-        <ToolCallBlockFromStore key={item.key} toolCallId={item.toolCallId} animated={false} />
+        <ToolCallBlockFromPart key={item.key} messageId={item.messageId} part={item.part} animated={false} />
       )
     }
     case 'tool-group':
-      return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} animated={false} />
+      return <GroupedToolCallBlockFromParts key={item.key} items={item.items} uiKind={item.uiKind} animated={false} />
     case 'file-attachment':
       return <FileAttachmentBlock key={item.key} part={item.part} />
     case 'skill-context':
@@ -345,22 +343,7 @@ function groupSubagentMessageParts(messageId: string, parts: UIMessage['parts'])
   return groupMessageParts({
     parts,
     messageId,
-    describeToolKind: (toolCallId) => {
-      const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
-      if (!tool) {
-        return null
-      }
-      return describeToolCall({
-        type: 'dynamic-tool',
-        toolCallId: tool.toolCallId,
-        toolName: tool.toolName,
-        state: tool.state,
-        argumentsText: tool.argumentsText,
-        input: tool.input,
-        output: tool.output,
-        errorText: tool.errorText,
-      }).kind
-    },
+    describeToolKind: part => describeToolCall(part).kind,
   })
 }
 
@@ -485,23 +468,6 @@ function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | 
     && left?.isGoalMessage === right?.isGoalMessage
 }
 
-function describeToolKindFromState(state: ChatStoreSnapshot, toolCallId: string) {
-  const tool = state.toolEntitiesMap.get(toolCallId)
-  if (!tool) {
-    return null
-  }
-  return describeToolCall({
-    type: 'dynamic-tool',
-    toolCallId: tool.toolCallId,
-    toolName: tool.toolName,
-    state: tool.state,
-    argumentsText: tool.argumentsText,
-    input: tool.input,
-    output: tool.output,
-    errorText: tool.errorText,
-  }).kind
-}
-
 function readRenderSegmentsFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): ChatRenderSegment[] {
   const message = readMessageFromState(state, sessionId, messageId)
   if (!message) {
@@ -510,7 +476,7 @@ function readRenderSegmentsFromState(state: ChatStoreSnapshot, sessionId: string
   return groupMessagePartRefs({
     parts: message.parts,
     messageId: message.id,
-    describeToolKind: toolCallId => describeToolKindFromState(state, toolCallId),
+    describeToolKind: part => describeToolCall(part).kind,
   })
 }
 
@@ -549,6 +515,7 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
     case 'tool-call':
       return right.kind === 'tool-call'
         && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
         && left.toolCallId === right.toolCallId
     case 'tool-group':
       return right.kind === 'tool-group'
@@ -559,7 +526,7 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
   }
 }
 
-function areToolItemRefsEqual(left: Array<{ key: string, messageId: string, toolCallId: string }>, right: Array<{ key: string, messageId: string, toolCallId: string }>): boolean {
+function areToolItemRefsEqual(left: Array<{ key: string, messageId: string, partIndex: number, toolCallId: string }>, right: Array<{ key: string, messageId: string, partIndex: number, toolCallId: string }>): boolean {
   if (left.length !== right.length) {
     return false
   }
@@ -567,6 +534,7 @@ function areToolItemRefsEqual(left: Array<{ key: string, messageId: string, tool
     if (
       left[i].key !== right[i].key
       || left[i].messageId !== right[i].messageId
+      || left[i].partIndex !== right[i].partIndex
       || left[i].toolCallId !== right[i].toolCallId
     ) {
       return false
@@ -618,6 +586,38 @@ function readSkillContextPartFromState(
   return isChatSkillContextPart(part) ? part : null
 }
 
+function readRenderableToolPartFromState(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageId: string,
+  partIndex: number,
+): RenderableToolPart | null {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  return part ? readRenderableToolPart(part) : null
+}
+
+function areRenderableToolPartsEqual(left: RenderableToolPart | null, right: RenderableToolPart | null): boolean {
+  return left === right
+}
+
+function areGroupedRenderableToolItemsEqual(
+  left: Array<{ key: string, part: RenderableToolPart }>,
+  right: Array<{ key: string, part: RenderableToolPart }>,
+): boolean {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+  for (let i = 0; i < left.length; i++) {
+    if (left[i].key !== right[i].key || left[i].part !== right[i].part) {
+      return false
+    }
+  }
+  return true
+}
+
 function readPlainTextFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): string {
   const message = readMessageFromState(state, sessionId, messageId)
   if (!message) {
@@ -647,20 +647,37 @@ function readActiveStreamingSegmentKey(segments: ChatRenderSegment[]): string | 
   return tail.key
 }
 
-function ToolCallBlockFromStore({
-  toolCallId,
+function readToolApproval(part: RenderableToolPart): { id: string, approved?: boolean, reason?: string } | undefined {
+  const approval = (part as { approval?: { id?: unknown, approved?: unknown, reason?: unknown } }).approval
+  if (!approval || typeof approval.id !== 'string') {
+    return undefined
+  }
+  return {
+    id: approval.id,
+    ...(typeof approval.approved === 'boolean' ? { approved: approval.approved } : {}),
+    ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {}),
+  }
+}
+
+function readToolPreliminary(part: RenderableToolPart): boolean {
+  return (part as { preliminary?: unknown }).preliminary === true
+}
+
+function ToolCallBlockFromPart({
+  messageId,
+  part,
   onToolApprovalResponse,
   children,
   animated,
   sessionId,
 }: {
-  toolCallId: string
+  messageId: string
+  part: RenderableToolPart
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   children?: React.ReactNode
   animated?: boolean
   sessionId?: string | null
 }) {
-  const tool = useChatStore(chatSelectors.toolEntity(toolCallId))
   const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const workspaceDiffTarget = useSessionLayoutStore(
     useShallow((state) => {
@@ -671,27 +688,24 @@ function ToolCallBlockFromStore({
       return workspaceId ? { workspaceId } : undefined
     }),
   )
-  if (!tool) {
-    return null
-  }
-
-  const subagentMessage = readSubagentOutputMessage(tool.output)
+  const subagentMessage = readSubagentOutputMessage(part.output)
+  const approval = readToolApproval(part)
 
   return (
     <ToolCallBlock
-      toolName={tool.toolName}
-      toolCallId={tool.toolCallId}
-      state={tool.state}
-      approval={tool.approval}
-      argumentsText={tool.argumentsText}
-      input={tool.input}
-      output={tool.output}
-      errorText={tool.errorText}
+      toolName={toolNameFromPart(part)}
+      toolCallId={part.toolCallId}
+      state={part.state}
+      approval={approval}
+      argumentsText={part.argumentsText}
+      input={part.input}
+      output={part.output}
+      errorText={part.errorText}
       animated={animated}
       workspaceDiffTarget={workspaceDiffTarget}
-      onApprovalResponse={tool.approval && onToolApprovalResponse
+      onApprovalResponse={approval && onToolApprovalResponse
         ? approval => onToolApprovalResponse({
-            messageId: tool.messageId,
+            messageId,
             approvalId: approval.id,
             approved: approval.approved,
           })
@@ -701,7 +715,7 @@ function ToolCallBlockFromStore({
         ? (
             <SubagentMessageContent
               message={subagentMessage}
-              isStreaming={tool.preliminary === true}
+              isStreaming={readToolPreliminary(part)}
               animationPreset={animationPreset}
               animateMode={animateMode}
               showCursor={showCursor}
@@ -713,19 +727,45 @@ function ToolCallBlockFromStore({
   )
 }
 
-function GroupedToolCallBlockFromStore({
+function ToolCallBlockByPartIndex({
+  sessionId,
+  messageId,
+  partIndex,
+  onToolApprovalResponse,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+  onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+}) {
+  const part = useChatStore(
+    state => readRenderableToolPartFromState(state, sessionId, messageId, partIndex),
+    areRenderableToolPartsEqual,
+  )
+  if (!part) {
+    return null
+  }
+  return (
+    <ToolCallBlockFromPart
+      messageId={messageId}
+      part={part}
+      sessionId={sessionId}
+      onToolApprovalResponse={onToolApprovalResponse}
+    />
+  )
+}
+
+function GroupedToolCallBlockFromParts({
   items,
   uiKind,
   animated,
   sessionId,
 }: {
-  items: Array<{ key: string, messageId: string, toolCallId: string }>
+  items: Array<{ key: string, part: RenderableToolPart }>
   uiKind: ReturnType<typeof describeToolCall>['kind']
   animated?: boolean
   sessionId?: string | null
 }) {
-  const selectedToolState = useChatStore(useShallow(state =>
-    items.map(item => state.toolEntitiesMap.get(item.toolCallId))))
   const workspaceDiffTarget = useSessionLayoutStore(
     useShallow((state) => {
       if (!sessionId) {
@@ -735,32 +775,30 @@ function GroupedToolCallBlockFromStore({
       return workspaceId ? { workspaceId } : undefined
     }),
   )
-  const tools = useMemo(() =>
-    items.flatMap((item, index) => {
-      const entity = selectedToolState[index] as ChatToolEntity | undefined
-      if (!entity) {
-        return []
-      }
-      return [{
-        key: item.key,
-        part: {
-          type: 'dynamic-tool' as const,
-          toolCallId: entity.toolCallId,
-          toolName: entity.toolName,
-          state: entity.state,
-          argumentsText: entity.argumentsText,
-          input: entity.input,
-          output: entity.output,
-          errorText: entity.errorText,
-        },
-      }]
-    }), [items, selectedToolState])
-
-  if (tools.length === 0) {
+  if (items.length === 0) {
     return null
   }
 
-  return <GroupedToolCallBlock items={tools} uiKind={uiKind} animated={animated} workspaceDiffTarget={workspaceDiffTarget} />
+  return <GroupedToolCallBlock items={items} uiKind={uiKind} animated={animated} workspaceDiffTarget={workspaceDiffTarget} />
+}
+
+function GroupedToolCallBlockByPartIndexes({
+  items,
+  uiKind,
+  sessionId,
+}: {
+  items: Array<{ key: string, messageId: string, partIndex: number }>
+  uiKind: ReturnType<typeof describeToolCall>['kind']
+  sessionId: string
+}) {
+  const parts = useChatStore(
+    state => items.flatMap((item) => {
+      const part = readRenderableToolPartFromState(state, sessionId, item.messageId, item.partIndex)
+      return part ? [{ key: item.key, part }] : []
+    }),
+    areGroupedRenderableToolItemsEqual,
+  )
+  return <GroupedToolCallBlockFromParts items={parts} uiKind={uiKind} sessionId={sessionId} />
 }
 
 function MessageTextPartById({
@@ -973,12 +1011,13 @@ function MessageSegmentView({
         />
       )
     case 'tool-group':
-      return <GroupedToolCallBlockFromStore items={segment.items} uiKind={segment.uiKind} sessionId={sessionId} />
+      return <GroupedToolCallBlockByPartIndexes items={segment.items} uiKind={segment.uiKind} sessionId={sessionId} />
     case 'tool-call':
       return (
-        <ToolCallBlockFromStore
-          toolCallId={segment.toolCallId}
+        <ToolCallBlockByPartIndex
           sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
           onToolApprovalResponse={onToolApprovalResponse}
         />
       )
@@ -1180,22 +1219,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     () => groupMessageParts({
       parts: message.parts,
       messageId: message.id,
-      describeToolKind: (toolCallId) => {
-        const tool = useChatStore.getState().toolEntitiesMap.get(toolCallId)
-        if (!tool) {
-          return null
-        }
-        return describeToolCall({
-          type: 'dynamic-tool',
-          toolCallId: tool.toolCallId,
-          toolName: tool.toolName,
-          state: tool.state,
-          argumentsText: tool.argumentsText,
-          input: tool.input,
-          output: tool.output,
-          errorText: tool.errorText,
-        }).kind
-      },
+      describeToolKind: part => describeToolCall(part).kind,
     }),
     [message.parts, message.id],
   )
@@ -1260,13 +1284,14 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
         return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
 
       case 'tool-group':
-        return <GroupedToolCallBlockFromStore key={item.key} items={item.items} uiKind={item.uiKind} />
+        return <GroupedToolCallBlockFromParts key={item.key} items={item.items} uiKind={item.uiKind} />
 
       case 'tool-call':
         return (
-          <ToolCallBlockFromStore
+          <ToolCallBlockFromPart
             key={item.key}
-            toolCallId={item.toolCallId}
+            messageId={message.id}
+            part={item.part}
             onToolApprovalResponse={onToolApprovalResponse}
           />
         )
@@ -1376,7 +1401,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 export const MessageBubble = memo(
   MessageBubbleView,
   (prevProps, nextProps) =>
-    (prevProps.message === nextProps.message || isEqual(prevProps.message, nextProps.message))
+    prevProps.message === nextProps.message
     && prevProps.isStreaming === nextProps.isStreaming
     && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
     && prevProps.presentation === nextProps.presentation

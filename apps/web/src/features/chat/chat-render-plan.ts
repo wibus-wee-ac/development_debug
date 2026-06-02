@@ -2,7 +2,7 @@ import type { UIMessage } from 'ai'
 
 import type { ChatSkillContextMessagePart } from './chat-context-parts'
 import { isChatSkillContextPart } from './chat-context-parts'
-import type { ToolUiKind } from './tool-ui-classifier'
+import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
 
 export type MessagePart = UIMessage['parts'][number]
 export type FileMessagePart = Extract<MessagePart, { type: 'file' }>
@@ -10,7 +10,12 @@ export type FileMessagePart = Extract<MessagePart, { type: 'file' }>
 export interface ToolCallItemRef {
   key: string
   messageId: string
+  partIndex: number
   toolCallId: string
+}
+
+export interface ToolCallRenderItem extends ToolCallItemRef {
+  part: RenderableToolPart
 }
 
 export interface MessagePartRefBase {
@@ -22,16 +27,16 @@ export interface MessagePartRefBase {
 export type ChatRenderSegment
   = | (MessagePartRefBase & { kind: 'text', hasText: boolean })
     | (MessagePartRefBase & { kind: 'reasoning' })
-    | { kind: 'tool-call', messageId: string, toolCallId: string, key: string }
-    | { kind: 'tool-group', items: ToolCallItemRef[], uiKind: ToolUiKind, key: string }
+    | ({ kind: 'tool-call' } & ToolCallRenderItem)
+    | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
     | (MessagePartRefBase & { kind: 'skill-context' })
     | (MessagePartRefBase & { kind: 'file-attachment' })
 
 export type ChatRenderItem
   = | { kind: 'text', text: string, key: string }
     | { kind: 'reasoning', text: string, state?: 'streaming' | 'done', key: string }
-    | { kind: 'tool-call', messageId: string, toolCallId: string, key: string }
-    | { kind: 'tool-group', items: ToolCallItemRef[], uiKind: ToolUiKind, key: string }
+    | ({ kind: 'tool-call' } & ToolCallRenderItem)
+    | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
     | { kind: 'skill-context', part: ChatSkillContextMessagePart, key: string }
     | { kind: 'file-attachment', part: FileMessagePart, key: string }
 
@@ -48,7 +53,21 @@ export interface SegmentExecutionPhaseSplit {
 export interface GroupMessagePartsInput {
   parts: MessagePart[]
   messageId: string
-  describeToolKind: (toolCallId: string) => ToolUiKind | null
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null
+}
+
+export function readRenderableToolPart(part: MessagePart): RenderableToolPart | null {
+  if ((part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) || !('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+    return null
+  }
+
+  const record = part as Record<string, unknown>
+  const state = typeof record.state === 'string' ? record.state : 'input-streaming'
+  return {
+    ...part,
+    toolCallId: part.toolCallId,
+    state,
+  } as RenderableToolPart
 }
 
 export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderSegment[] {
@@ -93,9 +112,13 @@ export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderS
         partIndex: i,
       })
     }
-    else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
-      const toolCallId = (part as { toolCallId: string }).toolCallId
-      items.push({ kind: 'tool-call', messageId: input.messageId, toolCallId, key })
+    else {
+      const toolPart = readRenderableToolPart(part)
+      if (!toolPart) {
+        continue
+      }
+      const toolCallId = toolPart.toolCallId
+      items.push({ kind: 'tool-call', messageId: input.messageId, partIndex: i, toolCallId, key, part: toolPart })
     }
   }
 
@@ -128,9 +151,13 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
     else if (isChatSkillContextPart(part)) {
       items.push({ kind: 'skill-context', part: part as ChatSkillContextMessagePart, key })
     }
-    else if (part.type === 'dynamic-tool' || (part.type.startsWith('tool-') && 'toolCallId' in part)) {
-      const toolCallId = (part as { toolCallId: string }).toolCallId
-      items.push({ kind: 'tool-call', messageId: input.messageId, toolCallId, key })
+    else {
+      const toolPart = readRenderableToolPart(part)
+      if (!toolPart) {
+        continue
+      }
+      const toolCallId = toolPart.toolCallId
+      items.push({ kind: 'tool-call', messageId: input.messageId, partIndex: i, toolCallId, key, part: toolPart })
     }
   }
 
@@ -141,15 +168,15 @@ const GROUPABLE_KINDS = new Set<ToolUiKind>(['terminal', 'file-read', 'search', 
 
 function groupConsecutiveToolCalls(
   items: ChatRenderItem[],
-  describeToolKind: (toolCallId: string) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
 ): ChatRenderItem[]
 function groupConsecutiveToolCalls(
   items: ChatRenderSegment[],
-  describeToolKind: (toolCallId: string) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
 ): ChatRenderSegment[]
 function groupConsecutiveToolCalls(
   items: Array<ChatRenderItem | ChatRenderSegment>,
-  describeToolKind: (toolCallId: string) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
 ): Array<ChatRenderItem | ChatRenderSegment> {
   const result: Array<ChatRenderItem | ChatRenderSegment> = []
   let i = 0
@@ -160,20 +187,33 @@ function groupConsecutiveToolCalls(
       i++
       continue
     }
-    const uiKind = describeToolKind(item.toolCallId)
+    const uiKind = 'part' in item ? describeToolKind(item.part) : null
     if (!uiKind || !GROUPABLE_KINDS.has(uiKind)) {
       result.push(item)
       i++
       continue
     }
-    const group: ToolCallItemRef[] = [{ key: item.key, messageId: item.messageId, toolCallId: item.toolCallId }]
+    const group: ToolCallRenderItem[] = [{
+      key: item.key,
+      messageId: item.messageId,
+      partIndex: item.partIndex,
+      toolCallId: item.toolCallId,
+      part: item.part,
+    }]
     let j = i + 1
     while (j < items.length && items[j].kind === 'tool-call') {
       const nextItem = items[j] as Extract<ChatRenderItem | ChatRenderSegment, { kind: 'tool-call' }>
-      if (describeToolKind(nextItem.toolCallId) !== uiKind) {
+      const nextKind = 'part' in nextItem ? describeToolKind(nextItem.part) : null
+      if (nextKind !== uiKind) {
         break
       }
-      group.push({ key: nextItem.key, messageId: nextItem.messageId, toolCallId: nextItem.toolCallId })
+      group.push({
+        key: nextItem.key,
+        messageId: nextItem.messageId,
+        partIndex: nextItem.partIndex,
+        toolCallId: nextItem.toolCallId,
+        part: nextItem.part,
+      })
       j++
     }
     if (group.length >= 2) {

@@ -1,5 +1,5 @@
-// Output: Read-only detail panel for external provider records in Provider settings.
-// Input: Connected provider metadata plus provider-backed model fetch.
+// Output: Historical detail panel for external provider records.
+// Input: External provider record metadata plus provider-backed model fetch.
 // Position: Shows user-facing connected app details while keeping source-owned fields read-only.
 
 import { useMutation, useQueryClient } from '@tanstack/react-query'

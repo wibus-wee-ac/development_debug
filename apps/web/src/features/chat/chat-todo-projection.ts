@@ -4,7 +4,6 @@
 
 import type { UIMessage } from 'ai'
 
-import type { ChatToolEntity } from './chat-tool-entities'
 import { isToolLikePart } from './chat-tool-entities'
 import type { ToolPayload, ToolTodo } from './tool-ui-classifier'
 import { readPrimaryTodos, readToolInputPayload, readToolPayload } from './tool-ui-classifier'
@@ -32,47 +31,6 @@ export function selectTodosFromMessages(messages: UIMessage[]): SessionTodoSnaps
   const fallbackSnapshot = selectTodosFromToolPayloads(messages)
   const pluginSnapshot = selectTodosFromPluginState(messages)
   return pluginSnapshot ?? fallbackSnapshot
-}
-
-export function selectTodosFromToolEntities(entities: ChatToolEntity[]): SessionTodoSnapshot | null {
-  const pluginSnapshot = selectPluginTodosFromToolEntities(entities)
-  const fallbackSnapshot = selectFallbackTodosFromToolEntities(entities)
-  return pluginSnapshot ?? fallbackSnapshot
-}
-
-function selectPluginTodosFromToolEntities(entities: ChatToolEntity[]): SessionTodoSnapshot | null {
-  for (let entityIndex = entities.length - 1; entityIndex >= 0; entityIndex -= 1) {
-    const entity = entities[entityIndex]
-    const pluginTodos = readTodoPluginState(entity.output)
-    if (pluginTodos.length > 0) {
-      return {
-        messageId: entity.messageId,
-        toolCallId: entity.toolCallId,
-        todos: pluginTodos,
-      }
-    }
-  }
-
-  return null
-}
-
-function selectFallbackTodosFromToolEntities(entities: ChatToolEntity[]): SessionTodoSnapshot | null {
-  for (let entityIndex = entities.length - 1; entityIndex >= 0; entityIndex -= 1) {
-    const entity = entities[entityIndex]
-    const projectedTodos = projectChatTodos(
-      readToolInputPayload(entity.input, entity.argumentsText),
-      readToolPayload(entity.output),
-    )
-    if (projectedTodos.length > 0) {
-      return {
-        messageId: entity.messageId,
-        toolCallId: entity.toolCallId,
-        todos: projectedTodos,
-      }
-    }
-  }
-
-  return null
 }
 
 function selectTodosFromPluginState(messages: UIMessage[]): SessionTodoSnapshot | null {

@@ -372,17 +372,26 @@ function CrewDetailSection({ label, children }: { label: string, children: React
 
 function CrewAgentRow({ agent, index }: { agent: ChatRuntimeCrewAgentItem, index: number }) {
   const status = agent.status ? formatStatusLike(agent.status) : 'Unknown'
+  const label = readCrewAgentLabel(agent)
+  const details = readCrewAgentDetails(agent)
   return (
-    <div className="flex min-w-0 items-center gap-2 text-[10px]">
-      <span className={cn('grid size-3 shrink-0 place-items-center rounded-[3px]', readCrewSwatchClassName(index))}>
-        <span className="size-1.5 rounded-[2px] bg-current opacity-80" />
-      </span>
-      <span className="min-w-0 flex-1 truncate text-foreground">
-        {formatThreadId(agent.threadId)}
-      </span>
-      <span className={cn('shrink-0 tabular-nums', readCrewStatusTextClassName(agent.status))}>
-        {status}
-      </span>
+    <div className="min-w-0 text-[10px]">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={cn('grid size-3 shrink-0 place-items-center rounded-[3px]', readCrewSwatchClassName(index))}>
+          <span className="size-1.5 rounded-[2px] bg-current opacity-80" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-foreground">
+          {label}
+        </span>
+        <span className={cn('shrink-0 tabular-nums', readCrewStatusTextClassName(agent.status))}>
+          {status}
+        </span>
+      </div>
+      {details && (
+        <div className="mt-0.5 truncate pl-5 text-[9px] text-muted-foreground">
+          {details}
+        </div>
+      )}
     </div>
   )
 }
@@ -401,8 +410,9 @@ function CrewModeRow({ mode }: { mode: ChatRuntimeCrewCollaborationMode }) {
 }
 
 function CrewCallRow({ call }: { call: ChatRuntimeCrewCallItem }) {
+  const receiverThreadIds = readCrewCallReceiverThreadIds(call)
   const detail = [
-    call.receiverThreadIds.length > 0 ? `${call.receiverThreadIds.length} targets` : null,
+    receiverThreadIds.length > 0 ? `${receiverThreadIds.length} targets` : null,
     call.model,
     call.reasoningEffort,
   ].filter(Boolean).join(' · ')
@@ -733,10 +743,19 @@ function readApprovalTone(status: ChatRuntimeApprovalStatus): SlotTone {
 function readCrewAgents(state: ChatRuntimeCrewUiSlotState): ChatRuntimeCrewAgentItem[] {
   const agents = new Map<string, ChatRuntimeCrewAgentItem>()
   for (const call of readCrewCalls(state)) {
-    for (const threadId of call.receiverThreadIds) {
-      agents.set(threadId, { threadId, status: null, message: null })
+    for (const threadId of readCrewCallReceiverThreadIds(call)) {
+      agents.set(threadId, {
+        threadId,
+        status: null,
+        message: null,
+        name: null,
+        preview: null,
+        modelProvider: null,
+        agentNickname: null,
+        agentRole: null,
+      })
     }
-    for (const agent of call.agents) {
+    for (const agent of readCrewCallAgents(call)) {
       agents.set(agent.threadId, agent)
     }
   }
@@ -747,8 +766,28 @@ function readCrewCollaborationModes(state: ChatRuntimeCrewUiSlotState) {
   return Array.isArray(state.collaborationModes) ? state.collaborationModes : []
 }
 
-function readCrewCalls(state: ChatRuntimeCrewUiSlotState) {
-  return Array.isArray(state.calls) ? state.calls : []
+function readCrewCalls(state: ChatRuntimeCrewUiSlotState | null) {
+  return Array.isArray(state?.calls) ? state.calls : []
+}
+
+function readCrewCallAgents(call: ChatRuntimeCrewCallItem): ChatRuntimeCrewAgentItem[] {
+  return Array.isArray(call.agents) ? call.agents : []
+}
+
+function readCrewCallReceiverThreadIds(call: ChatRuntimeCrewCallItem): string[] {
+  return Array.isArray(call.receiverThreadIds) ? call.receiverThreadIds : []
+}
+
+function readCrewAgentLabel(agent: ChatRuntimeCrewAgentItem): string {
+  return agent.agentNickname ?? agent.name ?? agent.agentRole ?? formatThreadId(agent.threadId)
+}
+
+function readCrewAgentDetails(agent: ChatRuntimeCrewAgentItem): string | null {
+  return [
+    agent.agentRole,
+    agent.name && agent.name !== agent.agentNickname ? agent.name : null,
+    agent.modelProvider,
+  ].filter(Boolean).join(' · ') || null
 }
 
 function readCrewSwatchClassName(index: number): string {

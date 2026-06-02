@@ -1,24 +1,25 @@
 // Output: Runtime status panel for the selected chat session.
-// Input: Session metadata, visible chat status, run display metadata, and tool entities.
+// Input: Session metadata, visible chat status, run display metadata, and chat messages.
 // Position: Chat feature panel rendered inside the app right aside.
 
 import { useQuery } from '@tanstack/react-query'
-import { ActivityIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import type { UIMessage } from 'ai'
+import { ActivityIcon, BotIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import { useMemo } from 'react'
 import { useSyncExternalStore } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 
-import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import type { ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
+import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
 import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from './chat-context'
 import type { ChatTodoItem, SessionTodoSnapshot } from './chat-todo-projection'
-import type { ChatToolEntity } from './chat-tool-entities'
+import { toolNameFromPart } from './chat-tool-entities'
+import { readRenderableToolPart } from './chat-render-plan'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
-import type { ToolState } from './tool-ui-classifier'
+import type { RenderableToolPart, ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
 import { useSessionTodos } from './use-session-todos'
@@ -39,7 +40,7 @@ const TOOL_STATE_LABELS: Record<ToolState, string> = {
   'output-denied': 'Denied',
 }
 
-const EMPTY_TOOLS: ChatToolEntity[] = []
+const EMPTY_MESSAGES: UIMessage[] = []
 
 type ProgressTaskStatus = 'pending' | 'inProgress' | 'completed'
 
@@ -77,9 +78,8 @@ export function RuntimeSessionPanel({
   const lastAssistantId = useChatStore(
     sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined,
   )
-  const tools = useChatStore(
-    useShallow(sessionId ? chatSelectors.sessionToolEntities(sessionId) : () => EMPTY_TOOLS),
-  )
+  const messages = useChatStore(sessionId ? chatSelectors.messages(sessionId) : () => EMPTY_MESSAGES)
+  const tools = useMemo(() => collectSessionToolParts(messages), [messages])
   const runMeta = useChatStore(
     lastAssistantId
       ? chatSelectors.runDisplayMeta(lastAssistantId)
@@ -90,6 +90,7 @@ export function RuntimeSessionPanel({
   const status = runtimeStatus?.status ?? visibleStatus
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
   const planState = runtimeUiSlotStates?.states.find(isRuntimePlanState) ?? null
+  const crewState = runtimeUiSlotStates?.states.find(isRuntimeCrewState) ?? null
   const progressItems = buildProgressItems(planState, todoSnapshot)
 
   if (!sessionId) {
@@ -102,7 +103,8 @@ export function RuntimeSessionPanel({
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
-      <ProgressPanel items={progressItems} planState={planState} loading={runtimeUiSlotStatesLoading} />
+      <ProgressPanel items={progressItems} loading={runtimeUiSlotStatesLoading} />
+      <SubagentsPanel crewState={crewState} loading={runtimeUiSlotStatesLoading} />
 
       {
         import.meta.env.DEV && (
@@ -172,16 +174,8 @@ export function RuntimeSessionPanel({
                   </p>
                 )}
                 {recentTools.map((tool) => {
-                  const descriptor = describeToolCall({
-                    type: 'dynamic-tool',
-                    toolCallId: tool.toolCallId,
-                    toolName: tool.toolName,
-                    state: tool.state,
-                    input: tool.input,
-                    output: tool.output,
-                    errorText: tool.errorText,
-                    argumentsText: tool.argumentsText,
-                  })
+                  const descriptor = describeToolCall(tool)
+                  const toolName = toolNameFromPart(tool)
                   return (
                     <div key={tool.toolCallId} className="rounded-md bg-muted/40 px-2 py-1.5">
                       <div className="flex items-center gap-2">
@@ -191,7 +185,7 @@ export function RuntimeSessionPanel({
                         )}
                         />
                         <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
-                          {descriptor.title || formatToolName(tool.toolName)}
+                          {descriptor.title || formatToolName(toolName)}
                         </span>
                         <span className="shrink-0 text-[10px] text-muted-foreground">
                           {TOOL_STATE_LABELS[tool.state]}
@@ -226,37 +220,15 @@ function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon, label:
 
 function ProgressPanel({
   items,
-  planState,
   loading,
 }: {
   items: ProgressTaskItem[]
-  planState: ChatRuntimePlanUiSlotState | null
   loading: boolean
 }) {
-  const completed = items.filter(item => item.status === 'completed').length
-  const activeItem = items.find(item => item.status === 'inProgress')
-    ?? items.find(item => item.status === 'pending')
-    ?? items.at(-1)
-    ?? null
-  const summary = items.length > 0
-    ? `${completed}/${items.length} complete`
-    : loading
-      ? 'Loading'
-      : 'No tracked tasks'
-
   return (
     <section className="space-y-2">
       <PanelHeading icon={ListChecksIcon} label="Progress" />
       <div className="space-y-2 rounded-md bg-muted/35 px-1 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-        {/* <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/85">
-            {activeItem?.label ?? planState?.explanation ?? 'Session task state'}
-          </span>
-          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-            {summary}
-          </span>
-        </div> */}
-        {/* <Progress value={safePercent(completed, items.length)} className="h-1.5 bg-muted/70" /> */}
         {items.length > 0
           ? (
             <div className="space-y-1">
@@ -298,6 +270,149 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
       >
         {item.label}
       </span>
+    </div>
+  )
+}
+
+function SubagentsPanel({
+  crewState,
+  loading,
+}: {
+  crewState: ChatRuntimeCrewUiSlotState | null
+  loading: boolean
+}) {
+  const agents = crewState ? readCrewAgents(crewState) : []
+  const calls = readCrewCalls(crewState)
+  const recentCalls = calls.slice(0, 4)
+  const hasCrewState = agents.length > 0 || calls.length > 0 || (crewState?.collaborationModeCount ?? 0) > 0
+
+  return (
+    <section className="space-y-2">
+      <PanelHeading icon={BotIcon} label="Subagents" />
+      <div className="space-y-2 rounded-md bg-muted/35 p-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        {crewState && (
+          <div className="grid grid-cols-3 gap-1.5">
+            <CompactMetric label="Active" value={String(crewState.activeCount)} tone={crewState.activeCount > 0 ? 'streaming' : 'idle'} />
+            <CompactMetric label="Done" value={String(crewState.completedCount)} tone="idle" />
+            <CompactMetric label="Failed" value={String(crewState.failedCount)} tone={crewState.failedCount > 0 ? 'error' : 'idle'} />
+          </div>
+        )}
+
+        {agents.length > 0 && (
+          <div className="space-y-1">
+            {agents.slice(0, 6).map((agent, index) => (
+              <SubagentRow key={agent.threadId} agent={agent} index={index} />
+            ))}
+          </div>
+        )}
+
+        {recentCalls.length > 0 && (
+          <div className="space-y-1 border-t border-border/60 pt-2">
+            {recentCalls.map(call => (
+              <SubagentCallRow key={call.id} call={call} />
+            ))}
+          </div>
+        )}
+
+        {!hasCrewState && (
+          <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
+            {loading ? 'Loading subagent state...' : 'No subagent activity for this session'}
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+function CompactMetric({
+  label,
+  value,
+  tone = 'idle',
+}: {
+  label: string
+  value: string
+  tone?: RuntimeSessionStatusKind | 'error'
+}) {
+  return (
+    <div className="min-w-0 rounded bg-background/45 px-2 py-1">
+      <p className="text-[9px] text-muted-foreground">{label}</p>
+      <p className={cn(
+        'mt-0.5 truncate text-[11px] font-medium tabular-nums',
+        tone === 'streaming' && 'text-primary',
+        tone === 'pending' && 'text-primary',
+        tone === 'cancelling' && 'text-amber-600 dark:text-amber-400',
+        tone === 'error' && 'text-destructive',
+        tone === 'idle' && 'text-foreground',
+      )}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function SubagentRow({
+  agent,
+  index,
+}: {
+  agent: ChatRuntimeCrewAgentItem
+  index: number
+}) {
+  const status = agent.status ? formatStatusLike(agent.status) : 'Unknown'
+  const label = readCrewAgentLabel(agent)
+  const details = readCrewAgentDetails(agent)
+  const description = agent.message ?? agent.preview
+  return (
+    <div className="min-w-0 rounded bg-background/45 px-2 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px]', readCrewSwatchClassName(index))}>
+          <span className="size-2 rounded-[3px] bg-current opacity-80" />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+          {label}
+        </span>
+        <span className={cn('shrink-0 text-[10px] tabular-nums', readCrewStatusTextClassName(agent.status))}>
+          {status}
+        </span>
+      </div>
+      {details && (
+        <p className="mt-0.5 truncate pl-6 text-[9px] text-muted-foreground">
+          {details}
+        </p>
+      )}
+      {description && (
+        <p className="mt-1 line-clamp-2 pl-6 text-[10px] leading-4 text-muted-foreground">
+          {description}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SubagentCallRow({ call }: { call: ChatRuntimeCrewCallItem }) {
+  const receiverThreadIds = readCrewCallReceiverThreadIds(call)
+  const targetLabel = receiverThreadIds.length > 0
+    ? `${receiverThreadIds.length} target${receiverThreadIds.length === 1 ? '' : 's'}`
+    : 'No target'
+
+  return (
+    <div className="min-w-0 rounded bg-background/35 px-2 py-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className={cn('shrink-0 text-[10px] tabular-nums', readToolActivityTextClassName(call.status))}>
+          {formatStatusLike(call.status)}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
+          {call.tool}
+        </span>
+        <span className="max-w-[42%] shrink-0 truncate text-[10px] text-muted-foreground">
+          {targetLabel}
+        </span>
+      </div>
+      {call.prompt && (
+        <p className="mt-0.5 line-clamp-2 text-[9px] leading-3.5 text-muted-foreground">
+          {call.prompt}
+        </p>
+      )}
     </div>
   )
 }
@@ -344,6 +459,10 @@ function KeyValue({ label, value }: { label: string, value: string }) {
 
 function isRuntimePlanState(state: ChatRuntimeUiSlotState): state is ChatRuntimePlanUiSlotState {
   return state.kind === 'plan'
+}
+
+function isRuntimeCrewState(state: ChatRuntimeUiSlotState): state is ChatRuntimeCrewUiSlotState {
+  return state.kind === 'crew'
 }
 
 function buildProgressItems(
@@ -415,6 +534,102 @@ function readDominantProgressStatus(left: ProgressTaskStatus, right: ProgressTas
   return 'pending'
 }
 
+function readCrewAgents(state: ChatRuntimeCrewUiSlotState): ChatRuntimeCrewAgentItem[] {
+  const agents = new Map<string, ChatRuntimeCrewAgentItem>()
+  for (const call of readCrewCalls(state)) {
+    for (const threadId of readCrewCallReceiverThreadIds(call)) {
+      agents.set(threadId, {
+        threadId,
+        status: null,
+        message: null,
+        name: null,
+        preview: null,
+        modelProvider: null,
+        agentNickname: null,
+        agentRole: null,
+      })
+    }
+    for (const agent of readCrewCallAgents(call)) {
+      agents.set(agent.threadId, agent)
+    }
+  }
+  return Array.from(agents.values())
+}
+
+function readCrewCalls(state: ChatRuntimeCrewUiSlotState | null): ChatRuntimeCrewCallItem[] {
+  return Array.isArray(state?.calls) ? state.calls : []
+}
+
+function readCrewCallAgents(call: ChatRuntimeCrewCallItem): ChatRuntimeCrewAgentItem[] {
+  return Array.isArray(call.agents) ? call.agents : []
+}
+
+function readCrewCallReceiverThreadIds(call: ChatRuntimeCrewCallItem): string[] {
+  return Array.isArray(call.receiverThreadIds) ? call.receiverThreadIds : []
+}
+
+function readCrewAgentLabel(agent: ChatRuntimeCrewAgentItem): string {
+  return agent.agentNickname ?? agent.name ?? agent.agentRole ?? formatThreadId(agent.threadId)
+}
+
+function readCrewAgentDetails(agent: ChatRuntimeCrewAgentItem): string | null {
+  return [
+    agent.agentRole,
+    agent.name && agent.name !== agent.agentNickname ? agent.name : null,
+    agent.modelProvider,
+  ].filter(Boolean).join(' · ') || null
+}
+
+function readCrewSwatchClassName(index: number): string {
+  const classes = [
+    'bg-amber-400/15 text-amber-400',
+    'bg-sky-400/15 text-sky-400',
+    'bg-violet-400/15 text-violet-400',
+    'bg-rose-400/15 text-rose-400',
+    'bg-orange-400/15 text-orange-400',
+    'bg-emerald-400/15 text-emerald-400',
+  ]
+  return classes[index % classes.length] ?? classes[0]
+}
+
+function readCrewStatusTextClassName(status: string | null): string {
+  switch (status) {
+    case 'running':
+    case 'pendingInit':
+      return 'text-primary'
+    case 'completed':
+    case 'shutdown':
+      return 'text-emerald-600 dark:text-emerald-400'
+    case 'errored':
+    case 'notFound':
+      return 'text-destructive'
+    case 'interrupted':
+      return 'text-amber-600 dark:text-amber-400'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
+function readToolActivityTextClassName(status: ToolState | ChatRuntimeCrewCallItem['status']): string {
+  switch (status) {
+    case 'failed':
+    case 'output-error':
+    case 'output-denied':
+      return 'text-destructive'
+    case 'running':
+    case 'input-streaming':
+    case 'input-available':
+    case 'approval-requested':
+      return 'text-primary'
+    case 'completed':
+    case 'output-available':
+    case 'approval-responded':
+      return 'text-emerald-600 dark:text-emerald-400'
+    default:
+      return 'text-muted-foreground'
+  }
+}
+
 function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {
   return tools.reduce((counts, tool) => {
     if (tool.state === 'output-error' || tool.state === 'output-denied') {
@@ -427,6 +642,19 @@ function countToolStates(tools: Array<{ state: ToolState }>): { running: number,
   }, { running: 0, failed: 0 })
 }
 
+function collectSessionToolParts(messages: UIMessage[]): RenderableToolPart[] {
+  const tools: RenderableToolPart[] = []
+  for (const message of messages) {
+    for (const part of message.parts) {
+      const tool = readRenderableToolPart(part)
+      if (tool) {
+        tools.push(tool)
+      }
+    }
+  }
+  return tools
+}
+
 function formatStatus(status: RuntimeSessionStatusKind | 'error'): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
@@ -436,6 +664,20 @@ function formatMode(mode: string | null | undefined): string {
     return 'bypassPermissions'
   }
   return mode
+}
+
+function formatStatusLike(value: string): string {
+  return value
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]/g, ' ')
+    .replace(/\b\w/g, char => char.toUpperCase())
+}
+
+function formatThreadId(threadId: string): string {
+  if (threadId.length <= 18) {
+    return threadId
+  }
+  return `${threadId.slice(0, 8)}...${threadId.slice(-4)}`
 }
 
 function formatElapsed(startedAt: number | null | undefined, endedAt: number | null | undefined): string {
@@ -469,10 +711,6 @@ function formatSnapshotFreshness(updatedAt: number): string {
     return `${ageSeconds}s ago`
   }
   return `${Math.floor(ageSeconds / 60)}m ago`
-}
-
-function safePercent(value: number, total: number): number {
-  return total <= 0 ? 0 : Math.round((value / total) * 100)
 }
 
 function statusShouldPoll(status: RuntimeSessionStatusKind | undefined): boolean {

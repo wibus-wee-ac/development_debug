@@ -1,5 +1,5 @@
 /**
- * Output: Regression coverage for chat store message normalization and tool entity ownership.
+ * Output: Regression coverage for chat store message ownership.
  * Input: Hydrated UI messages that still contain full dynamic-tool payload snapshots.
  * Position: Store-owned tests for browser chat state projection.
  */
@@ -13,8 +13,6 @@ function resetChatStore(): void {
   useChatStore.setState(state => ({
     ...state,
     messagesMap: new Map(),
-    toolCallIdsByMessageId: new Map(),
-    toolEntitiesMap: new Map(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
@@ -25,12 +23,12 @@ function resetChatStore(): void {
   }))
 }
 
-describe('chat store tool entity normalization', () => {
+describe('chat store messages', () => {
   beforeEach(() => {
     resetChatStore()
   })
 
-  it('moves hydrated tool payload out of message.parts and into toolEntitiesMap', () => {
+  it('keeps hydrated tool payload in message.parts', () => {
     const message: UIMessage = {
       id: 'assistant-1',
       role: 'assistant',
@@ -54,30 +52,19 @@ describe('chat store tool entity normalization', () => {
     useChatStore.getState().setMessages('session-1', [message])
 
     const storedMessage = chatSelectors.messages('session-1')(useChatStore.getState())[0]
-    const toolEntity = chatSelectors.toolEntity('tool-read-1')(useChatStore.getState())
-    const toolIds = chatSelectors.toolCallIds('assistant-1')(useChatStore.getState())
 
     expect(storedMessage.parts[0]).toEqual({
       type: 'dynamic-tool',
       toolCallId: 'tool-read-1',
       toolName: 'Read',
       state: 'output-available',
+      argumentsText: '{"file_path":"/tmp/readme.md"}',
+      input: { file_path: '/tmp/readme.md' },
+      output: '1\tHello',
     })
     expect(storedMessage.parts[1]).toEqual({
       type: 'text',
       text: 'Done.',
-    })
-
-    expect(toolIds).toEqual(['tool-read-1'])
-    expect(toolEntity).toEqual({
-      messageId: 'assistant-1',
-      toolCallId: 'tool-read-1',
-      toolName: 'Read',
-      state: 'output-available',
-      argumentsText: '{"file_path":"/tmp/readme.md"}',
-      input: { file_path: '/tmp/readme.md' },
-      output: '1\tHello',
-      errorText: undefined,
     })
   })
 

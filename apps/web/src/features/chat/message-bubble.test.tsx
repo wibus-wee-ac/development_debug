@@ -28,8 +28,6 @@ afterEach(() => {
   useChatStore.setState(state => ({
     ...state,
     messagesMap: new Map(),
-    toolCallIdsByMessageId: new Map(),
-    toolEntitiesMap: new Map(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
@@ -57,26 +55,7 @@ const messageWithToolCall: UIMessage = {
 }
 
 describe('message bubble', () => {
-  function seedToolEntity() {
-    useChatStore.setState(state => ({
-      ...state,
-      toolCallIdsByMessageId: new Map([[messageWithToolCall.id, ['tool-1']]]),
-      toolEntitiesMap: new Map([[
-        'tool-1',
-        {
-          toolCallId: 'tool-1',
-          messageId: messageWithToolCall.id,
-          toolName: 'unknown_tool',
-          state: 'output-available',
-          input: { action: 'inspect' },
-          output: { ok: true },
-        },
-      ]]),
-    }))
-  }
-
   it('keeps execution details folded by default', () => {
-    seedToolEntity()
     render(
       <TooltipProvider>
         <MessageBubble message={messageWithToolCall} isStreaming={false} />
@@ -89,7 +68,6 @@ describe('message bubble', () => {
   })
 
   it('renders execution details immediately when default-open is requested', () => {
-    seedToolEntity()
     render(
       <TooltipProvider>
         <MessageBubble
@@ -300,7 +278,6 @@ describe('message bubble', () => {
 
   it('shows Thinking after completed tool progress becomes idle during streaming', () => {
     vi.useFakeTimers()
-    seedToolEntity()
 
     render(
       <TooltipProvider>
@@ -332,19 +309,6 @@ describe('message bubble', () => {
         { type: 'text', text: 'Checking the workspace.' },
       ],
     }
-    useChatStore.setState(state => ({
-      ...state,
-      toolCallIdsByMessageId: new Map([[activeToolMessage.id, ['tool-active']]]),
-      toolEntitiesMap: new Map([[
-        'tool-active',
-        {
-          toolCallId: 'tool-active',
-          messageId: activeToolMessage.id,
-          toolName: 'unknown_tool',
-          state: 'input-streaming',
-        },
-      ]]),
-    }))
 
     render(
       <TooltipProvider>
@@ -361,7 +325,6 @@ describe('message bubble', () => {
 
   it('shows Thinking in the store-backed renderer after completed tool progress becomes idle', () => {
     vi.useFakeTimers()
-    seedToolEntity()
     useChatStore.setState(state => ({
       ...state,
       messagesMap: new Map([['session-1', [messageWithToolCall]]]),

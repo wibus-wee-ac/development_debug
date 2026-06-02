@@ -474,14 +474,16 @@ export function useChatSession(chatSessionId: string | null) {
           permissionMode: opts?.permissionMode,
         },
       })
-      if (queueItem.mode === 'steer' && queueItem.status === 'completed') {
+      if (queueItem.mode === 'steer') {
         useChatStore.getState().insertLiveSteerMessage(chatSessionId, createContinuationUserMessage({
           queueItem,
           fallbackText: trimmedText,
           fallbackContextParts: contextParts,
           fallbackFiles: files,
         }))
-        scheduleSnapshotRefresh(0)
+        if (queueItem.status === 'completed') {
+          scheduleSnapshotRefresh(0)
+        }
       }
       refreshQueue()
       return

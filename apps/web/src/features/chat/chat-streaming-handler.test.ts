@@ -16,8 +16,6 @@ function resetChatStore(): void {
   useChatStore.setState(state => ({
     ...state,
     messagesMap: new Map(),
-    toolCallIdsByMessageId: new Map(),
-    toolEntitiesMap: new Map(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),

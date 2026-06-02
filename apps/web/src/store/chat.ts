@@ -5,12 +5,6 @@ import { subscribeWithSelector } from 'zustand/middleware'
 import { shallow } from 'zustand/shallow'
 import { createWithEqualityFn } from 'zustand/traditional'
 
-import type { ChatToolEntity } from '~/features/chat/chat-tool-entities'
-import {
-  collectToolCallIdsFromMessages,
-  normalizeMessageForToolEntities,
-} from '~/features/chat/chat-tool-entities'
-
 enableMapSet()
 
 // ── Types ───────────────────────────────────────────────────
@@ -68,8 +62,6 @@ interface AssistantDisplaySplit {
 interface ChatState {
   // --- Message Data ---
   messagesMap: Map<string, UIMessage[]>
-  toolCallIdsByMessageId: Map<string, string[]>
-  toolEntitiesMap: Map<string, ChatToolEntity>
 
   // --- Streaming State ---
   generatingMessageIds: Set<string>
@@ -91,19 +83,6 @@ interface ChatState {
   appendMessage: (sessionId: string, message: UIMessage) => void
   insertLiveSteerMessage: (sessionId: string, message: UIMessage, sourceMessageId?: string | null) => void
   removeMessage: (sessionId: string, messageId: string) => void
-  upsertToolEntity: (entity: ChatToolEntity) => void
-  patchToolEntity: (
-    messageId: string,
-    toolCallId: string,
-    updater: (entity: ChatToolEntity) => ChatToolEntity,
-  ) => void
-  patchToolEntities: (patches: Array<{
-    messageId: string
-    toolCallId: string
-    updater: (entity: ChatToolEntity) => ChatToolEntity
-  }>) => void
-  replaceToolEntitiesForMessage: (messageId: string, entities: ChatToolEntity[]) => void
-  clearToolEntitiesForMessage: (messageId: string) => void
 
   // --- Actions: Streaming ---
   startGeneration: (sessionId: string, messageId: string, controller: AbortController) => void
@@ -142,8 +121,6 @@ interface ChatState {
 
 type MessagePart = UIMessage['parts'][number]
 const EMPTY_MESSAGES: UIMessage[] = []
-const EMPTY_TOOL_CALL_IDS: string[] = []
-const EMPTY_TOOL_ENTITIES: ChatToolEntity[] = []
 const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
 
 // ── Store ───────────────────────────────────────────────────
@@ -152,8 +129,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
   subscribeWithSelector(
     (set, get) => ({
       messagesMap: new Map(),
-      toolCallIdsByMessageId: new Map(),
-      toolEntitiesMap: new Map(),
       generatingMessageIds: new Set(),
       passiveStreamingMessageIds: new Set(),
       activeAbortControllers: new Map(),
@@ -168,34 +143,22 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       setMessages: (sessionId, messages) => {
         set((state) => {
           const displayMessages = applyAssistantDisplaySplits(messages, state.assistantDisplaySplitMap)
-          const normalizedMessages = displayMessages.map(normalizeMessageForToolEntities)
-          const projectedMessages = normalizedMessages.map(item => item.message)
           const currentMessages = state.messagesMap.get(sessionId)
           const nextMessages = currentMessages
-            ? reconcileMessages(currentMessages, projectedMessages)
-            : projectedMessages
+            ? reconcileMessages(currentMessages, displayMessages)
+            : displayMessages
 
           const currentSessionMessageIds = new Set(
             (state.messagesMap.get(sessionId) ?? []).map(message => message.id),
           )
-          const nextSessionMessageIds = new Set(projectedMessages.map(message => message.id))
+          const nextSessionMessageIds = new Set(displayMessages.map(message => message.id))
           const sessionMessageIdsChanged = currentSessionMessageIds.size !== nextSessionMessageIds.size
             || [...currentSessionMessageIds].some(id => !nextSessionMessageIds.has(id))
           const removedMessageIds = sessionMessageIdsChanged
             ? [...currentSessionMessageIds].filter(id => !nextSessionMessageIds.has(id))
             : []
-          const toolState = withToolEntitiesForMessages(
-            state.toolCallIdsByMessageId,
-            state.toolEntitiesMap,
-            projectedMessages,
-            normalizedMessages.flatMap(item => item.toolEntities),
-            removedMessageIds,
-          )
-
           if (
             currentMessages === nextMessages
-            && toolState.toolCallIdsByMessageId === state.toolCallIdsByMessageId
-            && toolState.toolEntitiesMap === state.toolEntitiesMap
             && (removedMessageIds.length === 0 || state.passiveStreamingMessageIds.size === 0)
           ) {
             return state
@@ -203,12 +166,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
           return produce(state, (draft) => {
             draft.messagesMap.set(sessionId, nextMessages)
-            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
-              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
-            }
-            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
-              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
-            }
             if (removedMessageIds.length > 0 && state.passiveStreamingMessageIds.size > 0) {
               for (const id of removedMessageIds) {
                 draft.passiveStreamingMessageIds.delete(id)
@@ -233,50 +190,23 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             return state
           }
 
-          const normalizedMessage = normalizeMessageForToolEntities(updater(messages[idx]))
-          const updatedMessage = normalizedMessage.message
-          const toolState = withToolEntitiesForMessages(
-            state.toolCallIdsByMessageId,
-            state.toolEntitiesMap,
-            [updatedMessage],
-            normalizedMessage.toolEntities,
-          )
+          const updatedMessage = updater(messages[idx])
 
           return produce(state, (draft) => {
             draft.messagesMap.get(sessionId)![idx] = updatedMessage as Draft<UIMessage>
-            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
-              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
-            }
-            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
-              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
-            }
           })
         })
       },
 
       appendMessage: (sessionId, message) => {
         set((state) => {
-          const normalizedMessage = normalizeMessageForToolEntities(message)
-          const toolState = withToolEntitiesForMessages(
-            state.toolCallIdsByMessageId,
-            state.toolEntitiesMap,
-            [normalizedMessage.message],
-            normalizedMessage.toolEntities,
-          )
-
           return produce(state, (draft) => {
             const messages = draft.messagesMap.get(sessionId)
             if (messages) {
-              messages.push(normalizedMessage.message as Draft<UIMessage>)
+              messages.push(message as Draft<UIMessage>)
             }
             else {
-              draft.messagesMap.set(sessionId, [normalizedMessage.message as Draft<UIMessage>])
-            }
-            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
-              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
-            }
-            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
-              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
+              draft.messagesMap.set(sessionId, [message as Draft<UIMessage>])
             }
           })
         })
@@ -298,21 +228,8 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             ? messages.findIndex(current => current.id === effectiveSourceMessageId && current.role === 'assistant')
             : -1
           if (sourceIndex === -1) {
-            const normalizedMessage = normalizeMessageForToolEntities(message)
-            const toolState = withToolEntitiesForMessages(
-              state.toolCallIdsByMessageId,
-              state.toolEntitiesMap,
-              [normalizedMessage.message],
-              normalizedMessage.toolEntities,
-            )
             return produce(state, (draft) => {
-              draft.messagesMap.get(sessionId)!.push(normalizedMessage.message as Draft<UIMessage>)
-              if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
-                draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
-              }
-              if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
-                draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
-              }
+              draft.messagesMap.get(sessionId)!.push(message as Draft<UIMessage>)
             })
           }
 
@@ -337,21 +254,12 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             ...(shouldKeepTailPlaceholder || hasVisibleMessageParts(tailMessage.parts) ? [tailMessage] : []),
             ...messages.slice(sourceIndex + 1).filter(current => current.id !== tailMessageId),
           ]
-          const normalizedMessages = nextMessages.map(normalizeMessageForToolEntities)
-          const projectedMessages = normalizedMessages.map(item => item.message)
           const currentMessageIds = new Set(messages.map(current => current.id))
-          const nextMessageIds = new Set(projectedMessages.map(current => current.id))
+          const nextMessageIds = new Set(nextMessages.map(current => current.id))
           const removedMessageIds = [...currentMessageIds].filter(id => !nextMessageIds.has(id))
-          const toolState = withToolEntitiesForMessages(
-            state.toolCallIdsByMessageId,
-            state.toolEntitiesMap,
-            projectedMessages,
-            normalizedMessages.flatMap(item => item.toolEntities),
-            removedMessageIds,
-          )
 
           return produce(state, (draft) => {
-            draft.messagesMap.set(sessionId, projectedMessages)
+            draft.messagesMap.set(sessionId, nextMessages as Draft<UIMessage[]>)
             draft.assistantDisplaySplitMap.set(sourceMessage.id, {
               sourceMessageId: sourceMessage.id,
               tailMessageId,
@@ -361,12 +269,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             } as Draft<AssistantDisplaySplit>)
             if (shouldKeepTailPlaceholder) {
               moveStreamingMessageDraft(draft, state, sessionId, sourceMessage.id, tailMessageId)
-            }
-            if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
-              draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
-            }
-            if (toolState.toolEntitiesMap !== state.toolEntitiesMap) {
-              draft.toolEntitiesMap = toolState.toolEntitiesMap as Draft<Map<string, ChatToolEntity>>
             }
             for (const removedMessageId of removedMessageIds) {
               draft.errorMap.delete(removedMessageId)
@@ -391,12 +293,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
               }
             }
 
-            const toolCallIds = draft.toolCallIdsByMessageId.get(messageId) ?? []
-            draft.toolCallIdsByMessageId.delete(messageId)
-            for (const toolCallId of toolCallIds) {
-              draft.toolEntitiesMap.delete(toolCallId)
-            }
-
             draft.generatingMessageIds.delete(messageId)
             draft.passiveStreamingMessageIds.delete(messageId)
             draft.activeAbortControllers.delete(messageId)
@@ -407,152 +303,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             if (currentMeta?.localDriverMessageId === messageId) {
               currentMeta.locallyDriving = false
               currentMeta.localDriverMessageId = undefined
-            }
-          })
-        })
-      },
-
-      upsertToolEntity: (entity) => {
-        set((state) => {
-          const current = state.toolEntitiesMap.get(entity.toolCallId)
-          if (current && areToolEntitiesEqual(current, entity)) {
-            return state
-          }
-          return produce(state, (draft) => {
-            draft.toolEntitiesMap.set(entity.toolCallId, entity as Draft<ChatToolEntity>)
-            const currentIds = draft.toolCallIdsByMessageId.get(entity.messageId)
-            if (currentIds) {
-              if (!currentIds.includes(entity.toolCallId)) {
-                currentIds.push(entity.toolCallId)
-              }
-            }
-            else {
-              draft.toolCallIdsByMessageId.set(entity.messageId, [entity.toolCallId])
-            }
-          })
-        })
-      },
-
-      patchToolEntity: (messageId, toolCallId, updater) => {
-        set((state) => {
-          const current = state.toolEntitiesMap.get(toolCallId) ?? {
-            toolCallId,
-            messageId,
-            toolName: 'unknown',
-            state: 'input-streaming' as const,
-          }
-          const nextEntity = updater(current)
-          if (areToolEntitiesEqual(current, nextEntity)) {
-            return state
-          }
-          return produce(state, (draft) => {
-            draft.toolEntitiesMap.set(toolCallId, nextEntity as Draft<ChatToolEntity>)
-            const currentIds = draft.toolCallIdsByMessageId.get(nextEntity.messageId)
-            if (currentIds) {
-              if (!currentIds.includes(toolCallId)) {
-                currentIds.push(toolCallId)
-              }
-            }
-            else {
-              draft.toolCallIdsByMessageId.set(nextEntity.messageId, [toolCallId])
-            }
-          })
-        })
-      },
-
-      patchToolEntities: (patches) => {
-        if (patches.length === 0) {
-          return
-        }
-        set((state) => {
-          let hasChanges = false
-          const nextEntities = new Map(state.toolEntitiesMap)
-          for (const patch of patches) {
-            const current = nextEntities.get(patch.toolCallId) ?? {
-              toolCallId: patch.toolCallId,
-              messageId: patch.messageId,
-              toolName: 'unknown',
-              state: 'input-streaming' as const,
-            }
-            const nextEntity = patch.updater(current)
-            if (!areToolEntitiesEqual(current, nextEntity)) {
-              nextEntities.set(patch.toolCallId, nextEntity)
-              hasChanges = true
-            }
-          }
-
-          if (!hasChanges) {
-            return state
-          }
-
-          return produce(state, (draft) => {
-            for (const [key, value] of nextEntities) {
-              if (value !== state.toolEntitiesMap.get(key)) {
-                draft.toolEntitiesMap.set(key, value as Draft<ChatToolEntity>)
-              }
-            }
-            for (const patch of patches) {
-              const entity = nextEntities.get(patch.toolCallId)
-              if (entity) {
-                const currentIds = draft.toolCallIdsByMessageId.get(entity.messageId)
-                if (currentIds) {
-                  if (!currentIds.includes(patch.toolCallId)) {
-                    currentIds.push(patch.toolCallId)
-                  }
-                }
-                else {
-                  draft.toolCallIdsByMessageId.set(entity.messageId, [patch.toolCallId])
-                }
-              }
-            }
-          })
-        })
-      },
-
-      replaceToolEntitiesForMessage: (messageId, entities) => {
-        set((state) => {
-          const previousToolCallIds = state.toolCallIdsByMessageId.get(messageId) ?? []
-          const nextToolCallIds = entities.map(entity => entity.toolCallId)
-          const nextEntities = new Map(state.toolEntitiesMap)
-
-          for (const toolCallId of previousToolCallIds) {
-            nextEntities.delete(toolCallId)
-          }
-          for (const entity of entities) {
-            nextEntities.set(entity.toolCallId, entity)
-          }
-
-          if (arraysEqual(previousToolCallIds, nextToolCallIds) && mapsEqualByJson(state.toolEntitiesMap, nextEntities)) {
-            return state
-          }
-
-          return produce(state, (draft) => {
-            for (const toolCallId of previousToolCallIds) {
-              draft.toolEntitiesMap.delete(toolCallId)
-            }
-            for (const entity of entities) {
-              draft.toolEntitiesMap.set(entity.toolCallId, entity as Draft<ChatToolEntity>)
-            }
-            if (nextToolCallIds.length > 0) {
-              draft.toolCallIdsByMessageId.set(messageId, nextToolCallIds)
-            }
-            else {
-              draft.toolCallIdsByMessageId.delete(messageId)
-            }
-          })
-        })
-      },
-
-      clearToolEntitiesForMessage: (messageId) => {
-        set((state) => {
-          const previousToolCallIds = state.toolCallIdsByMessageId.get(messageId)
-          if (!previousToolCallIds || previousToolCallIds.length === 0) {
-            return state
-          }
-          return produce(state, (draft) => {
-            draft.toolCallIdsByMessageId.delete(messageId)
-            for (const toolCallId of previousToolCallIds) {
-              draft.toolEntitiesMap.delete(toolCallId)
             }
           })
         })
@@ -841,11 +591,6 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             for (const message of removedMessages) {
               draft.runDisplayMetaMap.delete(message.id)
               draft.errorMap.delete(message.id)
-              const toolCallIds = draft.toolCallIdsByMessageId.get(message.id) ?? []
-              draft.toolCallIdsByMessageId.delete(message.id)
-              for (const toolCallId of toolCallIds) {
-                draft.toolEntitiesMap.delete(toolCallId)
-              }
             }
             for (const id of removedMessageIds) {
               draft.passiveStreamingMessageIds.delete(id)
@@ -1002,66 +747,6 @@ export const chatSelectors = {
     }
     return meta.passiveStatus
   },
-
-  toolCallIds: (messageId: string) => (s: ChatState) =>
-    s.toolCallIdsByMessageId.get(messageId) ?? EMPTY_TOOL_CALL_IDS,
-
-  toolEntity: (toolCallId: string) => (s: ChatState) =>
-    s.toolEntitiesMap.get(toolCallId),
-
-  toolsForMessage: (messageId: string) => (s: ChatState) =>
-    (s.toolCallIdsByMessageId.get(messageId) ?? [])
-      .map(toolCallId => s.toolEntitiesMap.get(toolCallId))
-      .filter((entity): entity is ChatToolEntity => entity !== undefined),
-
-  sessionToolEntities: (() => {
-    const cache = new Map<string, { entities: ChatToolEntity[], lastToolCallIds: string[] }>()
-    return (sessionId: string) => (s: ChatState) => {
-      const messages = s.messagesMap.get(sessionId)
-      if (!messages || messages.length === 0) {
-        cache.delete(sessionId)
-        return EMPTY_TOOL_ENTITIES
-      }
-
-      const toolCallIds: string[] = []
-      for (const message of messages) {
-        const ids = s.toolCallIdsByMessageId.get(message.id)
-        if (ids) {
-          toolCallIds.push(...ids)
-        }
-      }
-
-      if (toolCallIds.length === 0) {
-        cache.delete(sessionId)
-        return EMPTY_TOOL_ENTITIES
-      }
-
-      const prev = cache.get(sessionId)
-      if (prev && arraysEqual(prev.lastToolCallIds, toolCallIds)) {
-        let stale = false
-        for (let i = 0; i < prev.entities.length; i++) {
-          if (prev.entities[i] !== s.toolEntitiesMap.get(toolCallIds[i])) {
-            stale = true
-            break
-          }
-        }
-        if (!stale) {
-          return prev.entities
-        }
-      }
-
-      const entities: ChatToolEntity[] = []
-      for (const toolCallId of toolCallIds) {
-        const entity = s.toolEntitiesMap.get(toolCallId)
-        if (entity) {
-          entities.push(entity)
-        }
-      }
-      const result = entities.length > 0 ? entities : EMPTY_TOOL_ENTITIES
-      cache.set(sessionId, { entities: result, lastToolCallIds: toolCallIds })
-      return result
-    }
-  })(),
 
   runDisplayMeta: (messageId: string) => (s: ChatState) =>
     s.runDisplayMetaMap.get(messageId),
@@ -1318,7 +1003,7 @@ function areSameStreamPart(sourcePart: MessagePart, splitPart: MessagePart): boo
     return false
   }
   if (sourcePart.type === 'dynamic-tool' || sourcePart.type.startsWith('tool-')) {
-    return readDynamicToolPart(sourcePart).toolCallId === readDynamicToolPart(splitPart).toolCallId
+    return readToolCallId(sourcePart) === readToolCallId(splitPart)
   }
   return true
 }
@@ -1349,12 +1034,12 @@ function slicePrefix(sourceText: string, prefixText: string): string {
 }
 
 function areMessagesEqual(currentMessage: UIMessage, incomingMessage: UIMessage): boolean {
+  if (currentMessage === incomingMessage) {
+    return true
+  }
   return currentMessage.id === incomingMessage.id
     && currentMessage.role === incomingMessage.role
-    && areJsonValuesEqual(
-      (currentMessage as { metadata?: unknown }).metadata ?? null,
-      (incomingMessage as { metadata?: unknown }).metadata ?? null,
-    )
+    && ((currentMessage as { metadata?: unknown }).metadata ?? null) === ((incomingMessage as { metadata?: unknown }).metadata ?? null)
     && areMessagePartsEqual(currentMessage.parts, incomingMessage.parts)
 }
 
@@ -1393,22 +1078,11 @@ function areMessagePartsStructurallyEqual(currentPart: MessagePart, incomingPart
         && currentReasoning.reasoning === incomingReasoning.reasoning
         && currentReasoning.state === incomingReasoning.state
     }
-    case 'dynamic-tool': {
-      const currentTool = readDynamicToolPart(currentPart)
-      const incomingTool = readDynamicToolPart(incomingPart)
-      return currentTool.toolCallId === incomingTool.toolCallId
-        && currentTool.toolName === incomingTool.toolName
-        && currentTool.state === incomingTool.state
-    }
+    case 'dynamic-tool':
+      return false
     default:
-      return areJsonValuesEqual(currentPart, incomingPart)
+      return false
   }
-}
-
-interface DynamicToolMessagePart {
-  toolCallId?: string
-  toolName?: string
-  state?: string
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1436,103 +1110,9 @@ function readReasoningPart(part: MessagePart): { text?: string, reasoning?: stri
   }
 }
 
-function readDynamicToolPart(part: MessagePart): DynamicToolMessagePart {
+function readToolCallId(part: MessagePart): string | undefined {
   const record = isRecord(part) ? part as Record<string, unknown> : {}
-  return {
-    toolCallId: typeof record.toolCallId === 'string' ? record.toolCallId : undefined,
-    toolName: typeof record.toolName === 'string' ? record.toolName : undefined,
-    state: typeof record.state === 'string' ? record.state : undefined,
-  }
-}
-
-function withToolEntitiesForMessages(
-  currentToolCallIdsByMessageId: Map<string, string[]>,
-  currentToolEntitiesMap: Map<string, ChatToolEntity>,
-  messages: UIMessage[],
-  entities: ChatToolEntity[],
-  removedMessageIds: string[] = [],
-): {
-  toolCallIdsByMessageId: Map<string, string[]>
-  toolEntitiesMap: Map<string, ChatToolEntity>
-} {
-  let toolCallIdsByMessageId = currentToolCallIdsByMessageId
-  let toolEntitiesMap = currentToolEntitiesMap
-
-  for (const removedMessageId of removedMessageIds) {
-    const existingToolCallIds = toolCallIdsByMessageId.get(removedMessageId) ?? []
-    if (existingToolCallIds.length > 0) {
-      if (toolCallIdsByMessageId === currentToolCallIdsByMessageId) {
-        toolCallIdsByMessageId = new Map(toolCallIdsByMessageId)
-      }
-      if (toolEntitiesMap === currentToolEntitiesMap) {
-        toolEntitiesMap = new Map(toolEntitiesMap)
-      }
-      toolCallIdsByMessageId.delete(removedMessageId)
-      for (const toolCallId of existingToolCallIds) {
-        toolEntitiesMap.delete(toolCallId)
-      }
-    }
-  }
-
-  const entitiesByMessageId = new Map<string, ChatToolEntity[]>()
-  for (const entity of entities) {
-    const messageEntities = entitiesByMessageId.get(entity.messageId) ?? []
-    messageEntities.push(entity)
-    entitiesByMessageId.set(entity.messageId, messageEntities)
-  }
-
-  for (const message of messages) {
-    const nextToolCallIds = entitiesByMessageId.get(message.id)?.map(entity => entity.toolCallId)
-      ?? collectToolCallIdsFromMessages([message])
-    const previousToolCallIds = toolCallIdsByMessageId.get(message.id) ?? []
-    const toolCallIdsChanged = !arraysEqual(previousToolCallIds, nextToolCallIds)
-
-    if (toolCallIdsChanged) {
-      if (toolCallIdsByMessageId === currentToolCallIdsByMessageId) {
-        toolCallIdsByMessageId = new Map(toolCallIdsByMessageId)
-      }
-      if (toolEntitiesMap === currentToolEntitiesMap) {
-        toolEntitiesMap = new Map(toolEntitiesMap)
-      }
-      if (nextToolCallIds.length > 0) {
-        toolCallIdsByMessageId.set(message.id, nextToolCallIds)
-      }
-      else {
-        toolCallIdsByMessageId.delete(message.id)
-      }
-      for (const staleToolCallId of previousToolCallIds) {
-        if (!nextToolCallIds.includes(staleToolCallId)) {
-          toolEntitiesMap.delete(staleToolCallId)
-        }
-      }
-    }
-
-    const nextEntities = entitiesByMessageId.get(message.id) ?? []
-    for (const entity of nextEntities) {
-      const previousEntity = toolEntitiesMap.get(entity.toolCallId)
-      if (!previousEntity || !areToolEntitiesEqual(previousEntity, entity)) {
-        if (toolEntitiesMap === currentToolEntitiesMap) {
-          toolEntitiesMap = new Map(toolEntitiesMap)
-        }
-        toolEntitiesMap.set(entity.toolCallId, entity)
-      }
-    }
-  }
-
-  return { toolCallIdsByMessageId, toolEntitiesMap }
-}
-
-function areToolEntitiesEqual(left: ChatToolEntity, right: ChatToolEntity): boolean {
-  return left.toolCallId === right.toolCallId
-    && left.messageId === right.messageId
-    && left.toolName === right.toolName
-    && left.state === right.state
-    && areJsonValuesEqual(left.approval, right.approval)
-    && left.preliminary === right.preliminary
-    && left.argumentsText === right.argumentsText
-    && left.errorText === right.errorText
-    && areJsonValuesEqual(left.input, right.input)
-    && areJsonValuesEqual(left.output, right.output)
+  return typeof record.toolCallId === 'string' ? record.toolCallId : undefined
 }
 
 function areActiveGoalsEqual(left: ChatActiveGoal | undefined, right: ChatActiveGoal): boolean {
@@ -1548,21 +1128,6 @@ function areActiveGoalsEqual(left: ChatActiveGoal | undefined, right: ChatActive
     && left.updatedAt === right.updatedAt
 }
 
-function arraysEqual(left: string[], right: string[]): boolean {
-  if (left === right) {
-    return true
-  }
-  if (left.length !== right.length) {
-    return false
-  }
-  for (let i = 0; i < left.length; i++) {
-    if (left[i] !== right[i]) {
-      return false
-    }
-  }
-  return true
-}
-
 function areSetsEqual<T>(left: Set<T>, right: Set<T>): boolean {
   if (left === right) {
     return true
@@ -1576,30 +1141,4 @@ function areSetsEqual<T>(left: Set<T>, right: Set<T>): boolean {
     }
   }
   return true
-}
-
-function mapsEqualByJson(left: Map<string, ChatToolEntity>, right: Map<string, ChatToolEntity>): boolean {
-  if (left === right) {
-    return true
-  }
-  if (left.size !== right.size) {
-    return false
-  }
-  for (const [key, value] of left) {
-    const rightValue = right.get(key)
-    if (!rightValue || !areToolEntitiesEqual(value, rightValue)) {
-      return false
-    }
-  }
-  return true
-}
-
-function areJsonValuesEqual(currentValue: unknown, incomingValue: unknown): boolean {
-  if (Object.is(currentValue, incomingValue)) {
-    return true
-  }
-  if (currentValue === undefined || incomingValue === undefined) {
-    return false
-  }
-  return JSON.stringify(currentValue) === JSON.stringify(incomingValue)
 }

@@ -21,7 +21,7 @@ import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CRADLE_APPSHOT_SLASH_COMMAND,
   createRuntimeUiSlotCommands,
-  getFallbackRuntimeSlashCommands,
+  getRuntimeComposerSlashCommands,
   mergeChatSlashCommands,
   withSlashCommandAvailability,
 } from './chat-slash-commands'
@@ -199,7 +199,7 @@ export function useChatComposerRuntime({
   const slashCommands = useMemo(() => mergeChatSlashCommands({
     runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
     runtimeUiSlotCommands: runtimeSlotCommands,
-    fallbackRuntimeCommands: getFallbackRuntimeSlashCommands(runtimeCapabilities?.runtimeKind ?? sessionBinding?.runtimeKind),
+    fallbackRuntimeCommands: getRuntimeComposerSlashCommands(runtimeCapabilities?.runtimeKind ?? sessionBinding?.runtimeKind, 'session'),
     cradleCommands: cradleSlashCommands,
   }), [cradleSlashCommands, runtimeCapabilities?.runtimeKind, runtimeCapabilities?.slashCommands, runtimeSlotCommands, sessionBinding?.runtimeKind])
 

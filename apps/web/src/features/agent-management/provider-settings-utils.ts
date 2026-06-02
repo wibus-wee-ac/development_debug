@@ -69,7 +69,13 @@ export interface ManualProviderListEntry {
   profile: AgentProfile
 }
 
-export type ProviderListEntry = ManualProviderListEntry
+export interface ExternalProviderListEntry {
+  id: string
+  kind: 'external'
+  record: ExternalProviderRecordView
+}
+
+export type ProviderListEntry = ManualProviderListEntry | ExternalProviderListEntry
 
 export function buildProfileId(name: string, fallback: string): string {
   const base = name.trim().toLowerCase().replace(RE_WHITESPACE, '-')
@@ -85,6 +91,14 @@ export function createManualProviderListEntry(profile: AgentProfile): ManualProv
     id: providerListEntryId('manual', profile.id),
     kind: 'manual',
     profile,
+  }
+}
+
+export function createExternalProviderListEntry(record: ExternalProviderRecordView): ExternalProviderListEntry {
+  return {
+    id: providerListEntryId('external', record.providerTargetId ?? record.id),
+    kind: 'external',
+    record,
   }
 }
 

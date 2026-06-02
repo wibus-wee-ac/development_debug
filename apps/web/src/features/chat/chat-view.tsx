@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircleIcon, ExternalLinkIcon, ListTodoIcon, LoaderCircleIcon } from 'lucide-react'
+import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -15,7 +15,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog'
-import { Progress } from '~/components/ui/progress'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
@@ -31,8 +30,6 @@ import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
-import type { SessionTodoSnapshot } from './chat-todo-projection'
-import { readTodoCompletion } from './chat-todo-projection'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { ComposerReviewSlotActions } from './composer-slot-states'
@@ -52,7 +49,6 @@ import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 import { useSessionAwaitSummary } from './use-session-await'
-import { useSessionTodos } from './use-session-todos'
 
 interface ChatViewProps {
   sessionId: string | null
@@ -198,7 +194,6 @@ function ChatAwaitBanner({
 }
 
 function ChatComposerSection({
-  todoSnapshot,
   awaitSummary,
   queueItems,
   onCancelQueueItem,
@@ -217,7 +212,6 @@ function ChatComposerSection({
   reviewSlot,
   onComposerFocusChange,
 }: {
-  todoSnapshot: SessionTodoSnapshot | null
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
@@ -245,7 +239,6 @@ function ChatComposerSection({
   return (
     <div className="shrink-0 bg-tra px-4 pb-3 backdrop-blur-sm">
       <div className="mx-auto max-w-208">
-        <TodoProgress snapshot={todoSnapshot} />
         <ChatAwaitBanner awaitSummary={awaitSummary} />
         <ChatQueueList
           items={queueItems}
@@ -300,42 +293,6 @@ function ChatComposerSection({
   )
 }
 
-function TodoProgress({ snapshot }: { snapshot: SessionTodoSnapshot | null }) {
-  if (!snapshot || snapshot.todos.length === 0) {
-    return null
-  }
-
-  const completion = readTodoCompletion(snapshot.todos)
-  const fallbackTodo = snapshot.todos.at(-1)
-  if (!fallbackTodo) {
-    return null
-  }
-  const activeTodo = snapshot.todos.find(todo => todo.status === 'processing')
-    ?? snapshot.todos.find(todo => todo.status === 'todo')
-    ?? fallbackTodo
-
-  const label = completion.completed === completion.total
-    ? 'Todos complete'
-    : activeTodo.content
-  const completionLabel = `${completion.completed}/${completion.total}`
-
-  return (
-    <div className="mb-2 px-1">
-      <div className="flex h-6 min-w-0 items-center gap-2 text-[11px] text-muted-foreground">
-        <ListTodoIcon className="size-3.5 shrink-0" aria-hidden="true" />
-        <span className="shrink-0 font-medium text-foreground/75">Todo</span>
-        <span className="min-w-0 flex-1 truncate text-foreground/80">
-          {label}
-        </span>
-        <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-          {completionLabel}
-        </span>
-      </div>
-      <Progress value={safePercent(completion.completed, completion.total)} className="h-0.5 bg-muted/60" />
-    </div>
-  )
-}
-
 export function ChatView({
   sessionId,
   availableFiles = EMPTY_FILES,
@@ -365,7 +322,6 @@ export function ChatView({
     reorderQueueItems,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
-  const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
@@ -620,7 +576,6 @@ export function ChatView({
       />
 
       <ChatComposerSection
-        todoSnapshot={todoSnapshot}
         awaitSummary={awaitSummary}
         queueItems={queueItems}
         onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
@@ -672,11 +627,4 @@ export function ChatView({
 
     </div>
   )
-}
-
-function safePercent(value: number, total: number): number {
-  if (total <= 0) {
-    return 0
-  }
-  return Math.round((value / total) * 100)
 }
