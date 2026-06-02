@@ -15,15 +15,16 @@ import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { BrowserPanel } from '~/features/browser'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
+import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
 import type { BrowserTabSource } from '~/store/browser-panel'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 
 const ASIDE = { min: 200, max: 560 }
@@ -198,6 +199,9 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const asideWidth = useLayoutStore(state => state.asideWidth)
   const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
   const asideOpen = useLayoutStore(state => state.asideOpen)
+  const sidebarCollapsed = useLayoutStore(state => state.sidebarCollapsed)
+  const setAsideOpen = useLayoutStore(state => state.setAsideOpen)
+  const setSidebarCollapsed = useLayoutStore(state => state.setSidebarCollapsed)
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
   const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
@@ -208,6 +212,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
   const setActiveBrowserPanelOwner = useLayoutStore(state => state.setActiveBrowserPanelOwner)
   const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
+  const canUseRightAside = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
@@ -220,6 +225,16 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
     setBrowserPanelOpen(false, ownerId)
   }, [setBrowserPanelOpen])
+
+  const handleToggleZenSidebars = useCallback(() => {
+    const shouldCollapse = !sidebarCollapsed && (!canUseRightAside || asideOpen)
+    setSidebarCollapsed(shouldCollapse)
+    if (canUseRightAside) {
+      setAsideOpen(!shouldCollapse)
+    }
+  }, [asideOpen, canUseRightAside, setAsideOpen, setSidebarCollapsed, sidebarCollapsed])
+
+  useShortcut('toggle-zen-sidebars', { meta: true, key: '.' }, handleToggleZenSidebars)
 
   useEffect(() => {
     useBrowserPanelStore.getState().setActiveOwner(activeBrowserPanelOwnerId)
@@ -342,7 +357,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
         </m.div>
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
-        {!isSettings && resolvedHasAside && (resolvedAsideSessionId || resolvedAsideWorkspaceId) && (
+        {canUseRightAside && (
           <>
             {asideOpen && (
               <ResizeHandle

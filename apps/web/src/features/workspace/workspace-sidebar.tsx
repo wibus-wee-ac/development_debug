@@ -33,6 +33,7 @@ import {
 import { AnimatePresence, m } from 'motion/react'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { shallow } from 'zustand/shallow'
 
 import {
   getSessionsByIdExportMarkdown,
@@ -90,6 +91,10 @@ type WorkspaceTranslation = TFunction<'workspace'>
 const SESSION_PREVIEW_LIMIT = 5
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
+
+function isSessionRunning(session: WorkspaceSession, locallyStreamingSessionIds: Set<string>): boolean {
+  return session.status === 'streaming' || locallyStreamingSessionIds.has(session.id)
+}
 
 function SessionRenameInput({
   initialTitle,
@@ -333,10 +338,12 @@ function SessionItem({
   session,
   workspaceId,
   workspacePath,
+  onOpenSession,
 }: {
   session: WorkspaceSession
   workspaceId: string
   workspacePath: string
+  onOpenSession?: (sessionId: string) => void
 }) {
   'use no memo'
   const { t } = useTranslation('workspace')
@@ -369,9 +376,10 @@ function SessionItem({
   }, [queryClient, session.id])
 
   const prepareSessionOpen = useCallback(() => {
+    onOpenSession?.(session.id)
     recordSessionLayout()
     prefetchSession()
-  }, [prefetchSession, recordSessionLayout])
+  }, [onOpenSession, prefetchSession, recordSessionLayout, session.id])
 
   const releaseSessionDrag = useCallback(() => {
     dragCleanupRef.current?.()
@@ -739,11 +747,24 @@ function WorkspaceGroup({
   const [sessionListExpanded, setSessionListExpanded] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
   const [renameOpen, setRenameOpen] = useState(false)
+  const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
+  const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
+  if (acknowledgedSessionIdsRef.current === null) {
+    acknowledgedSessionIdsRef.current = new Set()
+  }
   const [createRequest, setCreateRequest] = useState<{
     kind: 'file' | 'folder'
   } | null>(null)
   const workspacePinned = Boolean(workspace.pinned)
-  const renameWorkspaceMutation = useMutation({
+  const workspaceSessionIds = useMemo(() => sessions.map(session => session.id), [sessions])
+  const locallyStreamingSessionIds = useChatStore(
+    useCallback(
+      state => new Set(workspaceSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state))),
+      [workspaceSessionIds],
+    ),
+    shallow,
+  )
+  const { mutateAsync: renameWorkspace } = useMutation({
     ...patchWorkspacesByIdMutation(),
     onSuccess: () => {
       void Promise.all([
@@ -752,22 +773,95 @@ function WorkspaceGroup({
       ])
     },
   })
-  const createFileMutation = useMutation(postWorkspacesByIdFilesFileMutation())
-  const createFolderMutation = useMutation(postWorkspacesByIdFilesFolderMutation())
+  const { mutateAsync: createWorkspaceFile } = useMutation(postWorkspacesByIdFilesFileMutation())
+  const { mutateAsync: createWorkspaceFolder } = useMutation(postWorkspacesByIdFilesFolderMutation())
   const sortedSessions = useMemo(() => {
     return sessions.toSorted((a, b) => {
       const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
       if (pinDiff !== 0) {
         return pinDiff
       }
+      const runningDiff = (isSessionRunning(b, locallyStreamingSessionIds) ? 1 : 0) - (isSessionRunning(a, locallyStreamingSessionIds) ? 1 : 0)
+      if (runningDiff !== 0) {
+        return runningDiff
+      }
       return 0
     })
-  }, [sessions])
-  const hasHiddenSessions = sortedSessions.length > SESSION_PREVIEW_LIMIT
-  const hiddenSessionCount = Math.max(sortedSessions.length - SESSION_PREVIEW_LIMIT, 0)
+  }, [locallyStreamingSessionIds, sessions])
+  const requiredPreviewCount = useMemo(() => {
+    let highestRequiredIndex = -1
+    for (const [index, session] of sortedSessions.entries()) {
+      if (session.pinned || isSessionRunning(session, locallyStreamingSessionIds) || retainedSessionIds.has(session.id)) {
+        highestRequiredIndex = index
+      }
+    }
+    return highestRequiredIndex + 1
+  }, [locallyStreamingSessionIds, retainedSessionIds, sortedSessions])
+  const collapsedSessionPreviewLimit = Math.max(SESSION_PREVIEW_LIMIT, requiredPreviewCount)
+  const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
+  const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
   const visibleSessions = sessionListExpanded
     ? sortedSessions
-    : sortedSessions.slice(0, SESSION_PREVIEW_LIMIT)
+    : sortedSessions.slice(0, collapsedSessionPreviewLimit)
+
+  useEffect(() => {
+    setRetainedSessionIds((current) => {
+      let changed = false
+      const next = new Set<string>()
+      const knownSessionIds = new Set(workspaceSessionIds)
+
+      for (const sessionId of current) {
+        if (knownSessionIds.has(sessionId)) {
+          next.add(sessionId)
+        }
+        else {
+          changed = true
+        }
+      }
+
+      for (const session of sessions) {
+        if (
+          isSessionRunning(session, locallyStreamingSessionIds)
+          && !acknowledgedSessionIdsRef.current!.has(session.id)
+          && !next.has(session.id)
+        ) {
+          next.add(session.id)
+          changed = true
+        }
+      }
+
+      return changed ? next : current
+    })
+  }, [locallyStreamingSessionIds, sessions, workspaceSessionIds])
+
+  const handleOpenSession = useCallback((sessionId: string) => {
+    acknowledgedSessionIdsRef.current!.add(sessionId)
+    setRetainedSessionIds((current) => {
+      if (!current.has(sessionId)) {
+        return current
+      }
+      const next = new Set(current)
+      next.delete(sessionId)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    const next = new Set<string>()
+    const sessionsById = new Map<string, WorkspaceSession>()
+    for (const session of sessions) {
+      sessionsById.set(session.id, session)
+    }
+
+    for (const sessionId of acknowledgedSessionIdsRef.current!) {
+      const session = sessionsById.get(sessionId)
+      if (session && isSessionRunning(session, locallyStreamingSessionIds)) {
+        next.add(sessionId)
+      }
+    }
+
+    acknowledgedSessionIdsRef.current! = next
+  }, [locallyStreamingSessionIds, sessions])
   const toggleExpanded = useCallback(() => {
     setExpanded(prev => !prev)
   }, [])
@@ -831,7 +925,7 @@ function WorkspaceGroup({
     }
 
     try {
-      await renameWorkspaceMutation.mutateAsync({ path: { id: workspace.id }, body: { name } })
+      await renameWorkspace({ path: { id: workspace.id }, body: { name } })
       setRenameOpen(false)
     }
     catch (error) {
@@ -841,7 +935,7 @@ function WorkspaceGroup({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [renameWorkspaceMutation.mutateAsync, t, workspace.id, workspace.name])
+  }, [renameWorkspace, t, workspace.id, workspace.name])
   const handleCreateWorkspaceChild = useCallback(async (nameValue: string) => {
     if (!createRequest) {
       return
@@ -861,8 +955,8 @@ function WorkspaceGroup({
     }
     try {
       const data = createRequest.kind === 'file'
-        ? await createFileMutation.mutateAsync(request)
-        : await createFolderMutation.mutateAsync(request)
+        ? await createWorkspaceFile(request)
+        : await createWorkspaceFolder(request)
 
       if (!data.success) {
         toastManager.add({
@@ -882,7 +976,7 @@ function WorkspaceGroup({
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [createFileMutation.mutateAsync, createFolderMutation.mutateAsync, createRequest, queryClient, t, workspace.id])
+  }, [createRequest, createWorkspaceFile, createWorkspaceFolder, queryClient, t, workspace.id])
   const workspaceActions = useMemo<WorkspaceMenuAction[]>(() => [
     {
       key: 'open',
@@ -1079,7 +1173,13 @@ function WorkspaceGroup({
                 <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
               )}
               {visibleSessions.map(session => (
-                <SessionItem key={session.id} session={session} workspaceId={workspace.id} workspacePath={workspace.path} />
+                <SessionItem
+                  key={session.id}
+                  session={session}
+                  workspaceId={workspace.id}
+                  workspacePath={workspace.path}
+                  onOpenSession={handleOpenSession}
+                />
               ))}
               {hasHiddenSessions && (
                 <button

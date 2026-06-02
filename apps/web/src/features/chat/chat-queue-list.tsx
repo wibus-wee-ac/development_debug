@@ -1,6 +1,7 @@
 // Shared compact queue controls for Chat Session continuation items.
 import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -20,11 +21,13 @@ export function ChatQueueList({
   onCancel,
   onReorder,
   className,
-  title = 'Queue',
+  title,
 }: ChatQueueListProps) {
+  const { t } = useTranslation('chat')
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null)
+  const visibleItems = items?.filter(item => item.status === 'pending' || item.status === 'running') ?? []
   const pendingItems = items?.filter(item => item.status === 'pending') ?? []
-  if (pendingItems.length === 0) {
+  if (visibleItems.length === 0) {
     return null
   }
 
@@ -67,34 +70,50 @@ export function ChatQueueList({
       aria-live="polite"
     >
       <div className="mb-1.5 flex items-center justify-between px-1">
-        <span className="text-[11px] font-medium text-muted-foreground">{title}</span>
-        <span className="text-[10px] tabular-nums text-muted-foreground">{pendingItems.length}</span>
+        <span className="text-[11px] font-medium text-muted-foreground">
+          {title ?? t('continuation.queue.title')}
+        </span>
+        <span className="text-[10px] tabular-nums text-muted-foreground">{visibleItems.length}</span>
       </div>
       <div className="space-y-1">
-        {pendingItems.map((item, index) => {
-          const itemLabel = item.text || `${item.files.length} attachment${item.files.length === 1 ? '' : 's'}`
+        {visibleItems.map((item) => {
+          const pendingIndex = pendingItems.findIndex(candidate => candidate.id === item.id)
+          const isPending = pendingIndex >= 0
+          const itemLabel = item.text || (
+            item.files.length > 0
+              ? t('continuation.queue.attachmentLabel', { count: item.files.length })
+              : t('continuation.queue.emptyLabel')
+          )
           return (
             <div
               key={item.id}
               className={cn(
                 'flex items-center gap-2 rounded-md bg-muted/35 px-2 py-1.5 text-xs transition-colors',
+                item.status === 'running' && 'bg-primary/5',
                 draggedItemId === item.id && 'bg-muted/70 opacity-70',
               )}
               data-testid="chat-queue-item"
               role="listitem"
-              draggable
+              draggable={isPending}
               onDragStart={(event) => {
+                if (!isPending) {
+                  event.preventDefault()
+                  return
+                }
                 event.dataTransfer.effectAllowed = 'move'
                 event.dataTransfer.setData('text/plain', item.id)
                 setDraggedItemId(item.id)
               }}
               onDragOver={(event) => {
-                if (draggedItemId && draggedItemId !== item.id) {
+                if (isPending && draggedItemId && draggedItemId !== item.id) {
                   event.preventDefault()
                   event.dataTransfer.dropEffect = 'move'
                 }
               }}
               onDrop={(event) => {
+                if (!isPending) {
+                  return
+                }
                 event.preventDefault()
                 reorderByDrop(item.id)
                 setDraggedItemId(null)
@@ -110,40 +129,50 @@ export function ChatQueueList({
                   item.mode === 'steer' ? 'bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground',
                 )}
               >
-                {item.mode === 'steer' ? 'Steer' : 'Queue'}
+                {item.mode === 'steer' ? t('continuation.mode.steer') : t('continuation.mode.queue')}
               </span>
               <span className="min-w-0 flex-1 truncate text-foreground/85">
                 {itemLabel}
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                disabled={index === 0}
-                onClick={() => moveItem(index, -1)}
-                aria-label={`Move queue item up: ${itemLabel}`}
-              >
-                <ArrowUpIcon className="size-3" aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                disabled={index === pendingItems.length - 1}
-                onClick={() => moveItem(index, 1)}
-                aria-label={`Move queue item down: ${itemLabel}`}
-              >
-                <ArrowDownIcon className="size-3" aria-hidden="true" />
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => onCancel(item.id)}
-                aria-label={`Cancel queue item: ${itemLabel}`}
-              >
-                <XIcon className="size-3" aria-hidden="true" />
-              </Button>
+              {item.status === 'running'
+                ? (
+                    <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {t('continuation.status.running')}
+                    </span>
+                  )
+                : (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={pendingIndex === 0}
+                        onClick={() => moveItem(pendingIndex, -1)}
+                        aria-label={t('continuation.queue.moveUp', { label: itemLabel })}
+                      >
+                        <ArrowUpIcon className="size-3" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        disabled={pendingIndex === pendingItems.length - 1}
+                        onClick={() => moveItem(pendingIndex, 1)}
+                        aria-label={t('continuation.queue.moveDown', { label: itemLabel })}
+                      >
+                        <ArrowDownIcon className="size-3" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => onCancel(item.id)}
+                        aria-label={t('continuation.queue.cancel', { label: itemLabel })}
+                      >
+                        <XIcon className="size-3" aria-hidden="true" />
+                      </Button>
+                    </>
+                  )}
             </div>
           )
         })}

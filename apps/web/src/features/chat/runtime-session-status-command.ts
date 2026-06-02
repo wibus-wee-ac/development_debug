@@ -32,6 +32,7 @@ export interface RuntimeSessionStatus {
   modelId: string | null
   permissionMode: RuntimePermissionMode | null
   pendingQueueItemId: string | null
+  hasActiveGoal: boolean
   activeRun: RuntimeSessionRunStatus | null
   latestRun: RuntimeSessionRunStatus | null
   queue: {

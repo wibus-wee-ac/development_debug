@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, ListTodoIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { useCallback, useMemo, useState } from 'react'
@@ -5,14 +6,26 @@ import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
 import { postChatSessionsBySessionIdCodexAppServerInvoke } from '~/api-gen/sdk.gen'
+import { Button } from '~/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '~/components/ui/dialog'
 import { Progress } from '~/components/ui/progress'
 import { ScrollArea } from '~/components/ui/scroll-area'
+import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import { getServerUrl } from '~/lib/electron'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
 
+import type { ChatRuntimeGoalUiSlotState } from './chat-capabilities'
+import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
@@ -28,17 +41,18 @@ import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResul
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
+import { RuntimeDiagnosticsPopover } from './runtime-diagnostics-popover'
 import { RuntimeToolbarOptions } from './runtime-toolbar-options'
 import type { SkillMentionItem } from './skill-mention-panel'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
-import { useRuntimeSessionStatus } from './use-runtime-session-status'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
 import type { ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
+import { useRuntimeSessionStatus } from './use-runtime-session-status'
 import { useSessionAwaitSummary } from './use-session-await'
 import { useSessionTodos } from './use-session-todos'
 
@@ -209,6 +223,7 @@ function ChatComposerSection({
   toolbar,
   contextBar,
   droppedPath,
+  goalActions,
   onComposerFocusChange,
 }: {
   todoSnapshot: SessionTodoSnapshot | null
@@ -226,6 +241,13 @@ function ChatComposerSection({
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
+  goalActions: {
+    busy: boolean
+    onEdit: (state: ChatRuntimeGoalUiSlotState) => void
+    onPause: (state: ChatRuntimeGoalUiSlotState) => void
+    onResume: (state: ChatRuntimeGoalUiSlotState) => void
+    onClear: (state: ChatRuntimeGoalUiSlotState) => void
+  }
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
@@ -239,7 +261,11 @@ function ChatComposerSection({
           onReorder={onReorderQueueItems}
           className="mb-2"
         />
-        <ComposerSlotStates slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
+        <ComposerSlotStates
+          slots={composerRuntime.uiSlots}
+          states={composerRuntime.slotStates}
+          actions={goalActions}
+        />
         <Composer
           send={{
             submit: composerRuntime.send,
@@ -330,6 +356,7 @@ export function ChatView({
   runtimeKind: _runtimeKind,
   workspaceId,
 }: ChatViewProps) {
+  const queryClient = useQueryClient()
   const {
     messageIds,
     messageCount,
@@ -348,6 +375,9 @@ export function ChatView({
   const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
+  const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
+  const [goalActionBusy, setGoalActionBusy] = useState(false)
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
   const [reviewModeDialogOpen, setReviewModeDialogOpen] = useState(false)
   const composerRuntime = useChatComposerRuntime({
@@ -366,6 +396,110 @@ export function ChatView({
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
+
+  const refreshGoalRuntimeState = useCallback(() => {
+    if (!sessionId) {
+      return
+    }
+    void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(sessionId) })
+    void queryClient.invalidateQueries({ queryKey: ['chat', 'runtime-session-status', sessionId] })
+  }, [queryClient, sessionId])
+
+  const invokeCodexGoalAction = useCallback(async (
+    method: 'thread/goal/set' | 'thread/goal/clear',
+    params: Record<string, unknown>,
+    failureTitle: string,
+  ) => {
+    if (!sessionId) {
+      return
+    }
+
+    setGoalActionBusy(true)
+    try {
+      await postChatSessionsBySessionIdCodexAppServerInvoke({
+        path: { sessionId },
+        body: { method, params },
+        throwOnError: true,
+      })
+      refreshGoalRuntimeState()
+      return true
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: failureTitle,
+        description: error instanceof Error ? error.message : 'Unknown goal action error.',
+      })
+      return false
+    }
+    finally {
+      setGoalActionBusy(false)
+    }
+  }, [refreshGoalRuntimeState, sessionId])
+
+  const goalActions = useMemo(() => ({
+    busy: goalActionBusy,
+    onEdit: (state: ChatRuntimeGoalUiSlotState) => {
+      setEditingGoal(state)
+      setGoalObjectiveDraft(state.objective)
+    },
+    onPause: (state: ChatRuntimeGoalUiSlotState) => {
+      void invokeCodexGoalAction('thread/goal/set', {
+        threadId: state.threadId,
+        status: 'paused',
+      }, 'Goal pause failed')
+    },
+    onResume: (state: ChatRuntimeGoalUiSlotState) => {
+      void invokeCodexGoalAction('thread/goal/set', {
+        threadId: state.threadId,
+        status: 'active',
+      }, 'Goal resume failed')
+    },
+    onClear: (state: ChatRuntimeGoalUiSlotState) => {
+      void invokeCodexGoalAction('thread/goal/clear', {
+        threadId: state.threadId,
+      }, 'Goal clear failed')
+    },
+  }), [goalActionBusy, invokeCodexGoalAction])
+
+  const closeGoalEditor = useCallback(() => {
+    if (goalActionBusy) {
+      return
+    }
+    setEditingGoal(null)
+    setGoalObjectiveDraft('')
+  }, [goalActionBusy])
+
+  const submitGoalEditor = useCallback((event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!editingGoal) {
+      return
+    }
+
+    const objective = goalObjectiveDraft.trim()
+    if (!objective) {
+      toastManager.add({
+        type: 'error',
+        title: 'Goal update failed',
+        description: 'Goal objective cannot be empty.',
+      })
+      return
+    }
+
+    if (objective === editingGoal.objective) {
+      closeGoalEditor()
+      return
+    }
+
+    void invokeCodexGoalAction('thread/goal/set', {
+      threadId: editingGoal.threadId,
+      objective,
+    }, 'Goal update failed').then((updated) => {
+      if (updated) {
+        closeGoalEditor()
+      }
+    })
+  }, [closeGoalEditor, editingGoal, goalObjectiveDraft, invokeCodexGoalAction])
 
   const handleSlashCommandAction = useCallback(async (
     command: ChatComposerSlashCommand,
@@ -499,6 +633,11 @@ export function ChatView({
       onDragOver={e => e.preventDefault()}
     >
       <div className="pointer-events-none absolute right-4 top-3 z-20 flex items-center gap-1">
+        {import.meta.env.DEV && (
+          <div className="pointer-events-auto">
+            <RuntimeDiagnosticsPopover slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
+          </div>
+        )}
         <div className="pointer-events-auto rounded-lg bg-background/75 p-0.5 shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm">
           <ChatShareExport sessionId={sessionId} disabled={!isReady} />
         </div>
@@ -531,8 +670,39 @@ export function ChatView({
         toolbar={runtimeToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
+        goalActions={goalActions}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
+
+      <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>
+        <DialogContent className="sm:max-w-md">
+          <form className="grid gap-4" onSubmit={submitGoalEditor}>
+            <DialogHeader>
+              <DialogTitle>Edit goal</DialogTitle>
+              <DialogDescription>
+                Update the active goal without sending a chat message.
+              </DialogDescription>
+            </DialogHeader>
+            <Textarea
+              value={goalObjectiveDraft}
+              onChange={event => setGoalObjectiveDraft(event.target.value)}
+              disabled={goalActionBusy}
+              autoFocus
+              rows={4}
+              className="max-h-48 resize-none"
+              aria-label="Goal objective"
+            />
+            <DialogFooter variant="bare">
+              <Button type="button" variant="outline" disabled={goalActionBusy} onClick={closeGoalEditor}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={goalActionBusy || goalObjectiveDraft.trim().length === 0}>
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <CodexFeedbackDialog
         open={feedbackDialogOpen}

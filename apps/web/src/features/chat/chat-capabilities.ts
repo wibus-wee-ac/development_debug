@@ -22,6 +22,7 @@ export type ChatRuntimeUiSlotSurface
   = | 'slashCommand'
     | 'toolbarPicker'
     | 'composerState'
+    | 'messageInline'
     | 'runtimePanel'
     // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
     | 'streamEvidence'

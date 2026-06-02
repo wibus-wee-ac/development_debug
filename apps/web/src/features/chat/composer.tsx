@@ -623,7 +623,7 @@ export function Composer({
       }
     }
 
-    if (e.key === 'Enter' && e.shiftKey && e.metaKey) {
+    if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
       handleSend({ invertContinuationMode: true })
       return
@@ -718,7 +718,7 @@ export function Composer({
       <div
         ref={setActionTargetElement}
         className={cn(
-          'rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-2 focus-within:ring-ring/20 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
+          'rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-0 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
           cardClassName,
         )}
         data-testid={actionTargetTestId}

@@ -1041,7 +1041,11 @@ function MessageBubbleSegmentsView({
 
   function renderContent() {
     if (!executionPhaseSplit) {
-      return segments.map(renderSegment)
+      return (
+        <>
+          {segments.map(renderSegment)}
+        </>
+      )
     }
 
     return (

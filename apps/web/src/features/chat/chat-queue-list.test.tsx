@@ -11,6 +11,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ChatQueueList } from './chat-queue-list'
 import type { ChatQueueItem } from './chat-response-command'
 
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({
+    t: (key: string, values?: Record<string, unknown>) => {
+      const translations: Record<string, string> = {
+        'continuation.mode.queue': 'Queue',
+        'continuation.mode.steer': 'Steer',
+        'continuation.queue.cancel': 'Cancel queue item: {{label}}',
+        'continuation.queue.emptyLabel': 'Empty continuation',
+        'continuation.queue.moveDown': 'Move queue item down: {{label}}',
+        'continuation.queue.moveUp': 'Move queue item up: {{label}}',
+        'continuation.queue.title': 'Queue',
+        'continuation.status.running': 'Running',
+      }
+      return (translations[key] ?? key).replaceAll('{{label}}', String(values?.label ?? ''))
+    },
+  }),
+}))
+
 const queueItems: ChatQueueItem[] = [
   {
     id: 'queue-1',
@@ -52,6 +70,33 @@ const queueItems: ChatQueueItem[] = [
   },
 ]
 
+const queueItemsWithRunning: ChatQueueItem[] = [
+  queueItems[0],
+  {
+    id: 'queue-running',
+    sessionId: 'session-1',
+    mode: 'steer',
+    status: 'running',
+    text: 'Live steer',
+    files: [],
+    contextParts: [],
+    providerTargetId: null,
+    modelId: null,
+    thinkingEffort: null,
+    permissionMode: null,
+    position: 2,
+    sourceRunId: 'run-1',
+    startedRunId: 'run-1',
+    errorText: null,
+    createdAt: 2,
+    updatedAt: 2,
+  },
+  {
+    ...queueItems[1],
+    position: 3,
+  },
+]
+
 afterEach(() => {
   cleanup()
 })
@@ -81,6 +126,21 @@ describe('chatQueueList', () => {
     fireEvent.click(screen.getByLabelText('Move queue item up: Second'))
 
     expect(onReorder).toHaveBeenCalledWith(['queue-2', 'queue-1'])
+  })
+
+  it('shows running steer items without treating them as pending reorder or cancel targets', () => {
+    const onCancel = vi.fn()
+    const onReorder = vi.fn()
+    render(<ChatQueueList items={queueItemsWithRunning} onCancel={onCancel} onReorder={onReorder} />)
+
+    expect(screen.getByText('Live steer')).toBeTruthy()
+    expect(screen.getByText('Running')).toBeTruthy()
+    expect(screen.queryByLabelText('Cancel queue item: Live steer')).toBeNull()
+
+    fireEvent.click(screen.getByLabelText('Move queue item up: Second'))
+
+    expect(onReorder).toHaveBeenCalledWith(['queue-2', 'queue-1'])
+    expect(onCancel).not.toHaveBeenCalled()
   })
 })
 

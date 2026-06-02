@@ -1,6 +1,6 @@
-// Output: Provider-owned runtime UI slot state cards for the chat right aside.
+// Output: Provider-owned runtime UI slot state cards for chat runtime diagnostics.
 // Input: Runtime UI slot capabilities and their latest provider-projected state.
-// Position: Chat feature runtime panel surface; presentation only, no provider semantics ownership.
+// Position: Chat feature diagnostics surface; presentation only, no provider semantics ownership.
 
 import {
   ActivityIcon,
@@ -11,18 +11,15 @@ import {
   CpuIcon,
   FileDiffIcon,
   FolderTreeIcon,
-  GaugeIcon,
   GitPullRequestIcon,
   HardDriveIcon,
   KeyRoundIcon,
-  ListChecksIcon,
   PackageIcon,
   PuzzleIcon,
   SearchIcon,
   ServerIcon,
   Settings2Icon,
   SparklesIcon,
-  TargetIcon,
   TerminalIcon,
   WrenchIcon,
   ZapIcon,
@@ -39,7 +36,6 @@ import type {
   ChatRuntimeCrewCollaborationMode,
   ChatRuntimeCrewUiSlotState,
   ChatRuntimeMcpServerStatus,
-  ChatRuntimePlanStepStatus,
   ChatRuntimeToolActivityStatus,
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotIconKey,
@@ -53,7 +49,7 @@ interface RuntimeUiSlotPanelProps {
   loading?: boolean
 }
 
-type SlotGroupKey = 'progress' | 'environment' | 'activity' | 'available'
+type SlotGroupKey = 'environment' | 'activity' | 'available'
 type SlotTone = 'neutral' | 'active' | 'success' | 'warning' | 'error' | 'muted'
 
 type SlotIconComponent = ComponentType<SVGProps<SVGSVGElement>>
@@ -80,26 +76,34 @@ interface SlotCardLine {
 }
 
 const GROUP_LABELS: Record<SlotGroupKey, string> = {
-  progress: 'Progress',
   environment: 'Environment',
   activity: 'Activity',
   available: 'Available',
 }
 
-const GROUP_ORDER: SlotGroupKey[] = ['progress', 'environment', 'activity', 'available']
+const GROUP_ORDER: SlotGroupKey[] = ['environment', 'activity', 'available']
 
-const KIND_GROUPS: Record<ChatRuntimeUiSlotState['kind'], SlotGroupKey> = {
+const RUNTIME_PANEL_OWNED_ELSEWHERE = new Set<ChatRuntimeUiSlotState['kind']>([
+  'compact',
+  'goal',
+  'plan',
+])
+
+const RUNTIME_PANEL_EXCLUDED_ICON_KEYS = new Set<ChatRuntimeUiSlotIconKey>([
+  'compact',
+  'goal',
+  'plan',
+])
+
+const KIND_GROUPS: Partial<Record<ChatRuntimeUiSlotState['kind'], SlotGroupKey>> = {
   alert: 'activity',
   approvals: 'activity',
-  compact: 'progress',
   config: 'environment',
   crew: 'activity',
   diff: 'activity',
   filesystem: 'activity',
-  goal: 'progress',
   mcp: 'environment',
   model: 'environment',
-  plan: 'progress',
   plugin: 'environment',
   reasoning: 'environment',
   search: 'activity',
@@ -134,6 +138,7 @@ const STATE_ORDER: Record<ChatRuntimeUiSlotState['kind'], number> = {
 
 const SURFACE_LABELS: Record<ChatRuntimeUiSlotSurface, string> = {
   composerState: 'Composer',
+  messageInline: 'Inline',
   recordOnly: 'Record',
   runtimePanel: 'Panel',
   slashCommand: 'Command',
@@ -147,8 +152,8 @@ export function RuntimeUiSlotPanel({ slots, states, loading = false }: RuntimeUi
   if (cards.length === 0) {
     return (
       <section className="space-y-2">
-        <PanelHeading icon={ActivityIcon} label="Runtime slots" />
-        <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+        <PanelHeading icon={Settings2Icon} label="Environment" />
+        <p className="rounded-md bg-muted/30 px-2.5 py-2 text-[11px] text-muted-foreground">
           {loading ? 'Loading provider UI slots...' : 'No provider UI slot state for this session'}
         </p>
       </section>
@@ -182,7 +187,10 @@ function buildSlotCards(slots: ChatRuntimeUiSlot[], states: ChatRuntimeUiSlotSta
   const stateCards = states
     .map((state) => {
       const slot = slotById.get(state.slotId) ?? null
-      if (slot && !slot.surfaces.includes('runtimePanel')) {
+      if (RUNTIME_PANEL_OWNED_ELSEWHERE.has(state.kind)) {
+        return null
+      }
+      if (slot && !shouldRenderRuntimePanelSlot(slot)) {
         return null
       }
       return projectStateCard(state, slot)
@@ -190,10 +198,12 @@ function buildSlotCards(slots: ChatRuntimeUiSlot[], states: ChatRuntimeUiSlotSta
     .filter((card): card is SlotCardModel => card !== null)
 
   const stateSlotIds = new Set(states.map(state => state.slotId))
-  const capabilityCards = slots
-    .filter(slot => !stateSlotIds.has(slot.id))
-    .filter(slot => slot.surfaces.includes('runtimePanel'))
-    .map(slot => projectCapabilityCard(slot))
+  const capabilityCards: SlotCardModel[] = []
+  for (const slot of slots) {
+    if (!stateSlotIds.has(slot.id) && shouldRenderRuntimePanelSlot(slot)) {
+      capabilityCards.push(projectCapabilityCard(slot))
+    }
+  }
 
   return [...stateCards, ...capabilityCards].sort((a, b) => {
     if (a.group !== b.group) {
@@ -204,11 +214,21 @@ function buildSlotCards(slots: ChatRuntimeUiSlot[], states: ChatRuntimeUiSlotSta
   })
 }
 
+function shouldRenderRuntimePanelSlot(slot: ChatRuntimeUiSlot | null): boolean {
+  if (!slot || !slot.surfaces.includes('runtimePanel')) {
+    return false
+  }
+  if (slot.iconKey && RUNTIME_PANEL_EXCLUDED_ICON_KEYS.has(slot.iconKey)) {
+    return false
+  }
+  return slot.name !== 'compact' && slot.name !== 'goal' && slot.name !== 'plan'
+}
+
 function projectStateCard(state: ChatRuntimeUiSlotState, slot: ChatRuntimeUiSlot | null): SlotCardModel {
   const view = readStateView(state)
   return {
     id: state.slotId,
-    group: KIND_GROUPS[state.kind],
+    group: KIND_GROUPS[state.kind] ?? 'activity',
     label: slot?.label ?? readFallbackStateLabel(state.kind),
     description: slot?.description ?? '',
     icon: readSlotIcon(slot?.iconKey, state.kind),
@@ -247,17 +267,13 @@ function SlotStateCard({ card }: { card: SlotCardModel }) {
       data-runtime-ui-slot={card.id}
     >
       <div className="flex items-start gap-2">
-        {card.state?.kind === 'compact'
-          ? <CompactUsageRing percent={card.state.usagePercent} tone={card.tone} />
-          : (
-            <span className={cn(
-              'mt-0.5 grid size-6 shrink-0 place-items-center rounded-md',
-              readToneContainerClassName(card.tone),
-            )}
-            >
-              <Icon className="size-3.5" aria-hidden="true" />
-            </span>
-          )}
+        <span className={cn(
+          'mt-0.5 grid size-6 shrink-0 place-items-center rounded-md',
+          readToneContainerClassName(card.tone),
+        )}
+        >
+          <Icon className="size-3.5" aria-hidden="true" />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             <h3 className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
@@ -408,74 +424,8 @@ function CrewCallRow({ call }: { call: ChatRuntimeCrewCallItem }) {
   )
 }
 
-function CompactUsageRing({ percent, tone }: { percent: number | null, tone: SlotTone }) {
-  const value = percent === null ? 0 : clampPercent(percent)
-  const radius = 9
-  const circumference = 2 * Math.PI * radius
-  const dashOffset = circumference * (1 - value / 100)
-  return (
-    <span className={cn(
-      'relative mt-0.5 grid size-7 shrink-0 place-items-center rounded-full',
-      readToneContainerClassName(tone),
-    )}
-    >
-      <svg className="-rotate-90" viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
-        <circle
-          cx="12"
-          cy="12"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className="text-muted-foreground/20"
-        />
-        <circle
-          cx="12"
-          cy="12"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeWidth="2"
-          className={readToneSvgClassName(tone)}
-          style={{
-            strokeDasharray: circumference,
-            strokeDashoffset: dashOffset,
-          }}
-        />
-      </svg>
-      <span className="absolute text-[8px] font-medium tabular-nums text-foreground">
-        {percent === null ? '-' : Math.round(value)}
-      </span>
-    </span>
-  )
-}
-
 function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' | 'group' | 'label' | 'description' | 'icon' | 'slot' | 'state'> {
   switch (state.kind) {
-    case 'goal':
-      return {
-        tone: state.status === 'complete' ? 'success' : state.status === 'active' ? 'active' : readProblemTone(state.status),
-        summary: formatStatusLike(state.status),
-        meta: state.objective,
-        progress: state.tokenBudget ? clampPercent((state.tokensUsed / state.tokenBudget) * 100) : null,
-        lines: [
-          { label: 'Tokens', value: state.tokenBudget ? `${state.tokensUsed}/${state.tokenBudget}` : String(state.tokensUsed) },
-          { label: 'Time', value: formatDuration(state.timeUsedSeconds) },
-        ],
-      }
-    case 'compact':
-      return {
-        tone: readCompactTone(state),
-        summary: formatStatusLike(state.status),
-        meta: state.usagePercent === null ? 'Usage unavailable' : `used ${Math.round(state.usagePercent)}%`,
-        progress: state.usagePercent,
-        lines: [
-          { label: 'Auto limit', value: formatNullablePercent(state.autoCompactPercent) },
-          { label: 'Context', value: state.modelContextWindow ? formatNumber(state.modelContextWindow) : 'unknown' },
-          { label: 'Last compact', value: state.lastCompactedAt ? formatRelativeTimestamp(state.lastCompactedAt) : 'none' },
-        ],
-      }
     case 'status':
       return {
         tone: state.status === 'active' ? 'active' : state.status === 'systemError' ? 'error' : 'neutral',
@@ -504,18 +454,6 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
         meta: state.summary ?? `${state.supportedEfforts.length} supported efforts`,
         progress: null,
         lines: [{ label: 'Supported', value: state.supportedEfforts.map(effort => effort.id).join(', ') || 'unknown' }],
-      }
-    case 'plan':
-      return {
-        tone: state.inProgressCount > 0 ? 'active' : state.completedCount > 0 ? 'success' : 'neutral',
-        summary: `${state.completedCount}/${state.steps.length}`,
-        meta: state.currentStep ?? state.explanation ?? 'No active step',
-        progress: state.steps.length > 0 ? clampPercent((state.completedCount / state.steps.length) * 100) : null,
-        lines: state.steps.slice(0, 4).map((step, index) => ({
-          label: formatPlanStepStatus(step.status),
-          value: `${index + 1}. ${step.step}`,
-          tone: readPlanStepTone(step.status),
-        })),
       }
     case 'toolActivity':
       return {
@@ -678,8 +616,6 @@ function PanelHeading({ icon: Icon, label }: { icon: SlotIconComponent, label: s
 
 function readGroupIcon(group: SlotGroupKey) {
   switch (group) {
-    case 'progress':
-      return ListChecksIcon
     case 'environment':
       return Settings2Icon
     case 'activity':
@@ -698,8 +634,6 @@ function readSlotIcon(iconKey?: ChatRuntimeUiSlotIconKey, kind?: ChatRuntimeUiSl
       return KeyRoundIcon
     case 'code-review':
       return GitPullRequestIcon
-    case 'compact':
-      return GaugeIcon
     case 'config':
       return Settings2Icon
     case 'crew':
@@ -710,8 +644,6 @@ function readSlotIcon(iconKey?: ChatRuntimeUiSlotIconKey, kind?: ChatRuntimeUiSl
       return SparklesIcon
     case 'filesystem':
       return FolderTreeIcon
-    case 'goal':
-      return TargetIcon
     case 'ide-context':
       return Code2Icon
     case 'mcp':
@@ -720,8 +652,6 @@ function readSlotIcon(iconKey?: ChatRuntimeUiSlotIconKey, kind?: ChatRuntimeUiSl
       return CpuIcon
     case 'personality':
       return SparklesIcon
-    case 'plan':
-      return ListChecksIcon
     case 'plugin':
       return PuzzleIcon
     case 'reasoning':
@@ -757,44 +687,6 @@ function readFallbackStateLabel(kind: ChatRuntimeUiSlotState['kind']): string {
 
 function readCardOrder(card: SlotCardModel): number {
   return card.state ? STATE_ORDER[card.state.kind] : 1_000
-}
-
-function readCompactTone(state: Extract<ChatRuntimeUiSlotState, { kind: 'compact' }>): SlotTone {
-  if (state.status === 'running') {
-    return 'active'
-  }
-  if (state.status === 'compacted') {
-    return 'success'
-  }
-  if (state.status === 'overLimit') {
-    return 'error'
-  }
-  if (state.status === 'nearLimit' || (state.usagePercent !== null && state.usagePercent >= 80)) {
-    return 'warning'
-  }
-  return state.isCompactRelevant ? 'neutral' : 'muted'
-}
-
-function readProblemTone(status: string): SlotTone {
-  if (status === 'blocked' || status === 'usageLimited' || status === 'budgetLimited') {
-    return 'error'
-  }
-  if (status === 'paused') {
-    return 'warning'
-  }
-  return 'neutral'
-}
-
-function readPlanStepTone(status: ChatRuntimePlanStepStatus): SlotTone {
-  switch (status) {
-    case 'completed':
-      return 'success'
-    case 'inProgress':
-      return 'active'
-    case 'pending':
-    default:
-      return 'muted'
-  }
 }
 
 function readToolActivityTone(status: ChatRuntimeToolActivityStatus): SlotTone {
@@ -943,24 +835,6 @@ function readToneTextClassName(tone: SlotTone): string {
   }
 }
 
-function readToneSvgClassName(tone: SlotTone): string {
-  switch (tone) {
-    case 'active':
-      return 'text-primary'
-    case 'success':
-      return 'text-emerald-500'
-    case 'warning':
-      return 'text-amber-500'
-    case 'error':
-      return 'text-destructive'
-    case 'muted':
-      return 'text-muted-foreground'
-    case 'neutral':
-    default:
-      return 'text-foreground'
-  }
-}
-
 function formatStatusLike(value: string): string {
   return value
     .replace(/([a-z])([A-Z])/g, '$1 $2')
@@ -977,10 +851,6 @@ function formatThreadId(threadId: string): string {
 
 function formatSurfaces(surfaces: ChatRuntimeUiSlotSurface[]): string {
   return surfaces.map(surface => SURFACE_LABELS[surface]).join(' / ')
-}
-
-function formatPlanStepStatus(status: ChatRuntimePlanStepStatus): string {
-  return status === 'inProgress' ? 'Doing' : formatStatusLike(status)
 }
 
 function formatMcpServerStatus(status: ChatRuntimeMcpServerStatus): string {
@@ -1004,20 +874,6 @@ function formatNullablePercent(value: number | null): string {
 
 function formatNullableNumber(value: number | null): string {
   return value === null ? 'unknown' : String(value)
-}
-
-function formatNumber(value: number): string {
-  return new Intl.NumberFormat('en-US').format(value)
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) {
-    return `${Math.round(seconds)}s`
-  }
-  if (seconds < 3600) {
-    return `${Math.round(seconds / 60)}m`
-  }
-  return `${(seconds / 3600).toFixed(1)}h`
 }
 
 function formatRelativeTimestamp(timestamp: number): string {

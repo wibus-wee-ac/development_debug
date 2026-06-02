@@ -29,6 +29,7 @@ import {
 } from './chat-response-command'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
 import { ChatStreamingHandler } from './chat-streaming-handler'
+import { useRuntimeSessionStatus } from './use-runtime-session-status'
 
 // ── Compatibility Exports (used by tests) ───────────────────
 
@@ -192,6 +193,7 @@ export function useChatSession(chatSessionId: string | null) {
     handler: ChatStreamingHandler
   } | null>(null)
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
 
   // ── Selectors (fine-grained subscriptions) ──
 
@@ -254,6 +256,7 @@ export function useChatSession(chatSessionId: string | null) {
       ? 1000
       : false,
   })
+  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
 
   const runtimeKind = useSessionLayoutStore(
     useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),
@@ -333,8 +336,33 @@ export function useChatSession(chatSessionId: string | null) {
         passiveStreamRef.current.handler.dispose()
         passiveStreamRef.current = null
       }
+      requestedRuntimeActiveRunMessageRef.current = null
     }
   }, [chatSessionId])
+
+  useEffect(() => {
+    if (!chatSessionId) {
+      return
+    }
+
+    const activeRunMessageId = runtimeStatusQuery.data?.activeRun?.messageId
+    if (!activeRunMessageId) {
+      requestedRuntimeActiveRunMessageRef.current = null
+      return
+    }
+    const snapshotHasMessage = (snapshotRowsQuery.data ?? []).some(row => row.messageId === activeRunMessageId)
+    const storeHasMessage = (useChatStore.getState().messagesMap.get(chatSessionId) ?? []).some(message => message.id === activeRunMessageId)
+    if (snapshotHasMessage || storeHasMessage) {
+      requestedRuntimeActiveRunMessageRef.current = null
+      return
+    }
+    if (requestedRuntimeActiveRunMessageRef.current === activeRunMessageId) {
+      return
+    }
+
+    requestedRuntimeActiveRunMessageRef.current = activeRunMessageId
+    scheduleSnapshotRefresh(0)
+  }, [chatSessionId, runtimeStatusQuery.data?.activeRun?.messageId, scheduleSnapshotRefresh, snapshotRowsQuery.data])
 
   // ── Passive observer: join active run stream after snapshot hydration ──
 

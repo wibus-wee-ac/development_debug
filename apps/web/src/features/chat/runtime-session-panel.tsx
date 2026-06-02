@@ -3,7 +3,7 @@
 // Position: Chat feature panel rendered inside the app right aside.
 
 import { useQuery } from '@tanstack/react-query'
-import { ActivityIcon, CircleIcon, EyeIcon, ListTodoIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import { ActivityIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -12,13 +12,12 @@ import { cn } from '~/lib/cn'
 import type { RuntimeKind } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import type { ChatRuntimeUiSlotState } from './chat-capabilities'
-import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
+import type { ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
+import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from './chat-context'
-import { readTodoCompletion } from './chat-todo-projection'
+import type { ChatTodoItem, SessionTodoSnapshot } from './chat-todo-projection'
 import type { ChatToolEntity } from './chat-tool-entities'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
-import { RuntimeUiSlotPanel } from './runtime-ui-slot-panel'
 import type { ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
@@ -42,6 +41,15 @@ const TOOL_STATE_LABELS: Record<ToolState, string> = {
 
 const EMPTY_TOOLS: ChatToolEntity[] = []
 
+type ProgressTaskStatus = 'pending' | 'inProgress' | 'completed'
+
+interface ProgressTaskItem {
+  id: string
+  label: string
+  status: ProgressTaskStatus
+  order: number
+}
+
 export function RuntimeSessionPanel({
   sessionId,
   runtimeKind,
@@ -54,15 +62,8 @@ export function RuntimeSessionPanel({
     () => readChatAttentionSnapshot(sessionId),
     () => null,
   )
-  const { data: runtimeCapabilities } = useQuery({
-    queryKey: runtimeCapabilitiesQueryKey(sessionId),
-    queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
-    enabled: !!sessionId,
-    staleTime: 60_000,
-    retry: false,
-  })
   const { data: runtimeUiSlotStates, isLoading: runtimeUiSlotStatesLoading } = useQuery({
-    queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeCapabilities?.runtimeKind),
+    queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeKind),
     queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 2_000,
@@ -88,7 +89,8 @@ export function RuntimeSessionPanel({
   const recentTools = tools.slice(-6).reverse()
   const status = runtimeStatus?.status ?? visibleStatus
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
-  const todoCompletion = todoSnapshot ? readTodoCompletion(todoSnapshot.todos) : null
+  const planState = runtimeUiSlotStates?.states.find(isRuntimePlanState) ?? null
+  const progressItems = buildProgressItems(planState, todoSnapshot)
 
   if (!sessionId) {
     return (
@@ -100,11 +102,7 @@ export function RuntimeSessionPanel({
 
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
-      <RuntimeUiSlotPanel
-        slots={runtimeCapabilities?.uiSlots ?? []}
-        states={runtimeUiSlotStates?.states ?? []}
-        loading={runtimeUiSlotStatesLoading}
-      />
+      <ProgressPanel items={progressItems} planState={planState} loading={runtimeUiSlotStatesLoading} />
 
       <div className="border-t" />
 
@@ -123,58 +121,6 @@ export function RuntimeSessionPanel({
             <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
               No chat attention snapshot for this session
             </p>
-          )}
-      </section>
-
-      <div className="border-t" />
-
-      <section className="space-y-2">
-        <PanelHeading icon={ListTodoIcon} label="Todos" />
-        {!todoSnapshot || todoSnapshot.todos.length === 0
-          ? (
-            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
-              No TODO state for this session
-            </p>
-          )
-          : (
-            <div className="space-y-2 rounded-md bg-muted/40 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] text-muted-foreground">
-                  {todoCompletion?.completed ?? 0}
-                  /
-                  {todoCompletion?.total ?? 0}
-                  {' '}
-                  completed
-                </span>
-              </div>
-              <Progress
-                value={todoCompletion ? safePercent(todoCompletion.completed, todoCompletion.total) : 0}
-                className="h-1.5"
-              />
-              <div className="space-y-1">
-                {todoSnapshot.todos.map(todo => (
-                  <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded bg-background/50 px-2 py-1.5">
-                    <CircleIcon className={cn(
-                      'mt-1 size-2.5 shrink-0 fill-current',
-                      todo.status === 'completed' && 'text-emerald-500',
-                      todo.status === 'processing' && 'text-primary',
-                      todo.status === 'todo' && 'text-muted-foreground',
-                    )}
-                    />
-                    <span className={cn(
-                      'min-w-0 flex-1 text-[11px] text-foreground/85',
-                      todo.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
-                    )}
-                    >
-                      {todo.content}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                      {todo.status}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
           )}
       </section>
 
@@ -268,6 +214,93 @@ function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon, label:
   )
 }
 
+function ProgressPanel({
+  items,
+  planState,
+  loading,
+}: {
+  items: ProgressTaskItem[]
+  planState: ChatRuntimePlanUiSlotState | null
+  loading: boolean
+}) {
+  const completed = items.filter(item => item.status === 'completed').length
+  const activeItem = items.find(item => item.status === 'inProgress')
+    ?? items.find(item => item.status === 'pending')
+    ?? items.at(-1)
+    ?? null
+  const summary = items.length > 0
+    ? `${completed}/${items.length} complete`
+    : loading
+      ? 'Loading'
+      : 'No tracked tasks'
+
+  return (
+    <section className="space-y-2">
+      <PanelHeading icon={ListChecksIcon} label="Progress" />
+      <div className="space-y-2 rounded-md bg-muted/35 px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/85">
+            {activeItem?.label ?? planState?.explanation ?? 'Session task state'}
+          </span>
+          <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
+            {summary}
+          </span>
+        </div>
+        <Progress value={safePercent(completed, items.length)} className="h-1.5 bg-muted/70" />
+        {items.length > 0
+          ? (
+            <div className="space-y-1">
+              {items.map(item => (
+                <ProgressTaskRow key={item.id} item={item} />
+              ))}
+            </div>
+          )
+          : (
+            <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
+              {loading ? 'Loading session progress...' : 'No Plan or TODO state for this session'}
+            </p>
+          )}
+      </div>
+    </section>
+  )
+}
+
+function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
+  const Icon = item.status === 'completed'
+    ? CheckCircle2Icon
+    : item.status === 'inProgress'
+      ? LoaderCircleIcon
+      : CircleIcon
+
+  return (
+    <div className="flex min-w-0 items-start gap-2 rounded bg-background/45 px-2 py-1.5">
+      <Icon className={cn(
+        'mt-0.5 size-3.5 shrink-0',
+        item.status === 'completed' && 'text-emerald-500',
+        item.status === 'inProgress' && 'text-primary',
+        item.status === 'pending' && 'text-muted-foreground',
+      )}
+      />
+      <span className={cn(
+        'min-w-0 flex-1 text-[11px] leading-4 text-foreground/85',
+        item.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
+      )}
+      >
+        {item.label}
+      </span>
+      <span className={cn(
+        'shrink-0 pt-px font-mono text-[9px] tabular-nums',
+        item.status === 'completed' && 'text-emerald-600 dark:text-emerald-400',
+        item.status === 'inProgress' && 'text-primary',
+        item.status === 'pending' && 'text-muted-foreground',
+      )}
+      >
+        {formatProgressTaskStatus(item.status)}
+      </span>
+    </div>
+  )
+}
+
 function Metric({
   label,
   value,
@@ -306,6 +339,91 @@ function KeyValue({ label, value }: { label: string, value: string }) {
       </span>
     </div>
   )
+}
+
+function isRuntimePlanState(state: ChatRuntimeUiSlotState): state is ChatRuntimePlanUiSlotState {
+  return state.kind === 'plan'
+}
+
+function buildProgressItems(
+  planState: ChatRuntimePlanUiSlotState | null,
+  todoSnapshot: SessionTodoSnapshot | null,
+): ProgressTaskItem[] {
+  const itemByKey = new Map<string, ProgressTaskItem>()
+
+  planState?.steps.forEach((step, index) => {
+    mergeProgressItem(itemByKey, {
+      id: `plan:${index}:${step.step}`,
+      label: step.step,
+      status: step.status,
+      order: index,
+    })
+  })
+
+  todoSnapshot?.todos.forEach((todo, index) => {
+    mergeProgressItem(itemByKey, {
+      id: `todo:${todo.id ?? index}:${todo.content}`,
+      label: todo.content,
+      status: mapTodoProgressStatus(todo),
+      order: (planState?.steps.length ?? 0) + index,
+    })
+  })
+
+  return Array.from(itemByKey.values()).sort((left, right) => left.order - right.order)
+}
+
+function mergeProgressItem(itemByKey: Map<string, ProgressTaskItem>, item: ProgressTaskItem): void {
+  const key = normalizeProgressLabel(item.label)
+  const existing = itemByKey.get(key)
+  if (!existing) {
+    itemByKey.set(key, item)
+    return
+  }
+
+  itemByKey.set(key, {
+    ...existing,
+    id: existing.id,
+    status: readDominantProgressStatus(existing.status, item.status),
+    order: Math.min(existing.order, item.order),
+  })
+}
+
+function normalizeProgressLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function mapTodoProgressStatus(todo: ChatTodoItem): ProgressTaskStatus {
+  switch (todo.status) {
+    case 'completed':
+      return 'completed'
+    case 'processing':
+      return 'inProgress'
+    case 'todo':
+    default:
+      return 'pending'
+  }
+}
+
+function readDominantProgressStatus(left: ProgressTaskStatus, right: ProgressTaskStatus): ProgressTaskStatus {
+  if (left === 'inProgress' || right === 'inProgress') {
+    return 'inProgress'
+  }
+  if (left === 'completed' || right === 'completed') {
+    return 'completed'
+  }
+  return 'pending'
+}
+
+function formatProgressTaskStatus(status: ProgressTaskStatus): string {
+  switch (status) {
+    case 'completed':
+      return 'done'
+    case 'inProgress':
+      return 'doing'
+    case 'pending':
+    default:
+      return 'todo'
+  }
 }
 
 function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {
@@ -374,11 +492,8 @@ function statusShouldPoll(status: RuntimeSessionStatusKind | undefined): boolean
 
 function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {
   return states.some((state) => {
-    if (state.kind === 'goal') {
-      return state.status === 'active'
-    }
-    if (state.kind === 'compact') {
-      return state.status === 'running' || state.isCompactRelevant === true
+    if (state.kind === 'plan') {
+      return state.inProgressCount > 0
     }
     if (state.kind === 'status') {
       return state.status === 'active'
