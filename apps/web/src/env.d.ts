@@ -54,6 +54,44 @@ interface Window {
     /** @deprecated Legacy subscribe API — prefer ipc */
     subscribe?: (topic: string, listener: (...args: unknown[]) => void) => () => void
   }
+  codex?: {
+    sendPrompt: (
+      input: string | {
+        attachments?: Array<string | Blob | {
+          dataURL?: string
+          dataUrl?: string
+          filename?: string
+          mediaType?: string
+          mimeType?: string
+          name?: string
+          type?: string
+          url?: string
+        }>
+        files?: Array<string | Blob | {
+          dataURL?: string
+          dataUrl?: string
+          filename?: string
+          mediaType?: string
+          mimeType?: string
+          name?: string
+          type?: string
+          url?: string
+        }>
+        prompt?: string
+        text?: string
+      },
+      attachments?: Array<string | Blob | {
+        dataURL?: string
+        dataUrl?: string
+        filename?: string
+        mediaType?: string
+        mimeType?: string
+        name?: string
+        type?: string
+        url?: string
+      }>,
+    ) => Promise<void>
+  }
   __cradleBrowserUseCreateTab?: (url?: string) => string
   __cradleBrowserUseActivateTab?: (tabId: string) => boolean
   __cradleBrowserUseGoOffScreen?: (tabId?: string) => boolean

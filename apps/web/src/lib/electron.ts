@@ -161,7 +161,6 @@ interface NativeServiceMethods {
   }>
   scanExternalWorkImportFiles: (options?: {
     limitPerSource?: number
-    workspacePaths?: string[]
   }) => Promise<{
     files: Array<{
       sourceApp: 'claude' | 'codex'

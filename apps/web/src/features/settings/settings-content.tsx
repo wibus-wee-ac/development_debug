@@ -35,8 +35,9 @@ interface SettingsContentProps {
 }
 
 export function SettingsContent({ section }: SettingsContentProps) {
-  const ActiveSection = SECTION_MAP[section] ?? AppearanceSettings
-  const fixedHeight = FIXED_HEIGHT_SECTIONS.has(section)
+  const activeSection = !import.meta.env.DEV && section === 'chronicle' ? 'appearance' : section
+  const ActiveSection = SECTION_MAP[activeSection] ?? AppearanceSettings
+  const fixedHeight = FIXED_HEIGHT_SECTIONS.has(activeSection)
 
   return (
     <div className="h-full min-h-0 w-full min-w-0 flex-1 overflow-hidden">

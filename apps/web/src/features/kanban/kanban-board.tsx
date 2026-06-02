@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCardPreview } from './kanban-card'
+import type { KanbanCardRuntimeData } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
 import type { IssueSelectionMode } from './kanban-selection'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
@@ -32,6 +33,7 @@ interface BoardProps {
   onCreateIssue: (groupId: string) => void
   highlightedIssueId?: string | null
   selectedIssueIds?: Set<string>
+  runtimeData?: KanbanCardRuntimeData
 }
 
 interface GroupDef {
@@ -54,6 +56,7 @@ export function KanbanBoard({
   onCreateIssue,
   highlightedIssueId,
   selectedIssueIds,
+  runtimeData,
 }: BoardProps) {
   const [activeIssue, setActiveIssue] = useState<KanbanIssue | null>(null)
 
@@ -163,6 +166,7 @@ export function KanbanBoard({
             onCreateIssue={onCreateIssue}
             highlightedIssueId={highlightedIssueId}
             selectedIssueIds={selectedIssueIds}
+            runtimeData={runtimeData}
           />
         ))}
       </div>
@@ -186,6 +190,7 @@ export function KanbanBoard({
               displayProperties={config.displayProperties}
               onOpenIssue={() => {}}
               selected={selectedIssueIds?.has(activeIssue.id)}
+              runtimeData={runtimeData}
             />
           </m.div>
         )}

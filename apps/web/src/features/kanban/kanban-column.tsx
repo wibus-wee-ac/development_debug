@@ -7,6 +7,7 @@ import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 import { KanbanCard } from './kanban-card'
+import type { KanbanCardRuntimeData } from './kanban-card'
 import type { IssueSelectionMode } from './kanban-selection'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { StatusIcon } from './shared/status-icon'
@@ -29,6 +30,7 @@ interface ColumnProps {
   onCreateIssue: (groupId: string) => void
   highlightedIssueId?: string | null
   selectedIssueIds?: Set<string>
+  runtimeData?: KanbanCardRuntimeData
 }
 
 export function KanbanColumn({
@@ -44,9 +46,10 @@ export function KanbanColumn({
   onIssueClick,
   onIssueSelectionGesture,
   onIssueHover,
-  onCreateIssue: _onCreateIssue,
+  onCreateIssue,
   highlightedIssueId,
   selectedIssueIds,
+  runtimeData,
 }: ColumnProps) {
   const { t } = useTranslation('kanban')
   const { setNodeRef, isOver } = useDroppable({ id: groupId })
@@ -67,6 +70,12 @@ export function KanbanColumn({
       setShowInlineInput(false)
       return
     }
+    if (runtimeData) {
+      onCreateIssue(groupId)
+      setInlineTitle('')
+      setShowInlineInput(false)
+      return
+    }
     createIssue.mutate({
       workspaceId,
       title,
@@ -81,7 +90,7 @@ export function KanbanColumn({
         setShowInlineInput(false)
       },
     })
-  }, [inlineTitle, groupId, createIssue, workspaceId])
+  }, [inlineTitle, runtimeData, createIssue, workspaceId, groupId, onCreateIssue])
 
   return (
     <div className="flex flex-col w-80 shrink-0 bg-muted/20 rounded-xl h-full" data-kanban-column-id={groupId}>
@@ -116,6 +125,7 @@ export function KanbanColumn({
             onHover={onIssueHover}
             highlighted={issue.id === highlightedIssueId}
             selected={selectedIssueIds?.has(issue.id)}
+            runtimeData={runtimeData}
           />
         ))}
 

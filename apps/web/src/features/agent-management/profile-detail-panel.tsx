@@ -311,6 +311,30 @@ export function ProfileDetailPanel({
     }
   }, [clearAutoSaveTimer, clearSavedClearTimer])
 
+  const fetchModelsFromProvider = useCallback(
+    (requestId: number) => {
+      postProvidersModels({ body: createProviderRequestBodyRef.current() })
+        .then(({ data }) => {
+          if (requestId !== modelsRequestRef.current) {
+            return
+          }
+          dispatch({
+            type: 'models/loaded',
+            models: ModelDescriptorListSchema.parse(data),
+            cachedAt: Date.now(),
+          })
+          void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+        })
+        .catch(() => {
+          if (requestId !== modelsRequestRef.current) {
+            return
+          }
+          dispatch({ type: 'models/failed' })
+        })
+    },
+    [queryClient],
+  )
+
   // Reset state when switching profile
   const profileId = profile.id
   useEffect(() => {
@@ -346,12 +370,16 @@ export function ProfileDetailPanel({
           return
         }
 
-        if (cache?.cached && cache.models.length > 0) {
-          dispatch({ type: 'models/loaded', models: cache.models, cachedAt: null })
+        if (cache?.cached) {
+          dispatch({
+            type: 'models/loaded',
+            models: cache.models,
+            cachedAt: cache.models.length > 0 ? null : Date.now(),
+          })
           return
         }
 
-        dispatch({ type: 'models/loaded', models: [], cachedAt: null })
+        fetchModelsFromProvider(requestId)
       })
       .catch(() => {
         if (requestId !== modelsRequestRef.current) {
@@ -359,31 +387,13 @@ export function ProfileDetailPanel({
         }
         dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id, queryClient])
+  }, [supportsModels, profile.id, queryClient, fetchModelsFromProvider])
 
   const handleRefreshModels = useCallback(() => {
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
-
-    postProvidersModels({ body: createProviderRequestBodyRef.current() })
-      .then(({ data }) => {
-        if (requestId !== modelsRequestRef.current) {
-          return
-        }
-        dispatch({
-          type: 'models/loaded',
-          models: ModelDescriptorListSchema.parse(data),
-          cachedAt: Date.now(),
-        })
-        void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
-      })
-      .catch(() => {
-        if (requestId !== modelsRequestRef.current) {
-          return
-        }
-        dispatch({ type: 'models/failed' })
-      })
-  }, [queryClient])
+    fetchModelsFromProvider(requestId)
+  }, [fetchModelsFromProvider])
 
   const saveProfile = useEffectEvent(async () => {
     const currentValues = form.getValues()

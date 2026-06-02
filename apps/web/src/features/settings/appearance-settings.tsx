@@ -6,7 +6,6 @@ import { useI18n } from '~/i18n/client'
 import type { SupportedLocale } from '~/i18n/locales'
 import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import { cn } from '~/lib/cn'
-import { useStreamdownStore } from '~/store/streamdown'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
 
@@ -86,17 +85,6 @@ const THEME_OPTIONS: Array<{ value: ThemeMode, labelKey: SettingsKey }> = [
   { value: 'system', labelKey: 'appearance.theme.system' },
 ]
 
-const ANIMATION_PRESETS = [
-  { value: 'minimal', labelKey: 'streaming.preset.minimal.label', descriptionKey: 'streaming.preset.minimal.description' },
-  { value: 'balanced', labelKey: 'streaming.preset.balanced.label', descriptionKey: 'streaming.preset.balanced.description' },
-  { value: 'dramatic', labelKey: 'streaming.preset.dramatic.label', descriptionKey: 'streaming.preset.dramatic.description' },
-] as const satisfies Array<{ value: string, labelKey: SettingsKey, descriptionKey: SettingsKey }>
-
-const GRANULARITY_OPTIONS = [
-  { value: 'word', labelKey: 'streaming.granularity.word' },
-  { value: 'char', labelKey: 'streaming.granularity.char' },
-] as const satisfies Array<{ value: string, labelKey: SettingsKey }>
-
 const LOCALE_LABEL_KEYS = {
   'en-US': 'appearance.language.option.en-US',
   'zh-CN': 'appearance.language.option.zh-CN',
@@ -108,7 +96,7 @@ export function AppearanceSettings() {
   const { t } = useTranslation('settings')
   const mode = useThemeStore(s => s.mode)
   const setMode = useThemeStore(s => s.setMode)
-  const settingsAppearanceReady = THEME_OPTIONS.length > 0 && ANIMATION_PRESETS.length > 0
+  const settingsAppearanceReady = THEME_OPTIONS.length > 0
 
   return (
     <div
@@ -170,11 +158,6 @@ export function AppearanceSettings() {
 
       <SettingsDivider />
       <LanguageSettings />
-      <SettingsDivider />
-      <SettingsSectionHeader title={t('streaming.section.title')} description={t('streaming.section.description')} />
-      <SettingsDivider />
-
-      <StreamdownSettings />
     </div>
   )
 }
@@ -235,90 +218,5 @@ function LanguageSettings() {
         })}
       </div>
     </SettingsRow>
-  )
-}
-
-function StreamdownSettings() {
-  const { t } = useTranslation('settings')
-  const { animationPreset, animateMode, showCursor, setAnimationPreset, setAnimateMode, setShowCursor } = useStreamdownStore()
-
-  return (
-    <>
-      <SettingsRow
-        label={t('streaming.preset.label')}
-        description={t('streaming.preset.description')}
-      >
-        <div className="flex gap-2">
-          {ANIMATION_PRESETS.map(({ value, labelKey, descriptionKey }) => {
-            const selected = animationPreset === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAnimationPreset(value)}
-                className={cn(
-                  'flex flex-col items-start gap-0.5 rounded-lg border px-3 py-2 text-left transition-[background-color,border-color] duration-150',
-                  selected
-                    ? 'border-foreground/20 bg-foreground/5'
-                    : 'border-border hover:border-foreground/10',
-                )}
-              >
-                <span className={cn('text-xs font-medium', selected ? 'text-foreground' : 'text-muted-foreground')}>
-                  {t(labelKey)}
-                </span>
-                <span className="text-[10px] text-muted-foreground/70">{t(descriptionKey)}</span>
-              </button>
-            )
-          })}
-        </div>
-      </SettingsRow>
-
-      <SettingsRow
-        label={t('streaming.granularity.label')}
-        description={t('streaming.granularity.description')}
-      >
-        <div className="flex gap-1 rounded-lg border border-border p-0.5">
-          {GRANULARITY_OPTIONS.map(({ value, labelKey }) => {
-            const selected = animateMode === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setAnimateMode(value)}
-                className={cn(
-                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
-                  selected ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t(labelKey)}
-              </button>
-            )
-          })}
-        </div>
-      </SettingsRow>
-
-      <SettingsRow
-        label={t('streaming.cursor.label')}
-        description={t('streaming.cursor.description')}
-      >
-        <button
-          type="button"
-          onClick={() => setShowCursor(!showCursor)}
-          aria-label={t('streaming.cursor.toggle')}
-          aria-pressed={showCursor}
-          className={cn(
-            'relative h-5 w-9 rounded-full transition-colors',
-            showCursor ? 'bg-foreground' : 'bg-border',
-          )}
-        >
-          <span
-            className={cn(
-              'absolute top-0.5 left-0.5 size-4 rounded-full bg-background transition-transform',
-              showCursor && 'translate-x-4',
-            )}
-          />
-        </button>
-      </SettingsRow>
-    </>
   )
 }

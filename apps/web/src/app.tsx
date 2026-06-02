@@ -61,6 +61,7 @@ function MainAppRuntime() {
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
   const onboardingCompleted = useOnboardingStore(s => s.completed)
+  const showDevOnboarding = import.meta.env.DEV && !onboardingCompleted
 
   const activeSlotId = useCradleTabStore((s) => {
     const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)
@@ -196,8 +197,8 @@ function MainAppRuntime() {
         </TabsProvider>
       </LayoutSlotsProvider>
 
-      {/* Onboarding overlay — shown until the user completes or skips setup */}
-      {!onboardingCompleted && (
+      {/* Dev-only onboarding overlay resets on every Vite reload. */}
+      {showDevOnboarding && (
         <Suspense fallback={null}>
           <OnboardingPage />
         </Suspense>

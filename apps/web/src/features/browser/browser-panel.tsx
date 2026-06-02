@@ -12,7 +12,9 @@ import {
   XIcon,
 } from 'lucide-react'
 import { Activity, createElement, useCallback, useEffect, useRef, useState } from 'react'
+import type { FileUIPart } from 'ai'
 
+import { submitChatPromptIngress } from '~/features/chat/prompt-ingress'
 import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
@@ -49,9 +51,9 @@ type WebviewElement = HTMLElement & {
 
 type WebviewRefCallback = (el: WebviewElement | null) => void
 
-const MAX_TABS = 5
 const WEBVIEW_PARTITION = 'persist:browser'
 const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
+const SEND_PROMPT_CHANNEL = 'cradle:send-prompt'
 const SCRIPT_RUN_AT_LABELS = {
   'document-start': 'start',
   'document-end': 'end',
@@ -101,6 +103,7 @@ interface ElectronWebviewProps {
 
 function ElectronWebview({ url, webviewRef }: ElectronWebviewProps) {
   return createElement('webview', {
+    allowpopups: 'true',
     ref: webviewRef,
     src: url,
     partition: WEBVIEW_PARTITION,
@@ -108,6 +111,7 @@ function ElectronWebview({ url, webviewRef }: ElectronWebviewProps) {
     className: 'absolute inset-0 w-full h-full',
   } as React.HTMLAttributes<HTMLElement> & {
     ref: (el: WebviewElement | null) => void
+    allowpopups: string
     src: string
     partition: string
     webpreferences: string
@@ -140,6 +144,53 @@ function getSourceSessionTitle(tab: BrowserPanelTab): string | null {
 
 const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
 
+interface BrowserPanelPromptAttachment {
+  filename?: unknown
+  mediaType?: unknown
+  url?: unknown
+}
+
+interface WebviewIpcMessageEvent {
+  args?: unknown[]
+  channel?: unknown
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function readSendPromptPayload(input: unknown): { files: FileUIPart[], text: string } | null {
+  if (!isRecord(input)) {
+    return null
+  }
+
+  const text = typeof input.text === 'string' ? input.text : ''
+  const attachments = Array.isArray(input.attachments)
+    ? input.attachments as BrowserPanelPromptAttachment[]
+    : []
+  const files = attachments.flatMap((attachment) => {
+    if (!isRecord(attachment)) {
+      return []
+    }
+    const url = readString(attachment.url)
+    if (!url) {
+      return []
+    }
+    return [{
+      type: 'file' as const,
+      filename: readString(attachment.filename) ?? undefined,
+      mediaType: readString(attachment.mediaType) ?? 'application/octet-stream',
+      url,
+    }]
+  })
+
+  return text.trim().length > 0 || files.length > 0 ? { files, text } : null
+}
+
 export function BrowserPanel({
   ownerId = null,
   activeSessionId = null,
@@ -163,13 +214,17 @@ export function BrowserPanel({
   const activeBrowserTab = activeTab?.kind === 'browser' ? activeTab : null
   const activeWorkspaceFileTab = activeTab?.kind === 'workspace-file' ? activeTab : null
   const activeWorkspaceDiffTab = activeTab?.kind === 'workspace-diff' ? activeTab : null
-  const browserTabCount = tabs.filter(tab => tab.kind === 'browser').length
   const [urlInput, setUrlInput] = useState('')
   const [domReadyCount, setDomReadyCount] = useState(0)
   const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
   const webviewRefCallbacksRef = useRef<Map<string, WebviewRefCallback>>(new Map())
   const loadedWebviewTabIdsRef = useRef<Set<string>>(new Set())
   const scriptSyncKeysRef = useRef<Map<string, string>>(new Map())
+  const activeSessionIdRef = useRef(activeSessionId)
+
+  useEffect(() => {
+    activeSessionIdRef.current = activeSessionId
+  }, [activeSessionId])
 
   useEffect(() => {
     if (!requestedTab) {
@@ -218,6 +273,32 @@ export function BrowserPanel({
       const handleFavicon = (e: any) => {
         updateTab(tabId, { favicon: e.favicons?.[0] ?? null }, ownerId)
       }
+      const handleIpcMessage = (rawEvent: unknown) => {
+        const event = isRecord(rawEvent) ? rawEvent as WebviewIpcMessageEvent : {}
+        if (event.channel !== SEND_PROMPT_CHANNEL) {
+          return
+        }
+        const payload = readSendPromptPayload(event.args?.[0])
+        if (!payload) {
+          return
+        }
+        const ownerState = useBrowserPanelStore.getState().owners[resolvedOwnerId]
+        const tab = ownerState?.tabs.find(candidate => candidate.id === tabId)
+        const sessionId = tab?.kind === 'browser'
+          ? tab.sessionId ?? activeSessionIdRef.current
+          : activeSessionIdRef.current
+        if (!sessionId) {
+          console.warn('[browser-panel] window.codex.sendPrompt ignored because no chat session is active')
+          return
+        }
+        const submitted = submitChatPromptIngress(sessionId, {
+          text: payload.text,
+          files: payload.files,
+        })
+        if (!submitted) {
+          console.warn(`[browser-panel] window.codex.sendPrompt ignored because chat session ${sessionId} is not mounted`)
+        }
+      }
 
       el.addEventListener('page-title-updated', handleTitleUpdated)
       el.addEventListener('did-navigate', handleDidNavigate)
@@ -225,6 +306,7 @@ export function BrowserPanel({
       el.addEventListener('did-start-loading', handleDidStartLoading)
       el.addEventListener('did-stop-loading', handleDidStopLoading)
       el.addEventListener('page-favicon-updated', handleFavicon)
+      el.addEventListener('ipc-message', handleIpcMessage)
 
       const handleDomReady = () => {
         el.__webContentsId = el.getWebContentsId()
@@ -239,10 +321,11 @@ export function BrowserPanel({
         el.removeEventListener('did-start-loading', handleDidStartLoading)
         el.removeEventListener('did-stop-loading', handleDidStopLoading)
         el.removeEventListener('page-favicon-updated', handleFavicon)
+        el.removeEventListener('ipc-message', handleIpcMessage)
         el.removeEventListener('dom-ready', handleDomReady)
       }
     },
-    [ownerId, updateTab],
+    [ownerId, resolvedOwnerId, updateTab],
   )
 
   const getWebviewRef = useCallback(
@@ -454,11 +537,8 @@ export function BrowserPanel({
   )
 
   const handleNewTab = useCallback(() => {
-    if (browserTabCount >= MAX_TABS) {
-      return
-    }
     createTab('about:blank', { sessionId: activeSessionId, sessionTitle: activeSessionTitle }, ownerId)
-  }, [activeSessionId, activeSessionTitle, browserTabCount, createTab, ownerId])
+  }, [activeSessionId, activeSessionTitle, createTab, ownerId])
 
   const handleCloseTab = useCallback((tabId: string) => {
     const closeResult = closeTab(tabId, ownerId)
@@ -578,7 +658,6 @@ export function BrowserPanel({
           <button
             type="button"
             onClick={handleNewTab}
-            disabled={browserTabCount >= MAX_TABS}
             aria-label="New browser tab"
             className="ml-0.5 flex size-6 items-center justify-center rounded-full text-muted-foreground/40 transition-colors hover:bg-foreground/4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20"
           >

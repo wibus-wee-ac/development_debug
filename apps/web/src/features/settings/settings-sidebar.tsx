@@ -20,7 +20,9 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'chat', labelKey: 'nav.chat', icon: MessageSquareIcon },
   { id: 'await', labelKey: 'nav.await', icon: HourglassIcon },
   { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
-  { id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon },
+  ...(import.meta.env.DEV
+    ? [{ id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon } satisfies SettingsNavItem]
+    : []),
   { id: 'skills', labelKey: 'nav.skills', icon: SparklesIcon },
   { id: 'desktop', labelKey: 'nav.desktop', icon: DownloadIcon },
   { id: 'import', labelKey: 'nav.import', icon: ArrowDownToLineIcon },

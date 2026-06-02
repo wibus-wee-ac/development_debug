@@ -12,6 +12,7 @@ import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/br
 import { BrowserPanel } from './browser-panel'
 
 const diffViewerRender = vi.hoisted(() => vi.fn())
+const submitChatPromptIngressMock = vi.hoisted(() => vi.fn())
 
 type TestWebviewPrototype = HTMLElement & {
   loadURL?: (url: string) => Promise<void>
@@ -51,6 +52,10 @@ vi.mock('./workspace-diff-viewer', () => ({
   },
 }))
 
+vi.mock('~/features/chat/prompt-ingress', () => ({
+  submitChatPromptIngress: submitChatPromptIngressMock,
+}))
+
 vi.mock('~/features/workspace/workspace-file-editor', () => ({
   WorkspaceFileEditor: () => <div data-testid="workspace-file-editor" />,
 }))
@@ -63,6 +68,8 @@ describe('browserPanel rendering', () => {
   beforeEach(() => {
     cleanup()
     diffViewerRender.mockClear()
+    submitChatPromptIngressMock.mockReset()
+    submitChatPromptIngressMock.mockReturnValue(true)
     installTestWebviewPrototype()
     useBrowserPanelStore.setState({
       activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
@@ -165,5 +172,60 @@ describe('browserPanel rendering', () => {
     render(<BrowserPanel />)
 
     expect(webview.loadURL).not.toHaveBeenCalled()
+  })
+
+  it('forwards window.codex.sendPrompt payloads to the tab source session', () => {
+    useBrowserPanelStore.getState().createTab('https://example.com', {
+      sessionId: 'session-a',
+      sessionTitle: 'Session A',
+    })
+
+    render(<BrowserPanel activeSessionId="session-b" activeSessionTitle="Session B" />)
+    const webview = document.querySelector('webview')
+    expect(webview).not.toBeNull()
+
+    const event = new Event('ipc-message') as Event & { args: unknown[], channel: string }
+    event.channel = 'cradle:send-prompt'
+    event.args = [{
+      text: 'Improve this design.',
+      attachments: [{
+        filename: 'screen.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,abc',
+      }],
+    }]
+    act(() => {
+      webview!.dispatchEvent(event)
+    })
+
+    expect(submitChatPromptIngressMock).toHaveBeenCalledWith('session-a', {
+      text: 'Improve this design.',
+      files: [{
+        type: 'file',
+        filename: 'screen.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,abc',
+      }],
+    })
+  })
+
+  it('falls back to the active chat session for window.codex.sendPrompt payloads', () => {
+    useBrowserPanelStore.getState().createTab('https://example.com')
+
+    render(<BrowserPanel activeSessionId="session-active" activeSessionTitle="Active" />)
+    const webview = document.querySelector('webview')
+    expect(webview).not.toBeNull()
+
+    const event = new Event('ipc-message') as Event & { args: unknown[], channel: string }
+    event.channel = 'cradle:send-prompt'
+    event.args = [{ text: 'Send from page.' }]
+    act(() => {
+      webview!.dispatchEvent(event)
+    })
+
+    expect(submitChatPromptIngressMock).toHaveBeenCalledWith('session-active', {
+      text: 'Send from page.',
+      files: [],
+    })
   })
 })

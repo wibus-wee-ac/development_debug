@@ -2,12 +2,13 @@ import { useDraggable } from '@dnd-kit/core'
 import { CheckIcon } from 'lucide-react'
 import type { CSSProperties, HTMLAttributes, MouseEvent, PointerEvent, ReactNode, Ref } from 'react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { Agent, KanbanIssue, KanbanMilestone, KanbanStatus, Workspace } from '~/lib/types'
 
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
@@ -19,6 +20,8 @@ import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusCategorySchema, StatusIcon } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
+
+type KanbanKey = keyof typeof import('~/locales/default').default.kanban
 
 interface CardProps {
   issue: KanbanIssue
@@ -32,9 +35,15 @@ interface CardProps {
   category?: string
   highlighted?: boolean
   selected?: boolean
+  runtimeData?: KanbanCardRuntimeData
 }
 
-type CardChromeProps = Pick<CardProps, 'issue' | 'statuses' | 'milestones' | 'parentIssueRef' | 'displayProperties' | 'category' | 'highlighted' | 'selected'> & HTMLAttributes<HTMLDivElement> & {
+export interface KanbanCardRuntimeData {
+  workspaces: Workspace[]
+  agents: Agent[]
+}
+
+type CardChromeProps = Pick<CardProps, 'issue' | 'statuses' | 'milestones' | 'parentIssueRef' | 'displayProperties' | 'category' | 'highlighted' | 'selected' | 'runtimeData'> & HTMLAttributes<HTMLDivElement> & {
   cardRef?: Ref<HTMLDivElement>
   style?: CSSProperties
   pressed?: boolean
@@ -44,11 +53,12 @@ type CardChromeProps = Pick<CardProps, 'issue' | 'statuses' | 'milestones' | 'pa
   onOpenIssue: (id: string) => void
 }
 
-const priorityLabel: Record<string, string> = {
-  urgent: 'Urgent',
-  high: 'High',
-  medium: 'Medium',
-  low: 'Low',
+const priorityLabelKey: Record<string, KanbanKey> = {
+  urgent: 'priority.urgent',
+  high: 'priority.high',
+  medium: 'priority.medium',
+  low: 'priority.low',
+  none: 'priority.none',
 }
 
 function KanbanCardView({
@@ -63,6 +73,7 @@ function KanbanCardView({
   category,
   highlighted,
   selected,
+  runtimeData,
 }: CardProps) {
   const [pressed, setPressed] = useState(false)
   const openTimerRef = useRef<number | null>(null)
@@ -128,44 +139,53 @@ function KanbanCardView({
     setPressed(false)
   }
 
+  const card = (
+    <KanbanCardChrome
+      issue={issue}
+      statuses={statuses}
+      milestones={milestones}
+      parentIssueRef={parentIssueRef}
+      displayProperties={displayProperties}
+      category={category}
+      highlighted={highlighted}
+      selected={selected}
+      runtimeData={runtimeData}
+      cardRef={setNodeRef}
+      style={style}
+      {...draggableAttributes}
+      {...dragListeners}
+      pressed={pressed}
+      dragging={isDragging}
+      onOpenIssue={onOpenIssue}
+      onPointerDown={handlePointerDown}
+      onPointerUp={releasePress}
+      onPointerCancel={releasePress}
+      onPointerLeave={releasePress}
+      onBlur={releasePress}
+    >
+      <button
+        type="button"
+        aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
+        aria-pressed={selected ? true : undefined}
+        onClick={openCurrentIssueFromCard}
+        className="absolute inset-0 z-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+    </KanbanCardChrome>
+  )
+
   return (
     <div
       data-testid={`issue-sortable-${issue.id}`}
       onMouseEnter={() => onHover?.(issue.id)}
       onMouseLeave={() => onHover?.(null)}
     >
-      <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
-        <KanbanCardChrome
-          issue={issue}
-          statuses={statuses}
-          milestones={milestones}
-          parentIssueRef={parentIssueRef}
-          displayProperties={displayProperties}
-          category={category}
-          highlighted={highlighted}
-          selected={selected}
-          cardRef={setNodeRef}
-          style={style}
-          {...draggableAttributes}
-          {...dragListeners}
-          pressed={pressed}
-          dragging={isDragging}
-          onOpenIssue={onOpenIssue}
-          onPointerDown={handlePointerDown}
-          onPointerUp={releasePress}
-          onPointerCancel={releasePress}
-          onPointerLeave={releasePress}
-          onBlur={releasePress}
-        >
-          <button
-            type="button"
-            aria-label={`${selected ? 'Selected issue' : 'Open issue'} ${issue.title}`}
-            aria-pressed={selected ? true : undefined}
-            onClick={openCurrentIssueFromCard}
-            className="absolute inset-0 z-0 rounded-md focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          />
-        </KanbanCardChrome>
-      </IssueContextMenu>
+      {runtimeData
+        ? card
+        : (
+            <IssueContextMenu issue={issue} statuses={statuses} milestones={milestones} onOpen={handleOpenIssue}>
+              {card}
+            </IssueContextMenu>
+          )}
     </div>
   )
 }
@@ -173,6 +193,29 @@ function KanbanCardView({
 export const KanbanCard = memo(KanbanCardView)
 
 function KanbanCardChrome({
+  runtimeData,
+  ...props
+}: CardChromeProps) {
+  if (runtimeData) {
+    return <KanbanCardChromeView {...props} runtimeData={runtimeData} />
+  }
+
+  return <KanbanCardChromeFromHooks {...props} />
+}
+
+function KanbanCardChromeFromHooks(props: Omit<CardChromeProps, 'runtimeData'>) {
+  const { workspaces } = useWorkspaces()
+  const { agents } = useAgents()
+
+  return (
+    <KanbanCardChromeView
+      {...props}
+      runtimeData={{ workspaces, agents }}
+    />
+  )
+}
+
+function KanbanCardChromeView({
   issue,
   statuses,
   parentIssueRef,
@@ -192,10 +235,11 @@ function KanbanCardChrome({
   onPointerCancel,
   onPointerLeave,
   onBlur,
+  runtimeData,
   ...cardProps
-}: CardChromeProps) {
-  const { workspaces } = useWorkspaces()
-  const { agents } = useAgents()
+}: Omit<CardChromeProps, 'runtimeData'> & { runtimeData: KanbanCardRuntimeData }) {
+  const { t } = useTranslation('kanban')
+  const { workspaces, agents } = runtimeData
   const labels = issue.labels
   const issueStatus = statuses.find(status => status.id === issue.statusId)
   const statusCategory = StatusCategorySchema.parse(issueStatus?.category ?? category)
@@ -302,7 +346,7 @@ function KanbanCardChrome({
         {displayProperties.priority && issue.priority !== 'none' && (
           <span className="flex items-center gap-1 text-[11px]">
             <PriorityIcon priority={issue.priority as 'none' | 'low' | 'medium' | 'high' | 'urgent'} size={13} />
-            <span>{priorityLabel[issue.priority] ?? ''}</span>
+            <span>{t(priorityLabelKey[issue.priority] ?? 'priority.none')}</span>
           </span>
         )}
 

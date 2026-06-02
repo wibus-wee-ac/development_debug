@@ -93,7 +93,8 @@ function installBrowserUseBridge({
   window.__cradleBrowserUseActivateTab = activateBrowserTab
   window.__cradleBrowserUseGoOffScreen = hideBrowserPanel
   window.__cradleBrowserUseGetActiveTab = getActiveBrowserTab
-  const unsubscribe = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
+  const unsubscribeBrowserUse = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
+  const unsubscribeBrowserPanelPopup = window.cradle?.ipc.on('browser-panel:open-url', requestBrowserTab)
 
   return () => {
     if (window.__cradleBrowserUseCreateTab) {
@@ -108,7 +109,8 @@ function installBrowserUseBridge({
     if (window.__cradleBrowserUseGetActiveTab) {
       delete window.__cradleBrowserUseGetActiveTab
     }
-    unsubscribe?.()
+    unsubscribeBrowserUse?.()
+    unsubscribeBrowserPanelPopup?.()
   }
 }
 

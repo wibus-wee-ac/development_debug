@@ -1,10 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
   DownloadIcon,
   PlusIcon,
-  RefreshCwIcon,
   SearchIcon,
   ServerIcon,
   SparklesIcon,
@@ -16,12 +14,6 @@ import {
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import {
-  getExternalProviderSourcesOptions,
-  getExternalProviderSourcesRecordsOptions,
-  getProviderTargetsQueryKey,
-  postExternalProviderSourcesRefreshMutation,
-} from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -36,29 +28,22 @@ import {
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
-import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import type { AgentProfile } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
-import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
 import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { collectProviderListGroups } from './provider-list-groups'
 import type {
   DraftProvider,
-  ExternalProviderRecordView,
-  ExternalProviderSourceView,
   ProviderListEntry,
 } from './provider-settings-utils'
 import {
   presetForProfile,
-  presetForProviderKind,
   PROVIDER_KIND_LABELS,
   providerListEntryId,
 } from './provider-settings-utils'
@@ -73,22 +58,6 @@ import {
 } from './settings-multi-selection'
 import { useSettingsSelectionShortcuts } from './settings-selection-shortcuts'
 
-type ExternalRecordStatusLabelKey
-  = | 'runtime.provider.status.error'
-    | 'runtime.provider.status.missing'
-    | 'runtime.provider.status.stale'
-    | 'runtime.provider.status.unsupported'
-
-const EXTERNAL_RECORD_STATUS_LABEL_KEYS: Record<
-  Exclude<ExternalProviderRecordView['status'], 'active'>,
-  ExternalRecordStatusLabelKey
-> = {
-  error: 'runtime.provider.status.error',
-  missing: 'runtime.provider.status.missing',
-  stale: 'runtime.provider.status.stale',
-  unsupported: 'runtime.provider.status.unsupported',
-}
-
 function parseProfileConfigForUpdate(configJson: string): Record<string, unknown> {
   const parsed = JSON.parse(configJson) as unknown
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -97,25 +66,8 @@ function parseProfileConfigForUpdate(configJson: string): Record<string, unknown
   return parsed as Record<string, unknown>
 }
 
-function defaultGroupOpen(groupKind: 'external-plugin' | 'external-source' | 'manual'): boolean {
+function defaultGroupOpen(groupKind: 'manual'): boolean {
   return groupKind === 'manual'
-}
-
-async function updateExternalRuntimeTargetEnabled(
-  record: ExternalProviderRecordView,
-  enabled: boolean,
-): Promise<void> {
-  const response = await fetch(
-    `${getServerUrl()}/external-provider-sources/${encodeURIComponent(record.sourceKey)}/records/${encodeURIComponent(record.externalId)}/runtime-target`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled }),
-    },
-  )
-  if (!response.ok) {
-    throw new Error('Failed to update connected provider')
-  }
 }
 
 const ProviderRow = memo(
@@ -134,36 +86,15 @@ const ProviderRow = memo(
   }) => {
     const { t } = useTranslation('agentManagement')
     const checkboxShiftKeyRef = useRef(false)
-    const providerKind
-      = entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
-    const preset
-      = entry.kind === 'manual'
-        ? presetForProfile(entry.profile)
-        : presetForProviderKind(providerKind)
-    const title = entry.kind === 'manual' ? entry.profile.name : entry.record.name
-    const subtitle
-      = entry.kind === 'manual'
-        ? (() => {
-            const cfg = ProfileConfigJsonSchema.parse(entry.profile.configJson)
-            return cfg.model
-              ? `${PROVIDER_KIND_LABELS[entry.profile.providerKind]} · ${cfg.model}`
-              : PROVIDER_KIND_LABELS[entry.profile.providerKind]
-          })()
-        : `${PROVIDER_KIND_LABELS[entry.record.providerKind]} · ${entry.record.app}`
-    const statusLabel
-      = entry.kind === 'manual'
-        ? entry.profile.enabled
-          ? null
-          : t('runtime.provider.status.off')
-        : !entry.record.runtimeTargetEnabled
-          ? t('runtime.provider.status.off')
-          : entry.record.status === 'active'
-            ? null
-            : t(EXTERNAL_RECORD_STATUS_LABEL_KEYS[entry.record.status])
-    const testId
-      = entry.kind === 'manual'
-        ? `agent-profile-row-${entry.profile.id}`
-        : `external-provider-record-row-${entry.record.id}`
+    const providerKind = entry.profile.providerKind
+    const preset = presetForProfile(entry.profile)
+    const title = entry.profile.name
+    const cfg = ProfileConfigJsonSchema.parse(entry.profile.configJson)
+    const subtitle = cfg.model
+      ? `${PROVIDER_KIND_LABELS[providerKind]} · ${cfg.model}`
+      : PROVIDER_KIND_LABELS[providerKind]
+    const statusLabel = entry.profile.enabled ? null : t('runtime.provider.status.off')
+    const testId = `agent-profile-row-${entry.profile.id}`
 
     return (
       <div
@@ -174,11 +105,7 @@ const ProviderRow = memo(
           active
             ? 'bg-foreground/[0.045] text-foreground'
             : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
-          entry.kind === 'manual' && !entry.profile.enabled && !active && 'opacity-60',
-          entry.kind === 'external'
-          && (!entry.record.runtimeTargetEnabled || entry.record.status !== 'active')
-          && !active
-          && 'opacity-70',
+          !entry.profile.enabled && !active && 'opacity-60',
         )}
       >
         <Checkbox
@@ -197,8 +124,8 @@ const ProviderRow = memo(
           onClick={event => onOpenEntry(entry.id, event.shiftKey)}
         >
           <ProviderIcon
-            iconSlug={entry.kind === 'manual' ? entry.profile.iconSlug : null}
-            presetId={preset.id}
+            iconSlug={entry.profile.iconSlug}
+            presetId={preset?.id ?? null}
             className="size-4 shrink-0 text-muted-foreground"
           />
           <div className="min-w-0 flex-1 overflow-hidden">
@@ -238,7 +165,6 @@ ProviderRow.displayName = 'ProviderRow'
 
 export function AgentRuntimeSettings() {
   const { t } = useTranslation('agentManagement')
-  const queryClient = useQueryClient()
   const {
     profiles,
     isSuccess: profilesReady,
@@ -256,73 +182,11 @@ export function AgentRuntimeSettings() {
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Map<string, boolean>>(
     () => new Map(),
   )
-  const {
-    data: externalSources = [],
-    isSuccess: externalSourcesReady,
-    refetch: refetchExternalSources,
-  } = useQuery({
-    ...getExternalProviderSourcesOptions(),
-    retry: false,
-  })
-  const {
-    data: externalRecords = [],
-    isSuccess: externalRecordsReady,
-    refetch: refetchExternalRecords,
-  } = useQuery({
-    ...getExternalProviderSourcesRecordsOptions(),
-    retry: false,
-  })
-  const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
-
-  const refreshExternalSources = useMutation({
-    ...postExternalProviderSourcesRefreshMutation(),
-    onSuccess: async (data) => {
-      await Promise.all([refetch(), refetchExternalSources(), refetchExternalRecords()])
-
-      const results = Array.isArray(data) ? data : [data]
-      const errors = results.filter(r => r.status === 'error')
-      const ok = results.filter(r => r.status !== 'error')
-
-      if (errors.length > 0) {
-        toastManager.add({
-          type: 'error',
-          title: t('runtime.toast.syncFailed', { sourceCount: errors.length }),
-          description: errors.map(e => e.message ?? e.sourceKey).join(', ') || undefined,
-        })
-      }
-      if (ok.length > 0) {
-        toastManager.add({
-          type: 'success',
-          title: t('runtime.toast.sourcesRefreshed', { sourceCount: ok.length }),
-        })
-      }
-    },
-    onError: (error) => {
-      toastManager.add({
-        type: 'error',
-        title: t('runtime.toast.refreshFailed'),
-        description:
-          error instanceof Error ? error.message : t('runtime.toast.externalSourcesRefreshFailed'),
-      })
-    },
-  })
-
-  const externalSourcesById = useMemo(
-    () =>
-      new Map(
-        (externalSources as ExternalProviderSourceView[]).map(source => [source.id, source]),
-      ),
-    [externalSources],
-  )
+  const settingsProvidersReady = profilesReady
 
   const providerGroups = useMemo(
-    () =>
-      collectProviderListGroups(
-        profiles,
-        externalRecords as unknown as ExternalProviderRecordView[],
-        externalSources as ExternalProviderSourceView[],
-      ),
-    [profiles, externalRecords, externalSources],
+    () => collectProviderListGroups(profiles),
+    [profiles],
   )
   const visibleProfileGroups = useMemo(() => {
     if (!deferredFilter.trim()) {
@@ -333,28 +197,17 @@ export function AgentRuntimeSettings() {
       .map(group => ({
         ...group,
         entries: group.entries.filter((entry) => {
-          const source
-            = entry.kind === 'external' ? externalSourcesById.get(entry.record.sourceKey) : null
-          const label = entry.kind === 'manual' ? entry.profile.name : entry.record.name
-          const kindLabel
-            = PROVIDER_KIND_LABELS[
-              entry.kind === 'manual' ? entry.profile.providerKind : entry.record.providerKind
-            ] ?? ''
-          const sourceLabel = source?.label ?? ''
-          const app = entry.kind === 'external' ? entry.record.app : ''
-          const externalId = entry.kind === 'external' ? entry.record.externalId : ''
+          const label = entry.profile.name
+          const kindLabel = PROVIDER_KIND_LABELS[entry.profile.providerKind] ?? ''
           return (
             group.label.toLowerCase().includes(q)
             || label.toLowerCase().includes(q)
             || kindLabel.toLowerCase().includes(q)
-            || sourceLabel.toLowerCase().includes(q)
-            || app.toLowerCase().includes(q)
-            || externalId.toLowerCase().includes(q)
           )
         }),
       }))
       .filter(group => group.entries.length > 0)
-  }, [externalSourcesById, providerGroups, deferredFilter])
+  }, [providerGroups, deferredFilter])
   const providerEntries = useMemo(
     () => providerGroups.flatMap(group => group.entries),
     [providerGroups],
@@ -373,35 +226,18 @@ export function AgentRuntimeSettings() {
     [providerEntries, selectedIds],
   )
   const selectedProfiles = useMemo(
-    () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
-    [selectedEntries],
-  )
-  const selectedExternalRecords = useMemo(
-    () => selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : [])),
+    () => selectedEntries.map(entry => entry.profile),
     [selectedEntries],
   )
   const toggleableSelectedProfiles = selectedProfiles
-  const toggleableSelectedExternalRecords = selectedExternalRecords.filter(
-    record => record.status !== 'missing' && record.status !== 'unsupported',
-  )
   const removableSelectedProfiles = selectedProfiles
-  const toggleableSelectedCount
-    = toggleableSelectedProfiles.length + toggleableSelectedExternalRecords.length
+  const toggleableSelectedCount = toggleableSelectedProfiles.length
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleEntries, selectedIds)
   const hasFilter = deferredFilter.trim().length > 0
   const providerGroupLabel = useCallback(
     (group: (typeof visibleProfileGroups)[number]) => {
-      if (group.kind === 'manual') {
-        return t('runtime.group.manual')
-      }
-      if (group.kind === 'external-source') {
-        return t('runtime.group.externalSource')
-      }
-      const pluginName = group.id.startsWith('external-plugin:')
-        ? group.id.slice('external-plugin:'.length)
-        : group.label
-      return t('runtime.group.externalPlugin', { pluginName })
+      return group.kind === 'manual' ? t('runtime.group.manual') : group.label
     },
     [t],
   )
@@ -441,14 +277,13 @@ export function AgentRuntimeSettings() {
   const handleDraftComplete = useCallback(
     (newProfileId?: string) => {
       void refetch().finally(() => {
-        refetchExternalRecords()
         setDraft(null)
         const nextId = newProfileId ? providerListEntryId('manual', newProfileId) : null
         setSelectedIds(nextId ? new Set([nextId]) : new Set())
         selectionAnchorIdRef.current = nextId
       })
     },
-    [refetch, refetchExternalRecords],
+    [refetch],
   )
 
   const handleRemoveProfile = useCallback(
@@ -553,16 +388,7 @@ export function AgentRuntimeSettings() {
       try {
         await Promise.all([
           ...toggleableSelectedProfiles.map(profile => handleToggleProfile(profile, enabled)),
-          ...toggleableSelectedExternalRecords.map(record =>
-            updateExternalRuntimeTargetEnabled(record, enabled)),
         ])
-        if (toggleableSelectedExternalRecords.length > 0) {
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
-            queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
-          ])
-          await refetchExternalRecords()
-        }
         setSelectedIds(new Set())
         selectionAnchorIdRef.current = null
       }
@@ -572,11 +398,8 @@ export function AgentRuntimeSettings() {
     },
     [
       toggleableSelectedProfiles,
-      toggleableSelectedExternalRecords,
       toggleableSelectedCount,
       handleToggleProfile,
-      queryClient,
-      refetchExternalRecords,
     ],
   )
 
@@ -625,17 +448,6 @@ export function AgentRuntimeSettings() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => refreshExternalSources.mutate({})}
-            disabled={refreshExternalSources.isPending}
-          >
-            <RefreshCwIcon
-              className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
-            />
-            {t('runtime.action.refreshSources')}
-          </Button>
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <DownloadIcon />
             {t('runtime.action.import')}
@@ -838,11 +650,10 @@ export function AgentRuntimeSettings() {
             </div>
           </ScrollArea>
 
-          {(profiles.length > 0 || externalRecords.length > 0) && (
+          {profiles.length > 0 && (
             <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
               {t('runtime.summary.providers', {
                 manualCount: profiles.length,
-                externalCount: externalRecords.length,
               })}
             </div>
           )}
@@ -883,7 +694,7 @@ export function AgentRuntimeSettings() {
               </Empty>
             </div>
           )
-: selectedEntry?.kind === 'manual'
+: selectedEntry
 ? (
             <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
               <ProfileDetailPanel
@@ -892,19 +703,6 @@ export function AgentRuntimeSettings() {
                 onToggle={enabled => void handleToggleProfile(selectedEntry.profile, enabled)}
                 onSaved={() => {
                   void refetch()
-                  refetchExternalRecords()
-                }}
-              />
-            </div>
-          )
-: selectedEntry?.kind === 'external'
-? (
-            <div key={selectedEntry.record.id} className="min-w-0 flex-1">
-              <ExternalProviderRecordDetailPanel
-                record={selectedEntry.record}
-                source={externalSourcesById.get(selectedEntry.record.sourceKey) ?? null}
-                onUpdated={() => {
-                  refetchExternalRecords()
                 }}
               />
             </div>

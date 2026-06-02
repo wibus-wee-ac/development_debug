@@ -1,4 +1,4 @@
-// Output: Settings panel for importing external AI app settings, projects, and recent chats.
+// Output: Settings panel for importing external AI app chat sessions.
 // Input: Server import APIs plus Electron-local file snapshots when available.
 // Position: Settings-owned UI entry for the external work import module.
 
@@ -57,12 +57,6 @@ interface ImportResponse {
 }
 
 type ImportStatus = 'idle' | 'scanning' | 'importing' | 'ready' | 'error'
-
-interface WorkspaceRecord {
-  id: string
-  name: string
-  path: string
-}
 
 interface SelectionState {
   fingerprints: Set<string>
@@ -123,18 +117,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   return await response.json() as T
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(new URL(path, getServerUrl()))
-  if (!response.ok) {
-    throw new Error(await response.text())
-  }
-  return await response.json() as T
-}
-
 function mergePreviewItems(responses: PreviewResponse[]): ExternalWorkImportItem[] {
   const byFingerprint = new Map<string, ExternalWorkImportItem>()
   for (const response of responses) {
-    for (const item of response.items) {
+    for (const item of response.items.filter(item => item.sourceKind === 'session')) {
       const existing = byFingerprint.get(item.fingerprint)
       if (!existing) {
         byFingerprint.set(item.fingerprint, item)
@@ -336,11 +322,8 @@ export function ExternalWorkImportSettings() {
     setMessage(null)
     setWarnings([])
     try {
-      const workspaces = await getJson<WorkspaceRecord[]>('/workspaces')
-      const workspacePaths = workspaces.map(workspace => workspace.path)
       const serverPreview = await postJson<PreviewResponse>('/external-work-import/preview', {
         includeHome: true,
-        cwds: workspacePaths,
         limitPerSource: 500,
       })
       const responses = [serverPreview]
@@ -349,7 +332,6 @@ export function ExternalWorkImportSettings() {
       if (isElectron && nativeIpc) {
         const localFiles = await nativeIpc.native.scanExternalWorkImportFiles({
           limitPerSource: 500,
-          workspacePaths,
         })
         nextWarnings.push(...localFiles.warnings)
         if (localFiles.files.length > 0) {
@@ -379,7 +361,8 @@ export function ExternalWorkImportSettings() {
     try {
       const selectedItems = Array.from(selectionStore.getState().fingerprints)
         .map(fingerprint => itemByFingerprint.get(fingerprint))
-        .filter((item): item is ExternalWorkImportItem => Boolean(item?.importable))
+        .filter((item): item is ExternalWorkImportItem =>
+          Boolean(item?.importable && item.sourceKind === 'session'))
       const result = await postJson<ImportResponse>('/external-work-import/import', {
         items: selectedItems,
       })
