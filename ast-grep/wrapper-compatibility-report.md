@@ -1,6 +1,6 @@
-# Output: Baseline results from persistent ast-grep cleanup and facade audit scans.
-# Input: `ast-grep scan` over apps, packages, and plugins with generated/build artifacts excluded.
-# Position: Owned by repository tooling as the current review queue for removable compatibility and formatter smell surfaces.
+# Output: Baseline results from persistent architecture cleanup, facade audit, and text scans.
+# Input: `ast-grep scan` and persisted text scans over apps, packages, plugins, and repository tooling with generated/build artifacts excluded.
+# Position: Owned by repository tooling as the current review queue for removable compatibility, formatter, facade, and ownership-comment smell surfaces.
 
 # Wrapper And Bad-Smell Scan
 
@@ -62,7 +62,7 @@ Current default findings:
 
 ## Optional Facade Audit
 
-Run this only when reviewing ownership boundaries; these matches are not cleanup findings by default:
+Run this when reviewing ownership boundaries and SDK pass-through surfaces. These matches are kept out of `sgconfig.yml` only because they are broader and noisier than the default structural cleanup queue:
 
 ```sh
 ast-grep scan -c ast-grep/audit-sgconfig.yml apps packages plugins \
@@ -84,4 +84,47 @@ Current optional audit baseline:
 | lazy-component-loader-wrapper | 7 |
 | generated-query-wrapper-tsx | 5 |
 
-These are facade/ownership audit results. Most are expected to remain unless a specific feature boundary is collapsed.
+These are facade/ownership audit results. Generated SDK facades and low-semantics pass-through functions are cleanup candidates by default; feature-owned hooks/loaders still need owner review before collapsing them.
+
+## Language-Agnostic Ownership Header Text Scan
+
+Command:
+
+```sh
+ast-grep/scripts/scan-ownership-headers.sh
+```
+
+Rule:
+
+```regex
+^[[:space:][:punct:]]*(Output|Input|Position):
+```
+
+Current text scan baseline:
+
+| Metric | Count |
+|---|---:|
+| Matched lines | 1510 |
+| Files with matches | 451 |
+
+Files with matches by extension:
+
+| Extension | Files |
+|---|---:|
+| ts | 214 |
+| md | 148 |
+| tsx | 62 |
+| yml | 19 |
+| mjs | 5 |
+| sh | 2 |
+| html | 1 |
+
+Sample output:
+
+```text
+AGENTS.md:6:# Output: ...
+ast-grep/README.md:1:# Output: ...
+apps/server/src/modules/...:1:// Output: ...
+```
+
+This scan is the authoritative all-language detector for `Output:`, `Input:`, and `Position:` header comments. It is intentionally text-based because ast-grep cannot parse every repository file type with one language rule, and it does not depend on enumerating comment delimiters.

@@ -1,10 +1,10 @@
-# Output: Documents persistent ast-grep architecture hygiene scans.
-# Input: Developers running cleanup scans and optional facade audits from the repository root.
-# Position: Owned by repository tooling; cleanup rules live in `ast-grep/rules`, optional audits in `ast-grep/audit-rules`.
+# Output: Documents persistent architecture hygiene scans.
+# Input: Developers running cleanup scans, facade audits, and text sweeps from the repository root.
+# Position: Owned by repository tooling; AST rules live in `ast-grep/rules`, optional audits in `ast-grep/audit-rules`, text rules in `ast-grep/text-rules`.
 
-# ast-grep Architecture Scans
+# Architecture Hygiene Scans
 
-Run the default cleanup scan from the repository root:
+Run the default AST cleanup scan from the repository root:
 
 ```sh
 ast-grep scan apps packages plugins \
@@ -32,6 +32,33 @@ Default cleanup rule intent:
 - `local-number-formatter-tsx`: TSX version of local number formatter detection.
 - `threshold-unit-formatter`: local number helpers that branch on thresholds to append units.
 - `threshold-unit-formatter-tsx`: TSX version of threshold/unit formatter detection.
+
+## Language-Agnostic Text Scan
+
+`ast-grep scan` is for parser-backed structural patterns. Header-style comments like `Output:`, `Input:`, and `Position:` appear across TypeScript, Markdown, shell, YAML, HTML, and other text files, so the authoritative all-language sweep is a persisted `rg` rule:
+
+```sh
+ast-grep/scripts/scan-ownership-headers.sh
+```
+
+The regex lives in `ast-grep/text-rules/ownership-header-comment.regex`:
+
+```regex
+^[[:space:][:punct:]]*(Output|Input|Position):
+```
+
+Useful baseline commands:
+
+```sh
+ast-grep/scripts/test-ownership-header-rule.sh
+ast-grep/scripts/scan-ownership-headers.sh | wc -l
+ast-grep/scripts/scan-ownership-headers.sh | cut -d: -f1 | sort -u | wc -l
+ast-grep/scripts/scan-ownership-headers.sh | cut -d: -f1 | sort -u | awk '{ n=split($0, parts, "."); ext=(n>1 ? parts[n] : "[no-ext]"); count[ext]++ } END { for (ext in count) print count[ext], ext }' | sort -nr
+```
+
+This scan intentionally does not depend on file extension, language parser support, or enumerating comment delimiters. It treats any line that starts with only whitespace/punctuation before `Output:`, `Input:`, or `Position:` as an ownership header smell, then excludes generated SDK/build artifacts and searches all remaining paths unless extra arguments are passed to the script.
+
+## Optional Facade Audit
 
 Run optional facade audits when reviewing ownership boundaries. These rules include many legitimate feature-owned wrappers, so they are not loaded by `sgconfig.yml`:
 
