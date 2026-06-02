@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { MentionItem } from '~/features/chat'
-import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
+import { getRuntimeComposerSlashCommands } from '~/features/chat/chat-slash-commands'
 import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
@@ -40,7 +40,7 @@ export function CapsuleComposer({ workspaceId, onSend }: CapsuleComposerProps) {
 
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const slashCommands = useMemo(
-    () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
+    () => getRuntimeComposerSlashCommands(selection.runtimeKind, 'draft'),
     [selection.runtimeKind],
   )
   const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {

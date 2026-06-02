@@ -19,7 +19,7 @@ import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import { getFallbackRuntimeSlashCommands } from '~/features/chat/chat-slash-commands'
+import { getRuntimeComposerSlashCommands } from '~/features/chat/chat-slash-commands'
 import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import type { MentionItem } from '~/features/chat/mention-panel'
@@ -146,7 +146,7 @@ function useNewChatPageOwner(active: boolean) {
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
   const slashCommands = useMemo(
-    () => getFallbackRuntimeSlashCommands(selection.runtimeKind),
+    () => getRuntimeComposerSlashCommands(selection.runtimeKind, 'draft'),
     [selection.runtimeKind],
   )
   const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
