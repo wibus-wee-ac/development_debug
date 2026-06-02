@@ -99,6 +99,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     aliases: ['warnings'],
     iconKey: 'alert',
     commandText: '/alerts ',
+    surfaces: ['runtimePanel'],
     anyNotifications: ['warning', 'guardianWarning', 'configWarning', 'deprecationNotice'],
   },
   {

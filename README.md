@@ -42,6 +42,16 @@ Cradle is a desktop-first platform for managing AI agents and their workflows. I
 | [`@cradle/tabs-next`](./packages/tabs-next) | Navigation-context tab runtime for React desktop apps — retained tab history, bounded Activity rendering, hash-based URL sync, and `<Link>` routing. | ![Beta](https://img.shields.io/badge/status-Beta-yellow) |
 | [`@cradle/ipc`](./packages/ipc) [^ipc-decorator] | Type-safe IPC communication layer for Electron apps, built on top of `electron-ipc-decorator`. Provides a structured way to define IPC services with decorators, automatic type inference, and error handling. | ![Stable](https://img.shields.io/badge/status-Stable-green) |
 
+## Thanks
+
+I have been deeply inspired by the following projects and communities:
+
+- [LobeHub](https://lobehub.com/)
+- [Codex](https://chatgpt.com/codex/)
+- [Yansu](https://yansu.app/)
+- [Alma](https://alma.now/)
+
+
 ## License
 
 Cradle © Wibus, Released under AGPLv3. Created on Apr 25, 2026

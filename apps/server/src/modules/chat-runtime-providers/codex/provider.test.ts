@@ -17,6 +17,7 @@ class FakeCodexAppServerClient {
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
+  private closed = false
 
   constructor(options: CodexAppServerClientOptions) {
     this.options = options
@@ -241,6 +242,9 @@ class FakeCodexAppServerClient {
     if (next) {
       return next
     }
+    if (this.closed) {
+      return null
+    }
     return new Promise((resolve, reject) => {
       const onAbort = () => reject(new Error('aborted'))
       signal?.addEventListener('abort', onAbort, { once: true })
@@ -251,7 +255,16 @@ class FakeCodexAppServerClient {
     })
   }
 
-  pushNotification(message: CodexAppServerMessage): void {
+  pushNotification(message: CodexAppServerMessage | null): void {
+    if (!message) {
+      this.closed = true
+      if (this.notificationWaiter) {
+        const waiter = this.notificationWaiter
+        this.notificationWaiter = null
+        waiter(null)
+      }
+      return
+    }
     if (this.notificationWaiter) {
       const waiter = this.notificationWaiter
       this.notificationWaiter = null
@@ -383,6 +396,7 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model', surfaces: ['toolbarPicker', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:reasoning', name: 'reasoning', iconKey: 'reasoning', surfaces: ['toolbarPicker', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:alerts', name: 'alerts', iconKey: 'alert', surfaces: ['runtimePanel'] }),
         expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status', surfaces: ['runtimePanel'] }),
       ]),
     })
@@ -667,6 +681,88 @@ describe('codexProvider app-server integration', () => {
       method: 'thread/goal/clear',
       params: { threadId: 'codex-thread-1' },
     })
+  })
+
+  it('continues active Codex goals from internal continuation messages without starting a normal turn', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+    runtimeSession.providerStateSnapshot = JSON.stringify({
+      workspacePath: '/tmp/cradle-workspace',
+      models: { currentModelId: null },
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Resume the active goal',
+          status: 'active',
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 0,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-goal-continuation',
+      runtimeSession,
+      profile: createProfile(),
+      message: {
+        id: 'internal-goal-continuation',
+        role: 'user',
+        parts: [{ type: 'text', text: '[internal] Continue the active Codex goal.' }],
+        metadata: {
+          cradle: {
+            codex: { goalContinuation: true },
+          },
+        },
+      },
+      workspaceId: 'workspace-1',
+    })
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', status: 'active' },
+      })
+    })
+    expect(client.requests.map(request => request.method)).toEqual([
+      'thread/resume',
+      'thread/turns/list',
+      'thread/goal/set',
+    ])
+    expect(client.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.anything(),
+    })
+
+    client.pushNotification({
+      method: 'turn/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'inProgress' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Continuing',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    client.pushNotification(null)
+
+    await drainPromise
   })
 
   it('starts compact slash commands through Codex thread compaction', async () => {
@@ -2054,6 +2150,15 @@ describe('codexProvider app-server integration', () => {
         params: { threadId: 'codex-thread-1', turnId: 'codex-turn-1' },
       },
     ])
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'paused',
+        },
+      },
+    })
     expect(client.close).toHaveBeenCalledOnce()
     await stream.return(undefined)
   })
@@ -2184,14 +2289,24 @@ describe('codexProvider app-server integration', () => {
       },
     })
 
-    await expect(drainPromise).rejects.toMatchObject({
+    let thrownError: unknown = null
+    try {
+      await drainPromise
+    }
+    catch (error) {
+      thrownError = error
+    }
+
+    expect(thrownError).toMatchObject({
       name: 'CodexProviderError',
       code: 'TURN_STREAM_FAILED',
-      message: expect.stringContaining('event_types=error:1'),
+      message: 'Upstream model request failed',
       data: {
+        details: 'provider code: invalid_request; events: 1 total, 0 mapped; event types: error:1',
         diagnostics: {
           totalEvents: 1,
           mappedEvents: 0,
+          retryableErrorEvents: 0,
           eventTypeCounts: { error: 1 },
           errorEvents: [
             {
@@ -2218,14 +2333,18 @@ describe('codexProvider app-server integration', () => {
         },
       },
     })
+    expect(thrownError).toBeInstanceOf(Error)
+    expect((thrownError as Error).message).not.toContain('raw=')
+    expect((thrownError as Error).message).not.toContain('event_types=')
   })
 
   it('keeps streaming when Codex app-server reports a retryable transport error', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
       runId: 'run-codex-retryable-error',
-      runtimeSession: createRuntimeSession(),
+      runtimeSession,
       profile: createProfile(),
       message: createUserMessage('Keep going after reconnect'),
       workspaceId: 'workspace-1',
@@ -2282,6 +2401,97 @@ describe('codexProvider app-server integration', () => {
       { type: 'text-delta', id: 'assistant-message-1', delta: 'Recovered' },
       { type: 'text-end', id: 'assistant-message-1' },
     ])
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).not.toMatchObject({
+      codex: {
+        alert: {
+          recentItems: [expect.objectContaining({ message: 'Reconnecting... 1/5' })],
+        },
+      },
+    })
+  })
+
+  it('summarizes final retry-limit failures without exposing raw event diagnostics in the user-facing message', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-final-retry-limit',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Fail after reconnect attempts'),
+      workspaceId: 'workspace-1',
+    })
+
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    client.pushNotification({
+      method: 'error',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        error: {
+          message: 'Reconnecting... 1/5',
+          codexErrorInfo: null,
+          additionalDetails: 'stream disconnected before completion: stream closed before response.completed',
+        },
+        willRetry: true,
+      },
+    })
+    client.pushNotification({
+      method: 'error',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        error: {
+          message: 'Reconnecting... 2/5',
+          codexErrorInfo: null,
+          additionalDetails: 'unexpected status 502 Bad Gateway',
+        },
+        willRetry: true,
+      },
+    })
+    client.pushNotification({
+      method: 'error',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        error: {
+          message: 'exceeded retry limit, last status: 429 Too Many Requests, request id: fe7e7cae-a49f-4bd9-b493-6bf74c121526',
+          codexErrorInfo: null,
+          additionalDetails: null,
+        },
+        willRetry: false,
+      },
+    })
+
+    let thrownError: unknown = null
+    try {
+      await drainPromise
+    }
+    catch (error) {
+      thrownError = error
+    }
+
+    expect(thrownError).toMatchObject({
+      name: 'CodexProviderError',
+      code: 'TURN_STREAM_FAILED',
+      message: 'Codex app-server retry limit exceeded',
+      data: {
+        details: 'status: 429 Too Many Requests; request id: fe7e7cae-a49f-4bd9-b493-6bf74c121526; retryable errors observed before failure: 2; events: 3 total, 0 mapped; event types: error:3',
+        diagnostics: {
+          totalEvents: 3,
+          mappedEvents: 0,
+          retryableErrorEvents: 2,
+          eventTypeCounts: { error: 3 },
+        },
+      },
+    })
+    expect(thrownError).toBeInstanceOf(Error)
+    expect((thrownError as Error).message).not.toContain('raw=')
+    expect((thrownError as Error).message).not.toContain('events_total=')
   })
 
   it('resumes existing app-server threads before starting the turn', async () => {

@@ -66,6 +66,7 @@ const runtimeUiSlotSchema = t.Object({
     t.Literal('slashCommand'),
     t.Literal('toolbarPicker'),
     t.Literal('composerState'),
+    t.Literal('messageInline'),
     t.Literal('runtimePanel'),
     t.Literal('streamEvidence'),
     t.Literal('recordOnly'),
@@ -673,6 +674,7 @@ export const ChatRuntimeModel = {
       t.Null(),
     ]),
     pendingQueueItemId: t.Union([t.String(), t.Null()]),
+    hasActiveGoal: t.Boolean(),
     activeRun: t.Union([runtimeSessionRunSchema, t.Null()]),
     latestRun: t.Union([runtimeSessionRunSchema, t.Null()]),
     queue: t.Object({

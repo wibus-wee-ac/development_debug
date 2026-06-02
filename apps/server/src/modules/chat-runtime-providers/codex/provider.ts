@@ -16,7 +16,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
 import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
-import { readGoalMessageObjective } from '../../chat-runtime/message-snapshots'
+import { isCodexGoalContinuationMessage, readGoalMessageObjective } from '../../chat-runtime/message-snapshots'
 import type {
   CancelTurnInput,
   ChatRuntime,
@@ -107,6 +107,7 @@ interface CodexStreamDiagnostics {
   totalEvents: number
   mappedEvents: number
   completedTurnEvents: number
+  retryableErrorEvents: number
   eventTypeCounts: Record<string, number>
   itemTypeCounts: Record<string, number>
   sampleEvents: Array<Record<string, unknown>>
@@ -300,7 +301,15 @@ interface FuzzyFileSearchSessionNotificationParams {
 interface ErrorNotificationParams {
   message?: string
   willRetry?: boolean
-  error?: { message?: string }
+  error?: {
+    message?: string
+    additionalDetails?: string | null
+    codexErrorInfo?: unknown
+  }
+  code?: string
+  details?: unknown
+  threadId?: string | null
+  turnId?: string | null
 }
 
 interface ThreadNameUpdatedNotificationParams {
@@ -630,7 +639,7 @@ interface CodexGoalUpdatedNotificationParams {
 }
 
 interface CodexProviderErrorData {
-  details: null
+  details: string | null
   runtimeKind: RuntimeKind
   diagnostics: CodexStreamDiagnostics
   notification?: Record<string, unknown>
@@ -953,6 +962,7 @@ export class CodexProvider implements ChatRuntime {
     const effectiveModel = input.modelId ?? config.model
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
     const userPromptText = extractUiMessageText(input.message).trim()
+    const goalContinuationRequested = typeof input.message !== 'string' && isCodexGoalContinuationMessage(input.message)
     const goalCommandObjective = readCodexGoalCommandObjective(input.message)
     const compactCommandRequested = isCodexCompactCommand(input.message)
     if (!apiKey) {
@@ -1020,7 +1030,17 @@ export class CodexProvider implements ChatRuntime {
       }
 
       let turnId: string | null = null
-      if (goalCommandObjective) {
+      if (goalContinuationRequested) {
+        if (!hasActiveGoal(readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal)) {
+          return
+        }
+        activeEntry = { client, abortController, threadId, turnId }
+        this.activeTurns.set(sessionId, activeEntry)
+        if (!await continueActiveGoal(client, threadId, abortController.signal)) {
+          return
+        }
+      }
+      else if (goalCommandObjective) {
         const goal = await setCodexThreadGoal(client, input.runtimeSession, threadId, goalCommandObjective)
         if (!hasActiveGoal(goal)) {
           return
@@ -1196,6 +1216,7 @@ export class CodexProvider implements ChatRuntime {
         threadId: entry.threadId,
         status: 'paused',
       }).catch(() => undefined)
+      pauseCodexGoalSnapshot(input.runtimeSession)
     }
     entry.abortController.abort()
     if (entry.turnId) {
@@ -1323,6 +1344,25 @@ function clearCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
     codex: {
       ...snapshot.codex,
       goal: null,
+    },
+  })
+}
+
+function pauseCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
+  const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
+  const goal = snapshot.codex?.goal
+  if (!hasActiveGoal(goal)) {
+    return
+  }
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    codex: {
+      ...snapshot.codex,
+      goal: {
+        ...goal,
+        status: 'paused',
+        updatedAt: Date.now(),
+      },
     },
   })
 }
@@ -2348,6 +2388,9 @@ function projectCodexAlertSnapshot(
     && notification.method !== 'configWarning'
     && notification.method !== 'deprecationNotice'
     && notification.method !== 'error') {
+    return
+  }
+  if (notification.method === 'error' && isRetryableCodexAppServerError(notification)) {
     return
   }
   const params = notification.params as WarningNotificationParams | ErrorNotificationParams | undefined
@@ -3490,6 +3533,7 @@ function createDiagnostics(): CodexStreamDiagnostics {
     totalEvents: 0,
     mappedEvents: 0,
     completedTurnEvents: 0,
+    retryableErrorEvents: 0,
     eventTypeCounts: {},
     itemTypeCounts: {},
     sampleEvents: [],
@@ -3503,6 +3547,9 @@ function collectCodexStreamDiagnostics(diagnostics: CodexStreamDiagnostics, noti
   incrementCount(diagnostics.eventTypeCounts, method)
   if (method === 'turn/completed') {
     diagnostics.completedTurnEvents += 1
+  }
+  if (notification.method === 'error' && isRetryableCodexAppServerError(notification)) {
+    diagnostics.retryableErrorEvents += 1
   }
   const itemType = (notification.params as ItemNotificationParams | undefined)?.item?.type
   if (itemType) {
@@ -3576,7 +3623,7 @@ function validateCodexStreamOutput(diagnostics: CodexStreamDiagnostics): { ok: b
   }
   return {
     ok: false,
-    errorText: `Codex app-server stream completed without mapped timeline events. ${formatCodexDiagnostics(diagnostics)}`,
+    errorText: 'Codex app-server stream completed without mapped timeline events',
   }
 }
 
@@ -3585,15 +3632,16 @@ function createCodexTurnFailureError(
   diagnostics: CodexStreamDiagnostics,
   notification: CodexAppServerMessage,
 ): CodexProviderError {
-  const errorText = `Codex turn failed${message ? `: ${message}` : ''} (raw=${formatCodexDiagnostics(diagnostics)})`
-  return createCodexProviderError(errorText, diagnostics, notification)
+  const summary = summarizeCodexFailureDetails(diagnostics)
+  const failureMessage = normalizeProviderErrorMessage(message) ?? 'Codex turn failed'
+  return createCodexProviderError(failureMessage, summary, diagnostics, notification)
 }
 
 function createCodexAppServerError(notification: CodexAppServerMessage, diagnostics: CodexStreamDiagnostics): CodexProviderError {
   const params = notification.params as ErrorNotificationParams | undefined
-  const message = params?.error?.message ?? params?.message ?? 'Codex app-server error'
-  const errorText = `${message} (raw=${formatCodexDiagnostics(diagnostics)})`
-  return createCodexProviderError(errorText, diagnostics, notification)
+  const message = summarizeCodexErrorMessage(params) ?? 'Codex app-server error'
+  const summary = summarizeCodexFailureDetails(diagnostics, notification)
+  return createCodexProviderError(message, summary, diagnostics, notification)
 }
 
 function isRetryableCodexAppServerError(notification: CodexAppServerMessage): boolean {
@@ -3601,20 +3649,96 @@ function isRetryableCodexAppServerError(notification: CodexAppServerMessage): bo
 }
 
 function createCodexEmptyStreamError(errorText: string, diagnostics: CodexStreamDiagnostics): CodexProviderError {
-  return createCodexProviderError(errorText, diagnostics)
+  return createCodexProviderError(errorText, summarizeCodexFailureDetails(diagnostics), diagnostics)
 }
 
 function createCodexProviderError(
   message: string,
+  details: string | null,
   diagnostics: CodexStreamDiagnostics,
   notification?: CodexAppServerMessage,
 ): CodexProviderError {
   return new CodexProviderError(OBSERVABILITY_CODES.turnStreamFailed, message, {
-    details: null,
+    details,
     runtimeKind: RUNTIME_KIND,
     diagnostics,
     ...(notification ? { notification: buildDiagnosticNotification(notification) } : {}),
   })
+}
+
+function normalizeProviderErrorMessage(message: string | null | undefined): string | null {
+  const normalized = message?.replace(/\s+/g, ' ').trim() ?? ''
+  return normalized.length > 0 ? normalized : null
+}
+
+function summarizeCodexErrorMessage(params: ErrorNotificationParams | undefined): string | null {
+  const message = normalizeProviderErrorMessage(params?.error?.message ?? params?.message)
+  if (!message) {
+    return null
+  }
+  if (/exceeded retry limit/i.test(message)) {
+    return 'Codex app-server retry limit exceeded'
+  }
+  const statusText = readCodexStatusText(params)
+  if (statusText) {
+    return `Codex app-server request failed with ${statusText.replace(/^status:\s*/, '')}`
+  }
+  return message
+}
+
+function summarizeCodexFailureDetails(
+  diagnostics: CodexStreamDiagnostics,
+  notification?: CodexAppServerMessage,
+): string | null {
+  const parts: string[] = []
+  const params = notification?.params as ErrorNotificationParams | TurnNotificationParams | undefined
+  if (notification?.method === 'error') {
+    const errorParams = params as ErrorNotificationParams | undefined
+    const additionalDetails = normalizeProviderErrorMessage(errorParams?.error?.additionalDetails)
+    if (additionalDetails) {
+      parts.push(additionalDetails)
+    }
+    const statusText = readCodexStatusText(errorParams)
+    if (statusText) {
+      parts.push(statusText)
+    }
+    const requestId = readCodexRequestId(errorParams)
+    if (requestId) {
+      parts.push(`request id: ${requestId}`)
+    }
+    const providerCode = normalizeProviderErrorMessage(errorParams?.code)
+    if (providerCode) {
+      parts.push(`provider code: ${providerCode}`)
+    }
+  }
+
+  if (diagnostics.retryableErrorEvents > 0) {
+    parts.push(`retryable errors observed before failure: ${diagnostics.retryableErrorEvents}`)
+  }
+  parts.push(`events: ${diagnostics.totalEvents} total, ${diagnostics.mappedEvents} mapped`)
+  parts.push(`event types: ${formatCounts(diagnostics.eventTypeCounts)}`)
+  return parts.length > 0 ? parts.join('; ') : null
+}
+
+function readCodexStatusText(params: ErrorNotificationParams | undefined): string | null {
+  const message = normalizeProviderErrorMessage(params?.error?.message ?? params?.message)
+  const match = message?.match(/last status:\s*([^,]+)/i) ?? message?.match(/unexpected status\s+([^:]+)/i)
+  return match ? `status: ${match[1].trim()}` : null
+}
+
+function readCodexRequestId(params: ErrorNotificationParams | undefined): string | null {
+  const values = [
+    params?.error?.message,
+    params?.message,
+    typeof params?.details === 'string' ? params.details : null,
+  ]
+  for (const value of values) {
+    const match = value?.match(/request id:\s*([a-zA-Z0-9-]+)/i)
+    if (match) {
+      return match[1]
+    }
+  }
+  return null
 }
 
 function formatCodexDiagnostics(diagnostics: CodexStreamDiagnostics): string {

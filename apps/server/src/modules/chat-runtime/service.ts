@@ -21,45 +21,47 @@ import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
+import type { CodexAppServerCapabilityManifest, CodexAppServerInvokeResponse } from '../chat-runtime-providers/codex/app-server-bridge'
+import {
+  CodexAppServerBridge,
+  getCodexAppServerCapabilities,
+} from '../chat-runtime-providers/codex/app-server-bridge'
+import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import { buildAgentMemoryContext } from '../chronicle/agent-context'
 import * as ModelRegistry from '../model-registry/service'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
-import { resolveProviderTarget } from '../provider-targets/service'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
+import { resolveProviderTarget } from '../provider-targets/service'
+import * as Secrets from '../secrets/service'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import type { ChatContextPart } from './context-parts'
 import {
+  annotateCodexGoalContinuationMessage,
   annotateGoalMessage,
   createAssistantMessage,
   createUserMessage,
   extractMessageText,
+  isCodexGoalContinuationMessage,
   normalizeMessageSnapshot,
   parseStoredMessageSnapshot as parseTrustedStoredMessageSnapshot,
   readGoalMessageObjective,
 } from './message-snapshots'
-import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
-import {
-  CodexAppServerBridge,
-  getCodexAppServerCapabilities,
-  type CodexAppServerCapabilityManifest,
-  type CodexAppServerInvokeResponse,
-} from '../chat-runtime-providers/codex/app-server-bridge'
-import * as Secrets from '../secrets/service'
 import type {
   ChatPermissionMode,
   ChatRuntime,
   ChatRuntimeCapabilities,
-  RuntimeUiSlotState,
   RuntimeProviderTargetProfile,
   RuntimeSession,
+  RuntimeUiSlotState,
   TokenUsage,
 } from './runtime-provider-types'
 import type { ChatStreamTraceRecord } from './stream-trace'
 import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
-import { type CradleTurnTranscript, resolveCradleTurnTranscript } from './transcript'
+import type { CradleTurnTranscript } from './transcript'
+import { resolveCradleTurnTranscript } from './transcript'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
 const DEFAULT_TURN_CONTEXT_MAX_MESSAGES = 12
@@ -71,11 +73,21 @@ const DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS = 512 * 1024
 const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
+const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
+const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
+
+const pendingCodexGoalContinuationTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 function parseTrustedJsonObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)
   return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
     ? parsed as Record<string, unknown>
+    : {}
+}
+
+function readUnknownRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
     : {}
 }
 
@@ -132,6 +144,7 @@ interface ActiveRun {
   cancelRequested?: boolean
   queueItemId?: string
   permissionMode?: ChatPermissionMode
+  internalContinuation?: 'codexGoal'
 }
 
 interface ChatRuntimeProfile {
@@ -227,6 +240,7 @@ export interface ChatRuntimeSessionStatusDto {
   modelId: string | null
   permissionMode: ChatPermissionMode | null
   pendingQueueItemId: string | null
+  hasActiveGoal: boolean
   activeRun: RuntimeSessionRunDto | null
   latestRun: RuntimeSessionRunDto | null
   queue: {
@@ -320,6 +334,7 @@ const pendingRunSessions = new Map<string, PendingRunState>()
 const runSubscribers = new Map<string, Set<RunSubscriber>>()
 const drainingQueueSessionIds = new Set<string>()
 const requestedQueueDrainSessionIds = new Set<string>()
+const codexGoalContinuationFailures = new Map<string, number>()
 const messageInsertOrder = sql`messages.rowid`
 
 // ── store helpers (merged from chat-runtime.store.ts) ──
@@ -701,6 +716,44 @@ function createDraftTurnFromUserMessage(input: {
   return { userMessageId: userMessage.id, assistantMessageId, userMessage }
 }
 
+function createCodexGoalContinuationDraft(input: {
+  sessionId: string
+}): {
+  userMessageId: string
+  assistantMessageId: string
+  userMessage: UIMessage
+} {
+  const assistantMessageId = randomUUID()
+  const now = currentUnixSeconds()
+  const userMessage = annotateCodexGoalContinuationMessage(createUserMessage(
+    randomUUID(),
+    CODEX_GOAL_CONTINUATION_PROMPT,
+  ))
+  const assistantMessage = createAssistantMessage(assistantMessageId)
+
+  db().transaction((tx) => {
+    tx.insert(messages)
+      .values({
+        id: assistantMessageId,
+        sessionId: input.sessionId,
+        parentMessageId: null,
+        parentToolCallId: null,
+        taskId: null,
+        depth: 0,
+        role: 'assistant',
+        status: 'streaming',
+        content: '',
+        messageJson: JSON.stringify(assistantMessage),
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
+  })
+
+  return { userMessageId: '', assistantMessageId, userMessage }
+}
+
 function startAssistantContinuation(input: {
   sessionId: string
   message: UIMessage
@@ -883,7 +936,7 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     .select()
     .from(backendRuns)
     .where(eq(backendRuns.chatSessionId, sessionId))
-    .orderBy(desc(backendRuns.startedAt))
+    .orderBy(desc(backendRuns.startedAt), desc(sql`backend_runs.rowid`))
     .get()
   const queueRows = db()
     .select({
@@ -909,23 +962,42 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
   const providerSessionId = activeRun?.runtimeSession.providerSessionId ?? binding?.backendSessionId ?? null
   const modelId = activeRun?.modelId ?? binding?.requestedModelId ?? null
   const permissionMode = activeRun?.permissionMode ?? null
+  const hasActiveGoal = binding?.runtimeKind === 'codex'
+    && hasActiveCodexGoal(binding.backendStateSnapshot)
+  const status: RuntimeSessionStatusKind = activeRun
+    ? activeRun.cancelRequested ? 'cancelling' : 'streaming'
+    : pendingState ? 'pending' : 'idle'
+  if (
+    status === 'idle'
+    && hasActiveGoal
+    && binding
+    && queue.pending === 0
+    && queue.running === 0
+  ) {
+    scheduleCodexGoalContinuation({
+      sessionId,
+      providerTargetId: providerTargetId ?? undefined,
+      modelId: modelId ?? undefined,
+    })
+  }
 
   return {
     sessionId,
-    status: activeRun
-      ? activeRun.cancelRequested ? 'cancelling' : 'streaming'
-      : pendingState ? 'pending' : 'idle',
+    status,
     runtimeKind,
     providerTargetId,
     providerSessionId,
     modelId,
     permissionMode,
     pendingQueueItemId: pendingState?.queueItemId ?? null,
+    hasActiveGoal,
     activeRun: activeRun ? toRuntimeSessionRunDto(activeRun, getRun(activeRun.runId)) : null,
-    latestRun: latestRun ? toRuntimeSessionRunDto(null, latestRun, {
-      modelId: binding?.requestedModelId ?? null,
-      providerSessionId: binding?.backendSessionId ?? null,
-    }) : null,
+    latestRun: latestRun
+      ? toRuntimeSessionRunDto(null, latestRun, {
+          modelId: binding?.requestedModelId ?? null,
+          providerSessionId: binding?.backendSessionId ?? null,
+        })
+      : null,
     queue,
   }
 }
@@ -1614,11 +1686,92 @@ export function getCodexAppServerCapabilityManifest(): CodexAppServerCapabilityM
 
 export async function invokeCodexAppServer(input: CodexAppServerInvokeInput): Promise<CodexAppServerInvokeResponse> {
   const context = await resolveCodexAppServerBridgeContext(input)
-  return createCodexAppServerBridge().invoke({
+  const response = await createCodexAppServerBridge().invoke({
     ...context,
     method: input.method,
     params: input.params,
   })
+  syncCodexGoalInvokeSnapshot({
+    sessionId: input.sessionId,
+    method: input.method,
+    result: response.result,
+    runtimeSession: context.runtimeSession,
+    providerTargetId: context.runtimeSession.providerTargetId,
+    requestedModelId:
+      input.modelId
+      ?? readProviderStateSnapshot(context.runtimeSession.providerStateSnapshot).models.currentModelId,
+  })
+  return response
+}
+
+function syncCodexGoalInvokeSnapshot(input: {
+  sessionId: string
+  method: string
+  result: unknown
+  runtimeSession: RuntimeSession
+  providerTargetId: string
+  requestedModelId: string | null
+}): void {
+  if (input.method === 'thread/goal/clear') {
+    writeCodexGoalSnapshotToRuntimeSession(input.runtimeSession, null)
+  }
+  else if (input.method === 'thread/goal/set') {
+    const result = readUnknownRecord(input.result)
+    const goal = readUnknownRecord(result.goal)
+    const objective = typeof goal.objective === 'string' ? goal.objective.trim() : ''
+    const status = readRuntimeGoalStatus(goal.status)
+    const threadId = typeof goal.threadId === 'string' ? goal.threadId : ''
+    if (!threadId || !objective || !status) {
+      return
+    }
+    writeCodexGoalSnapshotToRuntimeSession(input.runtimeSession, {
+      threadId,
+      objective,
+      status,
+      tokenBudget: typeof goal.tokenBudget === 'number' ? goal.tokenBudget : null,
+      tokensUsed: typeof goal.tokensUsed === 'number' ? goal.tokensUsed : 0,
+      timeUsedSeconds: typeof goal.timeUsedSeconds === 'number' ? goal.timeUsedSeconds : 0,
+      createdAt: typeof goal.createdAt === 'number' ? goal.createdAt : 0,
+      updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : currentUnixSeconds(),
+    })
+  }
+  else {
+    return
+  }
+
+  attachBinding({
+    sessionId: input.sessionId,
+    providerTargetId: input.providerTargetId,
+    runtimeKind: input.runtimeSession.runtimeKind,
+    runtimeSession: input.runtimeSession,
+    requestedModelId: input.requestedModelId,
+  })
+}
+
+function writeCodexGoalSnapshotToRuntimeSession(
+  runtimeSession: RuntimeSession,
+  goal: Record<string, unknown> | null,
+): void {
+  const snapshot = readProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const codex = readUnknownRecord(snapshot.codex)
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    codex: {
+      ...codex,
+      goal,
+    },
+  })
+}
+
+function readRuntimeGoalStatus(value: unknown) {
+  return value === 'active'
+    || value === 'paused'
+    || value === 'blocked'
+    || value === 'usageLimited'
+    || value === 'budgetLimited'
+    || value === 'complete'
+    ? value
+    : null
 }
 
 export async function openCodexAppServerStream(input: CodexAppServerStreamInput): Promise<ReadableStream<Uint8Array>> {
@@ -1730,6 +1883,7 @@ export async function createRun(input: {
   permissionMode?: ChatPermissionMode
   continuationMode?: ChatSessionQueueMode
   queueItemId?: string
+  internalContinuation?: 'codexGoal'
 }) {
   if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
     throw new AppError({
@@ -1738,6 +1892,9 @@ export async function createRun(input: {
       message: 'Chat session already has an active run',
       details: { sessionId: input.sessionId },
     })
+  }
+  if (input.internalContinuation !== 'codexGoal') {
+    cancelPendingCodexGoalContinuation(input.sessionId)
   }
   const pendingState: PendingRunState = { cancelled: false, queueItemId: input.queueItemId }
   pendingRunSessions.set(input.sessionId, pendingState)
@@ -1748,7 +1905,7 @@ export async function createRun(input: {
     const contextParts = input.contextParts ?? []
     const requestMessages = input.messages
     const lastRequestMessage = requestMessages?.at(-1)
-    if (!requestMessages && !userText.trim() && files.length === 0 && contextParts.length === 0) {
+    if (!input.internalContinuation && !requestMessages && !userText.trim() && files.length === 0 && contextParts.length === 0) {
       throw new AppError({
         code: 'chat_message_empty',
         status: 400,
@@ -1882,7 +2039,9 @@ export async function createRun(input: {
         ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
     })
 
-    const draft = lastRequestMessage?.role === 'assistant'
+    const draft = input.internalContinuation === 'codexGoal'
+      ? createCodexGoalContinuationDraft({ sessionId: input.sessionId })
+      : lastRequestMessage?.role === 'assistant'
       ? {
           userMessageId: '',
           assistantMessageId: lastRequestMessage.id,
@@ -1917,7 +2076,7 @@ export async function createRun(input: {
     const run = startRun({
       sessionId: input.sessionId,
       messageId: draft.assistantMessageId,
-      origin: 'user',
+      origin: input.internalContinuation ? 'system' : 'user',
     })
     const activeRun: ActiveRun = {
       runId: run.id,
@@ -1941,6 +2100,7 @@ export async function createRun(input: {
       finalProjection: createFinalMessageProjectionState(),
       queueItemId: input.queueItemId,
       permissionMode: input.permissionMode,
+      internalContinuation: input.internalContinuation,
     }
     activeRuns.set(run.id, activeRun)
     startSnapshotTimer(activeRun)
@@ -2084,7 +2244,7 @@ export async function abortRun(runId: string): Promise<void> {
   try {
     await requestRuntimeCancel(active)
   }
- finally {
+  finally {
     releaseActiveRun(active)
   }
 }
@@ -2958,6 +3118,14 @@ async function executeRun(
     }
     releaseActiveRun(activeRun)
     scheduleSessionQueueDrain(activeRun.sessionId)
+    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
+    if (shouldScheduleCodexGoalContinuation(activeRun, finalChunk)) {
+      scheduleCodexGoalContinuation({
+        sessionId: activeRun.sessionId,
+        providerTargetId: activeRun.providerTargetId,
+        modelId: actualModelId ?? undefined,
+      })
+    }
     recordChatRuntimeProfile(activeRun, diagnostics, profile)
   }
 }
@@ -2990,7 +3158,7 @@ function snapshotActiveRun(activeRun: ActiveRun): void {
 
 function startSnapshotTimer(activeRun: ActiveRun): void {
   stopSnapshotTimer(activeRun)
-  activeRun.snapshotTimer = setInterval(() => snapshotActiveRun(activeRun), snapshotIntervalMs())
+  activeRun.snapshotTimer = setInterval(snapshotActiveRun, snapshotIntervalMs(), activeRun)
 }
 
 function stopSnapshotTimer(activeRun: ActiveRun): void {
@@ -3749,6 +3917,24 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
       runId: activeRun.runId,
     })
   }
+  finally {
+    try {
+      attachBinding({
+        sessionId: activeRun.sessionId,
+        providerTargetId: activeRun.providerTargetId,
+        runtimeKind: activeRun.runtimeSession.runtimeKind,
+        runtimeSession: activeRun.runtimeSession,
+        requestedModelId: activeRun.modelId,
+      })
+    }
+    catch (error) {
+      chatLogger.warn('failed to persist runtime session after cancellation', {
+        error,
+        sessionId: activeRun.sessionId,
+        runId: activeRun.runId,
+      })
+    }
+  }
 }
 
 function abortPersistedRun(run: BackendRun): void {
@@ -3842,6 +4028,129 @@ function releaseActiveRun(activeRun: ActiveRun): void {
   activeRuns.delete(activeRun.runId)
   if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
     activeRunIdsBySession.delete(activeRun.sessionId)
+  }
+}
+
+function hasActiveCodexGoal(rawProviderStateSnapshot: string | null | undefined): boolean {
+  try {
+    const snapshot = readProviderStateSnapshot(rawProviderStateSnapshot)
+    const codex = readUnknownRecord(snapshot.codex)
+    const goal = readUnknownRecord(codex.goal)
+    return goal.status === 'active'
+      && typeof goal.objective === 'string'
+      && goal.objective.trim().length > 0
+  }
+  catch {
+    return false
+  }
+}
+
+function cancelPendingCodexGoalContinuation(sessionId: string): void {
+  const timer = pendingCodexGoalContinuationTimers.get(sessionId)
+  if (!timer) {
+    return
+  }
+  clearTimeout(timer)
+  pendingCodexGoalContinuationTimers.delete(sessionId)
+}
+
+function updateCodexGoalContinuationBackoff(activeRun: ActiveRun, finalChunk: UIMessageChunk): void {
+  if (activeRun.internalContinuation !== 'codexGoal') {
+    return
+  }
+  if (finalChunk.type === 'error') {
+    codexGoalContinuationFailures.set(
+      activeRun.sessionId,
+      (codexGoalContinuationFailures.get(activeRun.sessionId) ?? 0) + 1,
+    )
+    return
+  }
+  codexGoalContinuationFailures.delete(activeRun.sessionId)
+}
+
+function shouldScheduleCodexGoalContinuation(activeRun: ActiveRun, finalChunk: UIMessageChunk): boolean {
+  if (activeRun.runtimeSession.runtimeKind !== 'codex') {
+    return false
+  }
+  if (activeRun.cancelRequested || finalChunk.type === 'abort') {
+    return false
+  }
+  const binding = getBinding(activeRun.sessionId)
+  if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
+    return false
+  }
+  if (listPendingQueueRows(activeRun.sessionId).length > 0) {
+    return false
+  }
+  return true
+}
+
+function scheduleCodexGoalContinuation(input: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+}): void {
+  if (pendingCodexGoalContinuationTimers.has(input.sessionId)) {
+    return
+  }
+
+  const failureCount = codexGoalContinuationFailures.get(input.sessionId) ?? 0
+  const delayMs = Math.min(
+    CODEX_GOAL_CONTINUATION_DELAY_MS * 2 ** Math.min(failureCount, 7),
+    30_000,
+  )
+
+  const timer = setTimeout(() => {
+    pendingCodexGoalContinuationTimers.delete(input.sessionId)
+    void startScheduledCodexGoalContinuation(input)
+  }, delayMs)
+  pendingCodexGoalContinuationTimers.set(input.sessionId, timer)
+}
+
+async function startScheduledCodexGoalContinuation(input: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+}): Promise<void> {
+  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
+    return
+  }
+  if (listPendingQueueRows(input.sessionId).length > 0) {
+    scheduleSessionQueueDrain(input.sessionId)
+    return
+  }
+  const binding = getBinding(input.sessionId)
+  if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
+    return
+  }
+
+  try {
+    await createRun({
+      sessionId: input.sessionId,
+      providerTargetId: input.providerTargetId,
+      modelId: input.modelId,
+      internalContinuation: 'codexGoal',
+    })
+  }
+  catch (error) {
+    codexGoalContinuationFailures.set(
+      input.sessionId,
+      (codexGoalContinuationFailures.get(input.sessionId) ?? 0) + 1,
+    )
+    chatLogger.warn('failed to start Codex goal continuation run', {
+      error,
+      sessionId: input.sessionId,
+    })
+    const latestBinding = getBinding(input.sessionId)
+    if (
+      !activeRunIdsBySession.has(input.sessionId)
+      && !pendingRunSessions.has(input.sessionId)
+      && latestBinding?.runtimeKind === 'codex'
+      && hasActiveCodexGoal(latestBinding.backendStateSnapshot)
+      && listPendingQueueRows(input.sessionId).length === 0
+    ) {
+      scheduleCodexGoalContinuation(input)
+    }
   }
 }
 
@@ -4109,6 +4418,9 @@ function resolveTerminalChunkWithDiagnostics(
 function isProviderNativeNoOutputCommandTurn(activeRun: ActiveRun, message: UIMessage): boolean {
   if (activeRun.runtimeSession.runtimeKind !== 'codex') {
     return false
+  }
+  if (activeRun.internalContinuation === 'codexGoal' || isCodexGoalContinuationMessage(message)) {
+    return true
   }
   const text = extractMessageText(message)
   return readGoalMessageObjective(message) !== null || isCodexGoalCommandText(text) || isCodexCompactCommandText(text)

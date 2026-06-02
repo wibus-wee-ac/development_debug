@@ -3,13 +3,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { backendRuns, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
+import type { ChatRuntime, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
 
 interface ChatMessageRow {
   messageId: string
@@ -204,6 +206,71 @@ async function collectSseChunks(response: Response): Promise<UIMessageChunk[]> {
       }
       return [JSON.parse(data) as UIMessageChunk]
     })
+}
+
+class TestCodexGoalContinuationRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly streamInputs: StreamTurnInput[] = []
+
+  constructor(private readonly options: { failFirstRun?: boolean } = {}) {}
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: 'profile-codex-goal-auto',
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-goal-auto',
+      providerStateSnapshot: input.previousProviderStateSnapshot ?? JSON.stringify({
+        models: { currentModelId: null },
+        codex: {
+          goal: {
+            threadId: 'codex-thread-goal-auto',
+            objective: 'Keep going',
+            status: 'active',
+            tokenBudget: null,
+            tokensUsed: 0,
+            timeUsedSeconds: 0,
+            createdAt: 1,
+            updatedAt: 2,
+          },
+        },
+      }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    if (this.options.failFirstRun && this.streamInputs.length === 1) {
+      throw new Error('exceeded retry limit, last status: 429 Too Many Requests')
+    }
+
+    input.runtimeSession.providerStateSnapshot = JSON.stringify({
+      models: { currentModelId: null },
+      codex: {
+        goal: {
+          threadId: 'codex-thread-goal-auto',
+          objective: 'Keep going',
+          status: 'complete',
+          tokenBudget: null,
+          tokensUsed: 1,
+          timeUsedSeconds: 1,
+          createdAt: 1,
+          updatedAt: 3,
+        },
+      },
+    })
+    yield { type: 'text-start', id: 'continuation-text' }
+    yield { type: 'text-delta', id: 'continuation-text', delta: 'Goal continued' }
+    yield { type: 'text-end', id: 'continuation-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async cancelTurn(): Promise<void> {}
 }
 
 describe('chat runtime capability', () => {
@@ -1899,6 +1966,281 @@ describe('chat runtime capability', () => {
       }
       restoreEnv('CRADLE_CHAT_STORED_TEXT_MAX_CHARS', previousTextLimit)
       vi.restoreAllMocks()
+    }
+  })
+
+  it('starts a new system run and assistant message when an active Codex goal fails without user cancellation', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexGoalContinuationRuntime({ failFirstRun: true })
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-goal-auto',
+        name: 'Workspace Codex Goal Auto',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-goal-auto', {
+        providerTargetId: 'provider-target-codex-goal-auto',
+        sessionId: 'session-codex-goal-auto',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-goal-auto/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start the active goal.' }),
+      }))
+      expect(response.status).toBe(200)
+      await collectSseChunks(response)
+
+      const continuationRun = await waitForCondition(() => {
+        const runs = db()
+          .select()
+          .from(backendRuns)
+          .where(eq(backendRuns.chatSessionId, 'session-codex-goal-auto'))
+          .all()
+          .sort((left, right) => left.startedAt - right.startedAt)
+        expect(runs).toHaveLength(2)
+        expect(runs[0]).toEqual(expect.objectContaining({ origin: 'user', status: 'failed' }))
+        expect(runs[1]).toEqual(expect.objectContaining({ origin: 'system', status: 'complete' }))
+        return runs[1]
+      }, 'Codex goal continuation system run')
+
+      expect(runtime.streamInputs).toHaveLength(2)
+      expect(runtime.streamInputs[0]?.message).toEqual(expect.objectContaining({
+        role: 'user',
+        parts: expect.arrayContaining([expect.objectContaining({ type: 'text', text: 'Start the active goal.' })]),
+      }))
+      expect(runtime.streamInputs[1]?.runId).toBe(continuationRun.id)
+      expect(runtime.streamInputs[1]?.responseMessageId).toBe(continuationRun.messageId)
+      expect(runtime.streamInputs[1]?.message).toEqual(expect.objectContaining({
+        role: 'user',
+        metadata: {
+          cradle: {
+            codex: { goalContinuation: true },
+          },
+        },
+      }))
+
+      const messageRows = db()
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, 'session-codex-goal-auto'))
+        .all()
+      const visibleUserRows = messageRows.filter(row => row.role === 'user')
+      const assistantRows = messageRows.filter(row => row.role === 'assistant')
+      expect(visibleUserRows).toHaveLength(1)
+      expect(assistantRows).toHaveLength(2)
+      expect(assistantRows.find(row => row.id === continuationRun.messageId)).toEqual(expect.objectContaining({
+        status: 'complete',
+        content: 'Goal continued',
+      }))
+
+      const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-goal-auto/runtime-status'))
+      expect(statusResponse.status).toBe(200)
+      expect(await statusResponse.json()).toEqual(expect.objectContaining({
+        status: 'idle',
+        hasActiveGoal: false,
+        latestRun: expect.objectContaining({
+          runId: continuationRun.id,
+          messageId: continuationRun.messageId,
+          status: 'complete',
+        }),
+      }))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('wakes an idle failed Codex goal from runtime status polling without a new user message', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexGoalContinuationRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-goal-status-wake',
+        name: 'Workspace Codex Goal Status Wake',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-goal-status-wake', {
+        providerTargetId: 'provider-target-codex-goal-status-wake',
+        sessionId: 'session-codex-goal-status-wake',
+        runtimeKind: 'codex',
+      })
+
+      const now = 1_700_000_000
+      db().insert(messages).values([
+        {
+          id: 'message-codex-goal-status-user',
+          sessionId: 'session-codex-goal-status-wake',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: 'Previous failed goal run.',
+          messageJson: JSON.stringify({
+            id: 'message-codex-goal-status-user',
+            role: 'user',
+            parts: [{ type: 'text', text: 'Previous failed goal run.' }],
+          } satisfies UIMessage),
+          errorText: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'message-codex-goal-status-assistant-failed',
+          sessionId: 'session-codex-goal-status-wake',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'assistant',
+          status: 'failed',
+          content: '',
+          messageJson: JSON.stringify({
+            id: 'message-codex-goal-status-assistant-failed',
+            role: 'assistant',
+            parts: [],
+          } satisfies UIMessage),
+          errorText: 'exceeded retry limit, last status: 429 Too Many Requests',
+          createdAt: now + 1,
+          updatedAt: now + 1,
+        },
+      ]).run()
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-goal-status-wake',
+        chatSessionId: 'session-codex-goal-status-wake',
+        providerTargetId: 'provider-target-codex-goal-status-wake',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-goal-auto',
+        backendStateSnapshot: JSON.stringify({
+          models: { currentModelId: null },
+          codex: {
+            goal: {
+              threadId: 'codex-thread-goal-auto',
+              objective: 'Keep going',
+              status: 'active',
+              tokenBudget: null,
+              tokensUsed: 0,
+              timeUsedSeconds: 0,
+              createdAt: 1,
+              updatedAt: 2,
+            },
+          },
+        }),
+        requestedModelId: null,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      db().insert(backendRuns).values({
+        id: 'run-codex-goal-status-failed',
+        bindingId: 'binding-codex-goal-status-wake',
+        chatSessionId: 'session-codex-goal-status-wake',
+        messageId: 'message-codex-goal-status-assistant-failed',
+        origin: 'user',
+        status: 'failed',
+        stopReason: 'response.failed',
+        errorText: 'exceeded retry limit, last status: 429 Too Many Requests',
+        startedAt: now + 1,
+        finishedAt: now + 1,
+      }).run()
+
+      const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-goal-status-wake/runtime-status'))
+      expect(statusResponse.status).toBe(200)
+      expect(await statusResponse.json()).toEqual(expect.objectContaining({
+        status: 'idle',
+        hasActiveGoal: true,
+      }))
+
+      const continuationRun = await waitForCondition(() => {
+        const runs = db()
+          .select()
+          .from(backendRuns)
+          .where(eq(backendRuns.chatSessionId, 'session-codex-goal-status-wake'))
+          .all()
+        expect(runs).toHaveLength(2)
+        const run = runs.find(row => row.origin === 'system')
+        expect(run).toEqual(expect.objectContaining({ status: 'complete' }))
+        return run!
+      }, 'runtime-status awakened Codex goal continuation')
+
+      expect(runtime.streamInputs).toHaveLength(1)
+      expect(runtime.streamInputs[0]?.runId).toBe(continuationRun.id)
+      expect(runtime.streamInputs[0]?.message).toEqual(expect.objectContaining({
+        metadata: {
+          cradle: {
+            codex: { goalContinuation: true },
+          },
+        },
+      }))
+      expect(db()
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, 'session-codex-goal-status-wake'))
+        .all()
+        .filter(row => row.role === 'user')).toHaveLength(1)
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
     }
   })
 })
