@@ -1,0 +1,6 @@
+# Output: ast-grep project configuration for Cradle architecture hygiene scans.
+# Input: ast-grep scan invocations from repo root.
+# Position: Owns persistent structural search rules used to find removable compatibility and wrapper code.
+
+ruleDirs:
+  - ast-grep/rules

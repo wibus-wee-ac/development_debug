@@ -1,0 +1,6 @@
+# Output: ast-grep project configuration for optional facade ownership audits.
+# Input: ast-grep scan invocations that intentionally review feature-owned wrappers.
+# Position: Separate from root sgconfig so default scans focus on cleanup candidates.
+
+ruleDirs:
+  - audit-rules

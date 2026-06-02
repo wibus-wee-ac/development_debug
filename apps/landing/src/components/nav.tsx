@@ -1,7 +1,7 @@
 /**
  * Nav — minimal fixed header
  *
- * Logo (icon.png) + product name, right side: GitHub + Download CTA.
+ * Logo + product name, right side: GitHub + Download CTA.
  */
 import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
@@ -52,10 +52,11 @@ export function Nav() {
         {/* Logo */}
         <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
           <img
-            src="/icon.png"
+            src="/icon-64.webp"
             alt="Cradle"
             width={34}
             height={34}
+            decoding="async"
             style={{ borderRadius: 10 }}
           />
           <span style={{

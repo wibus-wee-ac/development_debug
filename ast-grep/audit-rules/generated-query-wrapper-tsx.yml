@@ -1,0 +1,13 @@
+# Output: Finds TSX-local hooks that only return a React Query call.
+# Input: TSX feature components with colocated `use*` functions returning `useQuery(...)`.
+# Position: Owned by architecture hygiene scans to expose thin query wrapper facades without matching React components.
+
+id: generated-query-wrapper-tsx
+language: TSX
+severity: warning
+message: Hook only returns useQuery(...); verify it owns real feature semantics instead of hiding generated query ownership.
+rule:
+  pattern: function $FUNC($$$ARGS) { return useQuery($$$QUERY_ARGS) }
+constraints:
+  FUNC:
+    regex: ^use[A-Z].*

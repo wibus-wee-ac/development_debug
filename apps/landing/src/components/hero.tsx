@@ -109,10 +109,12 @@ export function Hero() {
         />
         <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 40, width: 180, height: 180 }}>
           <img
-            src="/icon.png"
+            src="/icon-192.webp"
             alt="Cradle"
             width={180}
             height={180}
+            fetchPriority="high"
+            decoding="async"
             style={{ display: 'block', borderRadius: 40 }}
           />
           {/* Shine sweep */}

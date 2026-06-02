@@ -1,0 +1,13 @@
+# Output: Finds functions that only wrap generated HTTP SDK calls.
+# Input: TypeScript source using generated functions named get/post/put/patch/delete + PascalCase.
+# Position: Owned by architecture hygiene scans to expose removable API compatibility facades.
+
+id: generated-api-call-wrapper
+language: TypeScript
+severity: warning
+message: Function only wraps a generated HTTP SDK call; consider calling the generated owner directly or moving semantics into the feature owner.
+rule:
+  pattern: function $FUNC($$$ARGS) { return $CLIENT($$$CALL_ARGS) }
+constraints:
+  CLIENT:
+    regex: ^(get|post|put|patch|delete)[A-Z].*

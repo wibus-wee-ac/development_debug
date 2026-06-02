@@ -13,7 +13,7 @@ export function Footer() {
       gap: 16,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <img src="/icon.png" alt="" width={16} height={16} style={{ borderRadius: 4 }} />
+        <img src="/icon-64.webp" alt="" width={16} height={16} style={{ borderRadius: 4 }} />
         <span style={{ fontSize: 12, color: 'var(--color-neutral-5)' }}>
           Cradle — orchestrate your AI tools.
         </span>
