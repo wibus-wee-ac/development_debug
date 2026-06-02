@@ -1,19 +1,36 @@
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
 
-@custom-variant dark (&:is(.dark *));
-
-@theme {
-  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  --color-bg: #141414;
-  --color-surface: #1a1a1a;
-  --color-text-primary: #f5f5f5;
-  --color-text-secondary: #a3a3a3;
-  --color-text-tertiary: #8a8a8a;
-  --color-text-dim: #525252;
+/* ─── Dark-mode neutral scale (inverted from light) ───────────── */
+:root {
+  --color-neutral-1: #141414;
+  --color-neutral-2: #111111;
+  --color-neutral-3: #1a1a1a;
+  --color-neutral-4: #2a2a2a;
+  --color-neutral-5: #404040;
+  --color-neutral-6: #8a8a8a;
+  --color-neutral-7: #a3a3a3;
+  --color-neutral-8: #d4d4d4;
+  --color-neutral-9: #f5f5f5;
+  --color-neutral-10: #ffffff;
   --color-border: rgba(255, 255, 255, 0.06);
-  --color-muted: rgba(255, 255, 255, 0.04);
+  --color-fill: rgba(255, 255, 255, 0.03);
+
+  /* Accents */
   --color-accent: #3b82f6;
+  --color-accent-session: #8b5cf6;
+  --color-accent-scope: #10b981;
+  --color-accent-agent: #f43f5e;
+  --color-accent-legacy: #f59e0b;
+
+  /* Semantic */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+
+  /* Font */
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: "Geist Variable", ui-monospace, "SF Mono", Consolas, monospace;
 }
 
 html {
@@ -24,8 +41,23 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background: var(--color-bg);
-  color: var(--color-text-primary);
+  background: var(--color-neutral-1);
+  color: var(--color-neutral-9);
   overflow-x: hidden;
   font-feature-settings: 'cv01', 'cv02', 'cv03', 'cv04', 'calt';
 }
+
+/* Selection */
+::selection {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--color-neutral-9);
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-neutral-5) transparent;
+}
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-neutral-5); border-radius: 2px; }

@@ -1,31 +1,17 @@
-import { useEffect, useRef } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { Observer } from 'gsap/Observer'
+import { useGSAP } from '@gsap/react'
 
-gsap.registerPlugin(ScrollTrigger)
+// Register all plugins once
+gsap.registerPlugin(ScrollTrigger, Observer, useGSAP)
 
-export function useGSAP(
-  callback: (ctx: gsap.Context) => void,
-  deps: unknown[] = []
-) {
-  const containerRef = useRef<HTMLElement>(null)
+// Configure GSAP defaults
+gsap.defaults({
+  ease: 'power3.out',
+})
 
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia(
-      '(prefers-reduced-motion: reduce)'
-    ).matches
+// Match media helper for responsive animations
+export const mm = gsap.matchMedia()
 
-    if (prefersReducedMotion) return
-
-    const ctx = gsap.context(() => {
-      callback(ctx!)
-    }, containerRef)
-
-    return () => ctx.revert()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps)
-
-  return containerRef
-}
-
-export { gsap, ScrollTrigger }
+export { gsap, ScrollTrigger, Observer, useGSAP }

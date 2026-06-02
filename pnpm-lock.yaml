@@ -403,12 +403,15 @@ importers:
       '@fontsource-variable/geist':
         specifier: ^5.2.8
         version: 5.2.8
+      '@gsap/react':
+        specifier: ^2.1.2
+        version: 2.1.2(gsap@3.15.0)(react@19.2.6)
       gsap:
         specifier: ^3.13.0
         version: 3.15.0
       lucide-react:
-        specifier: ^1.8.0
-        version: 1.16.0(react@19.2.6)
+        specifier: 1.8.0
+        version: 1.8.0(react@19.2.6)
       react:
         specifier: ^19.1.0
         version: 19.2.6
@@ -21492,6 +21495,10 @@ snapshots:
   lucide-react@1.8.0(react@19.2.5):
     dependencies:
       react: 19.2.5
+
+  lucide-react@1.8.0(react@19.2.6):
+    dependencies:
+      react: 19.2.6
 
   luxon@3.7.2: {}
 
