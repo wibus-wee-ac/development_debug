@@ -372,6 +372,38 @@ const runtimeSearchUiSlotStateSchema = t.Object({
   updatedAt: t.Number(),
 })
 
+const runtimeCrewCollaborationModeSchema = t.Object({
+  name: t.String(),
+  mode: t.Union([t.String(), t.Null()]),
+  model: t.Union([t.String(), t.Null()]),
+  reasoningEffort: t.Union([t.String(), t.Null()]),
+})
+
+const runtimeCrewAgentItemSchema = t.Object({
+  threadId: t.String(),
+  status: t.Union([t.String(), t.Null()]),
+  message: t.Union([t.String(), t.Null()]),
+  name: t.Union([t.String(), t.Null()]),
+  preview: t.Union([t.String(), t.Null()]),
+  modelProvider: t.Union([t.String(), t.Null()]),
+  agentNickname: t.Union([t.String(), t.Null()]),
+  agentRole: t.Union([t.String(), t.Null()]),
+})
+
+const runtimeCrewCallItemSchema = t.Object({
+  id: t.String(),
+  tool: t.String(),
+  status: runtimeToolActivityStatusSchema,
+  senderThreadId: t.Union([t.String(), t.Null()]),
+  receiverThreadIds: t.Array(t.String()),
+  prompt: t.Union([t.String(), t.Null()]),
+  model: t.Union([t.String(), t.Null()]),
+  reasoningEffort: t.Union([t.String(), t.Null()]),
+  agents: t.Array(runtimeCrewAgentItemSchema),
+  startedAt: t.Union([t.Number(), t.Null()]),
+  completedAt: t.Union([t.Number(), t.Null()]),
+})
+
 const runtimeCrewUiSlotStateSchema = t.Object({
   kind: t.Literal('crew'),
   slotId: t.String(),
@@ -388,6 +420,8 @@ const runtimeCrewUiSlotStateSchema = t.Object({
     completedAt: t.Union([t.Number(), t.Null()]),
   })),
   collaborationModeCount: t.Number(),
+  collaborationModes: t.Array(runtimeCrewCollaborationModeSchema),
+  calls: t.Array(runtimeCrewCallItemSchema),
   updatedAt: t.Number(),
 })
 

@@ -188,7 +188,20 @@ class FakeCodexAppServerClient {
       return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
     }
     if (method === 'thread/read') {
-      return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: this.threadReadName } }
+      const threadId = (params as { threadId?: string }).threadId ?? 'codex-thread-1'
+      if (threadId === 'subagent-thread-1') {
+        return {
+          thread: {
+            id: threadId,
+            name: 'Review worker',
+            preview: 'Review server changes',
+            modelProvider: 'openai',
+            agentNickname: 'reviewer-1',
+            agentRole: 'review',
+          },
+        }
+      }
+      return { thread: { id: threadId, name: this.threadReadName } }
     }
     if (method === 'thread/turns/list') {
       return {
@@ -925,6 +938,13 @@ describe('codexProvider app-server integration', () => {
     await firstChunkPromise
     await drainStream(stream)
 
+    expect(provider.lastUsage).toEqual({
+      promptTokens: 3_000,
+      completionTokens: 1_000,
+      totalTokens: 4_000,
+    })
+    expect(provider.lastModelId).toBe('gpt-5-codex')
+
     await expect(provider.getUiSlotStates({
       runtimeSession,
       profile: createProfile(),
@@ -1392,7 +1412,16 @@ describe('codexProvider app-server integration', () => {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
         startedAtMs: 10,
-        item: { id: 'crew-1', type: 'collabAgentToolCall', text: 'Review server changes', status: 'inProgress' },
+        item: {
+          id: 'crew-1',
+          type: 'collabAgentToolCall',
+          text: 'Review server changes',
+          status: 'inProgress',
+          receiverThreadIds: ['subagent-thread-1'],
+          agentsStates: {
+            'subagent-thread-1': { status: 'running', message: 'Reading server modules' },
+          },
+        },
       },
     })
     client.pushNotification({
@@ -1401,7 +1430,16 @@ describe('codexProvider app-server integration', () => {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
         completedAtMs: 20,
-        item: { id: 'crew-1', type: 'collabAgentToolCall', text: 'Review server changes', status: 'completed' },
+        item: {
+          id: 'crew-1',
+          type: 'collabAgentToolCall',
+          text: 'Review server changes',
+          status: 'completed',
+          receiverThreadIds: ['subagent-thread-1'],
+          agentsStates: {
+            'subagent-thread-1': { status: 'completed', message: 'Review finished' },
+          },
+        },
       },
     })
     client.pushNotification({
@@ -1485,6 +1523,18 @@ describe('codexProvider app-server integration', () => {
         failedCount: 0,
         collaborationModeCount: 2,
         recentItems: [expect.objectContaining({ id: 'crew-1', label: 'Agent', status: 'completed' })],
+        calls: [expect.objectContaining({
+          agents: [expect.objectContaining({
+            threadId: 'subagent-thread-1',
+            status: 'completed',
+            message: 'Review finished',
+            name: 'Review worker',
+            preview: 'Review server changes',
+            modelProvider: 'openai',
+            agentNickname: 'reviewer-1',
+            agentRole: 'review',
+          })],
+        })],
       }),
       expect.objectContaining({
         kind: 'usage',

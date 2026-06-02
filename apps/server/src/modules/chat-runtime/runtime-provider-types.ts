@@ -206,6 +206,11 @@ export interface RuntimeCrewAgentItem {
   threadId: string
   status: string | null
   message: string | null
+  name: string | null
+  preview: string | null
+  modelProvider: string | null
+  agentNickname: string | null
+  agentRole: string | null
 }
 
 export interface RuntimeCrewCallItem {

@@ -30,6 +30,7 @@ import type {
   RuntimeApprovalsUiSlotState,
   RuntimeCompactUiSlotState,
   RuntimeConfigUiSlotState,
+  RuntimeCrewAgentItem,
   RuntimeCrewUiSlotState,
   RuntimeDiffUiSlotState,
   RuntimeFilesystemUiSlotState,
@@ -76,6 +77,7 @@ import {
   mapCodexAppServerNotificationToChunks,
 } from './app-server-mapper'
 import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
+import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResponse'
 import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
 import type { Turn } from './app-server-protocol/v2/Turn'
 import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
@@ -139,8 +141,25 @@ interface CodexThreadSettings {
   summary?: string | null
 }
 
+interface CodexThreadMetadata {
+  id: string
+  name: string | null
+  preview: string | null
+  modelProvider: string | null
+  agentNickname: string | null
+  agentRole: string | null
+}
+
 interface ThreadResponse {
-  thread?: { id?: string, name?: string | null, status?: CodexThreadStatus, modelProvider?: string | null }
+  thread?: {
+    id?: string
+    name?: string | null
+    preview?: string | null
+    status?: CodexThreadStatus
+    modelProvider?: string | null
+    agentNickname?: string | null
+    agentRole?: string | null
+  }
   model?: string | null
   modelProvider?: string | null
   serviceTier?: string | null
@@ -680,9 +699,14 @@ export class CodexProvider implements ChatRuntime {
 
   private readonly activeTurns = new Map<string, ActiveCodexTurn>()
   private _lastUsage: TokenUsage | null = null
+  private _lastModelId: string | null = null
 
   get lastUsage(): TokenUsage | null {
     return this._lastUsage
+  }
+
+  get lastModelId(): string | null {
+    return this._lastModelId
   }
 
   constructor(private readonly deps: CodexProviderDeps) {}
@@ -813,6 +837,11 @@ export class CodexProvider implements ChatRuntime {
       const plugins = pluginResult.status === 'fulfilled' ? pluginResult.value : null
       const apps = appsResult.status === 'fulfilled' ? appsResult.value : null
       const collaborationModes = collaborationModesResult.status === 'fulfilled' ? collaborationModesResult.value : null
+      const crewThreadMetadata = await readCrewThreadMetadata(
+        client,
+        runtimeSession.providerSessionId,
+        readCodexProviderSnapshot(runtimeSession.providerStateSnapshot),
+      )
       const statusState = projectCodexStatusState(
         runtimeSession.providerSessionId,
         readCodexProviderSnapshot(runtimeSession.providerStateSnapshot),
@@ -923,6 +952,7 @@ export class CodexProvider implements ChatRuntime {
         runtimeSession.providerSessionId,
         readCodexProviderSnapshot(runtimeSession.providerStateSnapshot),
         collaborationModes,
+        crewThreadMetadata,
       )
       if (crewState) {
         states.push(crewState)
@@ -986,6 +1016,7 @@ export class CodexProvider implements ChatRuntime {
     const sessionId = input.runtimeSession.chatSessionId
     const shouldInjectReconstructedHistory = !input.runtimeSession.providerSessionId
     this._lastUsage = null
+    this._lastModelId = effectiveModel ?? null
 
     const textItemId = randomUUID()
     const mapperState = createCodexAppServerMapperState(textItemId)
@@ -1017,6 +1048,7 @@ export class CodexProvider implements ChatRuntime {
       })
       const threadId = threadStart.threadId
       input.runtimeSession.providerSessionId = threadId
+      this._lastModelId = threadStart.modelId ?? effectiveModel ?? null
       writeCodexThreadSnapshot(input.runtimeSession, threadStart)
       if (threadStart.title) {
         input.reportSessionTitle?.(threadStart.title)
@@ -1112,6 +1144,7 @@ export class CodexProvider implements ChatRuntime {
         projectCodexFilesystemSnapshot(input.runtimeSession, notification, threadId)
         projectCodexSearchSnapshot(input.runtimeSession, notification, threadId)
         projectCodexUsageSnapshot(input.runtimeSession, notification, threadId)
+        this.captureLastTokenUsage(notification)
         projectCodexGoalSnapshot(input.runtimeSession, notification)
         if (isCompletedGoalUpdate(notification)) {
           await client.request('thread/goal/clear', { threadId }).catch(() => undefined)
@@ -1235,6 +1268,17 @@ export class CodexProvider implements ChatRuntime {
 
   private createAppServerClient(options: CodexAppServerClientOptions): CodexAppServerClientLike {
     return this.deps.createAppServerClient?.(options) ?? new CodexAppServerClient(options)
+  }
+
+  private captureLastTokenUsage(notification: CodexAppServerMessage): void {
+    if (notification.method !== 'thread/tokenUsage/updated') {
+      return
+    }
+    const params = notification.params as ThreadTokenUsageUpdatedNotificationParams | undefined
+    const usage = readCodexLastTokenUsage(params?.tokenUsage)
+    if (usage) {
+      this._lastUsage = usage
+    }
   }
 }
 
@@ -2594,10 +2638,74 @@ function projectCodexSearchState(
   }
 }
 
+async function readCrewThreadMetadata(
+  client: CodexAppServerClientLike,
+  parentThreadId: string,
+  snapshot: CodexProviderSnapshot,
+): Promise<Map<string, CodexThreadMetadata>> {
+  const threadIds = readCrewReceiverThreadIds(parentThreadId, snapshot)
+  if (threadIds.length === 0) {
+    return new Map()
+  }
+
+  const results = await Promise.allSettled(threadIds.map(async (threadId) => {
+    const response = await client.request('thread/read', {
+      threadId,
+      includeTurns: false,
+    }) as ThreadReadResponse
+    return readCodexThreadMetadata(threadId, response)
+  }))
+
+  const metadata = new Map<string, CodexThreadMetadata>()
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value) {
+      metadata.set(result.value.id, result.value)
+    }
+  }
+  return metadata
+}
+
+function readCrewReceiverThreadIds(parentThreadId: string, snapshot: CodexProviderSnapshot): string[] {
+  const ids = new Set<string>()
+  for (const item of snapshot.codex?.toolActivity?.items ?? []) {
+    if (item.type !== 'collabAgentToolCall') {
+      continue
+    }
+    for (const threadId of item.receiverThreadIds ?? []) {
+      if (threadId && threadId !== parentThreadId) {
+        ids.add(threadId)
+      }
+    }
+    for (const threadId of Object.keys(item.agentsStates ?? {})) {
+      if (threadId && threadId !== parentThreadId) {
+        ids.add(threadId)
+      }
+    }
+  }
+  return Array.from(ids).slice(0, 12)
+}
+
+function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadResponse): CodexThreadMetadata | null {
+  const thread = response.thread as Partial<ThreadReadResponse['thread']> | undefined
+  if (!thread) {
+    return null
+  }
+  const id = typeof thread.id === 'string' ? thread.id : fallbackThreadId
+  return {
+    id,
+    name: typeof thread.name === 'string' ? thread.name : null,
+    preview: typeof thread.preview === 'string' ? thread.preview : null,
+    modelProvider: typeof thread.modelProvider === 'string' ? thread.modelProvider : null,
+    agentNickname: typeof thread.agentNickname === 'string' ? thread.agentNickname : null,
+    agentRole: typeof thread.agentRole === 'string' ? thread.agentRole : null,
+  }
+}
+
 function projectCodexCrewState(
   threadId: string,
   snapshot: CodexProviderSnapshot,
   collaborationModes: CodexCollaborationModeListResponse | null,
+  threadMetadata: Map<string, CodexThreadMetadata>,
 ): RuntimeCrewUiSlotState | null {
   const activity = snapshot.codex?.toolActivity
   const crewItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
@@ -2622,7 +2730,7 @@ function projectCodexCrewState(
     prompt: item.prompt ?? null,
     model: item.model ?? null,
     reasoningEffort: item.reasoningEffort ?? null,
-    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}),
+    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}, threadMetadata),
     startedAt: item.startedAt,
     completedAt: item.completedAt,
   }))
@@ -2647,16 +2755,25 @@ function projectCodexCrewState(
 function readCrewAgents(
   receiverThreadIds: string[],
   agentsStates: Record<string, { status?: string | null, message?: string | null } | undefined>,
-) {
+  threadMetadata: Map<string, CodexThreadMetadata>,
+): RuntimeCrewAgentItem[] {
   const ids = new Set([
     ...receiverThreadIds,
     ...Object.keys(agentsStates),
   ])
-  return Array.from(ids, threadId => ({
-    threadId,
-    status: agentsStates[threadId]?.status ?? null,
-    message: agentsStates[threadId]?.message ?? null,
-  }))
+  return Array.from(ids, (threadId) => {
+    const metadata = threadMetadata.get(threadId)
+    return {
+      threadId,
+      status: agentsStates[threadId]?.status ?? null,
+      message: agentsStates[threadId]?.message ?? null,
+      name: metadata?.name ?? null,
+      preview: metadata?.preview ?? null,
+      modelProvider: metadata?.modelProvider ?? null,
+      agentNickname: metadata?.agentNickname ?? null,
+      agentRole: metadata?.agentRole ?? null,
+    }
+  })
 }
 
 function projectCodexUsageSnapshot(
@@ -3055,6 +3172,18 @@ function normalizeTokenUsageBreakdown(value: CodexTokenUsageBreakdown | undefine
     cachedInputTokens: readNonNegativeNumber(value?.cachedInputTokens),
     outputTokens: readNonNegativeNumber(value?.outputTokens),
     reasoningOutputTokens: readNonNegativeNumber(value?.reasoningOutputTokens),
+  }
+}
+
+function readCodexLastTokenUsage(value: CodexThreadTokenUsage | undefined): TokenUsage | null {
+  const last = normalizeTokenUsageBreakdown(value?.last)
+  if (last.totalTokens === 0 && last.inputTokens === 0 && last.outputTokens === 0) {
+    return null
+  }
+  return {
+    promptTokens: last.inputTokens,
+    completionTokens: last.outputTokens,
+    totalTokens: last.totalTokens || last.inputTokens + last.outputTokens,
   }
 }
 
