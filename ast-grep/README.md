@@ -1,10 +1,10 @@
 # Output: Documents persistent ast-grep architecture hygiene scans.
-# Input: Developers running legacy cleanup scans and optional facade audits from the repository root.
+# Input: Developers running cleanup scans and optional facade audits from the repository root.
 # Position: Owned by repository tooling; cleanup rules live in `ast-grep/rules`, optional audits in `ast-grep/audit-rules`.
 
 # ast-grep Architecture Scans
 
-Run the default legacy cleanup scan from the repository root:
+Run the default cleanup scan from the repository root:
 
 ```sh
 ast-grep scan apps packages plugins \
@@ -18,9 +18,20 @@ ast-grep scan apps packages plugins \
 
 Current baseline results and review notes are recorded in `wrapper-compatibility-report.md`.
 
-The default rules are intentionally high-signal cleanup queues, not automatic deletion rules:
+Default cleanup rule intent:
 
-- `compatibility-comment-marker`: flags comments that explicitly mention legacy/deprecated compatibility debt.
+- `compatibility-comment-marker`: comments that explicitly mention legacy/deprecated compatibility debt.
+- `generated-api-call-wrapper`: functions that only wrap generated HTTP SDK calls.
+- `formatter-delegation-wrapper`: `format/read/to/as/normalize/map*` helpers that only call another helper.
+- `formatter-delegation-wrapper-tsx`: TSX version of formatter delegation detection.
+- `nullable-display-fallback-formatter`: nullable helpers that hide null behind display fallback strings.
+- `nullable-display-fallback-formatter-tsx`: TSX version of nullable fallback detection.
+- `local-intl-number-formatter`: local helpers that only instantiate `Intl.NumberFormat`.
+- `local-intl-number-formatter-tsx`: TSX version of local `Intl.NumberFormat` detection.
+- `local-number-formatter`: local helpers that only switch between `String(...)` and `toFixed(...)`.
+- `local-number-formatter-tsx`: TSX version of local number formatter detection.
+- `threshold-unit-formatter`: local number helpers that branch on thresholds to append units.
+- `threshold-unit-formatter-tsx`: TSX version of threshold/unit formatter detection.
 
 Run optional facade audits when reviewing ownership boundaries. These rules include many legitimate feature-owned wrappers, so they are not loaded by `sgconfig.yml`:
 
@@ -36,7 +47,6 @@ ast-grep scan -c ast-grep/audit-sgconfig.yml apps packages plugins \
 
 Audit rule intent:
 
-- `generated-api-call-wrapper`: feature-owned API facades over generated HTTP SDK calls.
 - `generated-query-wrapper`: feature-owned `use*` hooks over `useQuery(...)`.
 - `generated-query-wrapper-tsx`: TSX-local `use*` hooks over `useQuery(...)`.
 - `lazy-component-loader-wrapper`: route/tab loader facades.
@@ -47,7 +57,7 @@ For a broader lexical sweep, run this separately because it includes legitimate 
 
 ```sh
 ast-grep scan apps packages plugins \
-  --inline-rules $'id: compatibility-string-marker\nlanguage: TypeScript\nrule:\n  any:\n    - kind: string_fragment\n    - kind: template_string\n  regex: (?i)(legacy|backward|backwards|old\\s+(helper|path|api|surface|entry|wrapper))\nseverity: hint\nmessage: Compatibility marker in string.' \
+  --inline-rules $'id: compatibility-string-marker\nlanguage: TypeScript\nrule:\n  any:\n    - kind: string_fragment\n    - kind: template_string\n  regex: (?i)(deprecated|deprecation|backwards?-compat(?:ible|ibility)|backwards?\\s+compatibility|compatibility\\s+(re-export|export|shim|path|wrapper)|compat(?:ible)?\\s+(shim|path|wrapper)|old\\s+(helper|path|api|surface|entry|wrapper|di\\s+consumers)|transitional)\nseverity: hint\nmessage: Compatibility marker in string.' \
   --globs '!apps/web/src/api-gen/**' \
   --globs '!apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol/**' \
   --globs '!**/node_modules/**' \
