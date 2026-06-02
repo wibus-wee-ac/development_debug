@@ -16,6 +16,7 @@ import {
   PluginInstallLinkError,
 } from './plugin-install-links'
 import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
+import { bindDesktopObservabilityServerUrl } from './observability-reporter'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
 import { startServer, stopServer } from './server-process'
 import { TrayManager } from './tray-manager'
@@ -366,6 +367,7 @@ export async function startDesktopApp(): Promise<void> {
     await activateDesktopPlugins()
 
     const serverUrl = await startServer()
+    bindDesktopObservabilityServerUrl(serverUrl)
     chatStreamBroker = new ChatStreamBroker({ serverUrl })
 
     windowManager = new WindowManager(serverUrl)

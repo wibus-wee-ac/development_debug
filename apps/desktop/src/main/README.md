@@ -19,6 +19,7 @@
 - `window-manager.test.ts`：覆盖 session tear-off window 并发 open 去重，以及 renderer load 失败时清理 pending session 窗口。
 - `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
 - `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、desktop chat stream broker IPC、外部 AI 应用工作内容的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
+- `observability-reporter.ts`：拥有 Electron main process 的 private-preview error capture，把 main-process uncaught exception / unhandled rejection 缓存并投递到 server-owned observability API；只写 Cradle server namespace，不引入外部上传服务。
 - `native-editor-launcher.ts`：拥有 desktop native editor launch strategy，优先使用 macOS app launch，再回退到 common editor CLI commands。
 - `native-appshot-codex-assets.ts`：拥有 Codex Computer Use Appshot temp asset 的只读 projection，只读取 `/tmp/com.openai.sky.CUAService` 并把 Codex 私有图片产物转换为 Cradle IPC/report 可消费的 metadata 和 data URL。
 - `native-appshot-codex-assets.test.ts`：覆盖 Codex temp asset reader 的 root 边界、image 类型过滤、baseline inventory 过滤，以及 observer 对新产物的识别。
