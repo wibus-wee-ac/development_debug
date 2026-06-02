@@ -1,7 +1,12 @@
+/**
+ * Nav — minimal fixed header
+ *
+ * Logo (icon.png) + product name, right side: GitHub + Download CTA.
+ */
 import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { Code2 } from 'lucide-react'
+import { Download } from 'lucide-react'
 
 gsap.registerPlugin(useGSAP)
 
@@ -16,7 +21,7 @@ export function Nav() {
   }, [])
 
   useGSAP(() => {
-    gsap.from(navRef.current, { y: -16, opacity: 0, duration: 0.6, ease: 'power3.out' })
+    gsap.from(navRef.current, { y: -16, opacity: 0, duration: 0.6, delay: 3.2, ease: 'power3.out' })
   }, { scope: navRef })
 
   return (
@@ -26,105 +31,78 @@ export function Nav() {
         position: 'fixed',
         top: 0, left: 0, right: 0,
         zIndex: 50,
-        height: 48,
+        height: 68,
         display: 'flex',
         alignItems: 'center',
-        transition: 'background 0.2s, border-color 0.2s',
-        background: scrolled ? 'rgba(17,17,17,0.82)' : 'transparent',
-        backdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
-        WebkitBackdropFilter: scrolled ? 'blur(20px) saturate(160%)' : 'none',
-        borderBottom: scrolled ? '1px solid var(--color-border)' : '1px solid transparent',
+        transition: 'background 0.25s, border-color 0.25s',
+        background: 'transparent',
+        borderBottom: '1px solid transparent',
       }}
     >
-      <div
-        style={{
-          maxWidth: 960,
-          margin: '0 auto',
-          padding: '0 24px',
-          width: '100%',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
+      <div style={{
+        maxWidth: 1100,
+        margin: '0 auto',
+        padding: '0 40px',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
       >
         {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div
-            style={{
-              width: 22,
-              height: 22,
-              borderRadius: 6,
-              background: 'var(--color-accent)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15)',
-            }}
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none' }}>
+          <img
+            src="/icon.png"
+            alt="Cradle"
+            width={34}
+            height={34}
+            style={{ borderRadius: 10 }}
+          />
+          <span style={{
+            fontSize: 17,
+            fontWeight: 700,
+            color: 'var(--color-neutral-9)',
+            letterSpacing: '-0.03em',
+          }}
           >
-            <span style={{ fontSize: 9, fontWeight: 700, color: '#fff' }}>C</span>
-          </div>
-          <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-neutral-8)' }}>
             Cradle
           </span>
-        </div>
+        </a>
 
-        {/* Links */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-          {['Features', 'How it works'].map(link => (
-            <a
-              key={link}
-              href={`#${link.toLowerCase().replace(/ /g, '-')}`}
-              style={{
-                fontSize: 13,
-                color: 'var(--color-neutral-6)',
-                textDecoration: 'none',
-                transition: 'color 0.12s',
-              }}
-              onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--color-neutral-8)' }}
-              onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--color-neutral-6)' }}
-            >
-              {link}
-            </a>
-          ))}
-          <a
-            href="https://github.com"
-            target="_blank"
-            rel="noopener noreferrer"
+        {/* Right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          {/* <span
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              fontSize: 13,
-              color: 'var(--color-neutral-6)',
-              textDecoration: 'none',
-              transition: 'color 0.12s',
+              fontSize: 12,
+              color: 'var(--color-neutral-4)',
+              letterSpacing: '0.01em',
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--color-neutral-8)' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.color = 'var(--color-neutral-6)' }}
           >
-            <Code2 style={{ width: 14, height: 14 }} />
-            <span>GitHub</span>
-          </a>
+            Free forever
+          </span> */}
           <a
-            href="#get-started"
+            href="#download"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
-              height: 30,
-              padding: '0 14px',
-              borderRadius: 7,
-              fontSize: 12,
-              fontWeight: 500,
+              gap: 7,
+              height: 38,
+              padding: '0 20px',
+              borderRadius: 10,
+              fontSize: 14,
+              fontWeight: 600,
               background: 'var(--color-neutral-9)',
               color: 'var(--color-neutral-1)',
               textDecoration: 'none',
-              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.1)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
               transition: 'opacity 0.12s',
+              letterSpacing: '-0.01em',
             }}
-            onMouseEnter={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.88' }}
-            onMouseLeave={e => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = '0.85' }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLAnchorElement).style.opacity = '1' }}
           >
-            Early access
+            <Download style={{ width: 14, height: 14 }} />
+            Download for macOS
           </a>
         </div>
       </div>

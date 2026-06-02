@@ -1,119 +1,120 @@
-import { useEffect, useRef } from 'react'
+/**
+ * Background — Vercel/Linear-style CSS orb blobs
+ *
+ * Three blurred gradient circles breathing slowly with Motion.
+ * Grain overlay via SVG feTurbulence data URI (no canvas).
+ */
+import { motion } from 'motion/react'
 
-interface Particle {
-  x: number
-  y: number
-  vx: number
-  vy: number
-  r: number
-  opacity: number
-  phase: number
+interface OrbProps {
+  style: React.CSSProperties
+  animate: Record<string, number[]>
+  duration: number
+  delay?: number
 }
 
-function createParticles(w: number, h: number): Particle[] {
-  const count = Math.min(60, Math.floor((w * h) / 22000))
-  return Array.from({ length: count }, (_, i) => ({
-    x: Math.random() * w,
-    y: Math.random() * h,
-    vx: (Math.random() - 0.5) * 0.12,
-    vy: -0.04 - Math.random() * 0.08,
-    r: 0.8 + Math.random() * 0.8,
-    opacity: 0.06 + Math.random() * 0.1,
-    phase: (Math.PI * 2 * i) / count,
-  }))
+function Orb({ style, animate, duration, delay = 0 }: OrbProps) {
+  return (
+    <motion.div
+      aria-hidden
+      animate={animate}
+      transition={{
+        duration,
+        ease: 'easeInOut',
+        repeat: Infinity,
+        repeatType: 'mirror',
+        delay,
+      }}
+      style={{
+        position: 'absolute',
+        borderRadius: '50%',
+        filter: 'blur(140px)',
+        pointerEvents: 'none',
+        willChange: 'transform, opacity',
+        ...style,
+      }}
+    />
+  )
 }
 
 export function CanvasBg() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useRef({ x: 0.5, y: 0.4 })
-
-  useEffect(() => {
-    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-    if (prefersReducedMotion) return
-
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const ctx = canvas.getContext('2d')!
-
-    let w = 0, h = 0
-    let particles: Particle[] = []
-    let raf = 0
-    let dead = false
-
-    function resize() {
-      const dpr = Math.min(window.devicePixelRatio, 2)
-      w = window.innerWidth
-      h = window.innerHeight
-      canvas!.width = w * dpr
-      canvas!.height = h * dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-      particles = createParticles(w, h)
-    }
-
-    const onMouse = (e: MouseEvent) => {
-      mouseRef.current = { x: e.clientX / w, y: e.clientY / h }
-    }
-
-    let resizeT: ReturnType<typeof setTimeout>
-    const onResize = () => { clearTimeout(resizeT); resizeT = setTimeout(resize, 140) }
-
-    function render(t: number) {
-      if (dead) return
-      ctx.clearRect(0, 0, w, h)
-
-      // Base fill — matches design system neutral-1
-      ctx.fillStyle = '#141414'
-      ctx.fillRect(0, 0, w, h)
-
-      // One very soft, large accent glow — NOT a gradient bg, just ambience
-      const mx = w * (0.25 + mouseRef.current.x * 0.5)
-      const my = h * (0.05 + mouseRef.current.y * 0.3)
-      const gr = ctx.createRadialGradient(mx, my, 0, mx, my, w * 0.6)
-      gr.addColorStop(0, 'rgba(59,130,246,0.022)')
-      gr.addColorStop(1, 'rgba(59,130,246,0)')
-      ctx.fillStyle = gr
-      ctx.fillRect(0, 0, w, h)
-
-      // Floating particles
-      const time = t * 0.001
-      for (const p of particles) {
-        p.x += p.vx
-        p.y += p.vy
-        if (p.x < 0) p.x = w
-        if (p.x > w) p.x = 0
-        if (p.y < -4) p.y = h + 4
-
-        const fade = 0.7 + 0.3 * Math.sin(time * 0.3 + p.phase)
-        ctx.globalAlpha = p.opacity * fade
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
-        ctx.fillStyle = '#ffffff'
-        ctx.fill()
-      }
-
-      ctx.globalAlpha = 1
-      raf = requestAnimationFrame(render)
-    }
-
-    resize()
-    window.addEventListener('resize', onResize)
-    window.addEventListener('mousemove', onMouse, { passive: true })
-    raf = requestAnimationFrame(render)
-
-    return () => {
-      dead = true
-      cancelAnimationFrame(raf)
-      window.removeEventListener('resize', onResize)
-      window.removeEventListener('mousemove', onMouse)
-      clearTimeout(resizeT)
-    }
-  }, [])
-
   return (
-    <canvas
-      ref={canvasRef}
-      className="fixed inset-0 w-full h-full pointer-events-none"
-      style={{ zIndex: -1 }}
-    />
+    <div
+      aria-hidden
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: -1,
+        overflow: 'hidden',
+        background: 'var(--color-neutral-1)',
+      }}
+    >
+      {/* Blue orb — top-left */}
+      <Orb
+        style={{
+          width: 700,
+          height: 700,
+          top: '-15%',
+          left: '-10%',
+          background: 'rgba(59, 130, 246, 0.11)',
+        }}
+        animate={{ scale: [1, 1.12, 1], opacity: [0.8, 1, 0.8] }}
+        duration={14}
+        delay={0}
+      />
+
+      {/* Purple orb — top-right */}
+      <Orb
+        style={{
+          width: 600,
+          height: 600,
+          top: '-5%',
+          right: '-12%',
+          background: 'rgba(139, 92, 246, 0.09)',
+        }}
+        animate={{ scale: [1, 1.08, 1], opacity: [0.7, 1, 0.7] }}
+        duration={18}
+        delay={3}
+      />
+
+      {/* Teal orb — bottom-center */}
+      <Orb
+        style={{
+          width: 800,
+          height: 500,
+          bottom: '5%',
+          left: '20%',
+          background: 'rgba(16, 185, 129, 0.06)',
+        }}
+        animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }}
+        duration={22}
+        delay={6}
+      />
+
+      {/* Grain overlay — SVG feTurbulence */}
+      <svg
+        aria-hidden
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0.4,
+          mixBlendMode: 'overlay',
+          pointerEvents: 'none',
+        }}
+      >
+        <filter id="grain">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.65"
+            numOctaves="3"
+            stitchTiles="stitch"
+          />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#grain)" />
+      </svg>
+    </div>
   )
 }
