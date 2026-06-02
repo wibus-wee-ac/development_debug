@@ -8,7 +8,7 @@ Rich preview routes 是 read-only：`/files/info` 返回类型与 preview kind�
 
 Workspace Explorer uses a VS Code-style shallow model. `/workspaces/:id/files/children?path=` reads only the direct children for one directory, skips known expensive/generated directories such as `.git` and `node_modules`, and honors root `.gitignore`. UI trees should expand directories by asking for children instead of repeatedly fetching the full workspace. `/workspaces/:id/files/search?q=&limit=` provides a small bounded search/completion window for composer mentions, smart mentions, and quick open without keeping a recursive inventory in browser memory. `/workspaces/:id/files/events` exposes SSE directory refresh hints from a workspace-owned `fs.watch` broker so loaded Explorer directories can refresh changed directories and their loaded ancestors after external file changes without full rescans.
 
-Full file listing remains intentionally bounded and cached for heavier consumers that still need broad workspace paths. `/workspaces/:id/files` walks the workspace breadth-first, returns at most the server-owned entry limit, and keeps a short cache that is invalidated by workspace write/create/rename routes.
+Full file listing remains intentionally bounded and cached for heavier consumers that still need broad workspace paths. `/workspaces/:id/files` walks the workspace breadth-first, returns at most the server-owned entry limit, and keeps a short cache that is invalidated by workspace write/create/rename routes. The cache prunes expired entries on access and caps retained workspace paths so one-off workspace scans do not accumulate indefinitely.
 
 ## Files
 

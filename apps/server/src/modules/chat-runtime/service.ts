@@ -2287,20 +2287,19 @@ export async function cancelSession(sessionId: string): Promise<void> {
 export async function abortAllRuns(): Promise<void> {
   const runIds = [...activeRuns.keys()]
   for (const runId of runIds) {
+    const active = activeRuns.get(runId)
+    if (!active) {
+      continue
+    }
     try {
-      const active = activeRuns.get(runId)
-      if (active) {
-        await settleActiveRun(active, 'aborted', null)
-        try {
-          await requestRuntimeCancel(active)
-        }
- finally {
-          releaseActiveRun(active)
-        }
-      }
+      await settleActiveRun(active, 'aborted', null)
+      await requestRuntimeCancel(active)
     }
  catch {
       /* best-effort */
+    }
+    finally {
+      releaseActiveRun(active)
     }
   }
   activeRuns.clear()
@@ -2681,7 +2680,7 @@ async function tryApplyLiveSteer(input: {
   }
 
   const steerMessage = annotateContinuationMessage(
-    createUserMessage(randomUUID(), input.text, input.files, input.contextParts),
+    createUserMessage(`continuation-${input.queueItemId}`, input.text, input.files, input.contextParts),
     { mode: 'steer', queueItemId: input.queueItemId },
   )
   try {
@@ -3116,17 +3115,18 @@ async function executeRun(
  catch {
       // session may have been deleted during the run
     }
+    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
+    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation(activeRun, finalChunk)
+    recordChatRuntimeProfile(activeRun, diagnostics, profile)
     releaseActiveRun(activeRun)
     scheduleSessionQueueDrain(activeRun.sessionId)
-    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
-    if (shouldScheduleCodexGoalContinuation(activeRun, finalChunk)) {
+    if (shouldContinueCodexGoal) {
       scheduleCodexGoalContinuation({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         modelId: actualModelId ?? undefined,
       })
     }
-    recordChatRuntimeProfile(activeRun, diagnostics, profile)
   }
 }
 
@@ -3165,6 +3165,13 @@ function stopSnapshotTimer(activeRun: ActiveRun): void {
   if (activeRun.snapshotTimer) {
     clearInterval(activeRun.snapshotTimer)
     activeRun.snapshotTimer = null
+  }
+}
+
+function stopPendingRunDeltaFlush(activeRun: ActiveRun): void {
+  if (activeRun.pendingDeltaFlushTimer) {
+    clearTimeout(activeRun.pendingDeltaFlushTimer)
+    activeRun.pendingDeltaFlushTimer = null
   }
 }
 
@@ -4025,10 +4032,19 @@ function abortPersistedStreamingMessages(sessionId: string): void {
 
 function releaseActiveRun(activeRun: ActiveRun): void {
   stopSnapshotTimer(activeRun)
+  stopPendingRunDeltaFlush(activeRun)
   activeRuns.delete(activeRun.runId)
+  runSubscribers.delete(activeRun.runId)
   if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
     activeRunIdsBySession.delete(activeRun.sessionId)
   }
+  activeRun.pendingDeltaChunk = null
+  activeRun.chunkBuffer = []
+  activeRun.chunkBufferIndexByKey.clear()
+  activeRun.finalMessage.parts = []
+  activeRun.finalProjection.activeTextParts.clear()
+  activeRun.finalProjection.activeReasoningParts.clear()
+  activeRun.finalProjection.partialToolCalls.clear()
 }
 
 function hasActiveCodexGoal(rawProviderStateSnapshot: string | null | undefined): boolean {

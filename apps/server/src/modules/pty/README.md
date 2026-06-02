@@ -1,6 +1,6 @@
 # Pty Module
 
-Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource lifecycle (`start-or-attach`, `delete`), terminal resource snapshots (`resources`), and WebSocket owns the live channel protocol (`snapshot` / `output` / `exit` and `input` / `resize` / `ping`).
+Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource lifecycle (`start-or-attach`, `delete`), terminal resource snapshots (`resources`), and WebSocket owns the live channel protocol (`snapshot` / `output` / `exit` and `input` / `resize` / `ping`). Natural process exits release runtime registry records immediately while retaining the bounded timeline exit/snapshot history; explicit deletes also release the timeline.
 
 ## Files
 

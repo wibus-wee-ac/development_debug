@@ -122,9 +122,9 @@ export class PtyRuntimeRegistry {
         signal: signal !== undefined ? String(signal) : null,
       }
       this.hooks.onExit(input.sessionId, exit)
+      this.sessions.delete(input.sessionId)
 
       if (record.destroyed) {
-        this.sessions.delete(input.sessionId)
         this.hooks.onRelease(input.sessionId)
       }
     })

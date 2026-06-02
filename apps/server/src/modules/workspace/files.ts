@@ -46,6 +46,7 @@ interface WorkspaceFileListCacheEntry {
 }
 
 const WORKSPACE_FILE_LIST_CACHE_TTL_MS = 30_000
+const WORKSPACE_FILE_LIST_CACHE_MAX_WORKSPACES = 32
 const WORKSPACE_FILE_LIST_MAX_ENTRIES = 5_000
 const WORKSPACE_FILE_LIST_MAX_DIRECTORIES = 1_500
 const WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES = 3_000
@@ -62,17 +63,22 @@ const ignoredWorkspaceFileNames = new Set([
 ])
 
 export async function listFiles(workspacePath: string): Promise<WorkspaceFileEntry[]> {
+  const now = Date.now()
+  pruneWorkspaceFileListCache(now)
   const cached = workspaceFileListCache.get(workspacePath)
-  if (cached && cached.expiresAt > Date.now()) {
+  if (cached && cached.expiresAt > now) {
+    workspaceFileListCache.delete(workspacePath)
+    workspaceFileListCache.set(workspacePath, cached)
     return cached.entries
   }
 
   const ignoreContext = await createWorkspaceIgnoreContext(workspacePath)
   const fileEntries = await collectWorkspaceFileEntries(workspacePath, ignoreContext)
   workspaceFileListCache.set(workspacePath, {
-    expiresAt: Date.now() + WORKSPACE_FILE_LIST_CACHE_TTL_MS,
+    expiresAt: now + WORKSPACE_FILE_LIST_CACHE_TTL_MS,
     entries: fileEntries,
   })
+  trimWorkspaceFileListCache()
 
   return fileEntries
 }
@@ -536,6 +542,24 @@ export async function renameWorkspacePath(workspacePath: string, sourcePath: str
 
 export function invalidateWorkspaceFileList(workspacePath: string): void {
   workspaceFileListCache.delete(workspacePath)
+}
+
+function pruneWorkspaceFileListCache(now: number): void {
+  for (const [workspacePath, entry] of workspaceFileListCache) {
+    if (entry.expiresAt <= now) {
+      workspaceFileListCache.delete(workspacePath)
+    }
+  }
+}
+
+function trimWorkspaceFileListCache(): void {
+  while (workspaceFileListCache.size > WORKSPACE_FILE_LIST_CACHE_MAX_WORKSPACES) {
+    const oldestWorkspacePath = workspaceFileListCache.keys().next().value
+    if (typeof oldestWorkspacePath !== 'string') {
+      return
+    }
+    workspaceFileListCache.delete(oldestWorkspacePath)
+  }
 }
 
 export function resolveWorkspaceFilePath(workspacePath: string, relativePath: string): string | null {
