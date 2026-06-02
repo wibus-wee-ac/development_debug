@@ -57,7 +57,6 @@ const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
 
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
 const MAX_EXTERNAL_WORK_IMPORT_BYTES = 8 * 1024 * 1024
-const TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS = new Set(['.md', '.json', '.toml'])
 
 type ExternalWorkImportSourceApp = 'claude' | 'codex'
 
@@ -236,18 +235,12 @@ class NativeService extends IpcService {
   @IpcMethod()
   async scanExternalWorkImportFiles(options: {
     limitPerSource?: number
-    workspacePaths?: string[]
   } = {}): Promise<{ files: ExternalWorkImportFile[], warnings: string[] }> {
     const limit = Math.min(Math.max(options.limitPerSource ?? 500, 1), 500)
     const home = homedir()
     const files: ExternalWorkImportFile[] = []
     const warnings: string[] = []
     const fixedCandidates: Array<{ sourceApp: ExternalWorkImportSourceApp, path: string }> = [
-      { sourceApp: 'claude', path: join(home, '.claude', 'settings.json') },
-      { sourceApp: 'claude', path: join(home, '.claude', 'settings.local.json') },
-      { sourceApp: 'claude', path: join(home, '.claude', 'config.json') },
-      { sourceApp: 'codex', path: join(home, '.codex', 'config.toml') },
-      { sourceApp: 'codex', path: join(home, '.codex', 'AGENTS.md') },
       { sourceApp: 'codex', path: join(home, '.codex', 'history.jsonl') },
     ]
 
@@ -258,53 +251,10 @@ class NativeService extends IpcService {
       }
     }
 
-    for (const workspacePath of options.workspacePaths ?? []) {
-      const agentsFile = await readExternalWorkImportFile(
-        'codex',
-        join(workspacePath, 'AGENTS.md'),
-        workspacePath,
-      )
-      if (agentsFile) {
-        files.push(agentsFile)
-      }
-      const claudeFile = await readExternalWorkImportFile(
-        'claude',
-        join(workspacePath, 'CLAUDE.md'),
-        workspacePath,
-      )
-      if (claudeFile) {
-        files.push(claudeFile)
-      }
-    }
-
     files.push(...await collectExternalWorkImportFiles({
       sourceApp: 'claude',
       root: join(home, '.claude', 'projects'),
       extensions: '.jsonl',
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'claude',
-      root: join(home, '.claude', 'commands'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'claude',
-      root: join(home, '.claude', 'hooks'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'claude',
-      root: join(home, '.claude', 'agents'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'claude',
-      root: join(home, '.claude', 'skills'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
       limit,
     }))
     files.push(...await collectExternalWorkImportFiles({
@@ -313,81 +263,6 @@ class NativeService extends IpcService {
       extensions: '.jsonl',
       limit,
     }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'codex',
-      root: join(home, '.codex', 'commands'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'codex',
-      root: join(home, '.codex', 'hooks'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'codex',
-      root: join(home, '.codex', 'subagents'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'codex',
-      root: join(home, '.codex', 'skills'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-    files.push(...await collectExternalWorkImportFiles({
-      sourceApp: 'codex',
-      root: join(home, '.codex', 'plugins'),
-      extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-      limit,
-    }))
-
-    for (const workspacePath of options.workspacePaths ?? []) {
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'codex',
-        root: join(workspacePath, '.codex', 'commands'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'codex',
-        root: join(workspacePath, '.codex', 'hooks'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'codex',
-        root: join(workspacePath, '.codex', 'subagents'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'claude',
-        root: join(workspacePath, '.claude', 'commands'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'claude',
-        root: join(workspacePath, '.claude', 'hooks'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-      files.push(...await collectExternalWorkImportFiles({
-        sourceApp: 'claude',
-        root: join(workspacePath, '.claude', 'agents'),
-        extensions: TEXT_EXTERNAL_WORK_IMPORT_EXTENSIONS,
-        limit,
-        workspacePath,
-      }))
-    }
 
     if (files.length === 0) {
       warnings.push('No supported Claude or Codex work files were found on this device.')

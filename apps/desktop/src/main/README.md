@@ -5,7 +5,7 @@
 ## 文件清单
 
 - `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
-- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，并把 webview creation event 转发给 plugin loader。
+- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，为 Browser Panel webviews 安装 guest preload / popup routing / permissive browser session handler，并把 webview creation event 转发给 plugin loader。
 - `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames。
 - `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、subscriber cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
 - `desktop-app-badge-manager.ts`：拥有 Electron app icon badge IPC；renderer 只投影 unread count，main process 负责 macOS Dock badge 写入和清理。
@@ -18,7 +18,7 @@
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 从专用 renderer entry 初始化、按释放点选择目标 display，在释放点附近打开并限制在目标 workArea 内、只记忆宽高，同一 session 的重复 open 会聚合到已登记窗口，并在关闭时通知 main renderer 恢复对应 main-window chat tab。
 - `window-manager.test.ts`：覆盖 session tear-off window 并发 open 去重，以及 renderer load 失败时清理 pending session 窗口。
 - `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
-- `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、desktop chat stream broker IPC、外部 AI 应用工作内容的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
+- `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、desktop chat stream broker IPC、Claude / Codex 会话文件的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
 - `observability-reporter.ts`：拥有 Electron main process 的 private-preview error capture，把 main-process uncaught exception / unhandled rejection 缓存并投递到 server-owned observability API；只写 Cradle server namespace，不引入外部上传服务。
 - `native-editor-launcher.ts`：拥有 desktop native editor launch strategy，优先使用 macOS app launch，再回退到 common editor CLI commands。
 - `native-appshot-codex-assets.ts`：拥有 Codex Computer Use Appshot temp asset 的只读 projection，只读取 `/tmp/com.openai.sky.CUAService` 并把 Codex 私有图片产物转换为 Cradle IPC/report 可消费的 metadata 和 data URL。

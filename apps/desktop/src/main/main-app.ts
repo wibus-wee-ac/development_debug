@@ -1,11 +1,15 @@
 import { join, resolve } from 'node:path'
 
-import { app, BrowserWindow, dialog, screen } from 'electron'
+import { app, BrowserWindow, dialog, screen, session } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
 import { ChatStreamBroker } from './chat-stream-broker'
 import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
-import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
+import {
+  resolveDesktopBrowserPanelPreloadPath,
+  resolveDesktopPreloadPath,
+  resolveDesktopRendererIndexPath,
+} from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
@@ -41,10 +45,33 @@ const MAIN_WINDOW_STATE_FILE = 'main-window-state.json'
 const DEEP_LINK_PROTOCOL = 'cradle'
 const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
 const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_KEY_PATTERN = /^\d$/
+const BROWSER_PANEL_OPEN_URL_CHANNEL = 'browser-panel:open-url'
+const BROWSER_PANEL_PARTITION = 'persist:browser'
 
 let installQueue = Promise.resolve()
 let canProcessPluginInstallLinks = false
 const pendingPluginInstallUrls: string[] = []
+let browserPanelSessionConfigured = false
+
+function configureBrowserPanelSession(): void {
+  if (browserPanelSessionConfigured) {
+    return
+  }
+  browserPanelSessionConfigured = true
+
+  const browserSession = session.fromPartition(BROWSER_PANEL_PARTITION)
+  browserSession.setPermissionRequestHandler((_webContents, _permission, callback) => {
+    callback(true)
+  })
+  browserSession.setPermissionCheckHandler(() => true)
+}
+
+function sendBrowserPanelOpenUrl(win: BrowserWindow, url: string): void {
+  if (!url || win.isDestroyed()) {
+    return
+  }
+  win.webContents.send(BROWSER_PANEL_OPEN_URL_CHANNEL, { url })
+}
 
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   const mainWindowStatePath = join(app.getPath('userData'), MAIN_WINDOW_STATE_FILE)
@@ -109,16 +136,22 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
 function setMainWindow(win: BrowserWindow): void {
   mainWindow = win
   windowManager?.setMainWindow(win)
+  configureBrowserPanelSession()
 
   win.webContents.on('will-attach-webview', (_event, webPreferences, _params) => {
-    delete webPreferences.preload
+    webPreferences.preload = resolveDesktopBrowserPanelPreloadPath(__dirname)
     webPreferences.nodeIntegration = false
     webPreferences.contextIsolation = true
+    webPreferences.sandbox = true
   })
 
   win.webContents.on('did-attach-webview', (_event, webviewContents) => {
     const tabId = `tab-${Date.now()}`
     notifyWebviewCreated(webviewContents, tabId)
+    webviewContents.setWindowOpenHandler((details) => {
+      sendBrowserPanelOpenUrl(win, details.url)
+      return { action: 'deny' }
+    })
     webviewContents.on('before-input-event', (event, input) => {
       if (input.type !== 'keyDown') {
         return

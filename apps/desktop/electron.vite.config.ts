@@ -34,6 +34,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
+          'browser-panel': resolve(__dirname, 'src/preload/browser-panel.ts'),
         },
         output: {
           format: 'cjs',
