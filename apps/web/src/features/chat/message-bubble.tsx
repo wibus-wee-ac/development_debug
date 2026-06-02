@@ -1139,7 +1139,7 @@ export function MessageBubbleById({
     state => readRenderSegmentsFromState(state, storeSessionId, messageId),
     areRenderSegmentsEqual,
   )
-  const isStreaming = useChatStore(chatSelectors.isStreamingMessage(messageId))
+  const isStreaming = useChatStore(chatSelectors.isVisibleStreamingMessage(storeSessionId, messageId))
 
   if (!frame) {
     return null

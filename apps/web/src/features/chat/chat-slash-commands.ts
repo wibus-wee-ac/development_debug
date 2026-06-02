@@ -93,7 +93,6 @@ export interface ChatComposerSlashCommand {
 
 export const CRADLE_APPSHOT_SLASH_ACTION_ID = 'capture-appshot'
 export const CODEX_REVIEW_SLASH_ACTION_ID = 'codex-review-mode'
-export const CODEX_FEEDBACK_SLASH_ACTION_ID = 'codex-feedback-dialog'
 
 export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
   id: 'cradle:appshot',
@@ -172,8 +171,6 @@ function readCodexRuntimeUiSlotAction(slot: ChatRuntimeUiSlot, commandText: stri
       return { kind: 'submitText', text: commandText.trim(), requiresEmptyComposer: true }
     case 'codex:review':
       return { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID }
-    case 'codex:feedback':
-      return { kind: 'uiAction', actionId: CODEX_FEEDBACK_SLASH_ACTION_ID }
     default:
       return { kind: 'insertText', text: commandText }
   }

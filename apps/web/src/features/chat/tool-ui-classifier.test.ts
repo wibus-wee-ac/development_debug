@@ -54,6 +54,23 @@ describe('describeToolCall', () => {
     })
   })
 
+  it('reads streamed command arguments when the runtime sends an empty input object', () => {
+    const part: RenderableToolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'call-streamed-command',
+      toolName: 'bash',
+      state: 'input-streaming',
+      input: {},
+      argumentsText: '{"command":"pnpm --filter web typecheck","timeout":120000}',
+    }
+
+    expect(describeToolCall(part)).toMatchObject({
+      kind: 'terminal',
+      title: 'Run command',
+      target: 'pnpm --filter web typecheck',
+    })
+  })
+
   it('describes file edits while tool arguments are still streaming', () => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',

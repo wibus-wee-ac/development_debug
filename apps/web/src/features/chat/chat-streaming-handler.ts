@@ -236,10 +236,7 @@ export class ChatStreamingHandler {
         store.setPassiveStreamingMessage(this.sessionId, messageId, true)
       }
       else {
-        const controller = store.activeAbortControllers.get(this.messageId) ?? new AbortController()
-        store.moveRunDisplayMeta(this.messageId, messageId)
-        store.startGeneration(this.sessionId, messageId, controller)
-        store.finishGeneration(this.messageId)
+        store.moveStreamingMessage(this.sessionId, this.messageId, messageId)
       }
     }
 

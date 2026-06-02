@@ -27,7 +27,7 @@ import { useLayoutStore } from '~/store/layout'
 
 import { hasTerminalDetails } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
-import { describeToolCall } from '../tool-ui-classifier'
+import { describeToolCall, readToolInputPayload, readToolPayload } from '../tool-ui-classifier'
 import {
   FileDiffExecutionDetails,
   hasFileDiffInlineContent,
@@ -37,6 +37,7 @@ import {
 } from './tool-call-block'
 
 const BACKSLASH_PATTERN = /\\/g
+const LINE_BREAK_PATTERN = /\r?\n/
 
 type IconComponent = ComponentType<{ 'className'?: string, 'aria-hidden'?: boolean }>
 
@@ -94,7 +95,20 @@ function basename(value: string): string {
   return value.replace(BACKSLASH_PATTERN, '/').split('/').filter(Boolean).pop() ?? value
 }
 
-function getItemLabel(target: string | null, uiKind: ToolUiKind): string {
+function readFirstLine(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  return value.split(LINE_BREAK_PATTERN, 1)[0] ?? value
+}
+
+function getItemLabel(part: RenderableToolPart, target: string | null, uiKind: ToolUiKind): string {
+  if (uiKind === 'terminal') {
+    const input = readToolInputPayload(part.input, part.argumentsText)
+    const output = readToolPayload(part.output)
+    return readFirstLine(input.command ?? output.command ?? target) ?? '—'
+  }
+
   if (!target) { return '—' }
   return FILE_KINDS.has(uiKind) ? basename(target) : target
 }
@@ -225,7 +239,7 @@ export function GroupedToolCallBlock({
 
         {items.map((item, idx) => {
           const descriptor = describeToolCall(item.part)
-          const label = getItemLabel(descriptor.target, uiKind)
+          const label = getItemLabel(item.part, descriptor.target, uiKind)
           const isLast = idx === items.length - 1
           const expandable = hasExpandableDetails(item.part, uiKind)
           const workspaceDiffPath = isDiffKind(uiKind)

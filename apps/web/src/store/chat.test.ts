@@ -202,4 +202,59 @@ describe('chat store tool entity normalization', () => {
       },
     ])
   })
+
+  it('keeps canonical live steer snapshots anchored by queue item id', () => {
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Before steer.' }],
+    }])
+    useChatStore.getState().startGeneration('session-1', 'assistant-1', new AbortController())
+
+    useChatStore.getState().insertLiveSteerMessage('session-1', {
+      id: 'continuation-steer-optimistic',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Please adjust.' }],
+      metadata: {
+        cradle: {
+          continuation: {
+            mode: 'steer',
+            queueItemId: 'steer-1',
+          },
+        },
+      },
+    } as UIMessage)
+
+    useChatStore.getState().setMessages('session-1', [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Before steer. After steer.' }],
+      },
+      {
+        id: 'continuation-steer-canonical',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Please adjust.' }],
+        metadata: {
+          cradle: {
+            continuation: {
+              mode: 'steer',
+              queueItemId: 'steer-1',
+            },
+          },
+        },
+      } as UIMessage,
+    ])
+
+    expect(useChatStore.getState().messagesMap.get('session-1')?.map(message => message.id)).toEqual([
+      'assistant-1',
+      'continuation-steer-canonical',
+      'assistant-1:steer-tail',
+    ])
+    expect(useChatStore.getState().messagesMap.get('session-1')?.[2]).toEqual({
+      id: 'assistant-1:steer-tail',
+      role: 'assistant',
+      parts: [{ type: 'text', text: ' After steer.' }],
+    })
+  })
 })

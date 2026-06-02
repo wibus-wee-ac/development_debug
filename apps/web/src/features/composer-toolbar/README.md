@@ -6,6 +6,7 @@ Shared composer controls for selecting runtime, provider target, provider-owned 
 
 ## Files
 
+- **chat-agent-identity.tsx**: Read-only bound-agent identity chip for existing chat sessions, using the Agent Runtime avatar adapter.
 - **cli-tui-agent-selector.tsx**: CLI TUI agent selector for terminal-backed runtime launches.
 - **composer-profile-selection.ts**: Composer-owned provider visibility helpers; composer surfaces see enabled provider targets compatible with the selected runtime kind.
 - **composer-profile-selection.test.ts**: Regression coverage for hidden disabled providers and runtime/provider compatibility scoping.
@@ -18,5 +19,5 @@ Shared composer controls for selecting runtime, provider target, provider-owned 
 - **provider-model-selector.test.tsx**: Regression coverage for provider-owned model lists in the menu.
 - **runtime-selector.tsx**: Runtime kind selector for new chat and capsule composers, plus a read-only runtime chip for bound chat sessions.
 - **types.ts**: Toolbar selection and model-map type definitions.
-- **use-composer-state.ts**: Unified composer state hook that resolves provider targets, the currently selected target's cached model map, selected model, CLI TUI agent, thinking effort, and persisted composer choices.
+- **use-composer-state.ts**: Unified composer state hook that resolves provider targets, the currently selected target's cached model map, selected model, bound chat agent identity, CLI TUI agent, thinking effort, and persisted composer choices.
 - **use-composer-state.test.tsx**: Regression coverage for persisted composer choices and direct model-to-profile selection.

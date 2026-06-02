@@ -3,7 +3,7 @@
 // Position: Chat-owned rendering boundary independent of app shell and tab registry.
 
 import { useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useCallback, useMemo, useRef } from 'react'
+import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
@@ -35,6 +35,7 @@ export function ChatRuntimeView({
   const queryClient = useQueryClient()
   const composerState = useComposerState({
     context: 'chat',
+    boundAgentId: agentId,
     boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundModelId: sessionModelId,
     boundRuntimeKind: runtimeKind,
@@ -53,14 +54,19 @@ export function ChatRuntimeView({
       },
       signal,
     })
-    return ((data ?? []) as SkillInventoryEntry[])
-      .filter(skill => skill.active)
-      .map(skill => ({
+    const activeSkills: SkillMentionItem[] = []
+    for (const skill of (data ?? []) as SkillInventoryEntry[]) {
+      if (!skill.active) {
+        continue
+      }
+      activeSkills.push({
         name: skill.name,
         description: skill.description,
         scope: skill.scope,
         skillDir: skill.skillDir,
-      }))
+      })
+    }
+    return activeSkills
   }, [agentId, workspaceId])
 
   const sendOverridesRef = useRef({
@@ -68,11 +74,13 @@ export function ChatRuntimeView({
     modelId: undefined as string | undefined,
     thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
   })
-  sendOverridesRef.current = {
-    providerTargetId: composerState.selection.profileId ?? undefined,
-    modelId: composerState.selection.modelId ?? undefined,
-    thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
-  }
+  useLayoutEffect(() => {
+    sendOverridesRef.current = {
+      providerTargetId: composerState.selection.profileId ?? undefined,
+      modelId: composerState.selection.modelId ?? undefined,
+      thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
+    }
+  }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort])
 
   const persistSessionProviderModel = useCallback(async (body: {
     providerTargetId?: string

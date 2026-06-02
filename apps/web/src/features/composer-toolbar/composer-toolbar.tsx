@@ -1,3 +1,4 @@
+import { ChatAgentIdentity } from './chat-agent-identity'
 import { CliTuiAgentSelector } from './cli-tui-agent-selector'
 import { ProviderModelSelector } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
@@ -25,6 +26,7 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
     requestProfileModels,
     isLoadingModels,
   } = state
+  const boundChatAgent = context === 'chat' ? state.effectiveAgent : null
 
   return (
     <div className="flex items-center gap-1">
@@ -33,30 +35,32 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
         onChange={setRuntimeKind}
         readOnly={context === 'chat'}
       />
-      {selection.runtimeKind === 'cli-tui'
-        ? (
-            <CliTuiAgentSelector
-              agents={agents}
-              selectedAgentId={selection.agentId}
-              onSelectAgent={setAgentId}
-            />
-          )
-        : (
-            <ProviderModelSelector
-              profiles={profiles}
-              selectedProfileId={selection.profileId}
-              selectedModelId={selection.modelId}
-              models={models}
-              modelsByProfileId={modelsByProfileId}
-              loadingProfileIds={loadingProfileIds}
-              thinkingEffort={selection.thinkingEffort}
-              isLoadingModels={isLoadingModels}
-              requestProfileModels={requestProfileModels}
-              onSelectProfile={setProfileId}
-              onSelectModel={setModelId}
-              onSelectThinkingEffort={setThinkingEffort}
-            />
-          )}
+      {boundChatAgent
+        ? <ChatAgentIdentity agent={boundChatAgent} />
+        : selection.runtimeKind === 'cli-tui'
+          ? (
+              <CliTuiAgentSelector
+                agents={agents}
+                selectedAgentId={selection.agentId}
+                onSelectAgent={setAgentId}
+              />
+            )
+          : (
+              <ProviderModelSelector
+                profiles={profiles}
+                selectedProfileId={selection.profileId}
+                selectedModelId={selection.modelId}
+                models={models}
+                modelsByProfileId={modelsByProfileId}
+                loadingProfileIds={loadingProfileIds}
+                thinkingEffort={selection.thinkingEffort}
+                isLoadingModels={isLoadingModels}
+                requestProfileModels={requestProfileModels}
+                onSelectProfile={setProfileId}
+                onSelectModel={setModelId}
+                onSelectThinkingEffort={setThinkingEffort}
+              />
+            )}
     </div>
   )
 }

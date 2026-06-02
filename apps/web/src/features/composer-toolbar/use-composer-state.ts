@@ -12,6 +12,8 @@ import type { ComposerContext, ComposerSelection, ModelsByProfileId, ProviderMod
 
 interface ComposerStateConfig {
   context: ComposerContext
+  /** For 'chat' context — the session's bound agent identity */
+  boundAgentId?: string | null
   /** For 'chat' context — the session's bound provider target */
   boundProviderTargetId?: string
   /** For 'chat' context — the session's bound requested model */
@@ -44,7 +46,7 @@ export interface ComposerStateResult {
 const EMPTY_MODELS: ModelDescriptor[] = []
 
 export function useComposerState(config: ComposerStateConfig): ComposerStateResult {
-  const { context, boundProviderTargetId, boundModelId, boundRuntimeKind } = config
+  const { context, boundAgentId, boundProviderTargetId, boundModelId, boundRuntimeKind } = config
 
   // Persisted state
   const lastRuntimeKind = useNewChatStore(s => s.lastRuntimeKind)
@@ -86,8 +88,17 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     () => agents.filter(agent => agent.enabled && agent.runtimeKind === 'cli-tui'),
     [agents],
   )
+  const boundAgent = useMemo(() => {
+    if (context !== 'chat' || !boundAgentId) {
+      return null
+    }
+    return agents.find(agent => agent.id === boundAgentId && agent.enabled) ?? null
+  }, [agents, boundAgentId, context])
 
   const agentId = useMemo(() => {
+    if (context === 'chat' && boundAgent?.runtimeKind === runtimeKind) {
+      return boundAgent.id
+    }
     if (runtimeKind !== 'cli-tui') {
       return null
     }
@@ -98,7 +109,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
       return lastCliTuiAgentId
     }
     return cliTuiAgents[0]?.id ?? null
-  }, [runtimeKind, manualAgentId, lastCliTuiAgentId, cliTuiAgents])
+  }, [runtimeKind, context, boundAgent, manualAgentId, lastCliTuiAgentId, cliTuiAgents])
 
   // Resolve effective profile
   const profileId = useMemo(() => {
@@ -108,11 +119,14 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (manualProfileId && selectableProfiles.some(p => p.id === manualProfileId)) {
       return manualProfileId
     }
+    if (context === 'chat' && boundAgent?.providerTargetId) {
+      return boundAgent.providerTargetId
+    }
     if (context === 'chat') {
-      return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: boundProviderTargetId ?? null })
+      return boundProviderTargetId ?? null
     }
     return pickComposerProfileId({ profiles: selectableProfiles, lastProfileId })
-  }, [runtimeKind, manualProfileId, context, boundProviderTargetId, lastProfileId, selectableProfiles])
+  }, [runtimeKind, manualProfileId, context, boundAgent, boundProviderTargetId, lastProfileId, selectableProfiles])
 
   const initialModelProfileIds = useMemo(() => [profileId], [profileId])
   const {
@@ -135,7 +149,13 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
       return manualModelId
     }
     if (context === 'chat') {
+      if (boundAgent?.modelId) {
+        return boundAgent.modelId
+      }
       if (boundModelId && models.some(m => m.id === boundModelId)) {
+        return boundModelId
+      }
+      if (boundModelId) {
         return boundModelId
       }
       return models[0]?.id ?? null
@@ -145,11 +165,13 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
       return persisted
     }
     return models[0]?.id ?? null
-  }, [runtimeKind, manualModelId, models, context, boundModelId, profileId, lastModelByProfile])
+  }, [runtimeKind, manualModelId, models, context, boundModelId, boundAgent, profileId, lastModelByProfile])
 
   const effectiveAgent = useMemo(
-    () => cliTuiAgents.find(agent => agent.id === agentId) ?? null,
-    [cliTuiAgents, agentId],
+    () => boundAgent?.id === agentId
+      ? boundAgent
+      : cliTuiAgents.find(agent => agent.id === agentId) ?? null,
+    [boundAgent, cliTuiAgents, agentId],
   )
 
   // Resolved objects
@@ -162,9 +184,12 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     [models, modelId],
   )
   const effectiveThinkingEffort = useMemo((): ThinkingEffort => {
+    if (context === 'chat' && boundAgent?.thinkingEffort && boundAgent.thinkingEffort !== 'auto') {
+      return boundAgent.thinkingEffort
+    }
     const options = filterThinkingOptionsForModel(effectiveModel, THINKING_EFFORTS)
     return options.some(option => option.value === thinkingEffort) ? thinkingEffort : null
-  }, [effectiveModel, thinkingEffort])
+  }, [boundAgent, context, effectiveModel, thinkingEffort])
 
   const selection = useMemo((): ComposerSelection => ({
     agentId,

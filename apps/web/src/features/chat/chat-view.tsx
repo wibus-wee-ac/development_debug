@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, ListTodoIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
@@ -30,17 +30,16 @@ import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import { ChatShareExport } from './chat-share-export'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { CODEX_FEEDBACK_SLASH_ACTION_ID, CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
+import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import type { SessionTodoSnapshot } from './chat-todo-projection'
 import { readTodoCompletion } from './chat-todo-projection'
-import type { CodexFeedbackPayload } from './codex-feedback-dialog'
-import { CodexFeedbackDialog } from './codex-feedback-dialog'
-import { CodexReviewModeDialog } from './codex-review-mode-dialog'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
+import type { ComposerReviewSlotActions } from './composer-slot-states'
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
+import { registerChatPromptIngressHandler } from './prompt-ingress'
 import { RuntimeDiagnosticsPopover } from './runtime-diagnostics-popover'
 import { RuntimeToolbarOptions } from './runtime-toolbar-options'
 import type { SkillMentionItem } from './skill-mention-panel'
@@ -52,7 +51,6 @@ import type { ChatQueueItem } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
-import { useRuntimeSessionStatus } from './use-runtime-session-status'
 import { useSessionAwaitSummary } from './use-session-await'
 import { useSessionTodos } from './use-session-todos'
 
@@ -83,14 +81,6 @@ interface ChatViewProps {
 }
 
 const EMPTY_FILES: MentionItem[] = []
-
-function readFeedbackUploadThreadId(result: unknown): string | null {
-  if (!result || typeof result !== 'object' || !('threadId' in result)) {
-    return null
-  }
-  const threadId = (result as { threadId?: unknown }).threadId
-  return typeof threadId === 'string' && threadId.length > 0 ? threadId : null
-}
 
 function ChatMessageListPane({
   sessionId,
@@ -224,6 +214,7 @@ function ChatComposerSection({
   contextBar,
   droppedPath,
   goalActions,
+  reviewSlot,
   onComposerFocusChange,
 }: {
   todoSnapshot: SessionTodoSnapshot | null
@@ -248,10 +239,11 @@ function ChatComposerSection({
     onResume: (state: ChatRuntimeGoalUiSlotState) => void
     onClear: (state: ChatRuntimeGoalUiSlotState) => void
   }
+  reviewSlot: ComposerReviewSlotActions
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
-    <div className="shrink-0 bg-background/80 px-4 py-3 backdrop-blur-sm">
+    <div className="shrink-0 bg-tra px-4 pb-3 backdrop-blur-sm">
       <div className="mx-auto max-w-208">
         <TodoProgress snapshot={todoSnapshot} />
         <ChatAwaitBanner awaitSummary={awaitSummary} />
@@ -265,6 +257,7 @@ function ChatComposerSection({
           slots={composerRuntime.uiSlots}
           states={composerRuntime.slotStates}
           actions={goalActions}
+          review={reviewSlot}
         />
         <Composer
           send={{
@@ -372,14 +365,12 @@ export function ChatView({
     reorderQueueItems,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
-  const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
   const todoSnapshot = useSessionTodos(sessionId)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
   const [goalActionBusy, setGoalActionBusy] = useState(false)
-  const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false)
-  const [reviewModeDialogOpen, setReviewModeDialogOpen] = useState(false)
+  const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
@@ -396,6 +387,16 @@ export function ChatView({
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
+  const composerSend = composerRuntime.send
+
+  useEffect(() => {
+    if (!sessionId) {
+      return
+    }
+    return registerChatPromptIngressHandler(sessionId, ({ text, files, contextParts = [] }) => {
+      composerSend(text, files, contextParts)
+    })
+  }, [composerSend, sessionId])
 
   const refreshGoalRuntimeState = useCallback(() => {
     if (!sessionId) {
@@ -509,12 +510,8 @@ export function ChatView({
     if (command.action.kind !== 'uiAction') {
       return
     }
-    if (command.action.actionId === CODEX_FEEDBACK_SLASH_ACTION_ID) {
-      setFeedbackDialogOpen(true)
-      return { insertText: '' }
-    }
     if (command.action.actionId === CODEX_REVIEW_SLASH_ACTION_ID) {
-      setReviewModeDialogOpen(true)
+      setReviewModeOpen(true)
       return { insertText: '' }
     }
     if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
@@ -568,45 +565,13 @@ export function ChatView({
     return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
   }, [workspaceId])
 
-  const submitCodexFeedback = useCallback(async (payload: CodexFeedbackPayload) => {
-    if (!sessionId) {
-      toastManager.add({
-        type: 'error',
-        title: 'Feedback is unavailable',
-        description: 'Open a Codex chat session before sending feedback.',
-      })
-      return false
-    }
-
-    try {
-      const response = await postChatSessionsBySessionIdCodexAppServerInvoke({
-        path: { sessionId },
-        body: {
-          method: 'feedback/upload',
-          params: {
-            ...payload,
-            threadId: runtimeStatus?.providerSessionId ?? null,
-          },
-        },
-        throwOnError: true,
-      })
-      const correlationId = readFeedbackUploadThreadId(response.data?.result)
-      toastManager.add({
-        type: 'success',
-        title: 'Feedback uploaded',
-        description: correlationId ? `Feedback ID: ${correlationId}` : undefined,
-      })
-      return true
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: 'Feedback upload failed',
-        description: error instanceof Error ? error.message : 'Unknown feedback upload error.',
-      })
-      return false
-    }
-  }, [runtimeStatus?.providerSessionId, sessionId])
+  const reviewSlot = useMemo<ComposerReviewSlotActions>(() => ({
+    open: reviewModeOpen,
+    workspaceId,
+    onDismiss: () => setReviewModeOpen(false),
+    onSubmitPrompt: submitCodexReviewPrompt,
+    resolveMergeBase: resolveCodexReviewMergeBase,
+  }), [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId])
 
   const runtimeToolbar = useMemo(() => (
     <>
@@ -671,6 +636,7 @@ export function ChatView({
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         goalActions={goalActions}
+        reviewSlot={reviewSlot}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
 
@@ -704,19 +670,6 @@ export function ChatView({
         </DialogContent>
       </Dialog>
 
-      <CodexFeedbackDialog
-        open={feedbackDialogOpen}
-        onOpenChange={setFeedbackDialogOpen}
-        onSubmit={submitCodexFeedback}
-      />
-
-      <CodexReviewModeDialog
-        open={reviewModeDialogOpen}
-        workspaceId={workspaceId}
-        onOpenChange={setReviewModeDialogOpen}
-        onSubmitPrompt={submitCodexReviewPrompt}
-        resolveMergeBase={resolveCodexReviewMergeBase}
-      />
     </div>
   )
 }

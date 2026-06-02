@@ -104,102 +104,112 @@ export function RuntimeSessionPanel({
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
       <ProgressPanel items={progressItems} planState={planState} loading={runtimeUiSlotStatesLoading} />
 
-      <div className="border-t" />
+      {
+        import.meta.env.DEV && (
+          <>
+            <div className="border-t" />
 
-      <section className="space-y-2">
-        <PanelHeading icon={EyeIcon} label="Attention" />
-        {attentionSnapshot
-          ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
-              <Metric label="Scroll" value={formatScrollRatio(attentionSnapshot.scrollRatio)} />
-              <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
-              <Metric label="Freshness" value={formatSnapshotFreshness(attentionSnapshot.updatedAt)} />
+            <div className='mx-auto bg-muted text-[10px] px-2 py-0.5 rounded-full border border-border -mb-1'>
+              Dev Sections
             </div>
-          )
-          : (
-            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
-              No chat attention snapshot for this session
-            </p>
-          )}
-      </section>
 
-      <div className="border-t" />
-
-      <section className="space-y-2">
-        <PanelHeading icon={ActivityIcon} label="Session" />
-        <div className="grid grid-cols-2 gap-2">
-          <Metric label="Runtime status" value={formatStatus(status)} tone={status} />
-          <Metric label="UI status" value={formatStatus(visibleStatus)} tone={visibleStatus} />
-          <Metric label="Runtime" value={runtimeStatus?.runtimeKind ?? runtimeKind ?? 'unknown'} />
-          <Metric label="Mode" value={formatMode(runtimeStatus?.permissionMode)} />
-          <Metric label="Provider" value={runtimeStatus?.providerTargetId ?? providerTargetId ?? 'default'} className="col-span-2" />
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <PanelHeading icon={TimerIcon} label="Run" />
-        <div className="space-y-1.5 rounded-md bg-muted/40 p-2">
-          <KeyValue label="Run ID" value={displayedRun?.runId ?? runMeta?.runId ?? 'none'} />
-          <KeyValue label="Run status" value={displayedRun?.status ?? 'none'} />
-          <KeyValue label="Provider session" value={runtimeStatus?.providerSessionId ?? displayedRun?.providerSessionId ?? 'none'} />
-          <KeyValue label="Model" value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'} />
-          <KeyValue label="First event" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
-          <KeyValue label="First content" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
-          <KeyValue label="Total" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
-          <KeyValue label="Queue" value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`} />
-        </div>
-      </section>
-
-      <section className="space-y-2">
-        <PanelHeading icon={WrenchIcon} label="Tool calls" />
-        <div className="grid grid-cols-3 gap-2">
-          <Metric label="Total" value={String(tools.length)} />
-          <Metric label="Running" value={String(toolCounts.running)} />
-          <Metric label="Failed" value={String(toolCounts.failed)} tone={toolCounts.failed > 0 ? 'error' : 'idle'} />
-        </div>
-        <div className="space-y-1.5">
-          {recentTools.length === 0 && (
-            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
-              No tool calls for this session
-            </p>
-          )}
-          {recentTools.map((tool) => {
-            const descriptor = describeToolCall({
-              type: 'dynamic-tool',
-              toolCallId: tool.toolCallId,
-              toolName: tool.toolName,
-              state: tool.state,
-              input: tool.input,
-              output: tool.output,
-              errorText: tool.errorText,
-              argumentsText: tool.argumentsText,
-            })
-            return (
-              <div key={tool.toolCallId} className="rounded-md bg-muted/40 px-2 py-1.5">
-                <div className="flex items-center gap-2">
-                  <CircleIcon className={cn(
-                    'size-2.5 shrink-0 fill-current',
-                    tool.state === 'output-error' ? 'text-destructive' : 'text-muted-foreground',
-                  )}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
-                    {descriptor.title || formatToolName(tool.toolName)}
-                  </span>
-                  <span className="shrink-0 text-[10px] text-muted-foreground">
-                    {TOOL_STATE_LABELS[tool.state]}
-                  </span>
-                </div>
-                {descriptor.target && (
-                  <p className="mt-0.5 truncate pl-4 text-[10px] text-muted-foreground">
-                    {descriptor.target}
+            <section className="space-y-2">
+              <PanelHeading icon={EyeIcon} label="Attention" />
+              {attentionSnapshot
+                ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
+                    <Metric label="Scroll" value={formatScrollRatio(attentionSnapshot.scrollRatio)} />
+                    <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
+                    <Metric label="Freshness" value={formatSnapshotFreshness(attentionSnapshot.updatedAt)} />
+                  </div>
+                )
+                : (
+                  <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                    No chat attention snapshot for this session
                   </p>
                 )}
+            </section>
+
+            <div className="border-t" />
+
+            <section className="space-y-2">
+              <PanelHeading icon={ActivityIcon} label="Session" />
+              <div className="grid grid-cols-2 gap-2">
+                <Metric label="Runtime status" value={formatStatus(status)} tone={status} />
+                <Metric label="UI status" value={formatStatus(visibleStatus)} tone={visibleStatus} />
+                <Metric label="Runtime" value={runtimeStatus?.runtimeKind ?? runtimeKind ?? 'unknown'} />
+                <Metric label="Mode" value={formatMode(runtimeStatus?.permissionMode)} />
+                <Metric label="Provider" value={runtimeStatus?.providerTargetId ?? providerTargetId ?? 'default'} className="col-span-2" />
               </div>
-            )
-          })}
-        </div>
-      </section>
+            </section>
+
+            <section className="space-y-2">
+              <PanelHeading icon={TimerIcon} label="Run" />
+              <div className="space-y-1.5 rounded-md bg-muted/40 p-2">
+                <KeyValue label="Run ID" value={displayedRun?.runId ?? runMeta?.runId ?? 'none'} />
+                <KeyValue label="Run status" value={displayedRun?.status ?? 'none'} />
+                <KeyValue label="Provider session" value={runtimeStatus?.providerSessionId ?? displayedRun?.providerSessionId ?? 'none'} />
+                <KeyValue label="Model" value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'} />
+                <KeyValue label="First event" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
+                <KeyValue label="First content" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
+                <KeyValue label="Total" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
+                <KeyValue label="Queue" value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`} />
+              </div>
+            </section>
+
+            <section className="space-y-2">
+              <PanelHeading icon={WrenchIcon} label="Tool calls" />
+              <div className="grid grid-cols-3 gap-2">
+                <Metric label="Total" value={String(tools.length)} />
+                <Metric label="Running" value={String(toolCounts.running)} />
+                <Metric label="Failed" value={String(toolCounts.failed)} tone={toolCounts.failed > 0 ? 'error' : 'idle'} />
+              </div>
+              <div className="space-y-1.5">
+                {recentTools.length === 0 && (
+                  <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                    No tool calls for this session
+                  </p>
+                )}
+                {recentTools.map((tool) => {
+                  const descriptor = describeToolCall({
+                    type: 'dynamic-tool',
+                    toolCallId: tool.toolCallId,
+                    toolName: tool.toolName,
+                    state: tool.state,
+                    input: tool.input,
+                    output: tool.output,
+                    errorText: tool.errorText,
+                    argumentsText: tool.argumentsText,
+                  })
+                  return (
+                    <div key={tool.toolCallId} className="rounded-md bg-muted/40 px-2 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <CircleIcon className={cn(
+                          'size-2.5 shrink-0 fill-current',
+                          tool.state === 'output-error' ? 'text-destructive' : 'text-muted-foreground',
+                        )}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+                          {descriptor.title || formatToolName(tool.toolName)}
+                        </span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">
+                          {TOOL_STATE_LABELS[tool.state]}
+                        </span>
+                      </div>
+                      {descriptor.target && (
+                        <p className="mt-0.5 truncate pl-4 text-[10px] text-muted-foreground">
+                          {descriptor.target}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          </>
+        )
+      }
 
     </div>
   )
@@ -237,16 +247,16 @@ function ProgressPanel({
   return (
     <section className="space-y-2">
       <PanelHeading icon={ListChecksIcon} label="Progress" />
-      <div className="space-y-2 rounded-md bg-muted/35 px-2.5 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-        <div className="flex min-w-0 items-center gap-2">
+      <div className="space-y-2 rounded-md bg-muted/35 px-1 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
+        {/* <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/85">
             {activeItem?.label ?? planState?.explanation ?? 'Session task state'}
           </span>
           <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
             {summary}
           </span>
-        </div>
-        <Progress value={safePercent(completed, items.length)} className="h-1.5 bg-muted/70" />
+        </div> */}
+        {/* <Progress value={safePercent(completed, items.length)} className="h-1.5 bg-muted/70" /> */}
         {items.length > 0
           ? (
             <div className="space-y-1">
@@ -277,7 +287,7 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
       <Icon className={cn(
         'mt-0.5 size-3.5 shrink-0',
         item.status === 'completed' && 'text-emerald-500',
-        item.status === 'inProgress' && 'text-primary',
+        item.status === 'inProgress' && 'animate-spin text-primary',
         item.status === 'pending' && 'text-muted-foreground',
       )}
       />
@@ -287,15 +297,6 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
       )}
       >
         {item.label}
-      </span>
-      <span className={cn(
-        'shrink-0 pt-px font-mono text-[9px] tabular-nums',
-        item.status === 'completed' && 'text-emerald-600 dark:text-emerald-400',
-        item.status === 'inProgress' && 'text-primary',
-        item.status === 'pending' && 'text-muted-foreground',
-      )}
-      >
-        {formatProgressTaskStatus(item.status)}
       </span>
     </div>
   )
@@ -412,18 +413,6 @@ function readDominantProgressStatus(left: ProgressTaskStatus, right: ProgressTas
     return 'completed'
   }
   return 'pending'
-}
-
-function formatProgressTaskStatus(status: ProgressTaskStatus): string {
-  switch (status) {
-    case 'completed':
-      return 'done'
-    case 'inProgress':
-      return 'doing'
-    case 'pending':
-    default:
-      return 'todo'
-  }
 }
 
 function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {

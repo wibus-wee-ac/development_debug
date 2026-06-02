@@ -8,7 +8,6 @@ import { describe, expect, it } from 'vitest'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
-  CODEX_FEEDBACK_SLASH_ACTION_ID,
   CODEX_REVIEW_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
@@ -140,7 +139,7 @@ describe('chat slash commands', () => {
     })
   })
 
-  it('projects Codex review and feedback slots as host UI actions instead of raw slash text', () => {
+  it('projects Codex review as a host UI action and leaves feedback as raw slash text', () => {
     const commands = createRuntimeUiSlotCommands([
       {
         id: 'codex:review',
@@ -172,7 +171,7 @@ describe('chat slash commands', () => {
       }),
       expect.objectContaining({
         id: 'codex:feedback',
-        action: { kind: 'uiAction', actionId: CODEX_FEEDBACK_SLASH_ACTION_ID },
+        action: { kind: 'insertText', text: '/feedback ' },
       }),
     ])
     expect(commands[0]?.availability).toBeUndefined()

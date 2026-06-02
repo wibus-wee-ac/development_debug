@@ -551,7 +551,7 @@ export function readToolPayload(value: unknown): ToolPayload {
 
 export function readToolInputPayload(input: unknown, argumentsText?: string): ToolPayload {
   const inputPayload = readToolPayload(input)
-  if (input !== undefined || argumentsText === undefined) {
+  if (argumentsText === undefined || !hasNoToolInputPayload(input)) {
     return inputPayload
   }
 
@@ -562,6 +562,19 @@ export function readToolInputPayload(input: unknown, argumentsText?: string): To
     rawText: argumentsText,
     inputText: argumentsText,
   }
+}
+
+function hasNoToolInputPayload(input: unknown): boolean {
+  if (input === undefined || input === null) {
+    return true
+  }
+
+  const builtinInput = readBuiltinToolCallInputPayload(input)
+  if (builtinInput) {
+    return hasNoToolInputPayload(builtinInput.args)
+  }
+
+  return isRecord(input) && Object.keys(input).length === 0
 }
 
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {

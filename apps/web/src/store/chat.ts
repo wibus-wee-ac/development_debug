@@ -60,6 +60,7 @@ interface AssistantDisplaySplit {
   tailMessageId: string
   splitParts: UIMessage['parts']
   insertedMessageIds: string[]
+  insertedQueueItemIds: string[]
 }
 
 // ── State Interface ─────────────────────────────────────────
@@ -109,6 +110,7 @@ interface ChatState {
   finishGeneration: (messageId: string) => void
   failGeneration: (messageId: string, error: string) => void
   stopGeneration: (messageId: string, sessionId: string) => void
+  moveStreamingMessage: (sessionId: string, fromMessageId: string, toMessageId: string) => void
   setPassiveStreamingMessageIds: (sessionId: string, messageIds: string[]) => void
   setPassiveStreamingMessage: (sessionId: string, messageId: string, streaming: boolean) => void
   beginRunDisplayMeta: (messageId: string, requestStartedAtMs: number) => void
@@ -286,7 +288,8 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (!messages) {
             return state
           }
-          if (messages.some(current => current.id === message.id)) {
+          const queueItemId = readContinuationQueueItemId(message)
+          if (messages.some(current => current.id === message.id || (queueItemId !== null && readContinuationQueueItemId(current) === queueItemId))) {
             return state
           }
 
@@ -322,6 +325,11 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             || state.passiveStreamingMessageIds.has(sourceMessage.id)
             || state.sessionMetaMap.get(sessionId)?.localDriverMessageId === sourceMessage.id
           const insertedMessageIds = split ? [...split.insertedMessageIds, message.id] : [message.id]
+          const insertedQueueItemIds = queueItemId
+            ? split
+              ? [...split.insertedQueueItemIds.filter(id => id !== queueItemId), queueItemId]
+              : [queueItemId]
+            : split?.insertedQueueItemIds ?? []
           const nextMessages = [
             ...messages.slice(0, sourceIndex),
             { ...sourceMessage, parts: sourceHead },
@@ -349,28 +357,10 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
               tailMessageId,
               splitParts: cloneMessageParts(sourceHead),
               insertedMessageIds,
+              insertedQueueItemIds,
             } as Draft<AssistantDisplaySplit>)
-            draft.generatingMessageIds.delete(sourceMessage.id)
-            draft.passiveStreamingMessageIds.delete(sourceMessage.id)
-            if (state.generatingMessageIds.has(sourceMessage.id)) {
-              draft.generatingMessageIds.add(tailMessageId)
-            }
-            if (state.passiveStreamingMessageIds.has(sourceMessage.id)) {
-              draft.passiveStreamingMessageIds.add(tailMessageId)
-            }
-            const sourceController = state.activeAbortControllers.get(sourceMessage.id)
-            if (sourceController) {
-              draft.activeAbortControllers.delete(sourceMessage.id)
-              draft.activeAbortControllers.set(tailMessageId, sourceController)
-            }
-            const runMeta = state.runDisplayMetaMap.get(sourceMessage.id)
-            if (runMeta && !state.runDisplayMetaMap.has(tailMessageId)) {
-              draft.runDisplayMetaMap.set(tailMessageId, { ...runMeta } as Draft<ChatRunDisplayMeta>)
-            }
-            for (const [, meta] of draft.sessionMetaMap) {
-              if (meta.localDriverMessageId === sourceMessage.id) {
-                meta.localDriverMessageId = tailMessageId
-              }
+            if (shouldKeepTailPlaceholder) {
+              moveStreamingMessageDraft(draft, state, sessionId, sourceMessage.id, tailMessageId)
             }
             if (toolState.toolCallIdsByMessageId !== state.toolCallIdsByMessageId) {
               draft.toolCallIdsByMessageId = toolState.toolCallIdsByMessageId as Draft<Map<string, string[]>>
@@ -571,7 +561,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       // --- Streaming ---
 
       startGeneration: (sessionId, messageId, controller) => {
-        set((state) => produce(state, (draft) => {
+        set(state => produce(state, (draft) => {
           for (const message of state.messagesMap.get(sessionId) ?? EMPTY_MESSAGES) {
             draft.errorMap.delete(message.id)
           }
@@ -589,7 +579,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       },
 
       finishGeneration: (messageId) => {
-        set((state) => produce(state, (draft) => {
+        set(state => produce(state, (draft) => {
           draft.generatingMessageIds.delete(messageId)
           draft.passiveStreamingMessageIds.delete(messageId)
           draft.activeAbortControllers.delete(messageId)
@@ -597,7 +587,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           if (currentRunMeta && currentRunMeta.completedAtMs === null) {
             currentRunMeta.completedAtMs = performance.now()
           }
-          for (const [sessionId, meta] of draft.sessionMetaMap) {
+          for (const [, meta] of draft.sessionMetaMap) {
             if (meta.localDriverMessageId === messageId) {
               meta.cancelling = false
               meta.locallyDriving = false
@@ -608,7 +598,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       },
 
       failGeneration: (messageId, error) => {
-        set((state) => produce(state, (draft) => {
+        set(state => produce(state, (draft) => {
           draft.generatingMessageIds.delete(messageId)
           draft.passiveStreamingMessageIds.delete(messageId)
           draft.activeAbortControllers.delete(messageId)
@@ -640,6 +630,15 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           localDriverMessageId: undefined,
           passiveStatus: 'idle',
         })
+      },
+
+      moveStreamingMessage: (sessionId, fromMessageId, toMessageId) => {
+        if (fromMessageId === toMessageId) {
+          return
+        }
+        set(state => produce(state, (draft) => {
+          moveStreamingMessageDraft(draft, state, sessionId, fromMessageId, toMessageId)
+        }))
       },
 
       setPassiveStreamingMessageIds: (sessionId, messageIds) => {
@@ -764,7 +763,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         })
       },
 
-      projectStreamingMessageForDisplay: (sessionId, message) => {
+      projectStreamingMessageForDisplay: (_sessionId, message) => {
         const state = get()
         return projectStreamingMessageThroughSplits(message, state.assistantDisplaySplitMap, new Set())
       },
@@ -772,7 +771,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       // --- Session Meta ---
 
       setSessionMeta: (sessionId, meta) => {
-        set((state) => produce(state, (draft) => {
+        set(state => produce(state, (draft) => {
           const current = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           draft.sessionMetaMap.set(sessionId, { ...current, ...meta })
         }))
@@ -856,7 +855,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
       },
 
       clearError: (messageId) => {
-        set((state) => produce(state, (draft) => {
+        set(state => produce(state, (draft) => {
           draft.errorMap.delete(messageId)
         }))
       },
@@ -917,6 +916,14 @@ export const chatSelectors = {
   isStreamingMessage: (messageId: string) => (s: ChatState) =>
     s.generatingMessageIds.has(messageId) || s.passiveStreamingMessageIds.has(messageId),
 
+  /** Streaming state for the rendered bubble, including pre-SSE local driver ownership. */
+  isVisibleStreamingMessage: (sessionId: string, messageId: string) => (s: ChatState) => {
+    const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    return s.generatingMessageIds.has(messageId)
+      || s.passiveStreamingMessageIds.has(messageId)
+      || meta.localDriverMessageId === messageId
+  },
+
   /** Is any message generating across all sessions? */
   isAnyGenerating: (s: ChatState) =>
     s.generatingMessageIds.size > 0,
@@ -944,9 +951,7 @@ export const chatSelectors = {
     if (!messages) {
       return false
     }
-    return messages.some(message =>
-      s.generatingMessageIds.has(message.id) || s.passiveStreamingMessageIds.has(message.id),
-    )
+    return messages.some(message => s.generatingMessageIds.has(message.id) || s.passiveStreamingMessageIds.has(message.id))
   },
 
   /** Error for a message */
@@ -956,7 +961,9 @@ export const chatSelectors = {
   /** Most recent error for a session */
   latestError: (sessionId: string) => (s: ChatState) => {
     const messages = s.messagesMap.get(sessionId)
-    if (!messages) return undefined
+    if (!messages) {
+      return undefined
+    }
     let latest: ChatError | undefined
     for (const m of messages) {
       const err = s.errorMap.get(m.id)
@@ -1060,6 +1067,49 @@ export const chatSelectors = {
     s.runDisplayMetaMap.get(messageId),
 }
 
+function moveStreamingMessageDraft(
+  draft: Draft<ChatState>,
+  state: ChatState,
+  sessionId: string,
+  fromMessageId: string,
+  toMessageId: string,
+): void {
+  if (fromMessageId === toMessageId) {
+    return
+  }
+
+  const wasGenerating = state.generatingMessageIds.has(fromMessageId)
+  const wasPassiveStreaming = state.passiveStreamingMessageIds.has(fromMessageId)
+  const controller = state.activeAbortControllers.get(fromMessageId)
+  const runMeta = state.runDisplayMetaMap.get(fromMessageId)
+
+  draft.generatingMessageIds.delete(fromMessageId)
+  draft.passiveStreamingMessageIds.delete(fromMessageId)
+  draft.activeAbortControllers.delete(fromMessageId)
+  draft.runDisplayMetaMap.delete(fromMessageId)
+
+  if (wasGenerating) {
+    draft.generatingMessageIds.add(toMessageId)
+  }
+  if (wasPassiveStreaming) {
+    draft.passiveStreamingMessageIds.add(toMessageId)
+  }
+  if (controller) {
+    draft.activeAbortControllers.set(toMessageId, controller)
+  }
+  if (runMeta && !state.runDisplayMetaMap.has(toMessageId)) {
+    draft.runDisplayMetaMap.set(toMessageId, { ...runMeta } as Draft<ChatRunDisplayMeta>)
+  }
+
+  const current = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+  if (current.localDriverMessageId === fromMessageId) {
+    draft.sessionMetaMap.set(sessionId, {
+      ...current,
+      localDriverMessageId: toMessageId,
+    })
+  }
+}
+
 function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMessage[]): UIMessage[] {
   if (currentMessages === incomingMessages) {
     return currentMessages
@@ -1090,19 +1140,23 @@ function applyAssistantDisplaySplits(
   }
   const splitSourceIds = new Set([...splits.keys()])
   const insertedMessageIds = new Set([...splits.values()].flatMap(split => split.insertedMessageIds))
+  const insertedQueueItemIds = new Set([...splits.values()].flatMap(split => split.insertedQueueItemIds))
+  const sourceMessages = new Map(messages.filter(message => splitSourceIds.has(message.id)).map(message => [message.id, message]))
   const result: UIMessage[] = []
 
   for (const message of messages) {
     if (message.id.includes(':steer-tail')) {
       continue
     }
-    if (insertedMessageIds.has(message.id)) {
-      const sourceIndex = findSplitSourceIndexForInsertedMessage(result, splits, message.id)
+    const queueItemId = readContinuationQueueItemId(message)
+    if (insertedMessageIds.has(message.id) || (queueItemId !== null && insertedQueueItemIds.has(queueItemId))) {
+      const sourceIndex = findSplitSourceIndexForInsertedMessage(result, splits, message)
       if (sourceIndex !== -1) {
         const sourceMessage = result[sourceIndex]
         const split = splits.get(sourceMessage.id)
         if (split) {
-          result.splice(sourceIndex + 1, 0, message, projectAssistantTailMessage(sourceMessage, split.splitParts, split.tailMessageId))
+          const fullSourceMessage = sourceMessages.get(sourceMessage.id) ?? sourceMessage
+          result.splice(sourceIndex + 1, 0, message, projectAssistantTailMessage(fullSourceMessage, split.splitParts, split.tailMessageId))
           continue
         }
       }
@@ -1121,15 +1175,27 @@ function applyAssistantDisplaySplits(
 function findSplitSourceIndexForInsertedMessage(
   messages: UIMessage[],
   splits: Map<string, AssistantDisplaySplit>,
-  insertedMessageId: string,
+  insertedMessage: UIMessage,
 ): number {
+  const queueItemId = readContinuationQueueItemId(insertedMessage)
   for (let index = messages.length - 1; index >= 0; index--) {
     const split = splits.get(messages[index].id)
-    if (split?.insertedMessageIds.includes(insertedMessageId)) {
+    if (
+      split?.insertedMessageIds.includes(insertedMessage.id)
+      || (queueItemId !== null && split?.insertedQueueItemIds.includes(queueItemId))
+    ) {
       return index
     }
   }
   return -1
+}
+
+function readContinuationQueueItemId(message: UIMessage): string | null {
+  const metadata = readRecordValue((message as { metadata?: unknown }).metadata)
+  const cradle = readRecordValue(metadata?.cradle)
+  const continuation = readRecordValue(cradle?.continuation)
+  const queueItemId = continuation?.queueItemId
+  return typeof queueItemId === 'string' && queueItemId.length > 0 ? queueItemId : null
 }
 
 function findActiveAssistantMessageId(state: ChatState, sessionId: string): string | null {
@@ -1162,7 +1228,7 @@ function cloneMessageParts(parts: UIMessage['parts']): UIMessage['parts'] {
 
 function trimTrailingEmptyParts(parts: UIMessage['parts']): UIMessage['parts'] {
   const nextParts = [...parts]
-  while (nextParts.length > 0 && isEmptyDisplayPart(nextParts[nextParts.length - 1])) {
+  while (nextParts.length > 0 && isEmptyDisplayPart(nextParts.at(-1)!)) {
     nextParts.pop()
   }
   return nextParts
@@ -1349,6 +1415,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
+function readRecordValue(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) && !Array.isArray(value) ? value : null
+}
+
 function readPartText(part: MessagePart): string | undefined {
   if (!isRecord(part)) {
     return undefined
@@ -1450,20 +1520,6 @@ function withToolEntitiesForMessages(
   }
 
   return { toolCallIdsByMessageId, toolEntitiesMap }
-}
-
-function upsertMessageToolCallIds(
-  current: Map<string, string[]>,
-  messageId: string,
-  toolCallId: string,
-): Map<string, string[]> {
-  const currentIds = current.get(messageId) ?? []
-  if (currentIds.includes(toolCallId)) {
-    return current
-  }
-  const next = new Map(current)
-  next.set(messageId, [...currentIds, toolCallId])
-  return next
 }
 
 function areToolEntitiesEqual(left: ChatToolEntity, right: ChatToolEntity): boolean {

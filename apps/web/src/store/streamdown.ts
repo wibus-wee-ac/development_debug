@@ -4,6 +4,12 @@ import { persist } from 'zustand/middleware'
 
 import { persistStorage } from './persist-storage'
 
+const FIXED_STREAMDOWN_SETTINGS = {
+  animationPreset: 'balanced',
+  animateMode: 'char',
+  showCursor: false,
+} as const
+
 interface StreamdownState {
   animationPreset: AnimationPresetName
   animateMode: 'char' | 'word'
@@ -16,17 +22,20 @@ interface StreamdownState {
 export const useStreamdownStore = create<StreamdownState>()(
   persist(
     set => ({
-      animationPreset: 'balanced',
-      animateMode: 'word',
-      showCursor: false,
-      setAnimationPreset: animationPreset => set({ animationPreset }),
-      setAnimateMode: animateMode => set({ animateMode }),
-      setShowCursor: showCursor => set({ showCursor }),
+      ...FIXED_STREAMDOWN_SETTINGS,
+      setAnimationPreset: () => set(FIXED_STREAMDOWN_SETTINGS),
+      setAnimateMode: () => set(FIXED_STREAMDOWN_SETTINGS),
+      setShowCursor: () => set(FIXED_STREAMDOWN_SETTINGS),
     }),
     {
       name: 'cradle:streamdown:v1',
       storage: persistStorage,
-      version: 1,
+      version: 2,
+      migrate: () => FIXED_STREAMDOWN_SETTINGS,
+      merge: (_persistedState, currentState) => ({
+        ...currentState,
+        ...FIXED_STREAMDOWN_SETTINGS,
+      }),
     },
   ),
 )
