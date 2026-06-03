@@ -22,6 +22,7 @@ export interface DraftProvider {
 export interface ExternalProviderSourceView {
   id: string
   pluginName: string
+  sourceId: string
   label: string
   lastSyncStatus: 'never' | 'ok' | 'warning' | 'error'
   lastSyncMessage: string | null

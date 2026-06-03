@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
@@ -14,6 +15,10 @@ import {
 import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import {
+  getExternalProviderSourcesOptions,
+  getExternalProviderSourcesRecordsOptions,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -34,15 +39,19 @@ import { cn } from '~/lib/cn'
 import type { AgentProfile } from '~/lib/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
+import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
 import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { collectProviderListGroups } from './provider-list-groups'
 import type {
   DraftProvider,
+  ExternalProviderRecordView,
+  ExternalProviderSourceView,
   ProviderListEntry,
 } from './provider-settings-utils'
 import {
+  presetForProviderKind,
   presetForProfile,
   PROVIDER_KIND_LABELS,
   providerListEntryId,
@@ -66,8 +75,8 @@ function parseProfileConfigForUpdate(configJson: string): Record<string, unknown
   return parsed as Record<string, unknown>
 }
 
-function defaultGroupOpen(groupKind: 'manual'): boolean {
-  return groupKind === 'manual'
+function defaultGroupOpen(groupKind: 'external-plugin' | 'external-source' | 'manual'): boolean {
+  return groupKind === 'manual' || groupKind === 'external-plugin'
 }
 
 const ProviderRow = memo(
@@ -86,15 +95,28 @@ const ProviderRow = memo(
   }) => {
     const { t } = useTranslation('agentManagement')
     const checkboxShiftKeyRef = useRef(false)
-    const providerKind = entry.profile.providerKind
-    const preset = presetForProfile(entry.profile)
-    const title = entry.profile.name
-    const cfg = ProfileConfigJsonSchema.parse(entry.profile.configJson)
-    const subtitle = cfg.model
-      ? `${PROVIDER_KIND_LABELS[providerKind]} · ${cfg.model}`
+    const manual = entry.kind === 'manual'
+    const providerKind = manual ? entry.profile.providerKind : entry.record.providerKind
+    const preset = manual ? presetForProfile(entry.profile) : presetForProviderKind(providerKind)
+    const title = manual ? entry.profile.name : entry.record.name
+    const cfg = manual ? ProfileConfigJsonSchema.parse(entry.profile.configJson) : null
+    const externalModel = !manual && typeof entry.record.metadata.model === 'string'
+      ? entry.record.metadata.model
+      : null
+    const modelLabel = cfg?.model || externalModel
+    const subtitle = modelLabel
+      ? `${PROVIDER_KIND_LABELS[providerKind]} · ${modelLabel}`
       : PROVIDER_KIND_LABELS[providerKind]
-    const statusLabel = entry.profile.enabled ? null : t('runtime.provider.status.off')
-    const testId = `agent-profile-row-${entry.profile.id}`
+    const statusLabel = manual
+      ? (entry.profile.enabled ? null : t('runtime.provider.status.off'))
+      : (entry.record.status === 'active' && entry.record.runtimeTargetEnabled
+          ? null
+          : entry.record.status === 'active'
+            ? t('runtime.provider.status.off')
+            : entry.record.status)
+    const testId = manual
+      ? `agent-profile-row-${entry.profile.id}`
+      : `external-provider-row-${entry.record.id}`
 
     return (
       <div
@@ -105,7 +127,7 @@ const ProviderRow = memo(
           active
             ? 'bg-foreground/[0.045] text-foreground'
             : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
-          !entry.profile.enabled && !active && 'opacity-60',
+          statusLabel && !active && 'opacity-60',
         )}
       >
         <Checkbox
@@ -124,7 +146,7 @@ const ProviderRow = memo(
           onClick={event => onOpenEntry(entry.id, event.shiftKey)}
         >
           <ProviderIcon
-            iconSlug={entry.profile.iconSlug}
+            iconSlug={manual ? entry.profile.iconSlug : null}
             presetId={preset?.id ?? null}
             className="size-4 shrink-0 text-muted-foreground"
           />
@@ -182,11 +204,43 @@ export function AgentRuntimeSettings() {
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Map<string, boolean>>(
     () => new Map(),
   )
-  const settingsProvidersReady = profilesReady
+  const {
+    data: externalSources = [],
+    isSuccess: externalSourcesReady,
+    refetch: refetchExternalSources,
+  } = useQuery(
+    getExternalProviderSourcesOptions(),
+  )
+  const {
+    data: externalRecords = [],
+    isSuccess: externalRecordsReady,
+    refetch: refetchExternalRecords,
+  } = useQuery(
+    getExternalProviderSourcesRecordsOptions(),
+  )
+  const ccSwitchSources = useMemo(
+    () => (externalSources as ExternalProviderSourceView[])
+      .filter(source => source.sourceId === 'cc-switch'),
+    [externalSources],
+  )
+  const ccSwitchSourceIds = useMemo(
+    () => new Set(ccSwitchSources.map(source => source.id)),
+    [ccSwitchSources],
+  )
+  const ccSwitchRecords = useMemo(
+    () => (externalRecords as ExternalProviderRecordView[])
+      .filter(record => ccSwitchSourceIds.has(record.sourceKey)),
+    [externalRecords, ccSwitchSourceIds],
+  )
+  const sourceById = useMemo(
+    () => new Map(ccSwitchSources.map(source => [source.id, source])),
+    [ccSwitchSources],
+  )
+  const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
 
   const providerGroups = useMemo(
-    () => collectProviderListGroups(profiles),
-    [profiles],
+    () => collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources),
+    [profiles, ccSwitchRecords, ccSwitchSources],
   )
   const visibleProfileGroups = useMemo(() => {
     if (!deferredFilter.trim()) {
@@ -197,12 +251,17 @@ export function AgentRuntimeSettings() {
       .map(group => ({
         ...group,
         entries: group.entries.filter((entry) => {
-          const label = entry.profile.name
-          const kindLabel = PROVIDER_KIND_LABELS[entry.profile.providerKind] ?? ''
+          const label = entry.kind === 'manual' ? entry.profile.name : entry.record.name
+          const providerKind = entry.kind === 'manual'
+            ? entry.profile.providerKind
+            : entry.record.providerKind
+          const kindLabel = PROVIDER_KIND_LABELS[providerKind] ?? ''
+          const appLabel = entry.kind === 'external' ? entry.record.app : ''
           return (
             group.label.toLowerCase().includes(q)
             || label.toLowerCase().includes(q)
             || kindLabel.toLowerCase().includes(q)
+            || appLabel.toLowerCase().includes(q)
           )
         }),
       }))
@@ -226,7 +285,7 @@ export function AgentRuntimeSettings() {
     [providerEntries, selectedIds],
   )
   const selectedProfiles = useMemo(
-    () => selectedEntries.map(entry => entry.profile),
+    () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
     [selectedEntries],
   )
   const toggleableSelectedProfiles = selectedProfiles
@@ -316,6 +375,13 @@ export function AgentRuntimeSettings() {
     },
     [updateProfile],
   )
+
+  const handleExternalProviderUpdated = useCallback(() => {
+    void Promise.all([
+      refetchExternalSources(),
+      refetchExternalRecords(),
+    ])
+  }, [refetchExternalRecords, refetchExternalSources])
 
   const toggleVisibleSelected = useCallback(() => {
     setSelectedIds(prev =>
@@ -694,7 +760,7 @@ export function AgentRuntimeSettings() {
               </Empty>
             </div>
           )
-: selectedEntry
+: selectedEntry?.kind === 'manual'
 ? (
             <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
               <ProfileDetailPanel
@@ -704,6 +770,16 @@ export function AgentRuntimeSettings() {
                 onSaved={() => {
                   void refetch()
                 }}
+              />
+            </div>
+          )
+: selectedEntry?.kind === 'external'
+? (
+            <div key={selectedEntry.record.id} className="min-w-0 flex-1">
+              <ExternalProviderRecordDetailPanel
+                record={selectedEntry.record}
+                source={sourceById.get(selectedEntry.record.sourceKey) ?? null}
+                onUpdated={handleExternalProviderUpdated}
               />
             </div>
           )

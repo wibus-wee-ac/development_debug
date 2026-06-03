@@ -18,8 +18,10 @@ export interface ProviderListGroup {
 }
 
 const MANUAL_GROUP_ID = 'manual'
-const MANUAL_GROUP_LABEL = 'Cradle'
+const MANUAL_GROUP_LABEL = 'Manual providers'
 const UNKNOWN_EXTERNAL_SOURCE_LABEL = 'External source'
+const CC_SWITCH_SOURCE_ID = 'cc-switch'
+const CC_SWITCH_GROUP_LABEL = 'CC-Switch'
 
 function compareProviderProfiles(a: AgentProfile, b: AgentProfile): number {
   if (a.enabled !== b.enabled) {
@@ -113,7 +115,9 @@ function externalGroupDescriptor(
   return {
     id: `external-plugin:${source.pluginName}`,
     kind: 'external-plugin',
-    label: source.label.trim() || source.pluginName,
+    label: source.sourceId === CC_SWITCH_SOURCE_ID
+      ? CC_SWITCH_GROUP_LABEL
+      : source.label.trim() || source.pluginName,
   }
 }
 
@@ -122,9 +126,9 @@ export function sortProviderProfilesByStatus(profiles: AgentProfile[]): AgentPro
 }
 
 export function collectProviderListGroups(
-  profiles: AgentProfile[],
-  externalRecords: ExternalProviderRecordView[],
-  externalSources: ExternalProviderSourceView[],
+  profiles: AgentProfile[] = [],
+  externalRecords: ExternalProviderRecordView[] = [],
+  externalSources: ExternalProviderSourceView[] = [],
 ): ProviderListGroup[] {
   const sourceById = new Map(externalSources.map(source => [source.id, source]))
   const groups = new Map<string, ProviderListGroup>()

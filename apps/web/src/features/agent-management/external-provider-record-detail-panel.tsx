@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, CircleCheckIcon, CircleDashedIcon, TriangleAlertIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import {
@@ -139,6 +139,7 @@ export function ExternalProviderRecordDetailPanel({
     patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation(),
   )
   const fetchModels = useMutation(postProvidersModelsMutation())
+  const fetchProviderModels = fetchModels.mutateAsync
   const providerTarget = useMemo(
     () =>
       record.providerTargetId ? { kind: 'external' as const, id: record.providerTargetId } : null,
@@ -153,6 +154,7 @@ export function ExternalProviderRecordDetailPanel({
   const [loadingTarget, setLoadingTarget] = useState(true)
   const [loadingModels, setLoadingModels] = useState(false)
   const [updatingEnabled, setUpdatingEnabled] = useState(false)
+  const initialModelsFetchRef = useRef(0)
 
   useEffect(() => {
     let active = true
@@ -183,9 +185,33 @@ export function ExternalProviderRecordDetailPanel({
                   path: { providerTargetId: apiProviderTarget.id },
                 }),
               )
-              .then((next) => {
-                if (active) {
+              .then(async (next) => {
+                if (!active) {
+                  return
+                }
+                if (next.cached) {
                   setModels(next.models as ModelDescriptor[])
+                  return
+                }
+                if (!apiProviderKind) {
+                  setModels([])
+                  return
+                }
+                const requestId = ++initialModelsFetchRef.current
+                setLoadingModels(true)
+                try {
+                  const fetched = await fetchProviderModels({
+                    body: createProviderTargetRequestBody(record, apiProviderKind),
+                  })
+                  if (active && requestId === initialModelsFetchRef.current) {
+                    setModels(fetched as ModelDescriptor[])
+                    void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+                  }
+                }
+ finally {
+                  if (active && requestId === initialModelsFetchRef.current) {
+                    setLoadingModels(false)
+                  }
                 }
               })
               .catch(() => {
@@ -217,7 +243,7 @@ export function ExternalProviderRecordDetailPanel({
     return () => {
       active = false
     }
-  }, [apiProviderTarget, queryClient, record.externalId, record.sourceKey])
+  }, [apiProviderKind, apiProviderTarget, fetchProviderModels, queryClient, record, record.externalId, record.sourceKey])
 
   const refreshModels = useCallback(async () => {
     if (!apiProviderKind || !apiProviderTarget) {
@@ -225,7 +251,7 @@ export function ExternalProviderRecordDetailPanel({
     }
     setLoadingModels(true)
     try {
-      const next = await fetchModels.mutateAsync({
+      const next = await fetchProviderModels({
         body: createProviderTargetRequestBody(record, apiProviderKind),
       })
       setModels(next as ModelDescriptor[])
@@ -241,7 +267,7 @@ export function ExternalProviderRecordDetailPanel({
  finally {
       setLoadingModels(false)
     }
-  }, [apiProviderKind, apiProviderTarget, fetchModels, queryClient, record])
+  }, [apiProviderKind, apiProviderTarget, fetchProviderModels, queryClient, record])
 
   const handleEnabledModelsChange = useCallback(
     async (next: string[]) => {
