@@ -4,7 +4,6 @@ export { Streamdown } from './streamdown'
 export { StreamdownRender } from './streamdown-render'
 
 // Hooks
-export { useBlockAnimationMeta } from './hooks/use-block-animation-meta'
 export { useDelayedAnimated } from './hooks/use-delayed-animated'
 export { computeSettlingDrain, shouldSleepSmoother } from './hooks/use-settling-drain'
 export { useSmoothContent } from './hooks/use-smooth-content'

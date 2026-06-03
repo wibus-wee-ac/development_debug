@@ -35,9 +35,9 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
 import type { Agent, CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { buildAvatarUrl } from './avatar-url'
 import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────

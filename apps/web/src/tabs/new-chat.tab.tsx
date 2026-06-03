@@ -4,7 +4,9 @@ import { defineTab } from '@cradle/tabs-next'
 import { MessageSquarePlusIcon } from 'lucide-react'
 import { lazy } from 'react'
 
-import { loadNewChatPage, preloadNewChatPage } from '~/features/new-chat/new-chat-page-loader'
+function loadNewChatPage() {
+  return import('~/features/new-chat/new-chat-page').then(module => ({ default: module.NewChatPage }))
+}
 
 const NewChatPage = lazy(loadNewChatPage)
 
@@ -17,5 +19,5 @@ export const newChatTab = defineTab({
   label: '新建聊天',
   icon: MessageSquarePlusIcon,
   component: NewChatTabContent,
-  preload: preloadNewChatPage,
+  preload: () => { void loadNewChatPage() },
 })

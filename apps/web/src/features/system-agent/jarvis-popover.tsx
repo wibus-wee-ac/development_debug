@@ -31,6 +31,7 @@ import {
 } from './explicit-context'
 import { formatContextEnvelopeForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
+import { installSystemAgentContextProvider } from './system-context-provider'
 import { collectContextEnvelope } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
 
@@ -76,6 +77,7 @@ export function JarvisPopover({
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
 
   React.useEffect(() => {
+    installSystemAgentContextProvider()
     installExplicitContextProvider()
   }, [])
 

@@ -2,7 +2,9 @@ import { defineTab } from '@cradle/tabs-next'
 import { CalendarClockIcon } from 'lucide-react'
 import { lazy } from 'react'
 
-import { loadAutomationDashboard, preloadAutomationDashboard } from '~/features/automation/automation-dashboard-loader'
+function loadAutomationDashboard() {
+  return import('~/features/automation').then(module => ({ default: module.AutomationDashboard }))
+}
 
 const AutomationDashboard = lazy(loadAutomationDashboard)
 
@@ -15,5 +17,5 @@ export const automationTab = defineTab({
   label: 'Automations',
   icon: CalendarClockIcon,
   component: AutomationTabContent,
-  preload: preloadAutomationDashboard,
+  preload: () => { void loadAutomationDashboard() },
 })

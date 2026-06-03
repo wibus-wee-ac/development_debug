@@ -2,7 +2,9 @@ import { defineTab } from '@cradle/tabs-next'
 import { CircleDotIcon } from 'lucide-react'
 import { lazy } from 'react'
 
-import { loadAwaitsOverview, preloadAwaitsOverview } from '~/features/session-await/awaits-overview-loader'
+function loadAwaitsOverview() {
+  return import('~/features/session-await/awaits-overview').then(module => ({ default: module.AwaitsOverview }))
+}
 
 const AwaitsOverview = lazy(loadAwaitsOverview)
 
@@ -15,6 +17,6 @@ export const awaitsTab = defineTab({
   label: 'Awaits',
   icon: CircleDotIcon,
   component: AwaitsTabContent,
-  preload: preloadAwaitsOverview,
+  preload: () => { void loadAwaitsOverview() },
   keepAlive: 'always',
 })

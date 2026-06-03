@@ -4,9 +4,11 @@ import { defineTab } from '@cradle/tabs-next'
 import { HomeIcon } from 'lucide-react'
 import { lazy } from 'react'
 
-import { loadNewChatPage, preloadNewChatPage } from '~/features/new-chat/new-chat-page-loader'
-
 // const HomeDashboard = lazy(() => import('~/features/home/home-dashboard').then(m => ({ default: m.HomeDashboard })))
+function loadNewChatPage() {
+  return import('~/features/new-chat/new-chat-page').then(module => ({ default: module.NewChatPage }))
+}
+
 const NewChatPage = lazy(loadNewChatPage)
 
 function NewChatTabContent({ params: _params }: { params: Record<string, never> }) {
@@ -27,5 +29,5 @@ export const homeTab = defineTab({
   pinned: true,
   // component: HomeTabContent,
   component: NewChatTabContent,
-  preload: preloadNewChatPage,
+  preload: () => { void loadNewChatPage() },
 })

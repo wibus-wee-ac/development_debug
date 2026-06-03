@@ -24,7 +24,6 @@ The registry exports the store instance consumed by the rest of the app.
 - **plugin-panel.tab.tsx**: Plugin panel tab，按 `{routeSegment}/{localId}` URL key 渲染 web plugin 注册的 panel，并提供 hash serialize/deserialize 契约与 plugin panel first-render performance gate。
 - **plugin-panel.tab.test.ts**: 覆盖 plugin panel 的 route segment / local id hash encode/decode 与 cold URL restore。
 - **kanban-board.tab.tsx**: Kanban board tab (params: `boardId`, optional `issue`, optional `milestoneId` for focused milestone filters)
-- **kanban-board-tab-content-loader.ts**: Kanban board tab wrapper 的共享 lazy loader 与 route preload 入口。
 - **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel plus optional milestone focus
 - **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name and registers workspace-scoped bottom terminal plus browser panel and right aside capability
 - **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates

@@ -60,7 +60,7 @@ import {
 } from './agent-batch-configuration'
 import { AgentDetailPage } from './agent-detail'
 import { StatusDot } from './agent-status-dot'
-import { buildAvatarUrl } from './avatar-url'
+import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import {
   applyVisibleRangeSelection,
   mergeVisibleSelection,

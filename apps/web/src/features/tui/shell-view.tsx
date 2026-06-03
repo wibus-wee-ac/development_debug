@@ -14,10 +14,14 @@ import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
+import {
+  deleteTerminalSessionsShellByPtyId,
+  postTerminalSessionsShellStart,
+} from '~/api-gen/sdk.gen'
+
 import { getAppTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
-import { startShell, stopShell } from './shell-api'
 import type { TerminalMetadata } from './terminal-metadata'
 import { mergeTerminalMetadata, readTerminalMetadata } from './terminal-metadata'
 
@@ -318,7 +322,9 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
       lastCols = cols
       lastRows = rows
 
-      await startShell({ ptyId, cwd, cols, rows })
+      await postTerminalSessionsShellStart({
+        body: { ptyId, cwd, cols, rows },
+      })
       channel.connect()
       setReady(true)
     }
@@ -403,7 +409,9 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
         focusFrameRef.current = null
       }
       if (stopOnUnmountRef.current) {
-        void stopShell(ptyId).catch(() => {})
+        void deleteTerminalSessionsShellByPtyId({
+          path: { ptyId },
+        }).catch(() => {})
       }
       channel.close()
       dataDisposable.dispose()

@@ -267,14 +267,6 @@ function writeCachedLiveAwaitStatus(awaitId: string | null, status: LiveAwaitSta
 
 // ── Hooks ──
 
-function useSessionAwaits(sessionId: string | null) {
-  return useQuery({
-    ...getSessionAwaitsOptions({ query: { sessionId: sessionId! } }),
-    ...queryRefreshPolicies.interactive,
-    enabled: !!sessionId,
-  })
-}
-
 function useLiveCIStatus(awaitId: string | null, active: boolean) {
   const query = useQuery({
     ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
@@ -1465,7 +1457,11 @@ interface AwaitPanelProps {
 }
 
 export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
-  const { data: awaits = [], isSuccess: awaitsReady } = useSessionAwaits(sessionId)
+  const { data: awaits = [], isSuccess: awaitsReady } = useQuery({
+    ...getSessionAwaitsOptions({ query: { sessionId: sessionId! } }),
+    ...queryRefreshPolicies.interactive,
+    enabled: !!sessionId,
+  })
   const ready = !!sessionId && awaitsReady
 
   if (!sessionId) {

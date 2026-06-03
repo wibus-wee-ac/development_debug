@@ -5,11 +5,11 @@
 import { PlusIcon, SquareTerminalIcon, XIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
+import { deleteTerminalSessionsShellByPtyId } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { useLayoutStore } from '~/store/layout'
 
-import { stopShell } from './shell-api'
 import { ShellView } from './shell-view'
 import type { TerminalMetadata } from './terminal-metadata'
 import { getTerminalPathLabel } from './terminal-metadata'
@@ -47,7 +47,9 @@ export function BottomTerminalPanel({ ownerId, cwd }: BottomTerminalPanelProps) 
   }
 
   function handleRemoveSession(sessionId: string) {
-    void stopShell(sessionId).catch(() => {})
+    void deleteTerminalSessionsShellByPtyId({
+      path: { ptyId: sessionId },
+    }).catch(() => {})
     const remainingCount = removeSession(ownerId, sessionId)
     if (remainingCount === 0) {
       setBottomPanelOpen(false)

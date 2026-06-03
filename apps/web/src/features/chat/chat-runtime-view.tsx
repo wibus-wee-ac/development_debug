@@ -8,14 +8,13 @@ import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef } from 'r
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
 import type { MentionItem } from '~/features/chat'
-import { loadChatView } from '~/features/chat/chat-view-loader'
 import type { SkillMentionItem } from '~/features/chat/skill-mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { RuntimeKind, SkillInventoryEntry } from '~/lib/types'
 
-const ChatView = lazy(loadChatView)
+const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
 export function ChatRuntimeView({
   sessionId,

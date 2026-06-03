@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   BotIcon,
@@ -44,8 +45,9 @@ import type { ThinkingEffort } from '~/features/composer-toolbar/types'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 
+import { listAutomationArtifacts, listAutomationRuns } from './api-client'
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
-import { useAutomationArtifacts, useAutomationDefinitions, useAutomationRuns, useCreateAutomation, useRunAutomationNow } from './use-automations'
+import { automationQueryKeys, useAutomationDefinitions, useCreateAutomation, useRunAutomationNow } from './use-automations'
 
 interface AutomationDashboardProps {
   onBack?: () => void
@@ -693,8 +695,20 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
       ? definitions.find(definition => definition.id === selectedId) ?? null
       : definitions[0] ?? null
   const selectedAutomationId = selectedDefinition?.id ?? null
-  const runsQuery = useAutomationRuns(selectedAutomationId)
-  const artifactsQuery = useAutomationArtifacts(selectedAutomationId)
+  const runsQuery = useQuery({
+    queryKey: selectedAutomationId ? automationQueryKeys.runs(selectedAutomationId) : ['automations', 'missing', 'runs'],
+    queryFn: () => listAutomationRuns(selectedAutomationId ?? ''),
+    enabled: Boolean(selectedAutomationId),
+    staleTime: 10_000,
+    retry: 1,
+  })
+  const artifactsQuery = useQuery({
+    queryKey: selectedAutomationId ? automationQueryKeys.artifacts(selectedAutomationId) : ['automations', 'missing', 'artifacts'],
+    queryFn: () => listAutomationArtifacts(selectedAutomationId ?? ''),
+    enabled: Boolean(selectedAutomationId),
+    staleTime: 10_000,
+    retry: 1,
+  })
   const createAutomationMutation = useCreateAutomation()
   const runNowMutation = useRunAutomationNow()
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)

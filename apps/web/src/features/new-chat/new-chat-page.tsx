@@ -19,10 +19,10 @@ import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { startChatResponse } from '~/features/chat/chat-response-command'
-import { getRuntimeComposerSlashCommands } from '~/features/chat/chat-slash-commands'
 import { Composer } from '~/features/chat/composer'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
 import type { MentionItem } from '~/features/chat/mention-panel'
+import { useRuntimeComposerSlashCommands } from '~/features/chat/use-runtime-composer-slash-commands'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
@@ -145,10 +145,7 @@ function useNewChatPageOwner(active: boolean) {
   const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
   const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
-  const slashCommands = useMemo(
-    () => getRuntimeComposerSlashCommands(selection.runtimeKind, 'draft'),
-    [selection.runtimeKind],
-  )
+  const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind)
   const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!selectedProjectWorkspaceId) {
       return []

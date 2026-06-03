@@ -7,10 +7,14 @@ import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
 import type { Workspace } from '~/lib/types'
 
 const WorkspaceDetailPage = lazy(() => import('~/features/workspace-detail/workspace-detail-page').then(m => ({ default: m.WorkspaceDetailPage })))
+
+function loadTerminalPanelView() {
+  return import('~/features/tui/bottom-terminal-panel').then(module => ({ default: module.BottomTerminalPanel }))
+}
+
 const BottomTerminalPanel = lazy(loadTerminalPanelView)
 
 function WorkspaceDetailLayoutSlots({
@@ -76,7 +80,7 @@ function WorkspaceDetailTabContent({ params }: { params: { workspaceId: string }
 
   useEffect(() => {
     if (workspace?.path) {
-      preloadTerminalPanelView()
+      void loadTerminalPanelView()
     }
   }, [workspace?.path])
 

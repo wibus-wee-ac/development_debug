@@ -10,8 +10,8 @@ import {
   getUsageSummaryOptions,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { cn } from '~/lib/cn'
+import { formatTokenCount, formatUsd } from '~/lib/number-format'
 
-import { formatTokens, formatUsd } from './usage-format'
 import { UsageHeatmap } from './usage-heatmap'
 
 const DailyUsageSchema = z.object({
@@ -179,15 +179,15 @@ export function UsageDashboard() {
             {costSummary && costSummary.totalCostUsd > 0 && (
               <Pill label={t('pill.totalCost')} value={formatUsd(costSummary.totalCostUsd)} dataTestId="usage-pill-total-cost" accent />
             )}
-            <Pill label={t('pill.today')} value={formatTokens(stats.todayTokens)} dataTestId="usage-pill-today-tokens" />
-            <Pill label={t('pill.prompt')} value={formatTokens(summary!.totalPromptTokens)} dataTestId="usage-pill-prompt-tokens" />
-            <Pill label={t('pill.completion')} value={formatTokens(summary!.totalCompletionTokens)} dataTestId="usage-pill-completion-tokens" />
+            <Pill label={t('pill.today')} value={formatTokenCount(stats.todayTokens)} dataTestId="usage-pill-today-tokens" />
+            <Pill label={t('pill.prompt')} value={formatTokenCount(summary!.totalPromptTokens)} dataTestId="usage-pill-prompt-tokens" />
+            <Pill label={t('pill.completion')} value={formatTokenCount(summary!.totalCompletionTokens)} dataTestId="usage-pill-completion-tokens" />
             <Pill label={t('pill.turns')} value={String(summary!.totalTurns)} dataTestId="usage-pill-total-turns" />
-            <Pill label={t('pill.avgDaily')} value={formatTokens(stats.avgDailyTokens)} dataTestId="usage-pill-avg-daily-tokens" />
+            <Pill label={t('pill.avgDaily')} value={formatTokenCount(stats.avgDailyTokens)} dataTestId="usage-pill-avg-daily-tokens" />
             <Pill label={t('pill.activeDays')} value={String(stats.activeDays)} dataTestId="usage-pill-active-days" />
             <Pill label={t('pill.bestStreak')} value={`${stats.longestStreak}d`} dataTestId="usage-pill-best-streak" />
             {stats.peakDay && (
-              <Pill label={t('pill.peak')} value={t('pill.peakValue', { tokens: formatTokens(stats.peakDay.totalTokens), date: stats.peakDay.date.slice(5) })} dataTestId="usage-pill-peak-day" />
+              <Pill label={t('pill.peak')} value={t('pill.peakValue', { tokens: formatTokenCount(stats.peakDay.totalTokens), date: stats.peakDay.date.slice(5) })} dataTestId="usage-pill-peak-day" />
             )}
           </div>
         )}
@@ -213,7 +213,7 @@ export function UsageDashboard() {
                 )}
                 data-testid="usage-total-tokens"
               >
-                {formatTokens(summary!.totalTokens)}
+                {formatTokenCount(summary!.totalTokens)}
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">{t('summary.totalTokens')}</p>
             </div>
@@ -314,7 +314,7 @@ function BarRow({ label, value, max }: { label: string, value: number, max: numb
     <div>
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs text-muted-foreground font-mono truncate max-w-[70%]">{label}</span>
-        <span className="text-xs tabular-nums text-foreground">{formatTokens(value)}</span>
+        <span className="text-xs tabular-nums text-foreground">{formatTokenCount(value)}</span>
       </div>
       <div className="h-1 w-full rounded-full bg-foreground/5">
         <div
@@ -334,7 +334,7 @@ function CostBarRow({ label, costUsd, tokens, max }: { label: string, costUsd: n
         <span className="text-xs text-muted-foreground font-mono truncate max-w-[55%]">{label}</span>
         <span className="text-xs tabular-nums text-foreground">
           {formatUsd(costUsd)}
-          <span className="text-muted-foreground ml-1.5">{formatTokens(tokens)}</span>
+          <span className="text-muted-foreground ml-1.5">{formatTokenCount(tokens)}</span>
         </span>
       </div>
       <div className="h-1 w-full rounded-full bg-foreground/5">

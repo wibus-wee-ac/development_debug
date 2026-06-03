@@ -9,16 +9,16 @@
 import { z } from 'zod'
 
 import { chatSelectors, useChatStore } from '~/store/chat'
+import type { ContextEnvelope } from '~/features/context/context-items'
+import { jarvisContextRegistry } from '~/features/context/context-registry'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSessionActivityStore } from '~/store/session-activity'
 import { useCradleTabStore } from '~/tabs/registry'
 
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import type { ContextEnvelope } from '~/features/context/context-items'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
 import type { SystemAgentContext } from './context-schema'
-import { projectLegacyContextItems } from './legacy-context-items'
+import { installSystemAgentContextProvider } from './system-context-provider'
 
 const MAX_RECENT_MESSAGES = 5
 const CONTENT_PREVIEW_LENGTH = 120
@@ -98,15 +98,6 @@ export function collectContextSnapshot(): SystemAgentContext {
 }
 
 export function collectContextEnvelope(): ContextEnvelope {
-  const envelope = jarvisContextRegistry.collectEnvelope()
-  const legacySnapshot = collectContextSnapshot()
-  const legacyItems = projectLegacyContextItems(legacySnapshot, envelope.capturedAt)
-
-  return {
-    ...envelope,
-    items: [
-      ...legacyItems,
-      ...envelope.items,
-    ],
-  }
+  installSystemAgentContextProvider()
+  return jarvisContextRegistry.collectEnvelope()
 }

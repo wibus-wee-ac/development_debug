@@ -1,12 +1,17 @@
-// Output: Unit coverage for Jarvis context registry and legacy snapshot projection.
-// Input: Fake providers and SystemAgentContext fixtures.
+// Output: Unit coverage for Jarvis context registry and system-agent context provider projection.
+// Input: Fake providers and renderer store fixtures.
 // Position: Feature-owned tests for the system-agent semantic context aggregation boundary.
 
 import { describe, expect, it } from 'vitest'
 
 import { createContextRegistry } from '~/features/context/context-registry'
-import type { SystemAgentContext } from './context-schema'
-import { projectLegacyContextItems } from './legacy-context-items'
+import { useChatStore } from '~/store/chat'
+import { useLayoutStore } from '~/store/layout'
+import { useNewChatStore } from '~/store/new-chat'
+import { useSessionActivityStore } from '~/store/session-activity'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
+import { useCradleTabStore } from '~/tabs/registry'
+import { readSystemAgentContextItems } from './system-context-provider'
 
 describe('jarvis context registry', () => {
   it('collects provider items into a typed envelope with active tab metadata', () => {
@@ -68,40 +73,32 @@ describe('jarvis context registry', () => {
   })
 })
 
-describe('legacy Jarvis context item projection', () => {
-  it('represents existing snapshot fields as typed context items', () => {
-    const legacy: SystemAgentContext = {
-      activeTab: {
-        type: 'chat',
-        label: 'Architecture discussion',
-        params: { sessionId: 'session-1' },
-      },
-      openTabs: [
-        { type: 'home', label: 'Home' },
-        { type: 'chat', label: 'Architecture discussion' },
+describe('system-agent Jarvis context provider', () => {
+  it('represents current shell stores as typed context items', () => {
+    useCradleTabStore.setState({
+      activeTabId: 'tab-chat',
+      tabs: [
+        { id: 'tab-home', type: 'home', label: 'Home', params: {}, pinned: false },
+        { id: 'tab-chat', type: 'chat', label: 'Architecture discussion', params: { sessionId: 'session-1' }, pinned: false },
       ],
-      chatContext: {
-        sessionId: 'session-1',
-        status: 'idle',
-        messageCount: 3,
-        recentMessages: [
-          { role: 'user', contentPreview: 'Can you inspect the context model?' },
-          { role: 'assistant', contentPreview: 'The current model is too shallow.' },
-        ],
+    })
+    useChatStore.setState({
+      sessions: {
+        'session-1': {
+          messages: [
+            { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Can you inspect the context model?' }] },
+            { id: 'm2', role: 'assistant', parts: [{ type: 'text', text: 'The current model is too shallow.' }] },
+          ],
+          status: 'idle',
+        },
       },
-      layout: {
-        sidebarCollapsed: true,
-        asideOpen: true,
-        asideActiveTab: 'browser',
-        bottomPanelOpen: false,
-        settingsTabId: null,
-        settingsSection: 'general',
-      },
-      activeProfileId: 'profile-1',
-      unreadSessionIds: ['session-2'],
-    }
+    } as Partial<ReturnType<typeof useChatStore.getState>>)
+    useLayoutStore.setState({ sidebarCollapsed: true, asideOpen: true, asideActiveTab: 'browser', bottomPanelOpen: false })
+    useSettingsOverlayStore.setState({ settingsTabId: null, settingsSection: 'general' })
+    useNewChatStore.setState({ lastAgentProfileId: 'profile-1' })
+    useSessionActivityStore.setState({ unread: new Set(['session-2']) })
 
-    const items = projectLegacyContextItems(legacy, 1779781200000)
+    const items = readSystemAgentContextItems(1779781200000)
 
     expect(items.map(item => [item.kind, item.title, item.owner])).toEqual([
       ['view', 'Active view', 'system-agent'],

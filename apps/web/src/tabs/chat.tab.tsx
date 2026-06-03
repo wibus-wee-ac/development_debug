@@ -11,9 +11,15 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
-import { loadTerminalPanelView, preloadTerminalPanelView } from '~/features/tui/terminal-panel-view-loader'
-import { loadTuiView, preloadTuiView } from '~/features/tui/tui-view-loader'
 import { useSessionLayoutStore } from '~/store/session-layout'
+
+function loadTerminalPanelView() {
+  return import('~/features/tui/bottom-terminal-panel').then(module => ({ default: module.BottomTerminalPanel }))
+}
+
+function loadTuiView() {
+  return import('~/features/tui/tui-view').then(module => ({ default: module.TuiView }))
+}
 
 const BottomTerminalPanel = lazy(loadTerminalPanelView)
 const TuiView = lazy(loadTuiView)
@@ -131,13 +137,13 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   useEffect(() => {
     if (workspacePath) {
-      preloadTerminalPanelView()
+      void loadTerminalPanelView()
     }
   }, [workspacePath])
 
   useEffect(() => {
     if (isCliTui) {
-      preloadTuiView()
+      void loadTuiView()
     }
   }, [isCliTui])
 

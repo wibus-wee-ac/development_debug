@@ -18,13 +18,6 @@ const JarvisPreferencesSchema = z.object({
 
 export const JARVIS_PREFS_QUERY_KEY = getPreferencesJarvisQueryKey()
 
-export function useJarvisPreferencesQuery() {
-  return useQuery({
-    ...getPreferencesJarvisOptions(),
-    select: data => JarvisPreferencesSchema.parse(data) satisfies JarvisPreferences,
-  })
-}
-
 export function useUpdateJarvisPreferencesMutation() {
   const queryClient = useQueryClient()
 
@@ -51,7 +44,10 @@ export function useUpdateJarvisPreferencesMutation() {
 }
 
 export function useJarvisPreferences() {
-  const { data: prefs, isLoading, isSuccess } = useJarvisPreferencesQuery()
+  const { data: prefs, isLoading, isSuccess } = useQuery({
+    ...getPreferencesJarvisOptions(),
+    select: data => JarvisPreferencesSchema.parse(data) satisfies JarvisPreferences,
+  })
   const { mutateAsync: savePrefs, isPending: isSaving } = useUpdateJarvisPreferencesMutation()
 
   return { prefs: prefs ?? null, isLoading, isSuccess, savePrefs, isSaving }
