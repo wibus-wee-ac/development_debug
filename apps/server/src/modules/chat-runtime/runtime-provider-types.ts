@@ -441,6 +441,7 @@ export interface StartChatSessionInput {
   chatSessionId: string
   profile: RuntimeProviderTargetProfile
   workspacePath: string
+  agentId?: string | null
   modelId?: string
   previousProviderStateSnapshot?: string | null
 }
@@ -449,6 +450,7 @@ export interface ResumeChatSessionInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
   workspacePath: string
+  agentId?: string | null
   modelId?: string
 }
 
@@ -463,6 +465,7 @@ export interface StreamTurnInput {
   modelId?: string
   workspaceId?: string | null
   workspacePath?: string
+  agentId?: string | null
   providerOptions?: {
     thinkingEffort?: 'low' | 'medium' | 'high'
     permissionMode?: ChatPermissionMode
@@ -488,6 +491,7 @@ export interface GetCapabilitiesInput {
   profile: RuntimeProviderTargetProfile
   workspaceId?: string | null
   workspacePath: string
+  agentId?: string | null
   modelId?: string
   systemPrompt?: string
 }

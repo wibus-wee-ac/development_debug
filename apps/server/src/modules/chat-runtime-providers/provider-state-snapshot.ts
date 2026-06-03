@@ -8,6 +8,8 @@ export interface ProviderStateSnapshot {
 
 export interface WorkspaceProviderStateSnapshot extends ProviderStateSnapshot {
   workspacePath?: string
+  agentId?: string | null
+  agentHome?: string | null
 }
 
 export function readProviderStateSnapshot(raw: string | null | undefined): ProviderStateSnapshot {

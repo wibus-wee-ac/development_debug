@@ -1,3 +1,7 @@
+import { existsSync, mkdtempSync, readlinkSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -253,6 +257,67 @@ describe('claudeAgentProvider MCP integration', () => {
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
     }))
+  })
+
+  it('runs agent-scoped Claude Agent sessions from the agent home while keeping workspace context explicit', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'cradle-claude-agent-home-'))
+    const previousHome = process.env.HOME
+    process.env.HOME = homeDir
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-agent-home',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    try {
+      const provider = new ClaudeAgentProvider({
+        readSecret: () => 'sk-ant-test',
+      })
+      const runtimeSession = createRuntimeSession()
+      runtimeSession.providerStateSnapshot = JSON.stringify({
+        workspacePath: '/tmp/cradle-workspace',
+        agentId: 'agent-007',
+        models: { currentModelId: null },
+      })
+
+      for await (const _chunk of provider.streamTurn({
+        runId: 'run-claude-agent-home',
+        runtimeSession,
+        profile: createProfile({ additionalDirectories: ['/tmp/extra-directory'] }),
+        message: createUserMessage('Use agent home'),
+        workspaceId: 'workspace-1',
+        agentId: 'agent-007',
+      })) {
+        // Drain stream.
+      }
+
+      const agentHome = join(homeDir, '.cradle', 'agents', 'agent-007')
+      expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+        cwd: agentHome,
+        additionalDirectories: ['/tmp/cradle-workspace', '/tmp/extra-directory'],
+        env: expect.objectContaining({
+          CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+          CRADLE_WORKSPACE_ID: 'workspace-1',
+          CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+          CRADLE_AGENT_ID: 'agent-007',
+          CRADLE_AGENT_HOME: agentHome,
+        }),
+      }))
+      expect(existsSync(join(agentHome, 'skills'))).toBe(true)
+      expect(readlinkSync(join(agentHome, '.agents', 'skills'))).toBe('../skills')
+      expect(readlinkSync(join(agentHome, '.claude', 'skills'))).toBe('../skills')
+    }
+    finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+    }
   })
 
   it('does not ask the Claude Agent SDK to globally discover skills unless configured', async () => {
@@ -951,7 +1016,7 @@ describe('claudeAgentProvider MCP integration', () => {
       })) {
         // Drain stream to force prompt projection.
       }
-    }).rejects.toThrow('Claude Agent provider only supports text and image input; unsupported parts: file (brief.pdf) (application/pdf)')
+    }).rejects.toThrow('Claude Agent provider only supports text, image, and skill input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(sdkMocks.query).not.toHaveBeenCalled()
   })

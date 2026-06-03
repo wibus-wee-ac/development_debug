@@ -11,6 +11,7 @@ import {
   type CodexAppServerMethodCapability,
 } from './app-server-capabilities'
 import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
+import { resolveCodexRuntimeContext } from './runtime-context'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
 
 export type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
@@ -36,6 +37,7 @@ export interface CodexAppServerBridgeContext {
   profile: RuntimeProviderTargetProfile
   workspacePath: string
   workspaceId?: string | null
+  agentId?: string | null
   modelId?: string
 }
 
@@ -158,12 +160,16 @@ export class CodexAppServerBridge {
     if (!apiKey) {
       throw new Error('Codex app-server bridge requires an API key')
     }
+    const runtimeContext = resolveCodexRuntimeContext(context.workspacePath, context.agentId)
     return this.deps.createAppServerClient?.({
       apiKey,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
         workspaceId: context.workspaceId,
+        workspacePath: context.workspacePath,
+        agentId: context.agentId,
+        agentHome: runtimeContext.agentHome,
       }),
       serverRequestHandler: options.serverRequestHandler,
     }) ?? new CodexAppServerClient({
@@ -172,6 +178,9 @@ export class CodexAppServerBridge {
       env: buildCradleCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
         workspaceId: context.workspaceId,
+        workspacePath: context.workspacePath,
+        agentId: context.agentId,
+        agentHome: runtimeContext.agentHome,
       }),
       serverRequestHandler: options.serverRequestHandler,
     })

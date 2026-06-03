@@ -27,6 +27,7 @@ import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../chat-runt
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './mapper'
+import { resolveClaudeAgentRuntimeContext } from './runtime-context'
 
 interface ClaudeAgentProviderDeps {
   readSecret: (credentialRef: string) => string
@@ -76,6 +77,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    const runtimeContext = resolveClaudeAgentRuntimeContext(input.workspacePath, input.agentId)
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
@@ -84,6 +86,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
+        agentId: input.agentId ?? null,
+        agentHome: runtimeContext.agentHome,
         models: { currentModelId: input.modelId },
       }),
     }
@@ -91,11 +95,15 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const agentId = input.agentId ?? snapshot.agentId ?? null
+    const runtimeContext = resolveClaudeAgentRuntimeContext(input.workspacePath, agentId)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
         ...snapshot,
         workspacePath: input.workspacePath,
+        agentId,
+        agentHome: runtimeContext.agentHome,
         models: {
           currentModelId: input.modelId ?? snapshot.models.currentModelId,
         },
@@ -590,15 +598,22 @@ function buildClaudeQueryOptions(input: {
   }
 
   const snapshot = readWorkspaceProviderStateSnapshot(input.input.runtimeSession.providerStateSnapshot)
+  const runtimeContext = resolveClaudeAgentRuntimeContext(
+    snapshot.workspacePath ?? input.input.workspacePath,
+    input.input.agentId ?? snapshot.agentId ?? null,
+  )
   const queryOptions: Options = {
     abortController: input.abortController,
-    cwd: snapshot.workspacePath ?? input.input.workspacePath ?? process.cwd(),
+    cwd: runtimeContext.cwd,
     permissionMode,
     allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions'
       ? true
       : config.allowDangerouslySkipPermissions,
     maxTurns: config.maxTurns,
-    additionalDirectories: config.additionalDirectories,
+    additionalDirectories: uniquePaths([
+      ...runtimeContext.additionalDirectories,
+      ...config.additionalDirectories,
+    ]),
     includePartialMessages: true,
     forwardSubagentText: true,
     agentProgressSummaries: true,
@@ -660,6 +675,9 @@ function buildClaudeQueryOptions(input: {
   }
   env.CRADLE_CHAT_SESSION_ID = input.input.runtimeSession.chatSessionId
   env.CRADLE_WORKSPACE_ID = input.input.workspaceId ?? undefined
+  env.CRADLE_WORKSPACE_PATH = runtimeContext.workspacePath
+  env.CRADLE_AGENT_ID = input.input.agentId ?? snapshot.agentId ?? undefined
+  env.CRADLE_AGENT_HOME = runtimeContext.agentHome ?? undefined
 
   // Protect User Data
   // CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
@@ -671,6 +689,10 @@ function buildClaudeQueryOptions(input: {
   queryOptions.env = env
 
   return queryOptions
+}
+
+function uniquePaths(paths: Array<string | null | undefined>): string[] {
+  return [...new Set(paths.filter((path): path is string => Boolean(path)))]
 }
 
 function readSelectedSkillNames(message: RuntimeMessageInput): string[] {

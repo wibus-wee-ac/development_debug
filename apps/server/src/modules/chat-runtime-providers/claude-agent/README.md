@@ -6,10 +6,13 @@ Selected chat Skills arrive as Cradle-owned `data-cradle-skill` message parts. T
 
 Claude session titles are read from SDK session metadata with `getSessionInfo()` after a provider session id is known, then reported through Chat Runtime's title callback. Cradle owns the final `sessions.title` write.
 
+Agent-scoped Claude Agent sessions use `~/.cradle/agents/{agentId}` as SDK `cwd`. The original project workspace remains explicit through SDK `additionalDirectories` and `CRADLE_WORKSPACE_PATH`; agent context is also passed through `CRADLE_AGENT_ID` and `CRADLE_AGENT_HOME`. The agent home is initialized by the Skills module, including `.agents/skills` and `.claude/skills` links to the Cradle-owned agent `skills/` directory.
+
 ## Files
 
-- `provider.ts`: Claude Agent `ChatRuntime` implementation; starts/resumes SDK sessions, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering/cancellation/permission mode changes.
+- `provider.ts`: Claude Agent `ChatRuntime` implementation; starts/resumes SDK sessions, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering/cancellation/permission mode changes.
 - `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, and tool chunk mapping.
+- `runtime-context.ts`: Resolves per-session Claude Agent cwd, agent home, project workspace path, and SDK additional directories.
 - `mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.
 - `mapper.test.ts`: Mapper-level regression tests.
 - `tools/`: Claude Code tool identity, todo state projection, and tool envelope mapping.

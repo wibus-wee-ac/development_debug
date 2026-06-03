@@ -77,6 +77,7 @@ import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResp
 import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
 import type { Turn } from './app-server-protocol/v2/Turn'
 import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
+import { resolveCodexRuntimeContext } from './runtime-context'
 import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlots } from './ui-slots'
 
@@ -150,6 +151,7 @@ interface ThreadResponse {
   thread?: {
     id?: string
     name?: string | null
+    title?: string | null
     preview?: string | null
     status?: CodexThreadStatus
     modelProvider?: string | null
@@ -594,6 +596,8 @@ interface McpServerOauthLoginCompletedNotificationParams {
 
 interface CodexProviderSnapshot {
   workspacePath?: string
+  agentId?: string | null
+  agentHome?: string | null
   models?: {
     currentModelId?: string | null
     [key: string]: unknown
@@ -724,6 +728,7 @@ export class CodexProvider implements ChatRuntime {
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     const previousNativeHistory = readRestorableCodexNativeHistory(input.previousProviderStateSnapshot)
+    const runtimeContext = resolveCodexRuntimeContext(input.workspacePath, input.agentId)
     return {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
@@ -732,6 +737,8 @@ export class CodexProvider implements ChatRuntime {
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         workspacePath: input.workspacePath,
+        agentId: input.agentId ?? null,
+        agentHome: runtimeContext.agentHome,
         models: { currentModelId: input.modelId },
         ...(previousNativeHistory
           ? {
@@ -746,11 +753,15 @@ export class CodexProvider implements ChatRuntime {
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const agentId = input.agentId ?? snapshot.agentId ?? null
+    const runtimeContext = resolveCodexRuntimeContext(input.workspacePath, agentId)
     return {
       ...input.runtimeSession,
       providerStateSnapshot: JSON.stringify({
         ...snapshot,
         workspacePath: input.workspacePath,
+        agentId,
+        agentHome: runtimeContext.agentHome,
         models: {
           currentModelId: input.modelId ?? snapshot.models.currentModelId,
         },
@@ -775,6 +786,7 @@ export class CodexProvider implements ChatRuntime {
 
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? input.workspacePath
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, input.agentId ?? snapshot.agentId ?? null)
     const runtimeSession = input.runtimeSession.providerSessionId
       ? input.runtimeSession
       : await this.resumeChatSession({
@@ -784,6 +796,7 @@ export class CodexProvider implements ChatRuntime {
           },
           profile: input.profile,
           workspacePath: input.workspacePath,
+          agentId: input.agentId,
           modelId: input.modelId,
         })
     if (!runtimeSession.providerSessionId) {
@@ -795,6 +808,9 @@ export class CodexProvider implements ChatRuntime {
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
         workspaceId: input.workspaceId,
+        workspacePath,
+        agentId: input.agentId ?? snapshot.agentId ?? null,
+        agentHome: runtimeContext.agentHome,
       }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
     })
@@ -806,7 +822,7 @@ export class CodexProvider implements ChatRuntime {
           threadId: runtimeSession.providerSessionId,
         }) as Promise<ThreadGoalGetResponse>,
         client.request('config/read', {
-          cwd: workspacePath,
+          cwd: runtimeContext.cwd,
           includeLayers: false,
         }) as Promise<CodexConfigReadResponse>,
         client.request('modelProvider/capabilities/read', {}) as Promise<CodexModelProviderCapabilitiesReadResponse>,
@@ -822,7 +838,7 @@ export class CodexProvider implements ChatRuntime {
         client.request('account/rateLimits/read', {}) as Promise<CodexRateLimitsResponse>,
         client.request('configRequirements/read', {}) as Promise<CodexConfigRequirementsReadResponse>,
         client.request('skills/list', {
-          cwd: workspacePath,
+          cwd: runtimeContext.cwd,
         }) as Promise<CodexSkillsListResponse>,
         client.request('plugin/list', {}) as Promise<CodexPluginListResponse>,
         client.request('app/list', {
@@ -1005,6 +1021,7 @@ export class CodexProvider implements ChatRuntime {
 
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, input.agentId ?? snapshot.agentId ?? null)
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
     const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile, effectiveModel)
     const client = this.createAppServerClient({
@@ -1013,6 +1030,9 @@ export class CodexProvider implements ChatRuntime {
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
         workspaceId: input.workspaceId,
+        workspacePath,
+        agentId: input.agentId ?? snapshot.agentId ?? null,
+        agentHome: runtimeContext.agentHome,
       }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
     })
@@ -1045,7 +1065,8 @@ export class CodexProvider implements ChatRuntime {
       await client.initialize()
       const threadStart = await startOrResumeThread(client, input.runtimeSession, {
         model: effectiveModel,
-        cwd: workspacePath,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
         approvalPolicy: config.approvalPolicy,
         sandbox: config.sandboxMode,
         config: codexConfig,
@@ -1094,9 +1115,10 @@ export class CodexProvider implements ChatRuntime {
         const turnResponse = await client.request('turn/start', {
           threadId,
           input: userInput,
-          cwd: workspacePath,
+          cwd: runtimeContext.cwd,
+          runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
           approvalPolicy: config.approvalPolicy,
-          sandboxPolicy: toSandboxPolicy(config.sandboxMode, workspacePath, config.additionalDirectories),
+          sandboxPolicy: toSandboxPolicy(config.sandboxMode, runtimeContext.runtimeWorkspaceRoots, config.additionalDirectories),
           model: effectiveModel,
           effort: config.reasoningEffort,
         }) as TurnResponse
@@ -3230,6 +3252,7 @@ async function startOrResumeThread(
   params: {
     model?: string | null
     cwd: string
+    runtimeWorkspaceRoots: string[]
     approvalPolicy: CodexConfig['approvalPolicy']
     sandbox: CodexConfig['sandboxMode']
     config: Record<string, unknown>
@@ -3246,6 +3269,7 @@ async function startOrResumeThread(
   const baseParams = {
     model: params.model,
     cwd: params.cwd,
+    runtimeWorkspaceRoots: params.runtimeWorkspaceRoots,
     approvalPolicy: params.approvalPolicy,
     sandbox: params.sandbox,
     config: params.config,
@@ -3262,7 +3286,7 @@ async function startOrResumeThread(
   }
   return {
     threadId,
-    title: normalizeProviderTitle(response.thread?.name),
+    title: readCodexThreadDisplayTitle(response.thread),
     modelId: response.model ?? null,
     modelProvider: response.modelProvider ?? response.thread?.modelProvider ?? null,
     serviceTier: response.serviceTier ?? null,
@@ -3647,7 +3671,7 @@ function describeCodexUserInput(input: CodexUserInput[], text: string): string {
 
 function toSandboxPolicy(
   sandboxMode: CodexConfig['sandboxMode'],
-  workspacePath: string,
+  writableRoots: string[],
   additionalDirectories: string[],
 ): unknown {
   if (sandboxMode === 'danger-full-access') {
@@ -3658,7 +3682,7 @@ function toSandboxPolicy(
   }
   return {
     type: 'workspaceWrite',
-    writableRoots: [workspacePath, ...additionalDirectories],
+    writableRoots: [...new Set([...writableRoots, ...additionalDirectories])],
     networkAccess: false,
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
@@ -3748,11 +3772,17 @@ function readThreadNameUpdate(notification: CodexAppServerMessage, expectedThrea
 async function readLatestThreadTitle(client: CodexAppServerClientLike, threadId: string): Promise<string | null> {
   try {
     const response = await client.request('thread/read', { threadId, includeTurns: false }) as ThreadResponse
-    return normalizeProviderTitle(response.thread?.name)
+    return readCodexThreadDisplayTitle(response.thread)
   }
   catch {
     return null
   }
+}
+
+function readCodexThreadDisplayTitle(thread: ThreadResponse['thread'] | null | undefined): string | null {
+  return normalizeProviderTitle(thread?.name)
+    ?? normalizeProviderTitle(thread?.title)
+    ?? normalizeProviderTitle(thread?.preview)
 }
 
 function normalizeProviderTitle(title: string | null | undefined): string | null {

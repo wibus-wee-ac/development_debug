@@ -36,11 +36,17 @@ export interface CodexAppServerClientOptions {
 export function buildCradleCodexAppServerEnv(input: {
   chatSessionId: string
   workspaceId?: string | null
-}): Record<string, string | undefined> {
-  return {
+  workspacePath?: string | null
+  agentId?: string | null
+  agentHome?: string | null
+}): Record<string, string> {
+  return Object.fromEntries(Object.entries({
     CRADLE_CHAT_SESSION_ID: input.chatSessionId,
     CRADLE_WORKSPACE_ID: input.workspaceId ?? undefined,
-  }
+    CRADLE_WORKSPACE_PATH: input.workspacePath ?? undefined,
+    CRADLE_AGENT_ID: input.agentId ?? undefined,
+    CRADLE_AGENT_HOME: input.agentHome ?? undefined,
+  }).filter((entry): entry is [string, string] => typeof entry[1] === 'string'))
 }
 
 export class CodexAppServerClient {

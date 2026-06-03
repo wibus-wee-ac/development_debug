@@ -334,10 +334,6 @@ function scanDirectory(rootDir: string, scope: SkillScope): SkillCatalogEntry[] 
   const candidates: Array<{ skillDir: string, skillPath: string }> = []
   const signatureParts: string[] = []
   for (const dirEntry of dirEntries) {
-    if (!dirEntry.isDirectory()) {
-      continue
-    }
-
     const skillDir = path.join(rootDir, dirEntry.name)
     const skillPath = path.join(skillDir, 'SKILL.md')
     if (!fs.existsSync(skillPath)) {

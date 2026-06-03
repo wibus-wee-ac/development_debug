@@ -1583,6 +1583,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
         },
         profile: context.profile,
         workspacePath: context.workspacePath,
+        agentId: context.session.agentId,
         modelId:
           readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined,
       })
@@ -1590,6 +1591,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
         chatSessionId: sessionId,
         profile: context.profile,
         workspacePath: context.workspacePath,
+        agentId: context.session.agentId,
         previousProviderStateSnapshot: null,
       })
 
@@ -1598,6 +1600,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
     profile: context.profile,
     workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
+    agentId: context.session.agentId,
     modelId:
       readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
     systemPrompt: resolveSessionSystemPrompt(context.session),
@@ -1657,6 +1660,7 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
         profile: context.profile,
         workspaceId: context.session.workspaceId,
         workspacePath: context.workspacePath,
+        agentId: context.session.agentId,
         modelId:
           readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
         systemPrompt: resolveSessionSystemPrompt(context.session),
@@ -1680,6 +1684,7 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
     },
     profile: context.profile,
     workspacePath: context.workspacePath,
+    agentId: context.session.agentId,
     modelId:
       readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined,
   })
@@ -1691,6 +1696,7 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
       profile: context.profile,
       workspaceId: context.session.workspaceId,
       workspacePath: context.workspacePath,
+      agentId: context.session.agentId,
       modelId:
         readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
       systemPrompt: resolveSessionSystemPrompt(context.session),
@@ -1853,12 +1859,14 @@ async function resolveCodexAppServerBridgeContext(input: {
         },
         profile: context.profile,
         workspacePath: context.workspacePath,
+        agentId: context.session.agentId,
         modelId: input.modelId,
       })
     : await runtime.startChatSession({
         chatSessionId: input.sessionId,
         profile: context.profile,
         workspacePath: context.workspacePath,
+        agentId: context.session.agentId,
         modelId: input.modelId,
         previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
       })
@@ -1878,6 +1886,7 @@ async function resolveCodexAppServerBridgeContext(input: {
     profile: context.profile,
     workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
+    agentId: context.session.agentId,
     modelId: input.modelId,
   }
 }
@@ -2002,12 +2011,14 @@ export async function createRun(input: {
           },
           profile: context.profile,
           workspacePath: context.workspacePath,
+          agentId: context.session.agentId,
           modelId: input.modelId,
         })
       : await runtime.startChatSession({
           chatSessionId: input.sessionId,
           profile: context.profile,
           workspacePath: context.workspacePath,
+          agentId: context.session.agentId,
           modelId: input.modelId,
           previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
         })
@@ -2180,6 +2191,7 @@ export async function createRun(input: {
       originalMessages: requestMessages,
       workspaceId: context.session.workspaceId,
       workspacePath: context.workspacePath,
+      agentId: context.session.agentId,
     })
 
     return {
@@ -2946,6 +2958,7 @@ async function executeRun(
     originalMessages?: UIMessage[]
     workspaceId?: string | null
     workspacePath?: string
+    agentId?: string | null
   },
 ): Promise<void> {
   const diagnostics: TurnOutputDiagnostics = {
@@ -2974,6 +2987,7 @@ async function executeRun(
       transcript: input.transcript,
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
+      agentId: input.agentId,
       providerOptions: input.thinkingEffort || input.permissionMode
         ? {
             ...(input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : {}),

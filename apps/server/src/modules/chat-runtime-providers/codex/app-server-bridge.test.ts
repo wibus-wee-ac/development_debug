@@ -188,6 +188,7 @@ describe('CodexAppServerBridge stream lifecycle', () => {
     expect(appServerOptions[0]?.env).toEqual({
       CRADLE_CHAT_SESSION_ID: 'chat-session-1',
       CRADLE_WORKSPACE_ID: 'workspace-1',
+      CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
     })
   })
 })

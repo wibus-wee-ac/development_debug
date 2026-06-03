@@ -1,3 +1,7 @@
+import { existsSync, mkdtempSync, readlinkSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -11,7 +15,11 @@ class FakeCodexAppServerClient {
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
   threadStartName: string | null = 'Codex native title'
+  threadStartTitle: string | null = null
+  threadStartPreview: string | null = null
   threadReadName: string | null = 'Codex native title'
+  threadReadTitle: string | null = null
+  threadReadPreview: string | null = null
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
@@ -171,6 +179,8 @@ class FakeCodexAppServerClient {
         thread: {
           id: 'codex-thread-1',
           name: this.threadStartName,
+          title: this.threadStartTitle,
+          preview: this.threadStartPreview,
           modelProvider: 'openai',
           status: { type: 'active', activeFlags: ['waitingOnApproval'] },
         },
@@ -197,7 +207,7 @@ class FakeCodexAppServerClient {
           },
         }
       }
-      return { thread: { id: threadId, name: this.threadReadName } }
+      return { thread: { id: threadId, name: this.threadReadName, title: this.threadReadTitle, preview: this.threadReadPreview } }
     }
     if (method === 'thread/turns/list') {
       return {
@@ -1687,6 +1697,102 @@ describe('codexProvider app-server integration', () => {
     expect(reportSessionTitle).toHaveBeenCalledWith('Final Codex title')
   })
 
+  it('uses the Codex thread title field when app-server omits the legacy name field', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadStartName = null
+    client.threadStartTitle = 'Codex stored title'
+    const provider = createProvider(client)
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-title-field',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Start the session'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    expect(reportSessionTitle).toHaveBeenCalledWith('Codex stored title')
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
+  it('falls back to the final Codex thread preview when name and title are omitted', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadStartName = null
+    client.threadReadName = null
+    client.threadReadPreview = 'Final Codex preview'
+    const provider = createProvider(client)
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-final-preview-title',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Start the session'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    expect(reportSessionTitle).not.toHaveBeenCalled()
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+
+    expect(client.requests.map(request => request.method)).toContain('thread/read')
+    expect(reportSessionTitle).toHaveBeenCalledWith('Final Codex preview')
+  })
+
   it('reconstructs Cradle transcript into Codex thread history before starting a fresh turn', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
@@ -2111,6 +2217,7 @@ describe('codexProvider app-server integration', () => {
       expect(appServerOptions[0]?.env).toEqual({
         CRADLE_CHAT_SESSION_ID: 'chat-session-1',
         CRADLE_WORKSPACE_ID: 'workspace-1',
+        CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
       })
     })
 
@@ -2132,6 +2239,104 @@ describe('codexProvider app-server integration', () => {
       },
     })
     await drainStream(stream)
+  })
+
+  it('runs agent-scoped Codex threads from the agent home while keeping workspace roots explicit', async () => {
+    const homeDir = mkdtempSync(join(tmpdir(), 'cradle-codex-agent-home-'))
+    const previousHome = process.env.HOME
+    process.env.HOME = homeDir
+
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+
+    try {
+      const runtimeSession = createRuntimeSession()
+      runtimeSession.providerStateSnapshot = JSON.stringify({
+        workspacePath: '/tmp/cradle-workspace',
+        agentId: 'agent-007',
+        models: { currentModelId: null },
+      })
+      const stream = provider.streamTurn({
+        runId: 'run-codex-test',
+        runtimeSession,
+        profile: createProfile(),
+        message: createUserMessage('Use agent home'),
+        workspaceId: 'workspace-1',
+        agentId: 'agent-007',
+      })
+      const firstChunkPromise = stream.next()
+
+      const agentHome = join(homeDir, '.cradle', 'agents', 'agent-007')
+      await vi.waitFor(() => {
+        expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+      })
+      expect(appServerOptions[0]?.env).toEqual({
+        CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+        CRADLE_WORKSPACE_ID: 'workspace-1',
+        CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+        CRADLE_AGENT_ID: 'agent-007',
+        CRADLE_AGENT_HOME: agentHome,
+      })
+      expect(clients[0]?.requests[0]).toEqual({
+        method: 'thread/start',
+        params: expect.objectContaining({
+          cwd: agentHome,
+          runtimeWorkspaceRoots: [agentHome, '/tmp/cradle-workspace'],
+        }),
+      })
+      expect(clients[0]?.requests[1]).toEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({
+          cwd: agentHome,
+          runtimeWorkspaceRoots: [agentHome, '/tmp/cradle-workspace'],
+          sandboxPolicy: {
+            type: 'dangerFullAccess',
+          },
+        }),
+      })
+      expect(existsSync(join(agentHome, 'skills'))).toBe(true)
+      expect(readlinkSync(join(agentHome, '.agents', 'skills'))).toBe('../skills')
+      expect(readlinkSync(join(agentHome, '.claude', 'skills'))).toBe('../skills')
+
+      clients[0]?.pushNotification({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'codex-thread-1',
+          turnId: 'codex-turn-1',
+          itemId: 'assistant-message-1',
+          delta: 'Done',
+        },
+      })
+      await firstChunkPromise
+      clients[0]?.pushNotification({
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-thread-1',
+          turn: { id: 'codex-turn-1', status: 'completed' },
+        },
+      })
+      await drainStream(stream)
+    }
+    finally {
+      rmSync(homeDir, { recursive: true, force: true })
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+    }
   })
 
   it('streams app-server notifications and applies live steer to the active turn', async () => {
