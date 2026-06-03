@@ -1,6 +1,6 @@
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
-import { Activity, useCallback, useEffect, useRef, useState } from 'react'
+import { Activity, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { AppFooter } from '~/components/layout/app-footer'
@@ -35,6 +35,9 @@ const INSTANT = { duration: 0 } as const
 const SIDEBAR_LAYOUT_SETTLE_MS = 420
 
 type BrowserBridgeCleanup = () => void
+
+const MemoizedRightAside = memo(RightAside)
+MemoizedRightAside.displayName = 'MemoizedRightAside'
 
 function parseBrowserTabRequest(payload: unknown): string | undefined {
   return typeof payload === 'object'
@@ -149,14 +152,15 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const browserPanelElementRef = useRef<HTMLDivElement | null>(null)
-  const asideElementRef = useRef<HTMLElement | null>(null)
-  const asideContentElementRef = useRef<HTMLDivElement | null>(null)
-  const previousSidebarCollapsedRef = useRef<boolean | null>(null)
+  const browserPanelRestoreTimerRef = useRef<number | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
     mainElementRef.current = el
   }, [])
   const readMainWidth = useCallback(() => {
     return mainElementRef.current?.clientWidth ?? 800
+  }, [])
+  const updateDragging = useCallback((value: string | null) => {
+    setDragging(value)
   }, [])
 
   useGlobalEventListeners()
@@ -203,12 +207,6 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
-  const asideWidth = useLayoutStore(state => state.asideWidth)
-  const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
-  const asideOpen = useLayoutStore(state => state.asideOpen)
-  const sidebarCollapsed = useLayoutStore(state => state.sidebarCollapsed)
-  const setAsideOpen = useLayoutStore(state => state.setAsideOpen)
-  const setSidebarCollapsed = useLayoutStore(state => state.setSidebarCollapsed)
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
   const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
@@ -246,38 +244,17 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
       panel.style.flexBasis = `${ratio * 100}%`
     }
     setBrowserPanelRatio(ratio)
-    setDragging(null)
-  }, [readMainWidth, setBrowserPanelRatio])
-  const handleAsideResize = useCallback((width: number) => {
-    const aside = asideElementRef.current
-    const content = asideContentElementRef.current
-    if (aside) {
-      aside.style.width = `${width}px`
-    }
-    if (content) {
-      content.style.width = `${width}px`
-    }
-  }, [])
-  const handleAsideResizeEnd = useCallback((width: number) => {
-    const aside = asideElementRef.current
-    const content = asideContentElementRef.current
-    if (aside) {
-      aside.style.width = `${width}px`
-    }
-    if (content) {
-      content.style.width = `${width}px`
-    }
-    setAsideWidth(width)
-    setDragging(null)
-  }, [setAsideWidth])
+    updateDragging(null)
+  }, [readMainWidth, setBrowserPanelRatio, updateDragging])
 
   const handleToggleZenSidebars = useCallback(() => {
+    const { asideOpen, setAsideOpen, setSidebarCollapsed, sidebarCollapsed } = useLayoutStore.getState()
     const shouldCollapse = !sidebarCollapsed && (!canUseRightAside || asideOpen)
     setSidebarCollapsed(shouldCollapse)
     if (canUseRightAside) {
       setAsideOpen(!shouldCollapse)
     }
-  }, [asideOpen, canUseRightAside, setAsideOpen, setSidebarCollapsed, sidebarCollapsed])
+  }, [canUseRightAside])
 
   useShortcut('toggle-zen-sidebars', { meta: true, key: '.' }, handleToggleZenSidebars)
 
@@ -298,13 +275,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
     })
   }, [activeBrowserPanelOwnerId, readBrowserTabSource, setBrowserPanelOpen])
 
-  useEffect(() => {
-    const previousSidebarCollapsed = previousSidebarCollapsedRef.current
-    previousSidebarCollapsedRef.current = sidebarCollapsed
-
-    if (previousSidebarCollapsed === null || previousSidebarCollapsed === sidebarCollapsed) {
-      return
-    }
+  const pinBrowserPanelDuringLayoutSpring = useCallback(() => {
     if (!browserPanelVisible || dragging === 'browser') {
       return
     }
@@ -320,14 +291,38 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
     }
 
     panel.style.flexBasis = `${currentWidth}px`
-    const restoreTimer = window.setTimeout(() => {
-      panel.style.flexBasis = `${browserPanelRatio * 100}%`
-    }, SIDEBAR_LAYOUT_SETTLE_MS)
-
-    return () => {
-      window.clearTimeout(restoreTimer)
+    if (browserPanelRestoreTimerRef.current !== null) {
+      window.clearTimeout(browserPanelRestoreTimerRef.current)
     }
-  }, [browserPanelRatio, browserPanelVisible, dragging, sidebarCollapsed])
+    browserPanelRestoreTimerRef.current = window.setTimeout(() => {
+      panel.style.flexBasis = `${browserPanelRatio * 100}%`
+      browserPanelRestoreTimerRef.current = null
+    }, SIDEBAR_LAYOUT_SETTLE_MS)
+  }, [browserPanelRatio, browserPanelVisible, dragging])
+
+  useLayoutEffect(() => {
+    const initialState = useLayoutStore.getState()
+    let previousSidebarCollapsed = initialState.sidebarCollapsed
+    let previousAsideOpen = initialState.asideOpen
+    return useLayoutStore.subscribe((state) => {
+      const sidebarToggled = previousSidebarCollapsed !== state.sidebarCollapsed
+      const asideToggled = previousAsideOpen !== state.asideOpen
+      previousSidebarCollapsed = state.sidebarCollapsed
+      previousAsideOpen = state.asideOpen
+
+      if (sidebarToggled || asideToggled) {
+        pinBrowserPanelDuringLayoutSpring()
+      }
+    })
+  }, [pinBrowserPanelDuringLayoutSpring])
+
+  useEffect(() => {
+    return () => {
+      if (browserPanelRestoreTimerRef.current !== null) {
+        window.clearTimeout(browserPanelRestoreTimerRef.current)
+      }
+    }
+  }, [])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -365,7 +360,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
                 direction="horizontal"
                 value={() => browserPanelRatio * readMainWidth()}
                 onChange={handleBrowserPanelResize}
-                onDragStart={() => setDragging('browser')}
+                onDragStart={() => updateDragging('browser')}
                 onChangeEnd={handleBrowserPanelResizeEnd}
                 min={() => readMainWidth() * 0.2}
                 max={() => readMainWidth() * 0.7}
@@ -402,8 +397,8 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               direction="vertical"
               value={bottomPanelHeight}
               onChange={setBottomPanelHeight}
-              onDragStart={() => setDragging('panel')}
-              onDragEnd={() => setDragging(null)}
+              onDragStart={() => updateDragging('panel')}
+              onDragEnd={() => updateDragging(null)}
               min={PANEL.min}
               max={PANEL.max}
               inverted
@@ -433,44 +428,12 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
         {canUseRightAside && (
-          <>
-            {asideOpen && (
-              <ResizeHandle
-                direction="horizontal"
-                value={asideWidth}
-                onChange={handleAsideResize}
-                onDragStart={() => setDragging('aside')}
-                onChangeEnd={handleAsideResizeEnd}
-                min={ASIDE.min}
-                max={ASIDE.max}
-                inverted
-              />
-            )}
-            <m.aside
-              ref={asideElementRef}
-              initial={{
-                width: asideOpen ? asideWidth : 0,
-                opacity: asideOpen ? 1 : 0,
-              }}
-              animate={{
-                width: asideOpen ? asideWidth : 0,
-                opacity: asideOpen ? 1 : 0,
-              }}
-              transition={dragging === 'aside' ? INSTANT : SPRING}
-              className="flex shrink-0 overflow-hidden bg-sidebar"
-              data-testid="app-layout-right-aside"
-              data-aside-open={asideOpen ? 'true' : 'false'}
-            >
-              <div ref={asideContentElementRef} className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-                <RightAside
-                  sessionId={resolvedAsideSessionId}
-                  workspaceId={resolvedAsideWorkspaceId}
-                  workspaceName={resolvedAsideWorkspaceName}
-                  workspacePath={resolvedAsideWorkspacePath}
-                />
-              </div>
-            </m.aside>
-          </>
+          <AppRightAside
+            sessionId={resolvedAsideSessionId}
+            workspaceId={resolvedAsideWorkspaceId}
+            workspaceName={resolvedAsideWorkspaceName}
+            workspacePath={resolvedAsideWorkspacePath}
+          />
         )}
       </div>
 
@@ -478,5 +441,94 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
       {showFooter && <AppFooter />}
       {showFooter && import.meta.env.DEV && <DevBottomBar />}
     </div>
+  )
+}
+
+interface AppRightAsideProps {
+  sessionId?: string | null
+  workspaceId?: string | null
+  workspaceName?: string | null
+  workspacePath?: string | null
+}
+
+function AppRightAside({
+  sessionId,
+  workspaceId,
+  workspaceName,
+  workspacePath,
+}: AppRightAsideProps) {
+  const [dragging, setDragging] = useState<string | null>(null)
+  const asideElementRef = useRef<HTMLElement | null>(null)
+  const asideContentElementRef = useRef<HTMLDivElement | null>(null)
+  const asideWidth = useLayoutStore(state => state.asideWidth)
+  const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
+  const asideOpen = useLayoutStore(state => state.asideOpen)
+
+  const handleAsideResize = useCallback((width: number) => {
+    const aside = asideElementRef.current
+    const content = asideContentElementRef.current
+    if (aside) {
+      aside.style.width = `${width}px`
+    }
+    if (content) {
+      content.style.width = `${width}px`
+    }
+  }, [])
+  const handleAsideResizeEnd = useCallback((width: number) => {
+    const aside = asideElementRef.current
+    const content = asideContentElementRef.current
+    if (aside) {
+      aside.style.width = `${width}px`
+    }
+    if (content) {
+      content.style.width = `${width}px`
+    }
+    setAsideWidth(width)
+    setDragging(null)
+  }, [setAsideWidth])
+
+  return (
+    <>
+      {asideOpen && (
+        <ResizeHandle
+          direction="horizontal"
+          value={asideWidth}
+          onChange={handleAsideResize}
+          onDragStart={() => setDragging('aside')}
+          onChangeEnd={handleAsideResizeEnd}
+          min={ASIDE.min}
+          max={ASIDE.max}
+          inverted
+        />
+      )}
+      <m.aside
+        ref={asideElementRef}
+        initial={{
+          width: asideOpen ? asideWidth : 0,
+          opacity: asideOpen ? 1 : 0,
+        }}
+        animate={{
+          width: asideOpen ? asideWidth : 0,
+          opacity: asideOpen ? 1 : 0,
+        }}
+        transition={dragging === 'aside' ? INSTANT : SPRING}
+        className="flex shrink-0 overflow-hidden bg-sidebar"
+        data-testid="app-layout-right-aside"
+        data-aside-open={asideOpen ? 'true' : 'false'}
+      >
+        <div
+          ref={asideContentElementRef}
+          className="flex flex-col flex-1 overflow-hidden"
+          style={{ width: asideWidth }}
+        >
+          <MemoizedRightAside
+            sessionId={sessionId}
+            workspaceId={workspaceId}
+            workspaceName={workspaceName}
+            workspacePath={workspacePath}
+          />
+        </div>
+      </m.aside>
+    </>
   )
 }
