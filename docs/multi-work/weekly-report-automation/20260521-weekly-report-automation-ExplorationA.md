@@ -1,9 +1,3 @@
-<!--
-Output: Initial implementation proposal for automated project weekly report generation.
-Input: AGENTS.md, Chronicle ExecPlan, task-system ExecPlan, server modules, home dashboard placeholder.
-Position: Exploration handoff for weekly report automation design review.
--->
-
 # ExplorationA: Weekly Report Automation
 
 ## Direct Recommendation

@@ -1,7 +1,3 @@
-// Output: Codex app-server item projection into Cradle-owned tool envelopes.
-// Input: Codex app-server item records emitted during a turn.
-// Position: Codex provider-owned tool semantic mapper.
-
 import {
   createBuiltinToolCallInputPayload,
   createBuiltinToolCallResultPayload,

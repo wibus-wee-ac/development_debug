@@ -1,9 +1,3 @@
-<!--
-Input: Pack-codebase DX/UX changed files for path parsing, include glob construction, tests, and feature README.
-Output: Independent ReviewL audit handoff for pack-codebase path handling changes.
-Position: Multi-work review artifact for the pack-codebase-continuous stream.
--->
-
 # ReviewL: Pack-codebase Paths Audit
 
 Date: 2026-05-19

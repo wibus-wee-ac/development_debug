@@ -1,7 +1,3 @@
-// Output: Provider catalog service operations for model listing, caching, search, and lookup.
-// Input: Provider targets, secrets, model registry enrichment, and catalog implementations.
-// Position: Provider-catalog owns /providers service semantics and audit writes.
-
 import { runtimeAuditLog } from '@cradle/db'
 import { z } from 'zod'
 

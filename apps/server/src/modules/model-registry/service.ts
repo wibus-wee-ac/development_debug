@@ -1,7 +1,3 @@
-// Output: Global model registry mapping persistence and projection helpers.
-// Input: Cradle-owned mapping writes plus optional models.dev snapshots.
-// Position: Provides the first enrichment stage used by all provider targets.
-
 import type { ModelRegistryMapping as ModelRegistryMappingRow } from '@cradle/db'
 import { modelRegistryMappings } from '@cradle/db'
 import { eq } from 'drizzle-orm'

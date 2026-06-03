@@ -1,9 +1,3 @@
-<!--
-Input: React Doctor js-combine-iterations follow-up, ReviewAV audit, batch notes, and scoped kanban issue-detail diff
-Output: ReviewAW rereview report for the properties label add accessibility node
-Position: Multi-work review artifact for continuous kanban UX improvements
--->
-
 # ReviewAW Rereview: Properties Label Add A11y
 
 Result: PASS

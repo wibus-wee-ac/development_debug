@@ -1,7 +1,3 @@
-// Output: Shared TODO plugin-state reader and TodoWrite render projection.
-// Input: Persisted AI SDK tool message parts and classified TodoWrite payloads.
-// Position: Chat feature model used by message tool blocks and session-level TODO surfaces.
-
 import type { UIMessage } from 'ai'
 
 import { isToolLikePart } from './chat-tool-entities'

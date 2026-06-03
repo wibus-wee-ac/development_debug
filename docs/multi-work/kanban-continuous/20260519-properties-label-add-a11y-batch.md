@@ -1,9 +1,3 @@
-<!--
-Input: PropertiesSidebar label add accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail label add trigger accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Properties Label Add A11y Batch
 
 ## Scope

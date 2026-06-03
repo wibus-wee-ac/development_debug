@@ -1,9 +1,3 @@
-<!--
-Input: Alma People settings evidence and Cradle identity audit.
-Output: Spec for people/contact profiles.
-Position: docs/specs/alma-inspired/people-contacts.md
--->
-
 # People 与 Contacts
 
 ## 目标

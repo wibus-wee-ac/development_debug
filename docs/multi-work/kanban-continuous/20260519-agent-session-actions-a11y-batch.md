@@ -1,9 +1,3 @@
-<!--
-Input: AgentSessionPanel action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail agent session action accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Agent Session Actions A11y Batch
 
 ## Scope

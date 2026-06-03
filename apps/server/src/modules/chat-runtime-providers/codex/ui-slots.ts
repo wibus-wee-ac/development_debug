@@ -1,7 +1,3 @@
-// Output: Codex app-server capability projection into Chat Runtime UI slots.
-// Input: Generated Codex app-server capability manifest.
-// Position: Provider-owned presentation contract consumed by Chat Runtime capabilities.
-
 import type { RuntimeUiSlot } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
 

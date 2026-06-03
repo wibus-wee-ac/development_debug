@@ -1,7 +1,3 @@
-// Output: i18n validation report and process status.
-// Input: Default TypeScript source and locale JSON translation files.
-// Position: CI gate backing pnpm i18n:check.
-
 import { collectCheckReport, writeMissingReport } from './utils'
 
 const report = await collectCheckReport()

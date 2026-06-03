@@ -1,9 +1,3 @@
-<!--
-Input: Alma data export/cloud sync evidence and Cradle import/export audit.
-Output: Spec for backup, restore, and optional cloud sync.
-Position: docs/specs/alma-inspired/backup-cloud-sync.md
--->
-
 # Backup 与 Cloud Sync
 
 ## 目标

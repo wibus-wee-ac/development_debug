@@ -1,9 +1,3 @@
-<!--
-Input: Alma MCP OAuth IPC and Cradle MCP registry gap.
-Output: Spec for MCP OAuth lifecycle.
-Position: docs/specs/alma-inspired/mcp-oauth.md
--->
-
 # MCP OAuth
 
 ## 目标

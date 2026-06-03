@@ -1,7 +1,3 @@
-// Output: Browser locale bootstrap helpers for Vite SPA startup and language switching.
-// Input: URL query parameters, cookies, navigator languages, and supported locale rules.
-// Position: Vite replacement for request middleware and HTML mounting responsibilities.
-
 import type { SupportedLocale } from './locales'
 import {
   DEFAULT_LOCALE,

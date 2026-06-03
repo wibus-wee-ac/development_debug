@@ -1,9 +1,3 @@
-<!--
-Output: Agent identity capability implementation plan for server migration.
-Input: apps/server/specs/capabilities/agent-identity.md.
-Position: docs/superpowers/plans.
--->
-
 # Agent Identity Capability (Server Migration) Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

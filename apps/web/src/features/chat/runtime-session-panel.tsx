@@ -1,7 +1,3 @@
-// Output: Runtime status panel for the selected chat session.
-// Input: Session metadata, visible chat status, run display metadata, and chat messages.
-// Position: Chat feature panel rendered inside the app right aside.
-
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import { ActivityIcon, BotIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'

@@ -1,9 +1,3 @@
-<!--
-Input: Pack-codebase path handling fixes after ReviewL, including multiline UI, include draft handling, utility tests, and feature README.
-Output: Independent ReviewM rereview handoff for pack-codebase path handling changes.
-Position: Multi-work rereview artifact for the pack-codebase-continuous stream.
--->
-
 # ReviewM: Pack-codebase Paths Rereview
 
 Date: 2026-05-19

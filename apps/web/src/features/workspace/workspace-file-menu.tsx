@@ -1,7 +1,3 @@
-// Output: Shared workspace file tree menu actions and create dialog.
-// Input: Workspace-relative file paths, tree context menu anchors, and workspace IDs.
-// Position: Workspace-owned UI for file actions reused by Files and Changes trees.
-
 import type { ContextMenuItem as TreeContextMenuItem, ContextMenuOpenContext as TreeContextMenuOpenContext } from '@pierre/trees'
 import type { TFunction } from 'i18next'
 import {

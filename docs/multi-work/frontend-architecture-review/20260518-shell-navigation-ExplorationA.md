@@ -1,7 +1,3 @@
-<!-- Input: AGENTS.md, frontend architecture ExecPlan, apps/web shell/navigation source files -->
-<!-- Output: Shell and navigation architecture review handoff -->
-<!-- Position: Multi-work frontend architecture review artifact for ExplorationA -->
-
 # Shell Navigation ExplorationA
 
 ## Scope

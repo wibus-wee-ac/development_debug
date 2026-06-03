@@ -1,7 +1,3 @@
-// Output: Provider target query hook for runtime selection surfaces.
-// Input: Generated provider-targets React Query options.
-// Position: Agent Runtime owns renderer access to provider target records.
-
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 

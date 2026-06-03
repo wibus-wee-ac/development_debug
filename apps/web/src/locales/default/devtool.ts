@@ -1,7 +1,3 @@
-// Output: Default English copy for development and diagnostic panels.
-// Input: Devtool panel status text, table headers, and labels.
-// Position: Source of truth for devtool feature i18n namespace.
-
 export default {
   'status.loading': 'Loading...',
   'memory.unavailable': 'No memory data available (requires Chromium with performance.memory)',

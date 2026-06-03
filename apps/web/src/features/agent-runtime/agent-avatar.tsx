@@ -1,9 +1,3 @@
-/**
- * Output: Compact Agent identity avatar for renderer surfaces.
- * Input: Agent identity display name and persisted avatar metadata.
- * Position: Agent Runtime-owned visual adapter consumed by feature UIs.
- */
-
 import { BotIcon } from 'lucide-react'
 
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'

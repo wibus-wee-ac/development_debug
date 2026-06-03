@@ -1,7 +1,3 @@
-// Output: Historical detail panel for external provider records.
-// Input: External provider record metadata plus provider-backed model fetch.
-// Position: Shows user-facing connected app details while keeping source-owned fields read-only.
-
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, CircleCheckIcon, CircleDashedIcon, TriangleAlertIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'

@@ -1,7 +1,3 @@
-// Output: Unit coverage for Kanban-owned Jarvis attention context.
-// Input: Kanban attention snapshots and the shared Jarvis context registry.
-// Position: Feature-owned tests for Kanban semantic context publication.
-
 import { describe, expect, it } from 'vitest'
 
 import { createContextRegistry } from '~/features/context/context-registry'

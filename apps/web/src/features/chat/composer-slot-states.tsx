@@ -1,7 +1,3 @@
-// Output: Composer-adjacent rendering for provider-owned primary chat state.
-// Input: Runtime UI slot state projected by the active chat provider.
-// Position: Chat feature presentation layer above the composer input.
-
 import {
   ArrowLeftIcon,
   CheckCircle2Icon,

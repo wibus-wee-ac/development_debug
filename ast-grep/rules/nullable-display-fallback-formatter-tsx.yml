@@ -1,7 +1,3 @@
-# Output: Finds TSX local nullable display helpers that hide null behind a string fallback.
-# Input: TSX formatter helpers with `T | null` parameters.
-# Position: Owned by cleanup scans to expose null propagation hidden behind display helpers.
-
 id: nullable-display-fallback-formatter-tsx
 language: TSX
 severity: warning

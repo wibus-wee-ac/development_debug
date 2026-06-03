@@ -1,7 +1,3 @@
-// Output: Unit coverage for Jarvis context prompt formatting.
-// Input: Typed context envelopes and legacy snapshot formatting fixtures.
-// Position: Feature-owned tests for system-agent prompt context projection.
-
 import { describe, expect, it } from 'vitest'
 
 import { formatContextEnvelopeForAgent, formatContextForAgent } from './format-context'

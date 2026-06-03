@@ -1,7 +1,3 @@
-// Output: Unit coverage for explicit Jarvis context attachments.
-// Input: User-attached context references and current text selection.
-// Position: system-agent owns explicit context publication into Jarvis envelopes.
-
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createContextRegistry } from '~/features/context/context-registry'

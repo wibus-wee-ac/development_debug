@@ -1,7 +1,3 @@
-// Output: Tiptap Smart Mention inline node, suggestion trigger, and Markdown serialization.
-// Input: Resource candidates provided by the owning feature through MarkdownEditor props.
-// Position: Shared editor extension; feature owners provide navigation and candidate semantics.
-
 /* eslint-disable react-refresh/only-export-components */
 
 import type { Editor, Range } from '@tiptap/core'

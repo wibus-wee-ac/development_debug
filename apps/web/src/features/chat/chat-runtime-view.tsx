@@ -1,7 +1,3 @@
-// Output: Chat session runtime view shared by tab routes and tear-off windows.
-// Input: Session metadata, runtime kind, and workspace ownership.
-// Position: Chat-owned rendering boundary independent of app shell and tab registry.
-
 import { useQueryClient } from '@tanstack/react-query'
 import { lazy, Suspense, useCallback, useLayoutEffect, useMemo, useRef } from 'react'
 

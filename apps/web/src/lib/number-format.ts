@@ -1,7 +1,3 @@
-// Output: Renderer-owned numeric display and bounded percent helpers.
-// Input: Raw counts, ratios, byte values, durations, and percentages from feature views.
-// Position: Shared renderer display owner for cross-feature numeric formatting that should not live inside components.
-
 import { clamp } from 'es-toolkit'
 import formatDuration from 'format-duration'
 import prettyBytes from 'pretty-bytes'

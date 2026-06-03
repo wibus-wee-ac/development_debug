@@ -1,9 +1,3 @@
-/**
- * Output: Compact colored issue label chip.
- * Input: Issue label text and optional visual overrides.
- * Position: Kanban shared visual helper for Issue-owned labels.
- */
-
 import { cn } from '~/lib/cn'
 
 import type { LabelTone } from './label-metadata'

@@ -1,8 +1,3 @@
-/**
- * Output: Desktop main-process observability reporter for private-preview diagnostics.
- * Input: Electron main runtime errors before and after server startup.
- * Position: Desktop-owned producer that writes only to the server-owned observability API.
- */
 import { app } from 'electron'
 
 interface DesktopObservabilityEvent {

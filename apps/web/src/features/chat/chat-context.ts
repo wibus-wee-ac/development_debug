@@ -1,7 +1,3 @@
-// Output: Chat-owned semantic attention context provider for Jarvis.
-// Input: ChatView viewport, message, and composer focus state.
-// Position: Chat owns chat-session attention semantics; system-agent only aggregates provider output.
-
 import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'

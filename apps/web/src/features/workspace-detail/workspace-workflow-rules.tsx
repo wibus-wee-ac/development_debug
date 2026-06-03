@@ -1,7 +1,3 @@
-// Output: Workspace workflow rule editor with agent-scoped Markdown rule documents.
-// Input: Workspace id, selected agent scope, workflow-rule API data, and save mutations.
-// Position: Workspace Detail owns workflow-rule editing surface and readiness instrumentation.
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
 import { z } from 'zod'

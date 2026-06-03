@@ -1,7 +1,3 @@
-// Output: Provider-owned runtime UI slot state cards for chat runtime diagnostics.
-// Input: Runtime UI slot capabilities and their latest provider-projected state.
-// Position: Chat feature diagnostics surface; presentation only, no provider semantics ownership.
-
 import {
   ActivityIcon,
   AlertTriangleIcon,

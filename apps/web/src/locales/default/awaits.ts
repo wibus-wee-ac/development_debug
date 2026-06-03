@@ -1,7 +1,3 @@
-// Output: Default English copy for await overview UI.
-// Input: Await list, empty states, and await row actions.
-// Position: Source of truth for session-await feature i18n namespace.
-
 export default {
   'overview.title': 'Awaits',
   'overview.description': 'Sessions waiting on external signals',

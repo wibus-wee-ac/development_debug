@@ -1,9 +1,3 @@
-<!--
-Input: ActivityTimeline icon accessibility batch, scoped git diff, and focused Vitest run
-Output: Independent ReviewBC audit report for the activity timeline icons accessibility node
-Position: Multi-work review artifact for kanban continuous UX accessibility improvements
--->
-
 # Activity Timeline Icons A11y Audit - ReviewBC
 
 ## Verdict

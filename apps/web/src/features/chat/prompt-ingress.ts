@@ -1,9 +1,3 @@
-/**
- * Output: Session-scoped prompt ingress registry for Browser Panel guest pages.
- * Input: Prompt text and FileUIPart attachments from host-owned renderer surfaces.
- * Position: Chat-owned boundary for external UI surfaces that submit into a chat session.
- */
-
 import type { FileUIPart } from 'ai'
 
 import type { ChatContextPart } from './chat-context-parts'

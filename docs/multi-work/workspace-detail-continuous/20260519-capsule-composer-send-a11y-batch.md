@@ -1,9 +1,3 @@
-<!--
-Input: CapsuleComposer send action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the workspace detail capsule composer send accessibility node
-Position: Multi-work audit trail for continuous workspace detail UX improvements
--->
-
 # Capsule Composer Send A11y Batch
 
 ## Scope

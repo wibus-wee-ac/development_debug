@@ -1,9 +1,3 @@
-/*
- * Output: Client-side force graph for documentation pages.
- * Input: Prebuilt graph nodes and links from the documentation source.
- * Position: Fumadocs Graph View style component used by MDX graph explainers.
- */
-
 'use client'
 
 import { forceCollide, forceLink, forceManyBody } from 'd3-force'

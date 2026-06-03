@@ -1,9 +1,3 @@
-<!--
-Input: Browser Panel implementation, desktop webview lifecycle, browser-use plugin architecture, and Chat prompt ingress.
-Output: Browser Panel webview bridge ownership and API contract.
-Position: docs/specs/browser-panel-webview-bridge.md
--->
-
 # Browser Panel Webview Bridge
 
 ## 目标

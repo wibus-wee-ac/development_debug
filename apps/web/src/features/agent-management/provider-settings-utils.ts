@@ -1,7 +1,3 @@
-// Output: Shared provider settings constants and helpers for Agent Management.
-// Input: Agent profile records, provider presets, and model visibility sentinel values.
-// Position: Agent Management owns provider settings semantics used by list, draft, detail, and model panels.
-
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
 import type { AgentProfile, ApiProviderKind, ProviderKind } from '~/lib/types'
 

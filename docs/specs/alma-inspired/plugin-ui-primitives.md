@@ -1,9 +1,3 @@
-<!--
-Input: Alma preload plugin UI primitives and Cradle plugin SDK audit.
-Output: Spec for plugin UI primitives.
-Position: docs/specs/alma-inspired/plugin-ui-primitives.md
--->
-
 # Plugin UI Primitives
 
 ## 目标

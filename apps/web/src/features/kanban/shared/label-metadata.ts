@@ -1,9 +1,3 @@
-/**
- * Output: Workspace label metadata, deterministic label colors, and label patch helpers.
- * Input: Issue records and label edit intents from Kanban surfaces.
- * Position: Kanban shared helper for Issue-owned label strings.
- */
-
 import type { KanbanIssue } from '~/lib/types'
 
 export type LabelTone = 'blue' | 'green' | 'amber' | 'rose' | 'violet' | 'cyan' | 'slate'

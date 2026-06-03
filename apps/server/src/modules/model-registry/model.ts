@@ -1,7 +1,3 @@
-// Output: HTTP schemas for global model registry mapping APIs.
-// Input: models.dev metadata shapes and Cradle-owned model alias payloads.
-// Position: Model registry owns global model enrichment mappings shared by every provider target.
-
 import { t } from 'elysia'
 
 const modelsDevModel = t.Object({

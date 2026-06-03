@@ -1,7 +1,3 @@
-# Output: Finds functions that only wrap generated HTTP SDK calls.
-# Input: TypeScript source using generated functions named get/post/put/patch/delete + PascalCase.
-# Position: Owned by architecture hygiene scans to expose removable API compatibility facades.
-
 id: generated-api-call-wrapper
 language: TypeScript
 severity: warning

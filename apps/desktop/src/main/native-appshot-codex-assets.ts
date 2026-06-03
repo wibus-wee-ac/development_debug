@@ -1,7 +1,4 @@
 /*
- * Output: Safe readers for Codex Computer Use Appshot temp image assets.
- * Input: Codex-owned file paths or the Codex Computer Use temp directory.
- * Position: Desktop main owns read-only projection of Codex private Appshot artifacts into Cradle IPC data.
  */
 import { createHash } from 'node:crypto'
 import { readdir, readFile, realpath, stat } from 'node:fs/promises'

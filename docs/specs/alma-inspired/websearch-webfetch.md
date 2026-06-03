@@ -1,9 +1,3 @@
-<!--
-Input: Alma WebSearch/WebFetch evidence and Cradle browser panel audit.
-Output: Spec for web search and fetch services.
-Position: docs/specs/alma-inspired/websearch-webfetch.md
--->
-
 # WebSearch 与 WebFetch
 
 ## 目标

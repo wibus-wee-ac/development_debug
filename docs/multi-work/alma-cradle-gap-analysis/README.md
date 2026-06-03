@@ -1,9 +1,3 @@
-<!--
-Input: Alma and Cradle gap-analysis handoff files.
-Output: Inventory for Alma/Cradle multi-work research artifacts.
-Position: docs/multi-work/alma-cradle-gap-analysis/README.md
--->
-
 # Alma 与 Cradle Gap Analysis
 
 这个目录保存 Alma packaged app 与 Cradle 当前能力对比的并行研究交接文件。最终结论已经被拆解到 `docs/specs/alma-inspired/`，后续实现应从具体 spec 或新的 ExecPlan 开始，而不是直接修改这些研究交接文件。

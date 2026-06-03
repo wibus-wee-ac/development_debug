@@ -1,7 +1,3 @@
-// Output: Local agent config reader for onboarding external provider snapshots.
-// Input: Allowlisted local config files, optional process environment values, and PATH-based CLI tool detection.
-// Position: External provider source utilities owned by Cradle onboarding/provider integration.
-
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'

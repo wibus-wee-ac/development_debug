@@ -1,9 +1,3 @@
-/**
- * Output: Installs production dependencies for the bundled server runtime.
- * Input: apps/server/dist plus server-owned runtime package declarations.
- * Position: Runs after Vite builds the server bundle and before desktop packaging.
- */
-
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'

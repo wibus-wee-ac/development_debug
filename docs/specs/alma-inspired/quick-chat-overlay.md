@@ -1,9 +1,3 @@
-<!--
-Input: Alma quick chat IPC evidence and Cradle tray/chat audit.
-Output: Spec for Quick Chat overlay.
-Position: docs/specs/alma-inspired/quick-chat-overlay.md
--->
-
 # Quick Chat Overlay
 
 ## 目标

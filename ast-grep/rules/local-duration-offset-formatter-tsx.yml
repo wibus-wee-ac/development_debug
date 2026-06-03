@@ -1,7 +1,3 @@
-# Output: Finds TSX local helpers that hand-roll mm:ss-style duration offsets.
-# Input: TSX formatter helpers using seconds math and padStart for colon notation.
-# Position: Owned by cleanup scans to expose duration formatting that should use a package or shared owner.
-
 id: local-duration-offset-formatter-tsx
 language: TSX
 severity: warning

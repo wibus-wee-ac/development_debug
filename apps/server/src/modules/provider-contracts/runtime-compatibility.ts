@@ -1,7 +1,3 @@
-// Output: Runtime/provider compatibility rules.
-// Input: Runtime kind and provider kind identifiers.
-// Position: Provider-contracts owns provider-kind compatibility semantics consumed by sessions and chat runtime.
-
 import type { ProviderKind, RuntimeKind } from './types'
 
 const RUNTIME_PROVIDER_KINDS: Record<RuntimeKind, readonly ProviderKind[]> = {

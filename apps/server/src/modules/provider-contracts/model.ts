@@ -1,7 +1,3 @@
-// Output: Shared provider taxonomy HTTP schemas.
-// Input: Provider taxonomy and model metadata contract fields.
-// Position: Provider-contracts owns schemas consumed by provider catalog, provider targets, and profiles.
-
 import { t } from 'elysia'
 
 export const providerKindSchema = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')])

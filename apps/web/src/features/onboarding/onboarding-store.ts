@@ -1,7 +1,3 @@
-// Output: Page-session onboarding state for development previews.
-// Input: User interactions from OnboardingPage.
-// Position: Onboarding feature state; resets on every dev reload.
-
 import { create } from 'zustand'
 
 export const ONBOARDING_TOTAL_STEPS = 5

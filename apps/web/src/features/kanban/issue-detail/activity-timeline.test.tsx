@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for issue activity timeline comment rendering.
- * Input: ActivityTimeline with mocked Kanban comment hooks.
- * Position: Feature-owned tests for issue detail activity behavior.
- */
-
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

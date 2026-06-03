@@ -1,9 +1,3 @@
-<!--
-Input: Alma Agent Crew renderer evidence and Cradle agent/delegation audit.
-Output: Spec for agent crew, delegation, and routing surfaces.
-Position: docs/specs/alma-inspired/agent-crew-delegation.md
--->
-
 # Agent Crew 与 Delegation
 
 ## 目标

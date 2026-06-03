@@ -1,7 +1,3 @@
-// Output: Default English copy for settings navigation and appearance controls.
-// Input: Settings-owned labels, descriptions, tooltips, and language selection copy.
-// Position: Source of truth for settings i18n namespace.
-
 export default {
   'nav.appearance': 'Appearance',
   'nav.providers': 'Model Providers',

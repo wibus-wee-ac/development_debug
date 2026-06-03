@@ -1,9 +1,3 @@
-<!--
-Input: Alma UI/theme/keybinding settings evidence and Cradle design/preferences audit.
-Output: Spec for UI, theme, and keybinding settings.
-Position: docs/specs/alma-inspired/ui-theme-keybindings.md
--->
-
 # UI、Theme 与 Keybindings
 
 ## 目标

@@ -1,8 +1,3 @@
-/**
- * Output: Fire-and-forget renderer observability event producer.
- * Input: Renderer runtime errors and private-preview diagnostics metadata.
- * Position: Web-owned bridge into the server-owned observability namespace.
- */
 import { getServerUrl, isElectron, platform } from './electron'
 
 type ObservabilitySeverity = 'debug' | 'info' | 'warn' | 'error' | 'fatal'

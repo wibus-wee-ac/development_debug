@@ -1,9 +1,3 @@
-/**
- * Output: Desktop-owned script injection runtime for Browser Panel webviews.
- * Input: Renderer IPC requests keyed by Electron webContents id.
- * Position: Electron main-process boundary for UserScript-like browser tab tools.
- */
-
 import { IpcMethod, IpcService } from '@cradle/ipc'
 import { webContents } from 'electron'
 import { z } from 'zod'

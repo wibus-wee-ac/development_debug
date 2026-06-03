@@ -1,9 +1,3 @@
-<!--
-Input: Alma Chrome Relay evidence and Cradle browser-use audit.
-Output: Spec for external browser relay.
-Position: docs/specs/alma-inspired/chrome-relay.md
--->
-
 # Chrome Relay
 
 ## 目标

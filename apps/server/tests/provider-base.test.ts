@@ -1,7 +1,3 @@
-// Output: Regression coverage for provider config defaults used by runtime profiles.
-// Input: Trusted provider config JSON and Zod provider config schemas.
-// Position: Server provider module tests guarding config parser behavior.
-
 import { describe, expect, it } from 'vitest'
 
 import { CodexConfigSchema, readTrustedClaudeAgentConfig, readTrustedCodexConfig } from '../src/modules/provider-contracts/provider-base'

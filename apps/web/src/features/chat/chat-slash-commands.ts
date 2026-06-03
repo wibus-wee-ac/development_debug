@@ -1,9 +1,3 @@
-/**
- * Output: UI-facing slash command descriptors and merge helpers for the chat composer.
- * Input: Runtime-native slash commands from chat capabilities plus Cradle-owned UI commands.
- * Position: Chat feature owns slash command presentation; runtimes own only raw command capabilities.
- */
-
 import type { RuntimeKind } from '~/lib/types'
 
 import type {

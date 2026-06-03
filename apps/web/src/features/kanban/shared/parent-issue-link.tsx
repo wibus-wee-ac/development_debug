@@ -1,9 +1,3 @@
-/**
- * Output: Shared parent-issue affordance for Kanban cards and list rows.
- * Input: Parent issue identifier text and an open callback.
- * Position: Kanban-owned visual metadata for Issue parent relationships.
- */
-
 import { CornerDownRightIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 

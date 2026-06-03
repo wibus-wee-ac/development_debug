@@ -1,7 +1,3 @@
-// Output: Synchronous layout contract derived from the active tab identity.
-// Input: Active tab, scoped layout slots, and cached session layout metadata.
-// Position: Layout shell helper that prevents tab-content effect timing from owning chrome identity.
-
 import type { ReactNode } from 'react'
 
 import type { SessionLayoutRecord } from '~/store/session-layout'

@@ -1,7 +1,3 @@
-// Output: Default English copy for the system agent popover.
-// Input: Jarvis empty states, setup guidance, and context-aware helper text.
-// Position: Source of truth for system-agent feature i18n namespace.
-
 export default {
   'action.close': 'Close',
   'action.collapse': 'Collapse',

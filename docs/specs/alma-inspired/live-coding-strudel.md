@@ -1,9 +1,3 @@
-<!--
-Input: Alma livecoding/Strudel renderer evidence and Cradle TUI/editor audit.
-Output: Spec for live coding and audio coding surface.
-Position: docs/specs/alma-inspired/live-coding-strudel.md
--->
-
 # Live Coding 与 Strudel
 
 ## 目标

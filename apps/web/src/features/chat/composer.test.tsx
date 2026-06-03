@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat composer file attachments.
- * Input: File input changes, attachment removal clicks, and send actions.
- * Position: Feature-owned tests for the chat composer input surface.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { FileUIPart } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'

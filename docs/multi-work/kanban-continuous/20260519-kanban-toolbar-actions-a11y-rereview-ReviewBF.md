@@ -1,9 +1,3 @@
-<!--
-Input: Latest KanbanToolbar diff, prior ReviewBE report, batch record, and focused Vitest result
-Output: ReviewBF narrow re-review report for the complete Kanban toolbar node
-Position: Multi-work audit artifact for kanban continuous accessibility work
--->
-
 # Kanban Toolbar Actions A11y Rereview - ReviewBF
 
 ## Verdict

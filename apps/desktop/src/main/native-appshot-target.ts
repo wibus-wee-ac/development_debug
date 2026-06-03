@@ -1,7 +1,4 @@
 /*
- * Output: Pure Appshot animation-target helpers for desktop-owned native capture orchestration.
- * Input: Mac Bridge frontmost Appshot context.
- * Position: Electron main owns strategy-level Appshot target synthesis outside renderer UI context.
  */
 
 import type {

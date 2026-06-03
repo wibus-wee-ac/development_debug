@@ -1,9 +1,3 @@
-<!--
-Input: Alma thread archiver evidence and Cradle session/workspace audit.
-Output: Spec for thread archiving and session retention.
-Position: docs/specs/alma-inspired/thread-archiver.md
--->
-
 # Thread 归档
 
 ## 目标

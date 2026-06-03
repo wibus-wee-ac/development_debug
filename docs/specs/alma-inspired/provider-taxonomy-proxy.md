@@ -1,9 +1,3 @@
-<!--
-Input: Alma provider evidence and Cradle provider module audit.
-Output: Spec for provider taxonomy and proxy expansion.
-Position: docs/specs/alma-inspired/provider-taxonomy-proxy.md
--->
-
 # Provider Taxonomy 与 Proxy
 
 ## 目标

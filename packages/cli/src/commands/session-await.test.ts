@@ -1,7 +1,3 @@
-// Output: Tests for task-shaped Session Await CLI commands.
-// Input: Commander program with a mocked CLI command context.
-// Position: Manual command coverage for packages/cli/src/commands/session-await.ts.
-
 import { Command } from 'commander'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 

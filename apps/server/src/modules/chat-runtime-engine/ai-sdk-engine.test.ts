@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat runtime AI SDK message conversion.
- * Input: UIMessage history and user file parts.
- * Position: Chat runtime engine tests for provider-ready ModelMessage construction.
- */
-
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 

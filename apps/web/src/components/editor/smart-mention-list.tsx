@@ -1,7 +1,3 @@
-// Output: Keyboard-navigable Smart Mention suggestion menu.
-// Input: SmartMentionItem candidates from the owning editor extension.
-// Position: Editor UI surface for @ resource references.
-
 import {
   BotIcon,
   BoxesIcon,

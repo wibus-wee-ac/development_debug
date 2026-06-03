@@ -1,7 +1,3 @@
-// Output: Bounded text accumulator for provider diagnostics and tracing.
-// Input: Streaming text deltas from chat runtime providers.
-// Position: Shared provider utility that prevents diagnostic collection from scaling with full turn output size.
-
 const DEFAULT_MAX_TEXT_LENGTH = 64 * 1024
 
 export interface BoundedTextCollector {

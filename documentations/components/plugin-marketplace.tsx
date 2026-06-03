@@ -1,11 +1,5 @@
 'use client'
 
-/*
- * Output: Interactive Plugin Marketplace cards for documentation pages.
- * Input: Static marketplace entries and install-link helpers.
- * Position: Documentation UI component rendered from MDX.
- */
-
 import {
   Check,
   Copy,

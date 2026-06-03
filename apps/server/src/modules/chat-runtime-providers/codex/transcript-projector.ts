@@ -1,7 +1,3 @@
-// Output: Projection from Cradle UIMessage transcript snapshots to Codex app-server Response API items.
-// Input: Reconstructed Cradle chat history with text, files, reasoning, tool, and unknown parts.
-// Position: Codex runtime adapter boundary for native thread history reconstruction.
-
 import type { UIMessage } from 'ai'
 
 import type { ContentItem as CodexContentItem } from './app-server-protocol/ContentItem'

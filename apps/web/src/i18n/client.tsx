@@ -1,7 +1,3 @@
-// Output: Provider-scoped i18next instance and language switching hook for React consumers.
-// Input: Initial locale resolved during Vite app bootstrap and locale resources.
-// Position: Client runtime boundary; React components read copy through react-i18next context.
-
 import type { i18n as I18nInstance } from 'i18next'
 import { createInstance } from 'i18next'
 import resourcesToBackend from 'i18next-resources-to-backend'

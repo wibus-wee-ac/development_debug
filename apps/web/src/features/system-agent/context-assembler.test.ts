@@ -1,7 +1,3 @@
-// Output: Unit coverage for budgeted Jarvis context assembly and trace output.
-// Input: Typed context envelopes with explicit, implicit, low-priority, and secret items.
-// Position: Feature-owned tests for system-agent prompt assembly decisions.
-
 import { describe, expect, it } from 'vitest'
 
 import { assembleContextForPrompt } from './context-assembler'

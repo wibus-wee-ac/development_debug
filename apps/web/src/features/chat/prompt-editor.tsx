@@ -1,9 +1,3 @@
-/**
- * Output: Thin ProseMirror prompt editor with inline mention atom nodes.
- * Input: Chat composer prompt text, workspace file mentions, and Skill context tokens.
- * Position: Chat feature owns prompt editing semantics before runtime provider projection.
- */
-
 import { baseKeymap } from 'prosemirror-commands'
 import { history, redo, undo } from 'prosemirror-history'
 import { keymap } from 'prosemirror-keymap'

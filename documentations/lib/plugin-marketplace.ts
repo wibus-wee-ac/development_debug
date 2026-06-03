@@ -1,9 +1,3 @@
-/*
- * Output: Static Plugin Marketplace registry and install-link helpers.
- * Input: First-party plugin package metadata and documentation ownership decisions.
- * Position: Documentation-owned marketplace data shared by MDX UI and JSON routes.
- */
-
 export type PluginMarketplaceLayer = 'server' | 'web' | 'desktop' | 'mcp' | 'skill'
 export type PluginMarketplaceCategory
   = | 'automation'

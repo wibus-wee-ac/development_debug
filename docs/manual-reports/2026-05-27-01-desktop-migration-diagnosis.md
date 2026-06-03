@@ -1,9 +1,3 @@
-<!--
-Output: Diagnosis for the desktop SQLite migration failure around model_registry_mappings.
-Input: Local desktop database, server log, Drizzle schema, migration journal, and desktop server startup code.
-Position: Manual report for deciding the repair path without applying runtime changes.
--->
-
 # Desktop Migration Diagnosis: model_registry_mappings
 
 ## 直接结论

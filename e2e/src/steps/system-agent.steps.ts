@@ -1,7 +1,3 @@
-// Output: Cucumber bindings for Jarvis system-agent user journeys.
-// Input: Playwright page state from CradleWorld.
-// Position: E2E steps that verify app-wide Jarvis popover behavior.
-
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 

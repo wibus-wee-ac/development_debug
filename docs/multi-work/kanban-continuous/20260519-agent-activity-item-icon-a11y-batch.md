@@ -1,9 +1,3 @@
-<!--
-Input: AgentActivityItem icon accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail agent activity item accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Agent Activity Item Icon A11y Batch
 
 ## Scope

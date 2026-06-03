@@ -1,7 +1,3 @@
-// Output: Regression coverage for Jarvis display-only context redaction.
-// Input: UI message text parts that may include cradle context blocks.
-// Position: Feature-owned tests for system-agent display projection helpers.
-
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 

@@ -1,7 +1,3 @@
-# Output: Finds local helpers that only instantiate Intl.NumberFormat for one number.
-# Input: TypeScript number formatter helpers.
-# Position: Owned by cleanup scans to expose repeated local number-formatting wrappers.
-
 id: local-intl-number-formatter
 language: TypeScript
 severity: warning

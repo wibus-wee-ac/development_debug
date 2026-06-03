@@ -1,7 +1,3 @@
-// Output: Regression coverage for Smart Mention Markdown href helpers.
-// Input: Mention attributes used by editor serialization.
-// Position: Editor utility tests protect the persisted mention contract.
-
 import { describe, expect, it } from 'vitest'
 
 import {

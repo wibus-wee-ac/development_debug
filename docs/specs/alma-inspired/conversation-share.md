@@ -1,9 +1,3 @@
-<!--
-Input: Alma share renderer evidence and Cradle session export audit.
-Output: Spec for visual conversation sharing.
-Position: docs/specs/alma-inspired/conversation-share.md
--->
-
 # Conversation Share
 
 ## 目标

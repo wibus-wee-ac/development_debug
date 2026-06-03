@@ -1,9 +1,3 @@
-<!--
-Input: Alma Telegram/Discord/Feishu/Weixin evidence and Cradle Slack/connector gap.
-Output: Spec for external channel bridges.
-Position: docs/specs/alma-inspired/external-channel-bridges.md
--->
-
 # 外部 Channel Bridges
 
 ## 目标

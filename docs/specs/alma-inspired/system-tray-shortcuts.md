@@ -1,9 +1,3 @@
-<!--
-Input: Alma tray/global shortcut evidence and Cradle desktop tray audit.
-Output: Spec for tray, shortcuts, app lifecycle, and desktop entrypoints.
-Position: docs/specs/alma-inspired/system-tray-shortcuts.md
--->
-
 # 系统托盘与快捷键
 
 ## 目标

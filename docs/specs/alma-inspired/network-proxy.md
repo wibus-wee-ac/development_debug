@@ -1,9 +1,3 @@
-<!--
-Input: Alma network settings evidence and Cradle provider/network gap.
-Output: Spec for network proxy and request policy.
-Position: docs/specs/alma-inspired/network-proxy.md
--->
-
 # Network Proxy 与 Request Policy
 
 ## 目标

@@ -1,7 +1,3 @@
-// Output: Settings panel for importing external AI app chat sessions.
-// Input: Server import APIs plus Electron-local file snapshots when available.
-// Position: Settings-owned UI entry for the external work import module.
-
 import { CheckCircle2Icon, DatabaseIcon, DownloadIcon, LaptopIcon, RefreshCwIcon, ServerIcon, TriangleAlertIcon } from 'lucide-react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

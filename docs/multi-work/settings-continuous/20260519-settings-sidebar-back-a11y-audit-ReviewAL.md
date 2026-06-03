@@ -1,9 +1,3 @@
-<!--
-Input: SettingsSidebar Back Button A11y batch, scoped source diff, focused validation
-Output: ReviewAL audit report for the settings sidebar back button accessibility node
-Position: Multi-work review artifact for settings continuous UX improvements
--->
-
 # Settings Sidebar Back Button A11y Audit - ReviewAL
 
 ## Verdict

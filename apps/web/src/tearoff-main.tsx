@@ -1,7 +1,3 @@
-// Output: Session-scoped renderer entry for chat tear-off windows.
-// Input: Electron preload session id and server URL.
-// Position: Web-owned tear-off surface that reuses the app layout runtime without the main sidebar/footer.
-
 import './styles.css'
 
 import { TabRenderer, TabsProvider } from '@cradle/tabs-next'

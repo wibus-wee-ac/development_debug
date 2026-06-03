@@ -1,7 +1,3 @@
-// Output: Batch configuration helpers for Settings Agents multi-selection actions.
-// Input: Selected agent records and a target provider/model/thinking selection.
-// Position: Agent Management owns how settings-level batch edits preserve agent identity fields.
-
 import type { UpdateAgentInput } from '~/features/agent-runtime/use-agents'
 import type { Agent, ProviderTarget } from '~/lib/types'
 

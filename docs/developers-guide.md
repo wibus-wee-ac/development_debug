@@ -144,16 +144,6 @@ When you add, remove, or substantially change files in a directory:
 - keep the file inventory current
 - keep descriptions short and concrete
 
-### File headers
-
-Every `.ts`, `.tsx`, `.js`, `.jsx` file must begin with:
-
-    // Input: ...
-    // Output: ...
-    // Position: ...
-
-If the role of a file changes, update the header.
-
 ### ExecPlans
 
 For any non-trivial refactor, create or update an ExecPlan in `docs/exec-plans/`.

@@ -1,7 +1,3 @@
-// Output: Default English copy for workspace sidebar, file tree, and workspace detail surfaces.
-// Input: Workspace-owned labels, actions, status text, and editor placeholders.
-// Position: Source of truth for workspace i18n namespace.
-
 export default {
   'capsule.aria.message': 'Workspace task message',
   'capsule.aria.send': 'Send message',

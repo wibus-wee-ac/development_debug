@@ -1,9 +1,3 @@
-<!--
-Input: Editor BubbleMenu icons accessibility batch and scoped related-file diff
-Output: ReviewAP audit report for Editor BubbleMenu Icons A11y
-Position: Multi-work audit artifact for editor continuous improvement stream
--->
-
 # ReviewAP Audit: Editor BubbleMenu Icons A11y
 
 ## Verdict

@@ -1,7 +1,3 @@
-// Output: Regression coverage for provider sidebar grouping and enabled-first ordering.
-// Input: Cradle-owned provider profiles.
-// Position: Guards Agent Runtime Settings list ownership semantics.
-
 import { describe, expect, it } from 'vitest'
 
 import type { AgentProfile } from '~/lib/types'

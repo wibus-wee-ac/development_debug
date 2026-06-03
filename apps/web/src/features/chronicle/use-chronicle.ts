@@ -1,7 +1,3 @@
-// Input: Chronicle API responses
-// Output: React Query hooks for Settings > Chronicle
-// Position: apps/web/src/features/chronicle/use-chronicle.ts
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'

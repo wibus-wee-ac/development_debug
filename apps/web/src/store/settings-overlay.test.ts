@@ -1,7 +1,3 @@
-// Output: Regression tests for Settings overlay focus targets.
-// Input: Settings overlay Zustand store mutations.
-// Position: Shared store contract coverage.
-
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useSettingsOverlayStore } from './settings-overlay'

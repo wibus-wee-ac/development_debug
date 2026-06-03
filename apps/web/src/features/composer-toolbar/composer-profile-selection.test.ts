@@ -1,7 +1,3 @@
-// Output: Regression coverage for composer provider target visibility.
-// Input: Provider target options and composer context inputs.
-// Position: Guards Composer Toolbar ownership of selectable provider target lists.
-
 import { describe, expect, it } from 'vitest'
 
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'

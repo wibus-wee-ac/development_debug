@@ -1,9 +1,3 @@
-<!--
-Output: Architecture notes on what Cradle can learn from Cloudflare's AI code review orchestration system.
-Input: Cloudflare's "Orchestrating AI Code Review at scale" article and a focused read of Cradle's chat-runtime, plugin, automation, git, usage, and observability modules.
-Position: Owned by docs/draft-solutions as exploratory analysis before any review-orchestration work graduates into an ExecPlan.
--->
-
 # Cloudflare AI Code Review Orchestration 对 Cradle 的启发
 
 ## 直接结论

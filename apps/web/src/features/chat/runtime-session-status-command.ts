@@ -1,7 +1,3 @@
-// Output: Chat Runtime session status HTTP reader.
-// Input: Chat session id.
-// Position: Chat feature API boundary for Right Aside runtime status surfaces.
-
 import type { RuntimeKind } from '~/lib/types'
 import { getServerUrl } from '~/lib/electron'
 

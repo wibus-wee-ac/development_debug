@@ -1,9 +1,3 @@
-<!--
-Input: AgentActivityItem icon accessibility batch, focused diff, and focused test output
-Output: Independent ReviewBD audit verdict for the agent activity item icon a11y node
-Position: Multi-work audit report for continuous kanban UX improvements
--->
-
 # Agent Activity Item Icon A11y Audit - ReviewBD
 
 ## Verdict

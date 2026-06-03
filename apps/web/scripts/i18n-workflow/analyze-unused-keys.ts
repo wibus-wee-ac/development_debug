@@ -1,7 +1,3 @@
-// Output: Report of locale source keys not found in TypeScript or TSX consumers.
-// Input: Default locale resources, protected patterns, and src source files.
-// Position: Workflow command backing pnpm i18n:analyze-unused.
-
 import fs from 'node:fs/promises'
 import path from 'node:path'
 

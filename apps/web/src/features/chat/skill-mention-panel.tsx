@@ -1,7 +1,3 @@
-// Output: Composer skill picker rendered from Cradle skill inventory entries.
-// Input: `$` trigger query plus locally available or server-searched skill items.
-// Position: Feature/chat composer surface for selecting chat-owned skill context parts.
-
 import { PackageIcon } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 

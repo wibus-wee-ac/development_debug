@@ -1,9 +1,3 @@
-<!--
-Input: Alma chat/thread route evidence and Cradle chat runtime audit.
-Output: Spec for chat/thread runtime coverage.
-Position: docs/specs/alma-inspired/chat-thread-runtime.md
--->
-
 # Chat Thread Runtime
 
 ## 目标

@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for active-route-owned layout chrome identity.
- * Input: Active tab route params, cached session metadata, and stale layout slots.
- * Position: Layout contract tests that protect app shell stability during tab replacement.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import { deriveActiveLayoutContract } from './layout-contract'

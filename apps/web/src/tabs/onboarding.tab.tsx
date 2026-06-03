@@ -1,9 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
 
-// Output: Onboarding tab definition for the Cradle tab registry.
-// Input: OnboardingPage component.
-// Position: Tab shell entry; registered alongside other first-party tabs.
-
 import { defineTab } from '@cradle/tabs-next'
 import { SparklesIcon } from 'lucide-react'
 import { lazy } from 'react'

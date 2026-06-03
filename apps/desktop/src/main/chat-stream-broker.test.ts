@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for desktop-owned chat stream fanout.
- * Input: Fake WebContents subscribers and controlled server SSE responses.
- * Position: Desktop main-process tests for ChatStreamBroker lifecycle semantics.
- */
-
 import { describe, expect, it, vi } from 'vitest'
 
 import {

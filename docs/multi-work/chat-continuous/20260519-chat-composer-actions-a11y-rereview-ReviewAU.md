@@ -1,9 +1,3 @@
-<!--
-Input: React Doctor giant component follow-up for Chat Composer Actions A11y
-Output: Scoped ReviewAU re-review report for composer action extraction and accessibility
-Position: Multi-work review artifact for the chat-continuous stream
--->
-
 # ReviewAU: Chat Composer Actions A11y Re-review
 
 Result: PASS

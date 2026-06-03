@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat slash command descriptor merging.
- * Input: Runtime-native command capabilities and Cradle-owned UI command descriptors.
- * Position: Chat feature tests for composer slash command ownership boundaries.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import type { ChatRuntimeCapabilities } from './chat-capabilities'

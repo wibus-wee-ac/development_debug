@@ -1,9 +1,3 @@
-/**
- * Output: Browser Panel script injection presets and runtime types.
- * Input: User-selected Browser Panel script tool ids.
- * Position: Browser feature ownership boundary for UserScript-like tab helpers.
- */
-
 export type BrowserTabScriptRunAt = 'document-start' | 'document-end' | 'document-idle'
 
 export interface BrowserTabScript {

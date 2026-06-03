@@ -1,9 +1,3 @@
-<!--
-Input: KanbanGroupHeader accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban group header accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Kanban Group Header A11y Batch
 
 ## Scope

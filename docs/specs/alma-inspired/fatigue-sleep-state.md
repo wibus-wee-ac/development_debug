@@ -1,9 +1,3 @@
-<!--
-Input: Alma fatigueService evidence and Cradle agent state audit.
-Output: Spec for personal fatigue/sleep state.
-Position: docs/specs/alma-inspired/fatigue-sleep-state.md
--->
-
 # Fatigue 与 Sleep State
 
 ## 目标

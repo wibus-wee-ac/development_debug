@@ -1,9 +1,3 @@
-<!--
-Input: Alma local Express server evidence and Cradle Elysia server audit.
-Output: Spec for local API server parity and boundaries.
-Position: docs/specs/alma-inspired/local-api-server.md
--->
-
 # 本地 API Server
 
 ## 目标

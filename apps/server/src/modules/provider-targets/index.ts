@@ -1,7 +1,3 @@
-// Output: Provider-target preference routes for model visibility and custom model IDs.
-// Input: Provider target path params plus model preference request bodies.
-// Position: Exposes Cradle-owned runtime target preferences without writing to external source namespaces.
-
 import { Elysia, t } from 'elysia'
 
 import { ProviderTargetsModel } from './model'

@@ -1,9 +1,3 @@
-/**
- * Output: Headless state for chat composer file attachments.
- * Input: Browser FileList, clipboard file payloads, and active model attachment capability.
- * Position: Chat feature owns attachment semantics shared by all composer surfaces.
- */
-
 import type { FileUIPart } from 'ai'
 import { convertFileListToFileUIParts } from 'ai'
 import type { ChangeEvent, ClipboardEvent, RefObject } from 'react'

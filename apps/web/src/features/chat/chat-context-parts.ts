@@ -1,7 +1,3 @@
-// Output: Chat composer-owned structured context parts for runtime adapter projection.
-// Input: UI-selected context tokens such as Skills.
-// Position: Feature/chat boundary between composer UI and chat send transport.
-
 import type { SkillScope } from '~/lib/types'
 
 export interface ChatSkillContextPart {

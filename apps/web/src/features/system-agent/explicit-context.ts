@@ -1,7 +1,3 @@
-// Output: Explicit user-attached context references for Jarvis.
-// Input: User commands that attach selections, messages, files, issues, or tool output.
-// Position: system-agent owns explicit Jarvis references; feature providers may add owned references through this boundary.
-
 import { useSyncExternalStore } from 'react'
 
 import type { ContextItem, ContextReference, ContextSensitivity } from '~/features/context/context-items'

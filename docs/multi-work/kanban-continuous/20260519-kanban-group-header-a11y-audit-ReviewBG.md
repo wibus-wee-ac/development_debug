@@ -1,9 +1,3 @@
-<!--
-Input: Kanban group header accessibility batch, focused git diff, and focused Vitest run
-Output: Independent ReviewBG audit report for the group header accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # ReviewBG Audit: Kanban Group Header A11y
 
 ## Verdict

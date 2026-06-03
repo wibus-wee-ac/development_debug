@@ -1,9 +1,3 @@
-<!--
-Input: Alma artifact renderer evidence and Cradle chat/rendering audit.
-Output: Spec for rich artifact rendering and sandboxing.
-Position: docs/specs/alma-inspired/artifact-rendering.md
--->
-
 # Artifact Rendering
 
 ## 目标

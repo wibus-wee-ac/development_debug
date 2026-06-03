@@ -1,9 +1,3 @@
-<!--
-Input: Alma Activity Recorder evidence and Cradle Chronicle audit.
-Output: Spec for Activity Recorder v2.
-Position: docs/specs/alma-inspired/activity-recorder.md
--->
-
 # Activity Recorder
 
 ## 目标

@@ -1,7 +1,3 @@
-// Output: Shared i18next initialization options.
-// Input: Runtime locale and namespace selection.
-// Position: Used by browser provider, server-style helpers, and tests.
-
 import type { InitOptions } from 'i18next'
 
 import { DEFAULT_LOCALE } from './locales'

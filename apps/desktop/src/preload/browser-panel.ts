@@ -1,9 +1,3 @@
-/**
- * Output: Guest preload bridge for Browser Panel webviews.
- * Input: Page calls to window.codex.sendPrompt.
- * Position: Desktop preload boundary between embedded pages and the renderer-owned Browser Panel host.
- */
-
 import { contextBridge, ipcRenderer } from 'electron'
 
 const SEND_PROMPT_CHANNEL = 'cradle:send-prompt'

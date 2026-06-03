@@ -1,9 +1,3 @@
-/**
- * Output: Shared UI primitives for chat composer file attachments.
- * Input: Attachment state from composer-attachment-state.
- * Position: Chat feature owns visual attachment controls consumed by all composer surfaces.
- */
-
 import type { FileUIPart } from 'ai'
 import { FileIcon, PaperclipIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'

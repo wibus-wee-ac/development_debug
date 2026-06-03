@@ -1,7 +1,3 @@
-// Output: Chat-owned prefetch boundary for opening existing chat sessions.
-// Input: React Query client plus a target chat session id.
-// Position: Lets navigation surfaces express intent without owning chat transcript query details.
-
 import type { QueryClient } from '@tanstack/react-query'
 
 import {

@@ -1,9 +1,3 @@
-<!--
-Input: NewChatPage composer action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the new chat composer action button accessibility node
-Position: Multi-work audit trail for continuous new chat UX improvements
--->
-
 # New Chat Composer Actions A11y Batch
 
 ## Scope

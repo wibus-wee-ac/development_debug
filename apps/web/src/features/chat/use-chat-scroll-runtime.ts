@@ -1,7 +1,3 @@
-// Output: Chat scroll runtime hook for viewport refs, minimap sync, and chat attention snapshots.
-// Input: Chat session id, rendered message ids, and chat generation status.
-// Position: Owned by features/chat as the scroll controller boundary consumed by ChatView.
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { useShallow } from 'zustand/react/shallow'

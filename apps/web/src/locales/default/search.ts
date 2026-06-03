@@ -1,7 +1,3 @@
-// Output: Default English copy for global search dialog.
-// Input: Search-owned command labels, group headers, empty states, and result metadata.
-// Position: Source of truth for search i18n namespace.
-
 export default {
   'aria.dialog': 'Command Palette',
   'aria.input': 'Global search',

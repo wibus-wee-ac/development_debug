@@ -1,9 +1,3 @@
-/**
- * Output: Milestone progress summary for issue detail banners.
- * Input: Workspace issues, statuses, and the selected milestone id.
- * Position: Issue Detail helper for rendering Issue-owned milestone metadata.
- */
-
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
 export interface MilestoneProgressSummary {

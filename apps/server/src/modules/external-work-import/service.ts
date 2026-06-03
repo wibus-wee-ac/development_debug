@@ -1,7 +1,3 @@
-// Output: External AI application work import detection, mapping, and deduplication.
-// Input: Server-local app data and Electron-uploaded file snapshots.
-// Position: Owns Cradle import records while treating external app namespaces as read-only.
-
 import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'

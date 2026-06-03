@@ -1,7 +1,3 @@
-// Output: Chat-owned PNG export dialog for sharing a full session or selected messages.
-// Input: Chat session id and UI messages read at the export boundary.
-// Position: Feature UI that owns conversation-share presentation and DOM-to-PNG export.
-
 import type { UIMessage } from 'ai'
 import { ClipboardIcon, DownloadIcon, ImageDownIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
 import { domToPng } from 'modern-screenshot'

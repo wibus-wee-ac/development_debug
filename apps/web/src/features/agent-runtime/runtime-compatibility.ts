@@ -1,7 +1,3 @@
-// Output: Runtime/provider compatibility rules for renderer selection surfaces.
-// Input: Runtime kind and provider kind identifiers.
-// Position: Agent Runtime owns provider-kind compatibility semantics used by composer and settings UI.
-
 import type { ProviderKind, RuntimeKind } from '~/lib/types'
 
 const RUNTIME_PROVIDER_KINDS: Record<RuntimeKind, readonly ProviderKind[]> = {

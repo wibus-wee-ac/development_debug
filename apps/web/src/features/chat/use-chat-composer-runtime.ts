@@ -1,7 +1,3 @@
-// Output: Chat composer integration runtime for model capabilities, slash commands, token usage, and send actions.
-// Input: Chat session binding, runtime capabilities, selected composer model, and chat session actions.
-// Position: Owned by features/chat as the composer orchestration boundary consumed by ChatView.
-
 import { useQuery } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import { useCallback, useMemo } from 'react'

@@ -1,9 +1,3 @@
-<!--
-Input: Usage DX/QA changed files for formatting helper extraction, dashboard className cleanup, tests, and feature README.
-Output: Independent ReviewJ audit handoff for usage formatting and dashboard styling changes.
-Position: Multi-work review artifact for the usage-continuous stream.
--->
-
 # ReviewJ: Usage Format Audit
 
 Date: 2026-05-19

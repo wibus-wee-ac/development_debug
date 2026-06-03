@@ -1,9 +1,3 @@
-<!--
-Input: Browser Use Chat unblock ExecPlan, ReviewD/ReviewE handoffs, current source diffs for browser-use desktop/MCP, desktop plugin host, renderer tab bridge, plugin SDK, and Chat runtime providers/tests.
-Output: Independent ReviewF handoff re-reviewing whether ReviewD and ReviewE blockers were resolved after fixes.
-Position: Multi-work post-fix completion re-review artifact for the browser-use Chat unblock.
--->
-
 # ReviewF: Post-Fix Completion Re-Review
 
 Date: 2026-05-19

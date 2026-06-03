@@ -1,7 +1,3 @@
-// Output: models.dev lookup, cache, and enrichment helpers.
-// Input: Read-only models.dev registry data plus Cradle model registry mappings.
-// Position: Model-registry owns registry enrichment shared by provider catalog and runtime providers.
-
 import { kvCache } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'

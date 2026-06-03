@@ -1,7 +1,3 @@
-// Output: Default English copy for the onboarding flow.
-// Input: Multi-step onboarding screens with product previews.
-// Position: Source of truth for onboarding i18n namespace.
-
 export default {
   // Navigation
   'nav.next': 'Continue',

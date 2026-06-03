@@ -1,7 +1,3 @@
-// Output: Regression coverage for Agent Management settings selection shortcuts.
-// Input: Keyboard-event-like values and shortcut state gates.
-// Position: Proves provider and agent settings lists share safe keyboard selection semantics.
-
 import { describe, expect, it } from 'vitest'
 
 import {

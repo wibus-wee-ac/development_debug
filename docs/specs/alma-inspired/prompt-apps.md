@@ -1,9 +1,3 @@
-<!--
-Input: Alma Prompt Apps renderer/preload evidence and Cradle automation/skills audit.
-Output: Spec for Prompt Apps and runner.
-Position: docs/specs/alma-inspired/prompt-apps.md
--->
-
 # Prompt Apps
 
 ## 目标

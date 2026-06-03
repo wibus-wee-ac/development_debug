@@ -1,9 +1,3 @@
-<!--
-Input: Cradle product feature READMEs and selected user-facing source files.
-Output: Product documentation coverage matrix for Cradle.
-Position: Multi-work handoff for linear-style documentation planning.
--->
-
 # Cradle Product Documentation Coverage Handoff
 
 本文件是产品向文档覆盖盘点，不实现文档站内容。目标是把用户、管理员和本地运维者需要理解的能力，映射到仓库中可验证的证据，并标出当前仍不确定或只能谨慎描述的部分。

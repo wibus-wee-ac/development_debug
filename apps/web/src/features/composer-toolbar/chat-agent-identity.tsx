@@ -1,7 +1,3 @@
-// Output: Read-only agent identity chip for existing chat sessions.
-// Input: Bound chat session agent identity resolved by composer state.
-// Position: Composer Toolbar owns compact chat composer identity display; avatar rendering is delegated to Agent Runtime.
-
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import type { Agent } from '~/lib/types'
 

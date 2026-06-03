@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for slash command panel runtime state rendering.
- * Input: Provider-owned slash command descriptors with compact usage visuals.
- * Position: Chat feature tests for composer slash command presentation.
- */
-
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 

@@ -1,9 +1,3 @@
-<!--
-Input: Alma snapshot preload evidence and Cradle workspace/git audit.
-Output: Spec for workspace snapshots and rollback.
-Position: docs/specs/alma-inspired/workspace-snapshots.md
--->
-
 # Workspace Snapshots
 
 ## 目标

@@ -1,9 +1,3 @@
-/*
- * Output: Reusable visual explainers for Cradle documentation pages.
- * Input: Static documentation concepts and links rendered inside Fumadocs MDX.
- * Position: Documentation-only UI helpers used by MDX pages to improve system comprehension.
- */
-
 import {
   ArrowRight,
   BookOpen,

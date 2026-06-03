@@ -1,7 +1,3 @@
-// Output: Per-app-tab BrowserPanel tab state and shortcut handlers.
-// Input: BrowserPanel tab actions, workspace file/diff requests, and browser-use tab requests.
-// Position: Store-owned renderer state for the right-side BrowserPanel feature.
-
 import { create } from 'zustand'
 
 export interface BrowserWebTab {

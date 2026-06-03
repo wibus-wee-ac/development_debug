@@ -1,7 +1,3 @@
-// Output: Shared provider configuration schemas, trusted parsers, and secret resolution helpers.
-// Input: Provider profile config JSON plus optional secret references.
-// Position: Provider-contracts owns provider config contracts consumed by catalog and chat runtime providers.
-
 import { z } from 'zod'
 
 export const CODEX_DEFAULT_APPROVAL_POLICY = 'never'

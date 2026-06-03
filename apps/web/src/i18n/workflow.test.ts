@@ -1,7 +1,3 @@
-// Output: Fixture coverage for i18n workflow namespace validation.
-// Input: In-memory baseline and translation maps.
-// Position: i18n-owned tests for CI report semantics.
-
 import { describe, expect, it } from 'vitest'
 
 import { validateNamespace } from '../../scripts/i18n-workflow/utils'

@@ -1,7 +1,3 @@
-<!-- Input: ExecPlan, chat rendering review, apps/web chat rendering files -->
-<!-- Output: Chat rendering implementation handoff -->
-<!-- Position: Multi-work frontend architecture fixes artifact for WorkerC -->
-
 # Chat Rendering WorkerC Handoff
 
 ## Scope

@@ -1,9 +1,3 @@
-<!--
-Output: ReviewC third-round regression review for the Cradle i18n architecture implementation.
-Input: Round 2 fixes, docs/draft-solutions/i18n.md, touched web i18n/runtime/UI surfaces, and local verification commands.
-Position: docs/multi-work/i18n-architecture review artifact for the feature/i18n-architecture worktree.
--->
-
 # ReviewC: i18n Regression / Runtime Review
 
 ## Verdict

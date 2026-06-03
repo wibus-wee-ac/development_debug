@@ -1,9 +1,3 @@
-/**
- * Output: Helpers for reading Pierre Trees row metadata from native DOM events.
- * Input: Browser events fired from inside a tree host or its shadow DOM.
- * Position: Git feature utility shared by Changes panel interactions and tests.
- */
-
 type TreeItemKind = 'file' | 'directory'
 
 export function resolveTreeItemFromEvent(event: Event): { path: string, kind: TreeItemKind } | null {

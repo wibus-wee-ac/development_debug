@@ -1,9 +1,3 @@
-<!--
-Output: Inventory of superpowers implementation plans.
-Input: Approved design specs.
-Position: docs/superpowers/plans index.
--->
-
 # Superpowers Implementation Plans
 
 ## Files

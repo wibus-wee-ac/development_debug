@@ -1,7 +1,3 @@
-# Output: Finds formatter/read/normalize helpers that only delegate to another formatter.
-# Input: TypeScript helper functions returning a same-family helper call.
-# Position: Owned by cleanup scans to expose useless conversion wrapper functions.
-
 id: formatter-delegation-wrapper
 language: TypeScript
 severity: warning

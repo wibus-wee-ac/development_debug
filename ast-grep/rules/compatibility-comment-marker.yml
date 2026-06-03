@@ -1,7 +1,3 @@
-# Output: Finds comments that explicitly mention legacy/deprecated compatibility debt.
-# Input: TypeScript comments.
-# Position: Owned by architecture hygiene scans to surface known compatibility debt.
-
 id: compatibility-comment-marker
 language: TypeScript
 severity: hint

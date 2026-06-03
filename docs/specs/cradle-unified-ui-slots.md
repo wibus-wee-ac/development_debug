@@ -1,9 +1,3 @@
-<!--
-Input: Cradle product direction, Codex app-server capability manifest, and current renderer slot audit.
-Output: Unified UI slot matrix for Cradle's product surfaces and provider-native source mapping.
-Position: docs/specs/cradle-unified-ui-slots.md
--->
-
 # Cradle Unified UI Slots Matrix
 
 ## 目标

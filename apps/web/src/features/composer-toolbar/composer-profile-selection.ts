@@ -1,7 +1,3 @@
-// Output: Composer-owned provider target selection helpers.
-// Input: Provider target options plus runtime kind compatibility.
-// Position: Composer Toolbar owns which provider targets are selectable in composer surfaces.
-
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
 import type { RuntimeKind } from '~/lib/types'
 

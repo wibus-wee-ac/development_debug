@@ -1,7 +1,3 @@
-// Output: Provider list grouping and ordering helpers for Agent Runtime Settings.
-// Input: Cradle-owned provider profiles and supported external provider records.
-// Position: Keeps provider sidebar ownership grouping independent from React rendering.
-
 import type { AgentProfile } from '~/lib/types'
 
 import type {

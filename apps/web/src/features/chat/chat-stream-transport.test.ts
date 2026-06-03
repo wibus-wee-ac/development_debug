@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat stream transport selection.
- * Input: Mocked Electron chat stream bridge events and HTTP SSE responses.
- * Position: Chat feature tests for runtime-specific stream transport.
- */
-
 import type { UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 

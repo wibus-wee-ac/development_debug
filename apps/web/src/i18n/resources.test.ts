@@ -1,7 +1,3 @@
-// Output: Regression coverage for locale normalization and language matching.
-// Input: Raw locale strings, Accept-Language headers, and RTL language tags.
-// Position: i18n-owned tests for the locale model contract.
-
 import { describe, expect, it } from 'vitest'
 
 import { DEFAULT_LOCALE, isRtl, normalizeLocale, resolveAcceptLanguage, resolveBrowserLanguage } from './locales'

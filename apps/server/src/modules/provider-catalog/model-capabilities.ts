@@ -1,9 +1,3 @@
-/**
- * Output: Provider-owned model capability defaults and projections.
- * Input: Provider model descriptors from live catalogs, registry enrichment, and cached inventory.
- * Position: Provider-catalog owns the canonical model capability projection consumed by runtime selection UI.
- */
-
 import type { ModelCapabilities, ModelDescriptor, ProviderKind } from '../provider-contracts/types'
 
 const ANTHROPIC_INPUT_MODALITIES = ['text', 'image'] as const

@@ -1,9 +1,3 @@
-<!--
-Input: Kanban toolbar action accessibility batch, focused diff, and focused test result
-Output: Independent ReviewBE audit report for the toolbar actions a11y node
-Position: Multi-work audit artifact for kanban continuous accessibility work
--->
-
 # Kanban Toolbar Actions A11y Audit - ReviewBE
 
 ## Verdict

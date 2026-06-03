@@ -1,7 +1,3 @@
-// Output: Compact composer toolbar entry for provider-owned option UI slots.
-// Input: Runtime UI slots with toolbarPicker surface plus their latest state.
-// Position: Chat composer toolbar adjunct; does not own provider option semantics.
-
 import { BrainIcon, CpuIcon, Settings2Icon, SlidersHorizontalIcon, SparklesIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'

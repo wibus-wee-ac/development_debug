@@ -1,9 +1,3 @@
-<!--
-Input: Alma packaged app evidence, Cradle current capability map, and gap synthesis report.
-Output: Alma-inspired spec index and coverage map.
-Position: docs/specs/alma-inspired/README.md
--->
-
 # Alma-inspired 规格
 
 这个目录把 Alma 的功能面拆成可执行规格。每个 spec 都包含 Alma 证据、Cradle 当前状态、owner/namespace、目标行为、API/UI/data 草案和验收口径。

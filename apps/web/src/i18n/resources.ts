@@ -1,7 +1,3 @@
-// Output: Locale identity, normalization, and browser language resolution primitives.
-// Input: Raw locale strings from URLs, cookies, browser language preferences, and callers.
-// Position: Owned by web i18n runtime; shared by providers, tests, and workflow-facing UI.
-
 export const DEFAULT_LOCALE = 'en-US'
 export const LOCALE_COOKIE = 'cradle-locale'
 export const LOCALE_QUERY_PARAM = 'hl'

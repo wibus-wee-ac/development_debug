@@ -1,7 +1,3 @@
-// Output: Global model registry mapping table.
-// Input: Cradle-owned model IDs and optional registry model snapshots.
-// Position: Shared enrichment ownership for every provider target and custom model.
-
 import { index, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { timestamps } from './shared'

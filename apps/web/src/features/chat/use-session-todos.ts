@@ -1,7 +1,3 @@
-// Output: Session-level latest TODO plugin state from persisted chat messages.
-// Input: Chat session id and Zustand chat store message snapshots.
-// Position: Chat feature hook shared by Right Aside and future Composer-adjacent TODO surfaces.
-
 import { useMemo } from 'react'
 import type { UIMessage } from 'ai'
 

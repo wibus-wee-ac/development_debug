@@ -1,9 +1,3 @@
-<!--
-Input: Alma Computer Use API/PIP evidence and Cradle browser-use/Chronicle audit.
-Output: Spec for OS-level Computer Use.
-Position: docs/specs/alma-inspired/computer-use.md
--->
-
 # Computer Use
 
 ## 目标

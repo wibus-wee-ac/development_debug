@@ -1,9 +1,3 @@
-/**
- * Output: Chat stream transport abstraction for web HTTP SSE and Electron IPC.
- * Input: Chat response requests, passive session subscriptions, and desktop stream events.
- * Position: Chat feature boundary between useChatSession and runtime-specific transport.
- */
-
 import type { UIMessageChunk } from 'ai'
 import { uiMessageChunkSchema } from 'ai'
 

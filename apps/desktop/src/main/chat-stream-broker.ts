@@ -1,9 +1,3 @@
-/**
- * Output: Main-process ownership for long-lived desktop chat streams.
- * Input: Server chat SSE endpoints and renderer WebContents subscriptions.
- * Position: Desktop main-process transport broker for chat streaming fanout.
- */
-
 import type { WebContents } from 'electron'
 
 export const DESKTOP_CHAT_STREAM_CHUNK_CHANNEL = 'chat-stream:chunk'

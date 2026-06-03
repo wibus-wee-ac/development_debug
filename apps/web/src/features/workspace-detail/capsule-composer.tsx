@@ -1,9 +1,3 @@
-/**
- * Output: Workspace overview chat launcher backed by the shared chat Composer behavior.
- * Input: Workspace id, composer runtime/profile selection, workspace file inventory, and send callback.
- * Position: Workspace detail owns the launcher semantics; chat owns composer input behavior.
- */
-
 import type { FileUIPart } from 'ai'
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

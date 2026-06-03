@@ -1,7 +1,3 @@
-// Output: Default English copy for Agent Management detail, provider runtime settings, and model controls.
-// Input: User-facing Agent Management labels, descriptions, states, actions, and validation messages.
-// Position: Source of truth for the agentManagement i18n namespace.
-
 export default {
   'detail.action.cancel': 'Cancel',
   'detail.avatar.alt': 'Agent',

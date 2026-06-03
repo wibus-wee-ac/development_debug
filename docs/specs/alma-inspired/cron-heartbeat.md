@@ -1,9 +1,3 @@
-<!--
-Input: Alma cron/heartbeat evidence and Cradle automation/session-await audit.
-Output: Spec for cron jobs, heartbeat, and channel status.
-Position: docs/specs/alma-inspired/cron-heartbeat.md
--->
-
 # Cron 与 Heartbeat
 
 ## 目标

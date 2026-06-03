@@ -1,9 +1,3 @@
-<!--
-Input: New Chat composer action accessibility batch, scoped source diff, focused regression test, and validation command output
-Output: ReviewAM audit report for New Chat composer action accessibility changes
-Position: Multi-work review artifact for the New Chat continuous improvement stream
--->
-
 # ReviewAM Audit: New Chat Composer Actions A11y
 
 ## Verdict

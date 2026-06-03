@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for BrowserPanel render subscription boundaries.
- * Input: Workspace diff tab activation and diff scroll command store updates.
- * Position: Browser feature tests for the right-side panel shell.
- */
-
 import { act, cleanup, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

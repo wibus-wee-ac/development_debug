@@ -1,7 +1,3 @@
-// Output: Default English copy for the app chrome and global frame.
-// Input: Header, sidebar, panel, footer, and global navigation labels.
-// Position: Source of truth for chrome-owned i18n namespace.
-
 export default {
   'header.action.collapseSidebar': 'Collapse sidebar',
   'header.action.expandSidebar': 'Expand sidebar',

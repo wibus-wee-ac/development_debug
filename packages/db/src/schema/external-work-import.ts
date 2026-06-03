@@ -1,7 +1,3 @@
-// Output: Cradle-owned records for imported work from external AI applications.
-// Input: Server-side scans and Electron-uploaded snapshots from user devices.
-// Position: Owned by the external work import module; external app namespaces are read-only.
-
 import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { messages, sessions } from './chat'

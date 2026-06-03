@@ -1,9 +1,3 @@
-<!--
-Input: Alma renderer entrypoints and Cradle desktop shell audit.
-Output: Spec for desktop multi-window product surfaces.
-Position: docs/specs/alma-inspired/desktop-multi-window.md
--->
-
 # 桌面多窗口表面
 
 ## 目标

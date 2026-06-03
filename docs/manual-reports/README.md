@@ -1,9 +1,3 @@
-<!--
-Output: Manual investigation report inventory.
-Input: Ad-hoc debugging, verification, and diagnosis notes requested during development.
-Position: docs/manual-reports records evidence-backed findings that are not execution plans.
--->
-
 # Manual Reports
 
 这个目录保存一次性的人工诊断、验证和调研报告。它不同于 `docs/exec-plans/`：这里记录当前证据、原因判断和建议方案，不负责承诺实施步骤。

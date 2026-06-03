@@ -1,9 +1,3 @@
-<!--
-Input: Alma plugin runtime evidence and Cradle plugin governance audit.
-Output: Spec for plugin runtime and marketplace parity.
-Position: docs/specs/alma-inspired/plugin-runtime-marketplace.md
--->
-
 # Plugin Runtime 与 Marketplace
 
 ## 目标

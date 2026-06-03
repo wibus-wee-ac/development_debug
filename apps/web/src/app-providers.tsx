@@ -1,7 +1,3 @@
-// Output: Shared renderer provider stack and theme synchronization.
-// Input: App and tear-off renderer roots.
-// Position: Web-owned runtime boundary for common UI context without importing app shells.
-
 import { domAnimation, LazyMotion } from 'motion/react'
 import { useEffect } from 'react'
 

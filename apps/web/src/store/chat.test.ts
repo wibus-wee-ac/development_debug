@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat store message ownership.
- * Input: Hydrated UI messages that still contain full dynamic-tool payload snapshots.
- * Position: Store-owned tests for browser chat state projection.
- */
-
 import type { UIMessage } from 'ai'
 import { beforeEach, describe, expect, it } from 'vitest'
 

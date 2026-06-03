@@ -1,7 +1,3 @@
-// Output: Composer Appshot capture runtime for pending slots, native capture, and external file-part injection.
-// Input: Active composer action target element and attachment capability.
-// Position: Owned by features/chat as the desktop Appshot integration boundary consumed by ChatView.
-
 import type { FileUIPart } from 'ai'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'

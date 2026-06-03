@@ -1,9 +1,3 @@
-/*
- * Output: Standalone Plugin Marketplace page without the Fumadocs docs sidebar layout.
- * Input: Documentation-owned plugin marketplace registry and interactive marketplace UI.
- * Position: Public marketplace route for browsing plugins and preparing install links.
- */
-
 import { ArrowRight, BookOpen, Braces, FileJson, Plug, ShieldCheck } from 'lucide-react'
 import type { Metadata } from 'next'
 import Link from 'next/link'

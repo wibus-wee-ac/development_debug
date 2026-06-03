@@ -1,9 +1,3 @@
-<!--
-Input: Modern IDE assistant context research, Cradle System Agent source audit, and target product architecture.
-Output: Product and architecture spec for a best-in-class Jarvis context engine.
-Position: docs/specs/jarvis-context-engine.md
--->
-
 # Jarvis Context Engine
 
 本文档记录现代 IDE AI 产品如何收集、组织并传送 context，以及 Cradle 当前 Jarvis Context 机制的差距与目标架构。这里的 context 指模型在一次 turn 中获得的工作事实、用户意图线索、显式引用、检索片段、工具结果和必要历史，而不是浏览器 DOM 或鼠标事件日志。

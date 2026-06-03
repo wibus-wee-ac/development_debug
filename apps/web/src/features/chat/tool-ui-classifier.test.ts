@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat tool UI classification.
- * Input: AI SDK and runtime tool call payload shapes.
- * Position: Feature-owned tests for the chat render classifier.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import type { RenderableToolPart } from './tool-ui-classifier'

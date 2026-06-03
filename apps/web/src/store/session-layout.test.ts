@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for session/workspace layout metadata cache merges.
- * Input: Partial session and workspace layout metadata patches.
- * Position: Store tests for app shell route identity cache behavior.
- */
-
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useSessionLayoutStore } from './session-layout'

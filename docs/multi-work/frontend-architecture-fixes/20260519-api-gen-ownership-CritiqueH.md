@@ -1,9 +1,3 @@
-<!--
-Input: docs/multi-work/frontend-architecture-fixes/20260519-api-gen-ownership-InitialG.md plus targeted repository evidence.
-Output: Critique handoff for API generation ownership proposal.
-Position: docs/multi-work/frontend-architecture-fixes/20260519-api-gen-ownership-CritiqueH.md
--->
-
 # API Gen Ownership CritiqueH Handoff
 
 ## 直接结论

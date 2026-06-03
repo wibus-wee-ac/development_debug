@@ -1,7 +1,3 @@
-// Output: Regression coverage that Cradle's Codex app-server capability manifest matches generated bindings.
-// Input: Generated Codex app-server protocol TypeScript files.
-// Position: Provider-owned tests preventing bridge coverage drift after protocol regeneration.
-
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 

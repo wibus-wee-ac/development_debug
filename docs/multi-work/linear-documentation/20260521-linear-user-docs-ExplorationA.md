@@ -1,9 +1,3 @@
-<!--
-Output: Handoff research notes for adapting Linear user documentation patterns to Cradle documentation planning.
-Input: Linear user-facing documentation pages and the Cradle documentation ExecPlan.
-Position: Evidence artifact for docs/exec-plans/20260521-05-linear-style-documentation.md.
--->
-
 # Linear 用户文档风格研究 Handoff
 
 研究节点：`ExplorationA`

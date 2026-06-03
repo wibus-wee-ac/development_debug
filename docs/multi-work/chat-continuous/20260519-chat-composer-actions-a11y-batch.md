@@ -1,9 +1,3 @@
-<!--
-Input: Chat Composer send/stop action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the chat composer action button accessibility node
-Position: Multi-work audit trail for continuous chat UX improvements
--->
-
 # Chat Composer Actions A11y Batch
 
 ## Scope

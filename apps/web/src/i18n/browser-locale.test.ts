@@ -1,7 +1,3 @@
-// Output: Regression coverage for browser locale bootstrap priority and cookie convergence.
-// Input: URL query parameters, locale cookie values, and navigator language preferences.
-// Position: i18n-owned tests for Vite SPA startup locale resolution.
-
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { resolveInitialLocale } from './browser-locale'

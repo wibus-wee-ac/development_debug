@@ -1,9 +1,3 @@
-<!--
-Input: Alma gallery/lightbox renderer evidence and Cradle asset gap.
-Output: Spec for gallery and lightbox.
-Position: docs/specs/alma-inspired/gallery-lightbox.md
--->
-
 # Gallery 与 Lightbox
 
 ## 目标

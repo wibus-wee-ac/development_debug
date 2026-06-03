@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for session-scoped chat prompt ingress.
- * Input: External host-surface prompt payloads and registration lifecycle changes.
- * Position: Chat feature tests for Browser Panel to ChatView prompt submission boundary.
- */
-
 import type { FileUIPart } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 

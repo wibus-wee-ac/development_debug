@@ -1,7 +1,3 @@
-// Output: Shared Smart Mention types and Markdown href helpers.
-// Input: Mention node attributes selected from editor suggestions.
-// Position: Editor-owned serialization contract for resource mentions.
-
 export type SmartMentionKind = 'issue' | 'session' | 'workspace' | 'agent' | 'milestone' | 'file'
 
 export interface SmartMentionAttrs {

@@ -1,7 +1,4 @@
 /**
- * Output: Regression coverage for Chat Session queue list ordering controls.
- * Input: Pending queue items, drag/drop events, and button reorder clicks.
- * Position: Feature-owned tests for shared continuation queue controls.
  * @vitest-environment jsdom
  */
 

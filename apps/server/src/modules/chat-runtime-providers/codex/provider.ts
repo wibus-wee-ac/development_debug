@@ -1,7 +1,3 @@
-// Output: Codex Chat Runtime provider backed by the Codex app-server protocol.
-// Input: Chat Runtime turn requests, Codex profile config, and app-server notifications.
-// Position: Runtime provider that streams Codex turns and supports true live steering.
-
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
 import { unlinkSync, writeFileSync } from 'node:fs'

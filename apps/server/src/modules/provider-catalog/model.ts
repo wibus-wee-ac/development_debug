@@ -1,7 +1,3 @@
-// Output: TypeBox schemas for provider catalog HTTP routes.
-// Input: Shared provider-type schemas plus route-local request shapes.
-// Position: Provider-catalog owns /providers route contracts.
-
 import { t } from 'elysia'
 
 import {

@@ -1,7 +1,3 @@
-// Output: Native editor launch candidate resolution and execution.
-// Input: Absolute workspace or file paths selected by Electron native actions.
-// Position: Desktop main-process helper used by native IPC services.
-
 import { execFile } from 'node:child_process'
 
 interface EditorCandidate {

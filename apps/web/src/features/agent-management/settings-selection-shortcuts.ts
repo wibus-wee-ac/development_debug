@@ -1,7 +1,3 @@
-// Output: Keyboard shortcut helpers for Agent Management settings selection lists.
-// Input: Keyboard events from provider and agent settings list regions.
-// Position: Keeps Agent Management selection shortcuts local to settings-owned list semantics.
-
 import type { RefObject } from 'react'
 import { useEffect, useEffectEvent, useRef } from 'react'
 

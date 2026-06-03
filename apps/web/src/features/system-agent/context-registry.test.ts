@@ -1,7 +1,3 @@
-// Output: Unit coverage for Jarvis context registry and system-agent context provider projection.
-// Input: Fake providers and renderer store fixtures.
-// Position: Feature-owned tests for the system-agent semantic context aggregation boundary.
-
 import { describe, expect, it } from 'vitest'
 
 import { createContextRegistry } from '~/features/context/context-registry'

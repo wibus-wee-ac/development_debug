@@ -1,7 +1,3 @@
-// Output: Cradle-owned chat transcript reconstruction from stored UIMessage snapshots.
-// Input: Chat session message rows, exclusion sets, and bounded transcript limits.
-// Position: Chat Runtime context layer that feeds provider-specific transcript projectors.
-
 import type { UIMessage } from 'ai'
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 

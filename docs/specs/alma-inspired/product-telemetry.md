@@ -1,9 +1,3 @@
-<!--
-Input: Alma Sentry/PostHog evidence and Cradle observability audit.
-Output: Spec for crash reporting and product telemetry.
-Position: docs/specs/alma-inspired/product-telemetry.md
--->
-
 # Product Telemetry
 
 ## 目标

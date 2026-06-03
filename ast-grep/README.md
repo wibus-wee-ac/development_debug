@@ -1,7 +1,3 @@
-# Output: Documents persistent architecture hygiene scans.
-# Input: Developers running cleanup scans, facade audits, and text sweeps from the repository root.
-# Position: Owned by repository tooling; AST rules live in `ast-grep/rules`, optional audits in `ast-grep/audit-rules`, text rules in `ast-grep/text-rules`.
-
 # Architecture Hygiene Scans
 
 Run the default AST cleanup scan from the repository root:
@@ -39,16 +35,10 @@ Default cleanup rule intent:
 
 ## Language-Agnostic Text Scan
 
-`ast-grep scan` is for parser-backed structural patterns. Header-style comments like `Output:`, `Input:`, and `Position:` appear across TypeScript, Markdown, shell, YAML, HTML, and other text files, so the authoritative all-language sweep is a persisted `rg` rule:
+`ast-grep scan` is for parser-backed structural patterns. Header-style comments like `Output:`, `Input:`, and `Position:` appeared across TypeScript, Markdown, shell, YAML, HTML, and other text files, so the authoritative all-language sweep checks file-leading ownership triplets:
 
 ```sh
 ast-grep/scripts/scan-ownership-headers.sh
-```
-
-The regex lives in `ast-grep/text-rules/ownership-header-comment.regex`:
-
-```regex
-^[[:space:][:punct:]]*(Output|Input|Position):
 ```
 
 Useful baseline commands:
@@ -60,7 +50,7 @@ ast-grep/scripts/scan-ownership-headers.sh | cut -d: -f1 | sort -u | wc -l
 ast-grep/scripts/scan-ownership-headers.sh | cut -d: -f1 | sort -u | awk '{ n=split($0, parts, "."); ext=(n>1 ? parts[n] : "[no-ext]"); count[ext]++ } END { for (ext in count) print count[ext], ext }' | sort -nr
 ```
 
-This scan intentionally does not depend on file extension, language parser support, or enumerating comment delimiters. It treats any line that starts with only whitespace/punctuation before `Output:`, `Input:`, or `Position:` as an ownership header smell, then excludes generated SDK/build artifacts and searches all remaining paths unless extra arguments are passed to the script.
+This scan intentionally does not depend on language parser support. It reports only a leading three-line ownership header, including shebang-adjacent comments and `/** ... */` block headers, so docs, examples, tests, and report bodies can still mention `Output:`, `Input:`, or `Position:` without becoming cleanup findings.
 
 ## Optional Facade Audit
 

@@ -1,9 +1,3 @@
-<!--
-Output: Server foundation design for Tsuki/Hono migration baseline.
-Input: Migration plan 2026-05-07, user decision to prioritize infrastructure.
-Position: Superpowers spec to drive implementation planning.
--->
-
 # Cradle Server Foundation Design
 
 ## Summary

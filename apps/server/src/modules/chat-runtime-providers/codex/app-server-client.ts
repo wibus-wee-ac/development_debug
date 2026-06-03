@@ -1,7 +1,3 @@
-// Output: Newline-delimited JSON-RPC client for a per-turn Codex app-server process.
-// Input: Codex CLI app-server stdio transport, request payloads, and provider config overrides.
-// Position: Codex runtime provider infrastructure used to support live turn steering.
-
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'

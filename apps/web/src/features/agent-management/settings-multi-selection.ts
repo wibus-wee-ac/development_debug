@@ -1,7 +1,3 @@
-// Output: Shared multi-selection helpers for Settings provider and agent lists.
-// Input: Stable entity ids from Agent Management list records.
-// Position: Agent Management owns Settings Providers and Settings Agents selection semantics.
-
 interface IdRecord {
   id: string
 }

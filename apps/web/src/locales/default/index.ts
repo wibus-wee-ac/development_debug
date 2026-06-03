@@ -1,7 +1,3 @@
-// Output: Aggregated default English i18n resources.
-// Input: Namespace modules under this directory.
-// Position: Source of truth for i18n authoring and runtime fallback resources.
-
 import agentManagement from './agent-management'
 import awaits from './awaits'
 import chat from './chat'

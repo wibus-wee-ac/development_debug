@@ -1,9 +1,3 @@
-<!--
-Output: Inventory of superpowers design specs.
-Input: Superpowers brainstorming workflow.
-Position: docs/superpowers/specs index.
--->
-
 # Superpowers Design Specs
 
 ## Files

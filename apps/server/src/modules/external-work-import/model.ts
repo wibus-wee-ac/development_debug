@@ -1,7 +1,3 @@
-// Output: TypeBox schemas for external AI work import API contracts.
-// Input: Preview, upload-preview, import, and records route payload shapes.
-// Position: External work import module HTTP model boundary.
-
 import { t } from 'elysia'
 
 const sourceApp = t.Union([

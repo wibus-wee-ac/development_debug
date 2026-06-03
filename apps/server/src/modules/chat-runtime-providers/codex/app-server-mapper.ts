@@ -1,7 +1,3 @@
-// Output: Mapping from Codex app-server notifications to AI SDK UIMessageChunk events.
-// Input: app-server JSON-RPC notifications emitted during a Codex turn.
-// Position: Codex runtime provider adapter between the app-server protocol and Chat Runtime.
-
 import type { UIMessageChunk } from 'ai'
 
 import { createBoundedTextCollector, type BoundedTextCollector } from '../bounded-text-collector'

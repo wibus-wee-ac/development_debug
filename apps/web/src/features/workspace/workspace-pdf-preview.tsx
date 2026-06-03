@@ -1,7 +1,3 @@
-// Output: Read-only PDF canvas preview for workspace files and PDF renditions.
-// Input: PDF bytes URL produced by the workspace preview API.
-// Position: Workspace-owned rich file preview renderer used by workspace file tabs.
-
 import { Loader2Icon } from 'lucide-react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'

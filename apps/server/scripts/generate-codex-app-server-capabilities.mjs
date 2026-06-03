@@ -1,7 +1,3 @@
-// Output: Generates the Cradle runtime capability manifest for Codex app-server bindings.
-// Input: Codex app-server generated TypeScript protocol bindings and MANIFEST.json.
-// Position: Server build helper for keeping Codex provider runtime metadata in sync.
-
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -165,9 +161,5 @@ function renderTsValue(value) {
 
 function renderHeader() {
   return `// GENERATED CODE! DO NOT MODIFY BY HAND!
-// Run \`pnpm --filter @cradle/server generate:codex-app-server-capabilities\` after regenerating Codex app-server protocol bindings.
-
-// Output: Cradle-owned metadata for the generated Codex app-server protocol surface.
-// Input: Generated Codex app-server ClientRequest, ServerRequest, and ServerNotification bindings.
-// Position: Codex provider capability inventory used by bridge APIs, UI display, and tests.`
+// Run \`pnpm --filter @cradle/server generate:codex-app-server-capabilities\` after regenerating Codex app-server protocol bindings.`
 }

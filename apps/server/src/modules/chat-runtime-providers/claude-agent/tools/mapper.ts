@@ -1,7 +1,3 @@
-// Output: Claude Code tool_use/tool_result projection into Cradle-owned tool envelopes.
-// Input: Claude Agent SDK tool names, arguments, and result values.
-// Position: Claude Agent provider-owned tool semantic mapper.
-
 import {
   createBuiltinToolCallInputPayload,
   createBuiltinToolCallResultPayload,

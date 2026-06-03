@@ -1,7 +1,3 @@
-// Output: HTTP routes for previewing and importing external AI application work.
-// Input: Server-local scans, Electron-uploaded snapshots, and selected preview items.
-// Position: External work import module route boundary.
-
 import { Elysia } from 'elysia'
 
 import { ExternalWorkImportModel } from './model'

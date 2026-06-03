@@ -1,7 +1,3 @@
-// Output: Shared filesystem, resource loading, and translation validation helpers.
-// Input: Locale source files, JSON translation artifacts, and supported locale metadata.
-// Position: Common workflow utility layer for i18n scripts.
-
 import fs from 'node:fs/promises'
 import path from 'node:path'
 

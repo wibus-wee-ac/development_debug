@@ -1,9 +1,3 @@
-<!--
-Input: AppFooter Session Close A11y batch, scoped diff, and related layout files
-Output: ReviewAS audit report for AppFooter session close accessibility changes
-Position: Multi-work review artifact for the app-layout-bridge-continuous stream
--->
-
 # ReviewAS Audit: AppFooter Session Close A11y
 
 ## Verdict

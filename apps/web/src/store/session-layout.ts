@@ -1,7 +1,3 @@
-// Output: Renderer-side cache of session layout metadata used by the app shell.
-// Input: Session list rows, session detail queries, and newly created sessions.
-// Position: Store-owned bridge from chat/session data to layout identity derivation.
-
 import { shallow } from 'zustand/shallow'
 import { createWithEqualityFn } from 'zustand/traditional'
 

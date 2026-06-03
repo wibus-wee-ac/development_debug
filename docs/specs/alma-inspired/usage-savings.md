@@ -1,9 +1,3 @@
-<!--
-Input: Alma usage/RTK savings evidence and Cradle usage audit.
-Output: Spec for usage and savings analytics.
-Position: docs/specs/alma-inspired/usage-savings.md
--->
-
 # Usage 与 Savings Analytics
 
 ## 目标

@@ -1,7 +1,3 @@
-// Output: Onboarding-owned product frame that replays real Cradle UI flows with local mock data.
-// Input: Active onboarding step, localized mock data, and cursor-driven preview actions.
-// Position: Onboarding feature preview; product components receive mock props without touching app runtime state.
-
 import type { UIMessage } from 'ai'
 import {
   ActivityIcon,

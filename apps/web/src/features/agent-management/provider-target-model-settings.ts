@@ -1,7 +1,3 @@
-// Output: Provider-target model settings client helpers for Agent Management.
-// Input: Provider target references and model preference payloads.
-// Position: Shares Cradle-owned model preference writes across manual profiles and external records.
-
 import { z } from 'zod'
 
 import {

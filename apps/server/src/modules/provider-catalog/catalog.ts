@@ -1,7 +1,3 @@
-// Output: Provider-specific live model catalog implementations.
-// Input: Provider config JSON, credentials, and upstream provider model APIs.
-// Position: Provider-catalog owns external provider model listing for the /providers API surface.
-
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'

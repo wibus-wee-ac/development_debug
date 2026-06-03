@@ -1,7 +1,3 @@
-# Output: Finds TSX local numeric formatter helpers with threshold/unit branches.
-# Input: TSX number formatter helpers with one or two threshold branches.
-# Position: Owned by cleanup scans to expose repeated local unit-formatting wrappers.
-
 id: threshold-unit-formatter-tsx
 language: TSX
 severity: warning

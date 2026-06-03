@@ -1,7 +1,4 @@
 /*
- * Output: Manual Appshot parity evidence captured from Codex UI observation and Cradle native Appshot.
- * Input: A frontmost macOS window, optional user-triggered Codex UI Appshot, and the cradle-mac-bridge binary.
- * Position: Desktop scripts own local evidence collection for macOS native runtime parity work.
  */
 
 import { spawn } from 'node:child_process'

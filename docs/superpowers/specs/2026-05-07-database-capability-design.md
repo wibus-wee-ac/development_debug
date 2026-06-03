@@ -1,9 +1,3 @@
-<!--
-Output: DB capability design for Cradle server migration (SQLite + Drizzle).
-Input: Migration plan 2026-05-07, afilmory DB patterns, user decisions.
-Position: Superpowers spec to drive implementation planning.
--->
-
 # Cradle Server DB Capability Design
 
 ## Summary

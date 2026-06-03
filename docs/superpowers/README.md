@@ -1,9 +1,3 @@
-<!--
-Output: Inventory for superpowers-driven design/plan artifacts.
-Input: Documentation policy from docs/README.md.
-Position: Top-level index for docs/superpowers.
--->
-
 # Superpowers Docs
 
 Design specs and implementation plans generated via superpowers workflows.

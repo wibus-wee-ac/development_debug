@@ -1,9 +1,3 @@
-<!--
-Input: Alma preview chunk evidence and Cradle workspace/file audit.
-Output: Spec for document and media preview.
-Position: docs/specs/alma-inspired/document-media-preview.md
--->
-
 # 文档与媒体预览
 
 ## 目标

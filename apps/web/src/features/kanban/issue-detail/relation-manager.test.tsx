@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for issue relation creation and directional labels.
- * Input: RelationManager with mocked Kanban issue/relation hooks.
- * Position: Feature-owned tests for issue detail relation management behavior.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useContext } from 'react'

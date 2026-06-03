@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for Codex review-mode prompt construction.
- * Input: Review target mode, branch names, and merge-base resolution data.
- * Position: Chat feature tests for provider-native /review slash behavior.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import {

@@ -1,7 +1,3 @@
-// Output: Regression coverage for the Codex app-server-backed runtime provider.
-// Input: Fake app-server client requests, notifications, and Chat Runtime turn inputs.
-// Position: Provider-owned tests for Codex streaming and live steer behavior.
-
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { describe, expect, it, vi } from 'vitest'
 

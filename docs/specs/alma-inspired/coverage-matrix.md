@@ -1,9 +1,3 @@
-<!--
-Input: Alma synthesis report and ExplorationA/B concise feature lists.
-Output: Coverage matrix mapping Alma feature evidence to Alma-inspired specs.
-Position: docs/specs/alma-inspired/coverage-matrix.md
--->
-
 # Alma 覆盖矩阵
 
 本矩阵证明 Alma packaged app 中已经识别出的功能面都被规格化到 `docs/specs/alma-inspired/`。这里的“规格覆盖”只表示是否已经有 spec 覆盖该 Alma 功能，不表示 Cradle 当前已经实现。

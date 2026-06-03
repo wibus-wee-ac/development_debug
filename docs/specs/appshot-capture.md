@@ -1,9 +1,3 @@
-<!--
-Input: Codex.app Computer Use helper evidence, Codex renderer bundle evidence, Cradle Mac Bridge implementation, and Appshot strategy requirements.
-Output: Appshot capture strategy and verification spec.
-Position: docs/specs/appshot-capture.md
--->
-
 # Appshot Capture
 
 ## 目标

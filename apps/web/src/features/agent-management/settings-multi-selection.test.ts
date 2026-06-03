@@ -1,7 +1,3 @@
-// Output: Regression coverage for shared selection helpers used by Agent Management settings lists.
-// Input: Stable record ids and visible subsets.
-// Position: Confirms selection semantics stay aligned across provider and agent list views.
-
 import { describe, expect, it } from 'vitest'
 
 import {

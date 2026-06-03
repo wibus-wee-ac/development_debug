@@ -1,7 +1,3 @@
-// Output: Generic Codex app-server bridge for Cradle external calls and SSE display.
-// Input: Runtime session/profile context plus generated app-server method names and params.
-// Position: Codex provider infrastructure that exposes the full app-server protocol without owning Codex data.
-
 import type { CodexConfig } from '../../provider-contracts/provider-base'
 import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/provider-base'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'

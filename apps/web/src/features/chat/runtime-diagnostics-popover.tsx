@@ -1,7 +1,3 @@
-// Output: Dev-only runtime diagnostics popover for chat provider environment metadata.
-// Input: Provider-owned runtime UI slot capabilities and latest slot states.
-// Position: Chat feature floating diagnostics surface; provider semantics stay owned by the runtime provider.
-
 import { Settings2Icon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'

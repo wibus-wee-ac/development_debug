@@ -1,9 +1,3 @@
-<!--
-Input: ReviewAQ failure report, Agent Prompt Input A11y batch, and scoped related-file diff
-Output: Re-review report for the Agent Prompt Input A11y node after async assertion fix
-Position: Multi-work review artifact for kanban continuous accessibility work
--->
-
 # ReviewAR Rereview: Agent Prompt Input A11y
 
 Result: PASS

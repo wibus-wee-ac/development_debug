@@ -1,7 +1,3 @@
-// Output: HTTP schemas for provider-target preference APIs.
-// Input: TypeBox route definitions plus provider model metadata schema.
-// Position: Provider-targets owns Cradle runtime preferences shared by manual profiles and external records.
-
 import { t } from 'elysia'
 
 import { modelCapabilitiesSchema } from '../provider-contracts/model'

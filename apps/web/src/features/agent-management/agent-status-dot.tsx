@@ -1,7 +1,3 @@
-// Output: Shared enabled-state indicator for Agent Management rows.
-// Input: A compact tone value from agent or provider enabled state.
-// Position: Agent Management owns list-row status presentation across settings views.
-
 import { cn } from '~/lib/cn'
 
 export function StatusDot({ tone }: { tone: 'active' | 'muted' }) {

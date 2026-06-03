@@ -1,7 +1,3 @@
-# Output: Finds local nullable display helpers that hide null behind a string fallback.
-# Input: TypeScript formatter helpers with `T | null` parameters.
-# Position: Owned by cleanup scans to expose null propagation hidden behind display helpers.
-
 id: nullable-display-fallback-formatter
 language: TypeScript
 severity: warning

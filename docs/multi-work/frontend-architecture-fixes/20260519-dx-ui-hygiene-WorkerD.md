@@ -1,9 +1,3 @@
-<!--
-Input: Milestone 4 from docs/exec-plans/20260519-01-frontend-architecture-fixes.md
-Output: WorkerD handoff for DX and low-risk UI hygiene changes
-Position: docs/multi-work/frontend-architecture-fixes/20260519-dx-ui-hygiene-WorkerD.md
--->
-
 # DX/UI Hygiene WorkerD Handoff
 
 ## Scope

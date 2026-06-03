@@ -1,7 +1,3 @@
-// Output: Regression coverage for Codex app-server bridge stream lifecycle policy.
-// Input: Fake app-server client requests, notifications, and bridge runtime context.
-// Position: Provider-owned tests for external Codex app-server invocation semantics.
-
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerBridge } from './app-server-bridge'

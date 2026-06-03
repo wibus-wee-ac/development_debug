@@ -1,9 +1,3 @@
-<!--
-Input: Alma Playwright/Chromium BiDi evidence and Cradle test/browser-use audit.
-Output: Spec for Playwright/BiDi runtime management.
-Position: docs/specs/alma-inspired/playwright-bidi-runtime.md
--->
-
 # Playwright 与 BiDi Runtime
 
 ## 目标

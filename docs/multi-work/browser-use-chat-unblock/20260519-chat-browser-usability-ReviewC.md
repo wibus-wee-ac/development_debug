@@ -1,9 +1,3 @@
-<!--
-Input: docs/exec-plans/20260518-06-browser-use-chat-unblock.md plus current AppLayout, BrowserPanel, browser-use desktop backend, and Claude Agent provider.
-Output: Independent ReviewC handoff for remaining Chat/computer-use browser usability blockers.
-Position: Multi-work review artifact for the browser-use Chat unblock.
--->
-
 # ReviewC: Chat Browser Usability Remaining Blockers
 
 Date: 2026-05-19

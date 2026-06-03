@@ -1,7 +1,3 @@
-// Output: Projection from Codex app-server full turn history to Response API items.
-// Input: Codex app-server Turn snapshots loaded through thread/turns/list with itemsView=full.
-// Position: Codex provider boundary for carrying native app-server history into a fresh thread.
-
 import type { ContentItem as CodexContentItem } from './app-server-protocol/ContentItem'
 import type { ResponseItem as CodexResponseItem } from './app-server-protocol/ResponseItem'
 import type { ThreadItem } from './app-server-protocol/v2/ThreadItem'

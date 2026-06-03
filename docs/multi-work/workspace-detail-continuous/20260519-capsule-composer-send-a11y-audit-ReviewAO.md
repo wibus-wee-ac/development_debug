@@ -1,9 +1,3 @@
-<!--
-Input: Capsule Composer Send A11y batch and scoped workspace-detail related files
-Output: ReviewAO audit report for the capsule composer send button accessibility node
-Position: Multi-work review artifact for workspace detail continuous improvements
--->
-
 # ReviewAO Audit: Capsule Composer Send A11y
 
 ## Result

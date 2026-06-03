@@ -1,7 +1,3 @@
-// Output: Editable issue description with Smart Mention resource references.
-// Input: Issue record plus Issue-owned metadata and workspace resources.
-// Position: Issue Detail owns description editing and resource navigation semantics.
-
 import { useQueries } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { z } from 'zod'

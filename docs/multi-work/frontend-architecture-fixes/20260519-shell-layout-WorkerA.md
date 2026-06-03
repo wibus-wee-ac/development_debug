@@ -1,7 +1,3 @@
-<!-- Input: AGENTS.md, frontend architecture ExecPlan, shell navigation review, layout slot source -->
-<!-- Output: Shell layout Milestone 1 implementation handoff -->
-<!-- Position: Multi-work frontend architecture fixes artifact for WorkerA -->
-
 # Shell Layout WorkerA Handoff
 
 ## 范围

@@ -1,7 +1,3 @@
-// Output: Monaco-backed workspace file editor content.
-// Input: Workspace id and workspace-relative file path tab params.
-// Position: Workspace file viewing surface rendered inside BrowserPanel workspace file tabs.
-
 import Editor from '@monaco-editor/react'
 import { CheckIcon, Loader2Icon, SaveIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'

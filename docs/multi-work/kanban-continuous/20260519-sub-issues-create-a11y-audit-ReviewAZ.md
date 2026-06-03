@@ -1,9 +1,3 @@
-<!--
-Input: Scoped SubIssuesList accessibility diff and focused regression tests
-Output: ReviewAZ audit report for the Sub-Issues Create A11y node
-Position: Multi-work review artifact for kanban continuous improvements
--->
-
 # ReviewAZ Audit: Sub-Issues Create A11y
 
 ## Verdict

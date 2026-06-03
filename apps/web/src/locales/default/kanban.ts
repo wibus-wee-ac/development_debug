@@ -1,7 +1,3 @@
-// Output: Default English copy for kanban boards, issues, filters, and status controls.
-// Input: Kanban sidebar, toolbar, board tab content, issue details, and inline creation UI.
-// Position: Source of truth for kanban feature i18n namespace.
-
 export default {
   'board.emptySelection': 'Select or create a board from the sidebar',
   'board.create.title': 'New board',

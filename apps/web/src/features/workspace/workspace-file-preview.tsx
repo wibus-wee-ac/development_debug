@@ -1,7 +1,3 @@
-// Output: Embedded workspace file preview content for the right-side panel.
-// Input: Workspace id, workspace-relative file path, and editor-open callback.
-// Position: Workspace-owned file rendering surface reused by BrowserPanel tabs.
-
 import { StaticRender } from '@cradle/streamdown'
 import { FileQuestionIcon, ImageIcon, Loader2Icon } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'

@@ -1,9 +1,3 @@
-/**
- * Output: Cradle AppShot attachment metadata helpers.
- * Input: AI SDK file parts and native AppShot capture metadata.
- * Position: Chat feature owns AppShot attachment semantics while UI components own rendering.
- */
-
 import type { FileUIPart } from 'ai'
 
 export interface CradleAppshotMetadata {

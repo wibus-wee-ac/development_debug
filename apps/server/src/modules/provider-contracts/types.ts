@@ -1,7 +1,3 @@
-// Output: Shared provider taxonomy and model descriptor contracts.
-// Input: Provider/runtime kind literals and model metadata fields.
-// Position: Provider-contracts owns cross-module provider contracts consumed by catalog, targets, profiles, sessions, and chat runtime.
-
 export const providerKinds = ['openai-compatible', 'anthropic'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]

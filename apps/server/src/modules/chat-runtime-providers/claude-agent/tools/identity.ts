@@ -1,7 +1,3 @@
-// Output: Claude Code tool identity constants for the Claude Agent runtime provider.
-// Input: Claude Agent SDK tool_use names.
-// Position: Claude Agent provider-owned tool namespace used by its protocol mapper.
-
 export const ClaudeCodeToolIdentifier = 'claude-code'
 
 export enum ClaudeCodeToolName {

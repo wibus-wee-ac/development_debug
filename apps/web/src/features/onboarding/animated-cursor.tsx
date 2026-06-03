@@ -1,7 +1,3 @@
-// Output: Smooth animated cursor that follows real product targets for onboarding previews.
-// Input: Target-backed waypoints and an active flag.
-// Position: Presentation-only; used by onboarding right panel overlay.
-
 import { animate, m, useMotionValue, useSpring, useTransform } from 'motion/react'
 import { useEffect, useRef } from 'react'
 

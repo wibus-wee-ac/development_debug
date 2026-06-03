@@ -1,9 +1,3 @@
-<!--
-Input: Alma prompts/skills/hooks evidence and Cradle skills/plugin audit.
-Output: Spec for prompts, skills, and hooks ownership.
-Position: docs/specs/alma-inspired/prompts-skills-hooks.md
--->
-
 # Prompts、Skills 与 Hooks
 
 ## 目标

@@ -1,9 +1,3 @@
-<!--
-Input: Alma SQLite/Drizzle evidence and Cradle database capability audit.
-Output: Spec for local data store ownership.
-Position: docs/specs/alma-inspired/local-data-store.md
--->
-
 # 本地数据存储
 
 ## 目标

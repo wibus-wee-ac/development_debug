@@ -1,6 +1,3 @@
-// Output: Guards tabs-next retained tab rendering from remounting inactive tab trees during tab switches.
-// Input: TabRenderer with retained frames and tab store activation changes.
-// Position: Runtime lifecycle regression coverage for tab frame retention.
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen, within } from '@testing-library/react'

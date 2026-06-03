@@ -1,9 +1,3 @@
-/**
- * Output: Clickable milestone banner for Issue Detail.
- * Input: Selected milestone, calculated progress, and optional milestone-open callback.
- * Position: Issue Detail milestone visualization owned by the Kanban feature.
- */
-
 import { CalendarIcon, FlagIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'

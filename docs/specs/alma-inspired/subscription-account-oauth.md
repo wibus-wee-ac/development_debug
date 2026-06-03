@@ -1,9 +1,3 @@
-<!--
-Input: Alma Copilot and Claude Subscription preload evidence.
-Output: Spec for subscription account OAuth flows.
-Position: docs/specs/alma-inspired/subscription-account-oauth.md
--->
-
 # Subscription Account OAuth
 
 ## 目标

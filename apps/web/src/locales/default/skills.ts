@@ -1,7 +1,3 @@
-// Output: Default English copy for skill import flows.
-// Input: Skill source input, fetching, selection, installation, and completion states.
-// Position: Source of truth for skills feature i18n namespace.
-
 export default {
   'import.title': 'Import Skills',
   'import.formDescription': 'Enter a source to discover and install skills into this scope.',

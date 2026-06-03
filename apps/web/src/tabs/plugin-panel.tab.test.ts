@@ -1,7 +1,4 @@
 /**
- * Output: Regression coverage for plugin panel tab URL persistence.
- * Input: Plugin route segments, local panel ids, and cold-start URL hashes.
- * Position: Feature-owned tests for plugin panel tab serialize and deserialize.
  * @vitest-environment jsdom
  */
 

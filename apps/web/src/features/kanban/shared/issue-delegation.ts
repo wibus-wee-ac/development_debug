@@ -1,9 +1,3 @@
-/**
- * Output: Helpers for projecting Issue delegation fields into Kanban UI state.
- * Input: Issue-owned delegation identifiers and Agent Runtime identity records.
- * Position: Kanban shared helper for board/list/detail delegation display.
- */
-
 import type { Agent } from '~/features/agent-runtime/use-agents'
 import type { KanbanIssue } from '~/lib/types'
 

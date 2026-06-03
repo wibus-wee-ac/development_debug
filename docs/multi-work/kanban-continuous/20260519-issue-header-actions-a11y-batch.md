@@ -1,9 +1,3 @@
-<!--
-Input: IssueHeader action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail header action accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Issue Header Actions A11y Batch
 
 ## Scope

@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for MarkdownEditor extension composition.
- * Input: Editor props that enable slash commands and Smart Mention suggestions together.
- * Position: Shared editor tests for Tiptap plugin compatibility.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { Editor } from '@tiptap/core'
 import Link from '@tiptap/extension-link'

@@ -1,7 +1,3 @@
-// Output: Regression coverage for provider-scoped i18n language switching.
-// Input: I18nProvider, useI18n(), and a small React consumer.
-// Position: i18n-owned client runtime contract tests.
-
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useTranslation } from 'react-i18next'
 import { afterEach, describe, expect, it } from 'vitest'

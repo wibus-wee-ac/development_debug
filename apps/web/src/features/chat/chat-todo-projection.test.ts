@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for shared chat TODO projection.
- * Input: Claude-style TODO payload statuses and labels.
- * Position: Feature-owned tests for session-level TODO state mapping.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import { projectChatTodos, selectTodosFromMessages } from './chat-todo-projection'

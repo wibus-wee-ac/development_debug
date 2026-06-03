@@ -1,9 +1,3 @@
-<!--
-Output: Research-backed onboarding strategy for Cradle's first-user experience.
-Input: Current Cradle web UI implementation, Cradle design language, AI assistant UI research notes, and external onboarding guidance.
-Position: Product design proposal in docs/draft-solutions before implementation work moves into feature-owned modules.
--->
-
 # Cradle Onboarding Research
 
 ## Direct Conclusion

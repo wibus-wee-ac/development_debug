@@ -1,7 +1,3 @@
-// Output: Search-owned projection over Chronicle memories and knowledge cards.
-// Input: Chronicle-owned database tables plus query/workspace filters from the search API.
-// Position: Search module read model; it never writes Chronicle namespace data.
-
 import {
   chronicleKnowledgeCards,
   chronicleMemories,

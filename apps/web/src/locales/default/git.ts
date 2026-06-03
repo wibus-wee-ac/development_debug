@@ -1,7 +1,3 @@
-// Output: Default English copy for Git side-panel UI.
-// Input: Branch picker, Git panel states, and side-panel actions.
-// Position: Source of truth for git feature i18n namespace.
-
 export default {
   'branch.create.cancel': 'Cancel branch creation',
   'branch.create.description': 'Based on {{branch}}, create and switch to the new branch. Press Enter to confirm.',

@@ -1,7 +1,3 @@
-// Output: Regression coverage for tab-owned bottom-panel terminal cleanup.
-// Input: Cradle tab transitions and terminal panel owner id derivation.
-// Position: Tabs feature tests for the TUI lifecycle bridge.
-
 import { createTabStore, defineTab } from '@cradle/tabs-next'
 import { describe, expect, it, vi } from 'vitest'
 

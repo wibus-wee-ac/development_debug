@@ -1,7 +1,3 @@
-// Output: Shared composer autocomplete popover with fuzzy search and keyboard selection.
-// Input: Trigger-specific item adapters from mention, skill, and future composer pickers.
-// Position: Feature/chat UI primitive shared by composer-owned autocomplete surfaces.
-
 import { Fzf } from 'fzf'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 

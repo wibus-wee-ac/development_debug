@@ -1,9 +1,3 @@
-<!--
-Output: Refactor report for reducing Chat feature prop drilling and render coupling.
-Input: Current Chat frontend implementation, React data-flow audit, and Vercel React best-practice rules.
-Position: Owned by docs/draft-solutions as implementation handoff guidance before a formal execution plan.
--->
-
 # Chat Prop Drilling Refactor Report
 
 ## 直接结论

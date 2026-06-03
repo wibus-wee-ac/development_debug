@@ -1,9 +1,3 @@
-<!--
-Input: Walden Yan multi-agent production lessons, Cradle agent runtime audit, and existing owner/namespace rules.
-Output: Cradle multi-agent collaboration architecture spec.
-Position: docs/specs/multi-agent-collaboration.md
--->
-
 # Multi-Agent Collaboration
 
 ## 目标

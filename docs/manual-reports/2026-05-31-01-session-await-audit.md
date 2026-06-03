@@ -1,9 +1,3 @@
-<!--
-Output: Session Await audit findings and remediation notes.
-Input: Manual review of server, database, CLI, docs, and web await panel behavior.
-Position: Evidence-backed manual report for Session Await UX and correctness fixes.
--->
-
 # Session Await Audit
 
 本报告记录 2026-05-31 对 Session Await 功能的重新审计。审计范围包括 server lifecycle、DB schema、CLI agent UX、web await panel、系统 workflow 文档和用户文档。

@@ -1,9 +1,3 @@
-<!--
-Input: Alma sqlite-vec/Transformers evidence and Cradle Chronicle memory audit.
-Output: Spec for vector memory and local embeddings.
-Position: docs/specs/alma-inspired/memory-vector-embeddings.md
--->
-
 # Vector Memory 与 Local Embeddings
 
 ## 目标

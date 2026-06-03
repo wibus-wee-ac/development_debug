@@ -1,7 +1,3 @@
-// Output: Unit coverage for GitHub await target parsing.
-// Input: Human-entered PR numbers, commit refs, and GitHub check run URLs.
-// Position: session-await feature-owned parsing tests for the GitHub await composer.
-
 import { describe, expect, it } from 'vitest'
 
 import { describeGitHubAwaitTargetInputIssue, parseGitHubAwaitTargetInput } from './await-github'

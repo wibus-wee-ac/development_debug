@@ -1,9 +1,3 @@
-<!--
-Input: Alma auto update/about evidence and Cradle desktop/update audit.
-Output: Spec for desktop updates, about page, and release diagnostics.
-Position: docs/specs/alma-inspired/desktop-update-about.md
--->
-
 # Desktop Update 与 About
 
 ## 目标

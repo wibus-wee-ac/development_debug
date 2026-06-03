@@ -1,9 +1,3 @@
-/*
- * Output: Server-side documentation graph derived from Fumadocs link references.
- * Input: Fumadocs source pages and extracted markdown link references.
- * Position: Documentation data helper consumed by graph-oriented MDX components.
- */
-
 import { source } from './source'
 
 export interface DocsGraphNode {

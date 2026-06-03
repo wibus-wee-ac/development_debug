@@ -1,9 +1,3 @@
-/**
- * Output: Shared terminal tool detail predicates and output section helpers.
- * Input: Tool input, output, error text, and optional streaming arguments text.
- * Position: Chat feature helper used by tool call block renderers.
- */
-
 import type { ToolPayload } from './tool-ui-classifier'
 import { readToolInputPayload, readToolPayload } from './tool-ui-classifier'
 

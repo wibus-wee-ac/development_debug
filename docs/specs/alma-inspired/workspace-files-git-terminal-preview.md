@@ -1,9 +1,3 @@
-<!--
-Input: Alma workspace renderer evidence and Cradle workspace/git/pty audit.
-Output: Spec for workspace file, Git, terminal, and preview coverage.
-Position: docs/specs/alma-inspired/workspace-files-git-terminal-preview.md
--->
-
 # Workspace Files、Git、Terminal 与 Preview
 
 ## 目标

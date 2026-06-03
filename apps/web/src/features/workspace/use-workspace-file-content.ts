@@ -1,7 +1,3 @@
-// Output: React Query hooks for reading and writing one workspace file as text.
-// Input: Workspace id and workspace-relative file path.
-// Position: Workspace-owned data access shared by file peek and editor tab surfaces.
-
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {

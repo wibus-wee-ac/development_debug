@@ -1,9 +1,3 @@
-<!--
-Input: Alma Whisper preload/main evidence and Cradle Chronicle audio resource gap.
-Output: Spec for local ASR and voice input.
-Position: docs/specs/alma-inspired/whisper-asr.md
--->
-
 # Whisper ASR
 
 ## 目标

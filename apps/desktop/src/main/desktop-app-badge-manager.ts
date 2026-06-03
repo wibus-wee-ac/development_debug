@@ -1,7 +1,3 @@
-// Output: Electron app-icon badge IPC owned by the desktop main process.
-// Input: Renderer-projected unread counts from the app shell.
-// Position: Desktop app chrome boundary for native Dock/taskbar badge state, separate from tray ownership.
-
 import { app, ipcMain } from 'electron'
 
 const DESKTOP_APP_BADGE_UNREAD_COUNT_CHANNEL = 'desktop-app-badge:set-unread-count'

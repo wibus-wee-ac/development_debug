@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for layout slot stability across Activity visibility changes.
- * Input: LayoutSlotsProvider active slot changes before the next tab effect registration.
- * Position: Layout infrastructure tests for tab-owned layout surfaces.
- */
-
 import { cleanup, render, screen } from '@testing-library/react'
 import { use, useEffect, useMemo } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'

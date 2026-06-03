@@ -1,7 +1,3 @@
-// Output: Workspace-owned file change watch streams for Explorer-style refreshes.
-// Input: Workspace ids and workspace root paths.
-// Position: Internal watcher broker used by workspace routes and services.
-
 import type { FSWatcher } from 'node:fs'
 import { watch } from 'node:fs'
 import { dirname, relative, resolve, sep } from 'node:path'

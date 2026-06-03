@@ -1,9 +1,3 @@
-<!--
-Input: InitialG and CritiqueH API generation ownership handoffs, AGENTS.md ownership rules, and the frontend architecture fix ExecPlan.
-Output: Synthesized architecture handoff for web API client generation ownership.
-Position: docs/multi-work/frontend-architecture-fixes/20260519-api-gen-ownership-SynthesisI.md
--->
-
 # API Gen Ownership SynthesisI Handoff
 
 ## 直接结论

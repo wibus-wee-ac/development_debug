@@ -1,7 +1,3 @@
-// Output: Default English copy for shared UI semantics.
-// Input: Cross-domain user-facing strings used by Cradle web.
-// Position: Source of truth for common i18n namespace.
-
 export default {
   'action.back': 'Back',
   'action.cancel': 'Cancel',

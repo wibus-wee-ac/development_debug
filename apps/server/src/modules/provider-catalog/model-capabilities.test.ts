@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for provider-owned default model capability projection.
- * Input: Model descriptors with missing or explicit modality capabilities.
- * Position: Providers module tests protect the model capability surface consumed by Composer.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import { projectProviderModelCapabilities } from './model-capabilities'

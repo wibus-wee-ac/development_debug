@@ -1,9 +1,3 @@
-<!--
-Output: Independent review report for Kanban status manager accessibility controls.
-Input: apps/web/src/features/kanban/status-manager.tsx and apps/web/src/features/kanban/README.md.
-Position: Multi-work review artifact for the Kanban continuous audit stream.
--->
-
 # Status Manager A11y Audit ReviewW
 
 ## Verdict

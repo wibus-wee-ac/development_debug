@@ -1,7 +1,3 @@
-// Output: Hardcoded user-facing text report for React source files.
-// Input: TSX source files and explicit allowlist rules for technical literals.
-// Position: i18n workflow gate that prevents bypassing translation resources.
-
 import fs from 'node:fs/promises'
 import path from 'node:path'
 

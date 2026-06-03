@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for idempotent layout store updates.
- * Input: Repeated browser panel visibility and ratio setter calls.
- * Position: Store-owned tests for layout state subscription behavior.
- */
-
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID, useLayoutStore } from './layout'

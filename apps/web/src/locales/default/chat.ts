@@ -1,7 +1,3 @@
-// Output: Default English copy for chat runtime UI.
-// Input: Chat view status strips and message actions.
-// Position: Source of truth for chat feature i18n namespace.
-
 export default {
   'await.action.view': 'View',
   'await.source.event': 'event',

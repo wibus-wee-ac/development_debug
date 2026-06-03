@@ -1,9 +1,3 @@
-<!--
-Input: apps/web api-gen ownership escalation from WorkerD and frontend architecture fix plan
-Output: Initial architecture conclusion for generated API client ownership
-Position: docs/multi-work/frontend-architecture-fixes/20260519-api-gen-ownership-InitialG.md
--->
-
 # API Gen Ownership InitialG Handoff
 
 ## Problem Statement

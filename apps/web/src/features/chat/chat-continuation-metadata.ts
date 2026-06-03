@@ -1,9 +1,3 @@
-/**
- * Output: Chat-owned helpers for continuation metadata on UIMessage snapshots.
- * Input: AI SDK UIMessage metadata stored under the Cradle namespace.
- * Position: Feature/chat owns continuation presentation while chat-runtime owns persistence.
- */
-
 import type { UIMessage } from 'ai'
 
 import type { ChatContextPart } from './chat-context-parts'

@@ -1,9 +1,3 @@
-<!--
-Input: Agent session action accessibility batch, focused diff, and focused Vitest result
-Output: Independent ReviewBA audit report for the agent session action accessibility node
-Position: Multi-work audit artifact for kanban continuous accessibility review
--->
-
 # ReviewBA Audit: Agent Session Actions A11y
 
 ## Verdict

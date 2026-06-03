@@ -1,9 +1,3 @@
-<!--
-Input: Alma permissions/accessibility IPC evidence and Cradle desktop/Chronicle audit.
-Output: Spec for system permissions management.
-Position: docs/specs/alma-inspired/permissions-manager.md
--->
-
 # 权限管理
 
 ## 目标

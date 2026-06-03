@@ -1,9 +1,3 @@
-<!--
-Output: Re-review of Cradle documentation coverage and Linear-style fidelity after ReviewF fixes.
-Input: docs/exec-plans/20260521-05-linear-style-documentation.md, docs/multi-work/linear-documentation/*.md, and documentations/content/docs/**.
-Position: Final re-review handoff for the Linear-style documentation workstream.
--->
-
 # Final Coverage Re-review
 
 Reviewer: `ReviewH`

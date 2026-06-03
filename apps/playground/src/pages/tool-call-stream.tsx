@@ -1,9 +1,3 @@
-/**
- * Output: Interactive reproduction for event-driven chat tool entity streaming.
- * Input: A fixed sequence of message_delta events that mimics early tool anchors, live argument patches, and delayed tool completion.
- * Position: Playground page for validating the entity-based tool rendering model outside the production chat surface.
- */
-
 import { useMemo, useState } from 'react'
 
 type ToolState = 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied'

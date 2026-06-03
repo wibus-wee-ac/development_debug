@@ -1,9 +1,3 @@
-<!--
-Input: Alma TTS settings/API evidence and Cradle voice gap.
-Output: Spec for TTS and voice replies.
-Position: docs/specs/alma-inspired/tts-voice.md
--->
-
 # TTS 与 Voice Replies
 
 ## 目标

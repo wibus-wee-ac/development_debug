@@ -1,7 +1,3 @@
-// Output: Development-only onboarding overlay with left guidance and real product preview stage.
-// Input: OnboardingStore step, i18n translations.
-// Position: Onboarding feature shell; right pane uses real product components with mock data.
-
 import {
   ActivityIcon,
   ArrowRightIcon,

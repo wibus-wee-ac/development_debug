@@ -1,9 +1,3 @@
-<!--
-Input: Current usage formatting diff after ReviewJ QA gap fix, usage dashboard className cleanup, and usage format tests.
-Output: Independent ReviewK rereview handoff for the usage formatting rollover fix.
-Position: Multi-work rereview artifact for the usage-continuous stream.
--->
-
 # ReviewK: Usage Format Rereview
 
 Date: 2026-05-19

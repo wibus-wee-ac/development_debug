@@ -1,7 +1,3 @@
-// Output: Regression coverage for Settings Agents batch provider configuration.
-// Input: Selected agent records and a target provider/model/thinking selection.
-// Position: Proves batch edits preserve identity fields and skip CLI TUI agents.
-
 import { describe, expect, it } from 'vitest'
 
 import type { Agent } from '~/lib/types'

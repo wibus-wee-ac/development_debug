@@ -1,9 +1,3 @@
-/**
- * Output: Chat Runtime-owned structured context part helpers.
- * Input: Cradle UI message parts and HTTP context part payloads.
- * Position: Runtime boundary between Cradle composer tokens and provider adapters.
- */
-
 import type { UIMessage } from 'ai'
 
 export type ChatContextPart = ChatSkillContextPart

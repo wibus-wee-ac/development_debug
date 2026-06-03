@@ -1,9 +1,3 @@
-/*
- * Output: Fumadocs link-reference graph and diagnostics for documentation pages.
- * Input: Graph data produced from source.getPages() and extractedReferences.
- * Position: Server component mounted from MDX on the documentation map page.
- */
-
 import { AlertTriangle, ArrowRight, ChartNetwork, Link2, Route, ScanSearch } from 'lucide-react'
 
 import { cn } from '@/lib/cn'

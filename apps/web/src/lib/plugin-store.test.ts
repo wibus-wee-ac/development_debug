@@ -1,7 +1,4 @@
 /**
- * Output: Regression coverage for renderer plugin contribution storage.
- * Input: Web plugin panel registrations with host route segments.
- * Position: Feature-owned tests for plugin store URL route keys.
  * @vitest-environment jsdom
  */
 

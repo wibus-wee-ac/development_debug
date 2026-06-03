@@ -1,7 +1,3 @@
-// Output: Regression coverage for Smart Mention suggestion list grouping and selection.
-// Input: Mixed SmartMentionItem candidates.
-// Position: Editor suggestion menu tests for @ resource references.
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 

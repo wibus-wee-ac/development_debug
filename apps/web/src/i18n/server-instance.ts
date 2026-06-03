@@ -1,7 +1,3 @@
-// Output: Request-independent i18next instance factory for non-React callers and tests.
-// Input: Supported locale plus namespaces requested by the caller.
-// Position: Shared helper; callers own where translated strings are injected.
-
 import { createInstance } from 'i18next'
 import resourcesToBackend from 'i18next-resources-to-backend'
 

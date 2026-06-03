@@ -1,7 +1,3 @@
-// Output: System Agent-owned ambient UI context provider for Jarvis.
-// Input: Current tab, layout, chat, profile, and unread activity stores.
-// Position: System Agent provider that publishes app-shell context into the shared Jarvis context registry.
-
 import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'

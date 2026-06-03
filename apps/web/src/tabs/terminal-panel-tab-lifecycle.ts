@@ -1,7 +1,3 @@
-// Output: Bridges Cradle tab close events to bottom-panel terminal owner cleanup.
-// Input: Cradle tab store state before and after a close action.
-// Position: Owned by tabs; TUI remains the owner of PTY stop semantics.
-
 import type { NavigateTabOptions, TabInstance, TabLocation, TabStoreState } from '@cradle/tabs-next'
 import type { StoreApi, UseBoundStore } from 'zustand'
 

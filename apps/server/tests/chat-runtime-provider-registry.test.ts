@@ -1,7 +1,3 @@
-// Output: Regression coverage for chat runtime provider registry helpers.
-// Input: Runtime skill path resolution requests.
-// Position: Server chat runtime tests guarding startup-time filesystem scan bounds.
-
 import fs from 'node:fs'
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

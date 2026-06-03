@@ -1,9 +1,3 @@
-/**
- * Output: Shared slash command input parsing and replacement helpers for composer textareas.
- * Input: Textarea values, cursor positions, and UI-facing slash command descriptors.
- * Position: Chat feature owns slash command interaction semantics shared by chat launch surfaces.
- */
-
 import { Fzf } from 'fzf'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'

@@ -1,7 +1,3 @@
-// Output: Unit coverage for Agent Runtime model query-key ownership.
-// Input: Agent Runtime model query-key helpers.
-// Position: Guards model inventory request deduplication across chat, composer, and settings.
-
 import { describe, expect, it } from 'vitest'
 
 import {

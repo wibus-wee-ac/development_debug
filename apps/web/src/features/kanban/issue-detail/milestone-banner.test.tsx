@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for the Issue Detail milestone banner.
- * Input: Milestone metadata, progress summary, and milestone-open callbacks.
- * Position: Feature-owned tests for CRA milestone header behavior.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 

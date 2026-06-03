@@ -1,7 +1,3 @@
-// Output: Regression coverage for Claude Agent message-to-AI-SDK chunk mapping.
-// Input: Claude Agent SDK tool_use and tool_result messages.
-// Position: Provider-owned adapter tests for persisted tool output semantics.
-
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'

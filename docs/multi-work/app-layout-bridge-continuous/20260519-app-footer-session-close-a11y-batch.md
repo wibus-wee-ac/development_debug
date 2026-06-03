@@ -1,9 +1,3 @@
-<!--
-Input: AppFooter session close accessibility work, focused test, review report, and validation commands
-Output: Batch record for the AppFooter Jarvis session close accessibility node
-Position: Multi-work audit trail for continuous app layout UX improvements
--->
-
 # AppFooter Session Close A11y Batch
 
 ## Scope

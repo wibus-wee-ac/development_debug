@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for workspace label metadata helpers.
- * Input: Issue labels with casing, duplicates, rename, and delete intents.
- * Position: Feature-owned tests for Issue-owned label string management.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import type { KanbanIssue } from '~/lib/types'

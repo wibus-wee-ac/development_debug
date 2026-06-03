@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for parent issue indicators on Kanban items.
- * Input: Kanban cards and list rows with resolved parent issue references.
- * Position: Feature-owned tests for Kanban hierarchy affordances.
- */
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'

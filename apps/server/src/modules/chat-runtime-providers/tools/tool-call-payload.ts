@@ -1,7 +1,3 @@
-// Output: Stable Cradle provider tool-call payload envelope helpers.
-// Input: Provider-native tool arguments and results.
-// Position: Provider tool identity contract between runtime adapters, chat persistence, and UI projection.
-
 export const BUILTIN_TOOL_CALL_INPUT_PAYLOAD_TYPE = 'cradle.builtin-tool-call.input.v1'
 export const BUILTIN_TOOL_CALL_RESULT_PAYLOAD_TYPE = 'cradle.builtin-tool-call.result.v1'
 

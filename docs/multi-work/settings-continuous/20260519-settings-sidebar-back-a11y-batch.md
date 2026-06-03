@@ -1,9 +1,3 @@
-<!--
-Input: SettingsSidebar accessibility work, focused test, review report, and validation commands
-Output: Batch record for the settings sidebar close control accessibility node
-Position: Multi-work audit trail for continuous settings UX improvements
--->
-
 # Settings Sidebar Back A11y Batch
 
 ## Scope

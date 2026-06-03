@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat message bubble execution-detail rendering.
- * Input: UI messages containing final replies after tool call parts.
- * Position: Feature-owned tests for the shared chat/Jarvis message renderer.
- */
-
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'

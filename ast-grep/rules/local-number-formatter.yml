@@ -1,7 +1,3 @@
-# Output: Finds local numeric formatters that only switch between String and toFixed.
-# Input: TypeScript number formatter helpers.
-# Position: Owned by cleanup scans to expose repeated ad hoc numeric display helpers.
-
 id: local-number-formatter
 language: TypeScript
 severity: warning

@@ -1,7 +1,3 @@
-// Output: Default English copy for Chronicle settings, diagnostics, and local resource controls.
-// Input: Chronicle-owned labels, descriptions, statuses, fallbacks, and formatting templates.
-// Position: Source of truth for the chronicle i18n namespace.
-
 export default {
   'accessibility.elementCount': '{{count}} UI elements',
   'accessibility.notification.focusedElementChanged': 'Focused element changed',

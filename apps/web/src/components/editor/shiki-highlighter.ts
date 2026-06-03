@@ -1,7 +1,3 @@
-// Output: Lazily loads Shiki highlighter resources for editor code blocks.
-// Input: Requested code language and current editor theme names.
-// Position: Shared syntax-highlighting runtime used by shiki-code-block and code-block-view.
-
 import type { BundledLanguage, BundledTheme, HighlighterGeneric } from 'shiki'
 
 export const LIGHT_THEME = 'github-light'

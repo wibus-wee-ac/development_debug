@@ -1,9 +1,3 @@
-<!--
-Input: Alma ACP evidence and Cradle ACP module audit.
-Output: Spec for ACP runtime coverage.
-Position: docs/specs/alma-inspired/acp-runtime.md
--->
-
 # ACP Runtime
 
 ## 目标

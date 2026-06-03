@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for ChatStreamingHandler stream replay consumption.
- * Input: AI SDK UIMessageChunk streams and hydrated chat store snapshots.
- * Position: Chat feature tests for renderer-owned streaming projection.
- */
-
 import type { UIMessageChunk } from 'ai'
 import { act } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'

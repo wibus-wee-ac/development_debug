@@ -1,9 +1,3 @@
-<!--
-Output: Session capability implementation plan for server migration.
-Input: apps/server/specs/capabilities/session.md.
-Position: docs/superpowers/plans.
--->
-
 # Session Capability (Server Migration) Implementation Plan
 
 > Historical note (2026-05-16): this implementation plan targets an earlier Tsuki/Hono migration stage and still references timeline extraction / `backendTimelineEvents`. The current canonical session/chat contract uses `messages.messageJson` for snapshot hydration, `messages.content` for derived plain-text export/search, and sequenced SSE delta events for live updates.

@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for chat PNG export scope selection and rendering.
- * Input: UI messages rendered through the chat share export dialog.
- * Position: Feature-owned tests for conversation share/export behavior.
- */
-
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { UIMessage } from 'ai'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'

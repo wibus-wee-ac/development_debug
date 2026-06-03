@@ -1,9 +1,3 @@
-<!--
-Input: IssueHeader action accessibility diff, focused test results, and batch documentation.
-Output: Independent ReviewBB audit report for the issue header actions accessibility node.
-Position: Multi-work review artifact for kanban continuous accessibility improvements.
--->
-
 # ReviewBB Audit: Issue Header Actions A11y
 
 ## Verdict

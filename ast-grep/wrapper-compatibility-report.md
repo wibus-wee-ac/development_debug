@@ -1,7 +1,3 @@
-# Output: Baseline results from persistent architecture cleanup, facade audit, and text scans.
-# Input: `ast-grep scan` and persisted text scans over apps, packages, plugins, and repository tooling with generated/build artifacts excluded.
-# Position: Owned by repository tooling as the current review queue for removable compatibility, formatter, facade, and ownership-comment smell surfaces.
-
 # Wrapper And Bad-Smell Scan
 
 ## Default Cleanup Scan
@@ -74,7 +70,7 @@ Remaining audit findings are currently classified as intentional noise:
 | `apps/web/src/features/skills/use-skills.ts` | `useSkillDocument` | Skills feature owns scope/name/context projection to IPC query params and parses the nullable response with `SkillDocumentSchema` before exposing it to manager panes. |
 | `apps/web/src/features/kanban/use-kanban.ts` | `useBoards`, `useStatuses`, `useMilestones`, `useIssues`, `useIssue`, `useComments`, `useRelations`, `useLinkedIssue` | Kanban feature owns schemas, query-key namespace, refresh policy, enabled guards, request parameter normalization, and mutation invalidation around the issue board domain. These are not generated SDK aliases. |
 
-## Language-Agnostic Ownership Header Text Scan
+## Language-Agnostic Ownership Header Scan
 
 Command:
 
@@ -82,37 +78,11 @@ Command:
 ast-grep/scripts/scan-ownership-headers.sh
 ```
 
-Rule:
-
-```regex
-^[[:space:][:punct:]]*(Output|Input|Position):
-```
-
-Current text scan baseline:
+Current top-header scan baseline:
 
 | Metric | Count |
 |---|---:|
-| Matched lines | 1492 |
-| Files with matches | 445 |
+| Matched lines | 0 |
+| Files with matches | 0 |
 
-Files with matches by extension:
-
-| Extension | Files |
-|---|---:|
-| ts | 206 |
-| md | 148 |
-| tsx | 62 |
-| yml | 21 |
-| mjs | 5 |
-| sh | 2 |
-| html | 1 |
-
-Sample output:
-
-```text
-AGENTS.md:6:# Output: ...
-ast-grep/README.md:1:# Output: ...
-apps/server/src/modules/...:1:// Output: ...
-```
-
-This scan is the authoritative all-language detector for `Output:`, `Input:`, and `Position:` header comments. It is intentionally text-based because ast-grep cannot parse every repository file type with one language rule, and it does not depend on enumerating comment delimiters.
+The scan reports only file-leading ownership triplets. It intentionally ignores body prose, docs, report snippets, and test fixtures that mention `Output:`, `Input:`, or `Position:` outside the first header block.

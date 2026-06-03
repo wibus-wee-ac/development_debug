@@ -1,7 +1,3 @@
-// Output: Global model registry mapping routes.
-// Input: Cradle-owned model ID to registry model mapping requests.
-// Position: Exposes registry mapping ownership outside provider target namespaces.
-
 import { Elysia, t } from 'elysia'
 
 import { ModelRegistryModel } from './model'

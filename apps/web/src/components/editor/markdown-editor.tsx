@@ -1,7 +1,3 @@
-// Output: Shared Tiptap Markdown editor with guarded document synchronization.
-// Input: Markdown content, save callback, readonly state, placeholder, and Smart Mention providers.
-// Position: Editor-owned rendering and lifecycle boundary reused by Kanban and workspace surfaces.
-
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'

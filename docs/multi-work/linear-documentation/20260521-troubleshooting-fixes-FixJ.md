@@ -1,9 +1,3 @@
-<!--
-Output: Handoff for FixJ troubleshooting documentation fixes.
-Input: ReviewH findings, desktop server process code, web health panel code, Chronicle server service, Chronicle daemon manager, and Rust Chronicle daemon/capture code.
-Position: Narrow fix evidence for the Linear-style documentation workstream.
--->
-
 # Troubleshooting Fixes
 
 Agent: `FixJ`

@@ -1,9 +1,3 @@
-<!--
-Input: SubIssuesList action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail sub-issue create accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Sub-Issues Create A11y Batch
 
 ## Scope

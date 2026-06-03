@@ -1,7 +1,3 @@
-// Output: Draft composer slash commands projected from provider-owned runtime capabilities.
-// Input: Selected runtime kind for pre-session composer surfaces.
-// Position: Chat feature command boundary shared by new-chat and workspace launcher composers.
-
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 

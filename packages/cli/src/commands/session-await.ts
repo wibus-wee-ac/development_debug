@@ -1,7 +1,3 @@
-// Output: Task-shaped Session Await CLI commands.
-// Input: Commander root program, CLI runtime command context, and session await HTTP routes.
-// Position: Manual command wrapper layered on top of generated session-await commands.
-
 import { Command } from 'commander'
 import { z } from 'zod'
 

@@ -1,9 +1,3 @@
-<!--
-Input: Chat composer actions accessibility batch and scoped related-file diff
-Output: Independent ReviewAT audit report for Chat Composer Actions A11y
-Position: Multi-work review artifact for the chat-continuous stream
--->
-
 # ReviewAT: Chat Composer Actions A11y
 
 Result: PASS

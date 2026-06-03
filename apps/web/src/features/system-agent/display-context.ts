@@ -1,7 +1,3 @@
-// Output: Display-only projection helpers for Jarvis messages.
-// Input: AI SDK UI messages that may contain feature-owned context blocks.
-// Position: Owned by system-agent so Jarvis context redaction does not leak into shared chat rendering.
-
 import type { UIMessage } from 'ai'
 
 const RE_CRADLE_CONTEXT_BLOCK = /<cradle_context>[\s\S]*?<\/cradle_context>/gi

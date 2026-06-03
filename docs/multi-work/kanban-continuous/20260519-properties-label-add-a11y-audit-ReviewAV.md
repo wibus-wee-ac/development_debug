@@ -1,9 +1,3 @@
-<!--
-Input: Properties Label Add A11y batch record, scoped source diff, and focused validation output
-Output: ReviewAV audit report for the kanban issue detail label add accessibility node
-Position: Multi-work review artifact for continuous kanban UX improvements
--->
-
 # ReviewAV Audit: Properties Label Add A11y
 
 Result: PASS

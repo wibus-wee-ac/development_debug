@@ -1,7 +1,3 @@
-// Output: Maps workspace file paths to editor and preview language identifiers.
-// Input: Workspace-relative file paths.
-// Position: Workspace file viewing helpers shared by the file tree peek view and Monaco editor tab.
-
 const MONACO_LANGUAGE_BY_EXTENSION: Record<string, string> = {
   bash: 'shell',
   c: 'c',

@@ -1,9 +1,3 @@
-<!--
-Input: RelationManager action accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail relation action accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Relation Manager Actions A11y Batch
 
 ## Scope

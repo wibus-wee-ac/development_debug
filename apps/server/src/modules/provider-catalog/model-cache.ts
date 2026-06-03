@@ -1,7 +1,3 @@
-// Output: Provider model cache persistence helpers.
-// Input: Provider catalog model descriptors and provider target cache keys.
-// Position: Provider-catalog owns cached provider model inventory rows.
-
 import { providerModelCache, providerTargetModelCache } from '@cradle/db'
 import { eq, lt } from 'drizzle-orm'
 import { z } from 'zod'

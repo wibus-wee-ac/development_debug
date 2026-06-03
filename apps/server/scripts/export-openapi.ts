@@ -1,8 +1,3 @@
-/**
- * Output: Generate a local OpenAPI JSON snapshot for offline client generation.
- * Input: Cradle server app module metadata.
- * Position: Server tooling script under apps/server/scripts.
- */
 import { writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'

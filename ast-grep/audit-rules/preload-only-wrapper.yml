@@ -1,7 +1,3 @@
-# Output: Finds preload functions that only delegate to a loader.
-# Input: TypeScript route/tab preload files.
-# Position: Owned by architecture hygiene scans to expose preload-only compatibility surfaces.
-
 id: preload-only-wrapper
 language: TypeScript
 severity: warning

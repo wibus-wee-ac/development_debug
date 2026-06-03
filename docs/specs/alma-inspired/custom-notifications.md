@@ -1,9 +1,3 @@
-<!--
-Input: Alma notifications renderer/preload evidence and Cradle tray/toast audit.
-Output: Spec for custom notification center.
-Position: docs/specs/alma-inspired/custom-notifications.md
--->
-
 # 自定义通知中心
 
 ## 目标

@@ -1,7 +1,3 @@
-// Output: Default English copy for the new chat composer screen.
-// Input: Composer placeholders, quick actions, readiness notices, workspace picker, and recent session labels.
-// Position: Source of truth for new-chat feature i18n namespace.
-
 export default {
   'placeholder.task': 'Describe the task you want the agent to do in this project...',
   'placeholder.structure': 'Explain the codebase structure and where to begin...',

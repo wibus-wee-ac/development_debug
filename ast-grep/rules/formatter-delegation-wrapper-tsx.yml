@@ -1,7 +1,3 @@
-# Output: Finds TSX formatter/read/normalize helpers that only delegate to another formatter.
-# Input: TSX helper functions returning a same-family helper call.
-# Position: Owned by cleanup scans to expose useless conversion wrapper functions.
-
 id: formatter-delegation-wrapper-tsx
 language: TSX
 severity: warning

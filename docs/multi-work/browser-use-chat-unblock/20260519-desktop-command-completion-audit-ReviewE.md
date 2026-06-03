@@ -1,9 +1,3 @@
-<!--
-Input: Browser Use Chat Unblock ExecPlan, prior multi-work handoffs, browser-use desktop/MCP/protocol sources, renderer browser panel sources, and desktop plugin loader.
-Output: Independent ReviewE handoff auditing whether desktop/browser command implementation and validation fully unblock Chat browser use.
-Position: Multi-work review artifact for browser-use Chat unblock completion.
--->
-
 # ReviewE: Desktop Command Completion Audit
 
 Date: 2026-05-19

@@ -1,7 +1,4 @@
 /**
- * Output: Regression coverage for Automation API response parsing.
- * Input: Server-shaped automation definitions and run collections.
- * Position: Feature-owned contract tests for the local automation fetch boundary.
  * @vitest-environment jsdom
  */
 

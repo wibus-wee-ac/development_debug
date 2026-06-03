@@ -1,9 +1,3 @@
-<!--
-Input: Alma MCP settings evidence and Cradle plugin MCP registry audit.
-Output: Spec for MCP management UI and server records.
-Position: docs/specs/alma-inspired/mcp-management.md
--->
-
 # MCP 管理
 
 ## 目标

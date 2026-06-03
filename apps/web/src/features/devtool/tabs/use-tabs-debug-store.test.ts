@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for tabs-next debug cache repair.
- * Input: Cached tabs-next debug states in localStorage.
- * Position: Devtool tabs diagnostics tests for schema-tolerant startup.
- */
-
 import { DEBUG_STORAGE_KEY } from '@cradle/tabs-next'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 

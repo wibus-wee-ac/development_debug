@@ -1,9 +1,3 @@
-<!--
-Input: Relation Manager Actions A11y scoped diff and related issue-detail files
-Output: ReviewAX accessibility audit report for the relation manager actions node
-Position: Multi-work review artifact for kanban continuous improvements
--->
-
 # ReviewAX Audit: Relation Manager Actions A11y
 
 ## Verdict

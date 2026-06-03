@@ -1,7 +1,3 @@
-// Output: Default English copy for usage analytics.
-// Input: Usage dashboard labels, chart headings, stat pills, and breakdown headings.
-// Position: Source of truth for usage feature i18n namespace.
-
 export default {
   'title': 'Usage',
   'description': 'Token consumption over the past year',

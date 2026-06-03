@@ -1,7 +1,3 @@
-// Output: Default English copy for the home dashboard.
-// Input: Dashboard sections, quick actions, relative time, and automation summaries.
-// Position: Source of truth for home feature i18n namespace.
-
 export default {
   'section.needsAttention': 'Needs attention',
   'section.recentActivity': 'Recent activity',

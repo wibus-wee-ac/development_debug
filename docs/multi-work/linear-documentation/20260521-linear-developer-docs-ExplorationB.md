@@ -1,9 +1,3 @@
-<!--
-Output: Linear developer documentation research handoff for Cradle documentation planning.
-Input: Linear developer documentation and Cradle documentation ExecPlan.
-Position: Evidence artifact for docs/exec-plans/20260521-05-linear-style-documentation.md.
--->
-
 # Linear developer docs research handoff
 
 本文件是 ExplorationB 的独立交接材料，只用于规划 Cradle developer docs。它总结 Linear developer documentation 的信息架构、页面组织、口吻、参考页模式，以及迁移到 Cradle 文档站时应采用的具体规则。本文不复制 Linear 文案，只抽取结构和写法。

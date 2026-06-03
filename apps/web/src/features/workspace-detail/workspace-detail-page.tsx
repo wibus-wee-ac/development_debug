@@ -1,7 +1,3 @@
-// Output: Workspace detail page with overview document editing, workflow rules, skills, and metadata.
-// Input: Workspace route state, workspace APIs, file content APIs, chat/session APIs, and native shell IPC.
-// Position: Workspace Detail owns workspace configuration UX and non-Cradle-owned file save boundaries.
-
 import { Link } from '@cradle/tabs-next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'

@@ -1,9 +1,3 @@
-/**
- * Output: Codex review-mode prompt builders and branch candidate ordering.
- * Input: Git status, branch lists, and native review target selection.
- * Position: Chat-owned Codex slash UI support shared by dialog and tests.
- */
-
 import type { GetWorkspacesByIdGitBranchesResponse } from '~/api-gen/types.gen'
 
 export type CodexReviewTargetMode = 'uncommitted' | 'base-branch'

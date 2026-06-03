@@ -1,7 +1,3 @@
-// Output: Browser runtime stress harness for retained tab frame switching.
-// Input: A DOM host and tabs-next source modules compiled by Vite.
-// Position: Test-only helper for collecting frame and lifecycle evidence outside jsdom.
-
 import { useEffect, useLayoutEffect } from 'react'
 import type { Root } from 'react-dom/client'
 import { createRoot } from 'react-dom/client'

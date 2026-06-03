@@ -1,7 +1,3 @@
-// Output: Regression coverage for Codex app-server process isolation.
-// Input: Runtime environment paths used to launch Codex app-server.
-// Position: Provider-owned tests for keeping Cradle-managed Codex runs out of user Codex config.
-
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Readable, Writable } from 'node:stream'

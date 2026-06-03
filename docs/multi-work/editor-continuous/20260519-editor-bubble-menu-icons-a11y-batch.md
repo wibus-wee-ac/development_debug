@@ -1,9 +1,3 @@
-<!--
-Input: EditorBubbleMenu icon accessibility work, focused test, review report, and validation commands
-Output: Batch record for the editor BubbleMenu decorative icon accessibility node
-Position: Multi-work audit trail for continuous editor UX improvements
--->
-
 # Editor BubbleMenu Icons A11y Batch
 
 ## Scope

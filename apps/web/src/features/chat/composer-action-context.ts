@@ -1,9 +1,3 @@
-/**
- * Output: Composer action context geometry for native UI actions.
- * Input: Composer DOM measurements and pending AppShot metadata.
- * Position: Chat feature owns renderer-to-native animation target calibration.
- */
-
 import type { FileUIPart } from 'ai'
 
 export interface ComposerSlashCommandActionResult {

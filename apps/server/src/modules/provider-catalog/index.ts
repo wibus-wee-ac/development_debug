@@ -1,7 +1,3 @@
-// Output: /providers HTTP routes and CLI metadata.
-// Input: Provider catalog service operations and provider route schemas.
-// Position: Provider-catalog owns provider model listing, cache refresh, search, and lookup routes.
-
 import { Elysia, t } from 'elysia'
 
 import { resolveProviderTarget } from '../provider-targets/service'

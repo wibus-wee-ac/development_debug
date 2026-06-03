@@ -1,9 +1,3 @@
-/**
- * Output: Regression coverage for milestone progress calculations.
- * Input: Workspace issues, statuses, and selected milestone ids.
- * Position: Feature-owned tests for Issue Detail milestone summaries.
- */
-
 import { describe, expect, it } from 'vitest'
 
 import type { KanbanIssue, KanbanStatus } from '~/lib/types'

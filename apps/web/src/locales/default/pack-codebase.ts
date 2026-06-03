@@ -1,7 +1,3 @@
-// Output: Default English copy for pack-codebase dialog.
-// Input: Dialog labels, action text, status messages, and option descriptions.
-// Position: Source of truth for pack-codebase i18n namespace.
-
 export default {
   'action.packAndCopy': 'Pack and copy',
   'action.reset': 'Reconfigure',

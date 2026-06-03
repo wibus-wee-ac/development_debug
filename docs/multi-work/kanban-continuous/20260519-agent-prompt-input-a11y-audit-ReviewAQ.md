@@ -1,9 +1,3 @@
-<!--
-Input: Agent Prompt Input A11y batch, scoped related-file diff, and ReviewAQ criteria
-Output: Concise audit report for the Agent Prompt Input A11y node
-Position: Multi-work review artifact for kanban continuous accessibility work
--->
-
 # ReviewAQ Audit: Agent Prompt Input A11y
 
 Result: FAIL

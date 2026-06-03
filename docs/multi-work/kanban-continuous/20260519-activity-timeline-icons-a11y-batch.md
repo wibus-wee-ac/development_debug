@@ -1,9 +1,3 @@
-<!--
-Input: ActivityTimeline icon accessibility work, focused test, review report, and validation commands
-Output: Batch record for the kanban issue detail activity timeline accessibility node
-Position: Multi-work audit trail for continuous kanban UX improvements
--->
-
 # Activity Timeline Icons A11y Batch
 
 ## Scope

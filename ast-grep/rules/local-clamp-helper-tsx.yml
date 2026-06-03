@@ -1,7 +1,3 @@
-# Output: Finds TSX local clamp helpers that hand-roll bounded numeric values.
-# Input: TSX helper functions using Math.min/Math.max clamp expressions.
-# Position: Owned by cleanup scans to keep generic clamp semantics in a package or shared numeric display owner.
-
 id: local-clamp-helper-tsx
 language: TSX
 severity: warning
