@@ -1604,6 +1604,24 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
   })
 }
 
+export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Promise<ChatRuntimeCapabilities> {
+  const registry = getRuntimeRegistry()
+  const runtime = registry.get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: `Runtime is not available: ${runtimeKind}`,
+    })
+  }
+
+  if (!runtime.getDraftCapabilities) {
+    return { runtimeKind, slashCommands: [], uiSlots: [], skills: [] }
+  }
+
+  return await runtime.getDraftCapabilities()
+}
+
 export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind: RuntimeKind, states: RuntimeUiSlotState[] }> {
   const context = getSessionRunContext(sessionId)
   if (!context) {

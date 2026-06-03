@@ -512,6 +512,7 @@ export interface ChatRuntime {
   readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
+  getDraftCapabilities?: () => Promise<ChatRuntimeCapabilities> | ChatRuntimeCapabilities
   getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
   /**

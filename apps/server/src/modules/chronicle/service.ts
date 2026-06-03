@@ -35,6 +35,7 @@ import {
 import type { LanguageModel } from 'ai'
 import { generateText } from 'ai'
 import { count, desc, eq, inArray, sql } from 'drizzle-orm'
+import formatDuration from 'format-duration'
 import sharp from 'sharp'
 import { z } from 'zod'
 
@@ -2355,10 +2356,6 @@ export async function getStatus(): Promise<ChronicleStatus> {
     closedEyesMode: config.closedEyesMode,
     configuredModel: await getConfiguredModel(config),
   }
-}
-
-export function getDaemonResources() {
-  return DaemonManager.getDaemonResources()
 }
 
 export async function initDaemon(): Promise<void> {
@@ -5985,7 +5982,7 @@ function upsertSpeakerProfileFromLabel(
   const input = SpeakerProfileUpsertInputSchema.parse(rawInput)
   const now = input.now
   const displayName = input.displayName
-  const normalizedLabel = normalizeSpeakerLabel(displayName)
+  const normalizedLabel = normalizeSpeakerDisplayName(displayName).toLocaleLowerCase()
   const workspaceId = input.workspaceId || null
   const stableKey = buildSpeakerStableKey(workspaceId, normalizedLabel)
   const existing = d
@@ -6072,10 +6069,6 @@ function normalizeSpeakerDisplayName(value: string): string {
     })
   }
   return normalized
-}
-
-function normalizeSpeakerLabel(value: string): string {
-  return normalizeSpeakerDisplayName(value).toLocaleLowerCase()
 }
 
 function normalizeSpeakerAliases(values: string[]): string[] {
@@ -7678,7 +7671,7 @@ function buildAudioTranscriptMemoryContent(input: {
   const body = input.segments
     .map((segment) => {
       const speaker = segment.speakerLabel?.trim() || 'Speaker'
-      const start = formatDurationMs(segment.startMs)
+      const start = buildTranscriptOffsetLabel(segment.startMs)
       return `[${start}] ${speaker}: ${segment.text.trim()}`
     })
     .filter(line => line.length > 0)
@@ -7686,11 +7679,8 @@ function buildAudioTranscriptMemoryContent(input: {
   return `${heading}\n\n${body}`.trim()
 }
 
-function formatDurationMs(value: number): string {
-  const totalSeconds = Math.max(0, Math.floor(value / 1000))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+function buildTranscriptOffsetLabel(valueMs: number): string {
+  return formatDuration(Math.max(0, valueMs), { leading: true })
 }
 
 function updateMessageSourceStatus(

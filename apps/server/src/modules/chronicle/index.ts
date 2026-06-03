@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 
+import { getDaemonResources } from './daemon-manager'
 import { ChronicleModel } from './model'
 import * as Chronicle from './service'
 
@@ -47,15 +48,7 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
     },
     response: { 200: ChronicleModel.status },
   })
-  .get('/resources', () => Chronicle.getDaemonResources(), {
-    detail: {
-      'summary': 'Get Chronicle daemon resource usage',
-      'tags': ['chronicle'],
-      'x-cradle-cli': { command: ['chronicle', 'resources'] },
-    },
-    response: { 200: ChronicleModel.daemonResources },
-  })
-  .get('/daemon/resources', () => Chronicle.getDaemonResources(), {
+  .get('/daemon/resources', () => getDaemonResources(), {
     detail: {
       'summary': 'Get Chronicle daemon process resource usage',
       'tags': ['chronicle'],

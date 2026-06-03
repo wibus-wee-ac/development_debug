@@ -36,10 +36,3 @@ export function resolve(input: { sessionId: string, draftMessageId: string, draf
     history: history.length > 0 ? history : undefined,
   }
 }
-
-// Backwards-compatible class shim for old DI consumers (chat-runtime.service.ts, module.ts)
-export class ChatTurnContextResolver {
-  resolve(input: { sessionId: string, draftMessageId: string, draftUserMessageId: string }): ChatTurnContext {
-    return resolve(input)
-  }
-}

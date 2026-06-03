@@ -1,5 +1,4 @@
 import type { ValidationError } from 'elysia'
-import { t } from 'elysia'
 import { z } from 'zod'
 
 export interface ValidationIssue {
@@ -12,16 +11,6 @@ export interface ValidationErrorProfile {
   message: string
   status?: number
 }
-
-export const validationIssueSchema = t.Object({
-  path: t.String(),
-  message: t.String(),
-})
-
-export const validationErrorDetailsSchema = t.Object({
-  source: t.String(),
-  issues: t.Array(validationIssueSchema),
-})
 
 const RE_LEADING_SLASHES = /^\/+/
 const RE_SLASH = /\//g
@@ -69,12 +58,4 @@ export function normalizeValidationError(
       },
     },
   }
-}
-
-export function createValidationErrorResponseSchema(profile: ValidationErrorProfile) {
-  return t.Object({
-    code: t.Literal(profile.code),
-    message: t.Literal(profile.message),
-    details: validationErrorDetailsSchema,
-  })
 }

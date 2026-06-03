@@ -5,7 +5,7 @@
 import type { UIMessageChunk } from 'ai'
 
 import { createBoundedTextCollector, type BoundedTextCollector } from '../bounded-text-collector'
-import type { CodexAppServerItem } from './app-server-tool-payload'
+import type { CodexAppServerItem } from './tools/mapper'
 import {
   buildCodexServerRequestToolInput,
   buildCodexServerRequestToolOutput,
@@ -13,7 +13,7 @@ import {
   buildCodexToolOutput,
   readCodexToolError,
   readCodexToolName,
-} from './app-server-tool-payload'
+} from './tools/mapper'
 
 export interface CodexAppServerMapperState {
   openReasoningItemIds: Set<string>

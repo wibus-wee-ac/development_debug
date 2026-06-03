@@ -145,6 +145,16 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.queueItemParams,
     response: { 200: ChatRuntimeModel.queueItem },
   })
+  // GET /chat/draft-runtime-capabilities?runtimeKind=... -> provider-owned pre-session composer capabilities
+  .get('/draft-runtime-capabilities', ({ query }) => {
+    return ChatRuntime.getDraftRuntimeCapabilities(query.runtimeKind)
+  }, {
+    detail: {
+      summary: 'Get draft chat runtime capabilities',
+    },
+    query: ChatRuntimeModel.draftRuntimeCapabilitiesQuery,
+    response: { 200: ChatRuntimeModel.capabilities },
+  })
   // GET /chat/sessions/:sessionId/capabilities → runtime-native command/skill discovery
   .get('/sessions/:sessionId/capabilities', ({ params }) => {
     return ChatRuntime.getCapabilities(params.sessionId)

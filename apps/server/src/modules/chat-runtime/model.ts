@@ -1,5 +1,14 @@
 import { t } from 'elysia'
 
+const runtimeKindSchema = t.Union([
+  t.Literal('standard'),
+  t.Literal('claude-agent'),
+  t.Literal('codex'),
+  t.Literal('jar-core'),
+  t.Literal('acp-chat'),
+  t.Literal('cli-tui'),
+])
+
 const uiMessageSchema = t.Object({
   id: t.String(),
   role: t.Union([t.Literal('user'), t.Literal('assistant')]),
@@ -623,6 +632,10 @@ export const ChatRuntimeModel = {
 
   runIdParams: t.Object({
     runId: t.String({ minLength: 1 }),
+  }),
+
+  draftRuntimeCapabilitiesQuery: t.Object({
+    runtimeKind: runtimeKindSchema,
   }),
 
   queueItemParams: t.Object({

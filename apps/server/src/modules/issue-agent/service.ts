@@ -54,14 +54,6 @@ const AgentActivityInputSchema = z.object({
 
 // ── DB queries (merged from store) ──
 
-function getProviderTarget(providerTargetId: string) {
-  return db()
-    .select({ id: providerTargets.id, name: providerTargets.displayName, enabled: providerTargets.enabled })
-    .from(providerTargets)
-    .where(eq(providerTargets.id, providerTargetId))
-    .get()
-}
-
 function getAgentSession(agentSessionId: string): AgentSession | undefined {
   return db().select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
 }
@@ -137,7 +129,11 @@ function requireIssue(issueId: string) {
 }
 
 function requireProviderTarget(providerTargetId: string) {
-  const target = getProviderTarget(providerTargetId)
+  const target = db()
+    .select({ id: providerTargets.id, name: providerTargets.displayName, enabled: providerTargets.enabled })
+    .from(providerTargets)
+    .where(eq(providerTargets.id, providerTargetId))
+    .get()
   if (!target) {
     throw new AppError({
       code: 'issue_agent_provider_target_not_found',

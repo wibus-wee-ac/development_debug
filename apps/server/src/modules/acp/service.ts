@@ -130,7 +130,7 @@ function deleteInstalledFromDb(agentId: string): void {
   db().delete(acpAgents).where(eq(acpAgents.id, agentId)).run()
 }
 
-function getAuditLogFromDb(agentId?: string): AcpAuditEntry[] {
+function listAuditEntriesFromDb(agentId?: string): AcpAuditEntry[] {
   if (agentId) {
     return db().select().from(acpAuditLog).where(eq(acpAuditLog.agentId, agentId)).orderBy(desc(acpAuditLog.id)).all()
   }
@@ -292,7 +292,7 @@ export async function uninstall(agentId: string): Promise<void> {
 }
 
 export function getAuditLog(agentId?: string) {
-  return getAuditLogFromDb(agentId)
+  return listAuditEntriesFromDb(agentId)
 }
 
 export function getAgentInstallPath(agentId: string): string {

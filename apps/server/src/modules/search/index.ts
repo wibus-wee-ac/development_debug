@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia'
 
+import { searchChronicle } from './chronicle-search.engine'
 import { SearchModel } from './model'
 import * as Search from './service'
 
@@ -22,7 +23,7 @@ export const search = new Elysia({
     query: SearchModel.searchQuery,
     response: { 200: SearchModel.threadSearchResponse },
   })
-  .get('/chronicle', ({ query }) => Search.searchChronicle({
+  .get('/chronicle', ({ query }) => searchChronicle({
     query: query.query,
     workspaceId: query.workspaceId,
     limit: query.limit,

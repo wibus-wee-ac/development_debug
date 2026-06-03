@@ -14,7 +14,7 @@
 
 ## Ownership Notes
 
-CLI metadata is intentionally limited to Agent-facing read/query/list commands and explicit operational commands: config/status/resources, model resource reconciliation/install/verify, Slack source management/sync, activity pipeline actions, knowledge/dream listings, timeline, realtime event backlog, memories search/list, privacy redaction/export/breadcrumbs, and evidence listings. Binary frame reads and frame-mask image projections, SSE download progress/event streams, Slack Events webhook ingress, daemon ingest endpoints, and destructive model resource removal are HTTP-only because they are not stable plain shell interactions.
+CLI metadata is intentionally limited to Agent-facing read/query/list commands and explicit operational commands: config/status/daemon resources, model resource reconciliation/install/verify, Slack source management/sync, activity pipeline actions, knowledge/dream listings, timeline, realtime event backlog, memories search/list, privacy redaction/export/breadcrumbs, and evidence listings. Binary frame reads and frame-mask image projections, SSE download progress/event streams, Slack Events webhook ingress, daemon ingest endpoints, and destructive model resource removal are HTTP-only because they are not stable plain shell interactions.
 
 Chronicle 的 canonical UI source 是 Cradle DB，不是 artifact filename scan。Artifact files 仍然是本地证据和恢复来源；Server ingest 会把 Rust 上报的 paths 转成 Chronicle storage root 相对路径。
 

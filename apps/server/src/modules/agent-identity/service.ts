@@ -454,14 +454,6 @@ function candidateFromRecord(input: {
   }
 }
 
-function selectedCcSwitchRecords(sourceKeys: Set<string>) {
-  return listExternalProviderRecords()
-    .filter(record => record.status === 'active')
-    .filter(record => sourceKeys.has(record.sourceKey))
-    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini')
-    .filter(record => record.metadata.current === true)
-}
-
 export async function previewLocalConfigImport(input: ImportLocalConfigInput = {}): Promise<PreviewLocalConfigImportResult> {
   const sourceRefreshes = await refreshOnboardingSources(input)
   const localSourceKey = sourceRefreshes[0]?.sourceKey ?? null
@@ -475,7 +467,11 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
     .filter(record => record.sourceKey === localSourceKey)
     .filter(record => record.status === 'active')
     .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini' || record.app === 'pi')
-  const ccSwitchCurrentRecords = selectedCcSwitchRecords(ccSwitchSourceKeys)
+  const ccSwitchCurrentRecords = listExternalProviderRecords()
+    .filter(record => record.status === 'active')
+    .filter(record => ccSwitchSourceKeys.has(record.sourceKey))
+    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini')
+    .filter(record => record.metadata.current === true)
 
   const localProxyApps = new Set(
     localRecords

@@ -1,5 +1,4 @@
 import type { ErrorHandler } from 'elysia'
-import { Elysia } from 'elysia'
 
 import { AppError } from '../errors/app-error'
 import { getLogger } from '../logging/logger'
@@ -72,10 +71,4 @@ export function createErrorHandler(): ErrorHandler {
       message: 'Internal Server Error',
     })
   }
-}
-
-export function createErrorMappingPlugin() {
-  return new Elysia({ name: 'cradle.http.error-mapping' })
-    .as('global')
-    .onError(createErrorHandler())
 }

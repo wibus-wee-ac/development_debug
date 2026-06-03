@@ -274,6 +274,45 @@ class TestCodexGoalContinuationRuntime implements ChatRuntime {
 }
 
 describe('chat runtime capability', () => {
+  it('serves provider-owned draft runtime capabilities before a session exists', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const response = await app.handle(new Request('http://localhost/chat/draft-runtime-capabilities?runtimeKind=codex'))
+      expect(response.status).toBe(200)
+
+      const body = await response.json() as {
+        runtimeKind: string
+        slashCommands: unknown[]
+        skills: unknown[]
+        uiSlots: Array<{ id: string, name: string, surfaces: string[] }>
+      }
+      expect(body.runtimeKind).toBe('codex')
+      expect(body.slashCommands).toEqual([])
+      expect(body.skills).toEqual([])
+      expect(body.uiSlots).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'codex:goal', name: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:compact', name: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:review', name: 'review', surfaces: ['slashCommand'] }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('rejects runtime-incompatible provider combinations during session creation', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -544,6 +583,7 @@ describe('chat runtime capability', () => {
       expect(await capabilitiesRes.json()).toEqual({
         runtimeKind: 'standard',
         slashCommands: [],
+        uiSlots: [],
         skills: [],
       })
     }

@@ -682,6 +682,15 @@ const MAX_DIAGNOSTIC_DEPTH = 4
 const ACTIVE_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_THREAD_TURNS_LIST_LIMIT = 100
 
+function createCodexRuntimeCapabilities(): ChatRuntimeCapabilities {
+  return {
+    runtimeKind: RUNTIME_KIND,
+    slashCommands: [],
+    uiSlots: projectCodexUiSlots(CODEX_APP_SERVER_CAPABILITIES),
+    skills: [],
+  }
+}
+
 class CodexProviderError extends Error {
   readonly code: string
   readonly data: CodexProviderErrorData
@@ -754,12 +763,11 @@ export class CodexProvider implements ChatRuntime {
   }
 
   async getCapabilities(_input: GetCapabilitiesInput): Promise<ChatRuntimeCapabilities> {
-    return {
-      runtimeKind: RUNTIME_KIND,
-      slashCommands: [],
-      uiSlots: projectCodexUiSlots(CODEX_APP_SERVER_CAPABILITIES),
-      skills: [],
-    }
+    return createCodexRuntimeCapabilities()
+  }
+
+  getDraftCapabilities(): ChatRuntimeCapabilities {
+    return createCodexRuntimeCapabilities()
   }
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {

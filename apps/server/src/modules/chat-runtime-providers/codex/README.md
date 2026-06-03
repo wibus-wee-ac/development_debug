@@ -21,7 +21,6 @@ Codex UI slots are projected from the app-server capability manifest and declare
 - `app-server-capabilities.ts`: Generated Cradle-owned manifest of the app-server client methods, server requests, and server notifications.
 - `app-server-bridge.ts`: Generic session-scoped bridge for invoking any generated app-server method and streaming raw notifications as SSE.
 - `tools/`: Codex tool identifier and app-server item payload mapper.
-- `app-server-tool-payload.ts`: Compatibility re-export for Codex tool payload helpers owned by `tools/mapper.ts`.
 - `native-history-projector.ts`: Projects full Codex app-server `Turn` snapshots into Responses API items for best-effort restoration when a fresh Codex thread replaces a previous native thread.
 - `transcript-projector.ts`: Projects reconstructed Cradle transcript history into Codex Responses API items for native thread injection, unwrapping tool envelopes back to provider-native function-call names, arguments, and outputs.
 - `ui-slots.ts`: Projects generated Codex app-server capabilities into provider-owned runtime UI slot descriptors.

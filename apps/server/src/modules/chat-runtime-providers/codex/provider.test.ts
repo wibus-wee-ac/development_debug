@@ -420,6 +420,24 @@ describe('codexProvider app-server integration', () => {
     })
   })
 
+  it('projects draft Codex capabilities without starting an app-server session', () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    expect(provider.getDraftCapabilities()).toMatchObject({
+      runtimeKind: 'codex',
+      slashCommands: [],
+      skills: [],
+      uiSlots: expect.arrayContaining([
+        expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
+      ]),
+    })
+    expect(client.initialize).not.toHaveBeenCalled()
+    expect(client.requests).toEqual([])
+  })
+
   it('maps image attachments to Codex app-server user input', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
