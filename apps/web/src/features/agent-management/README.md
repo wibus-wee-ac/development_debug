@@ -20,6 +20,8 @@ Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负�
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback
 - **external-provider-record-detail-panel.tsx**: CC-Switch external provider record 详情面板，只展示用户可识别的来源、登录状态、应用、端点与默认模型；完全没有本地模型缓存时主动发起一次 Fetch Models，并通过 provider-target API 维护模型可见性与 custom models。
 - **index.ts**: Agent Management 功能模块的 barrel export
+- **import-provider-dialog.tsx**: 手动 Import Provider 弹窗，调用配置片段 parser 自动识别 API key 与 endpoint，并以每个 provider 自己的解码后 apiKey 创建 credential，避免展示解码值但保存编码值
+- **import-provider-parser.ts**: Provider 配置片段解析器，从 export 环境变量或自由文本中提取 URL 与 key，使用浏览器原生 Base64 解码后输出 provider 候选
 - **provider-list-groups.ts**: Provider sidebar 的纯排序 / 分组 helper，为 Cradle-owned manual provider profiles 与 CC-Switch external records 生成分组，把 enabled/active provider 排在 disabled/inactive provider 前，并对空 external query inputs 保持安全默认值
 - **provider-list-groups.test.ts**: Provider sidebar 分组排序回归测试，覆盖 enabled-first 与 manual profile 分组语义
 - **provider-settings-utils.ts**: Provider settings 的共享常量与纯函数，承载 provider kind label、draft provider 类型、profile id 构造与 preset 匹配逻辑

@@ -1,4 +1,4 @@
-import { DownloadIcon, EyeIcon, EyeOffIcon, GlobeIcon, KeyIcon } from 'lucide-react'
+import { DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -43,6 +43,14 @@ function hostnameFromUrl(url: string): string {
  catch { return url }
 }
 
+function fingerprintProvider(provider: ParsedProvider): string {
+  let hash = 0
+  for (const ch of provider.apiKey) {
+    hash = Math.imul(31, hash) + ch.charCodeAt(0) | 0
+  }
+  return `${provider.providerKind}:${provider.baseUrl}:${hash.toString(36)}`
+}
+
 export function ImportProviderDialog({
   open,
   onOpenChange,
@@ -53,7 +61,7 @@ export function ImportProviderDialog({
   const { createProfile, profiles } = useAgentProfiles()
   const [text, setText] = useState('')
   const [importing, setImporting] = useState(false)
-  const [enabledSet, setEnabledSet] = useState<Set<number>>(new Set())
+  const [enabledSet, setEnabledSet] = useState<Set<number>>(() => new Set())
   const [kinds, setKinds] = useState<ApiProviderKind[]>([])
   const [manualUrl, setManualUrl] = useState('')
   const [manualKind, setManualKind] = useState<ApiProviderKind>('openai-compatible')
@@ -102,18 +110,12 @@ export function ImportProviderDialog({
   }, [parseResult])
 
   const token = parseResult?.token ?? null
-  const [showDecoded, setShowDecoded] = useState(false)
-  const decodedToken = useMemo(() => {
-    if (!token) { return null }
-    try { return atob(token) }
-    catch { return null }
-  }, [token])
   const hasProviders = parseResult && parseResult.providers.length > 0
   const showManualEntry = parseResult && !hasProviders && parseResult.urls.length === 0
 
   const handleImport = useCallback(async () => {
     if (importing) { return }
-    const providers: ParsedProvider[] = parseResult?.providers ?? []
+    const providers: ParsedProvider[] = [...(parseResult?.providers ?? [])]
     const finalKinds = [...kinds]
 
     // Manual entry fallback
@@ -128,25 +130,39 @@ export function ImportProviderDialog({
     }
 
     if (!token || providers.length === 0) { return }
+    const selectedProviders: { provider: ParsedProvider, index: number }[] = []
+    for (let index = 0; index < providers.length; index++) {
+      if (enabledSet.has(index) || providers.length === 1) {
+        selectedProviders.push({ provider: providers[index], index })
+      }
+    }
+    if (selectedProviders.length === 0) { return }
     setImporting(true)
 
     try {
-      const { data: meta } = await postSecrets({
-        body: { kind: finalKinds[0] ?? providers[0].providerKind, label: 'imported', secret: token },
-      })
-      const credentialRef = SecretCreateResponseSchema.parse(meta).id
+      const importBatchId = Date.now()
+      const credentialRefs = new Map<string, string>()
 
-      for (let i = 0; i < providers.length; i++) {
-        if (!enabledSet.has(i) && providers.length > 1) { continue }
-        const p = providers[i]
+      for (const { provider: p, index } of selectedProviders) {
+        const kind = finalKinds[index] ?? p.providerKind
+        const secretKey = `${kind}\0${p.apiKey}`
+        let credentialRef = credentialRefs.get(secretKey)
 
-        const name = resolvedNames[i] ?? p.name
-        const profileId = buildProfileId(name, `imported-${Date.now()}-${i}`)
+        if (!credentialRef) {
+          const { data: meta } = await postSecrets({
+            body: { kind, label: resolvedNames[index] ?? p.name, secret: p.apiKey },
+          })
+          credentialRef = SecretCreateResponseSchema.parse(meta).id
+          credentialRefs.set(secretKey, credentialRef)
+        }
+
+        const name = resolvedNames[index] ?? p.name
+        const profileId = buildProfileId(name, `imported-${importBatchId}-${index}`)
         await createProfile.mutateAsync({
           path: { id: profileId },
           body: {
             name,
-            providerKind: finalKinds[i] ?? p.providerKind,
+            providerKind: kind,
             enabled: true,
             config: { baseUrl: p.baseUrl },
             credentialRef,
@@ -156,11 +172,10 @@ export function ImportProviderDialog({
       onOpenChange(false)
       setText('')
       setManualUrl('')
+      setImporting(false)
     }
- catch (err) {
+    catch (err) {
       console.error('[ImportProvider]', err)
-    }
- finally {
       setImporting(false)
     }
   }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames])
@@ -183,15 +198,16 @@ export function ImportProviderDialog({
         <DialogHeader>
           <DialogTitle>Import Provider</DialogTitle>
           <DialogDescription>
-            Paste a configuration snippet — keys and URLs are detected automatically.
+            Paste a configuration snippet, keys and URLs are detected automatically.
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <textarea
+            aria-label="Provider configuration snippet"
             value={text}
             onChange={e => setText(e.target.value)}
-            placeholder={`token: dHAtYzM3cXI2MGUzaXowZTdmdXRmeDcwb21paTc0bjQydnQ2aGVrdDNnY280YW1zZjNm\nhttps://api.example.com/v1\nhttps://api.example.com/anthropic`}
+            placeholder={`token: sk-xxxxxxxx\nhttps://api.example.com/v1\nhttps://api.example.com/anthropic`}
             className={cn(
               'w-full rounded-lg border bg-muted/40 px-3 py-2.5 font-mono text-[12px] leading-relaxed',
               'placeholder:text-muted-foreground/50',
@@ -216,20 +232,8 @@ export function ImportProviderDialog({
 ? (
                   <>
                     <span className="flex-1 truncate font-mono text-[11px]">
-                      {showDecoded && decodedToken
-                        ? (decodedToken.length > 48 ? `${decodedToken.slice(0, 24)}...${decodedToken.slice(-12)}` : decodedToken)
-                        : (token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token)}
+                      {token.length > 48 ? `${token.slice(0, 24)}...${token.slice(-12)}` : token}
                     </span>
-                    {decodedToken && decodedToken !== token && (
-                      <button
-                        type="button"
-                        onClick={() => setShowDecoded(v => !v)}
-                        className="shrink-0 rounded p-0.5 text-emerald-600/60 hover:text-emerald-600 dark:text-emerald-400/60 dark:hover:text-emerald-400"
-                        title={showDecoded ? 'Show encoded' : 'Base64 decode'}
-                      >
-                        {showDecoded ? <EyeOffIcon className="size-3" /> : <EyeIcon className="size-3" />}
-                      </button>
-                    )}
                   </>
                 )
 : (
@@ -243,7 +247,7 @@ export function ImportProviderDialog({
                   <div className="flex flex-col gap-2">
                     {parseResult.providers.map((p, i) => (
                       <ProviderCard
-                        key={i}
+                        key={fingerprintProvider(p)}
                         provider={p}
                         resolvedName={resolvedNames[i] ?? p.name}
                         kind={kinds[i] ?? p.providerKind}

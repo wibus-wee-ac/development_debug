@@ -224,7 +224,9 @@ function tryDecodeBase64(token: string): string {
   // standardise URL-safe base64 to standard base64
   const standardised = token.replace(/-/g, '+').replace(/_/g, '/')
   try {
-    const decoded = Buffer.from(standardised, 'base64').toString('utf8')
+    const padded = standardised.padEnd(Math.ceil(standardised.length / 4) * 4, '=')
+    const binary = globalThis.atob(padded)
+    const decoded = new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)))
     // decoded must be printable text with no null bytes or control chars
     if (!decoded || /[\x00-\x08\v\f\x0E-\x1F]/.test(decoded)) { return token }
     return decoded.trim()
