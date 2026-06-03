@@ -1,7 +1,3 @@
-// Output: Helpers for reading terminal title/path metadata from PTY output.
-// Input: Raw terminal output chunks and workspace/current working directory paths.
-// Position: Owned by TUI so panel chrome can display terminal-derived labels without coupling to shell config.
-
 export interface TerminalMetadata {
   title: string | null
   cwd: string | null

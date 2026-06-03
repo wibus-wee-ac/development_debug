@@ -1,7 +1,3 @@
-// Output: Bottom-panel terminal session tabs and active shell surface.
-// Input: A workspace/chat owner id and default working directory.
-// Position: Owned by TUI; chat/workspace pages only register this component as layout panel content.
-
 import { PlusIcon, SquareTerminalIcon, XIcon } from 'lucide-react'
 import { useEffect, useState } from 'react'
 

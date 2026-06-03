@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createAutomation, listAutomationArtifacts, listAutomationDefinitions, listAutomationRuns, runAutomationNow } from './api-client'
+import { createAutomation, listAutomationDefinitions, runAutomationNow } from './api-client'
 
 export const automationQueryKeys = {
   definitions: ['automations', 'definitions'] as const,
@@ -13,26 +13,6 @@ export function useAutomationDefinitions() {
     queryKey: automationQueryKeys.definitions,
     queryFn: listAutomationDefinitions,
     staleTime: 15_000,
-    retry: 1,
-  })
-}
-
-export function useAutomationRuns(automationId: string | null) {
-  return useQuery({
-    queryKey: automationId ? automationQueryKeys.runs(automationId) : ['automations', 'missing', 'runs'],
-    queryFn: () => listAutomationRuns(automationId ?? ''),
-    enabled: Boolean(automationId),
-    staleTime: 10_000,
-    retry: 1,
-  })
-}
-
-export function useAutomationArtifacts(automationId: string | null) {
-  return useQuery({
-    queryKey: automationId ? automationQueryKeys.artifacts(automationId) : ['automations', 'missing', 'artifacts'],
-    queryFn: () => listAutomationArtifacts(automationId ?? ''),
-    enabled: Boolean(automationId),
-    staleTime: 10_000,
     retry: 1,
   })
 }

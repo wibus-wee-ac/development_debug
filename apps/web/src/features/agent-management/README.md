@@ -16,7 +16,6 @@ Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负�
 - **agent-list.tsx**: Agent 列表，显示所有 Agent 卡片；点击行导航到 agent-detail；支持显式 Import 操作，将本机 Claude/Codex allowlisted 配置导入为去重后的 Agent；如果本机配置指向 CC Switch 本地代理，则导入仍创建 Local Claude / Local Codex Agent，但 provider/model/alias 配置来自 CC Switch 当前 upstream provider；支持 Settings overlay 的一次性 Agent focus target，用于从 Smart Mention 等外部入口直接定位对应 Agent；列表行现在展示绑定的 provider target 名称，避免多个同类 provider 时无法分辨归属；支持多选批量启停、删除、provider/model/thinking 配置以及列表内 `Cmd/Ctrl+A`、`Escape`、`Delete/Backspace` 快捷键和 `Shift+click` 连续区间选择；draft row 使用即时布局挂载，避免列表高度动画；Settings Agents 首屏在 agents 与 provider targets 两条 server-backed query 成功后记录 performance gate
 - **agent-runtime-settings.tsx**: 统一 Agent Profile 管理界面；Provider 列表只展示 Cradle-owned manual provider profiles，由 TanStack Query owner 驱动，壳层只保留选中/草稿/过滤 UI 状态，并支持单项编辑 / 删除 / 启停、多选批量操作以及列表内 `Cmd/Ctrl+A`、`Escape`、`Delete/Backspace` 快捷键和 `Shift+click` 连续区间选择；draft provider row 使用即时布局挂载，避免列表高度动画；Settings Providers 首屏在 profiles query 成功后记录 performance gate
 - **agent-status-dot.tsx**: Agent Management 列表行复用的启用状态圆点，避免 Agent 列表依赖 Provider 设置页组件
-- **avatar-url.ts**: Agent Runtime avatar URL helper 的兼容 re-export，供 Agent Management 列表与详情页继续使用同一导入入口
 - **custom-models-editor.tsx**: Provider 自定义模型编辑器，支持手动添加模型、models.dev 匹配补全与可访问的模型操作按钮
 - **custom-models-editor.test.tsx**: Custom models editor 的交互回归测试，覆盖 icon-only action label 与手动模型添加 fallback
 - **external-provider-record-detail-panel.tsx**: 历史外部 provider record 详情面板，只展示用户可识别的来源、登录状态、应用、端点与默认模型；当前 Settings Providers 入口不再渲染外部 provider record 分组。

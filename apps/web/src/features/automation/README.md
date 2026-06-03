@@ -8,7 +8,6 @@ Agent-authored automation registry and viewer UI.
 
 - **api-client.ts**: `/automations` endpoints 的本地 fetch boundary，保留与 server automation contract 对齐的 feature-local response parser。
 - **api-client.test.ts**: 覆盖 server-shaped automation payload parsing 的 contract regression tests。
-- **automation-dashboard-loader.ts**: Automation tab 的共享 lazy loader 与 route preload 入口。
 - **automation-dashboard.tsx**: Registry/viewer surface for definitions, settings-style inline create draft with composer-owned runtime/model picker, latest run state, run history, chat/backend run links, recipe snapshots, inputs, and artifacts.
 - **index.ts**: Public feature exports used by Home.
 - **types.ts**: Temporary local API payload contracts owned by this feature.

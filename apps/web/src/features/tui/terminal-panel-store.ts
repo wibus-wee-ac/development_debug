@@ -1,7 +1,3 @@
-// Output: Runtime-only bottom terminal panel session state.
-// Input: Workspace/chat owners that need bottom-panel terminal sessions.
-// Position: Owned by TUI; it stores panel session UI state without writing to workspace/session namespaces.
-
 import { create } from 'zustand'
 
 export interface TerminalPanelSession {

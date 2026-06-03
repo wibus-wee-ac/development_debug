@@ -1,7 +1,3 @@
-// Output: Regression coverage for runtime-only bottom terminal panel owner state.
-// Input: Terminal panel owner registration, session creation, and owner removal.
-// Position: TUI feature tests for renderer-side terminal panel state.
-
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { useTerminalPanelStore } from './terminal-panel-store'

@@ -11,8 +11,5 @@ Dashboard headings, stat labels, chart labels, and empty states are owned by the
 
 ## Files
 
-- **usage-dashboard-loader.ts**: Usage tab 的共享 lazy loader 与 route preload 入口。
-- **usage-dashboard.tsx**: Main dashboard page component with heatmap + stats + breakdowns；现展示 Prompt / Completion / Turns 与 matched Agent names 等关键汇总，便于核对 `usage_logs` 聚合
-- **usage-format.ts**: Pure formatting helpers for token and USD labels used by the dashboard
-- **usage-format.test.ts**: Unit coverage for compact token labels and tiny non-zero USD values
+- **usage-dashboard.tsx**: Main dashboard page component with heatmap + stats + breakdowns；现展示 Prompt / Completion / Turns 与 matched Agent names 等关键汇总，token/USD display 由 renderer-owned `~/lib/number-format` 负责，便于核对 `usage_logs` 聚合
 - **usage-heatmap.tsx**: SVG-based rounded-cell heatmap calendar (53 weeks × 7 days)；cell 暴露日期与是否有 usage 的稳定属性，tooltip 可用于回归验证
