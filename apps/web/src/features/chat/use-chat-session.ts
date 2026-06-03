@@ -15,6 +15,7 @@ import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
+import { readBangCommand } from './bang-command'
 import type { ChatContextPart } from './chat-context-parts'
 import { toOrderedUserMessageParts } from './chat-context-parts'
 import { createContinuationUserMessage } from './chat-continuation-metadata'
@@ -22,6 +23,7 @@ import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
+  executeBangCommand,
   enqueueChatSessionQueueItem,
   listChatSessionQueue,
   reorderChatSessionQueue,
@@ -112,6 +114,7 @@ function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: st
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
+const BANG_COMMAND_DRIVER_PREFIX = 'bang-command'
 
 function readCodexGoalCommandObjective(text: string): string | null {
   const normalized = text.trimStart()
@@ -418,11 +421,77 @@ export function useChatSession(chatSessionId: string | null) {
     if (!chatSessionId || (!trimmedText && files.length === 0 && contextParts.length === 0)) {
       return
     }
+    const bangCommand = files.length === 0 && contextParts.length === 0 ? readBangCommand(text) : null
     const goalObjective = runtimeKind === 'codex' ? readCodexGoalCommandObjective(trimmedText) : null
     const optimisticText = goalObjective ?? trimmedText
-
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
+
+    if (bangCommand) {
+      const controller = new AbortController()
+      const driverMessageId = `${BANG_COMMAND_DRIVER_PREFIX}-${Date.now()}`
+      const store = useChatStore.getState()
+      store.appendMessage(chatSessionId, {
+        id: driverMessageId,
+        role: 'user',
+        parts: [{ type: 'text', text: `!${bangCommand}` }],
+      })
+      if (!isBusy) {
+        store.startGeneration(chatSessionId, driverMessageId, controller)
+      }
+      updateSessionInSessionLists(queryClient, { id: chatSessionId }, { promote: true })
+
+      try {
+        const result = await executeBangCommand({
+          sessionId: chatSessionId,
+          command: bangCommand,
+          signal: controller.signal,
+        })
+        useChatStore.getState().removeMessage(chatSessionId, driverMessageId)
+        const latestMessages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
+        if (!latestMessages.some(message => message.id === result.userMessage.id)) {
+          useChatStore.getState().appendMessage(chatSessionId, result.userMessage)
+        }
+        if (!latestMessages.some(message => message.id === result.resultMessage.id)) {
+          useChatStore.getState().appendMessage(chatSessionId, result.resultMessage)
+        }
+        useChatStore.getState().finishGeneration(driverMessageId)
+        scheduleSnapshotRefresh(0)
+        refreshSessionLists()
+      }
+      catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          if (!isBusy) {
+            useChatStore.getState().finishGeneration(driverMessageId)
+          }
+        }
+        else {
+          const errorMessage = err instanceof Error ? err.message : 'Bang command failed'
+          if (isBusy) {
+            useChatStore.getState().updateMessage(chatSessionId, driverMessageId, message => ({
+              ...message,
+              parts: [{ type: 'text', text: `!${bangCommand}\n\n${errorMessage}` }],
+            }))
+          }
+          else {
+            useChatStore.getState().failGeneration(driverMessageId, errorMessage)
+          }
+        }
+      }
+      finally {
+        if (!isBusy) {
+          const currentPassiveStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus
+          useChatStore.getState().setSessionMeta(chatSessionId, {
+            cancelling: false,
+            locallyDriving: false,
+            localDriverMessageId: undefined,
+            passiveStatus: currentPassiveStatus === 'streaming' ? 'streaming' : 'idle',
+          })
+        }
+      }
+      return
+    }
+
     if (isBusy) {
       const continuationMode = opts?.continuationMode ?? 'queue'
       const queueItem = await enqueueChatSessionQueueItem({

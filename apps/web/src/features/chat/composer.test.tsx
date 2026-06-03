@@ -167,6 +167,32 @@ describe('composer attachments', () => {
     expect(onSend).not.toHaveBeenCalled()
   })
 
+  it('switches into terminal send mode as soon as an English bang is typed', () => {
+    const onSend = vi.fn()
+    render(
+      <TooltipProvider>
+        <Composer onSend={onSend} toolbar={<span>Model</span>} />
+      </TooltipProvider>,
+    )
+
+    const textarea = screen.getByTestId('chat-composer-textarea') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: '!' } })
+
+    expect(screen.getByTestId('chat-bang-command-indicator').textContent).toContain('!')
+    expect((screen.getByRole('button', { name: 'Run shell command' }) as HTMLButtonElement).disabled).toBe(true)
+    fireEvent.click(screen.getByTestId('chat-send-btn'))
+    expect(onSend).not.toHaveBeenCalled()
+
+    fireEvent.change(textarea, { target: { value: '!git status' } })
+
+    expect(screen.getByTestId('chat-bang-command-indicator').textContent).toContain('git status')
+    expect((screen.getByRole('button', { name: 'Run shell command' }) as HTMLButtonElement).disabled).toBe(false)
+
+    fireEvent.click(screen.getByTestId('chat-send-btn'))
+
+    expect(onSend).toHaveBeenCalledWith('!git status', [], [])
+  })
+
   it('selects, removes, and sends file attachments', async () => {
     const onSend = vi.fn()
     render(

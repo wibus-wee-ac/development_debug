@@ -17,6 +17,9 @@ import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 import { AppshotAttachmentCard } from './appshot-attachment'
 import { readCradleAppshotMetadata } from './appshot-attachment-model'
+import type { BangResultMetadata } from './bang-command-metadata'
+import { readBangResultMetadata } from './bang-command-metadata'
+import { BangCommandBlock } from './blocks/bang-command-block'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
@@ -435,6 +438,7 @@ interface MessageFrame {
   role: UIMessage['role']
   isSteerMessage: boolean
   isGoalMessage: boolean
+  bangResult: BangResultMetadata | null
 }
 
 function readMessageFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): UIMessage | undefined {
@@ -452,6 +456,7 @@ function readMessageFrameFromState(state: ChatStoreSnapshot, sessionId: string, 
     role: message.role,
     isSteerMessage: message.role === 'user' && continuationMetadata?.mode === 'steer',
     isGoalMessage: isCodexGoalUserMessage(message),
+    bangResult: message.role === 'user' ? readBangResultMetadata(message) : null,
   }
 }
 
@@ -460,6 +465,17 @@ function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | 
     && left?.role === right?.role
     && left?.isSteerMessage === right?.isSteerMessage
     && left?.isGoalMessage === right?.isGoalMessage
+    && areBangResultsEqual(left?.bangResult ?? null, right?.bangResult ?? null)
+}
+
+function areBangResultsEqual(left: BangResultMetadata | null, right: BangResultMetadata | null): boolean {
+  return left?.command === right?.command
+    && left?.stdout === right?.stdout
+    && left?.stderr === right?.stderr
+    && left?.exitCode === right?.exitCode
+    && left?.durationMs === right?.durationMs
+    && left?.timedOut === right?.timedOut
+    && left?.truncated === right?.truncated
 }
 
 function readRenderSegmentsFromState(state: ChatStoreSnapshot, sessionId: string, messageId: string): ChatRenderSegment[] {
@@ -1078,6 +1094,10 @@ const MessageBubbleSegmentsView = memo(({
   }
 
   function renderContent() {
+    if (frame.bangResult) {
+      return <BangCommandBlock result={frame.bangResult} />
+    }
+
     if (!executionPhaseSplit) {
       return (
         <>
@@ -1113,7 +1133,8 @@ const MessageBubbleSegmentsView = memo(({
       <div
         className={cn(
           'min-w-0',
-          isUser && !frame.isSteerMessage && 'max-w-[70%]',
+          isUser && !frame.isSteerMessage && !frame.bangResult && 'max-w-[70%]',
+          frame.bangResult && 'max-w-[78%]',
           frame.isSteerMessage && 'max-w-[78%]',
           !isUser && 'w-full',
         )}
@@ -1129,7 +1150,8 @@ const MessageBubbleSegmentsView = memo(({
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser && !frame.isSteerMessage && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            isUser && !frame.isSteerMessage && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            frame.bangResult && 'rounded-br-sm',
             frame.isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
             isAssistant && 'text-foreground',
           )}
@@ -1203,6 +1225,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const continuationMetadata = readChatContinuationMetadata(message)
   const isSteerMessage = isUser && continuationMetadata?.mode === 'steer'
   const isGoalMessage = isCodexGoalUserMessage(message)
+  const bangResult = isUser ? readBangResultMetadata(message) : null
   const { t } = useTranslation('chat')
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
@@ -1309,6 +1332,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
   /* ─── Separate execution-phase items from final reply ─── */
   function renderContent() {
+    if (bangResult) {
+      return <BangCommandBlock result={bangResult} />
+    }
+
     if (!executionPhaseSplit) {
       return groupedItems.map(renderItem)
     }
@@ -1344,7 +1371,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       <div
         className={cn(
           'min-w-0',
-          isUser && !isSteerMessage && 'max-w-[70%]',
+          isUser && !isSteerMessage && !bangResult && 'max-w-[70%]',
+          bangResult && 'max-w-[78%]',
           isSteerMessage && 'max-w-[78%]',
           !isUser && 'w-full',
         )}
@@ -1361,7 +1389,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser && !isSteerMessage && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            isUser && !isSteerMessage && !bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            bangResult && 'rounded-br-sm',
             isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
             isAssistant && 'text-foreground',
           )}

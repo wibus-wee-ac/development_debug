@@ -194,6 +194,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
           return produce(state, (draft) => {
             draft.messagesMap.get(sessionId)![idx] = updatedMessage as Draft<UIMessage>
+            if (updatedMessage.id !== messageId) {
+              migrateAssistantDisplaySplitDraft(draft, messageId, updatedMessage.id)
+            }
           })
         })
       },
@@ -330,15 +333,18 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
       finishGeneration: (messageId) => {
         set(state => produce(state, (draft) => {
-          draft.generatingMessageIds.delete(messageId)
-          draft.passiveStreamingMessageIds.delete(messageId)
-          draft.activeAbortControllers.delete(messageId)
-          const currentRunMeta = draft.runDisplayMetaMap.get(messageId)
-          if (currentRunMeta && currentRunMeta.completedAtMs === null) {
-            currentRunMeta.completedAtMs = performance.now()
+          const messageIds = readTerminalMessageIdsForRun(state, messageId)
+          for (const currentMessageId of messageIds) {
+            draft.generatingMessageIds.delete(currentMessageId)
+            draft.passiveStreamingMessageIds.delete(currentMessageId)
+            draft.activeAbortControllers.delete(currentMessageId)
+            const currentRunMeta = draft.runDisplayMetaMap.get(currentMessageId)
+            if (currentRunMeta && currentRunMeta.completedAtMs === null) {
+              currentRunMeta.completedAtMs = performance.now()
+            }
           }
           for (const [, meta] of draft.sessionMetaMap) {
-            if (meta.localDriverMessageId === messageId) {
+            if (meta.localDriverMessageId && messageIds.includes(meta.localDriverMessageId)) {
               meta.cancelling = false
               meta.locallyDriving = false
               meta.localDriverMessageId = undefined
@@ -349,16 +355,20 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
       failGeneration: (messageId, error) => {
         set(state => produce(state, (draft) => {
-          draft.generatingMessageIds.delete(messageId)
-          draft.passiveStreamingMessageIds.delete(messageId)
-          draft.activeAbortControllers.delete(messageId)
-          draft.errorMap.set(messageId, { message: error, timestamp: Date.now() })
-          const currentRunMeta = draft.runDisplayMetaMap.get(messageId)
-          if (currentRunMeta && currentRunMeta.completedAtMs === null) {
-            currentRunMeta.completedAtMs = performance.now()
+          const messageIds = readTerminalMessageIdsForRun(state, messageId)
+          const visibleMessageId = messageIds.at(-1) ?? messageId
+          for (const currentMessageId of messageIds) {
+            draft.generatingMessageIds.delete(currentMessageId)
+            draft.passiveStreamingMessageIds.delete(currentMessageId)
+            draft.activeAbortControllers.delete(currentMessageId)
+            const currentRunMeta = draft.runDisplayMetaMap.get(currentMessageId)
+            if (currentRunMeta && currentRunMeta.completedAtMs === null) {
+              currentRunMeta.completedAtMs = performance.now()
+            }
           }
+          draft.errorMap.set(visibleMessageId, { message: error, timestamp: Date.now() })
           for (const [, meta] of draft.sessionMetaMap) {
-            if (meta.localDriverMessageId === messageId) {
+            if (meta.localDriverMessageId && messageIds.includes(meta.localDriverMessageId)) {
               meta.cancelling = false
               meta.locallyDriving = false
               meta.localDriverMessageId = undefined
@@ -793,6 +803,79 @@ function moveStreamingMessageDraft(
       localDriverMessageId: toMessageId,
     })
   }
+}
+
+function readTerminalMessageIdsForRun(state: ChatState, messageId: string): string[] {
+  const split = state.assistantDisplaySplitMap.get(messageId)
+  return split ? [messageId, split.tailMessageId] : [messageId]
+}
+
+function migrateAssistantDisplaySplitDraft(
+  draft: Draft<ChatState>,
+  fromMessageId: string,
+  toMessageId: string,
+): void {
+  if (fromMessageId === toMessageId) {
+    return
+  }
+
+  const split = draft.assistantDisplaySplitMap.get(fromMessageId)
+  if (!split) {
+    return
+  }
+
+  const nextTailMessageId = `${toMessageId}:steer-tail`
+  const sessionId = findSessionIdForMessageDraft(draft, split.tailMessageId)
+  draft.assistantDisplaySplitMap.delete(fromMessageId)
+  if (!draft.assistantDisplaySplitMap.has(toMessageId)) {
+    draft.assistantDisplaySplitMap.set(toMessageId, {
+      ...split,
+      sourceMessageId: toMessageId,
+      tailMessageId: nextTailMessageId,
+    } as Draft<AssistantDisplaySplit>)
+  }
+  if (sessionId) {
+    const messages = draft.messagesMap.get(sessionId)
+    const tailMessage = messages?.find(message => message.id === split.tailMessageId)
+    if (tailMessage) {
+      tailMessage.id = nextTailMessageId
+    }
+    if (draft.generatingMessageIds.delete(split.tailMessageId)) {
+      draft.generatingMessageIds.add(nextTailMessageId)
+    }
+    if (draft.passiveStreamingMessageIds.delete(split.tailMessageId)) {
+      draft.passiveStreamingMessageIds.add(nextTailMessageId)
+    }
+    const controller = draft.activeAbortControllers.get(split.tailMessageId)
+    if (controller) {
+      draft.activeAbortControllers.delete(split.tailMessageId)
+      draft.activeAbortControllers.set(nextTailMessageId, controller)
+    }
+    const runMeta = draft.runDisplayMetaMap.get(split.tailMessageId)
+    if (runMeta) {
+      draft.runDisplayMetaMap.delete(split.tailMessageId)
+      draft.runDisplayMetaMap.set(nextTailMessageId, runMeta)
+    }
+    const current = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    if (current.localDriverMessageId === split.tailMessageId) {
+      draft.sessionMetaMap.set(sessionId, {
+        ...current,
+        localDriverMessageId: nextTailMessageId,
+      })
+    }
+  }
+}
+
+function findSessionIdForMessageDraft(
+  draft: Draft<ChatState>,
+  messageId: string,
+): string | null {
+  for (const [sessionId, messages] of draft.messagesMap) {
+    if (messages.some(message => message.id === messageId)) {
+      return sessionId
+    }
+  }
+  return null
 }
 
 function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMessage[]): UIMessage[] {

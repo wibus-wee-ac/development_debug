@@ -45,6 +45,20 @@ export interface ChatQueueListResponse {
   items: ChatQueueItem[]
 }
 
+export interface BangCommandResult {
+  command: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  durationMs: number
+  timedOut: boolean
+  truncated: boolean
+  userMessageId: string
+  resultMessageId: string
+  userMessage: UIMessage
+  resultMessage: UIMessage
+}
+
 export interface ChatQueueEnqueueBody extends ChatResponseRequestBody {
   mode: ChatContinuationMode
 }
@@ -86,6 +100,26 @@ export async function subscribeChatSessionStream(args: {
     method: 'GET',
     signal: args.signal,
   })
+}
+
+export async function executeBangCommand(args: {
+  sessionId: string
+  command: string
+  signal?: AbortSignal
+}): Promise<BangCommandResult> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/bang-command`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command: args.command }),
+    signal: args.signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to execute bang command: ${res.status} ${body}`)
+  }
+
+  return await res.json() as BangCommandResult
 }
 
 export async function listChatSessionQueue(sessionId: string): Promise<ChatQueueListResponse> {

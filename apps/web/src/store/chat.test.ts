@@ -238,4 +238,69 @@ describe('chat store messages', () => {
       parts: [{ type: 'text', text: ' After steer.' }],
     })
   })
+
+  it('keeps live steer anchored after the assistant id changes to the server snapshot id', () => {
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-temp',
+      role: 'assistant',
+      parts: [{ type: 'text', text: 'Before steer.' }],
+    }])
+    useChatStore.getState().startGeneration('session-1', 'assistant-temp', new AbortController())
+
+    useChatStore.getState().insertLiveSteerMessage('session-1', {
+      id: 'continuation-steer-optimistic',
+      role: 'user',
+      parts: [{ type: 'text', text: 'Please adjust.' }],
+      metadata: {
+        cradle: {
+          continuation: {
+            mode: 'steer',
+            queueItemId: 'steer-1',
+          },
+        },
+      },
+    } as UIMessage)
+
+    useChatStore.getState().updateMessage('session-1', 'assistant-temp', message => ({
+      ...message,
+      id: 'assistant-canonical',
+    }))
+    expect(chatSelectors.isStreamingMessage('assistant-canonical:steer-tail')(useChatStore.getState())).toBe(true)
+
+    useChatStore.getState().setMessages('session-1', [
+      {
+        id: 'assistant-canonical',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Before steer. After steer.' }],
+      },
+      {
+        id: 'continuation-steer-canonical',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Please adjust.' }],
+        metadata: {
+          cradle: {
+            continuation: {
+              mode: 'steer',
+              queueItemId: 'steer-1',
+            },
+          },
+        },
+      } as UIMessage,
+    ])
+
+    expect(useChatStore.getState().messagesMap.get('session-1')?.map(message => message.id)).toEqual([
+      'assistant-canonical',
+      'continuation-steer-canonical',
+      'assistant-canonical:steer-tail',
+    ])
+    expect(useChatStore.getState().messagesMap.get('session-1')?.[0]?.parts).toEqual([
+      { type: 'text', text: 'Before steer.' },
+    ])
+    expect(useChatStore.getState().messagesMap.get('session-1')?.[2]?.parts).toEqual([
+      { type: 'text', text: ' After steer.' },
+    ])
+
+    useChatStore.getState().finishGeneration('assistant-canonical')
+    expect(chatSelectors.isStreamingMessage('assistant-canonical:steer-tail')(useChatStore.getState())).toBe(false)
+  })
 })

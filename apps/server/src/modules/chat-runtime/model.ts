@@ -654,6 +654,24 @@ export const ChatRuntimeModel = {
     permissionMode: t.Optional(permissionModeSchema),
   }),
 
+  bangCommandBody: t.Object({
+    command: t.String({ minLength: 1 }),
+  }),
+
+  bangCommandResponse: t.Object({
+    command: t.String(),
+    stdout: t.String(),
+    stderr: t.String(),
+    exitCode: t.Union([t.Number(), t.Null()]),
+    durationMs: t.Number(),
+    timedOut: t.Boolean(),
+    truncated: t.Boolean(),
+    userMessageId: t.String(),
+    resultMessageId: t.String(),
+    userMessage: uiMessageSchema,
+    resultMessage: uiMessageSchema,
+  }),
+
   cancelResponse: t.Object({
     ok: t.Literal(true),
   }),

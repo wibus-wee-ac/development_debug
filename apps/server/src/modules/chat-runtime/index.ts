@@ -1,5 +1,6 @@
 import { Elysia } from 'elysia'
 
+import { executeBangCommand } from './bang-command'
 import { ChatRuntimeModel } from './model'
 import * as ChatRuntime from './service'
 
@@ -49,6 +50,21 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.responseBody,
+  })
+  // POST /chat/sessions/:sessionId/bang-command -> run a user-entered shell command and persist transcript context
+  .post('/sessions/:sessionId/bang-command', async ({ params, body, request }) => {
+    return await executeBangCommand({
+      sessionId: params.sessionId,
+      command: body.command,
+      signal: request.signal,
+    })
+  }, {
+    detail: {
+      summary: 'Execute a user-entered shell command and persist the output as chat context',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.bangCommandBody,
+    response: { 200: ChatRuntimeModel.bangCommandResponse },
   })
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
   .get('/sessions/:sessionId/stream', ({ params }) => {

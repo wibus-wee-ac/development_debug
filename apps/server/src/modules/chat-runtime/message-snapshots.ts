@@ -68,6 +68,46 @@ export function annotateGoalMessage(message: UIMessage, objective: string): UIMe
   } as UIMessage
 }
 
+export function annotateBangCommandMessage(message: UIMessage, command: string): UIMessage {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      cradle: {
+        ...cradleMetadata,
+        bangCommand: { command },
+      },
+    },
+  } as UIMessage
+}
+
+export interface BangCommandResultMetadata {
+  command: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  durationMs: number
+  timedOut: boolean
+  truncated: boolean
+}
+
+export function annotateBangResultMessage(message: UIMessage, result: BangCommandResultMetadata): UIMessage {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  return {
+    ...message,
+    metadata: {
+      ...metadata,
+      cradle: {
+        ...cradleMetadata,
+        bangResult: result,
+      },
+    },
+  } as UIMessage
+}
+
 export function readGoalMessageObjective(message: UIMessage): string | null {
   const metadata = readRecord((message as { metadata?: unknown }).metadata)
   const cradleMetadata = readRecord(metadata.cradle)

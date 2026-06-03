@@ -1,5 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon } from 'lucide-react'
+import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon, SquareTerminalIcon } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -9,6 +9,7 @@ import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import type { ChatContextPart } from './chat-context-parts'
+import { readBangCommand } from './bang-command'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type {
   ComposerActionContextOptions,
@@ -139,6 +140,15 @@ const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
+
+function readBangCommandDraft(text: string): string | null {
+  const normalized = text.trimStart()
+  if (!normalized.startsWith('!') || normalized.includes('\n') || normalized.includes('\r')) {
+    return null
+  }
+  const preview = normalized.slice(1).trim()
+  return preview || '!'
+}
 
 interface ComposerState {
   inputValue: string
@@ -276,6 +286,29 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
   )
 }
 
+function ComposerSendIcon({ isBangMode, isSending }: { isBangMode?: boolean, isSending?: boolean }) {
+  if (isSending) {
+    return <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
+  }
+
+  return (
+    <span className="relative size-3.5" aria-hidden="true">
+      <SendHorizonalIcon
+        className={cn(
+          'absolute inset-0 size-3.5 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+          isBangMode ? 'scale-[0.25] opacity-0 blur-[4px]' : 'scale-100 opacity-100 blur-0',
+        )}
+      />
+      <SquareTerminalIcon
+        className={cn(
+          'absolute inset-0 size-3.5 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+          isBangMode ? 'scale-100 opacity-100 blur-0' : 'scale-[0.25] opacity-0 blur-[4px]',
+        )}
+      />
+    </span>
+  )
+}
+
 function ComposerActions({
   actionsClassName,
   attachButtonClassName,
@@ -283,11 +316,13 @@ function ComposerActions({
   contextBar,
   disabled,
   hasDraft,
+  isBangMode,
   isSending,
   isStreaming,
   onSend,
   onStop,
   sendDisabled,
+  sendBlocked,
   attachButtonTestId,
   sendButtonClassName,
   sendButtonTestId,
@@ -303,11 +338,13 @@ function ComposerActions({
   contextBar?: React.ReactNode
   disabled?: boolean
   hasDraft: boolean
+  isBangMode?: boolean
   isSending?: boolean
   isStreaming?: boolean
   onSend: () => void
   onStop?: () => void
   sendDisabled?: boolean
+  sendBlocked?: boolean
   attachButtonTestId: string
   sendButtonClassName?: string
   sendButtonTestId: string
@@ -335,15 +372,13 @@ function ComposerActions({
         <Button
           variant="outline"
           size="icon-xs"
-          disabled={disabled || sendDisabled}
+          disabled={disabled || sendDisabled || sendBlocked}
           onClick={() => onSend()}
-          aria-label={sendButtonAriaLabel ?? 'Send continuation'}
+          aria-label={sendButtonAriaLabel ?? (isBangMode ? 'Run shell command' : 'Send continuation')}
           className={sendButtonClassName}
           data-testid={sendButtonTestId}
         >
-          {isSending
-            ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-            : <SendHorizonalIcon aria-hidden="true" />}
+          <ComposerSendIcon isBangMode={isBangMode} isSending={isSending} />
         </Button>
       )}
       {isStreaming
@@ -363,15 +398,13 @@ function ComposerActions({
             <Button
               variant="default"
               size="icon-xs"
-              disabled={disabled || sendDisabled || !hasDraft}
+              disabled={disabled || sendDisabled || sendBlocked || !hasDraft}
               onClick={() => onSend()}
-              aria-label={sendButtonAriaLabel ?? 'Send message'}
+              aria-label={sendButtonAriaLabel ?? (isBangMode ? 'Run shell command' : 'Send message')}
               className={sendButtonClassName}
               data-testid={sendButtonTestId}
             >
-              {isSending
-                ? <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
-                : <SendHorizonalIcon aria-hidden="true" />}
+              <ComposerSendIcon isBangMode={isBangMode} isSending={isSending} />
             </Button>
           )}
     </div>
@@ -468,6 +501,14 @@ export function Composer({
   const sendButtonTestId = testIds?.sendButton ?? 'chat-send-btn'
   const stopButtonTestId = testIds?.stopButton ?? 'chat-stop-btn'
   const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || state.contextParts.length > 0 || Boolean(allowEmptySend)
+  const bangCommandPreview = !attachmentController.hasAttachments && state.contextParts.length === 0
+    ? readBangCommandDraft(state.inputValue)
+    : null
+  const bangCommand = !attachmentController.hasAttachments && state.contextParts.length === 0
+    ? readBangCommand(state.inputValue)
+    : null
+  const isBangMode = bangCommandPreview !== null
+  const sendBlocked = isBangMode && bangCommand === null
   const effectiveDisabled = disabled || isSending
 
   const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
@@ -577,7 +618,7 @@ export function Composer({
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()
-    if (disabled || isSending || sendDisabled) {
+    if (disabled || isSending || sendDisabled || sendBlocked) {
       return
     }
     if (!allowEmptySend && !text && attachmentController.attachments.length === 0 && state.contextParts.length === 0) {
@@ -595,7 +636,7 @@ export function Composer({
       promptEditorRef.current?.clear()
       dispatch({ type: 'input/cleared' })
     })()
-  }, [allowEmptySend, attachmentController, disabled, isSending, sendDisabled, state.contextParts, state.inputValue, submit])
+  }, [allowEmptySend, attachmentController, disabled, isSending, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
 
   const handlePaste = useCallback((event: ClipboardEvent) => {
     attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)
@@ -763,8 +804,34 @@ export function Composer({
         {/* Action bar — subtle, blends with the card */}
         <div className={cn('flex items-center justify-between gap-2 px-3 py-2', actionBarClassName)}>
           {/* Left: custom toolbar from parent */}
-          <div className={cn('flex items-center gap-1', toolbarClassName)}>
-            {toolbar}
+          <div className={cn('min-w-0 flex-1', toolbarClassName)}>
+            <div className="relative h-7 min-w-0 overflow-hidden">
+              <div
+                className={cn(
+                  'absolute inset-x-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+                  isBangMode && 'pointer-events-none translate-y-2 opacity-0 blur-[3px]',
+                )}
+              >
+                {toolbar}
+              </div>
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 top-1/2 flex min-w-0 items-center transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+                  isBangMode
+                    ? '-translate-y-1/2 opacity-100 blur-0'
+                    : 'translate-y-2 opacity-0 blur-[3px]',
+                )}
+              >
+                <div
+                  className="inline-flex h-6 max-w-64 items-center gap-1.5 rounded-md bg-muted px-2 font-mono text-[11px] text-muted-foreground"
+                  data-testid="chat-bang-command-indicator"
+                >
+                  <SquareTerminalIcon className="size-3.5 shrink-0 opacity-70" aria-hidden="true" />
+                  <span className="truncate">{bangCommandPreview}</span>
+                  {sendBlocked && <span className="ml-0.5 h-3 w-1 rounded-full bg-muted-foreground/60" aria-hidden="true" />}
+                </div>
+              </div>
+            </div>
           </div>
 
           <ComposerActions
@@ -776,12 +843,14 @@ export function Composer({
             contextBar={contextBar}
             disabled={effectiveDisabled}
             hasDraft={hasDraft}
+            isBangMode={isBangMode}
             isSending={isSending}
             isStreaming={isStreaming}
             attachmentController={attachmentController}
             onSend={handleSend}
             onStop={send.stop}
             sendDisabled={sendDisabled}
+            sendBlocked={sendBlocked}
             attachButtonTestId={attachButtonTestId}
             sendButtonAriaLabel={sendButtonAriaLabel}
             sendButtonClassName={sendButtonClassName}
