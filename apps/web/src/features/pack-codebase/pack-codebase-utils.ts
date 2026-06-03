@@ -38,13 +38,3 @@ export function pathsToIncludeFromDraft(currentPaths: string[], input: string): 
   const paths = mergeScopePaths(currentPaths, input)
   return paths.length > 0 ? pathsToInclude(paths) : undefined
 }
-
-export function formatTokens(value: number): string {
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`
-  }
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`
-  }
-  return String(value)
-}

@@ -6,6 +6,7 @@
 
 import { describe, expect, it } from 'vitest'
 
+import type { ChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CODEX_REVIEW_SLASH_ACTION_ID,
@@ -16,6 +17,7 @@ import {
   getFallbackRuntimeSlashCommands,
   hasDuplicateSlashCommandName,
   mergeChatSlashCommands,
+  projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
 } from './chat-slash-commands'
 
@@ -176,6 +178,47 @@ describe('chat slash commands', () => {
     ])
     expect(commands[0]?.availability).toBeUndefined()
     expect(commands[1]?.availability).toBeUndefined()
+  })
+
+  it('projects draft runtime ui slots as raw composer text commands', () => {
+    const commands = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:compact',
+        name: 'compact',
+        label: 'Compact',
+        description: 'Compact this conversation context.',
+        argumentHint: '[instructions]',
+        iconKey: 'compact',
+        commandText: '/compact ',
+        surfaces: ['slashCommand'],
+      },
+      {
+        id: 'codex:review',
+        name: 'review',
+        label: 'Code review',
+        description: 'Review unstaged changes or compare with a branch.',
+        argumentHint: '[target]',
+        iconKey: 'code-review',
+        commandText: '/review ',
+        surfaces: ['slashCommand'],
+      },
+      {
+        id: 'codex:goal',
+        name: 'goal',
+        label: 'Goal',
+        description: 'Set or show the active objective.',
+        argumentHint: '<objective>',
+        iconKey: 'goal',
+        commandText: '/goal ',
+        surfaces: ['slashCommand', 'composerState'],
+      },
+    ], [], 'draft')
+
+    expect(commands).toEqual([
+      expect.objectContaining({ id: 'codex:compact', action: { kind: 'insertText', text: '/compact ' } }),
+      expect.objectContaining({ id: 'codex:review', action: { kind: 'insertText', text: '/review ' } }),
+      expect.objectContaining({ id: 'codex:goal', action: { kind: 'insertText', text: '/goal ' } }),
+    ])
   })
 
   it('does not project picker and metadata slots into slash commands', () => {
@@ -457,5 +500,76 @@ describe('chat slash commands', () => {
 
     expect(commands[0]?.name).toBe('compact')
     expect(commands.at(-1)).toEqual(disabledAppshot)
+  })
+
+  it('projects draft and session composer commands through the same capability boundary', () => {
+    const capabilities: ChatRuntimeCapabilities = {
+      runtimeKind: 'codex',
+      slashCommands: [
+        { name: 'status', description: 'Native status', argumentHint: '' },
+      ],
+      skills: [],
+      uiSlots: [
+        {
+          id: 'codex:compact',
+          name: 'compact',
+          label: 'Compact',
+          description: 'Compact this conversation context.',
+          argumentHint: '[instructions]',
+          iconKey: 'compact',
+          commandText: '/compact ',
+          surfaces: ['slashCommand', 'runtimePanel'],
+        },
+        {
+          id: 'codex:goal',
+          name: 'goal',
+          label: 'Goal',
+          description: 'Set or show the active objective.',
+          argumentHint: '<objective>',
+          iconKey: 'goal',
+          commandText: '/goal ',
+          surfaces: ['slashCommand', 'composerState'],
+        },
+      ],
+    }
+
+    const draftCommands = projectRuntimeComposerSlashCommands({
+      capabilities,
+      mode: 'draft',
+    })
+    const sessionCommands = projectRuntimeComposerSlashCommands({
+      capabilities,
+      slotStates: [
+        {
+          kind: 'goal',
+          slotId: 'codex:goal',
+          threadId: 'thread-1',
+          objective: 'Unify composers',
+          status: 'active',
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 5,
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      mode: 'session',
+      cradleCommands: [CRADLE_APPSHOT_SLASH_COMMAND],
+    })
+
+    expect(draftCommands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'codex:compact', action: { kind: 'insertText', text: '/compact ' } }),
+      expect.objectContaining({ id: 'codex:goal', stateLabel: undefined }),
+      expect.objectContaining({ id: 'runtime:status:0', description: 'Native status' }),
+    ]))
+    expect(draftCommands.some(command => command.id === CRADLE_APPSHOT_SLASH_COMMAND.id)).toBe(false)
+
+    expect(sessionCommands).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'codex:compact', action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true } }),
+      expect.objectContaining({ id: 'codex:goal', stateLabel: 'Active' }),
+      CRADLE_APPSHOT_SLASH_COMMAND,
+      expect.objectContaining({ id: 'runtime:status:0', description: 'Native status' }),
+    ]))
+    expect(sessionCommands.filter(command => command.name === 'compact')).toHaveLength(1)
   })
 })

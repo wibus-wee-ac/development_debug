@@ -6155,6 +6155,44 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
 
 export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponse = DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses[keyof DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses];
 
+export type GetChatDraftRuntimeCapabilitiesData = {
+    body?: never;
+    path?: never;
+    query: {
+        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+    };
+    url: '/chat/draft-runtime-capabilities';
+};
+
+export type GetChatDraftRuntimeCapabilitiesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        slashCommands: Array<{
+            name: string;
+            description: string;
+            argumentHint: string;
+            aliases?: Array<string>;
+        }>;
+        uiSlots: Array<{
+            id: string;
+            name: string;
+            label: string;
+            description: string;
+            argumentHint: string;
+            aliases?: Array<string>;
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            commandText?: string;
+            surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
+        }>;
+        skills: Array<string>;
+    };
+};
+
+export type GetChatDraftRuntimeCapabilitiesResponse = GetChatDraftRuntimeCapabilitiesResponses[keyof GetChatDraftRuntimeCapabilitiesResponses];
+
 export type GetChatSessionsBySessionIdCapabilitiesData = {
     body?: never;
     path: {
@@ -6431,6 +6469,34 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 completedAt: number | null;
             }>;
             collaborationModeCount: number;
+            collaborationModes: Array<{
+                name: string;
+                mode: string | null;
+                model: string | null;
+                reasoningEffort: string | null;
+            }>;
+            calls: Array<{
+                id: string;
+                tool: string;
+                status: string;
+                senderThreadId: string | null;
+                receiverThreadIds: Array<string>;
+                prompt: string | null;
+                model: string | null;
+                reasoningEffort: string | null;
+                agents: Array<{
+                    threadId: string;
+                    status: string | null;
+                    message: string | null;
+                    name: string | null;
+                    preview: string | null;
+                    modelProvider: string | null;
+                    agentNickname: string | null;
+                    agentRole: string | null;
+                }>;
+                startedAt: number | null;
+                completedAt: number | null;
+            }>;
             updatedAt: number;
         } | {
             kind: string;
@@ -7080,27 +7146,6 @@ export type GetChronicleStatusResponses = {
 };
 
 export type GetChronicleStatusResponse = GetChronicleStatusResponses[keyof GetChronicleStatusResponses];
-
-export type GetChronicleResourcesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/chronicle/resources';
-};
-
-export type GetChronicleResourcesResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        running: boolean;
-        pid: number | null;
-        rssMB: number | null;
-        cpuPercent: number | null;
-    };
-};
-
-export type GetChronicleResourcesResponse = GetChronicleResourcesResponses[keyof GetChronicleResourcesResponses];
 
 export type GetChronicleDaemonResourcesData = {
     body?: never;

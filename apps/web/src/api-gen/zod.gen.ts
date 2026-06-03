@@ -1500,6 +1500,17 @@ export const zDeleteChatSessionsBySessionIdQueueByQueueItemIdPath = z.object({
     queueItemId: z.string().min(1)
 });
 
+export const zGetChatDraftRuntimeCapabilitiesQuery = z.object({
+    runtimeKind: z.enum([
+        'standard',
+        'claude-agent',
+        'codex',
+        'jar-core',
+        'acp-chat',
+        'cli-tui'
+    ])
+});
+
 export const zGetChatSessionsBySessionIdCapabilitiesPath = z.object({
     sessionId: z.string().min(1)
 });

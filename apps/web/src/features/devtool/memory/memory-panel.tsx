@@ -2,11 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { formatTimeOnly } from '~/lib/format-time'
+import { formatBytesAsMegabytes } from '~/lib/number-format'
 import { getPerfSnapshots, getWebVitals } from '~/lib/perf-monitor'
-
-function toMB(bytes: number): string {
-  return (bytes / 1024 / 1024).toFixed(2)
-}
 
 export function MemoryPanel() {
   const { t } = useTranslation('devtool')
@@ -33,25 +30,19 @@ export function MemoryPanel() {
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapUsed')}</td>
                     <td className="py-1.5 text-foreground">
-{toMB(latest.heapUsed)}
-{' '}
-MB
+{formatBytesAsMegabytes(latest.heapUsed)}
                     </td>
                   </tr>
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapTotal')}</td>
                     <td className="py-1.5 text-foreground">
-{toMB(latest.heapTotal)}
-{' '}
-MB
+{formatBytesAsMegabytes(latest.heapTotal)}
                     </td>
                   </tr>
                   <tr className="border-b border-border">
                     <td className="py-1.5 pr-6 text-muted-foreground">{t('memory.heapLimit')}</td>
                     <td className="py-1.5 text-foreground">
-{toMB(latest.heapLimit)}
-{' '}
-MB
+{formatBytesAsMegabytes(latest.heapLimit)}
                     </td>
                   </tr>
                 </tbody>
@@ -80,14 +71,10 @@ MB
                     {formatTimeOnly(snap.timestamp)}
                   </td>
                   <td className="py-1 pr-3">
-{toMB(snap.heapUsed)}
-{' '}
-MB
+{formatBytesAsMegabytes(snap.heapUsed)}
                   </td>
                   <td className="py-1">
-{toMB(snap.heapTotal)}
-{' '}
-MB
+{formatBytesAsMegabytes(snap.heapTotal)}
                   </td>
                 </tr>
               ))}

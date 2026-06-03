@@ -1,5 +1,5 @@
 // Output: Typed semantic context item contracts for Jarvis prompt assembly.
-// Input: Feature-owned context providers and legacy SystemAgentContext projections.
+// Input: Feature-owned context providers and System Agent ambient shell context.
 // Position: Shared cross-cutting module — consumed by system-agent, chat, kanban, and other features.
 
 export type ContextItemKind

@@ -1,3 +1,5 @@
+import { formatCompactBytes } from '~/lib/number-format'
+
 export type ToolState
   = | 'input-streaming'
     | 'input-available'
@@ -1268,7 +1270,7 @@ function readWebSummary(output: ToolPayload): string | null {
   const code = output.code
   const bytes = output.bytes
   if (code !== null && bytes !== null) {
-    return `${code} · ${formatBytes(bytes)}`
+    return `${code} · ${formatCompactBytes(bytes)}`
   }
   const seconds = output.durationSeconds
   if (seconds !== null) {
@@ -1358,14 +1360,4 @@ function readMcpSummary(output: ToolPayload): string | null {
     return `${output.contents.length} content block${output.contents.length === 1 ? '' : 's'}`
   }
   return output.rawText ? 'Tool result' : null
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) {
-    return `${bytes} B`
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)} KB`
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }

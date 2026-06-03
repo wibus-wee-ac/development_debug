@@ -28,6 +28,7 @@ import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { boundedPercent } from '~/lib/number-format'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
@@ -116,13 +117,6 @@ function basename(value: string): string {
 
 function formatCount(value: number, singular: string, plural = `${singular}s`): string {
   return `${value} ${value === 1 ? singular : plural}`
-}
-
-function safePercent(value: number | null, max: number): number {
-  if (value === null || max <= 0) {
-    return 0
-  }
-  return Math.min(100, Math.max(0, (value / max) * 100))
 }
 
 function hasRenderableChildren(children: ReactNode): boolean {
@@ -626,7 +620,7 @@ function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayloa
   const { completed } = readTodoCompletion(todos)
   return (
     <div className="grid gap-2">
-      <Progress value={safePercent(completed, todos.length)} className="h-1.5" />
+      <Progress value={boundedPercent(completed, todos.length)} className="h-1.5" />
       <div className="grid gap-1">
         {todos.map(todo => (
           <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">

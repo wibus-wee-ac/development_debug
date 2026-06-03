@@ -7,17 +7,13 @@
  */
 import { Badge } from '~/components/ui/badge'
 import { cn } from '~/lib/cn'
+import { formatTokenCount } from '~/lib/number-format'
 
 import type { SearchResult, SearchResultSource } from './schemas'
 
 const SOURCE_LABEL: Record<SearchResultSource, string> = {
   'models-dev': 'models.dev',
   'registry': 'Cradle Registry',
-}
-
-function formatContextWindow(value: number | undefined): string | null {
-  if (value == null || value <= 0) return null
-  return `${Math.round(value / 1000)}k`
 }
 
 export function SearchResultItem({
@@ -31,7 +27,9 @@ export function SearchResultItem({
   onClick: () => void
   disabled?: boolean
 }) {
-  const contextWindow = formatContextWindow(result.capabilities.contextWindow)
+  const contextWindow = result.capabilities.contextWindow && result.capabilities.contextWindow > 0
+    ? formatTokenCount(result.capabilities.contextWindow)
+    : null
 
   return (
     <button

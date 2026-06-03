@@ -6,6 +6,10 @@ export function runtimeCapabilitiesQueryKey(sessionId: string | null): readonly 
   return ['chat', 'runtime-capabilities', sessionId ?? 'no-session']
 }
 
+export function draftRuntimeCapabilitiesQueryKey(runtimeKind: string | null | undefined): readonly unknown[] {
+  return ['chat', 'draft-runtime-capabilities', runtimeKind ?? 'no-runtime']
+}
+
 export function runtimeUiSlotStatesQueryKey(sessionId: string | null, runtimeKind?: string | null): readonly unknown[] {
   const key = ['chat', 'runtime-ui-slot-states', sessionId ?? 'no-session'] as const
   return runtimeKind ? [...key, runtimeKind] : key
@@ -429,6 +433,17 @@ export async function getChatRuntimeCapabilities(sessionId: string, signal?: Abo
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to load chat capabilities: ${res.status} ${body}`)
+  }
+  return await res.json() as ChatRuntimeCapabilities
+}
+
+export async function getDraftChatRuntimeCapabilities(runtimeKind: string, signal?: AbortSignal): Promise<ChatRuntimeCapabilities> {
+  const url = new URL(`${SERVER_BASE}/chat/draft-runtime-capabilities`)
+  url.searchParams.set('runtimeKind', runtimeKind)
+  const res = await fetch(url, { signal })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to load draft chat capabilities: ${res.status} ${body}`)
   }
   return await res.json() as ChatRuntimeCapabilities
 }

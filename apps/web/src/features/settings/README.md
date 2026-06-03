@@ -15,6 +15,7 @@
 - **external-work-import-settings.tsx**: Import 设置页，只扫描 Server 与 Electron 设备上的 Claude / Codex 会话文件，合并去重后提交到 Server 导入为 Cradle-owned chat sessions。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 provider/model/thinking 级联选择器配置系统助手模型；Settings Jarvis 首屏在 preferences、provider targets 与当前 provider target cached models 查询成功后记录 performance gate
 - **model-registry-settings.tsx**: 全局模型 registry mappings 设置页，管理 Cradle-owned model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model 统一 enrichment。
+- **model-registry-detail-panel.tsx**: 单个 registry mapping 的详情、alias 编辑、删除和 models.dev 重映射面板；context window 展示复用 renderer numeric display owner。
 - **settings-overlay-store.ts**: (moved to `~/store/settings-overlay.ts`) Shared overlay state — records which tab currently hosts the settings overlay plus the active section selection; also carries one-shot Chronicle memory/knowledge and Agent focus targets into Settings-owned panels; replaces layout-store ownership for settings UI state; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, Settings Skills, and Settings Support render-requested performance marks when those sections are requested
 - **settings-overlay-store.test.ts**: (moved to `~/store/settings-overlay.test.ts`) Store-level regression coverage for Chronicle and Agent focus target write/clear behavior
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面；production 下收到 Chronicle/记录 section 会回退到 Appearance。

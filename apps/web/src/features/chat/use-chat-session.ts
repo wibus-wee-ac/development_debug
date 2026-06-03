@@ -31,42 +31,6 @@ import { startChatResponseStream, subscribeChatSessionStreamForSession } from '.
 import { ChatStreamingHandler } from './chat-streaming-handler'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
 
-// ── Compatibility Exports (used by tests) ───────────────────
-
-type ChatSnapshotState = { status: PublicStatus, error?: string }
-
-export function derivePassiveChatState(
-  rows: Array<{ role: string, status: string, errorText?: string | null }>,
-): ChatSnapshotState {
-  if (rows.some(row => row.status === 'streaming')) {
-    return { status: 'streaming' }
-  }
-  const failedAssistant = [...rows]
-    .reverse()
-    .find(row => row.role === 'assistant' && row.status === 'failed')
-  if (failedAssistant) {
-    return { status: 'error', error: failedAssistant.errorText ?? undefined }
-  }
-  return { status: 'idle' }
-}
-
-export function resolveVisibleChatState(
-  liveStatus: PublicStatus,
-  passiveStatus: PublicStatus,
-): PublicStatus {
-  if (liveStatus === 'streaming' || liveStatus === 'error') {
-    return liveStatus
-  }
-  return passiveStatus
-}
-
-export async function stopChatTurn(args: {
-  chatSessionId: string | null
-  chatStop: () => Promise<void> | void
-}): Promise<void> {
-  await Promise.resolve(args.chatStop())
-}
-
 // ── Message Snapshot Types ──────────────────────────────────
 
 export interface ChatSessionMessageRow {

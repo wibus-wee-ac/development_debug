@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getServerUrl } from '~/lib/electron'
+import { formatUptimeSeconds } from '~/lib/number-format'
 
 const SERVER_BASE = getServerUrl()
 
@@ -15,13 +16,6 @@ interface HealthData {
     external: number
   }
   timestamp: number
-}
-
-function formatUptime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  const s = seconds % 60
-  return `${h}h ${m}m ${s}s`
 }
 
 export function HealthPanel() {
@@ -71,7 +65,7 @@ export function HealthPanel() {
 
   const rows: [string, string][] = [
     [t('health.status'), health.status],
-    [t('health.uptime'), formatUptime(health.uptime)],
+    [t('health.uptime'), formatUptimeSeconds(health.uptime, { includeSeconds: true })],
     [t('health.heapUsed'), `${health.memory.heapUsed} MB`],
     [t('health.heapTotal'), `${health.memory.heapTotal} MB`],
     [t('health.rss'), `${health.memory.rss} MB`],

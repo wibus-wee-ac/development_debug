@@ -28,6 +28,7 @@ import type { ComponentType, SVGProps } from 'react'
 
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
+import { clampPercent } from '~/lib/number-format'
 
 import type {
   ChatRuntimeApprovalStatus,
@@ -452,9 +453,9 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
         progress: null,
         lines: [
           { label: 'Tier', value: state.serviceTier ?? 'default' },
-          { label: 'Images', value: formatBoolean(state.supportsImages) },
-          { label: 'Web', value: formatBoolean(state.supportsWebSearch) },
-          { label: 'Namespace tools', value: formatBoolean(state.supportsNamespaceTools) },
+          { label: 'Images', value: state.supportsImages === null ? 'unknown' : state.supportsImages ? 'yes' : 'no' },
+          { label: 'Web', value: state.supportsWebSearch === null ? 'unknown' : state.supportsWebSearch ? 'yes' : 'no' },
+          { label: 'Namespace tools', value: state.supportsNamespaceTools === null ? 'unknown' : state.supportsNamespaceTools ? 'yes' : 'no' },
         ],
       }
     case 'reasoning':
@@ -484,7 +485,7 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
         meta: state.recentProgress ?? `${state.needsLoginCount} need login`,
         progress: state.serverCount > 0 ? clampPercent((state.readyCount / state.serverCount) * 100) : null,
         lines: state.servers.slice(0, 4).map(server => ({
-          label: formatMcpServerStatus(server.status),
+          label: formatStatusLike(server.status),
           value: `${server.name} · ${server.toolCount} tools`,
           tone: readMcpServerTone(server.status),
         })),
@@ -516,7 +517,7 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
         meta: `${state.approvedCount} approved / ${state.deniedCount} denied`,
         progress: null,
         lines: state.recentItems.slice(0, 4).map(item => ({
-          label: formatApprovalStatus(item.status),
+          label: formatStatusLike(item.status),
           value: item.label,
           tone: readApprovalTone(item.status),
         })),
@@ -583,12 +584,12 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
     case 'usage':
       return {
         tone: state.rateLimitReachedType ? 'error' : state.usedPercent !== null && state.usedPercent > 80 ? 'warning' : 'neutral',
-        summary: formatNullablePercent(state.usedPercent),
+        summary: state.usedPercent === null ? 'unknown' : `${Math.round(state.usedPercent)}%`,
         meta: state.rateLimitReachedType ?? state.planType ?? 'Usage available',
         progress: state.usedPercent,
         lines: [
-          { label: 'Secondary', value: formatNullablePercent(state.secondaryUsedPercent) },
-          { label: 'Credits', value: state.creditsBalance ?? formatBoolean(state.hasCredits) },
+          { label: 'Secondary', value: state.secondaryUsedPercent === null ? 'unknown' : `${Math.round(state.secondaryUsedPercent)}%` },
+          { label: 'Credits', value: state.creditsBalance ?? (state.hasCredits === null ? 'unknown' : state.hasCredits ? 'yes' : 'no') },
         ],
       }
     case 'config':
@@ -599,9 +600,9 @@ function readStateView(state: ChatRuntimeUiSlotState): Omit<SlotCardModel, 'id' 
         progress: null,
         lines: [
           { label: 'Model', value: state.modelId ?? 'default' },
-          { label: 'Approval modes', value: formatNullableNumber(state.allowedApprovalPolicyCount) },
-          { label: 'Sandbox modes', value: formatNullableNumber(state.allowedSandboxModeCount) },
-          { label: 'Requirements', value: formatNullableNumber(state.featureRequirementCount) },
+          { label: 'Approval modes', value: state.allowedApprovalPolicyCount === null ? 'unknown' : String(state.allowedApprovalPolicyCount) },
+          { label: 'Sandbox modes', value: state.allowedSandboxModeCount === null ? 'unknown' : String(state.allowedSandboxModeCount) },
+          { label: 'Requirements', value: state.featureRequirementCount === null ? 'unknown' : String(state.featureRequirementCount) },
         ],
       }
     default:
@@ -892,29 +893,6 @@ function formatSurfaces(surfaces: ChatRuntimeUiSlotSurface[]): string {
   return surfaces.map(surface => SURFACE_LABELS[surface]).join(' / ')
 }
 
-function formatMcpServerStatus(status: ChatRuntimeMcpServerStatus): string {
-  return formatStatusLike(status)
-}
-
-function formatApprovalStatus(status: ChatRuntimeApprovalStatus): string {
-  return formatStatusLike(status)
-}
-
-function formatBoolean(value: boolean | null): string {
-  if (value === null) {
-    return 'unknown'
-  }
-  return value ? 'yes' : 'no'
-}
-
-function formatNullablePercent(value: number | null): string {
-  return value === null ? 'unknown' : `${Math.round(value)}%`
-}
-
-function formatNullableNumber(value: number | null): string {
-  return value === null ? 'unknown' : String(value)
-}
-
 function formatRelativeTimestamp(timestamp: number): string {
   const ageSeconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000))
   if (ageSeconds < 60) {
@@ -927,8 +905,4 @@ function formatRelativeTimestamp(timestamp: number): string {
     return `${Math.floor(ageSeconds / 3600)}h ago`
   }
   return `${Math.floor(ageSeconds / 86_400)}d ago`
-}
-
-function clampPercent(value: number): number {
-  return Math.min(100, Math.max(0, Math.round(value)))
 }

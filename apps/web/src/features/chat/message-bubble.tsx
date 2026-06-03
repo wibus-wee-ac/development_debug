@@ -10,6 +10,7 @@ import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { formatShortDurationMs } from '~/lib/number-format'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useStreamdownStore } from '~/store/streamdown'
@@ -191,16 +192,9 @@ function MetricBadge({
     >
       {icon}
       <span>{label}</span>
-      <span className="font-mono">{value === null ? '…' : formatDuration(value)}</span>
+      <span className="font-mono">{value === null ? '…' : formatShortDurationMs(value).replaceAll(' ', '')}</span>
     </Badge>
   )
-}
-
-function formatDuration(ms: number): string {
-  if (ms < 1000) {
-    return `${Math.round(ms)}ms`
-  }
-  return `${(ms / 1000).toFixed(2)}s`
 }
 
 function ThinkingPlaceholder() {

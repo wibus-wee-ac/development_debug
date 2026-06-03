@@ -27,6 +27,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
+import { clampPercentValue } from '~/lib/number-format'
 
 import type { ChatComposerSlashCommand, ChatSlashCommandStateVisual } from './chat-slash-commands'
 import { getSlashCommandSourceLabel, hasDuplicateSlashCommandName } from './chat-slash-commands'
@@ -188,7 +189,7 @@ function CompactUsageIcon({
 }) {
   const radius = 7
   const circumference = 2 * Math.PI * radius
-  const percent = state.percent === null ? 0 : Math.min(100, Math.max(0, state.percent))
+  const percent = state.percent === null ? 0 : clampPercentValue(state.percent)
   const strokeDashoffset = circumference - (circumference * percent) / 100
 
   return (

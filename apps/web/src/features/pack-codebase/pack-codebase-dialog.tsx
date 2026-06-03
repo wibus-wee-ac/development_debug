@@ -21,8 +21,9 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Switch } from '~/components/ui/switch'
 import { cn } from '~/lib/cn'
+import { formatTokenCount } from '~/lib/number-format'
 
-import { formatTokens, mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
+import { mergeScopePaths, pathsToIncludeFromDraft } from './pack-codebase-utils'
 
 type PackStyle = 'xml' | 'markdown' | 'plain'
 type PackCodebaseKey = keyof typeof import('~/locales/default').default['pack-codebase']
@@ -201,7 +202,7 @@ function PackCodebaseDialogContent({
             >
               {t('status.summary', {
                 files: t('status.fileCount', { count: state.result.totalFiles }),
-                tokens: formatTokens(state.result.totalTokens),
+                tokens: formatTokenCount(state.result.totalTokens),
               })}
             </p>
           </div>

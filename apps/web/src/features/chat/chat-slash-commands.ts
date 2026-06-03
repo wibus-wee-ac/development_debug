@@ -24,6 +24,7 @@ import type {
   ChatRuntimeSkillsUiSlotState,
   ChatRuntimeStatusUiSlotState,
   ChatRuntimeTerminalUiSlotState,
+  ChatRuntimeCapabilities,
   ChatRuntimeToolActivityUiSlotState,
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
@@ -95,6 +96,7 @@ export interface ChatComposerSlashCommand {
 
 export const CRADLE_APPSHOT_SLASH_ACTION_ID = 'capture-appshot'
 export const CODEX_REVIEW_SLASH_ACTION_ID = 'codex-review-mode'
+const TOKEN_COUNT_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
 export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
   id: 'cradle:appshot',
@@ -152,78 +154,20 @@ export const CRADLE_FALLBACK_RUNTIME_SLASH_COMMANDS: ChatComposerSlashCommand[] 
   },
 ]
 
-const CODEX_DRAFT_RUNTIME_UI_SLOTS: ChatRuntimeUiSlot[] = [
-  {
-    id: 'codex:ide-context',
-    name: 'ide-context',
-    label: 'IDE context',
-    description: 'Include current selection, open files, and IDE context.',
-    argumentHint: '',
-    aliases: ['context'],
-    iconKey: 'ide-context',
-    commandText: '/context ',
-    surfaces: ['slashCommand'],
-  },
-  {
-    id: 'codex:review',
-    name: 'review',
-    label: 'Code review',
-    description: 'Review unstaged changes or compare with a branch.',
-    argumentHint: '[target]',
-    aliases: ['code-review'],
-    iconKey: 'code-review',
-    commandText: '/review ',
-    surfaces: ['slashCommand'],
-  },
-  {
-    id: 'codex:compact',
-    name: 'compact',
-    label: 'Compact',
-    description: 'Compact this conversation context.',
-    argumentHint: '[instructions]',
-    aliases: ['summarize'],
-    iconKey: 'compact',
-    commandText: '/compact ',
-    surfaces: ['slashCommand', 'runtimePanel'],
-  },
-  {
-    id: 'codex:feedback',
-    name: 'feedback',
-    label: 'Feedback',
-    description: 'Send feedback about this chat.',
-    argumentHint: '',
-    iconKey: 'feedback',
-    commandText: '/feedback ',
-    surfaces: ['slashCommand'],
-  },
-  {
-    id: 'codex:goal',
-    name: 'goal',
-    label: 'Goal',
-    description: 'Set or show the active objective.',
-    argumentHint: '<objective>',
-    aliases: ['objective'],
-    iconKey: 'goal',
-    commandText: '/goal ',
-    surfaces: ['slashCommand', 'composerState', 'runtimePanel'],
-  },
-  {
-    id: 'codex:status',
-    name: 'status',
-    label: 'Status',
-    description: 'Switch or inspect context usage.',
-    argumentHint: '',
-    iconKey: 'status',
-    commandText: '/status ',
-    surfaces: ['slashCommand'],
-  },
-]
-
 export interface MergeChatSlashCommandsInput {
   runtimeCommands: ChatSlashCommand[]
   runtimeUiSlotCommands?: ChatComposerSlashCommand[]
   cradleCommands: ChatComposerSlashCommand[]
   fallbackRuntimeCommands?: ChatComposerSlashCommand[]
+}
+
+export interface ProjectRuntimeComposerSlashCommandsInput {
+  capabilities?: ChatRuntimeCapabilities | null
+  runtimeKind?: RuntimeKind | string | null
+  slotStates?: ChatRuntimeUiSlotState[]
+  mode?: RuntimeComposerSlashCommandMode
+  cradleCommands?: ChatComposerSlashCommand[]
+  mapRuntimeUiSlotCommand?: (command: ChatComposerSlashCommand) => ChatComposerSlashCommand
 }
 
 function normalizeCommandName(name: string): string {
@@ -323,19 +267,34 @@ export function mergeChatSlashCommands({
   ]
 }
 
+export function projectRuntimeComposerSlashCommands({
+  capabilities,
+  runtimeKind,
+  slotStates = [],
+  mode = 'session',
+  cradleCommands = [],
+  mapRuntimeUiSlotCommand,
+}: ProjectRuntimeComposerSlashCommandsInput): ChatComposerSlashCommand[] {
+  const runtimeUiSlotCommands = createRuntimeUiSlotCommands(capabilities?.uiSlots ?? [], slotStates, mode)
+    .map(command => mapRuntimeUiSlotCommand ? mapRuntimeUiSlotCommand(command) : command)
+
+  return mergeChatSlashCommands({
+    runtimeCommands: capabilities?.slashCommands ?? [],
+    runtimeUiSlotCommands,
+    fallbackRuntimeCommands: getRuntimeComposerSlashCommands(capabilities?.runtimeKind ?? runtimeKind),
+    cradleCommands,
+  })
+}
+
 export function getFallbackRuntimeSlashCommands(runtimeKind: RuntimeKind | string | null | undefined): ChatComposerSlashCommand[] {
-  return getRuntimeComposerSlashCommands(runtimeKind, 'draft')
+  return getRuntimeComposerSlashCommands(runtimeKind)
 }
 
 export function getRuntimeComposerSlashCommands(
   runtimeKind: RuntimeKind | string | null | undefined,
-  mode: RuntimeComposerSlashCommandMode = 'session',
 ): ChatComposerSlashCommand[] {
   if (runtimeKind === 'cli-tui') {
     return []
-  }
-  if (runtimeKind === 'codex') {
-    return createRuntimeUiSlotCommands(CODEX_DRAFT_RUNTIME_UI_SLOTS, [], mode)
   }
   return CRADLE_FALLBACK_RUNTIME_SLASH_COMMANDS
 }
@@ -446,7 +405,11 @@ function readCompactCommandState(state: ChatRuntimeCompactUiSlotState): { label:
     return { label: 'Compacted', tone: 'success', visual }
   }
   if (state.total.totalTokens > 0) {
-    return { label: `${formatCompactTokenCount(state.total.totalTokens)} tokens`, tone: 'neutral', visual }
+    return {
+      label: `${TOKEN_COUNT_FORMATTER.format(state.total.totalTokens)} tokens`,
+      tone: 'neutral',
+      visual,
+    }
   }
   return null
 }
@@ -628,10 +591,6 @@ function readStatusCommandState(state: ChatRuntimeStatusUiSlotState): { label: s
         ? 'warning'
         : 'neutral',
   }
-}
-
-function formatCompactTokenCount(value: number): string {
-  return new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value)
 }
 
 function formatRuntimePhrase(value: string): string {

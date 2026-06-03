@@ -1,6 +1,5 @@
 import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -8,6 +7,7 @@ import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
 import type { DesktopUpdateStatus } from '~/lib/electron'
 import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
+import { formatCompactBytes } from '~/lib/number-format'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 
@@ -20,23 +20,6 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   updateDownloaded: false,
   updateInfo: null,
   errorMessage: 'Desktop updates are only available in the Electron app',
-}
-
-const ByteSizeLabelSchema = z.number()
-  .finite()
-  .nonnegative()
-  .transform((bytes) => {
-    if (bytes === 0) {
-      return '0 B'
-    }
-    const units = ['B', 'KB', 'MB', 'GB'] as const
-    const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1)
-    const amount = bytes / 1024 ** exponent
-    return `${amount.toFixed(amount >= 10 || exponent === 0 ? 0 : 1)} ${units[exponent]}`
-  })
-
-function formatBytes(value: number): string {
-  return ByteSizeLabelSchema.parse(value)
 }
 
 function readTargetVersion(status: DesktopUpdateStatus): string | null {
@@ -153,7 +136,7 @@ export function DesktopUpdateSettings() {
             {targetVersion ?? 'None'}
           </span>
           {targetSize > 0 && (
-            <span className="text-[11px] text-muted-foreground">{formatBytes(targetSize)}</span>
+            <span className="text-[11px] text-muted-foreground">{formatCompactBytes(targetSize)}</span>
           )}
         </div>
       </SettingsRow>

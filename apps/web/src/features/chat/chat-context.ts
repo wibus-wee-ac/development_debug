@@ -6,6 +6,7 @@ import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
 import { jarvisContextRegistry } from '~/features/context/context-registry'
+import { clampRatio } from '~/lib/number-format'
 
 export interface ChatAttentionSnapshot {
   sessionId: string
@@ -26,13 +27,6 @@ function publishSnapshotChange(): void {
   for (const listener of listeners) {
     listener()
   }
-}
-
-function clampRatio(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-  return Math.max(0, Math.min(1, value))
 }
 
 function createChatContextItem(snapshot: ChatAttentionSnapshot, now: number): ContextItem {

@@ -1,8 +1,10 @@
 import type { UIMessage } from 'ai'
 import type { Ref } from 'react'
 import { memo, useCallback, useImperativeHandle, useReducer, useRef } from 'react'
+import { clamp } from 'es-toolkit'
 
 import { cn } from '~/lib/cn'
+import { clampRatio } from '~/lib/number-format'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -220,7 +222,7 @@ function ChatMinimapInner({
       if (anchorCount === 0 || height === 0) {
         return 0
       }
-      const ratio = Math.max(0, Math.min(1, y / height))
+      const ratio = clampRatio(y / height)
       return Math.min(Math.floor(ratio * anchorCount), anchorCount - 1)
     },
     [anchorCount],
@@ -229,7 +231,7 @@ function ChatMinimapInner({
   // Map mouse Y → scroll offset
   const yToScroll = useCallback(
     (y: number, height: number) => {
-      const ratio = Math.max(0, Math.min(1, y / height))
+      const ratio = clampRatio(y / height)
       return ratio * scrollable
     },
     [scrollable],
@@ -257,7 +259,7 @@ function ChatMinimapInner({
       if (!rect) {
         return
       }
-      const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height))
+      const y = clamp(e.clientY - rect.top, 0, rect.height)
       dispatch({
         type: 'pointer-move',
         hoverIdx: yToIndex(y, rect.height),
@@ -288,7 +290,7 @@ function ChatMinimapInner({
         return
       }
 
-      const y = Math.max(0, Math.min(clientY - rect.top, rect.height))
+      const y = clamp(clientY - rect.top, 0, rect.height)
       const anchor = anchors[yToIndex(y, rect.height)]
       if (anchor) {
         onScrollToIndex(anchor.messageIndex)

@@ -43,15 +43,3 @@ export function calculateMilestoneProgress(
     percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
   }
 }
-
-export function formatMilestoneDueDate(dueDate: number | null): string {
-  if (!dueDate) {
-    return 'No due date'
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-  }).format(new Date(dueDate * 1000))
-}

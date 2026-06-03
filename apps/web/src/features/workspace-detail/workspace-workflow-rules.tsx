@@ -16,27 +16,6 @@ const WorkflowRuleSchema = z.object({
   profileSpecific: z.string().nullable(),
 })
 
-function useWorkflowRule(workspaceId: string, agentId: string | null) {
-  return useQuery({
-    queryKey: ['workflow-rules', workspaceId, agentId],
-    queryFn: async () => {
-      const { data } = await getWorkflowRulesByWorkspaceId({
-        path: { workspaceId },
-        query: agentId ? { agentProfileId: agentId } : {},
-      })
-      return WorkflowRuleSchema.parse(data)
-    },
-    enabled: !!workspaceId,
-  })
-}
-
-export function useWorkspaceWorkflowRuleContent(workspaceId: string, agentId: string | null) {
-  const { data } = useWorkflowRule(workspaceId, agentId)
-  return agentId
-    ? (data?.profileSpecific ?? null)
-    : (data?.global ?? null)
-}
-
 function useSaveWorkflowRule() {
   const queryClient = useQueryClient()
   return useMutation({
@@ -92,7 +71,17 @@ export function WorkspaceWorkflowRules({
   onSelectedAgentId: (agentId: string | null) => void
 }) {
   const { agents, isSuccess: agentsReady } = useAgents()
-  const workflowRule = useWorkflowRule(workspaceId, selectedAgentId)
+  const workflowRule = useQuery({
+    queryKey: ['workflow-rules', workspaceId, selectedAgentId],
+    queryFn: async () => {
+      const { data } = await getWorkflowRulesByWorkspaceId({
+        path: { workspaceId },
+        query: selectedAgentId ? { agentProfileId: selectedAgentId } : {},
+      })
+      return WorkflowRuleSchema.parse(data)
+    },
+    enabled: !!workspaceId,
+  })
   const saveMutation = useSaveWorkflowRule()
   const enabledAgents = agents.filter(a => a.enabled)
 

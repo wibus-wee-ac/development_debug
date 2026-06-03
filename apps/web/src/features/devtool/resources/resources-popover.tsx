@@ -18,6 +18,13 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
+import {
+  bytesToMegabytes,
+  formatCpuPercent,
+  formatMegabytes,
+  formatResourceUsage,
+  formatUptimeSeconds,
+} from '~/lib/number-format'
 
 const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
@@ -155,32 +162,6 @@ interface ResourceSnapshotInput {
   pty: PtyResources | null
   chronicle: ChronicleResources | null
   timestamp: number
-}
-
-function toMB(bytes: number, decimals = 0): string {
-  const mb = bytes / 1024 / 1024
-  return decimals > 0 ? mb.toFixed(decimals) : Math.round(mb).toString()
-}
-
-function formatMemoryLabel(mb: number): string {
-  if (mb >= 1024) {
-    return `${(mb / 1024).toFixed(2)} GB`
-  }
-  return `${Math.round(mb)} MB`
-}
-
-function formatCpuLabel(percent: number | null): string {
-  if (percent === null) {
-    return '—'
-  }
-  if (percent > 0 && percent < 0.1) {
-    return '<0.1%'
-  }
-  return `${percent.toFixed(percent < 10 ? 1 : 0)}%`
-}
-
-function formatResourceLabel(memoryMB: number, cpuPercent: number | null): string {
-  return `${formatMemoryLabel(memoryMB)} / ${formatCpuLabel(cpuPercent)}`
 }
 
 function readRendererMemory(): RendererMemory {
@@ -369,7 +350,7 @@ function useResourceSnapshot() {
       const [healthRes, ptyRes, chronicleRes] = await Promise.allSettled([
         requestResourceJson(`${SERVER_BASE}/health`).then(data => ServerHealthSchema.parse(data) satisfies ServerHealth),
         requestResourceJson(`${SERVER_BASE}/terminal-sessions/resources`).then(data => PtyResourcesSchema.parse(data) satisfies PtyResources),
-        requestResourceJson(`${SERVER_BASE}/chronicle/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources),
+        requestResourceJson(`${SERVER_BASE}/chronicle/daemon/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources),
       ])
 
       if (requestId === requestRef.current) {
@@ -421,11 +402,11 @@ export function ResourcesPopover() {
     }
   }, [open, refresh])
 
-  const totalRendererMB = snap ? Number(toMB(snap.rendererHeapUsed)) : 0
-  const totalServerMB = snap ? Number(toMB(snap.serverRss)) : 0
-  const totalCliTuiMB = snap ? Number(toMB(snap.cliTuiRss)) : 0
-  const totalBottomPanelMB = snap ? Number(toMB(snap.bottomPanelRss)) : 0
-  const totalChronicleMB = snap ? Number(toMB(snap.chronicleRss)) : 0
+  const totalRendererMB = snap ? bytesToMegabytes(snap.rendererHeapUsed) : 0
+  const totalServerMB = snap ? bytesToMegabytes(snap.serverRss) : 0
+  const totalCliTuiMB = snap ? bytesToMegabytes(snap.cliTuiRss) : 0
+  const totalBottomPanelMB = snap ? bytesToMegabytes(snap.bottomPanelRss) : 0
+  const totalChronicleMB = snap ? bytesToMegabytes(snap.chronicleRss) : 0
   const totalMB = totalRendererMB + totalServerMB + totalCliTuiMB + totalBottomPanelMB + totalChronicleMB
   const totalCpuPercent = snap
     ? Math.round((
@@ -438,9 +419,9 @@ export function ResourcesPopover() {
   const cliTuiTerminals = snap?.terminals.filter(item => item.role === 'cli-tui') ?? []
   const bottomPanelTerminals = snap?.terminals.filter(item => item.role === 'bottom-panel') ?? []
 
-  const triggerLabel = snap ? formatResourceLabel(totalMB, totalCpuPercent) : '— MB / —'
+  const triggerLabel = snap ? formatResourceUsage(totalMB, totalCpuPercent) : '— MB / —'
   const footerStatusLabel = snap
-    ? `Uptime ${formatUptime(snap.serverUptime)} · Updated ${snap.updatedAtLabel}`
+    ? `Uptime ${formatUptimeSeconds(snap.serverUptime)} · Updated ${snap.updatedAtLabel}`
     : ''
 
   return (
@@ -488,7 +469,7 @@ export function ResourcesPopover() {
             </div>
             <div className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none">
               <MemoryStickIcon className="size-4 text-muted-foreground" />
-              {formatMemoryLabel(totalMB)}
+              {formatMegabytes(totalMB)}
             </div>
           </div>
           <div className="bg-popover px-3 py-2.5">
@@ -497,7 +478,7 @@ export function ResourcesPopover() {
             </div>
             <div className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none">
               <CpuIcon className="size-4 text-muted-foreground" />
-              {formatCpuLabel(totalCpuPercent)}
+              {formatCpuPercent(totalCpuPercent)}
             </div>
           </div>
         </div>
@@ -532,25 +513,25 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<MonitorIcon className="size-3.5" />}
               label="Renderer"
-              value={snap ? formatResourceLabel(Number(toMB(snap.rendererHeapUsed)), null) : '—'}
+              value={snap ? formatResourceUsage(bytesToMegabytes(snap.rendererHeapUsed), null) : '—'}
             >
               {snap && snap.rendererHeapUsed > 0 && (
                 <>
                   <SectionRow
                     label="Heap Used"
-                    value={`${toMB(snap.rendererHeapUsed, 1)} MB`}
+                    value={formatMegabytes(bytesToMegabytes(snap.rendererHeapUsed), 1)}
                     dimLabel
                     branch="middle"
                   />
                   <SectionRow
                     label="Heap Total"
-                    value={`${toMB(snap.rendererHeapTotal, 1)} MB`}
+                    value={formatMegabytes(bytesToMegabytes(snap.rendererHeapTotal), 1)}
                     dimLabel
                     branch="middle"
                   />
                   <SectionRow
                     label="CPU"
-                    value={formatCpuLabel(null)}
+                    value={formatCpuPercent(null)}
                     dimLabel
                     branch="last"
                   />
@@ -563,31 +544,31 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<ServerIcon className="size-3.5" />}
               label="Server"
-              value={snap ? formatResourceLabel(Number(toMB(snap.serverRss)), snap.serverCpuPercent) : '—'}
+              value={snap ? formatResourceUsage(bytesToMegabytes(snap.serverRss), snap.serverCpuPercent) : '—'}
             >
               {snap && snap.serverRss > 0 && (
                 <>
                   <SectionRow
                     label="Heap Used"
-                    value={`${toMB(snap.serverHeapUsed, 1)} MB`}
+                    value={formatMegabytes(bytesToMegabytes(snap.serverHeapUsed), 1)}
                     dimLabel
                     branch="middle"
                   />
                   <SectionRow
                     label="Heap Total"
-                    value={`${toMB(snap.serverHeapTotal, 1)} MB`}
+                    value={formatMegabytes(bytesToMegabytes(snap.serverHeapTotal), 1)}
                     dimLabel
                     branch="middle"
                   />
                   <SectionRow
                     label="External"
-                    value={`${toMB(snap.serverExternal, 1)} MB`}
+                    value={formatMegabytes(bytesToMegabytes(snap.serverExternal), 1)}
                     dimLabel
                     branch="middle"
                   />
                   <SectionRow
                     label="CPU"
-                    value={formatCpuLabel(snap.serverCpuPercent)}
+                    value={formatCpuPercent(snap.serverCpuPercent)}
                     dimLabel
                     branch="last"
                   />
@@ -603,7 +584,7 @@ export function ResourcesPopover() {
               icon={<ActivityIcon className="size-3.5" />}
               label="Chronicle"
               value={snap?.chronicleRunning
-                ? formatResourceLabel(Number(toMB(snap.chronicleRss)), snap.chronicleCpuPercent)
+                ? formatResourceUsage(bytesToMegabytes(snap.chronicleRss), snap.chronicleCpuPercent)
                 : 'Off'}
             >
               {snap?.chronicleRunning
@@ -611,7 +592,7 @@ export function ResourcesPopover() {
                 <SectionRow
                   label="cradle-chronicle"
                   detail={snap.chroniclePid ? `pid ${snap.chroniclePid}` : undefined}
-                  value={`${snap.chronicleRss > 0 ? `${toMB(snap.chronicleRss, 1)} MB` : '—'} / ${formatCpuLabel(snap.chronicleCpuPercent)}`}
+                  value={`${snap.chronicleRss > 0 ? formatMegabytes(bytesToMegabytes(snap.chronicleRss), 1) : '—'} / ${formatCpuPercent(snap.chronicleCpuPercent)}`}
                   dimLabel
                   branch="last"
                 />
@@ -626,7 +607,7 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<SquareTerminalIcon className="size-3.5" />}
               label="CLI TUI"
-              value={snap ? formatResourceLabel(Number(toMB(snap.cliTuiRss)), snap.cliTuiCpuPercent) : '—'}
+              value={snap ? formatResourceUsage(bytesToMegabytes(snap.cliTuiRss), snap.cliTuiCpuPercent) : '—'}
             >
               {cliTuiTerminals.length > 0
 ? (
@@ -635,7 +616,7 @@ export function ResourcesPopover() {
                     key={item.id}
                     label={basename(item.executable)}
                     detail={`pid ${item.pid}`}
-                    value={`${item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)} / ${formatCpuLabel(item.cpuPercent)}`}
+                    value={`${item.rssMB === null ? '—' : formatMegabytes(item.rssMB)} / ${formatCpuPercent(item.cpuPercent)}`}
                     dimLabel
                     branch={index === cliTuiTerminals.length - 1 ? 'last' : 'middle'}
                   />
@@ -651,7 +632,7 @@ export function ResourcesPopover() {
             <ResourceGroup
               icon={<PanelBottomIcon className="size-3.5" />}
               label="Bottom Panel"
-              value={snap ? formatResourceLabel(Number(toMB(snap.bottomPanelRss)), snap.bottomPanelCpuPercent) : '—'}
+              value={snap ? formatResourceUsage(bytesToMegabytes(snap.bottomPanelRss), snap.bottomPanelCpuPercent) : '—'}
             >
               {bottomPanelTerminals.length > 0
 ? (
@@ -660,7 +641,7 @@ export function ResourcesPopover() {
                     key={item.id}
                     label={basename(item.executable)}
                     detail={`pid ${item.pid}`}
-                    value={`${item.rssMB === null ? '—' : formatMemoryLabel(item.rssMB)} / ${formatCpuLabel(item.cpuPercent)}`}
+                    value={`${item.rssMB === null ? '—' : formatMegabytes(item.rssMB)} / ${formatCpuPercent(item.cpuPercent)}`}
                     dimLabel
                     branch={index === bottomPanelTerminals.length - 1 ? 'last' : 'middle'}
                   />
@@ -687,15 +668,6 @@ export function ResourcesPopover() {
       </PopoverContent>
     </Popover>
   )
-}
-
-function formatUptime(seconds: number): string {
-  const h = Math.floor(seconds / 3600)
-  const m = Math.floor((seconds % 3600) / 60)
-  if (h > 0) {
-    return `${h}h ${m}m`
-  }
-  return `${m}m`
 }
 
 function basename(path: string): string {

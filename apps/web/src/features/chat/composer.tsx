@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, u
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import type { ChatContextPart } from './chat-context-parts'
@@ -229,16 +230,6 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
     default:
       return state
   }
-}
-
-function formatTokenCount(tokens: number): string {
-  if (tokens >= 1_000_000) {
-    return `${(tokens / 1_000_000).toFixed(1)}M`
-  }
-  if (tokens >= 1_000) {
-    return `${(tokens / 1_000).toFixed(1)}K`
-  }
-  return String(tokens)
 }
 
 const TOKEN_CIRCLE_RADIUS = 7

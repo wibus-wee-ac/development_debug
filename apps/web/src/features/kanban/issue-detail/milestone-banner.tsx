@@ -10,7 +10,6 @@ import { cn } from '~/lib/cn'
 import type { KanbanMilestone } from '~/lib/types'
 
 import type { MilestoneProgressSummary } from './milestone-progress'
-import { formatMilestoneDueDate } from './milestone-progress'
 
 export function MilestoneBanner({
   milestone,
@@ -21,7 +20,13 @@ export function MilestoneBanner({
   progress: MilestoneProgressSummary
   onOpenMilestone?: (id: string) => void
 }) {
-  const dueDateLabel = formatMilestoneDueDate(milestone.dueDate)
+  const dueDateLabel = milestone.dueDate
+    ? new Intl.DateTimeFormat(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      }).format(new Date(milestone.dueDate * 1000))
+    : 'No due date'
   const isClosed = milestone.status === 'closed'
 
   return (

@@ -15,6 +15,7 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
+import { formatTokenCount } from '~/lib/number-format'
 
 import { ModelRegistryMappingDialog } from '../model-registry/mapping-dialog'
 import { SearchResultItem } from '../model-registry/search-result-item'
@@ -24,13 +25,6 @@ import { useModelSearch } from '../model-registry/use-model-search'
 import { SettingsRow } from './settings-row'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
-
-function formatTokens(value: number | undefined): string | null {
-  if (value == null || value <= 0) {
-    return null
-  }
-  return `${Math.round(value / 1000)}k`
-}
 
 interface ModelRegistryDetailPanelProps {
   mapping: ModelRegistryMapping
@@ -233,7 +227,7 @@ export function ModelRegistryDetailPanel({
               description={t('registry.detail.contextWindowDesc' as SettingsKey)}
             >
               <span className="font-mono text-[12px] text-foreground">
-                {formatTokens(mapping.model.limit.context)}
+                {formatTokenCount(mapping.model.limit.context)}
               </span>
             </SettingsRow>
           )}

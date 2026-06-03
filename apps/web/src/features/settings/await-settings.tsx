@@ -66,19 +66,6 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
 // ── Hooks ──
 
-function useBypassRules(workspaceId: string) {
-  return useQuery({
-    queryKey: ['bypass-rules', workspaceId],
-    queryFn: async () => {
-      const { data } = await client.get<BypassRule[]>({
-        url: '/session-awaits/bypass-rules',
-        query: { workspaceId },
-      })
-      return data ?? []
-    },
-  })
-}
-
 function useBypassRuleMutations(workspaceId: string) {
   const queryClient = useQueryClient()
   const qk = ['bypass-rules', workspaceId]
@@ -115,34 +102,6 @@ function useBypassRuleMutations(workspaceId: string) {
   })
 
   return { create, remove, toggle }
-}
-
-function useDiscoveredRepos(workspaceId: string) {
-  return useQuery({
-    queryKey: ['discovered-repos', workspaceId],
-    queryFn: async () => {
-      const { data } = await client.get<string[]>({
-        url: '/session-awaits/discovered-repos',
-        query: { workspaceId },
-      })
-      return data ?? []
-    },
-  })
-}
-
-function useAvailableChecks(owner: string, repo: string) {
-  return useQuery({
-    queryKey: ['available-checks', owner, repo],
-    queryFn: async () => {
-      const { data } = await client.get<AvailableChecksResponse>({
-        url: '/session-awaits/available-checks',
-        query: { owner, repo },
-      })
-      return data
-    },
-    enabled: !!owner && !!repo,
-    staleTime: 5 * 60 * 1000,
-  })
 }
 
 // ── Sub-components ──
@@ -199,7 +158,20 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
   removeMut: ReturnType<typeof useBypassRuleMutations>['remove']
 }) {
   const parsed = parseRepoFullName(repoFullName)
-  const { data: checksData, isPending, error } = useAvailableChecks(parsed?.owner ?? '', parsed?.repo ?? '')
+  const checkOwner = parsed?.owner ?? ''
+  const checkRepo = parsed?.repo ?? ''
+  const { data: checksData, isPending, error } = useQuery({
+    queryKey: ['available-checks', checkOwner, checkRepo],
+    queryFn: async () => {
+      const { data } = await client.get<AvailableChecksResponse>({
+        url: '/session-awaits/available-checks',
+        query: { owner: checkOwner, repo: checkRepo },
+      })
+      return data
+    },
+    enabled: !!checkOwner && !!checkRepo,
+    staleTime: 5 * 60 * 1000,
+  })
   const [expanded, setExpanded] = useState(true)
 
   function findMatchingRule(checkName: string): BypassRule | undefined {
@@ -373,8 +345,26 @@ function AddRuleForm({ onSubmit, onCancel, isPending }: {
 
 const WorkspaceBypassSection = memo(function WorkspaceBypassSection({ workspace }: { workspace: Workspace }) {
   const { t } = useTranslation('settings')
-  const { data: rules = [], isPending: rulesPending } = useBypassRules(workspace.id)
-  const { data: discoveredRepos = [], isPending: reposPending } = useDiscoveredRepos(workspace.id)
+  const { data: rules = [], isPending: rulesPending } = useQuery({
+    queryKey: ['bypass-rules', workspace.id],
+    queryFn: async () => {
+      const { data } = await client.get<BypassRule[]>({
+        url: '/session-awaits/bypass-rules',
+        query: { workspaceId: workspace.id },
+      })
+      return data ?? []
+    },
+  })
+  const { data: discoveredRepos = [], isPending: reposPending } = useQuery({
+    queryKey: ['discovered-repos', workspace.id],
+    queryFn: async () => {
+      const { data } = await client.get<string[]>({
+        url: '/session-awaits/discovered-repos',
+        query: { workspaceId: workspace.id },
+      })
+      return data ?? []
+    },
+  })
   const { create, remove, toggle } = useBypassRuleMutations(workspace.id)
   const [showAdd, setShowAdd] = useState(false)
 

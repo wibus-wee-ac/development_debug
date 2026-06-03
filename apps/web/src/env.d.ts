@@ -51,8 +51,6 @@ interface Window {
       consumePendingActionRequests: () => Promise<unknown>
       onActionRequested: (handler: (request: unknown) => void) => () => void
     }
-    /** @deprecated Legacy subscribe API — prefer ipc */
-    subscribe?: (topic: string, listener: (...args: unknown[]) => void) => () => void
   }
   codex?: {
     sendPrompt: (

@@ -1,0 +1,34 @@
+// Output: Draft composer slash commands projected from provider-owned runtime capabilities.
+// Input: Selected runtime kind for pre-session composer surfaces.
+// Position: Chat feature command boundary shared by new-chat and workspace launcher composers.
+
+import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
+
+import type { RuntimeKind } from '~/lib/types'
+
+import { draftRuntimeCapabilitiesQueryKey, getDraftChatRuntimeCapabilities } from './chat-capabilities'
+import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import {
+  projectRuntimeComposerSlashCommands,
+} from './chat-slash-commands'
+
+export function useRuntimeComposerSlashCommands(
+  runtimeKind: RuntimeKind | string | null | undefined,
+): ChatComposerSlashCommand[] {
+  const { data: draftCapabilities } = useQuery({
+    queryKey: draftRuntimeCapabilitiesQueryKey(runtimeKind),
+    queryFn: ({ signal }) => getDraftChatRuntimeCapabilities(runtimeKind!, signal),
+    enabled: Boolean(runtimeKind) && runtimeKind !== 'cli-tui',
+    staleTime: 60_000,
+    retry: false,
+  })
+
+  return useMemo(() => {
+    return projectRuntimeComposerSlashCommands({
+      capabilities: draftCapabilities,
+      runtimeKind,
+      mode: 'draft',
+    })
+  }, [draftCapabilities, runtimeKind])
+}

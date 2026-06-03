@@ -25,6 +25,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { useGitBranches, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+import { clampPercent, formatElapsedSeconds } from '~/lib/number-format'
 
 import type {
   ChatRuntimeGoalUiSlotState,
@@ -339,7 +340,7 @@ function GoalSlotState({
   const budgetPercent = readGoalBudgetPercent(state)
   const statusToneClassName = readGoalStatusToneClassName(state.status)
   const displayedTimeUsedSeconds = useDisplayedGoalTimeUsedSeconds(state)
-  const elapsedLabel = formatGoalElapsedTime(displayedTimeUsedSeconds)
+  const elapsedLabel = formatElapsedSeconds(displayedTimeUsedSeconds)
   const goalStatusAction = readGoalStatusAction(state.status)
 
   return (
@@ -477,7 +478,7 @@ function readGoalBudgetPercent(state: ChatRuntimeGoalUiSlotState): number | null
   if (state.tokenBudget === null || state.tokenBudget <= 0) {
     return null
   }
-  return Math.min(100, Math.max(0, Math.round((state.tokensUsed / state.tokenBudget) * 100)))
+  return clampPercent((state.tokensUsed / state.tokenBudget) * 100)
 }
 
 function renderGoalStatusIcon(status: ChatRuntimeGoalUiSlotState['status']) {
@@ -543,19 +544,4 @@ function readGoalStatusToneClassName(status: ChatRuntimeGoalUiSlotState['status'
     default:
       return 'text-muted-foreground'
   }
-}
-
-function formatGoalElapsedTime(seconds: number): string {
-  const safeSeconds = Math.max(0, Math.floor(seconds))
-  const hours = Math.floor(safeSeconds / 3600)
-  const minutes = Math.floor((safeSeconds % 3600) / 60)
-  const remainingSeconds = safeSeconds % 60
-
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`
-  }
-  if (minutes > 0) {
-    return `${minutes}m ${remainingSeconds}s`
-  }
-  return `${remainingSeconds}s`
 }

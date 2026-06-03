@@ -1,29 +1,20 @@
 import type { DebugMetrics, DebugSnapshot } from '@cradle/tabs-next'
 import { useEffect } from 'react'
 
+import { formatTimeOnly } from '~/lib/format-time'
+
 import { startTabsDebugSync, useTabsDebugStore } from './use-tabs-debug-store'
-
-function formatNumber(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
-}
-
-function formatTimestamp(value: number | null): string {
-  if (!value) {
-    return '-'
-  }
-  return new Date(value).toLocaleTimeString('en-US', { hour12: false })
-}
 
 function MetricTable({ metrics }: { metrics: DebugMetrics }) {
   const rows: Array<[string, string]> = [
-    ['Open', formatNumber(metrics.openCount)],
-    ['Create', formatNumber(metrics.createCount)],
-    ['Activate', formatNumber(metrics.activateCount)],
-    ['Navigate', formatNumber(metrics.navigateCount)],
-    ['Close', formatNumber(metrics.closeCount)],
-    ['Renderer Commits', formatNumber(metrics.rendererCommitCount)],
-    ['Recent Duration', `${formatNumber(metrics.rendererDurationRecent)} ms`],
-    ['Total Duration', `${formatNumber(metrics.rendererDurationTotal)} ms`],
+    ['Open', String(metrics.openCount)],
+    ['Create', String(metrics.createCount)],
+    ['Activate', String(metrics.activateCount)],
+    ['Navigate', String(metrics.navigateCount)],
+    ['Close', String(metrics.closeCount)],
+    ['Renderer Commits', String(metrics.rendererCommitCount)],
+    ['Recent Duration', `${metrics.rendererDurationRecent.toFixed(1)} ms`],
+    ['Total Duration', `${metrics.rendererDurationTotal.toFixed(1)} ms`],
   ]
 
   return (
@@ -51,7 +42,7 @@ function SnapshotSummary({
 }) {
   const rows: Array<[string, string]> = [
     ['Connection', connected ? 'live' : 'cached'],
-    ['Updated', formatTimestamp(lastMessageAt)],
+    ['Updated', lastMessageAt ? formatTimeOnly(lastMessageAt) : '-'],
     ['Active Tab', snapshot.activeTabId ?? '-'],
     ['Tabs', String(snapshot.tabCount)],
     ['Contexts', String(snapshot.contextCount)],

@@ -9,6 +9,7 @@ import { useMemo } from 'react'
 import { useSyncExternalStore } from 'react'
 
 import { cn } from '~/lib/cn'
+import { formatElapsedRangeMs, formatPercentFromRatio } from '~/lib/number-format'
 import type { RuntimeKind } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
@@ -121,7 +122,7 @@ export function RuntimeSessionPanel({
                 ? (
                   <div className="grid grid-cols-2 gap-2">
                     <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
-                    <Metric label="Scroll" value={formatScrollRatio(attentionSnapshot.scrollRatio)} />
+                    <Metric label="Scroll" value={formatPercentFromRatio(attentionSnapshot.scrollRatio)} />
                     <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
                     <Metric label="Freshness" value={formatSnapshotFreshness(attentionSnapshot.updatedAt)} />
                   </div>
@@ -153,9 +154,9 @@ export function RuntimeSessionPanel({
                 <KeyValue label="Run status" value={displayedRun?.status ?? 'none'} />
                 <KeyValue label="Provider session" value={runtimeStatus?.providerSessionId ?? displayedRun?.providerSessionId ?? 'none'} />
                 <KeyValue label="Model" value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'} />
-                <KeyValue label="First event" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
-                <KeyValue label="First content" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
-                <KeyValue label="Total" value={formatElapsed(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
+                <KeyValue label="First event" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
+                <KeyValue label="First content" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
+                <KeyValue label="Total" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
                 <KeyValue label="Queue" value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`} />
               </div>
             </section>
@@ -680,26 +681,11 @@ function formatThreadId(threadId: string): string {
   return `${threadId.slice(0, 8)}...${threadId.slice(-4)}`
 }
 
-function formatElapsed(startedAt: number | null | undefined, endedAt: number | null | undefined): string {
-  if (!startedAt || !endedAt) {
-    return 'none'
-  }
-  const ms = Math.max(0, endedAt - startedAt)
-  if (ms < 1_000) {
-    return `${ms} ms`
-  }
-  return `${(ms / 1_000).toFixed(1)} s`
-}
-
 function formatAttentionRange(snapshot: NonNullable<ReturnType<typeof readChatAttentionSnapshot>>): string {
   if (snapshot.firstVisibleIndex === null || snapshot.lastVisibleIndex === null) {
     return `${snapshot.messageCount} messages`
   }
   return `${snapshot.firstVisibleIndex + 1}-${snapshot.lastVisibleIndex + 1}/${snapshot.messageCount}`
-}
-
-function formatScrollRatio(value: number): string {
-  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`
 }
 
 function formatSnapshotFreshness(updatedAt: number): string {

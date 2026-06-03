@@ -38,6 +38,7 @@ import type { ChronicleFocusTarget } from '~/store/settings-overlay'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
+import { formatPercentFromRatio, formatShortDurationMs } from '~/lib/number-format'
 
 import type {
   ChronicleAccessibilityEvent,
@@ -2861,17 +2862,17 @@ function AudioRawSegmentList({ segments }: { segments: ChronicleAudioRawSegment[
               {formatDateTime(t, segment.recordedAt)}
             </span>
             <span className="truncate text-right">
-              {formatDurationMs(segment.durationMs)}
+              {formatShortDurationMs(segment.durationMs)}
             </span>
             <span className="truncate">
               RMS
               {' '}
-              {formatRatioPercent(segment.rms)}
+              {formatPercentFromRatio(segment.rms)}
             </span>
             <span className="truncate text-right">
               Peak
               {' '}
-              {formatRatioPercent(segment.peak)}
+              {formatPercentFromRatio(segment.peak)}
             </span>
             <span className="truncate">
               {segment.sampleRate}
@@ -2938,17 +2939,6 @@ function formatAudioProcessingStatus(t: ChronicleTranslate, status: ChronicleAud
     return t('common.status.error')
   }
   return t('audioRaw.processing.notConnected')
-}
-
-function formatDurationMs(value: number): string {
-  if (value < 1000) {
-    return `${value} ms`
-  }
-  return `${(value / 1000).toFixed(1)} s`
-}
-
-function formatRatioPercent(value: number): string {
-  return `${Math.round(value * 100)}%`
 }
 
 function formatMemoryType(t: ChronicleTranslate, type: MemoryEntry['type']): string {

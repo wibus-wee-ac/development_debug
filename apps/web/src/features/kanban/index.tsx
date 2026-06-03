@@ -33,10 +33,6 @@ interface KanbanViewProps {
   onOpenMilestone?: (id: string) => void
 }
 
-function readIssueLabel(issue: KanbanIssue, workspaces: Workspace[]): string {
-  return formatIssueId(issue, workspaces)
-}
-
 function toContextIssue(issue: KanbanIssue | null | undefined, workspaces: Workspace[]): KanbanContextIssue | null {
   if (!issue) {
     return null
@@ -44,7 +40,7 @@ function toContextIssue(issue: KanbanIssue | null | undefined, workspaces: Works
 
   return {
     id: issue.id,
-    label: readIssueLabel(issue, workspaces),
+    label: formatIssueId(issue, workspaces),
     title: issue.title,
   }
 }

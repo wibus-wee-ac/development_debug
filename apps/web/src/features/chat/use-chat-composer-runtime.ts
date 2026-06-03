@@ -20,9 +20,7 @@ import type { ChatContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CRADLE_APPSHOT_SLASH_COMMAND,
-  createRuntimeUiSlotCommands,
-  getRuntimeComposerSlashCommands,
-  mergeChatSlashCommands,
+  projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
 } from './chat-slash-commands'
 import { modelSupportsAttachments } from './composer-attachment-state'
@@ -186,22 +184,24 @@ export function useChatComposerRuntime({
 
     return [appshotCommand]
   }, [supportsAttachments])
-  const runtimeSlotCommands = useMemo(() => {
-    return createRuntimeUiSlotCommands(runtimeCapabilities?.uiSlots ?? [], runtimeUiSlotStates?.states ?? [])
-      .map(command => command.id === 'codex:review'
-        ? withSlashCommandAvailability(command, readCodexReviewAvailability({
-            workspaceId,
-            gitStatusLoading: gitStatusQuery.isLoading,
-            gitStatusUnavailable: gitStatusQuery.isError,
-          }))
-        : command)
-  }, [gitStatusQuery.isError, gitStatusQuery.isLoading, runtimeCapabilities?.uiSlots, runtimeUiSlotStates?.states, workspaceId])
-  const slashCommands = useMemo(() => mergeChatSlashCommands({
-    runtimeCommands: runtimeCapabilities?.slashCommands ?? [],
-    runtimeUiSlotCommands: runtimeSlotCommands,
-    fallbackRuntimeCommands: getRuntimeComposerSlashCommands(runtimeCapabilities?.runtimeKind ?? sessionBinding?.runtimeKind, 'session'),
+  const mapRuntimeUiSlotCommand = useCallback((command: ChatComposerSlashCommand) => {
+    if (command.id !== 'codex:review') {
+      return command
+    }
+    return withSlashCommandAvailability(command, readCodexReviewAvailability({
+      workspaceId,
+      gitStatusLoading: gitStatusQuery.isLoading,
+      gitStatusUnavailable: gitStatusQuery.isError,
+    }))
+  }, [gitStatusQuery.isError, gitStatusQuery.isLoading, workspaceId])
+  const slashCommands = useMemo(() => projectRuntimeComposerSlashCommands({
+    capabilities: runtimeCapabilities,
+    runtimeKind: sessionBinding?.runtimeKind,
+    slotStates: runtimeUiSlotStates?.states ?? [],
+    mode: 'session',
     cradleCommands: cradleSlashCommands,
-  }), [cradleSlashCommands, runtimeCapabilities?.runtimeKind, runtimeCapabilities?.slashCommands, runtimeSlotCommands, sessionBinding?.runtimeKind])
+    mapRuntimeUiSlotCommand,
+  }), [cradleSlashCommands, mapRuntimeUiSlotCommand, runtimeCapabilities, runtimeUiSlotStates?.states, sessionBinding?.runtimeKind])
 
   const { data: sessionTokens = 0 } = useQuery({
     queryKey: ['chat', 'session-usage', sessionId ?? 'no-session', messageCount] as const,
