@@ -413,6 +413,58 @@ describe('tabRenderer lifecycle retention', () => {
     expect(within(screen.getByTestId(`tab-content-${chatId}`)).queryByTestId('tab-loading')).toBeNull()
   })
 
+  it('does not rerender route content in other tabs when one tab viewState is updated', () => {
+    const renderCounts = new Map<string, number>()
+    const registry = {
+      workspace: defineTab({
+        type: 'workspace' as const,
+        label: 'Workspace',
+        component: createRenderCountComponent('workspace', renderCounts),
+      }),
+      chat: defineTab({
+        type: 'chat' as const,
+        label: (params: { sessionId: string }) => `Chat ${params.sessionId}`,
+        component: createRenderCountComponent('chat', renderCounts),
+      }),
+      settings: defineTab({
+        type: 'settings' as const,
+        label: 'Settings',
+        component: createRenderCountComponent('settings', renderCounts),
+      }),
+    }
+    const store = createTabStore(registry, { persistKey: `tabs-next-renderer-viewstate-isolation-${Math.random()}` })
+    const workspaceId = store.getState().openTab('workspace')
+    store.getState().openTab('chat', { sessionId: 'one' })
+    store.getState().openTab('settings')
+
+    render(
+      <TabsProvider store={store} registry={registry}>
+        <TabRenderer />
+      </TabsProvider>,
+    )
+
+    expect(renderCounts.get('workspace') ?? 0).toBe(1)
+    expect(renderCounts.get('chat') ?? 0).toBe(1)
+    expect(renderCounts.get('settings') ?? 0).toBe(1)
+
+    act(() => {
+      store.getState().updateTabViewState(workspaceId, 'some-key', { x: 1 })
+    })
+
+    expect(renderCounts.get('workspace') ?? 0).toBe(1)
+    expect(renderCounts.get('chat') ?? 0).toBe(1)
+    expect(renderCounts.get('settings') ?? 0).toBe(1)
+
+    act(() => {
+      store.getState().updateTabViewState(workspaceId, 'some-key', { x: 2 })
+      store.getState().updateTabViewState(workspaceId, 'some-key', { x: 3 })
+    })
+
+    expect(renderCounts.get('workspace') ?? 0).toBe(1)
+    expect(renderCounts.get('chat') ?? 0).toBe(1)
+    expect(renderCounts.get('settings') ?? 0).toBe(1)
+  })
+
   it('keeps discardable tabs on Activity hidden semantics', async () => {
     const events: string[] = []
     const registry = {

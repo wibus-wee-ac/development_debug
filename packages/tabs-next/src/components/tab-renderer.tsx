@@ -37,24 +37,24 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
   'use no memo'
   const { store, registry } = useTabsContext()
   const tabs = store(s => s.tabs)
-  const contexts = store(s => s.contexts)
   const activeTabId = store(s => s.activeTabId)
-  const contextById = new Map(contexts.map(context => [context.id, context]))
-  const activityIds: string[] = []
-  for (const tab of tabs) {
-    const context = contextById.get(tab.id)
-    const location = context ? selectCurrentLocation(context) : null
-    if (context && location && registry[location.routeId]) {
-      activityIds.push(tab.id)
-    }
-  }
   const saveScrollPositions = useCallback((tabId: string, positions: ScrollPosition[]) => {
     store.getState().updateTabViewState(tabId, SCROLL_VIEW_STATE_KEY, positions)
   }, [store])
 
   useLayoutEffect(() => {
     recordRendererCommit()
-    setActivityIdsSource(() => activityIds)
+    setActivityIdsSource(() => {
+      const { tabs: currentTabs, contexts } = store.getState()
+      const contextById = new Map(contexts.map(c => [c.id, c]))
+      return currentTabs
+        .filter((tab) => {
+          const ctx = contextById.get(tab.id)
+          const loc = ctx ? selectCurrentLocation(ctx) : null
+          return ctx && loc && registry[loc.routeId]
+        })
+        .map(tab => tab.id)
+    })
   })
 
   const handleProfilerRender: React.ComponentProps<typeof Profiler>['onRender'] = (
@@ -67,40 +67,16 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
 
   const content = (
     <div className={cn('relative min-h-0 min-w-0 overflow-hidden', className ?? 'flex-1 flex')} data-testid="tab-content-renderer">
-      {tabs.map((tab) => {
-        const context = contextById.get(tab.id)
-        const location = context ? selectCurrentLocation(context) : null
-        const route = location ? registry[location.routeId] : undefined
-        if (!context || !location || !route) {
-          return null
-        }
-
-        const visible = tab.id === activeTabId
-        const active = tab.id === activeTabId
-        const frame = (
-          <TabRouteFrame
-            key={tab.id}
-            tab={tab}
-            context={context}
-            route={route}
-            visible={visible}
-            active={active}
-            fallback={fallback}
-            wrapper={Wrapper}
-            onSaveScrollPositions={saveScrollPositions}
-          />
-        )
-
-        if (context.keepAlive === 'discardable') {
-          return (
-            <Activity key={tab.id} name={`tab:${tab.id}`} mode={active ? 'visible' : 'hidden'}>
-              {frame}
-            </Activity>
-          )
-        }
-
-        return frame
-      })}
+      {tabs.map((tab) => (
+        <TabRouteFrame
+          key={tab.id}
+          tab={tab}
+          active={tab.id === activeTabId}
+          fallback={fallback}
+          wrapper={Wrapper}
+          onSaveScrollPositions={saveScrollPositions}
+        />
+      ))}
     </div>
   )
 
@@ -121,28 +97,31 @@ export function useTabFrameActive(): boolean {
 
 const TabRouteFrame = memo(({
   tab,
-  context,
-  route,
-  visible,
   active,
   fallback,
   wrapper: Wrapper,
   onSaveScrollPositions,
 }: {
   tab: TabInstance
-  context: TabContextState
-  route: TabRouteDefinition
-  visible: boolean
   active: boolean
   fallback?: React.ReactNode
   wrapper?: React.ComponentType<{ children: React.ReactNode }>
   onSaveScrollPositions: (tabId: string, positions: ScrollPosition[]) => void
 }) => {
-  return (
+  const { store, registry } = useTabsContext()
+  const context = store(s => s.contexts.find(c => c.id === tab.id))
+  const location = context ? selectCurrentLocation(context) : null
+  const route = location ? registry[location.routeId] : undefined
+
+  if (!context || !location || !route) {
+    return null
+  }
+
+  const frame = (
     <ActivityTabFrame
       tab={tab}
       context={context}
-      visible={visible}
+      visible={active}
       onSaveScrollPositions={onSaveScrollPositions}
     >
       <TabFrameActiveContext value={active}>
@@ -155,6 +134,16 @@ const TabRouteFrame = memo(({
       </TabFrameActiveContext>
     </ActivityTabFrame>
   )
+
+  if (context.keepAlive === 'discardable') {
+    return (
+      <Activity name={`tab:${tab.id}`} mode={active ? 'visible' : 'hidden'}>
+        {frame}
+      </Activity>
+    )
+  }
+
+  return frame
 })
 
 const RetainedTabRouteContent = memo(({
