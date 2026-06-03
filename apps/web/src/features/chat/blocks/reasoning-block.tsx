@@ -2,7 +2,7 @@ import { Streamdown } from '@cradle/streamdown'
 import { useId, useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import { useStreamdownStore } from '~/store/streamdown'
+import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 interface ReasoningBlockProps {
   text: string
@@ -25,7 +25,6 @@ function BrainSvg({ className }: { className?: string }) {
 export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const contentId = useId()
-  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
 
   return (
     <div className="py-2">
@@ -61,9 +60,9 @@ export function ReasoningBlock({ text, state = 'done' }: ReasoningBlockProps) {
               <Streamdown
                 content={text}
                 streaming={state === 'streaming'}
-                animationPreset={animationPreset}
-                animateMode={animateMode}
-                showCursor={showCursor}
+                animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+                animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
+                showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
               />
             </div>
           </div>

@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 
 import { onChatRunSettled } from '~/features/chat/sse-chat-transport'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
   handleBrowserPanelTabShortcut,
@@ -9,6 +8,7 @@ import {
 } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionActivityStore } from '~/store/session-activity'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 
 function deriveVisibleChatSessionId(args: {
@@ -85,20 +85,6 @@ export function useGlobalEventListeners() {
         e.preventDefault()
         store.openTab('new-chat')
         return
-      }
-
-      // Cmd+1 through Cmd+9 → switch to tab by index
-      if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey) {
-        const digit = Number.parseInt(e.key, 10)
-        if (digit >= 1 && digit <= 9) {
-          const targetIndex = digit - 1
-          const tab = store.tabs[targetIndex]
-          if (tab) {
-            e.preventDefault()
-            store.setActiveTab(tab.id)
-          }
-          return
-        }
       }
 
       // Ctrl+Tab / Ctrl+Shift+Tab → cycle tabs

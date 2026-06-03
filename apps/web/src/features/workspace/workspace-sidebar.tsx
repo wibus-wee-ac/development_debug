@@ -31,7 +31,7 @@ import {
   Trash2Icon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 
@@ -334,7 +334,7 @@ function WorkspaceTextInputDialog({
 
 // ── Session item ──────────────────────────────────────────────────────────────
 
-function SessionItem({
+const SessionItem = memo(({
   session,
   workspaceId,
   workspacePath,
@@ -344,8 +344,7 @@ function SessionItem({
   workspaceId: string
   workspacePath: string
   onOpenSession?: (sessionId: string) => void
-}) {
-  'use no memo'
+}) => {
   const { t } = useTranslation('workspace')
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
   const { openNewTab, openTab } = useCradleNavigation()
@@ -725,11 +724,12 @@ function SessionItem({
       </ContextMenuContent>
     </ContextMenu>
   )
-}
+})
+SessionItem.displayName = 'SessionItem'
 
 // ── Workspace group ───────────────────────────────────────────────────────────
 
-function WorkspaceGroup({
+const WorkspaceGroup = memo(({
   workspace,
   sessions,
   onDelete,
@@ -739,7 +739,7 @@ function WorkspaceGroup({
   sessions: WorkspaceSession[]
   onDelete: (id: string) => void
   onTogglePin: (id: string, pinned: boolean) => void
-}) {
+}) => {
   const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
@@ -1205,7 +1205,8 @@ function WorkspaceGroup({
       </AnimatePresence>
     </div>
   )
-}
+})
+WorkspaceGroup.displayName = 'WorkspaceGroup'
 
 // ── Top nav items ─────────────────────────────────────────────────────────────
 
@@ -1284,6 +1285,117 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
 }
 
 // ── Main sidebar content ──────────────────────────────────────────────────────
+
+interface WorkspaceSidebarBodyProps {
+  workspaces: Workspace[]
+  sessionsByWorkspaceId: Map<string, WorkspaceSession[]>
+  adding: boolean
+  onAddFromPicker: () => void
+  onDelete: (id: string) => void
+  onTogglePin: (id: string, pinned: boolean) => void
+}
+
+const WorkspaceSidebarBody = memo(({
+  workspaces,
+  sessionsByWorkspaceId,
+  adding,
+  onAddFromPicker,
+  onDelete,
+  onTogglePin,
+}: WorkspaceSidebarBodyProps) => {
+  const { t } = useTranslation('workspace')
+
+  return (
+    <>
+      {/* ── Kanban section ── */}
+      <KanbanSidebar collapsed={false} />
+
+      {/* ── Plugins section ── */}
+      <PluginsSidebar collapsed={false} />
+
+      {/* ── Projects section ── */}
+      <div className="flex min-w-0 flex-col">
+        <div className="flex items-center px-2.5 py-1.5">
+          <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
+            {t('sidebar.projects.title')}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+              title={t('sidebar.action.sort')}
+            >
+              <SlidersHorizontalIcon className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+              title={t('sidebar.action.filter')}
+              onClick={() => {
+                toastManager.add({
+                  type: 'error',
+                  title: t('sidebar.filterSoon.title'),
+                  description: t('sidebar.filterSoon.description'),
+                })
+              }}
+            >
+              <GitBranchIcon className="size-3" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+              onClick={onAddFromPicker}
+              disabled={adding}
+              title={t('sidebar.action.addProject')}
+              data-testid="add-workspace-btn"
+            >
+              <PlusIcon className="size-3" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Workspace list */}
+        <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
+          {workspaces.length === 0 && (
+            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+              <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
+                <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
+                <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
+              </div>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={onAddFromPicker}
+                disabled={adding}
+                className="mt-1 border-dashed"
+                data-testid="add-workspace-empty-btn"
+              >
+                <PlusIcon />
+                {t('sidebar.action.addProject')}
+              </Button>
+            </div>
+          )}
+          {workspaces.map(workspace => (
+            <WorkspaceGroup
+              key={workspace.id}
+              workspace={workspace}
+              sessions={sessionsByWorkspaceId.get(workspace.id) ?? []}
+              onDelete={onDelete}
+              onTogglePin={onTogglePin}
+            />
+          ))}
+        </nav>
+      </div>
+    </>
+  )
+})
+WorkspaceSidebarBody.displayName = 'WorkspaceSidebarBody'
 
 export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { t } = useTranslation('workspace')
@@ -1387,99 +1499,16 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
         viewportClassName="min-w-0 max-w-full overflow-x-hidden"
         contentClassName="min-w-0 max-w-full overflow-x-hidden"
       >
-        {collapsed
-          ? (
-            <></>
-          )
-          : (
-            <>
-              {/* ── Kanban section ── */}
-              <KanbanSidebar collapsed={false} />
-
-              {/* ── Plugins section ── */}
-              <PluginsSidebar collapsed={false} />
-
-              {/* ── Projects section ── */}
-              <div className="flex min-w-0 flex-col">
-                <div className="flex items-center px-2.5 py-1.5">
-                  <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
-                    {t('sidebar.projects.title')}
-                  </span>
-                  <div className="flex items-center gap-0.5">
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                      title={t('sidebar.action.sort')}
-                    >
-                      <SlidersHorizontalIcon className="size-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                      title={t('sidebar.action.filter')}
-                      onClick={() => {
-                        toastManager.add({
-                          type: 'error',
-                          title: t('sidebar.filterSoon.title'),
-                          description: t('sidebar.filterSoon.description'),
-                        })
-                      }}
-                    >
-                      <GitBranchIcon className="size-3" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-xs"
-                      className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-                      onClick={addFromPicker}
-                      disabled={adding}
-                      title={t('sidebar.action.addProject')}
-                      data-testid="add-workspace-btn"
-                    >
-                      <PlusIcon className="size-3" />
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Workspace list */}
-                <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
-                  {workspaces.length === 0 && (
-                    <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-                      <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
-                        <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
-                        <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="xs"
-                        onClick={addFromPicker}
-                        disabled={adding}
-                        className="mt-1 border-dashed"
-                        data-testid="add-workspace-empty-btn"
-                      >
-                        <PlusIcon />
-                        {t('sidebar.action.addProject')}
-                      </Button>
-                    </div>
-                  )}
-                  {sortedWorkspaces.map(workspace => (
-                    <WorkspaceGroup
-                      key={workspace.id}
-                      workspace={workspace}
-                      sessions={sessionsByWorkspaceId.get(workspace.id) ?? []}
-                      onDelete={handleDelete}
-                      onTogglePin={handleToggleWorkspacePin}
-                    />
-                  ))}
-                </nav>
-              </div>
-            </>
-          )}
+        <div className={cn(collapsed ? 'hidden' : 'contents')}>
+          <WorkspaceSidebarBody
+            workspaces={sortedWorkspaces}
+            sessionsByWorkspaceId={sessionsByWorkspaceId}
+            adding={adding}
+            onAddFromPicker={addFromPicker}
+            onDelete={handleDelete}
+            onTogglePin={handleToggleWorkspacePin}
+          />
+        </div>
       </ScrollArea>
     </div>
   )

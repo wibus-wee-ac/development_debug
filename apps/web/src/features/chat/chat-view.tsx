@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
@@ -78,7 +78,7 @@ interface ChatViewProps {
 
 const EMPTY_FILES: MentionItem[] = []
 
-function ChatMessageListPane({
+const ChatMessageListPane = memo(({
   sessionId,
   messageIds,
   messageCount,
@@ -96,7 +96,7 @@ function ChatMessageListPane({
   isReady: boolean
   scrollRuntime: ChatScrollRuntime
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-}) {
+}) => {
   const { t } = useTranslation('chat')
 
   return (
@@ -162,7 +162,8 @@ function ChatMessageListPane({
       />
     </div>
   )
-}
+})
+ChatMessageListPane.displayName = 'ChatMessageListPane'
 
 function ChatAwaitBanner({
   awaitSummary,

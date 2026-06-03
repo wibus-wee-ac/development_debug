@@ -2,7 +2,7 @@ import { Streamdown } from '@cradle/streamdown'
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import { useStreamdownStore } from '~/store/streamdown'
+import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 interface ReasoningBlockProps {
   text: string
@@ -12,7 +12,6 @@ interface ReasoningBlockProps {
 export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
   const [expanded, setExpanded] = useState(false)
   const isStreaming = state === 'streaming'
-  const { animationPreset, animateMode } = useStreamdownStore()
 
   return (
     <div className="my-1" data-testid="chat-reasoning-block">
@@ -60,8 +59,8 @@ export function ReasoningBlock({ text, state }: ReasoningBlockProps) {
             <Streamdown
               content={text}
               streaming={isStreaming}
-              animationPreset={animationPreset}
-              animateMode={animateMode}
+              animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+              animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
               showCursor={false}
             />
           </div>

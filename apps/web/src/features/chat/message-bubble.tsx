@@ -13,7 +13,7 @@ import { cn } from '~/lib/cn'
 import { formatShortDurationMs } from '~/lib/number-format'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
-import { useStreamdownStore } from '~/store/streamdown'
+import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 import { AppshotAttachmentCard } from './appshot-attachment'
 import { readCradleAppshotMetadata } from './appshot-attachment-model'
@@ -672,7 +672,6 @@ function ToolCallBlockFromPart({
   animated?: boolean
   sessionId?: string | null
 }) {
-  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const workspaceDiffTarget = useSessionLayoutStore(
     useShallow((state) => {
       if (!sessionId) {
@@ -710,9 +709,9 @@ function ToolCallBlockFromPart({
             <SubagentMessageContent
               message={subagentMessage}
               isStreaming={readToolPreliminary(part)}
-              animationPreset={animationPreset}
-              animateMode={animateMode}
-              showCursor={showCursor}
+              animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+              animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
+              showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
             />
           )
         : null}
@@ -795,7 +794,7 @@ function GroupedToolCallBlockByPartIndexes({
   return <GroupedToolCallBlockFromParts items={parts} uiKind={uiKind} sessionId={sessionId} />
 }
 
-function MessageTextPartById({
+const MessageTextPartById = memo(({
   sessionId,
   messageId,
   partIndex,
@@ -807,9 +806,8 @@ function MessageTextPartById({
   partIndex: number
   isUser: boolean
   isActiveStreamingSegment: boolean
-}) {
+}) => {
   const text = useChatStore(state => readTextPartFromState(state, sessionId, messageId, partIndex))
-  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
   const displayText = isUser ? readUserDisplayText(text) : text
   const animated = displayText.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS
 
@@ -821,15 +819,16 @@ function MessageTextPartById({
     <Streamdown
       content={displayText}
       streaming={isActiveStreamingSegment}
-      animationPreset={animationPreset}
-      animateMode={animateMode}
-      showCursor={showCursor}
+      animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+      animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
+      showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
       animated={animated}
     />
   )
-}
+})
+MessageTextPartById.displayName = 'MessageTextPartById'
 
-function MessageReasoningPartById({
+const MessageReasoningPartById = memo(({
   sessionId,
   messageId,
   partIndex,
@@ -839,7 +838,7 @@ function MessageReasoningPartById({
   messageId: string
   partIndex: number
   isActiveStreamingSegment: boolean
-}) {
+}) => {
   const part = useChatStore(
     state => readReasoningPartFromState(state, sessionId, messageId, partIndex),
     areReasoningPartsEqual,
@@ -847,9 +846,10 @@ function MessageReasoningPartById({
   const state = isActiveStreamingSegment && part.state === 'streaming' ? 'streaming' : 'done'
 
   return <ReasoningBlock text={part.text} state={state} />
-}
+})
+MessageReasoningPartById.displayName = 'MessageReasoningPartById'
 
-function MessageFilePartById({
+const MessageFilePartById = memo(({
   sessionId,
   messageId,
   partIndex,
@@ -857,15 +857,16 @@ function MessageFilePartById({
   sessionId: string
   messageId: string
   partIndex: number
-}) {
+}) => {
   const part = useChatStore(state => readFilePartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
   return <FileAttachmentBlock part={part} />
-}
+})
+MessageFilePartById.displayName = 'MessageFilePartById'
 
-function MessageSkillContextPartById({
+const MessageSkillContextPartById = memo(({
   sessionId,
   messageId,
   partIndex,
@@ -873,15 +874,16 @@ function MessageSkillContextPartById({
   sessionId: string
   messageId: string
   partIndex: number
-}) {
+}) => {
   const part = useChatStore(state => readSkillContextPartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
   return <SkillContextBlock part={part} />
-}
+})
+MessageSkillContextPartById.displayName = 'MessageSkillContextPartById'
 
-function MessageThinkingPlaceholderById({
+const MessageThinkingPlaceholderById = memo(({
   sessionId,
   messageId,
   isAssistant,
@@ -895,7 +897,7 @@ function MessageThinkingPlaceholderById({
   isStreaming: boolean
   segmentCount: number
   segments: ChatRenderSegment[]
-}) {
+}) => {
   const textLength = useChatStore(state => readPlainTextLengthFromState(state, sessionId, messageId))
   const hasActiveProgress = useChatStore(
     state => hasActiveNonTextSegmentProgress(state, sessionId, messageId, segments),
@@ -907,9 +909,10 @@ function MessageThinkingPlaceholderById({
   }
 
   return <ThinkingPlaceholder />
-}
+})
+MessageThinkingPlaceholderById.displayName = 'MessageThinkingPlaceholderById'
 
-function MessageCopyActionById({
+const MessageCopyActionById = memo(({
   sessionId,
   messageId,
   isUser,
@@ -917,7 +920,7 @@ function MessageCopyActionById({
   sessionId: string
   messageId: string
   isUser: boolean
-}) {
+}) => {
   const hasPlainText = useChatStore(state => readPlainTextPresenceFromState(state, sessionId, messageId))
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
@@ -969,9 +972,10 @@ function MessageCopyActionById({
       </Button>
     </div>
   )
-}
+})
+MessageCopyActionById.displayName = 'MessageCopyActionById'
 
-function MessageSegmentView({
+const MessageSegmentView = memo(({
   segment,
   sessionId,
   isUser,
@@ -983,7 +987,7 @@ function MessageSegmentView({
   isUser: boolean
   isActiveStreamingSegment: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
-}) {
+}) => {
   switch (segment.kind) {
     case 'text':
       return (
@@ -1034,9 +1038,10 @@ function MessageSegmentView({
     default:
       return null
   }
-}
+})
+MessageSegmentView.displayName = 'MessageSegmentView'
 
-function MessageBubbleSegmentsView({
+const MessageBubbleSegmentsView = memo(({
   sessionId,
   frame,
   segments,
@@ -1048,7 +1053,7 @@ function MessageBubbleSegmentsView({
   segments: ChatRenderSegment[]
   isStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
-}) {
+}) => {
   const isUser = frame.role === 'user'
   const isAssistant = frame.role === 'assistant'
   const { t } = useTranslation('chat')
@@ -1152,9 +1157,10 @@ function MessageBubbleSegmentsView({
       </div>
     </m.div>
   )
-}
+})
+MessageBubbleSegmentsView.displayName = 'MessageBubbleSegmentsView'
 
-export function MessageBubbleById({
+export const MessageBubbleById = memo(({
   sessionId,
   messageId,
   onToolApprovalResponse,
@@ -1162,7 +1168,7 @@ export function MessageBubbleById({
   sessionId: string | null
   messageId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
-}) {
+}) => {
   const storeSessionId = sessionId ?? ''
   const frame = useChatStore(
     state => readMessageFrameFromState(state, storeSessionId, messageId),
@@ -1187,7 +1193,8 @@ export function MessageBubbleById({
       onToolApprovalResponse={onToolApprovalResponse}
     />
   )
-}
+})
+MessageBubbleById.displayName = 'MessageBubbleById'
 
 function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
   const isUser = message.role === 'user'
@@ -1199,7 +1206,6 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const { t } = useTranslation('chat')
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
-  const { animationPreset, animateMode, showCursor } = useStreamdownStore()
 
   const isFirstAppearance = trackSeenMessageId(message.id)
 
@@ -1267,9 +1273,9 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             key={item.key}
             content={item.text}
             streaming={isStreaming}
-            animationPreset={animationPreset}
-            animateMode={animateMode}
-            showCursor={showCursor}
+            animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+            animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
+            showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
             animated={item.text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS}
           />
         )

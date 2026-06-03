@@ -10,6 +10,8 @@ const FIXED_STREAMDOWN_SETTINGS = {
   showCursor: false,
 } as const
 
+export const STREAMDOWN_RENDER_OPTIONS = FIXED_STREAMDOWN_SETTINGS
+
 interface StreamdownState {
   animationPreset: AnimationPresetName
   animateMode: 'char' | 'word'

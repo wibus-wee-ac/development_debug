@@ -1,5 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
-import { Activity, createContext, memo, Profiler, Suspense, use, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Activity, createContext, memo, Profiler, Suspense, use, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
 import { cn } from '../cn'
@@ -41,35 +40,17 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
   const contexts = store(s => s.contexts)
   const activeTabId = store(s => s.activeTabId)
   const contextById = new Map(contexts.map(context => [context.id, context]))
-  const readinessKeyById = new Map<string, string>()
   const activityIds: string[] = []
   for (const tab of tabs) {
     const context = contextById.get(tab.id)
     const location = context ? selectCurrentLocation(context) : null
     if (context && location && registry[location.routeId]) {
-      readinessKeyById.set(tab.id, serializeLocationKey(location))
       activityIds.push(tab.id)
     }
   }
-  const [readyKeys, setReadyKeys] = useState<Record<string, string>>({})
-  const [lastReadyDisplayedTabId, setLastReadyDisplayedTabId] = useState<string | null>(activeTabId)
-  const activeReadinessKey = activeTabId ? readinessKeyById.get(activeTabId) : undefined
-  const activeReady = activeTabId !== null && activeReadinessKey !== undefined && readyKeys[activeTabId] === activeReadinessKey
-  const displayedTabId = activeReady ? activeTabId : lastReadyDisplayedTabId
   const saveScrollPositions = useCallback((tabId: string, positions: ScrollPosition[]) => {
     store.getState().updateTabViewState(tabId, SCROLL_VIEW_STATE_KEY, positions)
   }, [store])
-  const handleContentReady = useCallback((tabId: string, readinessKey: string) => {
-    setReadyKeys((current) => {
-      if (current[tabId] === readinessKey) {
-        return current
-      }
-      return { ...current, [tabId]: readinessKey }
-    })
-    if (store.getState().activeTabId === tabId && lastReadyDisplayedTabId === null) {
-      setLastReadyDisplayedTabId(tabId)
-    }
-  }, [lastReadyDisplayedTabId, store])
 
   useLayoutEffect(() => {
     recordRendererCommit()
@@ -96,7 +77,6 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
 
         const visible = tab.id === activeTabId
         const active = tab.id === activeTabId
-        const readinessKey = readinessKeyById.get(tab.id) ?? tab.id
         const frame = (
           <TabRouteFrame
             key={tab.id}
@@ -105,11 +85,9 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
             route={route}
             visible={visible}
             active={active}
-            readinessKey={readinessKey}
             fallback={fallback}
             wrapper={Wrapper}
             onSaveScrollPositions={saveScrollPositions}
-            onContentReady={handleContentReady}
           />
         )
 
@@ -147,22 +125,18 @@ const TabRouteFrame = memo(({
   route,
   visible,
   active,
-  readinessKey,
   fallback,
   wrapper: Wrapper,
   onSaveScrollPositions,
-  onContentReady,
 }: {
   tab: TabInstance
   context: TabContextState
   route: TabRouteDefinition
   visible: boolean
   active: boolean
-  readinessKey: string
   fallback?: React.ReactNode
   wrapper?: React.ComponentType<{ children: React.ReactNode }>
   onSaveScrollPositions: (tabId: string, positions: ScrollPosition[]) => void
-  onContentReady: (tabId: string, readinessKey: string) => void
 }) => {
   return (
     <ActivityTabFrame
@@ -175,10 +149,8 @@ const TabRouteFrame = memo(({
         <RetainedTabRouteContent
           tab={tab}
           route={route}
-          readinessKey={readinessKey}
           fallback={fallback}
           wrapper={Wrapper}
-          onContentReady={onContentReady}
         />
       </TabFrameActiveContext>
     </ActivityTabFrame>
@@ -188,25 +160,21 @@ const TabRouteFrame = memo(({
 const RetainedTabRouteContent = memo(({
   tab,
   route,
-  readinessKey,
   fallback,
   wrapper: Wrapper,
-  onContentReady,
 }: {
   tab: TabInstance
   route: TabRouteDefinition
-  readinessKey: string
   fallback?: React.ReactNode
   wrapper?: React.ComponentType<{ children: React.ReactNode }>
-  onContentReady: (tabId: string, readinessKey: string) => void
 }) => {
   return Wrapper
     ? (
       <Wrapper>
-        <TabRouteContent tab={tab} route={route} readinessKey={readinessKey} fallback={fallback} onContentReady={onContentReady} />
+        <TabRouteContent tab={tab} route={route} fallback={fallback} />
       </Wrapper>
     )
-    : <TabRouteContent tab={tab} route={route} readinessKey={readinessKey} fallback={fallback} onContentReady={onContentReady} />
+    : <TabRouteContent tab={tab} route={route} fallback={fallback} />
 })
 
 const ActivityTabFrame = memo(({
@@ -326,12 +294,10 @@ function isRendererDurationProfilingEnabled(): boolean {
 interface TabRouteContentProps {
   tab: TabInstance
   route: TabRouteDefinition
-  readinessKey: string
   fallback?: React.ReactNode
-  onContentReady: (tabId: string, readinessKey: string) => void
 }
 
-function TabRouteContent({ tab, route, readinessKey, fallback, onContentReady }: TabRouteContentProps) {
+function TabRouteContent({ tab, route, fallback }: TabRouteContentProps) {
   'use no memo'
   const Component = route.component
 
@@ -339,34 +305,11 @@ function TabRouteContent({ tab, route, readinessKey, fallback, onContentReady }:
     return (
       <Suspense fallback={fallback ?? null}>
         <Component params={tab.params} />
-        <TabRouteReadyMarker tabId={tab.id} readinessKey={readinessKey} onContentReady={onContentReady} />
       </Suspense>
     )
   }
 
-  return <RouteLoaderBoundary tab={tab} route={route} readinessKey={readinessKey} suspenseFallback={fallback} onContentReady={onContentReady} />
-}
-
-function TabRouteReadyMarker({
-  tabId,
-  readinessKey,
-  onContentReady,
-}: {
-  tabId: string
-  readinessKey: string
-  onContentReady: (tabId: string, readinessKey: string) => void
-}) {
-  const markContentReady = useEffectEvent((nextTabId: string, nextReadinessKey: string) => {
-    onContentReady(nextTabId, nextReadinessKey)
-  })
-
-  useLayoutEffect(() => {
-    queueMicrotask(() => {
-      markContentReady(tabId, readinessKey)
-    })
-  }, [readinessKey, tabId])
-
-  return null
+  return <RouteLoaderBoundary tab={tab} route={route} suspenseFallback={fallback} />
 }
 
 interface LoaderState {
@@ -413,15 +356,11 @@ function serializeParams(params: Record<string, string | undefined>): string {
 function RouteLoaderBoundary({
   tab,
   route,
-  readinessKey,
   suspenseFallback,
-  onContentReady,
 }: {
   tab: TabInstance
   route: TabRouteDefinition
-  readinessKey: string
   suspenseFallback?: React.ReactNode
-  onContentReady: (tabId: string, readinessKey: string) => void
 }) {
   'use no memo'
   const [state, dispatch] = useReducer(loaderReducer, INITIAL_LOADER_STATE)
@@ -471,19 +410,6 @@ function RouteLoaderBoundary({
   return (
     <Suspense fallback={suspenseFallback ?? null}>
       <Component params={tab.params} loaderData={state.data} />
-      <TabRouteReadyMarker tabId={tab.id} readinessKey={readinessKey} onContentReady={onContentReady} />
     </Suspense>
   )
-}
-
-function serializeLocationKey(location: { routeId: string, params: Record<string, string | undefined>, pathname: string, search?: string }): string {
-  return JSON.stringify({
-    routeId: location.routeId,
-    pathname: location.pathname,
-    search: location.search ?? '',
-    params: Object.keys(location.params).sort().reduce<Record<string, string | undefined>>((acc, key) => {
-      acc[key] = location.params[key]
-      return acc
-    }, {}),
-  })
 }

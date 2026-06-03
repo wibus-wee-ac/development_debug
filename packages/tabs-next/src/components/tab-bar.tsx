@@ -209,7 +209,6 @@ export const TabBar = memo(({
   const pointerRef = useRef<ScreenCoordinates | null>(null)
   const dragWasTornOffRef = useRef(false)
   const dragCleanupRef = useRef<(() => void) | null>(null)
-  const metaHintTimerRef = useRef<number | null>(null)
   const [activeDragTab, setActiveDragTab] = useState<TabInstance | null>(null)
   const [showMetaTabHints, setShowMetaTabHints] = useState(false)
 
@@ -239,24 +238,30 @@ export const TabBar = memo(({
     onTabClosed?.(id)
   }, [onTabClosed, store])
 
-  const clearMetaHintTimer = useCallback(() => {
-    if (metaHintTimerRef.current === null) {
-      return
-    }
-    window.clearTimeout(metaHintTimerRef.current)
-    metaHintTimerRef.current = null
-  }, [])
-
-  const hideMetaTabHints = useCallback(() => {
-    clearMetaHintTimer()
-    setShowMetaTabHints(false)
-  }, [clearMetaHintTimer])
-
   useEffect(() => {
+    let metaHintTimerId: number | null = null
+
+    const clearMetaHintTimer = () => {
+      if (metaHintTimerId === null) {
+        return
+      }
+      window.clearTimeout(metaHintTimerId)
+      metaHintTimerId = null
+    }
+
+    const hideMetaTabHints = () => {
+      clearMetaHintTimer()
+      setShowMetaTabHints(false)
+    }
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Meta' && !event.repeat && metaHintTimerRef.current === null) {
-        metaHintTimerRef.current = window.setTimeout(() => {
-          metaHintTimerRef.current = null
+      if (event.defaultPrevented) {
+        return
+      }
+
+      if (event.key === 'Meta' && !event.repeat && metaHintTimerId === null) {
+        metaHintTimerId = window.setTimeout(() => {
+          metaHintTimerId = null
           setShowMetaTabHints(true)
         }, metaTabHintDelayMs)
       }
@@ -293,9 +298,9 @@ export const TabBar = memo(({
       window.removeEventListener('keydown', handleKeyDown, true)
       window.removeEventListener('keyup', handleKeyUp, true)
       window.removeEventListener('blur', hideMetaTabHints)
-      hideMetaTabHints()
+      clearMetaHintTimer()
     }
-  }, [handleActivate, hideMetaTabHints, tabs])
+  }, [handleActivate, tabs])
 
   const checkTearOff = useCallback((activeId: string | number) => {
     dragCleanupRef.current?.()

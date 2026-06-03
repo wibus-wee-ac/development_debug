@@ -147,6 +147,7 @@ export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, sessionS
 function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionScoped = false, showFooter = true }: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
+  const browserPanelElementRef = useRef<HTMLDivElement | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
     mainElementRef.current = el
   }, [])
@@ -227,6 +228,22 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
     setBrowserPanelOpen(false, ownerId)
   }, [setBrowserPanelOpen])
+  const handleBrowserPanelResize = useCallback((px: number) => {
+    const panel = browserPanelElementRef.current
+    if (panel) {
+      panel.style.flexBasis = `${px}px`
+    }
+  }, [])
+  const handleBrowserPanelResizeEnd = useCallback((px: number) => {
+    const mainWidth = readMainWidth()
+    const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
+    const panel = browserPanelElementRef.current
+    if (panel) {
+      panel.style.flexBasis = `${ratio * 100}%`
+    }
+    setBrowserPanelRatio(ratio)
+    setDragging(null)
+  }, [readMainWidth, setBrowserPanelRatio])
 
   const handleToggleZenSidebars = useCallback(() => {
     const shouldCollapse = !sidebarCollapsed && (!canUseRightAside || asideOpen)
@@ -290,11 +307,9 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               <ResizeHandle
                 direction="horizontal"
                 value={() => browserPanelRatio * readMainWidth()}
-                onChange={(px) => {
-                  setBrowserPanelRatio(Math.max(0.2, Math.min(0.7, px / readMainWidth())))
-                }}
+                onChange={handleBrowserPanelResize}
                 onDragStart={() => setDragging('browser')}
-                onDragEnd={() => setDragging(null)}
+                onChangeEnd={handleBrowserPanelResizeEnd}
                 min={() => readMainWidth() * 0.2}
                 max={() => readMainWidth() * 0.7}
                 inverted
@@ -302,6 +317,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               />
             )}
             <div
+              ref={browserPanelElementRef}
               className={cn(
                 'flex shrink-0 flex-col overflow-hidden',
                 browserPanelVisible && 'border-l border-border/50',
