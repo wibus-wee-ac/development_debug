@@ -39,6 +39,7 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { Skeleton } from '~/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import { formatGigabytes, formatUptimeSeconds } from '~/lib/number-format'
 
 interface SystemInfo {
   hostname: string
@@ -65,20 +66,6 @@ interface DetailRow {
   label: string
   value: string
   icon: typeof ServerIcon
-}
-
-function formatMemory(value: number): string {
-  return `${value.toFixed(1)} GB`
-}
-
-function formatUptime(hours: number): string {
-  if (hours < 24) {
-    return `${hours.toFixed(1)} hours`
-  }
-
-  const days = Math.floor(hours / 24)
-  const remainingHours = Math.round(hours % 24)
-  return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`
 }
 
 function LoadingPanel() {
@@ -238,8 +225,8 @@ function SystemInfoPanel({ isActive, routes }: { isActive: boolean, routes: WebP
     return [
       {
         label: 'Memory used',
-        value: formatMemory(info.usedMemoryGB),
-        detail: `${formatMemory(info.freeMemoryGB)} free of ${formatMemory(info.totalMemoryGB)}`,
+        value: formatGigabytes(info.usedMemoryGB),
+        detail: `${formatGigabytes(info.freeMemoryGB)} free of ${formatGigabytes(info.totalMemoryGB)}`,
         icon: MemoryStickIcon,
       },
       {
@@ -256,7 +243,7 @@ function SystemInfoPanel({ isActive, routes }: { isActive: boolean, routes: WebP
     return [
       { label: 'Hostname', value: info.hostname, icon: ServerIcon },
       { label: 'Platform', value: `${info.platform} (${info.arch})`, icon: MonitorIcon },
-      { label: 'Uptime', value: formatUptime(info.uptimeHours), icon: ActivityIcon },
+      { label: 'Uptime', value: formatUptimeSeconds(info.uptimeHours * 3600), icon: ActivityIcon },
       { label: 'Node.js', value: info.nodeVersion, icon: TerminalIcon },
     ]
   }, [info])

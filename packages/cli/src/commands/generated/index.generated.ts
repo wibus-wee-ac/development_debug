@@ -83,7 +83,6 @@ import { register as registerChroniclePipelineRunsList } from './chronicle/pipel
 import { register as registerChroniclePrivacyBreadcrumbs } from './chronicle/privacy/breadcrumbs'
 import { register as registerChroniclePrivacyExport } from './chronicle/privacy/export'
 import { register as registerChroniclePrivacyRedact } from './chronicle/privacy/redact'
-import { register as registerChronicleResources } from './chronicle/resources'
 import { register as registerChronicleSpeakerProfilesList } from './chronicle/speaker-profiles/list'
 import { register as registerChronicleSpeakerProfilesUpsert } from './chronicle/speaker-profiles/upsert'
 import { register as registerChronicleStatus } from './chronicle/status'
@@ -282,7 +281,6 @@ export function registerGeneratedCommands(program: Command): void {
   registerChroniclePrivacyBreadcrumbs(program)
   registerChroniclePrivacyExport(program)
   registerChroniclePrivacyRedact(program)
-  registerChronicleResources(program)
   registerChronicleSpeakerProfilesList(program)
   registerChronicleSpeakerProfilesUpsert(program)
   registerChronicleStatus(program)

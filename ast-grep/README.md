@@ -30,6 +30,10 @@ Default cleanup rule intent:
 - `local-intl-number-formatter-tsx`: TSX version of local `Intl.NumberFormat` detection.
 - `local-number-formatter`: local helpers that only switch between `String(...)` and `toFixed(...)`.
 - `local-number-formatter-tsx`: TSX version of local number formatter detection.
+- `local-duration-offset-formatter`: local helpers that hand-roll `mm:ss`-style duration offsets.
+- `local-duration-offset-formatter-tsx`: TSX version of local duration offset formatter detection.
+- `local-clamp-helper`: local helpers that hand-roll generic bounded numeric clamp logic.
+- `local-clamp-helper-tsx`: TSX version of local clamp helper detection.
 - `threshold-unit-formatter`: local number helpers that branch on thresholds to append units.
 - `threshold-unit-formatter-tsx`: TSX version of threshold/unit formatter detection.
 

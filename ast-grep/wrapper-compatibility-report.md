@@ -22,43 +22,11 @@ Current default cleanup baseline:
 
 | Rule | Matches |
 |---|---:|
-| compatibility-comment-marker | 7 |
-| nullable-display-fallback-formatter-tsx | 4 |
-| generated-api-call-wrapper | 3 |
-| formatter-delegation-wrapper-tsx | 3 |
-| threshold-unit-formatter-tsx | 2 |
-| formatter-delegation-wrapper | 1 |
-| local-intl-number-formatter | 1 |
-| local-number-formatter-tsx | 1 |
-| nullable-display-fallback-formatter | 1 |
-| threshold-unit-formatter | 1 |
+| all default cleanup rules | 0 |
 
 Current default findings:
 
-- `apps/server/src/modules/chat-runtime-providers/codex/app-server-tool-payload.ts:1`: compatibility re-export for Codex tool payload projection.
-- `apps/server/src/modules/chat-runtime/chat-turn-context.ts:40`: backwards-compatible class shim for old DI consumers.
-- `apps/web/src/env.d.ts:54`: deprecated legacy subscribe API.
-- `apps/web/src/features/agent-management/avatar-url.ts:1`: compatibility export from Agent Management to Agent Runtime avatar helper.
-- `apps/web/src/features/chat/use-chat-session.ts:34`: compatibility exports used by tests.
-- `apps/web/src/features/system-agent/legacy-context-items.ts:3`: transitional System Agent adapter until feature-owned providers replace the monolithic snapshot.
-- `packages/streamdown/src/hooks/use-block-animation-meta.ts:1`: deprecated no-op hook.
-- `apps/server/src/modules/acp/service.ts:294`: generated SDK pass-through `getAuditLog`.
-- `apps/web/src/features/tui/shell-api.ts:6`: generated SDK pass-through `startShell`.
-- `apps/web/src/features/tui/shell-api.ts:12`: generated SDK pass-through `stopShell`.
-- `apps/server/src/modules/chronicle/service.ts:6077`: formatter helper only delegates to another helper.
-- `apps/web/src/features/chat/runtime-ui-slot-panel.tsx:856`: formatter helper only delegates to `formatStatusLike`.
-- `apps/web/src/features/chat/runtime-ui-slot-panel.tsx:860`: formatter helper only delegates to `formatStatusLike`.
-- `apps/web/src/features/kanban/index.tsx:36`: read helper only delegates to `formatIssueId`.
-- `apps/web/src/features/chat/runtime-ui-slot-panel.tsx:864`: nullable boolean formatter hides null behind `unknown`.
-- `apps/web/src/features/chat/runtime-ui-slot-panel.tsx:871`: nullable percent formatter hides null behind `unknown`.
-- `apps/web/src/features/chat/runtime-ui-slot-panel.tsx:875`: nullable number formatter hides null behind `unknown`.
-- `apps/web/src/features/devtool/tabs/tabs-panel.tsx:10`: nullable timestamp formatter hides missing value behind a display fallback.
-- `apps/web/src/features/kanban/issue-detail/milestone-progress.ts:47`: nullable due-date formatter hides null behind a display fallback.
-- `apps/web/src/features/chat/chat-slash-commands.ts:541`: local `Intl.NumberFormat` wrapper.
-- `apps/web/src/features/devtool/tabs/tabs-panel.tsx:6`: local `String`/`toFixed` number formatter.
-- `apps/web/src/features/chat/tool-ui-classifier.ts:1350`: local threshold/unit byte formatter.
-- `apps/web/src/features/chat/message-bubble.tsx:204`: local threshold/unit duration formatter.
-- `apps/web/src/features/chronicle/chronicle-settings.tsx:2943`: local threshold/unit duration formatter.
+- None. The default cleanup scan is clean with generated/build artifacts excluded.
 
 ## Optional Facade Audit
 
@@ -78,13 +46,33 @@ Current optional audit baseline:
 
 | Rule | Matches |
 |---|---:|
-| generated-query-wrapper | 23 |
-| service-pass-through-wrapper | 10 |
-| preload-only-wrapper | 7 |
-| lazy-component-loader-wrapper | 7 |
-| generated-query-wrapper-tsx | 5 |
+| generated-query-wrapper | 20 |
+| service-pass-through-wrapper | 5 |
 
-These are facade/ownership audit results. Generated SDK facades and low-semantics pass-through functions are cleanup candidates by default; feature-owned hooks/loaders still need owner review before collapsing them.
+Current audit classification:
+
+- Route/tab lazy loader and preload-only wrappers were removed from the audit baseline. Route chunk imports now live in the owning `.tab.tsx` files, and startup route preload calls the tab-owned `preload` hooks instead of feature-local loader files.
+- Single-use TSX-local query hooks were collapsed back into their owning components. Remaining feature query hooks are exported owner boundaries that add query keys, enabled guards, polling/stale-time policy, select transforms, schema parsing, mutation invalidation, or cache update semantics.
+- Server pass-through hits are broad audit candidates. Confirmed cleanup removed Search's Chronicle search service relay, Chronicle's daemon resources service relay, dead validation/error plugin exports, unused Search service exports, and single-call DB/filter helpers. Remaining matches are HTTP plugin factory helpers, test setup helpers, search engine orchestration, or UI projection helpers.
+- `GET /chronicle/resources` was a real ambiguous duplicate of `GET /chronicle/daemon/resources`; it was removed, and web/CLI/OpenAPI projections now use the daemon namespace.
+
+Remaining audit findings are currently classified as intentional noise:
+
+| File | Match | Why it remains owned |
+|---|---|---|
+| `apps/server/src/http/request-id.ts` | `createRequestIdPlugin` | HTTP infrastructure owns the request-id header contract, generated fallback id, Elysia global derive shape, and response header propagation. The broad pass-through rule matches the plugin factory chain, not a compatibility facade. |
+| `apps/server/src/http/request-logger.ts` | `createRequestLoggerPlugin` | HTTP infrastructure owns request-scoped logger derivation, duration measurement, slow-request thresholding, and observability event recording. Keeping it as an Elysia plugin factory is the owned integration surface. |
+| `apps/server/src/modules/search/service.ts` | `searchThreads` | Search service owns the singleton `ThreadSearchEngine` lifecycle and session cleanup subscription. The route and tests must not construct their own engine because that would split the index owner. |
+| `apps/server/tests/automation.test.ts` | `createAutomationWithInputs` | Test helper owns the repeated POST request fixture used by multiple file-input validation cases; inlining it would duplicate request construction without removing product code debt. |
+| `apps/web/src/features/workspace/use-session.ts` | `asSessionLayoutRecords` | Workspace session feature owns the projection from normalized `WorkspaceSession` rows into `useSessionLayoutStore` records. The function is a projection boundary used by both active and archived session effects. |
+| `apps/web/src/features/git/use-git.ts` | `useGitStatus`, `useGitFileStatuses`, `useGitBranches`, `useGitRemotes`, `useGitGraph` | Git feature owns generated endpoint projection into UI query policy: active/background refresh, enabled guards, retries, `files` select, `keepPreviousData`, and exported query-key builders used for external invalidation. |
+| `apps/web/src/features/chat/use-runtime-session-status.ts` | `useRuntimeSessionStatus` | Chat runtime UI owns the non-generated command query key and polling policy. Refetching is tied to streaming, pending, cancelling, and active-goal status, which is UI runtime behavior rather than SDK ownership. |
+| `apps/web/src/features/chat/use-session-await.ts` | `useSessionAwaitSummary` | Chat/right-aside surfaces share the session-await summary with an enabled guard and interactive refresh policy. The hook is the chat feature contract for await badges and panes. |
+| `apps/web/src/features/settings/use-chat-preferences.ts` | `useChatPreferencesQuery` | Settings owns the chat preferences schema parse, canonical query key, mutation cache update, and simplified `useChatPreferences` facade consumed by settings and composer runtime. |
+| `apps/web/src/features/automation/use-automations.ts` | `useAutomationDefinitions` | Automation feature owns the definitions cache key, list API client, stale time, retry policy, and mutation invalidation contract reused by dashboard and home. |
+| `apps/web/src/features/workspace/use-workspace-file-content.ts` | `useWorkspaceFileInfo`, `useWorkspaceFileContent` | Workspace file feature owns file info/content query keys, enabled guards, raw/PDF URL builders, write mutation payload shape, git status invalidation, and cache updates after writes. |
+| `apps/web/src/features/skills/use-skills.ts` | `useSkillDocument` | Skills feature owns scope/name/context projection to IPC query params and parses the nullable response with `SkillDocumentSchema` before exposing it to manager panes. |
+| `apps/web/src/features/kanban/use-kanban.ts` | `useBoards`, `useStatuses`, `useMilestones`, `useIssues`, `useIssue`, `useComments`, `useRelations`, `useLinkedIssue` | Kanban feature owns schemas, query-key namespace, refresh policy, enabled guards, request parameter normalization, and mutation invalidation around the issue board domain. These are not generated SDK aliases. |
 
 ## Language-Agnostic Ownership Header Text Scan
 
@@ -104,17 +92,17 @@ Current text scan baseline:
 
 | Metric | Count |
 |---|---:|
-| Matched lines | 1510 |
-| Files with matches | 451 |
+| Matched lines | 1492 |
+| Files with matches | 445 |
 
 Files with matches by extension:
 
 | Extension | Files |
 |---|---:|
-| ts | 214 |
+| ts | 206 |
 | md | 148 |
 | tsx | 62 |
-| yml | 19 |
+| yml | 21 |
 | mjs | 5 |
 | sh | 2 |
 | html | 1 |

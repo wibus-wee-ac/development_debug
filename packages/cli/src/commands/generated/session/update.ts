@@ -28,6 +28,18 @@ const spec = {
       "required": false,
       "target": "body.pinned",
       "type": "boolean"
+    },
+    {
+      "name": "providerTargetId",
+      "required": false,
+      "target": "body.providerTargetId",
+      "type": "string"
+    },
+    {
+      "name": "modelId",
+      "required": false,
+      "target": "body.modelId",
+      "type": "string"
     }
   ],
   "method": "patch",

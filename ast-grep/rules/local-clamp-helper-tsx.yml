@@ -1,0 +1,17 @@
+# Output: Finds TSX local clamp helpers that hand-roll bounded numeric values.
+# Input: TSX helper functions using Math.min/Math.max clamp expressions.
+# Position: Owned by cleanup scans to keep generic clamp semantics in a package or shared numeric display owner.
+
+id: local-clamp-helper-tsx
+language: TSX
+severity: warning
+message: Local clamp helper hand-rolls bounded numeric math; use es-toolkit clamp or a shared numeric owner.
+rule:
+  any:
+    - pattern: "function $FUNC($PARAM: number): number { return Math.min($MAX, Math.max($MIN, $PARAM)) }"
+    - pattern: "function $FUNC($PARAM: number): number { return Math.max($MIN, Math.min($MAX, $PARAM)) }"
+    - pattern: "function $FUNC($PARAM: number): number { return Number.isFinite($PARAM) ? Math.min($MAX, Math.max($MIN, $PARAM)) : $FALLBACK }"
+    - pattern: "function $FUNC($PARAM: number): number { return Number.isFinite($PARAM) ? Math.max($MIN, Math.min($MAX, $PARAM)) : $FALLBACK }"
+constraints:
+  FUNC:
+    regex: ^(clamp|safe|bound|bounded)[A-Z].*

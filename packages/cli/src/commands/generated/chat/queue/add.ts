@@ -41,6 +41,12 @@ const spec = {
       "type": "json"
     },
     {
+      "name": "contextParts",
+      "required": false,
+      "target": "body.contextParts",
+      "type": "json"
+    },
+    {
       "name": "providerTargetId",
       "required": false,
       "target": "body.providerTargetId",
