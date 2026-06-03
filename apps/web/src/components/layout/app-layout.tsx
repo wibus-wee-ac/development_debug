@@ -32,6 +32,7 @@ const PANEL = { min: 80, max: 480 }
 
 const SPRING = { type: 'spring', stiffness: 600, damping: 50 } as const
 const INSTANT = { duration: 0 } as const
+const SIDEBAR_LAYOUT_SETTLE_MS = 420
 
 type BrowserBridgeCleanup = () => void
 
@@ -148,6 +149,9 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const browserPanelElementRef = useRef<HTMLDivElement | null>(null)
+  const asideElementRef = useRef<HTMLElement | null>(null)
+  const asideContentElementRef = useRef<HTMLDivElement | null>(null)
+  const previousSidebarCollapsedRef = useRef<boolean | null>(null)
   const mainRef = useCallback((el: HTMLElement | null) => {
     mainElementRef.current = el
   }, [])
@@ -244,6 +248,28 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
     setBrowserPanelRatio(ratio)
     setDragging(null)
   }, [readMainWidth, setBrowserPanelRatio])
+  const handleAsideResize = useCallback((width: number) => {
+    const aside = asideElementRef.current
+    const content = asideContentElementRef.current
+    if (aside) {
+      aside.style.width = `${width}px`
+    }
+    if (content) {
+      content.style.width = `${width}px`
+    }
+  }, [])
+  const handleAsideResizeEnd = useCallback((width: number) => {
+    const aside = asideElementRef.current
+    const content = asideContentElementRef.current
+    if (aside) {
+      aside.style.width = `${width}px`
+    }
+    if (content) {
+      content.style.width = `${width}px`
+    }
+    setAsideWidth(width)
+    setDragging(null)
+  }, [setAsideWidth])
 
   const handleToggleZenSidebars = useCallback(() => {
     const shouldCollapse = !sidebarCollapsed && (!canUseRightAside || asideOpen)
@@ -271,6 +297,37 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
       readBrowserTabSource,
     })
   }, [activeBrowserPanelOwnerId, readBrowserTabSource, setBrowserPanelOpen])
+
+  useEffect(() => {
+    const previousSidebarCollapsed = previousSidebarCollapsedRef.current
+    previousSidebarCollapsedRef.current = sidebarCollapsed
+
+    if (previousSidebarCollapsed === null || previousSidebarCollapsed === sidebarCollapsed) {
+      return
+    }
+    if (!browserPanelVisible || dragging === 'browser') {
+      return
+    }
+
+    const panel = browserPanelElementRef.current
+    if (!panel) {
+      return
+    }
+
+    const currentWidth = panel.getBoundingClientRect().width
+    if (currentWidth <= 0) {
+      return
+    }
+
+    panel.style.flexBasis = `${currentWidth}px`
+    const restoreTimer = window.setTimeout(() => {
+      panel.style.flexBasis = `${browserPanelRatio * 100}%`
+    }, SIDEBAR_LAYOUT_SETTLE_MS)
+
+    return () => {
+      window.clearTimeout(restoreTimer)
+    }
+  }, [browserPanelRatio, browserPanelVisible, dragging, sidebarCollapsed])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
@@ -381,15 +438,16 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               <ResizeHandle
                 direction="horizontal"
                 value={asideWidth}
-                onChange={setAsideWidth}
+                onChange={handleAsideResize}
                 onDragStart={() => setDragging('aside')}
-                onDragEnd={() => setDragging(null)}
+                onChangeEnd={handleAsideResizeEnd}
                 min={ASIDE.min}
                 max={ASIDE.max}
                 inverted
               />
             )}
             <m.aside
+              ref={asideElementRef}
               initial={{
                 width: asideOpen ? asideWidth : 0,
                 opacity: asideOpen ? 1 : 0,
@@ -403,7 +461,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               data-testid="app-layout-right-aside"
               data-aside-open={asideOpen ? 'true' : 'false'}
             >
-              <div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
+              <div ref={asideContentElementRef} className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
                 <RightAside
                   sessionId={resolvedAsideSessionId}
                   workspaceId={resolvedAsideWorkspaceId}
