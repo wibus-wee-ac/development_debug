@@ -53,6 +53,10 @@ export interface ClaudeAgentChunkMapperState {
   toolArgsByToolCallId: Map<string, unknown>
   /** Accumulated child-agent stream state keyed by parent tool call. */
   subagentStreams: Map<string, ClaudeAgentSubagentStreamState>
+  /** Maps content block index → reasoning item ID for currently-streaming thinking blocks. */
+  activeThinkingBlockByIndex: Map<number, string>
+  /** Content block indices whose thinking blocks were fully emitted via stream events (reasoning-end sent). */
+  completedThinkingBlockIndices: Set<number>
 }
 
 interface ClaudeAgentSubagentStreamState {
@@ -134,6 +138,8 @@ function normalizeClaudeAgentChunkMapperState(state: ClaudeAgentChunkMapperState
   state.toolInputTextByToolCallId ??= new Map()
   state.toolArgsByToolCallId ??= new Map()
   state.subagentStreams ??= new Map()
+  state.activeThinkingBlockByIndex ??= new Map()
+  state.completedThinkingBlockIndices ??= new Set()
 }
 
 export function createClaudeAgentChunkMapperState(textItemId: string = randomUUID()): ClaudeAgentChunkMapperState {
@@ -148,6 +154,8 @@ export function createClaudeAgentChunkMapperState(textItemId: string = randomUUI
     toolInputTextByToolCallId: new Map(),
     toolArgsByToolCallId: new Map(),
     subagentStreams: new Map(),
+    activeThinkingBlockByIndex: new Map(),
+    completedThinkingBlockIndices: new Set(),
   }
 }
 
@@ -253,7 +261,8 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
   }
 
   let pendingText = ''
-  for (const block of msg.message.content) {
+  for (let blockIndex = 0; blockIndex < msg.message.content.length; blockIndex++) {
+    const block = msg.message.content[blockIndex]!
     if (block.type === 'text') {
       pendingText += block.text
       continue
@@ -266,6 +275,12 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       const mapped = mapContentBlock(block, state)
       chunks.push(...mapped.chunks)
       state.hadToolCallSinceLastText = true
+      continue
+    }
+
+    // Skip thinking blocks that were fully handled by stream events — they already
+    // emitted reasoning-start/delta/end, and the snapshot would create a duplicate part.
+    if (block.type === 'thinking' && state.completedThinkingBlockIndices.has(blockIndex)) {
       continue
     }
 
@@ -396,6 +411,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
       const startEvent = msg.event as BetaRawContentBlockStartEvent
       if (startEvent.content_block.type === 'thinking') {
         const itemId = `thinking-${startEvent.index}`
+        state.activeThinkingBlockByIndex.set(startEvent.index, itemId)
         chunks.push({ type: 'reasoning-start', id: itemId })
       }
       else if (startEvent.content_block.type === 'tool_use') {
@@ -411,6 +427,16 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           state,
         )
         chunks.push(...emitted.chunks)
+      }
+      break
+    }
+    case 'content_block_stop': {
+      const stopEvent = msg.event as { type: 'content_block_stop', index: number }
+      const thinkingItemId = state.activeThinkingBlockByIndex.get(stopEvent.index)
+      if (thinkingItemId !== undefined) {
+        state.activeThinkingBlockByIndex.delete(stopEvent.index)
+        state.completedThinkingBlockIndices.add(stopEvent.index)
+        chunks.push({ type: 'reasoning-end', id: thinkingItemId })
       }
       break
     }

@@ -173,4 +173,39 @@ describe('mapClaudeAgentMessageToChunks', () => {
     expect(terminalOutput?.output.truncated).toBeUndefined()
     expect(terminalText).toContain('tail')
   })
+
+  it('does not duplicate thinking parts when an assistant snapshot arrives after stream events', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const allChunks: import('ai').UIMessageChunk[] = []
+
+    // Stream events: thinking block at index 0
+    const streamResults = await Promise.all([
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking' } } } as unknown as SDKMessage, state),
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Let me think...' } } } as unknown as SDKMessage, state),
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_stop', index: 0 } } as unknown as SDKMessage, state),
+      // text block at index 1
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_start', index: 1, content_block: { type: 'text' } } } as unknown as SDKMessage, state),
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Hello' } } } as unknown as SDKMessage, state),
+      mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_stop', index: 1 } } as unknown as SDKMessage, state),
+    ])
+    for (const r of streamResults) allChunks.push(...r.chunks)
+
+    // Full assistant snapshot arrives (this previously caused a duplicate reasoning part)
+    const snapshotResult = await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 's1',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'Let me think...' },
+          { type: 'text', text: 'Hello' },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+    allChunks.push(...snapshotResult.chunks)
+
+    const reasoningStartCount = allChunks.filter(c => c.type === 'reasoning-start').length
+    const reasoningEndCount = allChunks.filter(c => c.type === 'reasoning-end').length
+    expect(reasoningStartCount).toBe(1)
+    expect(reasoningEndCount).toBe(1)
+  })
 })
