@@ -90,6 +90,12 @@ interface StreamSubscriber {
   replayCursor: number
 }
 
+interface WebContentsCleanupRegistration {
+  webContents: WebContents
+  streamIds: Set<string>
+  handleDestroyed: () => void
+}
+
 interface UpstreamEntry {
   sessionId: string
   mode: DesktopChatStreamMode
@@ -121,6 +127,7 @@ export class ChatStreamBroker {
   private readonly serverUrl: string
   private readonly fetchFn: ChatStreamFetch
   private readonly entriesBySessionId = new Map<string, UpstreamEntry>()
+  private readonly cleanupByWebContents = new Map<WebContents, WebContentsCleanupRegistration>()
   private nextStreamIndex = 0
 
   constructor(options: ChatStreamBrokerOptions) {
@@ -172,7 +179,7 @@ export class ChatStreamBroker {
 
   diagnostics(): DesktopChatStreamDiagnostics {
     return {
-      streams: [...this.entriesBySessionId.values()].map(entry => ({
+      streams: Array.from(this.entriesBySessionId.values(), entry => ({
         sessionId: entry.sessionId,
         mode: entry.mode,
         runId: entry.runId,
@@ -190,10 +197,10 @@ export class ChatStreamBroker {
     for (const entry of this.entriesBySessionId.values()) {
       entry.closed = true
       entry.controller.abort()
-      for (const subscriber of entry.subscribers.values()) {
+      for (const subscriber of [...entry.subscribers.values()]) {
         this.closeSubscriber(entry, subscriber, 'aborted')
+        this.removeSubscriber(entry, subscriber.streamId)
       }
-      entry.subscribers.clear()
     }
     this.entriesBySessionId.clear()
   }
@@ -253,11 +260,33 @@ export class ChatStreamBroker {
   }
 
   private attachWebContentsCleanup(entry: UpstreamEntry, subscriber: StreamSubscriber): void {
-    const remove = () => {
-      this.removeSubscriber(entry, subscriber.streamId)
-      this.abortEntryIfUnobserved(entry)
+    let registration = this.cleanupByWebContents.get(subscriber.webContents)
+    if (!registration) {
+      const webContents = subscriber.webContents
+      registration = {
+        webContents,
+        streamIds: new Set(),
+        handleDestroyed: () => {
+          const current = this.cleanupByWebContents.get(webContents)
+          if (!current) {
+            return
+          }
+          this.cleanupByWebContents.delete(webContents)
+          for (const streamId of [...current.streamIds]) {
+            const located = this.findSubscriber(streamId)
+            if (!located) {
+              continue
+            }
+            this.removeSubscriber(located.entry, streamId)
+            this.abortEntryIfUnobserved(located.entry)
+          }
+          current.streamIds.clear()
+        },
+      }
+      this.cleanupByWebContents.set(webContents, registration)
+      webContents.once('destroyed', registration.handleDestroyed)
     }
-    subscriber.webContents.once('destroyed', remove)
+    registration.streamIds.add(subscriber.streamId)
   }
 
   private async openUpstream(entry: UpstreamEntry, request: UpstreamRequest): Promise<UpstreamHandle> {
@@ -354,7 +383,7 @@ export class ChatStreamBroker {
 
   private forwardChunk(entry: UpstreamEntry, chunk: unknown): void {
     entry.replayChunks.push(chunk)
-    for (const subscriber of entry.subscribers.values()) {
+    for (const subscriber of [...entry.subscribers.values()]) {
       this.sendChunkToSubscriber(entry, subscriber, chunk)
     }
   }
@@ -367,6 +396,8 @@ export class ChatStreamBroker {
 
   private sendChunkToSubscriber(entry: UpstreamEntry, subscriber: StreamSubscriber, chunk: unknown): void {
     if (subscriber.webContents.isDestroyed()) {
+      this.removeSubscriber(entry, subscriber.streamId)
+      this.abortEntryIfUnobserved(entry)
       return
     }
     subscriber.webContents.send(DESKTOP_CHAT_STREAM_CHUNK_CHANNEL, {
@@ -383,10 +414,10 @@ export class ChatStreamBroker {
       return
     }
     entry.closed = true
-    for (const subscriber of entry.subscribers.values()) {
+    for (const subscriber of [...entry.subscribers.values()]) {
       this.closeSubscriber(entry, subscriber, reason)
+      this.removeSubscriber(entry, subscriber.streamId)
     }
-    entry.subscribers.clear()
     this.entriesBySessionId.delete(entry.sessionId)
   }
 
@@ -396,6 +427,7 @@ export class ChatStreamBroker {
     reason: DesktopChatStreamClosedEvent['reason'],
   ): void {
     if (subscriber.webContents.isDestroyed()) {
+      this.removeSubscriber(entry, subscriber.streamId)
       return
     }
     subscriber.webContents.send(DESKTOP_CHAT_STREAM_CLOSED_CHANNEL, {
@@ -407,8 +439,9 @@ export class ChatStreamBroker {
   }
 
   private errorSubscribers(entry: UpstreamEntry, message: string): void {
-    for (const subscriber of entry.subscribers.values()) {
+    for (const subscriber of [...entry.subscribers.values()]) {
       if (subscriber.webContents.isDestroyed()) {
+        this.removeSubscriber(entry, subscriber.streamId)
         continue
       }
       subscriber.webContents.send(DESKTOP_CHAT_STREAM_ERROR_CHANNEL, {
@@ -417,12 +450,30 @@ export class ChatStreamBroker {
         runId: entry.runId,
         message,
       } satisfies DesktopChatStreamErrorEvent)
+      this.removeSubscriber(entry, subscriber.streamId)
     }
-    entry.subscribers.clear()
   }
 
   private removeSubscriber(entry: UpstreamEntry, streamId: string): void {
+    const subscriber = entry.subscribers.get(streamId)
+    if (!subscriber) {
+      return
+    }
     entry.subscribers.delete(streamId)
+    this.detachWebContentsCleanup(subscriber)
+  }
+
+  private detachWebContentsCleanup(subscriber: StreamSubscriber): void {
+    const registration = this.cleanupByWebContents.get(subscriber.webContents)
+    if (!registration) {
+      return
+    }
+    registration.streamIds.delete(subscriber.streamId)
+    if (registration.streamIds.size > 0) {
+      return
+    }
+    registration.webContents.removeListener('destroyed', registration.handleDestroyed)
+    this.cleanupByWebContents.delete(registration.webContents)
   }
 
   private abortEntryIfUnobserved(entry: UpstreamEntry): void {

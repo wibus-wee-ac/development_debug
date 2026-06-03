@@ -23,6 +23,15 @@ class FakeWebContents {
     this.listeners.set(eventName, listeners)
   }
 
+  removeListener(eventName: string, listener: Listener): void {
+    const listeners = this.listeners.get(eventName) ?? []
+    this.listeners.set(eventName, listeners.filter(candidate => candidate !== listener))
+  }
+
+  listenerCount(eventName: string): number {
+    return this.listeners.get(eventName)?.length ?? 0
+  }
+
   destroy(): void {
     this.destroyed = true
     for (const listener of this.listeners.get('destroyed') ?? []) {
@@ -84,7 +93,7 @@ function readChannelPayloads(webContents: FakeWebContents, channel: string): unk
     .map(call => call[1])
 }
 
-describe('ChatStreamBroker', () => {
+describe('chat stream broker', () => {
   it('shares one upstream response stream across multiple renderer subscribers', async () => {
     const controlled = createControlledSseResponse({
       'x-cradle-run-id': 'run-1',
@@ -271,6 +280,36 @@ describe('ChatStreamBroker', () => {
     await vi.waitFor(() => {
       expect(broker.diagnostics().streams).toHaveLength(0)
     })
+  })
+
+  it('uses one destroyed listener per renderer webContents across repeated subscriptions', async () => {
+    const controlled = createControlledSseResponse({ 'x-cradle-run-id': 'run-listener-cleanup' })
+    const fetchFn = vi.fn(async () => controlled.response)
+    const broker = new ChatStreamBroker({
+      serverUrl: 'http://127.0.0.1:21423',
+      fetchFn: fetchFn as typeof fetch,
+    })
+    const webContents = new FakeWebContents()
+    const handles = []
+
+    for (let index = 0; index < 12; index += 1) {
+      handles.push(await broker.subscribeSession(webContents as never, { sessionId: 'session-listener-cleanup' }))
+    }
+
+    expect(webContents.listenerCount('destroyed')).toBe(1)
+    expect(broker.diagnostics().streams).toMatchObject([
+      {
+        sessionId: 'session-listener-cleanup',
+        subscriberCount: 12,
+      },
+    ])
+
+    for (const handle of handles) {
+      broker.abortStream(webContents as never, { streamId: handle.streamId })
+    }
+
+    expect(webContents.listenerCount('destroyed')).toBe(0)
+    expect(broker.diagnostics().streams).toHaveLength(0)
   })
 
   it('does not reuse an idle passive session entry for a response request', async () => {
