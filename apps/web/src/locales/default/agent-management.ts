@@ -137,6 +137,7 @@ export default {
   'models.manual.label.name': 'Name',
   'models.manual.label.outputCost': 'Output Cost',
   'models.manual.label.releaseDate': 'Release Date',
+  'models.manual.editTitle': 'Edit models.dev entry',
   'models.manual.saveMapping': 'Save mapping',
   'models.manual.title': 'Manual models.dev entry',
   'models.mapping.createEntry': 'Create entry',
@@ -171,8 +172,7 @@ export default {
   'runtime.empty.noMatches': 'No matches',
   'runtime.empty.noProviders': 'No providers yet',
   'runtime.group.manual': 'Manual providers',
-  'runtime.header.description':
-    'Add and manage Cradle-owned provider profiles.',
+  'runtime.header.description': 'Add and manage Cradle-owned provider profiles.',
   'runtime.header.title': 'Providers',
   'runtime.multiSelected.description':
     'Batch actions apply to selected providers that can be changed here.',
@@ -193,5 +193,5 @@ export default {
   'runtime.toast.refreshFailed': 'Refresh failed',
   'runtime.visible.count': '{{visibleCount}} visible',
   'runtime.visible.select': 'Select visible',
-  'runtime.visible.unselect': 'Unselect visible',
+  'runtime.visible.unselect': 'Unselect visible'
 } as const

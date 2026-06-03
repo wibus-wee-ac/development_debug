@@ -127,6 +127,7 @@
   "models.manual.label.name": "Name",
   "models.manual.label.outputCost": "Output Cost",
   "models.manual.label.releaseDate": "Release Date",
+  "models.manual.editTitle": "Edit models.dev entry",
   "models.manual.saveMapping": "Save mapping",
   "models.manual.title": "Manual models.dev entry",
   "models.mapping.createEntry": "Create entry",

@@ -16,11 +16,11 @@ import { ModelRegistryMappingDialog } from '../model-registry/mapping-dialog'
 import type { SearchResult } from '../model-registry/schemas'
 import { ALL_DISABLED_SENTINEL } from './provider-settings-utils'
 
-type TimeAgoMessage
-  = | { key: 'models.time.justNow' }
-    | { key: 'models.time.minutesAgo', options: { minuteCount: number } }
-    | { key: 'models.time.hoursAgo', options: { hourCount: number } }
-    | { key: 'models.time.daysAgo', options: { dayCount: number } }
+type TimeAgoMessage =
+  | { key: 'models.time.justNow' }
+  | { key: 'models.time.minutesAgo'; options: { minuteCount: number } }
+  | { key: 'models.time.hoursAgo'; options: { hourCount: number } }
+  | { key: 'models.time.daysAgo'; options: { dayCount: number } }
 
 function formatTimeAgo(ts: number): TimeAgoMessage {
   const seconds = Math.round((Date.now() - ts) / 1000)
@@ -61,7 +61,7 @@ function occurrenceKey(id: string, counts: Map<string, number>): string {
 function applyRegistryResult(
   model: ModelDescriptor,
   result: SearchResult,
-  match: 'manual' | 'alias',
+  match: 'manual' | 'alias'
 ): ModelDescriptor {
   return {
     ...model,
@@ -71,8 +71,8 @@ function applyRegistryResult(
       ...model.capabilities,
       registryMatch: match,
       registryModelId: result.id,
-      registryModelLabel: result.label || result.id,
-    },
+      registryModelLabel: result.label || result.id
+    }
   }
 }
 
@@ -98,7 +98,7 @@ const REGISTRY_STATUS_KEYS = {
   fuzzy: 'models.registry.status.fuzzy',
   manual: 'models.registry.status.manual',
   alias: 'models.registry.status.alias',
-  unmatched: 'models.registry.status.unmatched',
+  unmatched: 'models.registry.status.unmatched'
 } as const
 
 export function ModelsPanel({
@@ -108,7 +108,7 @@ export function ModelsPanel({
   onChange,
   onModelRegistryMapped,
   onRefresh,
-  cachedAt,
+  cachedAt
 }: {
   loading: boolean
   models: ModelDescriptor[]
@@ -131,7 +131,7 @@ export function ModelsPanel({
     let filtered = models
     if (filter.trim()) {
       const q = filter.toLowerCase()
-      filtered = models.filter(m => (m.label || m.id).toLowerCase().includes(q))
+      filtered = models.filter((m) => (m.label || m.id).toLowerCase().includes(q))
     }
     // Sort: enabled first, then alphabetical within each group
     return filtered.toSorted((a, b) => {
@@ -144,12 +144,12 @@ export function ModelsPanel({
     })
   }, [models, filter, visibility])
 
-  const enabledCount
-    = visibility.kind === 'none'
+  const enabledCount =
+    visibility.kind === 'none'
       ? 0
       : visibility.kind === 'all'
         ? models.length
-        : models.filter(model => visibility.ids.has(model.id)).length
+        : models.filter((model) => visibility.ids.has(model.id)).length
 
   const isChecked = (id: string): boolean => {
     return modelIsVisible(visibility, id)
@@ -161,20 +161,17 @@ export function ModelsPanel({
       if (allDisabled) {
         // From "all disabled" → enable only this one
         onChange([id])
-      }
- else if (visibility.kind === 'all') {
+      } else if (visibility.kind === 'all') {
         // "All enabled" state — shouldn't normally check an already-checked item,
         // but just in case, keep all enabled (no-op)
-      }
- else {
+      } else {
         // Explicit selection — add this model
         onChange([...enabledModels, id])
       }
-    }
- else {
+    } else {
       // Disabling a model
-      const base = visibility.kind === 'all' ? models.map(m => m.id) : enabledModels
-      const next = base.filter(x => x !== id)
+      const base = visibility.kind === 'all' ? models.map((m) => m.id) : enabledModels
+      const next = base.filter((x) => x !== id)
       onChange(next.length === 0 ? [ALL_DISABLED_SENTINEL] : next)
     }
   }
@@ -191,9 +188,7 @@ export function ModelsPanel({
       {/* Header row */}
       <div className="flex items-center justify-between gap-3">
         <div>
-          <p className="text-[12.5px] font-medium text-foreground">
-            {t('models.header.title')}
-          </p>
+          <p className="text-[12.5px] font-medium text-foreground">{t('models.header.title')}</p>
           <p className="mt-0.5 text-[11px] text-muted-foreground">
             {t('models.header.description')}
           </p>
@@ -238,7 +233,7 @@ export function ModelsPanel({
         <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
         <Input
           value={filter}
-          onChange={e => setFilter(e.target.value)}
+          onChange={(e) => setFilter(e.target.value)}
           placeholder={t('models.search.placeholder')}
           className="h-8 pl-8 text-[12.5px]"
         />
@@ -246,19 +241,14 @@ export function ModelsPanel({
 
       {/* Body */}
       <div className="overflow-hidden rounded-xl bg-card ring-1 ring-foreground/6">
-        {loading
-? (
+        {loading ? (
           <div className="flex items-center justify-center gap-2 py-8 text-[12px] text-muted-foreground">
             <Spinner className="size-3" />
             {t('models.loading')}
           </div>
-        )
-: models.length === 0
-? (
+        ) : models.length === 0 ? (
           <div className="px-4 py-8 text-center">
-            <p className="text-[12px] text-muted-foreground">
-              {t('models.empty.title')}
-            </p>
+            <p className="text-[12px] text-muted-foreground">{t('models.empty.title')}</p>
             <p className="mt-1 text-[11px] text-muted-foreground/70">
               {t('models.empty.description')}
             </p>
@@ -274,8 +264,7 @@ export function ModelsPanel({
               </Button>
             )}
           </div>
-        )
-: (
+        ) : (
           <div className="max-h-72 overflow-y-auto">
             <ul className="divide-y divide-foreground/4">
               {visible.map((m) => {
@@ -286,12 +275,12 @@ export function ModelsPanel({
                     <div
                       className={cn(
                         'flex items-center gap-3 px-3 py-2 transition-colors',
-                        'hover:bg-foreground/2.5',
+                        'hover:bg-foreground/2.5'
                       )}
                     >
                       <Checkbox
                         checked={checked}
-                        onCheckedChange={c => handleToggle(m.id, !!c)}
+                        onCheckedChange={(c) => handleToggle(m.id, !!c)}
                       />
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-[12.5px] font-medium text-foreground">
@@ -302,11 +291,10 @@ export function ModelsPanel({
                             {m.id}
                           </div>
                         )}
-                        {m.capabilities.registryModelId
-                          && m.capabilities.registryModelId !== m.id && (
+                        {m.capabilities.registryModelId &&
+                          m.capabilities.registryModelId !== m.id && (
                             <div className="truncate text-[10.5px] text-muted-foreground/70">
-                              models.dev:
-{' '}
+                              models.dev:{' '}
                               <span className="font-mono">{m.capabilities.registryModelId}</span>
                             </div>
                           )}
@@ -315,13 +303,13 @@ export function ModelsPanel({
                         variant="secondary"
                         className={cn(
                           'text-[10px] font-normal tabular-nums',
-                          registryStatus === 'exact'
-                          && 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-                          registryStatus === 'fuzzy'
-                          && 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
-                          registryStatus === 'manual'
-                          && 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-                          registryStatus === 'unmatched' && 'text-muted-foreground',
+                          registryStatus === 'exact' &&
+                            'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+                          registryStatus === 'fuzzy' &&
+                            'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+                          registryStatus === 'manual' &&
+                            'bg-blue-500/10 text-blue-700 dark:text-blue-300',
+                          registryStatus === 'unmatched' && 'text-muted-foreground'
                         )}
                       >
                         {t(REGISTRY_STATUS_KEYS[registryStatus])}
@@ -331,8 +319,7 @@ export function ModelsPanel({
                           variant="secondary"
                           className="font-mono text-[10px] font-normal tabular-nums text-muted-foreground"
                         >
-                          {Math.round(m.capabilities.contextWindow / 1000)}
-k
+                          {Math.round(m.capabilities.contextWindow / 1000)}k
                         </Badge>
                       )}
                       <Button
@@ -352,8 +339,7 @@ k
               })}
               {visible.length === 0 && (
                 <li className="px-4 py-8 text-center text-[11.5px] text-muted-foreground">
-                  {t('models.search.noMatches.prefix')}
-{' '}
+                  {t('models.search.noMatches.prefix')}{' '}
                   <span className="font-mono text-foreground">{filter}</span>
                   {t('models.search.noMatches.suffix')}
                 </li>
@@ -365,6 +351,7 @@ k
 
       {mappingModel && (
         <ModelRegistryMappingDialog
+          key={mappingModel.id}
           open={dialogOpen}
           onOpenChange={setDialogOpen}
           modelId={mappingModel.id}
@@ -385,18 +372,18 @@ k
               ? t('models.summary.allVisible', { modelCount: models.length })
               : t('models.summary.someVisible', { enabledCount, totalCount: models.length })}
         </span>
-        {cachedAt && models.length > 0 && (
+        {cachedAt &&
+          models.length > 0 &&
           (() => {
             const timeAgo = formatTimeAgo(cachedAt)
             return (
               <span className="text-[10.5px] text-muted-foreground/60">
                 {t('models.summary.cached', {
-                  timeAgo: renderTimeAgo(timeAgo, t),
+                  timeAgo: renderTimeAgo(timeAgo, t)
                 })}
               </span>
             )
-          })()
-        )}
+          })()}
       </div>
     </div>
   )
