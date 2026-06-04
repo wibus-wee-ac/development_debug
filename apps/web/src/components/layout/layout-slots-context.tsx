@@ -50,9 +50,16 @@ export function LayoutSlotsProvider({
     setState((prev) => {
       const existing = prev.map[id]
       const merged = existing ? { ...existing, ...newSlots } : newSlots
-      // Shallow equality: skip update if all keys match
-      if (existing && Object.keys(merged).every(k => merged[k as keyof LayoutSlots] === existing[k as keyof LayoutSlots])) {
-        return prev
+      // Shallow equality: skip update if both objects have the same keys and values
+      if (existing) {
+        const existingKeys = Object.keys(existing)
+        const mergedKeys = Object.keys(merged)
+        if (
+          existingKeys.length === mergedKeys.length
+          && mergedKeys.every(k => merged[k as keyof LayoutSlots] === existing[k as keyof LayoutSlots])
+        ) {
+          return prev
+        }
       }
       // Only set activeId on first registration (new id not yet in map)
       const isNew = !(id in prev.map)
