@@ -35,6 +35,7 @@ import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
+import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
@@ -580,7 +581,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const handleCapsuleSend = useCallback(async (
     text: string,
     files: FileUIPart[],
-    opts: { runtimeKind: RuntimeKind, agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+    opts: { runtimeKind: RuntimeKind, agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' },
   ) => {
     if (!workspace) {
       return

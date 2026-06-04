@@ -39,6 +39,8 @@
   "thinking.auto.label": "自動",
   "thinking.high.description": "複雑な作業向けの深い推論。",
   "thinking.high.label": "高",
+  "thinking.xhigh.description": "難しいタスク向けの最大推論予算。",
+  "thinking.xhigh.label": "最高",
   "thinking.low.description": "軽い推論で高速応答します。",
   "thinking.low.label": "低",
   "thinking.medium.description": "日常作業向けのバランス型推論。",

@@ -81,6 +81,7 @@ const thinkingLabelKeys = {
   low: 'detail.thinking.low.label',
   medium: 'detail.thinking.medium.label',
   high: 'detail.thinking.high.label',
+  xhigh: 'detail.thinking.xhigh.label',
 } satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
 
 const thinkingDescriptionKeys = {
@@ -88,6 +89,7 @@ const thinkingDescriptionKeys = {
   low: 'detail.thinking.low.description',
   medium: 'detail.thinking.medium.description',
   high: 'detail.thinking.high.description',
+  xhigh: 'detail.thinking.xhigh.description',
 } satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
 
 function commonString(values: Array<string | null>): string | null {

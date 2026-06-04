@@ -21,7 +21,7 @@ interface CapsuleComposerProps {
       agentId?: string
       providerTargetId?: string
       modelId?: string
-      thinkingEffort?: 'low' | 'medium' | 'high'
+      thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
     },
   ) => void | Promise<void>
 }

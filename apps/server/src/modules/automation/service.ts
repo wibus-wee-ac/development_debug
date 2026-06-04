@@ -36,7 +36,7 @@ export interface AutomationRecipe {
   providerTargetId?: string
   runtimeKind?: RuntimeKind
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
 }
 
 export interface AutomationDefinitionView {

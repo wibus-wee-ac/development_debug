@@ -472,6 +472,7 @@ export const zPostAgentsBody = z.object({
         'low',
         'medium',
         'high',
+        'xhigh',
         'auto'
     ]).optional(),
     runtimeKind: z.string().min(1).optional(),
@@ -497,6 +498,7 @@ export const zPatchAgentsByIdBody = z.object({
         'low',
         'medium',
         'high',
+        'xhigh',
         'auto'
     ]).optional(),
     runtimeKind: z.string().min(1).optional(),
@@ -575,7 +577,8 @@ export const zPostAutomationsBody = z.object({
         thinkingEffort: z.enum([
             'low',
             'medium',
-            'high'
+            'high',
+            'xhigh'
         ]).optional()
     }),
     createdByKind: z.enum([
@@ -643,7 +646,8 @@ export const zPatchAutomationsByIdBody = z.object({
         thinkingEffort: z.enum([
             'low',
             'medium',
-            'high'
+            'high',
+            'xhigh'
         ]).optional()
     }).optional(),
     createdByKind: z.enum([
@@ -1409,7 +1413,8 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
     thinkingEffort: z.enum([
         'low',
         'medium',
-        'high'
+        'high',
+        'xhigh'
     ]).optional(),
     permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
 });
@@ -1464,7 +1469,8 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
     thinkingEffort: z.enum([
         'low',
         'medium',
-        'high'
+        'high',
+        'xhigh'
     ]).optional(),
     permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
 });

@@ -1,6 +1,6 @@
 # Pty Module
 
-Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource lifecycle (`start-or-attach`, `delete`), terminal resource snapshots (`resources`), and WebSocket owns the live channel protocol (`snapshot` / `output` / `exit` and `input` / `resize` / `ping`). Natural process exits release runtime registry records immediately while retaining the bounded timeline exit/snapshot history; explicit deletes also release the timeline.
+Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource lifecycle (`start-or-attach`, `delete`), terminal resource snapshots (`resources`), and WebSocket owns the live channel protocol (`snapshot` / `output` / `exit` and `input` / `resize` / `ping`). Natural process exits release runtime registry records immediately while retaining the bounded timeline exit/snapshot history; explicit deletes also release the timeline. Session archive lifecycle events stop matching chat PTYs so hidden sessions do not keep CLI TUI processes running.
 
 ## Files
 
@@ -11,4 +11,4 @@ Provides session-owned chat PTYs plus panel-owned shell PTYs. HTTP owns resource
 - `pty.runtime.ts`: `node-pty` runtime registry, process lifecycle hooks, and process tree memory/CPU resource sampling.
 - `pty.timeline.ts`: Sequence-aware snapshots, replay windows, and exit history.
 - `pty.socket.ts`: WebSocket adapter that bridges runtime/timeline to clients.
-- `service.ts`: Session/profile/workspace ownership rules, memory/CPU resource totals, explicit bottom-panel shell lifecycle, and module shutdown.
+- `service.ts`: Session/profile/workspace ownership rules, session archive/delete PTY release hooks, memory/CPU resource totals, explicit bottom-panel shell lifecycle, and module shutdown.

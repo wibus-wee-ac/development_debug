@@ -82,6 +82,8 @@
   "detail.thinking.auto.label": "自动",
   "detail.thinking.high.description": "为复杂任务提供更深入推理。",
   "detail.thinking.high.label": "深度",
+  "detail.thinking.xhigh.description": "为困难任务使用最高推理预算。",
+  "detail.thinking.xhigh.label": "超高",
   "detail.thinking.low.description": "轻量推理，快速响应。",
   "detail.thinking.low.label": "快速",
   "detail.thinking.medium.description": "适合日常任务的平衡推理。",

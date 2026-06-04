@@ -5,7 +5,7 @@ import type { RuntimeKind } from '~/lib/types'
 
 import { persistStorage } from './persist-storage'
 
-type PersistedThinkingEffort = 'low' | 'medium' | 'high' | null
+type PersistedThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | null
 
 interface NewChatState {
   lastRuntimeKind: RuntimeKind | null

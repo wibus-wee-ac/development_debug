@@ -63,6 +63,8 @@
   "jarvis.model.label": "模型",
   "jarvis.page.description": "配置能够感知完整工作区的系统助手。",
   "jarvis.page.title": "Jarvis",
+  "jarvis.runtime.description": "选择新 Jarvis 会话使用的聊天运行时。",
+  "jarvis.runtime.label": "运行时",
   "jarvis.thinking.high.description": "为复杂任务提供更深入推理。",
   "jarvis.thinking.high.label": "深度",
   "jarvis.thinking.low.description": "轻量推理，快速响应。",

@@ -61,6 +61,10 @@ SessionService.onSessionCleanup((sessionId) => {
   ptyRuntime.destroy(sessionId)
 })
 
+SessionService.onSessionArchived((sessionId) => {
+  destroyPtySession(sessionId)
+})
+
 export interface TerminalSessionContext {
   session: TerminalSessionRecord
   workspace: Workspace

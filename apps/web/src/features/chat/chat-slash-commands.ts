@@ -3,6 +3,7 @@ import type { RuntimeKind } from '~/lib/types'
 import type {
   ChatRuntimeAlertUiSlotState,
   ChatRuntimeApprovalsUiSlotState,
+  ChatRuntimeCapabilities,
   ChatRuntimeCompactUiSlotState,
   ChatRuntimeConfigUiSlotState,
   ChatRuntimeCrewUiSlotState,
@@ -18,7 +19,6 @@ import type {
   ChatRuntimeSkillsUiSlotState,
   ChatRuntimeStatusUiSlotState,
   ChatRuntimeTerminalUiSlotState,
-  ChatRuntimeCapabilities,
   ChatRuntimeToolActivityUiSlotState,
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
@@ -373,7 +373,7 @@ function readDefaultRuntimeUiSlotCommandVisual(slot: ChatRuntimeUiSlot): ChatSla
 }
 
 function readCompactCommandState(state: ChatRuntimeCompactUiSlotState): { label: string, tone?: ChatComposerSlashCommand['stateTone'], visual: ChatSlashCommandStateVisual } | null {
-  const percent = state.autoCompactPercent ?? state.usagePercent
+  const percent = state.usagePercent ?? state.autoCompactPercent
   const visual: ChatSlashCommandStateVisual = {
     kind: 'compactUsage',
     percent,

@@ -2,7 +2,7 @@
 
 `automation` owns generic Agent-authored durable automation definitions, outer run lifecycle records, and automation-owned artifacts.
 
-It may reference normal chat sessions and backend runs, but execution remains owned by `chat-runtime`.
+It may reference normal chat sessions and backend runs, but execution remains owned by `chat-runtime`. Agent task recipes may pass `low`, `medium`, `high`, or `xhigh` thinking effort through to chat runtime.
 
 ## Files
 

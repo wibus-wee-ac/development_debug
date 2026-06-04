@@ -1426,6 +1426,7 @@ function PreviewComposer({
             { value: 'low', label: t('preview.thinking.low.label'), description: t('preview.thinking.low.description') },
             { value: 'medium', label: t('preview.thinking.medium.label'), description: t('preview.thinking.medium.description') },
             { value: 'high', label: t('preview.thinking.high.label'), description: t('preview.thinking.high.description') },
+            { value: 'xhigh', label: t('preview.thinking.xhigh.label'), description: t('preview.thinking.xhigh.description') },
           ]}
           onRequestProviderTargetModels={() => {}}
           onSelectProviderTarget={(id) => {

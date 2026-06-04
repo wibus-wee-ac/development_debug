@@ -36,7 +36,7 @@ export interface CreateAgentInput {
   avatarSeed: string
   providerTargetId?: string | null
   modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
   runtimeKind?: RuntimeKind
   configJson?: string
 }
@@ -48,7 +48,7 @@ export interface UpdateAgentInput {
   avatarSeed?: string
   providerTargetId?: string | null
   modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
   runtimeKind?: RuntimeKind
   configJson?: string
   enabled?: boolean
@@ -113,7 +113,7 @@ export interface ImportLocalConfigResult {
 }
 
 const AgentRuntimeKindSchema = z.string().trim().min(1)
-const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'auto'])
+const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'auto'])
 const ImportLocalConfigInputSchema = z.object({
   includeProcessEnv: z.boolean().optional(),
   candidateIds: z.array(z.string().trim().min(1)).optional(),

@@ -1,11 +1,10 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import type { ComponentProps } from 'react'
 import { useEffect, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl } from '~/lib/lobe-icons'
 import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
+import { useResolvedThemeMode } from '~/store/theme'
 
 type IconProps = ComponentProps<'svg'>
 
@@ -104,11 +103,13 @@ export function ProviderIcon({
 }
 
 function LobeIconImage({ slug, className }: { slug: string, className?: string }) {
+  const theme = useResolvedThemeMode()
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    getLobeIconUrl(slug, 'dark').then((u) => {
+    setUrl(null)
+    getLobeIconUrl(slug, theme).then((u) => {
       if (!cancelled) {
         setUrl(u)
       }
@@ -116,11 +117,20 @@ function LobeIconImage({ slug, className }: { slug: string, className?: string }
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, theme])
 
   if (!url) {
     return <div className={cn('animate-pulse rounded bg-muted', className)} />
   }
 
-  return <img src={url} alt={slug} className={cn('object-contain', className)} />
+  return (
+    <img
+      src={url}
+      alt={slug}
+      className={cn(
+        'object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.16)] dark:drop-shadow-[0_1px_1px_rgba(255,255,255,0.14)]',
+        className,
+      )}
+    />
+  )
 }

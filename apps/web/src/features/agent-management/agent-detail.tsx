@@ -105,7 +105,7 @@ const AVATAR_STYLES = [
   { id: 'adventurer', labelKey: 'detail.avatar.style.adventurer' },
 ] as const
 
-type ThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
+type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
 
@@ -114,6 +114,7 @@ const thinkingLabelKeys = {
   low: 'detail.thinking.low.label',
   medium: 'detail.thinking.medium.label',
   high: 'detail.thinking.high.label',
+  xhigh: 'detail.thinking.xhigh.label',
 } satisfies Record<ThinkingEffort, AgentManagementKey>
 
 const thinkingDescriptionKeys = {
@@ -121,6 +122,7 @@ const thinkingDescriptionKeys = {
   low: 'detail.thinking.low.description',
   medium: 'detail.thinking.medium.description',
   high: 'detail.thinking.high.description',
+  xhigh: 'detail.thinking.xhigh.description',
 } satisfies Record<ThinkingEffort, AgentManagementKey>
 
 interface AgentDetailFormValues {

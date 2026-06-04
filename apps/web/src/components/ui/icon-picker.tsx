@@ -4,17 +4,20 @@ import { SearchIcon, XIcon } from 'lucide-react'
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl, iconCatalog, searchIcons } from '~/lib/lobe-icons'
 import type { IconCatalogEntry } from '~/lib/lobe-icons'
+import { useResolvedThemeMode } from '~/store/theme'
 
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 // ── Lazy PNG icon renderer ──
 
 function IconImage({ slug, className }: { slug: string, className?: string }) {
+  const theme = useResolvedThemeMode()
   const [url, setUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    getLobeIconUrl(slug, 'dark').then((u) => {
+    setUrl(null)
+    getLobeIconUrl(slug, theme).then((u) => {
       if (!cancelled) {
         setUrl(u)
       }
@@ -22,7 +25,7 @@ function IconImage({ slug, className }: { slug: string, className?: string }) {
     return () => {
       cancelled = true
     }
-  }, [slug])
+  }, [slug, theme])
 
   if (!url) {
     return <div className={cn('animate-pulse rounded bg-muted', className)} />
@@ -32,7 +35,10 @@ function IconImage({ slug, className }: { slug: string, className?: string }) {
     <img
       src={url}
       alt={slug}
-      className={cn('object-contain', className)}
+      className={cn(
+        'object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.16)] dark:drop-shadow-[0_1px_1px_rgba(255,255,255,0.14)]',
+        className,
+      )}
     />
   )
 }

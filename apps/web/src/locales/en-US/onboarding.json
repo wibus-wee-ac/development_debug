@@ -127,6 +127,8 @@
   "preview.thinking.auto.label": "Auto",
   "preview.thinking.high.description": "Deep reasoning",
   "preview.thinking.high.label": "High",
+  "preview.thinking.xhigh.description": "Maximum reasoning",
+  "preview.thinking.xhigh.label": "Extra High",
   "preview.thinking.low.description": "Fast reasoning",
   "preview.thinking.low.label": "Low",
   "preview.thinking.medium.description": "Balanced reasoning",

@@ -2154,7 +2154,7 @@ export type GetAgentsResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2173,7 +2173,7 @@ export type PostAgentsData = {
         avatarSeed: string;
         providerTargetId?: string | null;
         modelId?: string | null;
-        thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind?: string;
         configJson?: string;
     };
@@ -2195,7 +2195,7 @@ export type PostAgentsResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2248,7 +2248,7 @@ export type GetAgentsByIdResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2267,7 +2267,7 @@ export type PatchAgentsByIdData = {
         avatarSeed?: string;
         providerTargetId?: string | null;
         modelId?: string | null;
-        thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind?: string;
         configJson?: string;
         enabled?: boolean;
@@ -2292,7 +2292,7 @@ export type PatchAgentsByIdResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2513,7 +2513,7 @@ export type GetAutomationsResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -2566,7 +2566,7 @@ export type PostAutomationsData = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind?: 'agent' | 'user' | 'system';
         createdById?: string | null;
@@ -2619,7 +2619,7 @@ export type PostAutomationsResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -2704,7 +2704,7 @@ export type GetAutomationsByIdResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -2754,7 +2754,7 @@ export type PatchAutomationsByIdData = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind?: 'agent' | 'user' | 'system';
         createdById?: string | null;
@@ -2809,7 +2809,7 @@ export type PatchAutomationsByIdResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -2874,7 +2874,7 @@ export type PostAutomationsByIdEnableResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -2939,7 +2939,7 @@ export type PostAutomationsByIdDisableResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         createdByKind: 'agent' | 'user' | 'system';
         createdById: string | null;
@@ -3008,7 +3008,7 @@ export type PostAutomationsByIdRunResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         chatSessionId: string | null;
         backendRunId: string | null;
@@ -3078,7 +3078,7 @@ export type GetAutomationsByIdRunsResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         chatSessionId: string | null;
         backendRunId: string | null;
@@ -3149,7 +3149,7 @@ export type GetAutomationsByIdRunsByRunIdResponses = {
             providerTargetId?: string;
             runtimeKind?: string;
             modelId?: string;
-            thinkingEffort?: 'low' | 'medium' | 'high';
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
         chatSessionId: string | null;
         backendRunId: string | null;
@@ -5937,7 +5937,7 @@ export type PostChatSessionsBySessionIdResponseData = {
         }>;
         providerTargetId?: string;
         modelId?: string;
-        thinkingEffort?: 'low' | 'medium' | 'high';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         permissionMode?: 'bypassPermissions' | 'plan';
     };
     path: {
@@ -6126,7 +6126,7 @@ export type PostChatSessionsBySessionIdQueueData = {
         }>;
         providerTargetId?: string;
         modelId?: string;
-        thinkingEffort?: 'low' | 'medium' | 'high';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         permissionMode?: 'bypassPermissions' | 'plan';
     };
     path: {
@@ -6629,8 +6629,13 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             kind: string;
             slotId: string;
             threadId: string;
+            limitName: string | null;
             usedPercent: number | null;
+            primaryWindowDurationMins: number | null;
+            primaryResetsAt: number | null;
             secondaryUsedPercent: number | null;
+            secondaryWindowDurationMins: number | null;
+            secondaryResetsAt: number | null;
             creditsBalance: string | null;
             hasCredits: boolean | null;
             rateLimitReachedType: string | null;
@@ -6899,8 +6904,8 @@ export type GetChatRunsByRunIdSnapshotResponses = {
         id: string;
         schemaVersion: number;
         traceId: string;
-        chatSessionId: string;
-        runId: string;
+        chatSessionId: string | null;
+        runId: string | null;
         messageId?: string;
         providerTargetId?: string;
         runtimeKind: string;
@@ -6919,8 +6924,8 @@ export type GetChatRunsByRunIdSnapshotResponses = {
         events: Array<{
             id: string;
             snapshotId: string;
-            chatSessionId: string;
-            runId: string;
+            chatSessionId: string | null;
+            runId: string | null;
             seq: number;
             phase: string;
             chunkType?: string;
@@ -7004,8 +7009,8 @@ export type GetChatSessionsBySessionIdRunSnapshotsResponses = {
             id: string;
             schemaVersion: number;
             traceId: string;
-            chatSessionId: string;
-            runId: string;
+            chatSessionId: string | null;
+            runId: string | null;
             messageId?: string;
             providerTargetId?: string;
             runtimeKind: string;
@@ -7024,8 +7029,8 @@ export type GetChatSessionsBySessionIdRunSnapshotsResponses = {
             events: Array<{
                 id: string;
                 snapshotId: string;
-                chatSessionId: string;
-                runId: string;
+                chatSessionId: string | null;
+                runId: string | null;
                 seq: number;
                 phase: string;
                 chunkType?: string;

@@ -216,6 +216,9 @@ export function setArchived(input: { id: string, archived: boolean }): SessionVi
     })
     .where(eq(sessions.id, input.id))
     .run()
+  if (input.archived) {
+    notifySessionArchived(input.id)
+  }
   return get(input.id)
 }
 
@@ -546,10 +549,27 @@ export function updateTitle(input: { id: string, title: string }): void {
 }
 
 type CleanupHandler = (sessionId: string) => void
+type ArchiveHandler = (sessionId: string) => void
 const cleanupHandlers: CleanupHandler[] = []
+const archiveHandlers: ArchiveHandler[] = []
 
 export function onSessionCleanup(handler: CleanupHandler): void {
   cleanupHandlers.push(handler)
+}
+
+export function onSessionArchived(handler: ArchiveHandler): void {
+  archiveHandlers.push(handler)
+}
+
+function notifySessionArchived(id: string): void {
+  for (const handler of archiveHandlers) {
+    try {
+      handler(id)
+    }
+ catch {
+      // archive hooks must not break the soft-archive flow
+    }
+  }
 }
 
 function cleanupSessionResources(id: string): void {

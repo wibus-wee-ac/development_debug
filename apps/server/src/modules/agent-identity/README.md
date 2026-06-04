@@ -1,7 +1,7 @@
 # Agent Identity Module
 
 Agent CRUD, filtered list queries, local Claude/Codex import, agent-profile ownership, and avatar URL policy.
-Agent rows are the user-visible AI persona boundary; agent profiles are provider/runtime configuration and must not be used as authors.
+Agent rows are the user-visible AI persona boundary; agent profiles are provider/runtime configuration and must not be used as authors. Provider-backed agents may persist `auto`, `low`, `medium`, `high`, or `xhigh` thinking effort.
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
 
 ## Files

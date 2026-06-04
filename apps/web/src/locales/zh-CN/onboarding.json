@@ -127,6 +127,8 @@
   "preview.thinking.auto.label": "自动",
   "preview.thinking.high.description": "深度推理",
   "preview.thinking.high.label": "高",
+  "preview.thinking.xhigh.description": "最高推理",
+  "preview.thinking.xhigh.label": "超高",
   "preview.thinking.low.description": "快速推理",
   "preview.thinking.low.label": "低",
   "preview.thinking.medium.description": "均衡推理",

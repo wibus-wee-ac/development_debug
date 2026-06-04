@@ -39,6 +39,8 @@
   "thinking.auto.label": "Auto",
   "thinking.high.description": "Razonamiento más profundo para tareas complejas.",
   "thinking.high.label": "Alto",
+  "thinking.xhigh.description": "Presupuesto máximo de razonamiento para tareas difíciles.",
+  "thinking.xhigh.label": "Extra alto",
   "thinking.low.description": "Respuestas rápidas con razonamiento ligero.",
   "thinking.low.label": "Bajo",
   "thinking.medium.description": "Razonamiento equilibrado para el trabajo diario.",

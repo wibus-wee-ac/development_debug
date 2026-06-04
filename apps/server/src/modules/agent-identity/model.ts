@@ -4,6 +4,7 @@ const thinkingEffortEnum = t.Union([
   t.Literal('low'),
   t.Literal('medium'),
   t.Literal('high'),
+  t.Literal('xhigh'),
   t.Literal('auto'),
 ])
 
@@ -36,7 +37,7 @@ interface AgentIdentityRecord {
   avatarSeed: string
   providerTargetId: string | null
   modelId: string | null
-  thinkingEffort: 'low' | 'medium' | 'high' | 'auto'
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
   runtimeKind: string
   configJson: string
   enabled: boolean

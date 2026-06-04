@@ -63,7 +63,7 @@ export interface DesktopChatStartResponseRequest {
     messages?: unknown[]
     providerTargetId?: string
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
     permissionMode?: 'bypassPermissions' | 'plan'
   }
 }

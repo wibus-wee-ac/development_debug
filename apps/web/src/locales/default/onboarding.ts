@@ -116,6 +116,8 @@ export default {
   'preview.thinking.medium.description': 'Balanced reasoning',
   'preview.thinking.high.label': 'High',
   'preview.thinking.high.description': 'Deep reasoning',
+  'preview.thinking.xhigh.label': 'Extra High',
+  'preview.thinking.xhigh.description': 'Maximum reasoning',
   'preview.skill.reactDoctor': 'Review React quality, accessibility, and regressions',
   'preview.skill.agentBrowser': 'Inspect local product UI in a browser',
 

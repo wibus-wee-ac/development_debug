@@ -90,6 +90,8 @@ export default {
   'detail.thinking.auto.label': 'Auto',
   'detail.thinking.high.description': 'Deeper reasoning for complex work.',
   'detail.thinking.high.label': 'High',
+  'detail.thinking.xhigh.description': 'Maximum reasoning budget for hard tasks.',
+  'detail.thinking.xhigh.label': 'Extra High',
   'detail.thinking.low.description': 'Fast responses with light reasoning.',
   'detail.thinking.low.label': 'Low',
   'detail.thinking.medium.description': 'Balanced reasoning for everyday work.',

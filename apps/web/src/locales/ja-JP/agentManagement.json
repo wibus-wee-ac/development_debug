@@ -82,6 +82,8 @@
   "detail.thinking.auto.label": "自動",
   "detail.thinking.high.description": "複雑な作業向けの深い推論。",
   "detail.thinking.high.label": "高",
+  "detail.thinking.xhigh.description": "難しいタスク向けの最大推論予算。",
+  "detail.thinking.xhigh.label": "最高",
   "detail.thinking.low.description": "軽い推論で高速応答します。",
   "detail.thinking.low.label": "低",
   "detail.thinking.medium.description": "日常作業向けのバランス型推論。",

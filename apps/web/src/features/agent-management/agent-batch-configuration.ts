@@ -1,7 +1,7 @@
 import type { UpdateAgentInput } from '~/features/agent-runtime/use-agents'
 import type { Agent, ProviderTarget } from '~/lib/types'
 
-export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'auto'
+export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
 
 export interface AgentProviderBatchSelection {
   providerTarget: ProviderTarget

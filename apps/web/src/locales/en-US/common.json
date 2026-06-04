@@ -39,6 +39,8 @@
   "thinking.auto.label": "Auto",
   "thinking.high.description": "Deeper reasoning for complex work.",
   "thinking.high.label": "High",
+  "thinking.xhigh.description": "Maximum reasoning budget for hard tasks.",
+  "thinking.xhigh.label": "Extra High",
   "thinking.low.description": "Fast responses with light reasoning.",
   "thinking.low.label": "Low",
   "thinking.medium.description": "Balanced reasoning for everyday work.",

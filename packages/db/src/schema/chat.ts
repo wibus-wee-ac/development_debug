@@ -107,7 +107,7 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
     .references(() => providerTargets.id, { onDelete: 'set null' }),
   modelId: text('model_id'),
   thinkingEffort: text('thinking_effort', {
-    enum: ['low', 'medium', 'high'],
+    enum: ['low', 'medium', 'high', 'xhigh'],
   }),
   permissionMode: text('permission_mode', {
     enum: ['bypassPermissions', 'plan'],

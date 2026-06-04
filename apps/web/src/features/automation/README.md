@@ -2,7 +2,7 @@
 
 # Automation
 
-Agent-authored automation registry and viewer UI.
+Agent-authored automation registry and viewer UI. Agent task recipes use the shared composer model picker and accept `low`, `medium`, `high`, and `xhigh` thinking effort.
 
 ## Files
 

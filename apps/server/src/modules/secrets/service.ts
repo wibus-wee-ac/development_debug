@@ -157,6 +157,26 @@ export function upsertSecret(input: UpsertSecretInput): SecretMetadata {
   return upsertSecretInDb(db(), input)
 }
 
+export function updateSecretValue(id: string, secret: string): void {
+  ensureConfigured()
+  const encryptedSecret = encrypt(secret)
+  const result = db().update(agentCredentials)
+    .set({
+      encryptedSecret,
+      updatedAt: Math.floor(Date.now() / 1000),
+    })
+    .where(eq(agentCredentials.id, id))
+    .run()
+  if (result.changes === 0) {
+    throw new AppError({
+      code: 'secret_not_found',
+      status: 400,
+      message: 'Secret not found',
+      details: { id },
+    })
+  }
+}
+
 export function removeSecret(id: string): void {
   db().delete(agentCredentials).where(eq(agentCredentials.id, id)).run()
 }

@@ -5,7 +5,7 @@ import { ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
-import { useThemeStore } from '~/store/theme'
+import { useResolvedThemeMode } from '~/store/theme'
 
 export function AppEnvironmentProviders({ children }: { children: React.ReactNode }) {
   return (
@@ -22,22 +22,9 @@ export function AppEnvironmentProviders({ children }: { children: React.ReactNod
 }
 
 export function useThemeClass(): void {
-  const mode = useThemeStore(s => s.mode)
+  const resolvedMode = useResolvedThemeMode()
 
   useEffect(() => {
-    const applyDark = (dark: boolean): void => {
-      document.documentElement.classList.toggle('dark', dark)
-    }
-
-    if (mode !== 'system') {
-      applyDark(mode === 'dark')
-      return
-    }
-
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    applyDark(mq.matches)
-    const listener = (e: MediaQueryListEvent): void => applyDark(e.matches)
-    mq.addEventListener('change', listener)
-    return () => mq.removeEventListener('change', listener)
-  }, [mode])
+    document.documentElement.classList.toggle('dark', resolvedMode === 'dark')
+  }, [resolvedMode])
 }
