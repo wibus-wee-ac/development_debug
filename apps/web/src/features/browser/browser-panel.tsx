@@ -1,122 +1,39 @@
+// FILE: browser-panel.tsx
+// Purpose: Renders Cradle's BrowserPanel chrome and anchors the native Electron WebContentsView.
+// Layer: Browser feature UI
+// Depends on: BrowserPanel Zustand metadata cache, Electron browser preload bridge
+
 import {
   ArrowLeftIcon,
   ArrowRightIcon,
-  BugIcon,
-  Code2Icon,
-  EyeIcon,
-  FileCodeIcon,
-  FileDiffIcon,
+  CameraIcon,
   GlobeIcon,
+  LoaderCircleIcon,
   PlusIcon,
   RefreshCwIcon,
   XIcon,
 } from 'lucide-react'
-import { Activity, createElement, useCallback, useEffect, useRef, useState } from 'react'
-import type { FileUIPart } from 'ai'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 
-import { submitChatPromptIngress } from '~/features/chat/prompt-ingress'
-import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
-import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
-import { isElectron, nativeIpc } from '~/lib/electron'
-import type { BrowserPanelScriptRunAt, BrowserPanelTab } from '~/store/browser-panel'
+import { isElectron } from '~/lib/electron'
 import {
   DEFAULT_BROWSER_PANEL_OWNER_ID,
   handleBrowserPanelTabShortcut,
+  selectOwnerBrowserHistory,
+  selectOwnerBrowserState,
   useBrowserPanelStore,
+  type BrowserTabState,
 } from '~/store/browser-panel'
 
-import { BROWSER_TAB_SCRIPT_PRESETS, getBrowserTabScriptsByIds } from './browser-tab-scripts'
-import { WorkspaceDiffViewer } from './workspace-diff-viewer'
-
-// Electron webview element — not in React's JSX types
-type WebviewElement = HTMLElement & {
-  src: string
-  __cleanup?: () => void
-  __webContentsId?: number
-  loadURL: (url: string) => Promise<void>
-  goBack: () => void
-  goForward: () => void
-  reload: () => void
-  canGoBack: () => boolean
-  canGoForward: () => boolean
-  getURL: () => string
-  getTitle: () => string
-  isLoading: () => boolean
-  getWebContentsId: () => number
-  executeJavaScript: (code: string) => Promise<unknown>
-  addEventListener: (event: string, handler: (...args: unknown[]) => void) => void
-  removeEventListener: (event: string, handler: (...args: unknown[]) => void) => void
-}
-
-type WebviewRefCallback = (el: WebviewElement | null) => void
-
-const WEBVIEW_PARTITION = 'persist:browser'
-const WEBVIEW_PREFERENCES = 'contextIsolation=yes'
-const SEND_PROMPT_CHANNEL = 'cradle:send-prompt'
-const SCRIPT_RUN_AT_LABELS = {
-  'document-start': 'start',
-  'document-end': 'end',
-  'document-idle': 'idle',
-} as const
-const CUSTOM_SCRIPT_RUN_AT_OPTIONS: BrowserPanelScriptRunAt[] = ['document-start', 'document-end', 'document-idle']
-
-function isElectronWebview(el: WebviewElement): boolean {
-  return typeof el.loadURL === 'function' && typeof el.getWebContentsId === 'function'
-}
-
-function areBrowserUrlsEquivalent(left: string, right: string): boolean {
-  if (left === right) {
-    return true
-  }
-  try {
-    return new URL(left).href === new URL(right).href
-  }
-  catch {
-    return false
-  }
-}
-
-function isAbortedNavigationError(error: unknown): boolean {
-  return typeof error === 'object'
-    && error !== null
-    && 'code' in error
-    && (error as { code?: unknown }).code === 'ERR_ABORTED'
-}
-
-function loadBrowserTabUrl(webview: WebviewElement, url: string): void {
-  if (areBrowserUrlsEquivalent(webview.getURL(), url)) {
-    return
-  }
-  void webview.loadURL(url).catch((error) => {
-    if (isAbortedNavigationError(error)) {
-      return
-    }
-    console.warn('[browser-panel] Failed to load browser tab URL:', error)
-  })
-}
-
-interface ElectronWebviewProps {
-  url: string
-  webviewRef: (el: WebviewElement | null) => void
-}
-
-function ElectronWebview({ url, webviewRef }: ElectronWebviewProps) {
-  return createElement('webview', {
-    allowpopups: 'true',
-    ref: webviewRef,
-    src: url,
-    partition: WEBVIEW_PARTITION,
-    webpreferences: WEBVIEW_PREFERENCES,
-    className: 'absolute inset-0 w-full h-full',
-  } as React.HTMLAttributes<HTMLElement> & {
-    ref: (el: WebviewElement | null) => void
-    allowpopups: string
-    src: string
-    partition: string
-    webpreferences: string
-  })
-}
+import {
+  browserAddressDisplayValue,
+  buildBrowserAddressSuggestions,
+  normalizeBrowserAddressInput,
+  resolveBrowserAddressSync,
+  resolveBrowserChromeStatus,
+  type BrowserAddressSuggestion,
+} from './browser-panel.logic'
 
 interface BrowserPanelProps {
   ownerId?: string | null
@@ -125,754 +42,530 @@ interface BrowserPanelProps {
   onCloseLastTab?: (ownerId: string) => void
 }
 
-function getTabFallbackTitle(tab: BrowserPanelTab): string {
-  if (tab.kind === 'browser') {
-    return tab.url
-  }
-  if (tab.kind === 'workspace-diff') {
-    return 'diff'
-  }
-  return 'workspace file'
+const BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET = 2
+
+function readBrowserBridge() {
+  return window.cradle?.browser ?? null
 }
 
-function getSourceSessionTitle(tab: BrowserPanelTab): string | null {
-  if (tab.kind !== 'browser' || !tab.sessionId) {
+function formatBrowserActionError(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return 'Browser action failed.'
+  }
+  if (/ERR_ABORTED|\(-3\)/i.test(error.message)) {
     return null
   }
-  return tab.sessionTitle || `Session ${tab.sessionId.slice(0, 8)}`
+  return error.message || 'Browser action failed.'
 }
 
-const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
-
-interface BrowserPanelPromptAttachment {
-  filename?: unknown
-  mediaType?: unknown
-  url?: unknown
-}
-
-interface WebviewIpcMessageEvent {
-  args?: unknown[]
-  channel?: unknown
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-}
-
-function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.length > 0 ? value : null
-}
-
-function readSendPromptPayload(input: unknown): { files: FileUIPart[], text: string } | null {
-  if (!isRecord(input)) {
-    return null
+function getTabTitle(tab: BrowserTabState): string {
+  if (tab.title && tab.title !== 'about:blank') {
+    return tab.title
   }
-
-  const text = typeof input.text === 'string' ? input.text : ''
-  const attachments = Array.isArray(input.attachments)
-    ? input.attachments as BrowserPanelPromptAttachment[]
-    : []
-  const files = attachments.flatMap((attachment) => {
-    if (!isRecord(attachment)) {
-      return []
-    }
-    const url = readString(attachment.url)
-    if (!url) {
-      return []
-    }
-    return [{
-      type: 'file' as const,
-      filename: readString(attachment.filename) ?? undefined,
-      mediaType: readString(attachment.mediaType) ?? 'application/octet-stream',
-      url,
-    }]
-  })
-
-  return text.trim().length > 0 || files.length > 0 ? { files, text } : null
+  if (tab.url === 'about:blank') {
+    return 'New tab'
+  }
+  return tab.url
 }
 
 export function BrowserPanel({
   ownerId = null,
-  activeSessionId = null,
-  activeSessionTitle = null,
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
-  const tabs = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.tabs ?? EMPTY_BROWSER_PANEL_TABS)
-  const activeTabId = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.activeTabId ?? null)
+  const browserState = useBrowserPanelStore(selectOwnerBrowserState(resolvedOwnerId))
+  const recentHistory = useBrowserPanelStore(selectOwnerBrowserHistory(resolvedOwnerId))
   const requestedTab = useBrowserPanelStore(state => state.owners[resolvedOwnerId]?.requestedTab ?? null)
-  const createTab = useBrowserPanelStore(state => state.createTab)
+  const setActiveOwner = useBrowserPanelStore(state => state.setActiveOwner)
+  const upsertOwnerState = useBrowserPanelStore(state => state.upsertOwnerState)
   const fulfillRequestedTab = useBrowserPanelStore(state => state.fulfillRequestedTab)
-  const closeTab = useBrowserPanelStore(state => state.closeTab)
-  const setActiveTab = useBrowserPanelStore(state => state.setActiveTab)
-  const updateTab = useBrowserPanelStore(state => state.updateTab)
-  const navigateTo = useBrowserPanelStore(state => state.navigateTo)
-  const setBrowserTabScripts = useBrowserPanelStore(state => state.setBrowserTabScripts)
-  const addBrowserTabCustomScript = useBrowserPanelStore(state => state.addBrowserTabCustomScript)
-  const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
-  const activeTab = tabs.find(t => t.id === activeTabId)
-  const activeBrowserTab = activeTab?.kind === 'browser' ? activeTab : null
-  const activeWorkspaceFileTab = activeTab?.kind === 'workspace-file' ? activeTab : null
-  const activeWorkspaceDiffTab = activeTab?.kind === 'workspace-diff' ? activeTab : null
-  const [urlInput, setUrlInput] = useState('')
-  const [domReadyCount, setDomReadyCount] = useState(0)
-  const webviewMapRef = useRef<Map<string, WebviewElement>>(new Map())
-  const webviewRefCallbacksRef = useRef<Map<string, WebviewRefCallback>>(new Map())
-  const loadedWebviewTabIdsRef = useRef<Set<string>>(new Set())
-  const scriptSyncKeysRef = useRef<Map<string, string>>(new Map())
-  const activeSessionIdRef = useRef(activeSessionId)
+  const removeOwnerState = useBrowserPanelStore(state => state.removeOwnerState)
+
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const previousActiveTabIdRef = useRef<string | null>(null)
+  const addressDraftByTabIdRef = useRef<Map<string, string>>(new Map())
+  const lastSyncedAddressValueRef = useRef<string | undefined>(undefined)
+  const stableBoundsFrameCountRef = useRef(0)
+  const animationFrameRef = useRef<number | null>(null)
+
+  const [addressValue, setAddressValue] = useState('')
+  const [isEditingAddress, setIsEditingAddress] = useState(false)
+  const [localError, setLocalError] = useState<string | null>(null)
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+
+  const tabs = browserState?.tabs ?? []
+  const activeTab = tabs.find(tab => tab.id === browserState?.activeTabId) ?? tabs[0] ?? null
+  const activeTabId = activeTab?.id ?? null
+  const suggestions = useMemo(
+    () =>
+      buildBrowserAddressSuggestions({
+        query: addressValue,
+        activeTabId,
+        tabs,
+        recentHistory,
+      }),
+    [activeTabId, addressValue, recentHistory, tabs],
+  )
+  const chromeStatus = resolveBrowserChromeStatus({
+    localError,
+    threadLastError: browserState?.lastError,
+    activeTabStatus: activeTab?.status ?? 'suspended',
+    hasActiveTab: Boolean(activeTab),
+    workspaceReady: Boolean(browserState),
+  })
 
   useEffect(() => {
-    activeSessionIdRef.current = activeSessionId
-  }, [activeSessionId])
+    setActiveOwner(resolvedOwnerId)
+  }, [resolvedOwnerId, setActiveOwner])
+
+  useEffect(() => {
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      return
+    }
+
+    const unsubscribe = bridge.onState((state) => {
+      upsertOwnerState(state)
+    })
+
+    void bridge.open({ threadId: resolvedOwnerId }).then(upsertOwnerState).catch((error) => {
+      setLocalError(formatBrowserActionError(error))
+    })
+
+    return () => {
+      unsubscribe()
+      void bridge.hide({ threadId: resolvedOwnerId }).catch(() => {})
+    }
+  }, [resolvedOwnerId, upsertOwnerState])
 
   useEffect(() => {
     if (!requestedTab) {
       return
     }
-    fulfillRequestedTab(requestedTab.id, ownerId)
-  }, [fulfillRequestedTab, ownerId, requestedTab])
 
-  // Sync URL input with active tab
-  const activeTabUrl = activeBrowserTab?.url
-  const activeTabIdForSync = activeBrowserTab?.id
-  useEffect(() => {
-    if (activeTabUrl !== undefined) {
-      setUrlInput(activeTabUrl === 'about:blank' ? '' : activeTabUrl)
-    }
-  }, [activeTabUrl, activeTabIdForSync])
-
-  const attachWebviewListeners = useCallback(
-    (tabId: string, el: WebviewElement) => {
-      // eslint-disable-next-line ts/no-explicit-any
-      const handleTitleUpdated = (e: any) => {
-        updateTab(tabId, { title: e.title }, ownerId)
-      }
-      // eslint-disable-next-line ts/no-explicit-any
-      const handleDidNavigate = (e: any) => {
-        if (!loadedWebviewTabIdsRef.current.has(tabId)) {
-          return
-        }
-        updateTab(tabId, {
-          url: e.url,
-          canGoBack: el.canGoBack(),
-          canGoForward: el.canGoForward(),
-        }, ownerId)
-      }
-      const handleDidStartLoading = () => {
-        updateTab(tabId, { loading: true }, ownerId)
-      }
-      const handleDidStopLoading = () => {
-        updateTab(tabId, {
-          loading: false,
-          canGoBack: el.canGoBack(),
-          canGoForward: el.canGoForward(),
-        }, ownerId)
-      }
-      // eslint-disable-next-line ts/no-explicit-any
-      const handleFavicon = (e: any) => {
-        updateTab(tabId, { favicon: e.favicons?.[0] ?? null }, ownerId)
-      }
-      const handleIpcMessage = (rawEvent: unknown) => {
-        const event = isRecord(rawEvent) ? rawEvent as WebviewIpcMessageEvent : {}
-        if (event.channel !== SEND_PROMPT_CHANNEL) {
-          return
-        }
-        const payload = readSendPromptPayload(event.args?.[0])
-        if (!payload) {
-          return
-        }
-        const ownerState = useBrowserPanelStore.getState().owners[resolvedOwnerId]
-        const tab = ownerState?.tabs.find(candidate => candidate.id === tabId)
-        const sessionId = tab?.kind === 'browser'
-          ? tab.sessionId ?? activeSessionIdRef.current
-          : activeSessionIdRef.current
-        if (!sessionId) {
-          console.warn('[browser-panel] window.codex.sendPrompt ignored because no chat session is active')
-          return
-        }
-        const submitted = submitChatPromptIngress(sessionId, {
-          text: payload.text,
-          files: payload.files,
-        })
-        if (!submitted) {
-          console.warn(`[browser-panel] window.codex.sendPrompt ignored because chat session ${sessionId} is not mounted`)
-        }
-      }
-
-      el.addEventListener('page-title-updated', handleTitleUpdated)
-      el.addEventListener('did-navigate', handleDidNavigate)
-      el.addEventListener('did-navigate-in-page', handleDidNavigate)
-      el.addEventListener('did-start-loading', handleDidStartLoading)
-      el.addEventListener('did-stop-loading', handleDidStopLoading)
-      el.addEventListener('page-favicon-updated', handleFavicon)
-      el.addEventListener('ipc-message', handleIpcMessage)
-
-      const handleDomReady = () => {
-        el.__webContentsId = el.getWebContentsId()
-        setDomReadyCount(c => c + 1)
-      }
-      el.addEventListener('dom-ready', handleDomReady)
-
-      return () => {
-        el.removeEventListener('page-title-updated', handleTitleUpdated)
-        el.removeEventListener('did-navigate', handleDidNavigate)
-        el.removeEventListener('did-navigate-in-page', handleDidNavigate)
-        el.removeEventListener('did-start-loading', handleDidStartLoading)
-        el.removeEventListener('did-stop-loading', handleDidStopLoading)
-        el.removeEventListener('page-favicon-updated', handleFavicon)
-        el.removeEventListener('ipc-message', handleIpcMessage)
-        el.removeEventListener('dom-ready', handleDomReady)
-      }
-    },
-    [ownerId, resolvedOwnerId, updateTab],
-  )
-
-  const getWebviewRef = useCallback(
-    (tabId: string) => {
-      const existing = webviewRefCallbacksRef.current.get(tabId)
-      if (existing) {
-        return existing
-      }
-
-      const refCallback: WebviewRefCallback = (el) => {
-        if (el && !webviewMapRef.current.has(tabId)) {
-          webviewMapRef.current.set(tabId, el)
-          el.__cleanup = attachWebviewListeners(tabId, el)
-        }
-        else if (!el) {
-          const prev = webviewMapRef.current.get(tabId)
-          if (prev) {
-            prev.__cleanup?.()
-            webviewMapRef.current.delete(tabId)
-            loadedWebviewTabIdsRef.current.delete(tabId)
-            scriptSyncKeysRef.current.delete(tabId)
-            if (prev.__webContentsId != null) {
-              void nativeIpc?.browserTabScripts.clearScripts({
-                webContentsId: prev.__webContentsId,
-              }).catch((error) => {
-                console.warn('[browser-panel] Failed to clear browser tab scripts:', error)
-              })
-            }
-            webviewRefCallbacksRef.current.delete(tabId)
-          }
-        }
-      }
-
-      webviewRefCallbacksRef.current.set(tabId, refCallback)
-      return refCallback
-    },
-    [attachWebviewListeners],
-  )
-
-  const handleGoBack = useCallback(() => {
-    if (!activeBrowserTab) {
-      return
-    }
-    webviewMapRef.current.get(activeBrowserTab.id)?.goBack()
-  }, [activeBrowserTab])
-
-  const handleGoForward = useCallback(() => {
-    if (!activeBrowserTab) {
-      return
-    }
-    webviewMapRef.current.get(activeBrowserTab.id)?.goForward()
-  }, [activeBrowserTab])
-
-  const handleReload = useCallback(() => {
-    if (!activeBrowserTab) {
-      return
-    }
-    webviewMapRef.current.get(activeBrowserTab.id)?.reload()
-  }, [activeBrowserTab])
-
-  useEffect(() => {
-    const browserTabScripts = nativeIpc?.browserTabScripts
-    if (!browserTabScripts) {
-      for (const tab of tabs) {
-        if (tab.kind !== 'browser' || loadedWebviewTabIdsRef.current.has(tab.id)) {
-          continue
-        }
-        const webview = webviewMapRef.current.get(tab.id)
-        if (!webview) {
-          continue
-        }
-        if (!isElectronWebview(webview)) {
-          continue
-        }
-        loadedWebviewTabIdsRef.current.add(tab.id)
-        loadBrowserTabUrl(webview, tab.url)
-      }
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      fulfillRequestedTab(requestedTab.id, resolvedOwnerId)
       return
     }
 
-    for (const tab of tabs) {
-      if (tab.kind !== 'browser') {
-        continue
-      }
-      const webview = webviewMapRef.current.get(tab.id)
-      if (!webview) {
-        continue
-      }
-      if (!isElectronWebview(webview)) {
-        continue
-      }
+    const url = requestedTab.url ?? 'about:blank'
+    const action = browserState?.open
+      ? bridge.newTab({ threadId: resolvedOwnerId, url, activate: true })
+      : bridge.open({ threadId: resolvedOwnerId, initialUrl: url })
 
-      const scripts = [
-        ...getBrowserTabScriptsByIds(tab.scriptIds),
-        ...tab.customScripts.map(script => ({
-          ...script,
-          description: 'Custom browser tab script',
-        })),
-      ]
-      const scriptPayloads = scripts.map(script => ({
-        id: script.id,
-        label: script.label,
-        runAt: script.runAt,
-        source: script.source,
-      }))
-      if (webview.__webContentsId == null) {
-        continue
-      }
-      const webContentsId = webview.__webContentsId
-      const syncKey = JSON.stringify({
-        webContentsId,
-        scripts: scriptPayloads,
+    void action
+      .then(upsertOwnerState)
+      .catch((error) => {
+        setLocalError(formatBrowserActionError(error))
       })
-      const isLoaded = loadedWebviewTabIdsRef.current.has(tab.id)
-      let syncScripts: Promise<unknown> = Promise.resolve()
+      .finally(() => {
+        fulfillRequestedTab(requestedTab.id, resolvedOwnerId)
+      })
+  }, [browserState?.open, fulfillRequestedTab, requestedTab, resolvedOwnerId, upsertOwnerState])
 
-      if (scriptSyncKeysRef.current.get(tab.id) !== syncKey) {
-        scriptSyncKeysRef.current.set(tab.id, syncKey)
-        syncScripts = browserTabScripts.setScripts({
-          webContentsId,
-          scripts: scriptPayloads,
-        }).then(() => {
-          if (isLoaded) {
-            return Promise.all(scripts.map(script =>
-              browserTabScripts.runScript({
-                webContentsId,
-                script: {
-                  id: script.id,
-                  label: script.label,
-                  runAt: script.runAt,
-                  source: script.source,
-                },
-              }).catch((error) => {
-                console.warn(`[browser-panel] Failed to run ${script.id}:`, error)
-              })))
-          }
-          return undefined
-        }).catch((error) => {
-          console.warn('[browser-panel] Failed to sync browser tab scripts:', error)
-        })
-      }
-
-      if (!isLoaded) {
-        loadedWebviewTabIdsRef.current.add(tab.id)
-        void syncScripts.finally(() => {
-          if (!webviewMapRef.current.has(tab.id)) {
-            return
-          }
-          loadBrowserTabUrl(webview, tab.url)
-        }).catch((error) => {
-          console.warn('[browser-panel] Failed to load browser tab URL:', error)
-        })
-      }
-    }
-  }, [tabs, domReadyCount])
-
-  const handleToggleScript = useCallback(
-    (scriptId: string) => {
-      if (!activeBrowserTab) {
-        return
-      }
-      const nextScriptIds = activeBrowserTab.scriptIds.includes(scriptId)
-        ? activeBrowserTab.scriptIds.filter(id => id !== scriptId)
-        : [...activeBrowserTab.scriptIds, scriptId]
-      setBrowserTabScripts(activeBrowserTab.id, nextScriptIds, ownerId)
-    },
-    [activeBrowserTab, ownerId, setBrowserTabScripts],
-  )
-
-  const handleAddCustomScript = useCallback(() => {
-    if (!activeBrowserTab) {
+  const syncBounds = useCallback(() => {
+    const bridge = readBrowserBridge()
+    const element = viewportRef.current
+    if (!bridge || !element) {
       return
     }
 
-    const source = window.prompt('Script source')
-    if (!source?.trim()) {
+    const rect = element.getBoundingClientRect()
+    const visible = rect.width > 0 && rect.height > 0 && browserState?.open
+    if (!visible) {
+      bridge.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
       return
     }
-    const runAtInput = window.prompt('Run at: document-start, document-end, or document-idle', 'document-idle')
-    const runAt = CUSTOM_SCRIPT_RUN_AT_OPTIONS.includes(runAtInput as BrowserPanelScriptRunAt)
-      ? runAtInput as BrowserPanelScriptRunAt
-      : 'document-idle'
-    const label = window.prompt('Script label', 'Custom Script')?.trim() || 'Custom Script'
 
-    addBrowserTabCustomScript(activeBrowserTab.id, {
-      label,
-      runAt,
-      source,
-    }, ownerId)
-  }, [activeBrowserTab, addBrowserTabCustomScript, ownerId])
+    bridge.setBounds({
+      threadId: resolvedOwnerId,
+      surface: 'native',
+      bounds: {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+      },
+    })
+  }, [browserState?.open, resolvedOwnerId])
 
-  const handleUrlSubmit = useCallback(
-    (e: React.FormEvent) => {
-      e.preventDefault()
-      if (!activeBrowserTab || !urlInput.trim()) {
+  const scheduleStableBoundsSync = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      return
+    }
+
+    const tick = () => {
+      syncBounds()
+      stableBoundsFrameCountRef.current += 1
+      if (stableBoundsFrameCountRef.current < BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET) {
+        animationFrameRef.current = window.requestAnimationFrame(tick)
         return
       }
-      let url = urlInput.trim()
-      if (!url.startsWith('http://') && !url.startsWith('https://')) {
-        url = `https://${url}`
+      animationFrameRef.current = null
+      stableBoundsFrameCountRef.current = 0
+    }
+
+    animationFrameRef.current = window.requestAnimationFrame(tick)
+  }, [syncBounds])
+
+  useLayoutEffect(() => {
+    const element = viewportRef.current
+    if (!element) {
+      return
+    }
+
+    scheduleStableBoundsSync()
+    const resizeObserver = new ResizeObserver(scheduleStableBoundsSync)
+    resizeObserver.observe(element)
+    window.addEventListener('resize', scheduleStableBoundsSync)
+    window.addEventListener('scroll', scheduleStableBoundsSync, true)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', scheduleStableBoundsSync)
+      window.removeEventListener('scroll', scheduleStableBoundsSync, true)
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
       }
-      const wv = webviewMapRef.current.get(activeBrowserTab.id)
-      if (wv) {
-        loadBrowserTabUrl(wv, url)
-        navigateTo(activeBrowserTab.id, url, ownerId)
+      readBrowserBridge()?.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
+    }
+  }, [resolvedOwnerId, scheduleStableBoundsSync])
+
+  useEffect(() => {
+    scheduleStableBoundsSync()
+  }, [activeTabId, scheduleStableBoundsSync])
+
+  useEffect(() => {
+    const nextDisplayValue = browserAddressDisplayValue(activeTab)
+    const decision = resolveBrowserAddressSync({
+      activeTabId,
+      previousActiveTabId: previousActiveTabIdRef.current,
+      savedDraft: activeTabId ? addressDraftByTabIdRef.current.get(activeTabId) : undefined,
+      nextDisplayValue,
+      lastSyncedValue: lastSyncedAddressValueRef.current,
+      isEditing: isEditingAddress,
+    })
+    previousActiveTabIdRef.current = activeTabId
+
+    if (decision.type === 'replace') {
+      setAddressValue(decision.value)
+      lastSyncedAddressValueRef.current = decision.syncedValue
+    }
+  }, [activeTab, activeTabId, isEditingAddress])
+
+  const runBrowserAction = useCallback(
+    async (action: () => Promise<unknown>) => {
+      setLocalError(null)
+      try {
+        await action()
+      }
+      catch (error) {
+        const message = formatBrowserActionError(error)
+        if (message) {
+          setLocalError(message)
+        }
       }
     },
-    [activeBrowserTab, ownerId, urlInput, navigateTo],
+    [],
   )
 
   const handleNewTab = useCallback(() => {
-    createTab('about:blank', { sessionId: activeSessionId, sessionTitle: activeSessionTitle }, ownerId)
-  }, [activeSessionId, activeSessionTitle, createTab, ownerId])
-
-  const handleCloseTab = useCallback((tabId: string) => {
-    const closeResult = closeTab(tabId, ownerId)
-    if (closeResult.closedLastTab) {
-      onCloseLastTab?.(resolvedOwnerId)
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      return
     }
-  }, [closeTab, onCloseLastTab, ownerId, resolvedOwnerId])
+    void runBrowserAction(async () => {
+      upsertOwnerState(await bridge.newTab({ threadId: resolvedOwnerId, url: 'about:blank', activate: true }))
+    })
+  }, [resolvedOwnerId, runBrowserAction, upsertOwnerState])
 
-  // Empty state
-  if (tabs.length === 0) {
+  const handleCloseTab = useCallback(
+    (tabId: string) => {
+      const bridge = readBrowserBridge()
+      if (!bridge) {
+        return
+      }
+      void runBrowserAction(async () => {
+        const nextState = await bridge.closeTab({ threadId: resolvedOwnerId, tabId })
+        upsertOwnerState(nextState)
+        if (nextState.tabs.length === 0) {
+          removeOwnerState(resolvedOwnerId)
+          onCloseLastTab?.(resolvedOwnerId)
+        }
+      })
+    },
+    [onCloseLastTab, removeOwnerState, resolvedOwnerId, runBrowserAction, upsertOwnerState],
+  )
+
+  const handleSelectTab = useCallback(
+    (tabId: string) => {
+      const bridge = readBrowserBridge()
+      if (!bridge) {
+        return
+      }
+      void runBrowserAction(async () => {
+        upsertOwnerState(await bridge.selectTab({ threadId: resolvedOwnerId, tabId }))
+      })
+    },
+    [resolvedOwnerId, runBrowserAction, upsertOwnerState],
+  )
+
+  const navigateActiveTab = useCallback(
+    (url: string) => {
+      if (!activeTabId) {
+        return
+      }
+      const bridge = readBrowserBridge()
+      if (!bridge) {
+        return
+      }
+      void runBrowserAction(async () => {
+        const normalizedUrl = normalizeBrowserAddressInput(url)
+        upsertOwnerState(await bridge.navigate({ threadId: resolvedOwnerId, tabId: activeTabId, url: normalizedUrl }))
+        lastSyncedAddressValueRef.current = browserAddressDisplayValue({ url: normalizedUrl })
+        addressDraftByTabIdRef.current.delete(activeTabId)
+        setSuggestionsOpen(false)
+      })
+    },
+    [activeTabId, resolvedOwnerId, runBrowserAction, upsertOwnerState],
+  )
+
+  const handleSuggestion = useCallback(
+    (suggestion: BrowserAddressSuggestion) => {
+      if (suggestion.kind === 'tab' && suggestion.tabId) {
+        handleSelectTab(suggestion.tabId)
+        setSuggestionsOpen(false)
+        return
+      }
+      navigateActiveTab(suggestion.url)
+    },
+    [handleSelectTab, navigateActiveTab],
+  )
+
+  const handleAddressSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      navigateActiveTab(addressValue)
+    },
+    [addressValue, navigateActiveTab],
+  )
+
+  if (!isElectron) {
     return (
-      <div
-        className="flex flex-col flex-1 items-center justify-center gap-4 text-muted-foreground/60"
-        data-testid="browser-panel"
-        data-browser-panel-ready="true"
-      >
-        <GlobeIcon className="size-10 opacity-30" />
-        <p className="text-xs">No tabs open</p>
-        {isElectron && (
-          <button
-            type="button"
-            onClick={handleNewTab}
-            className="px-4 py-2 text-xs font-medium rounded-full bg-foreground/5 hover:bg-foreground/10 text-foreground transition-colors active:scale-95"
-          >
-            New Tab
-          </button>
-        )}
+      <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground" data-testid="browser-panel">
+        Browser Panel is available in the desktop app.
       </div>
     )
   }
 
   return (
     <div
-      className="flex flex-col flex-1 overflow-hidden"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
       data-testid="browser-panel"
       data-browser-panel-ready="true"
       onKeyDownCapture={(event) => {
         handleBrowserPanelTabShortcut(event.nativeEvent, {
           panelOpen: true,
-          ownerId,
+          ownerId: resolvedOwnerId,
           onCloseLastTab,
         })
       }}
     >
-      {/* Tab bar */}
-      <div className="flex items-center gap-0.5 px-2 py-1 shrink-0 border-b border-border/30 bg-card">
-        {tabs.map((tab) => {
-          const sourceSessionTitle = getSourceSessionTitle(tab)
-          const isForeignBrowserTab = tab.kind === 'browser'
-            && !!tab.sessionId
-            && tab.sessionId !== activeSessionId
-          return (
-          <div
-            key={tab.id}
-            className={cn(
-              'group flex max-w-40 items-center rounded-md text-[11px] transition-colors',
-              tab.id === activeTabId
-                ? 'bg-foreground/5 text-foreground'
-                : 'text-muted-foreground/60 hover:text-foreground hover:bg-foreground/4',
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveTab(tab.id, ownerId)}
-              className="flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md py-1 pl-2.5 pr-1 text-left transition-transform active:scale-[0.96]"
-              aria-current={tab.id === activeTabId ? 'page' : undefined}
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border/50 bg-card px-2">
+        <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+          {tabs.map(tab => (
+            <div
+              key={tab.id}
+              className={cn(
+                'group flex h-7 max-w-44 shrink-0 items-center rounded-md text-[11px] transition-colors',
+                tab.id === activeTabId
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground/70 hover:bg-foreground/5 hover:text-foreground',
+              )}
             >
-              {tab.loading && (
-                <span className="size-1.5 rounded-full bg-primary animate-pulse shrink-0" />
-              )}
-              {tab.kind === 'workspace-file' && (
-                <FileCodeIcon
-                  className="size-3 shrink-0 text-muted-foreground/70"
-                  aria-hidden="true"
-                />
-              )}
-              {tab.kind === 'workspace-diff' && (
-                <FileDiffIcon
-                  className="size-3 shrink-0 text-muted-foreground/70"
-                  aria-hidden="true"
-                />
-              )}
-              {tab.kind === 'browser' && !tab.loading && tab.favicon && (
-                <img src={tab.favicon} alt="" className="size-3 shrink-0 rounded-sm" />
-              )}
-              {tab.kind === 'browser' && !tab.loading && !tab.favicon && (
-                <GlobeIcon
-                  className="size-3 shrink-0 text-muted-foreground/60"
-                  aria-hidden="true"
-                />
-              )}
-              <span className="truncate">
-                {tab.title || (tab.kind === 'browser' ? tab.url : 'Workspace file')}
-              </span>
-              {isForeignBrowserTab && sourceSessionTitle && (
-                <span
-                  className="ml-0.5 flex size-3 shrink-0 items-center justify-center rounded-full bg-amber-500/15 text-[8px] font-semibold leading-none text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-300"
-                  title={`From ${sourceSessionTitle}`}
-                  aria-label={`From ${sourceSessionTitle}`}
-                >
-                  S
-                </span>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleCloseTab(tab.id)}
-              aria-label={`Close ${tab.title || getTabFallbackTitle(tab)}`}
-              className="mr-0.5 flex size-6 items-center justify-center rounded-sm text-muted-foreground/70 opacity-0 transition-colors hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
-            >
-              <XIcon className="size-2.5" />
-            </button>
-          </div>
-          )
-        })}
-        {isElectron && (
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md py-1 pl-2 pr-1 text-left"
+                onClick={() => handleSelectTab(tab.id)}
+                aria-current={tab.id === activeTabId ? 'page' : undefined}
+              >
+                {tab.isLoading ? (
+                  <LoaderCircleIcon className="size-3 shrink-0 animate-spin text-primary" aria-hidden="true" />
+                ) : tab.faviconUrl ? (
+                  <img src={tab.faviconUrl} alt="" className="size-3 shrink-0 rounded-sm" />
+                ) : (
+                  <GlobeIcon className="size-3 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+                )}
+                <span className="truncate">{getTabTitle(tab)}</span>
+              </button>
+              <button
+                type="button"
+                className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 opacity-0 transition-colors hover:bg-foreground/8 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                onClick={() => handleCloseTab(tab.id)}
+                aria-label={`Close ${getTabTitle(tab)}`}
+              >
+                <XIcon className="size-3" />
+              </button>
+            </div>
+          ))}
           <button
             type="button"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
             onClick={handleNewTab}
             aria-label="New browser tab"
-            className="ml-0.5 flex size-6 items-center justify-center rounded-full text-muted-foreground/40 transition-colors hover:bg-foreground/4 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20"
           >
-            <PlusIcon className="size-3" />
+            <PlusIcon className="size-3.5" />
           </button>
-        )}
+        </div>
       </div>
 
-      {activeBrowserTab && (
-        <div className="flex items-center gap-2 px-2 py-1.5 shrink-0 border-b border-border/50 bg-card">
-          <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleGoBack}
-              disabled={!activeBrowserTab.canGoBack}
-              aria-label="Go back"
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
-            >
-              <ArrowLeftIcon className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleGoForward}
-              disabled={!activeBrowserTab.canGoForward}
-              aria-label="Go forward"
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95 disabled:opacity-20 disabled:hover:bg-transparent"
-            >
-              <ArrowRightIcon className="size-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={handleReload}
-              aria-label="Reload page"
-              className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring active:scale-95"
-            >
-              <RefreshCwIcon className="size-3.5" />
-            </button>
-          </div>
+      <div className="relative flex h-10 shrink-0 items-center gap-2 border-b border-border/50 bg-card px-2">
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
+            disabled={!activeTab?.canGoBack}
+            onClick={() => {
+              const bridge = readBrowserBridge()
+              if (bridge && activeTabId) {
+                void runBrowserAction(async () => {
+                  upsertOwnerState(await bridge.goBack({ threadId: resolvedOwnerId, tabId: activeTabId }))
+                })
+              }
+            }}
+            aria-label="Go back"
+          >
+            <ArrowLeftIcon className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
+            disabled={!activeTab?.canGoForward}
+            onClick={() => {
+              const bridge = readBrowserBridge()
+              if (bridge && activeTabId) {
+                void runBrowserAction(async () => {
+                  upsertOwnerState(await bridge.goForward({ threadId: resolvedOwnerId, tabId: activeTabId }))
+                })
+              }
+            }}
+            aria-label="Go forward"
+          >
+            <ArrowRightIcon className="size-3.5" />
+          </button>
+          <button
+            type="button"
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+            disabled={!activeTabId}
+            onClick={() => {
+              const bridge = readBrowserBridge()
+              if (bridge && activeTabId) {
+                void runBrowserAction(async () => {
+                  upsertOwnerState(await bridge.reload({ threadId: resolvedOwnerId, tabId: activeTabId }))
+                })
+              }
+            }}
+            aria-label="Reload"
+          >
+            <RefreshCwIcon className={cn('size-3.5', activeTab?.isLoading && 'animate-spin')} />
+          </button>
+        </div>
 
-          <form onSubmit={handleUrlSubmit} className="flex-1 min-w-0">
-            <input
-              type="text"
-              value={urlInput}
-              onChange={e => setUrlInput(e.target.value)}
-              placeholder="URL"
-              aria-label="URL"
-              className="w-full px-3 py-1 text-xs rounded-full bg-foreground/4 placeholder:text-muted-foreground/40 focus:bg-foreground/7 focus:outline-none transition-[background-color]"
-            />
-          </form>
-
-          <div className="flex shrink-0 items-center gap-1 rounded-md bg-foreground/4 p-0.5">
-            <button
-              type="button"
-              onClick={handleAddCustomScript}
-              className="flex h-6 min-w-6 items-center justify-center rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-[background-color,color,scale] hover:bg-foreground/5 hover:text-foreground active:scale-[0.96]"
-              title="Add custom script"
-              aria-label="Add custom script"
-            >
-              <Code2Icon className="size-3" aria-hidden="true" />
-              {activeBrowserTab.customScripts.length > 0 && (
-                <span className="ml-1 font-mono text-[8px] leading-none text-muted-foreground/70">
-                  {activeBrowserTab.customScripts.length}
-                </span>
-              )}
-            </button>
-            {BROWSER_TAB_SCRIPT_PRESETS.map((preset) => {
-              const enabled = activeBrowserTab.scriptIds.includes(preset.id)
-              return (
+        <form className="relative min-w-0 flex-1" onSubmit={handleAddressSubmit}>
+          <input
+            type="text"
+            value={addressValue}
+            placeholder="Search or enter address"
+            aria-label="Search or enter address"
+            className="h-7 w-full rounded-md bg-foreground/5 px-3 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:bg-foreground/8"
+            onFocus={() => {
+              setIsEditingAddress(true)
+              setSuggestionsOpen(true)
+            }}
+            onBlur={() => {
+              window.setTimeout(() => {
+                setIsEditingAddress(false)
+                setSuggestionsOpen(false)
+              }, 120)
+            }}
+            onChange={(event) => {
+              const nextValue = event.target.value
+              setAddressValue(nextValue)
+              if (activeTabId) {
+                addressDraftByTabIdRef.current.set(activeTabId, nextValue)
+              }
+              setSuggestionsOpen(true)
+            }}
+          />
+          {suggestionsOpen && suggestions.length > 0 && (
+            <div className="absolute left-0 right-0 top-8 z-20 overflow-hidden rounded-md border border-border bg-popover py-1 shadow-lg">
+              {suggestions.map(suggestion => (
                 <button
-                  key={preset.id}
+                  key={suggestion.id}
                   type="button"
-                  onClick={() => handleToggleScript(preset.id)}
-                  className={cn(
-                    'flex h-6 min-w-6 items-center justify-center rounded px-1.5 text-[10px] font-medium transition-[background-color,color,scale] active:scale-[0.96]',
-                    enabled
-                      ? 'bg-background text-foreground shadow-sm'
-                      : 'text-muted-foreground/70 hover:text-foreground hover:bg-foreground/5',
-                  )}
-                  title={`${preset.label}: ${preset.description} (${preset.runAt})`}
-                  aria-label={`${enabled ? 'Disable' : 'Enable'} ${preset.label}`}
-                  aria-pressed={enabled}
+                  className="flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left text-xs transition-colors hover:bg-foreground/5"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => handleSuggestion(suggestion)}
                 >
-                  {preset.id === 'eruda'
-? (
-                    <BugIcon className="size-3" aria-hidden="true" />
-                  )
-: (
-                    <span>{preset.label}</span>
+                  {suggestion.faviconUrl ? (
+                    <img src={suggestion.faviconUrl} alt="" className="size-3.5 shrink-0 rounded-sm" />
+                  ) : (
+                    <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
                   )}
-                  <span className={cn(
-                    'ml-1 rounded-sm px-1 py-px font-mono text-[8px] leading-none',
-                    enabled
-                      ? 'bg-foreground/8 text-muted-foreground'
-                      : 'bg-background/60 text-muted-foreground/60',
-                  )}
-                  >
-                    {SCRIPT_RUN_AT_LABELS[preset.runAt]}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-foreground">{suggestion.title}</span>
+                    <span className="block truncate text-[10px] text-muted-foreground">{suggestion.detail}</span>
                   </span>
                 </button>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          )}
+        </form>
+
+        <button
+          type="button"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
+          disabled={!activeTabId}
+          onClick={() => {
+            const bridge = readBrowserBridge()
+            if (bridge && activeTabId) {
+              void runBrowserAction(() => bridge.copyScreenshotToClipboard({ threadId: resolvedOwnerId, tabId: activeTabId }))
+            }
+          }}
+          aria-label="Copy screenshot"
+        >
+          <CameraIcon className="size-3.5" />
+        </button>
+      </div>
+
+      {chromeStatus && (
+        <div
+          className={cn(
+            'flex h-7 shrink-0 items-center border-b px-3 text-[11px]',
+            chromeStatus.tone === 'error'
+              ? 'border-destructive/20 bg-destructive/8 text-destructive'
+              : 'border-border/40 bg-muted/40 text-muted-foreground',
+          )}
+        >
+          {chromeStatus.label}
         </div>
       )}
 
-      {activeWorkspaceFileTab && (
-        <div className="flex items-center gap-2 border-b border-border/50 bg-card px-2 py-1.5">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <FileCodeIcon
-              className="size-3.5 shrink-0 text-muted-foreground/60"
-              aria-hidden="true"
-            />
-            <span className="truncate font-mono text-[11px] text-muted-foreground">
-              {activeWorkspaceFileTab.path}
-            </span>
-          </div>
-          <div className="flex shrink-0 rounded-md bg-foreground/4 p-0.5">
+      <div ref={viewportRef} className="relative min-h-0 flex-1 bg-background">
+        {!activeTab && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground/70">
+            <GlobeIcon className="size-9 opacity-40" />
             <button
               type="button"
-              onClick={() =>
-                openWorkspaceFileTab({
-                  workspaceId: activeWorkspaceFileTab.workspaceId,
-                  path: activeWorkspaceFileTab.path,
-                  view: 'preview',
-                  ownerId,
-                })}
-              className={cn(
-                'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
-                activeWorkspaceFileTab.view === 'preview'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground/70 hover:text-foreground',
-              )}
-              aria-pressed={activeWorkspaceFileTab.view === 'preview'}
+              onClick={handleNewTab}
+              className="rounded-md bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10"
             >
-              <EyeIcon className="size-3" aria-hidden="true" />
-              Preview
-            </button>
-            <button
-              type="button"
-              onClick={() =>
-                openWorkspaceFileTab({
-                  workspaceId: activeWorkspaceFileTab.workspaceId,
-                  path: activeWorkspaceFileTab.path,
-                  view: 'editor',
-                  ownerId,
-                })}
-              className={cn(
-                'flex h-6 items-center gap-1 rounded px-2 text-[10px] font-medium transition-colors',
-                activeWorkspaceFileTab.view === 'editor'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground/70 hover:text-foreground',
-              )}
-              aria-pressed={activeWorkspaceFileTab.view === 'editor'}
-            >
-              <Code2Icon className="size-3" aria-hidden="true" />
-              Editor
+              New Tab
             </button>
           </div>
-        </div>
-      )}
-
-      {activeWorkspaceDiffTab && (
-        <div className="flex items-center gap-2 border-b border-border/50 bg-card px-2 py-1.5">
-          <FileDiffIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-          <span className="truncate text-[11px] font-medium text-foreground/80">
-            {activeWorkspaceDiffTab.title}
-          </span>
-        </div>
-      )}
-
-      <div className="relative flex-1">
-        {tabs.map((tab) => {
-          if (tab.kind === 'browser') {
-            return (
-              <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
-                <ElectronWebview
-                  url="about:blank"
-                  webviewRef={getWebviewRef(tab.id)}
-                />
-              </Activity>
-            )
-          }
-          if (tab.kind === 'workspace-diff') {
-            return (
-              <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
-                <div className="absolute inset-0 min-h-0 flex flex-col">
-                  <WorkspaceDiffViewer ownerId={ownerId} tabId={tab.id} workspaceId={tab.workspaceId} paths={tab.paths} />
-                </div>
-              </Activity>
-            )
-          }
-          return (
-            <Activity key={tab.id} name={`browser-panel:${tab.id}`} mode={tab.id === activeTabId ? 'visible' : 'hidden'}>
-              <div className="absolute inset-0 min-h-0">
-                {tab.view === 'editor'
-? (
-                  <WorkspaceFileEditor workspaceId={tab.workspaceId} path={tab.path} />
-                )
-: (
-                  <WorkspaceFilePreview
-                    workspaceId={tab.workspaceId}
-                    path={tab.path}
-                    onOpenEditor={() =>
-                      openWorkspaceFileTab({
-                        workspaceId: tab.workspaceId,
-                        path: tab.path,
-                        view: 'editor',
-                        ownerId,
-                      })}
-                  />
-                )}
-              </div>
-            </Activity>
-          )
-        })}
+        )}
       </div>
     </div>
   )

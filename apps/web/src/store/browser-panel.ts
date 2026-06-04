@@ -1,42 +1,20 @@
+// FILE: browser-panel.ts
+// Purpose: Caches owner-scoped native BrowserPanel metadata and browser history for renderer chrome.
+// Layer: Renderer Zustand store
+// Depends on: Zustand persistence, browser IPC state snapshots
+
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 
-export interface BrowserWebTab {
-  kind: 'browser'
-  id: string
-  sessionId: string | null
-  sessionTitle: string | null
-  scriptIds: string[]
-  customScripts: BrowserPanelCustomScript[]
-  url: string
-  title: string
-  loading: boolean
-  canGoBack: boolean
-  canGoForward: boolean
-  favicon: string | null
-}
+import { persistStorage } from './persist-storage'
 
-export interface BrowserWorkspaceFileTab {
-  kind: 'workspace-file'
-  id: string
-  workspaceId: string
-  path: string
-  view: 'editor' | 'preview'
-  title: string
-  loading: false
-  favicon: null
-}
+export const DEFAULT_BROWSER_PANEL_OWNER_ID = 'global'
+export const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
 
-export interface BrowserWorkspaceDiffTab {
-  kind: 'workspace-diff'
-  id: string
-  workspaceId: string
-  paths?: string[]
-  title: string
-  loading: false
-  favicon: null
-}
-
-export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab | BrowserWorkspaceDiffTab
+const BROWSER_HISTORY_LIMIT = 12
+const EMPTY_BROWSER_HISTORY: BrowserHistoryEntry[] = []
+const BROWSER_PANEL_STORAGE_KEY = 'cradle:browser-panel:v2'
+const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
 
 export type BrowserPanelScriptRunAt = 'document-start' | 'document-end' | 'document-idle'
 
@@ -47,16 +25,53 @@ export interface BrowserPanelCustomScript {
   source: string
 }
 
+export interface BrowserTabSource {
+  sessionId?: string | null
+  sessionTitle?: string | null
+}
+
+export interface BrowserTabState {
+  id: string
+  url: string
+  title: string
+  status: 'live' | 'suspended'
+  isLoading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+  faviconUrl: string | null
+  lastCommittedUrl: string | null
+  lastError: string | null
+}
+
+export interface ThreadBrowserState {
+  threadId: string
+  version: number
+  open: boolean
+  activeTabId: string | null
+  tabs: BrowserTabState[]
+  lastError: string | null
+}
+
+export type BrowserPanelTab = BrowserTabState & {
+  kind: 'browser'
+  sessionId: string | null
+  sessionTitle: string | null
+  scriptIds: string[]
+  customScripts: BrowserPanelCustomScript[]
+  loading: boolean
+  favicon: string | null
+}
+
+export interface BrowserHistoryEntry {
+  url: string
+  title: string
+  tabId: string
+}
+
 export interface BrowserPanelCloseTabResult {
   closed: boolean
   closedLastTab: boolean
 }
-
-let tabCounter = 0
-let customScriptCounter = 0
-const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'])
-export const BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL = 'browser-panel:webview-tab-shortcut'
-export const DEFAULT_BROWSER_PANEL_OWNER_ID = 'global'
 
 interface BrowserPanelTabShortcutInput {
   key: string
@@ -66,93 +81,96 @@ interface BrowserPanelTabShortcutInput {
   shiftKey: boolean
 }
 
-interface BrowserPanelState {
-  activeOwnerId: string
-  owners: Record<string, BrowserPanelOwnerState>
+interface BrowserPanelOwnerState {
+  threadState: ThreadBrowserState | null
   tabs: BrowserPanelTab[]
   activeTabId: string | null
   requestedTab: { id: number, url?: string, sessionId?: string | null, sessionTitle?: string | null } | null
-  scrollToFilePath: { path: string, tabId: string, nonce: number } | null
+}
+
+interface BrowserPanelState {
+  activeOwnerId: string
+  owners: Record<string, BrowserPanelOwnerState | undefined>
+  tabs: BrowserPanelTab[]
+  activeTabId: string | null
+  requestedTab: BrowserPanelOwnerState['requestedTab']
+  recentHistoryByOwnerId: Record<string, BrowserHistoryEntry[] | undefined>
   setActiveOwner: (ownerId: string | null | undefined) => void
-  createTab: (url?: string, source?: BrowserTabSource, ownerId?: string | null) => string
-  openWorkspaceFileTab: (input: { workspaceId: string, path: string, view: BrowserWorkspaceFileTab['view'], ownerId?: string | null }) => string
-  openWorkspaceDiffTab: (input: { workspaceId: string, paths?: string[], title?: string, ownerId?: string | null }) => string
-  requestScrollToFilePath: (input: { path: string, tabId: string }) => void
-  clearScrollToFilePath: (ownerId?: string | null) => void
+  upsertOwnerState: (state: ThreadBrowserState) => void
+  removeOwnerState: (ownerId: string) => void
   requestTab: (url?: string, source?: BrowserTabSource, ownerId?: string | null) => void
   fulfillRequestedTab: (id: number, ownerId?: string | null) => void
+  createTab: (url?: string, source?: BrowserTabSource, ownerId?: string | null) => string
   closeTab: (id: string, ownerId?: string | null) => BrowserPanelCloseTabResult
   setActiveTab: (id: string, ownerId?: string | null) => void
-  updateTab: (id: string, updates: Partial<BrowserWebTab>, ownerId?: string | null) => void
+  updateTab: (id: string, updates: Partial<BrowserPanelTab>, ownerId?: string | null) => void
   navigateTo: (id: string, url: string, ownerId?: string | null) => void
   setBrowserTabScripts: (id: string, scriptIds: string[], ownerId?: string | null) => void
   addBrowserTabCustomScript: (id: string, input: Omit<BrowserPanelCustomScript, 'id'>, ownerId?: string | null) => string
+  openWorkspaceFileTab: (input: { workspaceId: string, path: string, view: 'editor' | 'preview', ownerId?: string | null }) => string
+  openWorkspaceDiffTab: (input: { workspaceId: string, paths?: string[], title?: string, ownerId?: string | null }) => string
+  requestScrollToFilePath: (input: { path: string, tabId: string }) => void
+  clearScrollToFilePath: (ownerId?: string | null) => void
 }
 
-interface BrowserPanelOwnerState {
-  tabs: BrowserPanelTab[]
-  activeTabId: string | null
-  requestedTab: { id: number, url?: string, sessionId?: string | null, sessionTitle?: string | null } | null
-  scrollToFilePath: { path: string, tabId: string, nonce: number } | null
-}
-
-export interface BrowserTabSource {
-  sessionId?: string | null
-  sessionTitle?: string | null
-}
-
-function normalizeBrowserTabSource(source?: BrowserTabSource): Required<BrowserTabSource> {
-  return {
-    sessionId: source?.sessionId ?? null,
-    sessionTitle: source?.sessionTitle ?? null,
-  }
-}
-
-function createBrowserTab(url?: string, source?: BrowserTabSource): BrowserWebTab {
-  const normalizedSource = normalizeBrowserTabSource(source)
-  return {
-    kind: 'browser',
-    id: `bt-${tabCounter++}`,
-    sessionId: normalizedSource.sessionId,
-    sessionTitle: normalizedSource.sessionTitle,
-    scriptIds: [],
-    customScripts: [],
-    url: url ?? 'about:blank',
-    title: '',
-    loading: false,
-    canGoBack: false,
-    canGoForward: false,
-    favicon: null,
-  }
-}
-
-function getWorkspaceFileTabTitle(path: string): string {
-  return path.split('/').filter(Boolean).at(-1) ?? path
-}
+let localTabCounter = 0
+let customScriptCounter = 0
 
 function normalizeBrowserPanelOwnerId(ownerId: string | null | undefined): string {
   return ownerId || DEFAULT_BROWSER_PANEL_OWNER_ID
 }
 
-function createEmptyOwnerState(): BrowserPanelOwnerState {
+function createEmptyThreadState(ownerId: string): ThreadBrowserState {
   return {
-    tabs: [],
+    threadId: ownerId,
+    version: 0,
+    open: false,
     activeTabId: null,
-    requestedTab: null,
-    scrollToFilePath: null,
+    tabs: [],
+    lastError: null,
   }
 }
 
-function getBrowserPanelOwnerState(state: BrowserPanelState, ownerId: string): BrowserPanelOwnerState {
-  return state.owners[ownerId] ?? createEmptyOwnerState()
+function createEmptyOwnerState(ownerId: string): BrowserPanelOwnerState {
+  return {
+    threadState: createEmptyThreadState(ownerId),
+    tabs: [],
+    activeTabId: null,
+    requestedTab: null,
+  }
 }
 
-function projectBrowserPanelOwnerState(ownerState: BrowserPanelOwnerState) {
+function toBrowserPanelTab(tab: BrowserTabState): BrowserPanelTab {
+  return {
+    ...tab,
+    kind: 'browser',
+    sessionId: null,
+    sessionTitle: null,
+    scriptIds: [],
+    customScripts: [],
+    loading: tab.isLoading,
+    favicon: tab.faviconUrl,
+  }
+}
+
+function projectThreadState(state: ThreadBrowserState): BrowserPanelOwnerState {
+  return {
+    threadState: state,
+    tabs: state.tabs.map(toBrowserPanelTab),
+    activeTabId: state.activeTabId,
+    requestedTab: null,
+  }
+}
+
+function getOwnerState(state: BrowserPanelState, ownerId: string): BrowserPanelOwnerState {
+  return state.owners[ownerId] ?? createEmptyOwnerState(ownerId)
+}
+
+function projectActiveOwner(ownerState: BrowserPanelOwnerState) {
   return {
     tabs: ownerState.tabs,
     activeTabId: ownerState.activeTabId,
     requestedTab: ownerState.requestedTab,
-    scrollToFilePath: ownerState.scrollToFilePath,
   }
 }
 
@@ -161,294 +179,263 @@ function applyOwnerState(
   ownerId: string,
   ownerState: BrowserPanelOwnerState,
 ): Partial<BrowserPanelState> {
-  const owners = {
-    ...state.owners,
-    [ownerId]: ownerState,
-  }
   return {
-    owners,
-    ...(state.activeOwnerId === ownerId ? projectBrowserPanelOwnerState(ownerState) : {}),
+    owners: {
+      ...state.owners,
+      [ownerId]: ownerState,
+    },
+    ...(state.activeOwnerId === ownerId ? projectActiveOwner(ownerState) : {}),
   }
 }
 
-export const useBrowserPanelStore = create<BrowserPanelState>()((set, _get) => ({
-  activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
-  owners: {},
-  tabs: [],
-  activeTabId: null,
-  requestedTab: null,
-  scrollToFilePath: null,
+function normalizeHistoryUrl(url: string): string {
+  const trimmed = url.trim()
+  return trimmed === 'about:blank' ? '' : trimmed
+}
 
-  setActiveOwner: (ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput)
-    set((s) => {
-      if (s.activeOwnerId === ownerId) {
-        return s
-      }
-      return {
-        activeOwnerId: ownerId,
-        ...projectBrowserPanelOwnerState(getBrowserPanelOwnerState(s, ownerId)),
-      }
-    })
-  },
+function upsertRecentHistoryEntry(
+  entries: BrowserHistoryEntry[] | undefined,
+  nextEntry: BrowserHistoryEntry,
+): BrowserHistoryEntry[] {
+  const normalizedUrl = normalizeHistoryUrl(nextEntry.url)
+  if (!normalizedUrl) {
+    return entries ?? []
+  }
 
-  createTab: (url, source, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    const tab = createBrowserTab(url, source)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: [...ownerState.tabs, tab],
-        activeTabId: tab.id,
-      })
-    })
-    return tab.id
-  },
+  const nextEntries = (entries ?? []).filter(entry => normalizeHistoryUrl(entry.url) !== normalizedUrl)
+  nextEntries.unshift({
+    ...nextEntry,
+    url: normalizedUrl,
+  })
+  return nextEntries.slice(0, BROWSER_HISTORY_LIMIT)
+}
 
-  openWorkspaceFileTab: ({ workspaceId, path, view, ownerId: ownerIdInput }) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    const ownerState = getBrowserPanelOwnerState(_get(), ownerId)
-    const existingTab = ownerState.tabs.find(tab =>
-      tab.kind === 'workspace-file'
-      && tab.workspaceId === workspaceId
-      && tab.path === path)
+function buildHistoryFromState(
+  previousHistory: BrowserHistoryEntry[] | undefined,
+  state: ThreadBrowserState,
+): BrowserHistoryEntry[] {
+  const activeTab = state.tabs.find(tab => tab.id === state.activeTabId) ?? null
+  const orderedTabs = activeTab
+    ? [activeTab, ...state.tabs.filter(tab => tab.id !== activeTab.id)]
+    : state.tabs
 
-    if (existingTab) {
-      set((s) => {
-        if (
-          getBrowserPanelOwnerState(s, ownerId).activeTabId === existingTab.id
-          && existingTab.kind === 'workspace-file'
-          && existingTab.view === view
-        ) {
-          return s
-        }
-        const currentOwnerState = getBrowserPanelOwnerState(s, ownerId)
-        return {
-          ...applyOwnerState(s, ownerId, {
-            ...currentOwnerState,
-            tabs: currentOwnerState.tabs.map((tab) => {
-              if (tab.id !== existingTab.id || tab.kind !== 'workspace-file' || tab.view === view) {
-                return tab
-              }
-              return { ...tab, view }
-            }),
-            activeTabId: existingTab.id,
-          }),
-        }
-      })
-      return existingTab.id
-    }
+  return orderedTabs.reduce(
+    (entries, tab) =>
+      upsertRecentHistoryEntry(entries, {
+        url: tab.lastCommittedUrl ?? tab.url,
+        title: tab.title,
+        tabId: tab.id,
+      }),
+    previousHistory ?? EMPTY_BROWSER_HISTORY,
+  )
+}
 
-    const tab: BrowserWorkspaceFileTab = {
-      kind: 'workspace-file',
-      id: `bt-${tabCounter++}`,
-      workspaceId,
-      path,
-      view,
-      title: getWorkspaceFileTabTitle(path),
-      loading: false,
-      favicon: null,
-    }
-    set((s) => {
-      const currentOwnerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...currentOwnerState,
-        tabs: [...currentOwnerState.tabs, tab],
-        activeTabId: tab.id,
-      })
-    })
-    return tab.id
-  },
+function createLocalBrowserTab(url = 'about:blank', source?: BrowserTabSource): BrowserPanelTab {
+  const id = `local-browser-${++localTabCounter}`
+  return {
+    kind: 'browser',
+    id,
+    sessionId: source?.sessionId ?? null,
+    sessionTitle: source?.sessionTitle ?? null,
+    scriptIds: [],
+    customScripts: [],
+    url,
+    title: url === 'about:blank' ? 'New tab' : url,
+    status: 'suspended',
+    isLoading: false,
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    faviconUrl: null,
+    favicon: null,
+    lastCommittedUrl: null,
+    lastError: null,
+  }
+}
 
-  openWorkspaceDiffTab: ({ workspaceId, paths, title, ownerId: ownerIdInput }) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    const ownerState = getBrowserPanelOwnerState(_get(), ownerId)
-    const pathsKey = paths ? [...paths].sort().join(',') : ''
-    const existingTab = ownerState.tabs.find(tab =>
-      tab.kind === 'workspace-diff'
-      && tab.workspaceId === workspaceId
-      && (tab.paths ? [...tab.paths].sort().join(',') : '') === pathsKey)
+export const useBrowserPanelStore = create<BrowserPanelState>()(
+  persist(
+    (set, get) => ({
+      activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+      owners: {},
+      tabs: [],
+      activeTabId: null,
+      requestedTab: null,
+      recentHistoryByOwnerId: {},
 
-    if (existingTab) {
-      set((s) => {
-        const currentOwnerState = getBrowserPanelOwnerState(s, ownerId)
-        return currentOwnerState.activeTabId === existingTab.id
-          ? s
-          : applyOwnerState(s, ownerId, {
-              ...currentOwnerState,
-              activeTabId: existingTab.id,
-            })
-      })
-      return existingTab.id
-    }
+      setActiveOwner: (ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput)
+        set((state) => {
+          if (state.activeOwnerId === ownerId) {
+            return state
+          }
+          return {
+            activeOwnerId: ownerId,
+            ...projectActiveOwner(getOwnerState(state, ownerId)),
+          }
+        })
+      },
 
-    const tab: BrowserWorkspaceDiffTab = {
-      kind: 'workspace-diff',
-      id: `bt-${tabCounter++}`,
-      workspaceId,
-      paths,
-      title: title ?? (paths && paths.length === 1 ? getWorkspaceFileTabTitle(paths[0]) : 'Changes'),
-      loading: false,
-      favicon: null,
-    }
-    set((s) => {
-      const currentOwnerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...currentOwnerState,
-        tabs: [...currentOwnerState.tabs, tab],
-        activeTabId: tab.id,
-      })
-    })
-    return tab.id
-  },
+      upsertOwnerState: (threadState) => {
+        set((state) => {
+          const ownerId = normalizeBrowserPanelOwnerId(threadState.threadId)
+          const previousOwnerState = state.owners[ownerId]
+          if (previousOwnerState?.threadState?.version === threadState.version) {
+            return state
+          }
 
-  requestScrollToFilePath: ({ path, tabId }) => {
-    set((s) => {
-      const ownerEntry = Object.entries(s.owners).find(([, ownerState]) =>
-        ownerState.tabs.some(tab => tab.id === tabId))
-      const ownerId = ownerEntry?.[0] ?? s.activeOwnerId
-      const ownerState = ownerEntry?.[1] ?? getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        scrollToFilePath: { path, tabId, nonce: Date.now() },
-      })
-    })
-  },
+          const ownerState = {
+            ...projectThreadState(threadState),
+            requestedTab: previousOwnerState?.requestedTab ?? null,
+          }
+          return {
+            ...applyOwnerState(state, ownerId, ownerState),
+            recentHistoryByOwnerId: {
+              ...state.recentHistoryByOwnerId,
+              [ownerId]: buildHistoryFromState(state.recentHistoryByOwnerId[ownerId], threadState),
+            },
+          }
+        })
+      },
 
-  clearScrollToFilePath: (ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        scrollToFilePath: null,
-      })
-    })
-  },
+      removeOwnerState: (ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput)
+        set((state) => {
+          if (!Object.hasOwn(state.owners, ownerId)) {
+            return state
+          }
+          const owners = { ...state.owners }
+          delete owners[ownerId]
+          const nextOwnerState = createEmptyOwnerState(ownerId)
+          return {
+            owners,
+            ...(state.activeOwnerId === ownerId ? projectActiveOwner(nextOwnerState) : {}),
+          }
+        })
+      },
 
-  requestTab: (url, source, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        requestedTab: { id: Date.now(), url, ...normalizeBrowserTabSource(source) },
-      })
-    })
-  },
+      requestTab: (url, source, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            requestedTab: { id: Date.now(), url, sessionId: source?.sessionId ?? null, sessionTitle: source?.sessionTitle ?? null },
+          })
+        })
+      },
 
-  fulfillRequestedTab: (id, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      if (ownerState.requestedTab?.id !== id) {
-        return s
-      }
-      const tab = createBrowserTab(ownerState.requestedTab.url, {
-        sessionId: ownerState.requestedTab.sessionId,
-        sessionTitle: ownerState.requestedTab.sessionTitle,
-      })
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: [...ownerState.tabs, tab],
-        activeTabId: tab.id,
-        requestedTab: null,
-      })
-    })
-  },
+      fulfillRequestedTab: (id, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          if (ownerState.requestedTab?.id !== id) {
+            return state
+          }
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            requestedTab: null,
+          })
+        })
+      },
 
-  closeTab: (id, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    let result: BrowserPanelCloseTabResult = {
-      closed: false,
-      closedLastTab: false,
-    }
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      const tabExists = ownerState.tabs.some(t => t.id === id)
-      if (!tabExists) {
-        return s
-      }
-      const tabs = ownerState.tabs.filter(t => t.id !== id)
-      const activeTabId = ownerState.activeTabId === id
-        ? (tabs.length > 0 ? tabs.at(-1)!.id : null)
-        : ownerState.activeTabId
-      result = {
-        closed: true,
-        closedLastTab: tabs.length === 0,
-      }
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs,
-        activeTabId,
-      })
-    })
-    return result
-  },
+      createTab: (url, source, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const tab = createLocalBrowserTab(url, source)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
 
-  setActiveTab: (id, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return ownerState.activeTabId === id
-        ? s
-        : applyOwnerState(s, ownerId, { ...ownerState, activeTabId: id })
-    })
-  },
+      closeTab: (id, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        let result: BrowserPanelCloseTabResult = { closed: false, closedLastTab: false }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          if (!ownerState.tabs.some(tab => tab.id === id)) {
+            return state
+          }
+          const tabs = ownerState.tabs.filter(tab => tab.id !== id)
+          result = { closed: true, closedLastTab: tabs.length === 0 }
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs,
+            activeTabId: ownerState.activeTabId === id ? tabs.at(-1)?.id ?? null : ownerState.activeTabId,
+          })
+        })
+        return result
+      },
 
-  updateTab: (id, updates, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: ownerState.tabs.map(t => (t.id === id && t.kind === 'browser' ? { ...t, ...updates } : t)),
-      })
-    })
-  },
+      setActiveTab: (id, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, { ...ownerState, activeTabId: id })
+        })
+      },
 
-  navigateTo: (id, url, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: ownerState.tabs.map(t => (t.id === id && t.kind === 'browser' ? { ...t, url } : t)),
-      })
-    })
-  },
+      updateTab: (id, updates, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: ownerState.tabs.map(tab => (tab.id === id ? { ...tab, ...updates } : tab)),
+          })
+        })
+      },
 
-  setBrowserTabScripts: (id, scriptIds, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: ownerState.tabs.map(t => (t.id === id && t.kind === 'browser' ? { ...t, scriptIds } : t)),
-      })
-    })
-  },
+      navigateTo: (id, url, ownerIdInput) => {
+        get().updateTab(id, { url }, ownerIdInput)
+      },
 
-  addBrowserTabCustomScript: (id, input, ownerIdInput) => {
-    const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? _get().activeOwnerId)
-    const scriptId = `custom-script-${customScriptCounter++}`
-    const script: BrowserPanelCustomScript = {
-      id: scriptId,
-      ...input,
-    }
-    set((s) => {
-      const ownerState = getBrowserPanelOwnerState(s, ownerId)
-      return applyOwnerState(s, ownerId, {
-        ...ownerState,
-        tabs: ownerState.tabs.map(t => (t.id === id && t.kind === 'browser'
-        ? { ...t, customScripts: [...t.customScripts, script] }
-        : t)),
-      })
-    })
-    return scriptId
-  },
-}))
+      setBrowserTabScripts: (id, scriptIds, ownerIdInput) => {
+        get().updateTab(id, { scriptIds }, ownerIdInput)
+      },
+
+      addBrowserTabCustomScript: (id, input, ownerIdInput) => {
+        const scriptId = `custom-script-${++customScriptCounter}`
+        const script = { ...input, id: scriptId }
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: ownerState.tabs.map(tab => (tab.id === id ? { ...tab, customScripts: [...tab.customScripts, script] } : tab)),
+          })
+        })
+        return scriptId
+      },
+
+      openWorkspaceFileTab: ({ path, ownerId }) =>
+        get().createTab(path ? `file://${path}` : 'about:blank', undefined, ownerId),
+
+      openWorkspaceDiffTab: ({ ownerId }) =>
+        get().createTab('about:blank', undefined, ownerId),
+
+      requestScrollToFilePath: () => {},
+      clearScrollToFilePath: () => {},
+    }),
+    {
+      name: BROWSER_PANEL_STORAGE_KEY,
+      storage: persistStorage,
+      partialize: state => ({
+        recentHistoryByOwnerId: state.recentHistoryByOwnerId,
+      }),
+      merge: (persisted, current) => ({
+        ...current,
+        recentHistoryByOwnerId:
+          (persisted as { recentHistoryByOwnerId?: Record<string, BrowserHistoryEntry[]> } | undefined)?.recentHistoryByOwnerId ?? {},
+      }),
+    },
+  ),
+)
 
 function isBrowserPanelTabShortcutPayload(payload: unknown): payload is BrowserPanelTabShortcutInput {
   if (!payload || typeof payload !== 'object') {
@@ -461,6 +448,16 @@ function isBrowserPanelTabShortcutPayload(payload: unknown): payload is BrowserP
     && typeof candidate.altKey === 'boolean'
     && typeof candidate.ctrlKey === 'boolean'
     && typeof candidate.shiftKey === 'boolean'
+}
+
+export function selectOwnerBrowserState(ownerId: string) {
+  return (store: BrowserPanelState): ThreadBrowserState | null =>
+    store.owners[normalizeBrowserPanelOwnerId(ownerId)]?.threadState ?? null
+}
+
+export function selectOwnerBrowserHistory(ownerId: string) {
+  return (store: BrowserPanelState): BrowserHistoryEntry[] =>
+    store.recentHistoryByOwnerId[normalizeBrowserPanelOwnerId(ownerId)] ?? EMPTY_BROWSER_HISTORY
 }
 
 export function handleBrowserPanelTabShortcutInput(
@@ -482,7 +479,7 @@ export function handleBrowserPanelTabShortcutInput(
 
   const state = useBrowserPanelStore.getState()
   const ownerId = normalizeBrowserPanelOwnerId(options.ownerId ?? state.activeOwnerId)
-  const ownerState = getBrowserPanelOwnerState(state, ownerId)
+  const ownerState = getOwnerState(state, ownerId)
   const currentTab = ownerState.tabs.find(tab => tab.id === ownerState.activeTabId)
   if (!currentTab) {
     return false

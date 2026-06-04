@@ -15,6 +15,7 @@ const surface = getArg('surface')
 const CHAT_STREAM_CHUNK_CHANNEL = 'chat-stream:chunk'
 const CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
 const CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
+const BROWSER_STATE_CHANNEL = 'desktop:browser-state'
 
 function subscribeIpc<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_event: Electron.IpcRendererEvent, payload: T) => handler(payload)
@@ -96,6 +97,27 @@ const cradleElectron = {
     onChunk: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CHUNK_CHANNEL, handler),
     onClosed: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CLOSED_CHANNEL, handler),
     onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler),
+  },
+
+  /** Native BrowserPanel bridge backed by Electron WebContentsView. */
+  browser: {
+    open: (input: unknown) => ipcRenderer.invoke('desktop:browser-open', input),
+    close: (input: unknown) => ipcRenderer.invoke('desktop:browser-close', input),
+    hide: (input: unknown) => ipcRenderer.invoke('desktop:browser-hide', input),
+    getState: (input: unknown) => ipcRenderer.invoke('desktop:browser-get-state', input),
+    setBounds: (input: unknown) => ipcRenderer.send('desktop:browser-set-bounds', input),
+    captureScreenshot: (input: unknown) => ipcRenderer.invoke('desktop:browser-capture-screenshot', input),
+    copyScreenshotToClipboard: (input: unknown) => ipcRenderer.invoke('desktop:browser-copy-screenshot-to-clipboard', input),
+    executeCdp: (input: unknown) => ipcRenderer.invoke('desktop:browser-execute-cdp', input),
+    navigate: (input: unknown) => ipcRenderer.invoke('desktop:browser-navigate', input),
+    reload: (input: unknown) => ipcRenderer.invoke('desktop:browser-reload', input),
+    goBack: (input: unknown) => ipcRenderer.invoke('desktop:browser-go-back', input),
+    goForward: (input: unknown) => ipcRenderer.invoke('desktop:browser-go-forward', input),
+    newTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-new-tab', input),
+    closeTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-close-tab', input),
+    selectTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-select-tab', input),
+    openDevTools: (input: unknown) => ipcRenderer.invoke('desktop:browser-open-devtools', input),
+    onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler),
   },
 
   /** Desktop tray action bridge */
