@@ -1,3 +1,5 @@
+import type { RuntimeKind } from '~/lib/types'
+
 export type AutomationRunStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled' | 'skipped'
 
 export interface AutomationTrigger {
@@ -28,7 +30,7 @@ export interface AutomationRecipe {
   artifactRequests?: AutomationArtifactRequest[]
   agentId?: string | null
   providerTargetId?: string | null
-  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | null
+  runtimeKind?: RuntimeKind | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | null
 }
@@ -95,7 +97,7 @@ export interface CreateAutomationInput {
     artifactRequests: Array<Required<Pick<AutomationArtifactRequest, 'name' | 'kind'>> & Pick<AutomationArtifactRequest, 'description'>>
     agentId?: string
     providerTargetId?: string
-    runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat'
+    runtimeKind?: RuntimeKind
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high'
   }

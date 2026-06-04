@@ -12,7 +12,6 @@ import {
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import type { RuntimeKind } from '../provider-contracts/types'
-import { runtimeKinds } from '../provider-contracts/types'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import * as Workspace from '../workspace/service'
 
@@ -23,14 +22,12 @@ export type SessionView = Session & {
   latestUserMessageAt: number | null
 }
 
-const RuntimeKindSchema = z.enum(runtimeKinds)
-
 const SessionCreateInputSchema = z.object({
   id: z.string().default(() => randomUUID()),
   workspaceId: z.string().nullable().optional(),
   title: z.string(),
   providerTargetId: z.string().nullable().optional(),
-  runtimeKind: RuntimeKindSchema.optional(),
+  runtimeKind: z.string().trim().min(1).optional(),
   agentId: z.string().nullable().optional(),
   linkedIssueId: z.string().nullable().default(null),
   configJson: z.string().optional(),

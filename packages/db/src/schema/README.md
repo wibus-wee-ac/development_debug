@@ -8,7 +8,7 @@
 
 ## Files
 
-- **backend-control-plane.ts**: backend binding、run 与 session-start capability snapshot 相关表；binding 只保留 Cradle-owned backend snapshot + requested model，不再复制 ACP config snapshot，也不再承载 chat chunk timeline durable storage
+- **backend-control-plane.ts**: backend binding、run、run snapshot/event 与 session-start capability snapshot 相关表；binding 只保留 Cradle-owned backend snapshot + requested model，run snapshot/event 表承载 Cradle-owned harness envelope 与 ordered event stream，不复制 provider-owned goal/plan/tool 语义；snapshot/event 使用毫秒时间并在 session/run 删除后保留取证记录，只将对应 FK 置空
 - **automation.ts**: Agent-authored automation definition、run、artifact 与 event 相关表；只写 automation namespace，通过 ID 引用 normal chat session/backend run
 - **index.ts**: Schema barrel，聚合导出所有 context-specific schema 模块
 - **shared.ts**: 共享列片段与 `workspaces` 表；workspace records own project pin state for app sidebar ordering
@@ -19,10 +19,10 @@
 - **handoff.ts**: Agent-to-Agent handoff proposal lifecycle 表；只拥有交接 proposal/status/result，通过 ID 引用 chat session 和 agent identity
 - **runtime.ts**: Runtime audit 相关表
 - **acp.ts**: ACP agent 与 ACP audit 相关表
-- **issue.ts**: Workspace-scoped Issue、状态、里程碑、评论、关联相关表；当前 SQLite 物理表名仍沿用 `kanban_*`
+- **issue.ts**: Workspace-scoped Issue、状态、里程碑、due date、评论、field-change history、关联相关表；当前 SQLite 物理表名仍沿用 `kanban_*`
 - **kanban.ts**: Kanban board/view configuration 相关表
 - **model-registry.ts**: 全局 model registry mappings 表，保存 Cradle-owned provider model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model enrichment 共享
 - **issue-agent.ts**: Issue Agent session / activity 相关表
-- **observability.ts**: local observability append-only events 与 dedupe incident 相关表
+- **observability.ts**: local observability append-only events 与 dedupe incident 相关表；session/run/message 删除后保留取证记录并将 FK 置空
 - **plugin.ts**: Cradle plugin host 拥有的 plugin-scoped persistent storage 表；按 plugin package identity 和 key 隔离，不写入其他产品 namespace
 - **session-await.ts**: Session Await durable wait 表、GitHub API cache 与 bypass rules；await records 保存恢复文本、source/delivery failure 分类、GitHub filter JSON、timer/fire/expiry 时间和 bypass check 投影

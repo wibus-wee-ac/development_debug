@@ -63,6 +63,8 @@
   "jarvis.model.label": "Modelo",
   "jarvis.page.description": "Configura el asistente del sistema con conciencia completa del workspace.",
   "jarvis.page.title": "Jarvis",
+  "jarvis.runtime.description": "Elige qué runtime de chat impulsa nuevas sesiones de Jarvis.",
+  "jarvis.runtime.label": "Runtime",
   "jarvis.thinking.high.description": "Razonamiento más profundo para tareas complejas.",
   "jarvis.thinking.high.label": "Alto",
   "jarvis.thinking.low.description": "Respuestas rápidas con razonamiento ligero.",

@@ -38,9 +38,7 @@ export const agents = sqliteTable('agents', {
   thinkingEffort: text('thinking_effort', {
     enum: ['low', 'medium', 'high', 'auto'],
   }).notNull().default('auto'),
-  runtimeKind: text('runtime_kind', {
-    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
-  }).notNull().default('standard'),
+  runtimeKind: text('runtime_kind').notNull().default('standard'),
   configJson: text('config_json').notNull().default('{}'),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
   ...timestamps(),

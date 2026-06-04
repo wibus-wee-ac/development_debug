@@ -18,6 +18,7 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
     setModelId,
     setThinkingEffort,
     setRuntimeKind,
+    runtimeOptions,
     agents,
     profiles,
     models,
@@ -34,6 +35,7 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
         value={selection.runtimeKind}
         onChange={setRuntimeKind}
         readOnly={context === 'chat'}
+        options={runtimeOptions}
       />
       {boundChatAgent
         ? <ChatAgentIdentity agent={boundChatAgent} />

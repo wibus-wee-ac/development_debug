@@ -2,9 +2,12 @@
 
 import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import { CradlePluginPackageJsonSchema } from '@cradle/plugin-sdk/manifest'
+import type { UIMessageChunk } from 'ai'
 import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { listRuntimeCatalog } from '../modules/chat-runtime/chat-runtime-provider-registry'
+import type { ChatRuntime } from '../modules/chat-runtime/runtime-provider-types'
 import { createServerPluginContext } from './context'
 import { getRegisteredMcpServers } from './mcp-registry'
 import {
@@ -191,5 +194,52 @@ describe('server plugin context lifecycle', () => {
     const disposedResponse = await app.handle(new Request('http://localhost/status'))
     expect(disposedResponse.status).toBe(410)
     expect(await disposedResponse.json()).toEqual({ error: 'Plugin route disposed.' })
+  })
+
+  it('tracks plugin chat runtime registrations and removes them on dispose', () => {
+    const pluginManifest = manifest('@cradle/context-runtime')
+    registerDescriptor(pluginManifest)
+    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const runtime = {
+      runtimeKind: 'plugin-runtime',
+      async startChatSession(input) {
+        return {
+          id: input.chatSessionId,
+          chatSessionId: input.chatSessionId,
+          providerTargetId: input.profile.providerTargetId,
+          runtimeKind: 'plugin-runtime',
+          providerSessionId: null,
+          providerStateSnapshot: null,
+        }
+      },
+      async resumeChatSession(input) {
+        return input.runtimeSession
+      },
+      async * streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {},
+      async cancelTurn() {},
+    } satisfies ChatRuntime
+
+    const disposable = ctx.runtimes.register(runtime, {
+      runtimeKind: 'plugin-runtime',
+      label: 'Plugin Runtime',
+      description: 'Runtime from a server plugin',
+      providerKinds: ['openai-compatible'],
+      surfaces: ['chat', 'jarvis'],
+    })
+
+    expect(ctx.subscriptions).toEqual([disposable])
+    expect(listPluginDescriptors()[0]?.capabilities.map(capability => capability.type)).toEqual(['chat-runtime'])
+    expect(listRuntimeCatalog()).toContainEqual(expect.objectContaining({
+      runtimeKind: 'plugin-runtime',
+      label: 'Plugin Runtime',
+      source: 'plugin',
+      pluginOwner: '@cradle/context-runtime',
+      surfaces: ['chat', 'jarvis'],
+    }))
+
+    disposable.dispose()
+
+    expect(listRuntimeCatalog().some(runtime => runtime.runtimeKind === 'plugin-runtime')).toBe(false)
+    expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
   })
 })

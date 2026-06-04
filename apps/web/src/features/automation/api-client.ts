@@ -45,7 +45,7 @@ const AutomationRecipeSchema = z.object({
   artifactRequests: z.array(AutomationArtifactRequestSchema),
   agentId: z.string().optional(),
   providerTargetId: z.string().optional(),
-  runtimeKind: z.enum(['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat']).optional(),
+  runtimeKind: z.string().min(1).optional(),
   modelId: z.string().optional(),
   thinkingEffort: z.enum(['low', 'medium', 'high']).optional(),
 })

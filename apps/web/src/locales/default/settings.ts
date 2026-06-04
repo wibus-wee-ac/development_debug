@@ -96,6 +96,8 @@ export default {
   'jarvis.model.label': 'Model',
   'jarvis.page.description': 'Configure the system assistant that has full awareness of your workspace.',
   'jarvis.page.title': 'Jarvis',
+  'jarvis.runtime.description': 'Choose which chat runtime powers new Jarvis sessions.',
+  'jarvis.runtime.label': 'Runtime',
   'jarvis.thinking.high.description': 'Deeper reasoning for complex work.',
   'jarvis.thinking.high.label': 'High',
   'jarvis.thinking.low.description': 'Fast responses with light reasoning.',

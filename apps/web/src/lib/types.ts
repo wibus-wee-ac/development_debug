@@ -1,4 +1,4 @@
-import type { Issue as DbIssue, KanbanIssueComment as DbKanbanIssueComment } from '@cradle/db'
+import type { Issue as DbIssue, KanbanIssueComment as DbKanbanIssueComment, KanbanIssueFieldChange as DbKanbanIssueFieldChange } from '@cradle/db'
 
 // ── DB entity types (from @cradle/db — import type only, erased by bundler) ──
 
@@ -14,6 +14,7 @@ export type {
   IssueStatus,
   KanbanBoard,
   KanbanIssueComment,
+  KanbanIssueFieldChange,
   KanbanIssueRelation,
   KanbanMilestone,
   KanbanStatus,
@@ -22,6 +23,7 @@ export type {
 } from '@cradle/db'
 
 export type KanbanIssue = Omit<DbIssue, 'labels'> & { labels: string[] }
+export type KanbanIssueFieldChangeView = DbKanbanIssueFieldChange
 
 export interface IssueCommentAuthor {
   kind: 'user' | 'agent' | 'system'
@@ -40,7 +42,8 @@ export type KanbanIssueCommentView = DbKanbanIssueComment & {
 export type ProviderKind = 'openai-compatible' | 'anthropic' | 'cli-tool'
 export type ApiProviderKind = Exclude<ProviderKind, 'cli-tool'>
 
-export type RuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+export type BuiltinRuntimeKind = 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+export type RuntimeKind = string
 
 export type ProviderTargetKind = 'manual' | 'external'
 

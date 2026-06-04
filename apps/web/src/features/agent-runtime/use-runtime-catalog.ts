@@ -1,0 +1,139 @@
+// Runtime catalog query boundary for Chat, Jarvis, and runtime-aware settings.
+
+import { useQuery } from '@tanstack/react-query'
+import { z } from 'zod'
+
+import { client } from '~/lib/client.config'
+import type { ProviderKind, RuntimeKind } from '~/lib/types'
+
+export type RuntimeCatalogSurface = 'chat' | 'jarvis'
+
+export interface RuntimeCatalogItem {
+  runtimeKind: RuntimeKind
+  label: string
+  description?: string
+  providerKinds: ProviderKind[]
+  iconKey?: string
+  surfaces: RuntimeCatalogSurface[]
+  sortOrder?: number
+  source: 'builtin' | 'plugin'
+  pluginOwner: string | null
+}
+
+const RuntimeCatalogSchema = z.object({
+  items: z.array(z.object({
+    runtimeKind: z.string().min(1),
+    label: z.string().min(1),
+    description: z.string().optional(),
+    providerKinds: z.array(z.string().min(1)),
+    iconKey: z.string().optional(),
+    surfaces: z.array(z.enum(['chat', 'jarvis'])).optional(),
+    sortOrder: z.number().optional(),
+    source: z.enum(['builtin', 'plugin']),
+    pluginOwner: z.string().nullable(),
+  })),
+})
+
+export const RUNTIME_CATALOG_QUERY_KEY = ['chat', 'runtimes'] as const
+
+export const FALLBACK_RUNTIME_CATALOG: RuntimeCatalogItem[] = [
+  {
+    runtimeKind: 'jar-core',
+    label: 'Jar Core',
+    description: 'HiJarvis system-agent runtime',
+    providerKinds: ['openai-compatible', 'anthropic'],
+    iconKey: 'hijarvis',
+    surfaces: ['jarvis'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 10,
+  },
+  {
+    runtimeKind: 'codex',
+    label: 'Codex',
+    description: 'Codex app-server runtime',
+    providerKinds: ['openai-compatible'],
+    iconKey: 'codex',
+    surfaces: ['chat', 'jarvis'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 20,
+  },
+  {
+    runtimeKind: 'claude-agent',
+    label: 'Claude Agent',
+    description: 'Claude Agent SDK runtime',
+    providerKinds: ['anthropic'],
+    iconKey: 'claude-agent',
+    surfaces: ['chat', 'jarvis'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 30,
+  },
+  {
+    runtimeKind: 'acp-chat',
+    label: 'ACP Chat',
+    description: 'Cloud Agent SDK runtime',
+    providerKinds: ['openai-compatible', 'anthropic'],
+    iconKey: 'custom',
+    surfaces: ['chat', 'jarvis'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 40,
+  },
+  {
+    runtimeKind: 'standard',
+    label: 'Standard',
+    description: 'Direct OpenAI-compatible chat runtime',
+    providerKinds: ['openai-compatible'],
+    iconKey: 'custom',
+    surfaces: ['chat', 'jarvis'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 50,
+  },
+  {
+    runtimeKind: 'cli-tui',
+    label: 'CLI TUI',
+    description: 'Launch a configured terminal agent',
+    providerKinds: [],
+    iconKey: 'claude-cli',
+    surfaces: ['chat'],
+    source: 'builtin',
+    pluginOwner: null,
+    sortOrder: 60,
+  },
+]
+
+function normalizeCatalogItem(item: z.infer<typeof RuntimeCatalogSchema>['items'][number]): RuntimeCatalogItem {
+  return {
+    ...item,
+    providerKinds: item.providerKinds as ProviderKind[],
+    surfaces: item.surfaces ?? ['chat'],
+  }
+}
+
+export async function fetchRuntimeCatalog(): Promise<RuntimeCatalogItem[]> {
+  const response = await client.get<unknown>({ url: '/chat/runtimes' })
+  return RuntimeCatalogSchema.parse(response.data).items.map(normalizeCatalogItem)
+}
+
+export function useRuntimeCatalog() {
+  const query = useQuery({
+    queryKey: RUNTIME_CATALOG_QUERY_KEY,
+    queryFn: fetchRuntimeCatalog,
+    staleTime: 30_000,
+  })
+
+  return {
+    ...query,
+    runtimes: query.data ?? FALLBACK_RUNTIME_CATALOG,
+  }
+}
+
+export function listRuntimeCatalogForSurface(
+  runtimes: RuntimeCatalogItem[],
+  surface: RuntimeCatalogSurface,
+): RuntimeCatalogItem[] {
+  return runtimes.filter(runtime => runtime.surfaces.includes(surface))
+}

@@ -12,6 +12,13 @@ const spec = {
   "description": "Set Jarvis preferences",
   "flags": [
     {
+      "description": "Chat runtime ID used by Jarvis sessions",
+      "name": "runtimeKind",
+      "required": false,
+      "target": "body.runtimeKind",
+      "type": "string"
+    },
+    {
       "name": "profileId",
       "required": true,
       "target": "body.profileId",

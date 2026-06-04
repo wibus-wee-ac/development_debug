@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next'
 
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
 import { listSelectableComposerProfiles } from '~/features/composer-toolbar/composer-profile-selection'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
@@ -36,9 +38,20 @@ export function JarvisSettings() {
   const { t } = useTranslation('settings')
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { providerOptions, isSuccess: providerTargetsReady } = useProviderTargets()
+  const { runtimes } = useRuntimeCatalog()
+  const runtimeKind = prefs?.runtimeKind ?? 'jar-core'
+  const runtimeOptions = useMemo(
+    () => listRuntimeCatalogForSurface(runtimes, 'jarvis').map(runtime => ({
+      value: runtime.runtimeKind,
+      label: runtime.label,
+      description: runtime.description,
+      iconKey: runtime.iconKey,
+    })),
+    [runtimes],
+  )
   const profiles = useMemo(
-    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: 'jar-core' }),
-    [providerOptions],
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind, runtimes }),
+    [providerOptions, runtimeKind, runtimes],
   )
   const selectedProviderTarget = useMemo(
     () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
@@ -82,6 +95,33 @@ export function JarvisSettings() {
         title={t('jarvis.page.title')}
         description={t('jarvis.page.description')}
       />
+      <SettingsDivider />
+
+      <SettingsRow label={t('jarvis.runtime.label')} description={t('jarvis.runtime.description')}>
+        <RuntimeSelector
+          value={runtimeKind}
+          onChange={(nextRuntimeKind) => {
+            const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: nextRuntimeKind, runtimes })
+            const currentProfileStillValid = prefs.profileId
+              ? nextProfiles.some(profile => profile.id === prefs.profileId)
+              : false
+            const nextProfile = currentProfileStillValid
+              ? nextProfiles.find(profile => profile.id === prefs.profileId) ?? null
+              : nextProfiles[0] ?? null
+            void save({
+              runtimeKind: nextRuntimeKind,
+              profileId: nextProfile?.id ?? null,
+              model: undefined,
+            })
+            if (nextProfile) {
+              requestProfileModels(nextProfile.id)
+            }
+          }}
+          options={runtimeOptions}
+          disabled={saving}
+        />
+      </SettingsRow>
+
       <SettingsDivider />
 
       <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>

@@ -2,6 +2,9 @@ import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import type { McpServerConfig, ServerPluginContext, ServerPluginRouteRegistration } from '@cradle/plugin-sdk/server'
 
 import { createChildLogger } from '../logging/logger'
+import { registerRuntime, unregisterRuntime } from '../modules/chat-runtime/chat-runtime-provider-registry'
+import type { ChatRuntime, ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
+import type { ProviderKind } from '../modules/provider-contracts/types'
 import { createPluginEventBus } from './event-bus'
 import { registerExternalProviderSource } from './external-provider-source-registry'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
@@ -155,6 +158,44 @@ export function createServerPluginContext(
     },
   } satisfies ServerPluginContext['providers']
 
+  const runtimes = {
+    register(runtime, metadata) {
+      const runtimeProvider = runtime as ChatRuntime
+      if (runtimeProvider.runtimeKind !== metadata.runtimeKind) {
+        throw new Error(`Plugin runtime metadata id ${metadata.runtimeKind} does not match runtime id ${runtimeProvider.runtimeKind}.`)
+      }
+      const capability = registerPluginCapability(
+        manifest.name,
+        'chat-runtime',
+        'server',
+        metadata.runtimeKind,
+        metadata.label,
+        {
+          runtimeKind: metadata.runtimeKind,
+          providerKinds: metadata.providerKinds,
+          surfaces: metadata.surfaces ?? ['chat'],
+          iconKey: metadata.iconKey,
+        },
+        [`runtime.${metadata.runtimeKind}`],
+      )
+      const runtimeMetadata: ChatRuntimeMetadata = {
+        label: metadata.label,
+        description: metadata.description,
+        providerKinds: metadata.providerKinds as ProviderKind[],
+        iconKey: metadata.iconKey,
+        surfaces: metadata.surfaces,
+        sortOrder: metadata.sortOrder,
+      }
+      registerRuntime(runtimeProvider, runtimeMetadata, manifest.name)
+      return track({
+        dispose() {
+          unregisterRuntime(metadata.runtimeKind, manifest.name)
+          unregisterPluginCapability(manifest.name, capability.id)
+        },
+      })
+    },
+  } satisfies ServerPluginContext['runtimes']
+
   const chatHooks = {
     onBeforeQuery(handler) {
       return track(registerOwnedBeforeQueryHook(manifest.name, handler))
@@ -172,6 +213,7 @@ export function createServerPluginContext(
     mcp,
     skills,
     providers,
+    runtimes,
     storage: createPluginStorage(manifest.name),
     logger,
     sharedConfig,

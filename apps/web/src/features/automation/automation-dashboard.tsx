@@ -37,6 +37,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
 import { listSelectableComposerProfiles, pickComposerProfileId } from '~/features/composer-toolbar/composer-profile-selection'
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
@@ -53,7 +54,7 @@ interface AutomationDashboardProps {
   onBack?: () => void
 }
 
-type AutomationRuntimeKind = NonNullable<CreateAutomationInput['recipe']['runtimeKind']>
+type AutomationRuntimeKind = RuntimeKind
 
 const STATUS_STYLES: Record<AutomationRunStatus, string> = {
   queued: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
@@ -376,9 +377,21 @@ function CreateAutomationPanel({
   onSave: () => void
 }) {
   const { providerOptions, isLoading } = useProviderTargets()
+  const { runtimes } = useRuntimeCatalog()
+  const runtimeOptions = useMemo(
+    () => listRuntimeCatalogForSurface(runtimes, 'chat')
+      .filter(runtime => runtime.runtimeKind !== 'cli-tui')
+      .map(runtime => ({
+        value: runtime.runtimeKind,
+        label: runtime.label,
+        description: runtime.description,
+        iconKey: runtime.iconKey,
+      })),
+    [runtimes],
+  )
   const selectableProfiles = useMemo(
-    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: draft.runtimeKind }),
-    [draft.runtimeKind, providerOptions],
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: draft.runtimeKind, runtimes }),
+    [draft.runtimeKind, providerOptions, runtimes],
   )
   const selectedProfileId = useMemo(
     () => pickComposerProfileId({ profiles: selectableProfiles, lastProfileId: draft.providerTargetId || null }),
@@ -442,7 +455,7 @@ function CreateAutomationPanel({
     if (runtimeKind === 'cli-tui') {
       return
     }
-    const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind })
+    const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind, runtimes })
     const nextProviderTargetId = pickComposerProfileId({
       profiles: nextProfiles,
       lastProfileId: draft.providerTargetId || null,
@@ -454,7 +467,7 @@ function CreateAutomationPanel({
       modelId: null,
       thinkingEffort: null,
     })
-  }, [draft, onChange, providerOptions])
+  }, [draft, onChange, providerOptions, runtimes])
 
   const updateProviderTarget = useCallback((providerTargetId: string) => {
     requestProfileModels(providerTargetId)
@@ -602,7 +615,7 @@ function CreateAutomationPanel({
               <p className="mt-0.5 text-[12px] text-muted-foreground">{providerModelLabel}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-2 py-2">
-              <RuntimeSelector value={draft.runtimeKind} onChange={updateRuntimeKind} />
+              <RuntimeSelector value={draft.runtimeKind} onChange={updateRuntimeKind} options={runtimeOptions} />
               <ProviderModelPicker
                 providerTargets={selectableProfiles}
                 selectedProviderTargetId={selectedProfileId}

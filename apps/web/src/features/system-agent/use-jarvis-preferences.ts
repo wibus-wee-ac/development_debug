@@ -3,14 +3,17 @@ import { z } from 'zod'
 
 import { getPreferencesJarvisOptions, getPreferencesJarvisQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { putPreferencesJarvis } from '~/api-gen/sdk.gen'
+import type { RuntimeKind } from '~/lib/types'
 
 export interface JarvisPreferences {
+  runtimeKind: RuntimeKind
   profileId: string | null
   model?: string
   thinkingLevel: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 }
 
 const JarvisPreferencesSchema = z.object({
+  runtimeKind: z.string().min(1).default('jar-core'),
   profileId: z.string().nullable(),
   model: z.string().optional(),
   thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']),

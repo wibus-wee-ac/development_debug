@@ -63,6 +63,8 @@
   "jarvis.model.label": "モデル",
   "jarvis.page.description": "ワークスペース全体を把握するシステムアシスタントを設定します。",
   "jarvis.page.title": "Jarvis",
+  "jarvis.runtime.description": "新しい Jarvis セッションに使うチャットランタイムを選択します。",
+  "jarvis.runtime.label": "ランタイム",
   "jarvis.thinking.high.description": "複雑な作業向けの深い推論。",
   "jarvis.thinking.high.label": "高",
   "jarvis.thinking.low.description": "軽い推論で高速応答します。",

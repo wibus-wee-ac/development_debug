@@ -3,11 +3,13 @@ import { useMemo, useState } from 'react'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
 import type { Agent, ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'
 import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
+import type { RuntimeKindOption } from './constants'
 import type { ComposerContext, ComposerSelection, ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
 
 interface ComposerStateConfig {
@@ -29,6 +31,7 @@ export interface ComposerStateResult {
   setModelId: (id: string, profileId?: string) => void
   setThinkingEffort: (effort: ThinkingEffort) => void
   setRuntimeKind: (kind: RuntimeKind) => void
+  runtimeOptions: RuntimeKindOption[]
   agents: Agent[]
   profiles: ProviderModelOption[]
   models: ModelDescriptor[]
@@ -63,6 +66,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   // Data
   const { agents, isLoading: isLoadingAgents } = useAgents()
   const { providerOptions, isLoading: isLoadingProviders } = useProviderTargets()
+  const { runtimes } = useRuntimeCatalog()
 
   // Local non-persisted state
   const [manualAgentId, setManualAgentId] = useState<string | null>(null)
@@ -71,15 +75,29 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   const [manualThinkingEffort, setManualThinkingEffort] = useState<ThinkingEffort | undefined>(undefined)
   const [manualRuntimeKind, setManualRuntimeKind] = useState<RuntimeKind | null>(null)
 
+  const runtimeOptions = useMemo<RuntimeKindOption[]>(
+    () => listRuntimeCatalogForSurface(runtimes, 'chat').map(runtime => ({
+      value: runtime.runtimeKind,
+      label: runtime.label,
+      description: runtime.description,
+      iconKey: runtime.iconKey,
+    })),
+    [runtimes],
+  )
+
   const runtimeKind = useMemo(() => {
     if (context === 'chat') {
       return boundRuntimeKind ?? 'standard'
     }
-    return manualRuntimeKind ?? lastRuntimeKind ?? 'standard'
-  }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind])
+    const fallbackRuntimeKind = runtimeOptions.find(option => option.value === 'standard')?.value
+      ?? runtimeOptions[0]?.value
+      ?? 'standard'
+    const candidate = manualRuntimeKind ?? lastRuntimeKind ?? fallbackRuntimeKind
+    return runtimeOptions.some(option => option.value === candidate) ? candidate : fallbackRuntimeKind
+  }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind, runtimeOptions])
   const selectableProfiles = useMemo(
-    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind }),
-    [providerOptions, runtimeKind],
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind, runtimes }),
+    [providerOptions, runtimeKind, runtimes],
   )
 
   const thinkingEffort = manualThinkingEffort === undefined ? lastThinkingEffort : manualThinkingEffort
@@ -253,6 +271,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     setModelId,
     setThinkingEffort,
     setRuntimeKind,
+    runtimeOptions,
     agents: cliTuiAgents,
     profiles: selectableProfiles,
     models,

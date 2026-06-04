@@ -10,7 +10,7 @@ The Cradle Plugin System runs across **3 runtime layers**:
 
 | Layer | Runtime | Entry Point | Capabilities |
 |-------|---------|-------------|-------------|
-| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, external provider sources, hooks, events, KV storage |
+| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, external provider sources, Chat/Jarvis runtimes, hooks, events, KV storage |
 | **Web** | Browser (React) | `dist/web.mjs` | UI panels, commands, localStorage |
 | **Desktop** | Electron main | `src/desktop.ts` | System-level access, CDP, IPC, shared config |
 
@@ -264,7 +264,7 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
-Server registrations return `Disposable` handles and are also tracked in `ctx.subscriptions`. Use namespace APIs such as `ctx.routes.register`, `ctx.mcp.registerServer`, `ctx.skills.register`, and `ctx.providers.externalSources.register`. When `when` is asynchronous, await the result if later initialization depends on the MCP server being registered.
+Server registrations return `Disposable` handles and are also tracked in `ctx.subscriptions`. Use namespace APIs such as `ctx.routes.register`, `ctx.mcp.registerServer`, `ctx.skills.register`, `ctx.providers.externalSources.register`, and `ctx.runtimes.register`. When `when` is asynchronous, await the result if later initialization depends on the MCP server being registered.
 
 **`McpServerConfig` fields:**
 
@@ -364,6 +364,53 @@ export async function activate(ctx: ServerPluginContext): Promise<void> {
   await ctx.storage.delete('tempData')
 }
 ```
+
+### `ctx.runtimes.register(runtime, metadata)` — Chat/Jarvis Runtime Provider
+
+Plugins can provide a full Chat Runtime provider for Chat and Jarvis. The plugin owns its runtime id and implementation semantics; Chat Runtime owns the catalog, session lifecycle, persistence, and provider-target compatibility checks.
+
+Declare the capability before registering it at runtime:
+
+```json
+{
+  "cradle": {
+    "apiVersion": "1",
+    "server": "src/server.ts",
+    "contributes": {
+      "capabilities": [
+        {
+          "id": "runtime.my-cloud-agent",
+          "type": "chat-runtime",
+          "layer": "server",
+          "label": "My Cloud Agent runtime",
+          "permissions": []
+        }
+      ],
+      "permissions": []
+    }
+  }
+}
+```
+
+Then register a runtime object that satisfies Cradle's server `ChatRuntime` contract:
+
+```ts
+import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+
+export function activate(ctx: ServerPluginContext): void {
+  ctx.runtimes.register(myRuntimeProvider, {
+    runtimeKind: 'my-cloud-agent',
+    label: 'My Cloud Agent',
+    description: 'Runs turns through my hosted agent runtime',
+    providerKinds: ['openai-compatible'],
+    iconKey: 'custom',
+    surfaces: ['chat', 'jarvis'],
+    sortOrder: 80,
+  })
+}
+```
+
+`runtimeKind` must match `myRuntimeProvider.runtimeKind`. `providerKinds` controls which Cradle provider targets are selectable for this runtime. `surfaces` controls where the runtime appears; use `['chat', 'jarvis']` when the same runtime can back both ordinary Chat sessions and Jarvis sessions.
 
 ### `ctx.hooks` — Chat Lifecycle Hooks
 
@@ -957,6 +1004,7 @@ interface ServerPluginContext {
   mcp: ServerPluginMcpRegistry
   skills: ServerPluginSkillRegistry
   providers: ServerPluginProviderRegistries
+  runtimes: ServerPluginRuntimeRegistry
   subscriptions: Disposable[]
   storage: PluginStorage
   logger: Logger
@@ -976,6 +1024,20 @@ interface ServerPluginSkillRegistry {
 
 interface ServerPluginProviderRegistries {
   externalSources: ExternalProviderSourceRegistry
+}
+
+interface ServerPluginRuntimeRegistry {
+  register(runtime: unknown, metadata: ChatRuntimeContributionMetadata): Disposable
+}
+
+interface ChatRuntimeContributionMetadata {
+  runtimeKind: string
+  label: string
+  description?: string
+  providerKinds: string[]
+  iconKey?: string
+  surfaces?: Array<'chat' | 'jarvis'>
+  sortOrder?: number
 }
 
 interface McpServerConfig {

@@ -1,4 +1,4 @@
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'
@@ -10,12 +10,29 @@ export const THINKING_EFFORTS: { value: ThinkingEffort, label: string, descripti
   { value: 'high', label: '', description: '' },
 ]
 
-export const RUNTIME_KIND_OPTIONS = [
+export interface RuntimeKindOption {
+  value: RuntimeKind
+  label?: string
+  description?: string
+  iconKey?: string
+}
+
+export const RUNTIME_KIND_OPTIONS: RuntimeKindOption[] = [
   { value: 'standard' },
   { value: 'claude-agent' },
   { value: 'codex' },
+  { value: 'jar-core' },
+  { value: 'acp-chat' },
   { value: 'cli-tui' },
-] satisfies Array<{ value: RuntimeKind }>
+]
+
+export const JARVIS_RUNTIME_KIND_OPTIONS: RuntimeKindOption[] = [
+  { value: 'jar-core' },
+  { value: 'codex' },
+  { value: 'acp-chat' },
+  { value: 'claude-agent' },
+  { value: 'standard' },
+]
 
 export type ThinkingCapabilityTier = 'none' | 'standard' | 'extended'
 

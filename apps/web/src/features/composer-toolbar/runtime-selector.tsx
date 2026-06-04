@@ -3,19 +3,22 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/components/common/provider-icons'
+import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { cn } from '~/lib/cn'
-import type { RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
 
 import { RUNTIME_KIND_OPTIONS } from './constants'
+import type { RuntimeKindOption } from './constants'
 
 type CommonKey = keyof typeof import('~/locales/default').default.common
-type RuntimeOptionKind = (typeof RUNTIME_KIND_OPTIONS)[number]['value']
+type RuntimeOptionKind = BuiltinRuntimeKind
 
 const runtimeLabelKeys = {
   'standard': 'runtime.standard.label',
   'claude-agent': 'runtime.claudeAgent.label',
   'codex': 'runtime.codex.label',
+  'jar-core': 'runtime.jarCore.label',
+  'acp-chat': 'runtime.acpChat.label',
   'cli-tui': 'runtime.cliTui.label',
 } satisfies Record<RuntimeOptionKind, CommonKey>
 
@@ -23,10 +26,12 @@ const runtimeDescriptionKeys = {
   'standard': 'runtime.standard.description',
   'claude-agent': 'runtime.claudeAgent.description',
   'codex': 'runtime.codex.description',
+  'jar-core': 'runtime.jarCore.description',
+  'acp-chat': 'runtime.acpChat.description',
   'cli-tui': 'runtime.cliTui.description',
 } satisfies Record<RuntimeOptionKind, CommonKey>
 
-const runtimeFallbackLabels: Record<RuntimeKind, string> = {
+const runtimeFallbackLabels: Partial<Record<RuntimeKind, string>> = {
   'standard': 'Standard',
   'claude-agent': 'Claude Agent',
   'codex': 'Codex',
@@ -35,31 +40,61 @@ const runtimeFallbackLabels: Record<RuntimeKind, string> = {
   'acp-chat': 'ACP Chat',
 }
 
+function isBuiltinRuntimeKind(value: RuntimeKind): value is RuntimeOptionKind {
+  return value === 'standard'
+    || value === 'claude-agent'
+    || value === 'codex'
+    || value === 'cli-tui'
+    || value === 'jar-core'
+    || value === 'acp-chat'
+}
+
+function getRuntimeLabel(option: RuntimeKindOption | undefined, value: RuntimeKind, t: (key: CommonKey) => string): string {
+  if (option?.label) {
+    return option.label
+  }
+  if (isBuiltinRuntimeKind(value)) {
+    return t(runtimeLabelKeys[value])
+  }
+  return runtimeFallbackLabels[value] ?? value
+}
+
+function getRuntimeDescription(option: RuntimeKindOption, t: (key: CommonKey) => string): string {
+  if (option.description) {
+    return option.description
+  }
+  if (isBuiltinRuntimeKind(option.value)) {
+    return t(runtimeDescriptionKeys[option.value])
+  }
+  return option.value
+}
+
 interface RuntimeSelectorProps {
   value: RuntimeKind
   onChange: (kind: RuntimeKind) => void
   readOnly?: boolean
+  options?: RuntimeKindOption[]
+  disabled?: boolean
 }
 
-export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorProps) {
+export function RuntimeSelector({ value, onChange, readOnly, options = RUNTIME_KIND_OPTIONS, disabled }: RuntimeSelectorProps) {
   const { t } = useTranslation('common')
-  const current = RUNTIME_KIND_OPTIONS.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS[0]
-  const Icon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[value]] ?? PROVIDER_ICONS.custom!
+  const current = options.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS.find(o => o.value === value) ?? options[0] ?? RUNTIME_KIND_OPTIONS[0]
+  const Icon = PROVIDER_ICONS[current?.iconKey ?? getRuntimeIconKey(value)] ?? PROVIDER_ICONS.custom!
+  const currentLabel = getRuntimeLabel(current, value, t)
 
   if (readOnly) {
-    const label = current.value === value ? t(runtimeLabelKeys[current.value]) : runtimeFallbackLabels[value]
-
     return (
       <Button
         variant="ghost"
         size="xs"
         disabled
         data-testid="runtime-selector"
-        aria-label={label}
+        aria-label={currentLabel}
         className="disabled:pointer-events-auto disabled:opacity-70"
       >
         <Icon className="size-3.5 shrink-0" />
-        <span className="hidden min-[480px]:inline">{label}</span>
+        <span className="hidden min-[480px]:inline">{currentLabel}</span>
       </Button>
     )
   }
@@ -68,16 +103,18 @@ export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorPr
     <Menu>
       <MenuTrigger
         render={(
-          <Button variant="ghost" size="xs" data-testid="runtime-selector" />
+          <Button variant="ghost" size="xs" data-testid="runtime-selector" disabled={disabled} />
         )}
       >
         <Icon className="size-3.5 shrink-0" />
-        <span className="hidden min-[480px]:inline">{t(runtimeLabelKeys[current.value])}</span>
+        <span className="hidden min-[480px]:inline">
+          {currentLabel}
+        </span>
         <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
       </MenuTrigger>
       <MenuPopup align="start" side="top" sideOffset={4}>
-        {RUNTIME_KIND_OPTIONS.map((opt) => {
-          const OptIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[opt.value]] ?? PROVIDER_ICONS.custom!
+        {options.map((opt) => {
+          const OptIcon = PROVIDER_ICONS[opt.iconKey ?? getRuntimeIconKey(opt.value)] ?? PROVIDER_ICONS.custom!
           return (
             <MenuItem
               key={opt.value}
@@ -86,9 +123,9 @@ export function RuntimeSelector({ value, onChange, readOnly }: RuntimeSelectorPr
             >
               <OptIcon className="size-3.5" />
               <div className="flex flex-col">
-                <span>{t(runtimeLabelKeys[opt.value])}</span>
+                <span>{getRuntimeLabel(opt, opt.value, t)}</span>
                 <span className="text-[11px] text-muted-foreground">
-                  {t(runtimeDescriptionKeys[opt.value])}
+                  {getRuntimeDescription(opt, t)}
                 </span>
               </div>
             </MenuItem>

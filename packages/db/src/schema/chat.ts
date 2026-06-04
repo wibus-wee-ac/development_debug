@@ -12,9 +12,7 @@ export const sessions = sqliteTable('sessions', {
   title: text('title').notNull(),
   providerTargetId: text('provider_target_id')
     .references(() => providerTargets.id, { onDelete: 'restrict' }),
-  runtimeKind: text('runtime_kind', {
-    enum: ['standard', 'claude-agent', 'codex', 'jar-core', 'acp-chat', 'cli-tui'],
-  }).notNull().default('standard'),
+  runtimeKind: text('runtime_kind').notNull().default('standard'),
   agentId: text('agent_id')
     .references(() => agents.id, { onDelete: 'set null' }),
   configJson: text('config_json').notNull().default('{}'),

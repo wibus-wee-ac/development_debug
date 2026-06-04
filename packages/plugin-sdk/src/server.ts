@@ -17,6 +17,9 @@ export interface ServerPluginContext {
   /** Provider-related registrations */
   providers: ServerPluginProviderRegistries
 
+  /** Chat/Jarvis runtime provider registrations */
+  runtimes: ServerPluginRuntimeRegistry
+
   /** Disposables that the host releases when this plugin layer deactivates */
   subscriptions: Disposable[]
 
@@ -115,6 +118,23 @@ export interface ServerPluginSkillRegistry {
 export interface ServerPluginProviderRegistries {
   /** External provider sources that return host-rendered provider snapshots */
   externalSources: ExternalProviderSourceRegistry
+}
+
+export type ChatRuntimeSurface = 'chat' | 'jarvis'
+
+export interface ChatRuntimeContributionMetadata {
+  runtimeKind: string
+  label: string
+  description?: string
+  providerKinds: string[]
+  iconKey?: string
+  surfaces?: ChatRuntimeSurface[]
+  sortOrder?: number
+}
+
+export interface ServerPluginRuntimeRegistry {
+  /** Register a Chat Runtime provider. The runtime object must satisfy Cradle's server ChatRuntime contract. */
+  register: (runtime: unknown, metadata: ChatRuntimeContributionMetadata) => Disposable
 }
 
 export interface ExternalProviderSourceRegistry {

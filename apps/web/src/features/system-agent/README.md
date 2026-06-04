@@ -6,6 +6,7 @@ Jarvis / system-agent feature surface for the renderer.
 This directory owns workspace-context collection, semantic context aggregation, prompt formatting for Jarvis, the Jarvis popover UI,
 cross-window Jarvis footer tab synchronization, and the single React Query boundary used to read/write Jarvis preferences.
 Jarvis popover empty-state copy and setup guidance are owned by the `system-agent` i18n namespace.
+Jarvis stores the selected runtime id in preferences and creates hidden Chat Runtime sessions with that id; runtime provider lifecycle and catalog metadata are owned by Chat Runtime, not this feature.
 
 ## Files
 
@@ -27,4 +28,4 @@ Jarvis popover empty-state copy and setup guidance are owned by the `system-agen
 - **jarvis-ui-store.test.ts**: Unit coverage for Jarvis footer tab cross-window synchronization, per-window expanded state, and persisted include-context preference
 - **system-context-provider.ts**: System Agent-owned ambient UI context provider that publishes active tab, layout, chat summary, unread activity, and active profile state into the shared Jarvis context registry
 - **use-context-snapshot.ts**: Reads current renderer state (tabs, layout, recent state) and builds the Jarvis context snapshot
-- **use-jarvis-preferences.ts**: Authoritative TanStack Query/query-key/mutation boundary for Jarvis preferences, shared by Settings and the Jarvis popover; exposes query success so Settings Jarvis first-render performance gates wait for real preferences readiness
+- **use-jarvis-preferences.ts**: Authoritative TanStack Query/query-key/mutation boundary for Jarvis runtime/profile/model/thinking preferences, shared by Settings and the Jarvis popover; exposes query success so Settings Jarvis first-render performance gates wait for real preferences readiness

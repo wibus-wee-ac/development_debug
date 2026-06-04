@@ -1,13 +1,6 @@
 import { t } from 'elysia'
 
-const runtimeKindSchema = t.Union([
-  t.Literal('standard'),
-  t.Literal('claude-agent'),
-  t.Literal('codex'),
-  t.Literal('jar-core'),
-  t.Literal('acp-chat'),
-  t.Literal('cli-tui'),
-])
+const runtimeKindSchema = t.String({ minLength: 1 })
 
 const nullableString = t.Nullable(t.String())
 const nullableRequiredString = t.Nullable(t.String({ minLength: 1 }))

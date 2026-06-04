@@ -181,7 +181,7 @@ export function JarvisPopover({
             workspaceId: null,
             title: 'Jarvis',
             providerTargetId: prefs!.profileId!,
-            runtimeKind: 'jar-core',
+            runtimeKind: prefs!.runtimeKind,
           },
         })
         const session = res.data as { id: string } | null

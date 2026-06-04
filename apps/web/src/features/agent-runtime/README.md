@@ -6,6 +6,7 @@ Renderer data hooks for Agent Runtime provider targets, manual provider profiles
 This feature exposes provider-target query ownership plus legacy manual profile mutations and Agent entity CRUD to launchers and settings.
 Provider execution and credentials remain in the Electron main process.
 Model visibility semantics are owned here: missing or empty `enabledModels` means all provider models are visible, the sentinel disables all models, and a non-empty list is an explicit allow-list.
+Runtime catalog reads are exposed here as renderer data hooks, but runtime lifecycle and compatibility semantics remain server-owned by Chat Runtime.
 
 ## Files
 
@@ -17,4 +18,5 @@ Model visibility semantics are owned here: missing or empty `enabledModels` mean
 - **use-agents.ts**: `useAgents` hook — CRUD for Agent identity entities, shared agents query key export, explicit local Claude/Codex import mutation, and query success for settings readiness
 - **use-agent-models.ts**: `useAgentModels`, `useProviderTargetModels`, `useAgentModelMap`, and `useProviderTargetModelMap` hooks — read cached visible models for manual provider records and provider targets, share stable query keys across chat, composer, and settings surfaces, and avoid automatic provider inventory refreshes
 - **use-provider-targets.ts**: `useProviderTargets` hook — reads unified manual and external provider targets for runtime selection surfaces via generated React Query options
-- **runtime-compatibility.ts**: renderer-side runtime-kind to provider-kind compatibility rules used by composer filtering.
+- **use-runtime-catalog.ts**: `useRuntimeCatalog` hook — reads `/chat/runtimes` for Chat/Jarvis runtime selector metadata with builtin fallback entries for development startup.
+- **runtime-compatibility.ts**: renderer-side runtime-kind to provider-kind compatibility helper used by composer filtering; prefers server runtime catalog metadata when supplied and falls back to builtin rules.

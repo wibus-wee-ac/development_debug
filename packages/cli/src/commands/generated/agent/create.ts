@@ -62,15 +62,7 @@ const spec = {
       "name": "runtimeKind",
       "required": false,
       "target": "body.runtimeKind",
-      "type": "string",
-      "values": [
-        "standard",
-        "claude-agent",
-        "codex",
-        "jar-core",
-        "acp-chat",
-        "cli-tui"
-      ]
+      "type": "string"
     },
     {
       "name": "configJson",
