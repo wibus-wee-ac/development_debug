@@ -23,8 +23,7 @@ export function useRuntimeComposerSlashCommands(
   return useMemo(() => {
     return projectRuntimeComposerSlashCommands({
       capabilities: draftCapabilities,
-      runtimeKind,
       mode: 'draft',
     })
-  }, [draftCapabilities, runtimeKind])
+  }, [draftCapabilities])
 }

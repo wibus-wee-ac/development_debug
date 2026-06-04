@@ -18,6 +18,7 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
+import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { getServerUrl } from '~/lib/electron'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
@@ -27,12 +28,11 @@ import type { ChatRuntimeGoalUiSlotState } from './chat-capabilities'
 import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
-import { ChatShareExport } from './chat-share-export'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
+import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
-import type { ComposerReviewSlotActions } from './composer-slot-states'
+import type { ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
@@ -211,6 +211,7 @@ function ChatComposerSection({
   droppedPath,
   goalActions,
   reviewSlot,
+  usageSlot,
   onComposerFocusChange,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
@@ -235,6 +236,7 @@ function ChatComposerSection({
     onClear: (state: ChatRuntimeGoalUiSlotState) => void
   }
   reviewSlot: ComposerReviewSlotActions
+  usageSlot: ComposerUsageSlotActions
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
@@ -252,6 +254,7 @@ function ChatComposerSection({
           states={composerRuntime.slotStates}
           actions={goalActions}
           review={reviewSlot}
+          usage={usageSlot}
         />
         <Composer
           send={{
@@ -328,6 +331,7 @@ export function ChatView({
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
   const [goalActionBusy, setGoalActionBusy] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
+  const [usageSlotSessionId, setUsageSlotSessionId] = useState<string | null>(null)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
@@ -471,6 +475,10 @@ export function ChatView({
       setReviewModeOpen(true)
       return { insertText: '' }
     }
+    if (command.action.actionId === CODEX_USAGE_SLASH_ACTION_ID) {
+      setUsageSlotSessionId(sessionId)
+      return { insertText: '' }
+    }
     if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
       return
     }
@@ -502,7 +510,7 @@ export function ChatView({
         description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
       })
     }
-  }, [appshotRuntime, composerRuntime.supportsAttachments])
+  }, [appshotRuntime, composerRuntime.supportsAttachments, sessionId])
 
   const submitCodexReviewPrompt = useCallback((prompt: string) => {
     composerRuntime.send(prompt, [], [])
@@ -530,12 +538,29 @@ export function ChatView({
     resolveMergeBase: resolveCodexReviewMergeBase,
   }), [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId])
 
+  const usageSlot = useMemo<ComposerUsageSlotActions>(() => ({
+    open: Boolean(sessionId) && usageSlotSessionId === sessionId,
+    onDismiss: () => setUsageSlotSessionId(null),
+  }), [sessionId, usageSlotSessionId])
+
   const runtimeToolbar = useMemo(() => (
     <>
       {composerToolbar}
       <RuntimeToolbarOptions slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
     </>
   ), [composerRuntime.slotStates, composerRuntime.uiSlots, composerToolbar])
+
+  const headerActions = useMemo(() => (
+    <div className="flex items-center gap-0.5">
+      {import.meta.env.DEV && (
+        <RuntimeDiagnosticsPopover slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
+      )}
+    </div>
+  ), [composerRuntime.slotStates, composerRuntime.uiSlots])
+
+  const layoutSlots = useMemo(() => ({ headerActions }), [headerActions])
+
+  useRegisterLayoutSlots(sessionId ?? '', layoutSlots)
 
   return (
     <div
@@ -554,17 +579,6 @@ export function ChatView({
       }}
       onDragOver={e => e.preventDefault()}
     >
-      <div className="pointer-events-none absolute right-4 top-3 z-20 flex items-center gap-1">
-        {import.meta.env.DEV && (
-          <div className="pointer-events-auto">
-            <RuntimeDiagnosticsPopover slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
-          </div>
-        )}
-        <div className="pointer-events-auto rounded-lg bg-background/75 p-0.5 shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm">
-          <ChatShareExport sessionId={sessionId} disabled={!isReady} />
-        </div>
-      </div>
-
       <ChatMessageListPane
         sessionId={sessionId}
         messageIds={messageIds}
@@ -593,6 +607,7 @@ export function ChatView({
         droppedPath={droppedPath}
         goalActions={goalActions}
         reviewSlot={reviewSlot}
+        usageSlot={usageSlot}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
 

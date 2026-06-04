@@ -8,6 +8,7 @@ import {
   AlertTriangleIcon,
   CoinsIcon,
   GaugeIcon,
+  XIcon,
 } from 'lucide-react'
 
 import { Progress } from '~/components/ui/progress'
@@ -15,13 +16,16 @@ import { cn } from '~/lib/cn'
 import { clampPercent } from '~/lib/number-format'
 
 import type { ChatRuntimeUsageUiSlotState } from '../chat-capabilities'
-import { ComposerSlotShell } from './composer-slot-shell'
+import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
+import type { ComposerUsageSlotActions } from './types'
 
 export function UsageSlotState({
   state,
+  usage,
   className,
 }: {
   state: ChatRuntimeUsageUiSlotState
+  usage?: ComposerUsageSlotActions
   className?: string
 }) {
   const usedPercent = state.usedPercent === null ? null : clampPercent(state.usedPercent)
@@ -78,6 +82,11 @@ export function UsageSlotState({
             </span>
           )}
         </div>
+        {usage?.open && (
+          <ComposerSlotIconAction label="Close usage" onClick={usage.onDismiss}>
+            <XIcon className="size-3.5" aria-hidden="true" />
+          </ComposerSlotIconAction>
+        )}
       </div>
     </ComposerSlotShell>
   )

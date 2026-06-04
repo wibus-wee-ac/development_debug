@@ -36,7 +36,7 @@ const runtimeFallbackLabels: Partial<Record<RuntimeKind, string>> = {
   'claude-agent': 'Claude Agent',
   'codex': 'Codex',
   'cli-tui': 'CLI TUI',
-  'jar-core': 'Jar Core',
+  'jar-core': 'HiJarvis',
   'acp-chat': 'ACP Chat',
 }
 
@@ -79,7 +79,7 @@ interface RuntimeSelectorProps {
 
 export function RuntimeSelector({ value, onChange, readOnly, options = RUNTIME_KIND_OPTIONS, disabled }: RuntimeSelectorProps) {
   const { t } = useTranslation('common')
-  const current = options.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS.find(o => o.value === value) ?? options[0] ?? RUNTIME_KIND_OPTIONS[0]
+  const current = options.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS.find(o => o.value === value)
   const Icon = PROVIDER_ICONS[current?.iconKey ?? getRuntimeIconKey(value)] ?? PROVIDER_ICONS.custom!
   const currentLabel = getRuntimeLabel(current, value, t)
 

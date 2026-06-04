@@ -18,9 +18,14 @@ import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
+import type { ChatComposerSlashCommand } from '~/features/chat/chat-slash-commands'
+import { CODEX_REVIEW_SLASH_ACTION_ID } from '~/features/chat/chat-slash-commands'
 import { startChatResponse } from '~/features/chat/chat-response-command'
 import { Composer } from '~/features/chat/composer'
+import type { ComposerSlashCommandActionResult } from '~/features/chat/composer-action-context'
 import { modelSupportsAttachments } from '~/features/chat/composer-attachment-state'
+import type { ComposerReviewSlotActions } from '~/features/chat/composer-slot-states'
+import { ComposerSlotStates } from '~/features/chat/composer-slot-states'
 import type { MentionItem } from '~/features/chat/mention-panel'
 import { useRuntimeComposerSlashCommands } from '~/features/chat/use-runtime-composer-slash-commands'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
@@ -29,6 +34,7 @@ import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -111,6 +117,7 @@ function useNewChatPageOwner(active: boolean) {
   const [quickActionText, setQuickActionText] = useState<string | undefined>(undefined)
   const [quickActionKey, setQuickActionKey] = useState(0)
   const [sending, setSending] = useState(false)
+  const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(() => {
     try {
       return localStorage.getItem('cradle:lastWorkspaceId')
@@ -339,6 +346,45 @@ function useNewChatPageOwner(active: boolean) {
     void openTab('chat', { sessionId })
   }, [openTab])
 
+  function handleSlashCommandAction(
+    command: ChatComposerSlashCommand,
+  ): ComposerSlashCommandActionResult | void {
+    if (command.action.kind !== 'uiAction') {
+      return
+    }
+    if (command.action.actionId !== CODEX_REVIEW_SLASH_ACTION_ID) {
+      return
+    }
+    setReviewModeOpen(true)
+    return { insertText: '' }
+  }
+
+  function submitCodexReviewPrompt(prompt: string) {
+    void handleSend(prompt, [])
+  }
+
+  async function resolveCodexReviewMergeBase(baseBranch: string) {
+    if (!selectedProjectWorkspaceId) {
+      return null
+    }
+    const url = new URL(`/workspaces/${encodeURIComponent(selectedProjectWorkspaceId)}/git/merge-base`, getServerUrl())
+    url.searchParams.set('baseBranch', baseBranch)
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`Failed to resolve merge base (${response.status}).`)
+    }
+    const payload = await response.json() as { mergeBaseSha?: unknown }
+    return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
+  }
+
+  const reviewSlot: ComposerReviewSlotActions = {
+    open: reviewModeOpen,
+    workspaceId: selectedProjectWorkspaceId,
+    onDismiss: () => setReviewModeOpen(false),
+    onSubmitPrompt: submitCodexReviewPrompt,
+    resolveMergeBase: resolveCodexReviewMergeBase,
+  }
+
   return {
     composerState,
     draft,
@@ -347,12 +393,14 @@ function useNewChatPageOwner(active: boolean) {
     handleReadinessAction,
     handleResumeSession,
     handleSend,
+    handleSlashCommandAction,
     isReady,
     now,
     openTab,
     placeholder,
     recentSessions,
     readinessNotice,
+    reviewSlot,
     selectedWorkspace,
     searchFiles,
     sendDisabled,
@@ -376,8 +424,10 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
   const {
     composerState,
     handleSend,
+    handleSlashCommandAction,
     quickActionKey,
     quickActionText,
+    reviewSlot,
     sendDisabled,
     sending,
     addFromPicker,
@@ -435,59 +485,67 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
   )
 
   return (
-    <Composer
-      send={{
-        submit: handleSend,
-        isSending: sending,
-        sendDisabled,
-        allowEmptySend: composerState.selection.runtimeKind === 'cli-tui',
-      }}
-      commands={{
-        commands: slashCommands,
-      }}
-      attachments={{
-        supportsAttachments,
-      }}
-      slots={{
-        toolbar: <ComposerToolbar context="new-chat" state={composerState} />,
-        contextBar: workspaceSelector,
-      }}
-      externalSignals={{
-        replaceText: quickActionText,
-        replaceTextKey: quickActionKey,
-      }}
-      view={{
-        placeholder,
-        searchFiles,
-        onDraftChange: setDraft,
-        className: 'relative',
-        cardClassName: cn(
-          'overflow-hidden rounded-2xl',
-          'border-border/60 bg-background shadow-none',
-          'ring-1 ring-inset ring-white/[0.02] dark:ring-white/[0.04]',
-          'transition-[border-color,box-shadow] duration-200',
-          'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
-        ),
-        textareaRows: 5,
-        textareaClassName: 'px-5 pt-5 pb-3 text-[15px] leading-[1.75] placeholder:text-muted-foreground/30 min-h-30 max-h-80 rounded-t-2xl disabled:opacity-30',
-        attachmentListClassName: 'border-border/60 px-3 py-2',
-        actionBarClassName: 'border-t border-border/60 px-2.5 py-2',
-        attachButtonClassName: 'text-muted-foreground/30',
-        attachIconClassName: 'size-3',
-        sendButtonClassName: 'ml-0.5',
-      }}
-      accessibility={{
-        textareaAriaLabel: 'New chat message',
-        sendButtonAriaLabel: t('send.tooltip'),
-      }}
-      testIds={{
-        actionTarget: 'new-chat-composer-action-target',
-        textarea: 'new-chat-textarea',
-        fileInput: 'new-chat-file-input',
-        attachButton: 'new-chat-attach-btn',
-        sendButton: 'new-chat-send-btn',
-      }}
-    />
+    <>
+      <ComposerSlotStates
+        slots={[]}
+        states={[]}
+        review={reviewSlot}
+      />
+      <Composer
+        send={{
+          submit: handleSend,
+          isSending: sending,
+          sendDisabled,
+          allowEmptySend: composerState.selection.runtimeKind === 'cli-tui',
+        }}
+        commands={{
+          commands: slashCommands,
+          runAction: handleSlashCommandAction,
+        }}
+        attachments={{
+          supportsAttachments,
+        }}
+        slots={{
+          toolbar: <ComposerToolbar context="new-chat" state={composerState} />,
+          contextBar: workspaceSelector,
+        }}
+        externalSignals={{
+          replaceText: quickActionText,
+          replaceTextKey: quickActionKey,
+        }}
+        view={{
+          placeholder,
+          searchFiles,
+          onDraftChange: setDraft,
+          className: 'relative',
+          cardClassName: cn(
+            'overflow-hidden rounded-2xl',
+            'border-border/60 bg-background shadow-none',
+            'ring-1 ring-inset ring-white/[0.02] dark:ring-white/[0.04]',
+            'transition-[border-color,box-shadow] duration-200',
+            'focus-within:border-ring/50 focus-within:shadow-[var(--shadow-xs)]',
+          ),
+          textareaRows: 5,
+          textareaClassName: 'px-5 pt-5 pb-3 text-[15px] leading-[1.75] placeholder:text-muted-foreground/30 min-h-30 max-h-80 rounded-t-2xl disabled:opacity-30',
+          attachmentListClassName: 'border-border/60 px-3 py-2',
+          actionBarClassName: 'border-t border-border/60 px-2.5 py-2',
+          attachButtonClassName: 'text-muted-foreground/30',
+          attachIconClassName: 'size-3',
+          sendButtonClassName: 'ml-0.5',
+        }}
+        accessibility={{
+          textareaAriaLabel: 'New chat message',
+          sendButtonAriaLabel: t('send.tooltip'),
+        }}
+        testIds={{
+          actionTarget: 'new-chat-composer-action-target',
+          textarea: 'new-chat-textarea',
+          fileInput: 'new-chat-file-input',
+          attachButton: 'new-chat-attach-btn',
+          sendButton: 'new-chat-send-btn',
+        }}
+      />
+    </>
   )
 }
 

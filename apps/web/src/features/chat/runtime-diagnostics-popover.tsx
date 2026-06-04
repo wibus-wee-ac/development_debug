@@ -53,21 +53,21 @@ export function RuntimeDiagnosticsPopover({ slots, states }: RuntimeDiagnosticsP
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          size="icon-lg"
-          className="size-10 rounded-lg bg-background/85 text-muted-foreground shadow-sm ring-1 ring-foreground/10 backdrop-blur-sm transition-transform hover:text-foreground active:scale-[0.96]"
+          size="icon-xs"
+          className="relative text-muted-foreground hover:text-foreground"
           aria-label="Runtime diagnostics"
           title="Runtime diagnostics"
           data-testid="runtime-diagnostics-trigger"
         >
-          <Settings2Icon className="size-4" aria-hidden="true" />
+          <Settings2Icon aria-hidden="true" />
           {activeCount > 0 && (
-            <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary ring-2 ring-background" />
+            <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-primary ring-2 ring-background" />
           )}
         </Button>
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        sideOffset={8}
+        sideOffset={6}
         className="max-h-[min(680px,calc(100vh-7rem))] w-80 gap-0 overflow-auto p-3"
         data-testid="runtime-diagnostics-popover"
       >

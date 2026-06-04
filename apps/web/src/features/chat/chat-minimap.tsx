@@ -312,7 +312,7 @@ function ChatMinimapInner({
 
   return (
     <div
-      className="pointer-events-none absolute right-7 top-0 bottom-0 z-10 flex w-10 items-center justify-center"
+      className="pointer-events-none absolute right-1 top-0 bottom-0 z-10 flex items-center justify-center"
     >
       <button
         type="button"
@@ -329,7 +329,7 @@ function ChatMinimapInner({
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerLeave}
         onClick={e => scrollToEventMessage(e.clientY)}
-        className="pointer-events-auto relative flex min-h-40 w-10 cursor-pointer flex-col items-center justify-center gap-3 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        className="pointer-events-auto relative flex cursor-pointer flex-col items-center justify-center gap-3 rounded-full bg-transparent p-0 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         {anchors.map((anchor, i) => {
           return (
@@ -360,7 +360,7 @@ function ChatMinimapBar({
 }) {
   return (
     <span
-      className="group/minimap-bar relative block h-1 w-9"
+      className="group/minimap-bar relative block"
     >
       <span
         ref={(node) => {
@@ -368,7 +368,7 @@ function ChatMinimapBar({
         }}
         data-active="false"
         className={cn(
-          'block h-1 w-9 rounded-full bg-foreground/40 transition-[background-color,opacity,scale] duration-150',
+          'block h-1 w-7 rounded-full bg-foreground/40 transition-[background-color,opacity,scale] duration-150',
           'data-[active=true]:bg-foreground/95 data-[active=true]:opacity-100',
           'opacity-55',
           hovered && 'scale-x-110 bg-foreground/80 opacity-100',

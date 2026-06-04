@@ -15,6 +15,7 @@ import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabili
 import type { ChatContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
+  CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
   projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
@@ -181,23 +182,28 @@ export function useChatComposerRuntime({
     return [appshotCommand]
   }, [supportsAttachments])
   const mapRuntimeUiSlotCommand = useCallback((command: ChatComposerSlashCommand) => {
-    if (command.id !== 'codex:review') {
-      return command
+    if (command.id === 'codex:review') {
+      return withSlashCommandAvailability(command, readCodexReviewAvailability({
+        workspaceId,
+        gitStatusLoading: gitStatusQuery.isLoading,
+        gitStatusUnavailable: gitStatusQuery.isError,
+      }))
     }
-    return withSlashCommandAvailability(command, readCodexReviewAvailability({
-      workspaceId,
-      gitStatusLoading: gitStatusQuery.isLoading,
-      gitStatusUnavailable: gitStatusQuery.isError,
-    }))
-  }, [gitStatusQuery.isError, gitStatusQuery.isLoading, workspaceId])
+    if (command.action.kind === 'uiAction' && command.action.actionId === CODEX_USAGE_SLASH_ACTION_ID) {
+      const usageState = runtimeUiSlotStates?.states.find(state => state.kind === 'usage')
+      return withSlashCommandAvailability(command, usageState && isRuntimeUsageSlotStateAvailable(usageState)
+        ? undefined
+        : { enabled: false, reason: 'Usage rate limits are unavailable for this session.' })
+    }
+    return command
+  }, [gitStatusQuery.isError, gitStatusQuery.isLoading, runtimeUiSlotStates?.states, workspaceId])
   const slashCommands = useMemo(() => projectRuntimeComposerSlashCommands({
     capabilities: runtimeCapabilities,
-    runtimeKind: sessionBinding?.runtimeKind,
     slotStates: runtimeUiSlotStates?.states ?? [],
     mode: 'session',
     cradleCommands: cradleSlashCommands,
     mapRuntimeUiSlotCommand,
-  }), [cradleSlashCommands, mapRuntimeUiSlotCommand, runtimeCapabilities, runtimeUiSlotStates?.states, sessionBinding?.runtimeKind])
+  }), [cradleSlashCommands, mapRuntimeUiSlotCommand, runtimeCapabilities, runtimeUiSlotStates?.states])
 
   const { data: sessionTokens = 0 } = useQuery({
     queryKey: ['chat', 'session-usage', sessionId ?? 'no-session', messageCount] as const,
@@ -243,6 +249,19 @@ export function useChatComposerRuntime({
       contextWindow: compactSlotState?.modelContextWindow ?? sessionContextWindow,
     },
   }
+}
+
+function isRuntimeUsageSlotStateAvailable(state: ChatRuntimeUiSlotState): boolean {
+  return state.kind === 'usage'
+    && (
+      state.usedPercent !== null
+      || state.secondaryUsedPercent !== null
+      || state.limitName !== null
+      || state.primaryResetsAt !== null
+      || state.secondaryResetsAt !== null
+      || state.creditsBalance !== null
+      || state.rateLimitReachedType !== null
+    )
 }
 
 function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {

@@ -19,20 +19,16 @@ export interface RuntimeKindOption {
 }
 
 export const RUNTIME_KIND_OPTIONS: RuntimeKindOption[] = [
-  { value: 'standard' },
   { value: 'claude-agent' },
   { value: 'codex' },
   { value: 'jar-core' },
-  { value: 'acp-chat' },
   { value: 'cli-tui' },
 ]
 
 export const JARVIS_RUNTIME_KIND_OPTIONS: RuntimeKindOption[] = [
   { value: 'jar-core' },
   { value: 'codex' },
-  { value: 'acp-chat' },
   { value: 'claude-agent' },
-  { value: 'standard' },
 ]
 
 export type ThinkingCapabilityTier = 'none' | 'standard' | 'extended'

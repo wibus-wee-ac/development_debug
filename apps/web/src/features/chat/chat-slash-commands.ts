@@ -1,5 +1,3 @@
-import type { RuntimeKind } from '~/lib/types'
-
 import type {
   ChatRuntimeAlertUiSlotState,
   ChatRuntimeApprovalsUiSlotState,
@@ -90,6 +88,7 @@ export interface ChatComposerSlashCommand {
 
 export const CRADLE_APPSHOT_SLASH_ACTION_ID = 'capture-appshot'
 export const CODEX_REVIEW_SLASH_ACTION_ID = 'codex-review-mode'
+export const CODEX_USAGE_SLASH_ACTION_ID = 'codex-usage'
 const TOKEN_COUNT_FORMATTER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
 export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
@@ -102,62 +101,14 @@ export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
   iconKey: 'appshot',
 }
 
-export const CRADLE_FALLBACK_RUNTIME_SLASH_COMMANDS: ChatComposerSlashCommand[] = [
-  {
-    id: 'fallback-runtime:compact',
-    name: 'compact',
-    description: 'Compact the conversation context',
-    argumentHint: '[instructions]',
-    aliases: ['summarize'],
-    source: 'runtime',
-    action: { kind: 'insertText', text: '/compact ' },
-  },
-  {
-    id: 'fallback-runtime:init',
-    name: 'init',
-    description: 'Create or refresh project instructions',
-    argumentHint: '',
-    source: 'runtime',
-    action: { kind: 'insertText', text: '/init ' },
-  },
-  {
-    id: 'fallback-runtime:review',
-    name: 'review',
-    description: 'Review code changes or a target file',
-    argumentHint: '[target]',
-    aliases: ['code-review'],
-    source: 'runtime',
-    action: { kind: 'insertText', text: '/review ' },
-  },
-  {
-    id: 'fallback-runtime:status',
-    name: 'status',
-    description: 'Show current task or session status',
-    argumentHint: '',
-    source: 'runtime',
-    action: { kind: 'insertText', text: '/status ' },
-  },
-  {
-    id: 'fallback-runtime:help',
-    name: 'help',
-    description: 'Show available runtime commands',
-    argumentHint: '[command]',
-    aliases: ['?'],
-    source: 'runtime',
-    action: { kind: 'insertText', text: '/help ' },
-  },
-]
-
 export interface MergeChatSlashCommandsInput {
   runtimeCommands: ChatSlashCommand[]
   runtimeUiSlotCommands?: ChatComposerSlashCommand[]
   cradleCommands: ChatComposerSlashCommand[]
-  fallbackRuntimeCommands?: ChatComposerSlashCommand[]
 }
 
 export interface ProjectRuntimeComposerSlashCommandsInput {
   capabilities?: ChatRuntimeCapabilities | null
-  runtimeKind?: RuntimeKind | string | null
   slotStates?: ChatRuntimeUiSlotState[]
   mode?: RuntimeComposerSlashCommandMode
   cradleCommands?: ChatComposerSlashCommand[]
@@ -168,8 +119,11 @@ function normalizeCommandName(name: string): string {
   return name.trim().replace(/^\/+/, '')
 }
 
-function isRuntimeUiSlotSlashCommand(slot: ChatRuntimeUiSlot): boolean {
-  return slot.surfaces.includes('slashCommand')
+function isRuntimeUiSlotSlashCommand(slot: ChatRuntimeUiSlot, mode: RuntimeComposerSlashCommandMode): boolean {
+  if (mode === 'draft' && slot.id === 'codex:usage') {
+    return false
+  }
+  return slot.surfaces.includes('slashCommand') || slot.id === 'codex:usage'
 }
 
 function readCodexRuntimeUiSlotAction(
@@ -177,15 +131,16 @@ function readCodexRuntimeUiSlotAction(
   commandText: string,
   mode: RuntimeComposerSlashCommandMode,
 ): ChatSlashCommandAction {
-  if (mode === 'draft') {
-    return { kind: 'insertText', text: commandText }
-  }
-
   switch (slot.id) {
     case 'codex:compact':
       return { kind: 'submitText', text: commandText.trim(), requiresEmptyComposer: true }
     case 'codex:review':
       return { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID }
+    case 'codex:usage':
+      if (mode === 'draft') {
+        return { kind: 'insertText', text: commandText }
+      }
+      return { kind: 'uiAction', actionId: CODEX_USAGE_SLASH_ACTION_ID }
     default:
       return { kind: 'insertText', text: commandText }
   }
@@ -235,7 +190,7 @@ export function createRuntimeUiSlotCommands(
   mode: RuntimeComposerSlashCommandMode = 'session',
 ): ChatComposerSlashCommand[] {
   return slots
-    .filter(isRuntimeUiSlotSlashCommand)
+    .filter(slot => isRuntimeUiSlotSlashCommand(slot, mode))
     .map(slot => createRuntimeUiSlotCommand(slot, slotStates, mode))
 }
 
@@ -243,19 +198,12 @@ export function mergeChatSlashCommands({
   runtimeCommands,
   runtimeUiSlotCommands = [],
   cradleCommands,
-  fallbackRuntimeCommands = [],
 }: MergeChatSlashCommandsInput): ChatComposerSlashCommand[] {
-  const runtimeCommandNames = new Set([
-    ...runtimeCommands.map(command => normalizeCommandName(command.name).toLowerCase()),
-    ...runtimeUiSlotCommands.map(command => normalizeCommandName(command.name).toLowerCase()),
-  ])
-  const fallbackCommands = fallbackRuntimeCommands.filter(command => !runtimeCommandNames.has(command.name.toLowerCase()))
   const enabledCradleCommands = cradleCommands.filter(command => command.availability?.enabled !== false)
   const disabledCradleCommands = cradleCommands.filter(command => command.availability?.enabled === false)
   return [
     ...runtimeUiSlotCommands,
     ...enabledCradleCommands,
-    ...fallbackCommands,
     ...runtimeCommands.map(createRuntimeSlashCommand),
     ...disabledCradleCommands,
   ]
@@ -263,7 +211,6 @@ export function mergeChatSlashCommands({
 
 export function projectRuntimeComposerSlashCommands({
   capabilities,
-  runtimeKind,
   slotStates = [],
   mode = 'session',
   cradleCommands = [],
@@ -275,22 +222,8 @@ export function projectRuntimeComposerSlashCommands({
   return mergeChatSlashCommands({
     runtimeCommands: capabilities?.slashCommands ?? [],
     runtimeUiSlotCommands,
-    fallbackRuntimeCommands: getRuntimeComposerSlashCommands(capabilities?.runtimeKind ?? runtimeKind),
     cradleCommands,
   })
-}
-
-export function getFallbackRuntimeSlashCommands(runtimeKind: RuntimeKind | string | null | undefined): ChatComposerSlashCommand[] {
-  return getRuntimeComposerSlashCommands(runtimeKind)
-}
-
-export function getRuntimeComposerSlashCommands(
-  runtimeKind: RuntimeKind | string | null | undefined,
-): ChatComposerSlashCommand[] {
-  if (runtimeKind === 'cli-tui') {
-    return []
-  }
-  return CRADLE_FALLBACK_RUNTIME_SLASH_COMMANDS
 }
 
 export function withSlashCommandAvailability(

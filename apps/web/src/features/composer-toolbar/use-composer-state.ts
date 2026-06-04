@@ -87,11 +87,9 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
 
   const runtimeKind = useMemo(() => {
     if (context === 'chat') {
-      return boundRuntimeKind ?? 'standard'
+      return boundRuntimeKind ?? 'codex'
     }
-    const fallbackRuntimeKind = runtimeOptions.find(option => option.value === 'standard')?.value
-      ?? runtimeOptions[0]?.value
-      ?? 'standard'
+    const fallbackRuntimeKind = runtimeOptions[0]?.value ?? 'codex'
     const candidate = manualRuntimeKind ?? lastRuntimeKind ?? fallbackRuntimeKind
     return runtimeOptions.some(option => option.value === candidate) ? candidate : fallbackRuntimeKind
   }, [context, boundRuntimeKind, manualRuntimeKind, lastRuntimeKind, runtimeOptions])

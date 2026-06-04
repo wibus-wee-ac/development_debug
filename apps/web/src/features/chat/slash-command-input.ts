@@ -22,13 +22,34 @@ export function getSlashCommandPrefix(command: ChatComposerSlashCommand): string
   return command.action.kind === 'insertText' ? command.action.text : `/${command.name} `
 }
 
+export function isSlashCommandAwaitingRequiredArgument(inputValue: string, command: ChatComposerSlashCommand): boolean {
+  const argumentHint = command.argumentHint.trim()
+  if (!argumentHint.startsWith('<')) {
+    return false
+  }
+
+  const inputWithoutLeadingInlineWhitespace = inputValue.replace(LEADING_INLINE_WHITESPACE_RE, '')
+  const commandPrefix = getSlashCommandPrefix(command)
+  return inputWithoutLeadingInlineWhitespace === commandPrefix || inputWithoutLeadingInlineWhitespace === commandPrefix.trimEnd()
+}
+
 export function getActiveSlashCommand(inputValue: string, selectedCommand: ChatComposerSlashCommand | null, commands: ChatComposerSlashCommand[]): ChatComposerSlashCommand | null {
   const inputWithoutLeadingInlineWhitespace = inputValue.replace(LEADING_INLINE_WHITESPACE_RE, '')
-  if (selectedCommand && inputWithoutLeadingInlineWhitespace.startsWith(getSlashCommandPrefix(selectedCommand))) {
+  if (
+    selectedCommand
+    && (
+      inputWithoutLeadingInlineWhitespace.startsWith(getSlashCommandPrefix(selectedCommand))
+      || inputWithoutLeadingInlineWhitespace === getSlashCommandPrefix(selectedCommand).trimEnd()
+    )
+  ) {
     return selectedCommand
   }
 
-  return commands.find(command => inputWithoutLeadingInlineWhitespace.startsWith(getSlashCommandPrefix(command))) ?? null
+  return commands.find((command) => {
+    const commandPrefix = getSlashCommandPrefix(command)
+    return inputWithoutLeadingInlineWhitespace.startsWith(commandPrefix)
+      || inputWithoutLeadingInlineWhitespace === commandPrefix.trimEnd()
+  }) ?? null
 }
 
 export function replaceSlashTrigger(inputValue: string, cursor: number, start: number, replacement: string): { value: string, cursor: number } {

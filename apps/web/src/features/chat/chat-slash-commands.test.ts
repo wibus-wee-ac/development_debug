@@ -3,12 +3,11 @@ import { describe, expect, it } from 'vitest'
 import type { ChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
-  CODEX_REVIEW_SLASH_ACTION_ID,
+  CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
   createRuntimeSlashCommand,
   createRuntimeUiSlotCommands,
-  getFallbackRuntimeSlashCommands,
   hasDuplicateSlashCommandName,
   mergeChatSlashCommands,
   projectRuntimeComposerSlashCommands,
@@ -90,7 +89,7 @@ describe('chat slash commands', () => {
           id: 'codex:goal',
           name: 'goal',
           label: 'Goal',
-          description: 'Set or show the active objective.',
+          description: 'Set the active objective.',
           argumentHint: '<objective>',
           aliases: ['objective'],
           iconKey: 'goal',
@@ -135,7 +134,7 @@ describe('chat slash commands', () => {
     })
   })
 
-  it('projects Codex review as a host UI action and leaves feedback as raw slash text', () => {
+  it('projects Codex review and usage as host UI actions and leaves feedback as raw slash text', () => {
     const commands = createRuntimeUiSlotCommands([
       {
         id: 'codex:review',
@@ -146,6 +145,16 @@ describe('chat slash commands', () => {
         aliases: ['code-review'],
         iconKey: 'code-review',
         commandText: '/review ',
+        surfaces: ['slashCommand'],
+      },
+      {
+        id: 'codex:usage',
+        name: 'usage',
+        label: 'Usage',
+        description: 'Show current usage and rate limit state.',
+        argumentHint: '',
+        iconKey: 'usage',
+        commandText: '/usage ',
         surfaces: ['slashCommand'],
       },
       {
@@ -166,15 +175,58 @@ describe('chat slash commands', () => {
         action: { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID },
       }),
       expect.objectContaining({
+        id: 'codex:usage',
+        action: { kind: 'uiAction', actionId: CODEX_USAGE_SLASH_ACTION_ID },
+      }),
+      expect.objectContaining({
         id: 'codex:feedback',
         action: { kind: 'insertText', text: '/feedback ' },
       }),
     ])
     expect(commands[0]?.availability).toBeUndefined()
     expect(commands[1]?.availability).toBeUndefined()
+    expect(commands[2]?.availability).toBeUndefined()
   })
 
-  it('projects draft runtime ui slots as raw composer text commands', () => {
+  it('projects Codex usage as a slash command even when older capabilities omit slashCommand', () => {
+    const [command] = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:usage',
+        name: 'usage',
+        label: 'Usage',
+        description: 'Show current usage and rate limit state.',
+        argumentHint: '',
+        iconKey: 'usage',
+        commandText: '/usage ',
+        surfaces: ['composerState', 'runtimePanel'],
+      },
+    ])
+
+    expect(command).toMatchObject({
+      id: 'codex:usage',
+      name: 'usage',
+      action: { kind: 'uiAction', actionId: CODEX_USAGE_SLASH_ACTION_ID },
+    })
+  })
+
+  it('does not project Codex usage into pre-session draft slash commands', () => {
+    const commands = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:usage',
+        name: 'usage',
+        label: 'Usage',
+        description: 'Show current usage and rate limit state.',
+        argumentHint: '',
+        iconKey: 'usage',
+        commandText: '/usage ',
+        surfaces: ['composerState', 'runtimePanel'],
+      },
+    ], [], 'draft')
+
+    expect(commands).toEqual([])
+  })
+
+  it('projects draft runtime ui slots by pre-session executable semantics', () => {
     const commands = createRuntimeUiSlotCommands([
       {
         id: 'codex:compact',
@@ -200,7 +252,7 @@ describe('chat slash commands', () => {
         id: 'codex:goal',
         name: 'goal',
         label: 'Goal',
-        description: 'Set or show the active objective.',
+        description: 'Set the active objective.',
         argumentHint: '<objective>',
         iconKey: 'goal',
         commandText: '/goal ',
@@ -209,8 +261,8 @@ describe('chat slash commands', () => {
     ], [], 'draft')
 
     expect(commands).toEqual([
-      expect.objectContaining({ id: 'codex:compact', action: { kind: 'insertText', text: '/compact ' } }),
-      expect.objectContaining({ id: 'codex:review', action: { kind: 'insertText', text: '/review ' } }),
+      expect.objectContaining({ id: 'codex:compact', action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true } }),
+      expect.objectContaining({ id: 'codex:review', action: { kind: 'uiAction', actionId: CODEX_REVIEW_SLASH_ACTION_ID } }),
       expect.objectContaining({ id: 'codex:goal', action: { kind: 'insertText', text: '/goal ' } }),
     ])
   })
@@ -389,7 +441,7 @@ describe('chat slash commands', () => {
         id: 'codex:goal',
         name: 'goal',
         label: 'Goal',
-        description: 'Set or show the active objective.',
+        description: 'Set the active objective.',
         argumentHint: '<objective>',
         iconKey: 'goal',
         commandText: '/goal ',
@@ -525,21 +577,7 @@ describe('chat slash commands', () => {
     expect(commands.map(command => command.id)).not.toEqual(expect.arrayContaining(['codex:model', 'codex:skills']))
   })
 
-  it('uses fallback runtime commands until native runtime capabilities replace matching names', () => {
-    const commands = mergeChatSlashCommands({
-      cradleCommands: [],
-      fallbackRuntimeCommands: getFallbackRuntimeSlashCommands('codex'),
-      runtimeCommands: [
-        { name: 'compact', description: 'Native compact', argumentHint: '' },
-      ],
-    })
-
-    expect(commands.find(command => command.name === 'compact')?.description).toBe('Native compact')
-    expect(commands.some(command => command.name === 'init')).toBe(true)
-    expect(commands.filter(command => command.name === 'compact')).toHaveLength(1)
-  })
-
-  it('keeps disabled Cradle UI commands visible after selectable text commands', () => {
+  it('keeps disabled Cradle UI commands visible after runtime commands', () => {
     const disabledAppshot = withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
       enabled: false,
       reason: 'Requires the macOS desktop app.',
@@ -547,8 +585,9 @@ describe('chat slash commands', () => {
 
     const commands = mergeChatSlashCommands({
       cradleCommands: [disabledAppshot],
-      fallbackRuntimeCommands: getFallbackRuntimeSlashCommands('codex'),
-      runtimeCommands: [],
+      runtimeCommands: [
+        { name: 'compact', description: 'Compact', argumentHint: '' },
+      ],
     })
 
     expect(commands[0]?.name).toBe('compact')
@@ -577,7 +616,7 @@ describe('chat slash commands', () => {
           id: 'codex:goal',
           name: 'goal',
           label: 'Goal',
-          description: 'Set or show the active objective.',
+          description: 'Set the active objective.',
           argumentHint: '<objective>',
           iconKey: 'goal',
           commandText: '/goal ',
@@ -611,7 +650,7 @@ describe('chat slash commands', () => {
     })
 
     expect(draftCommands).toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: 'codex:compact', action: { kind: 'insertText', text: '/compact ' } }),
+      expect.objectContaining({ id: 'codex:compact', action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true } }),
       expect.objectContaining({ id: 'codex:goal', stateLabel: undefined }),
       expect.objectContaining({ id: 'runtime:status:0', description: 'Native status' }),
     ]))

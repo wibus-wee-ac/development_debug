@@ -21,3 +21,8 @@ export interface ComposerReviewSlotActions {
   onSubmitPrompt: (prompt: string) => void
   resolveMergeBase: (baseBranch: string) => Promise<string | null>
 }
+
+export interface ComposerUsageSlotActions {
+  open: boolean
+  onDismiss: () => void
+}

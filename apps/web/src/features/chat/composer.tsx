@@ -38,6 +38,7 @@ import {
   getSlashCommandPanelItems,
   getSlashCommandPrefix,
   getVisibleSlashCommands,
+  isSlashCommandAwaitingRequiredArgument,
   replaceSlashTrigger,
 } from './slash-command-input'
 import { SlashCommandPanel } from './slash-command-panel'
@@ -491,7 +492,13 @@ export function Composer({
   const skillRangeRef = useRef<PromptEditorTriggerRange | null>(null)
   const activeSlashCommand = getActiveSlashCommand(state.inputValue, state.selectedSlashCommand, visibleSlashCommands)
   const slashCommandPrefix = activeSlashCommand ? getSlashCommandPrefix(activeSlashCommand) : ''
-  const slashArgumentHint = activeSlashCommand?.argumentHint && state.inputValue.replace(LEADING_HORIZONTAL_WHITESPACE_RE, '') === slashCommandPrefix
+  const slashAwaitingRequiredArgument = activeSlashCommand
+    ? isSlashCommandAwaitingRequiredArgument(state.inputValue, activeSlashCommand)
+    : false
+  const slashArgumentHint = activeSlashCommand?.argumentHint && (
+    state.inputValue.replace(LEADING_HORIZONTAL_WHITESPACE_RE, '') === slashCommandPrefix
+    || slashAwaitingRequiredArgument
+  )
     ? activeSlashCommand.argumentHint
     : ''
   const actionTargetTestId = testIds?.actionTarget ?? 'chat-composer-action-target'
@@ -508,7 +515,7 @@ export function Composer({
     ? readBangCommand(state.inputValue)
     : null
   const isBangMode = bangCommandPreview !== null
-  const sendBlocked = isBangMode && bangCommand === null
+  const sendBlocked = (isBangMode && bangCommand === null) || slashAwaitingRequiredArgument
   const effectiveDisabled = disabled || isSending
 
   const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
