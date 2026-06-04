@@ -42,7 +42,7 @@ const ModelCapabilitiesSchema = z.object({
 const ModelDescriptorSchema = z.object({
   id: z.string(),
   label: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  providerKind: z.enum(['openai-compatible', 'anthropic', 'universal']),
   capabilities: ModelCapabilitiesSchema,
 })
 

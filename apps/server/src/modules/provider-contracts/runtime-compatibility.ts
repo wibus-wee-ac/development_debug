@@ -1,11 +1,11 @@
 import type { BuiltinRuntimeKind, ProviderKind, RuntimeKind } from './types'
 
 const RUNTIME_PROVIDER_KINDS: Record<BuiltinRuntimeKind, ProviderKind[]> = {
-  'standard': ['openai-compatible'],
-  'claude-agent': ['anthropic'],
-  'codex': ['openai-compatible'],
-  'jar-core': ['openai-compatible', 'anthropic'],
-  'acp-chat': ['openai-compatible', 'anthropic'],
+  'standard': ['openai-compatible', 'universal'],
+  'claude-agent': ['anthropic', 'universal'],
+  'codex': ['openai-compatible', 'universal'],
+  'jar-core': ['openai-compatible', 'anthropic', 'universal'],
+  'acp-chat': ['openai-compatible', 'anthropic', 'universal'],
   'cli-tui': [],
 }
 

@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { readProviderDefaultModelCapabilities } from './model-capabilities'
-import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema } from '../provider-contracts/provider-base'
+import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema, UniversalProviderConfigJsonSchema } from '../provider-contracts/provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
 
 export interface ProviderMetadataProvider {
@@ -58,6 +58,7 @@ export class ProviderCatalog {
   constructor() {
     this.register(new OpenAICompatibleMetadataProvider())
     this.register(new AnthropicMetadataProvider())
+    this.register(new UniversalMetadataProvider())
   }
 
   register(provider: ProviderMetadataProvider): void {
@@ -136,6 +137,64 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
       }))
     }
  catch (error) {
+      throw wrapProviderModelsError(this.providerKind, error)
+    }
+  }
+}
+
+class UniversalMetadataProvider implements ProviderMetadataProvider {
+  readonly providerKind = 'universal' as const
+
+  async listModels(
+    input: ProviderRequest,
+    deps: { readSecret: (secretRef: string) => string },
+  ): Promise<ModelDescriptor[]> {
+    const config = UniversalProviderConfigJsonSchema.parse(input.configJson)
+    if (!config.baseUrl) {
+      throw invalidProviderRequest('Base URL is required')
+    }
+
+    const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
+    const baseUrl = normalizeBaseUrl(config.baseUrl)
+
+    // Try OpenAI format first, fall back to Anthropic format
+    try {
+      const payload = OpenAICompatibleModelsResponseSchema.parse(
+        await fetchModelsPayload(
+          'openai-compatible',
+          modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined),
+        ),
+      )
+      return payload.data.map(item => ({
+        id: item.id,
+        label: item.id,
+        providerKind: 'universal' as const,
+        capabilities: {},
+      }))
+    }
+    catch {
+      // OpenAI format failed — try Anthropic format
+    }
+
+    try {
+      const anthropicBaseUrl = baseUrl.replace(TRAILING_SLASH_RE, '')
+      const payload = AnthropicModelsResponseSchema.parse(
+        await fetchModelsPayload(
+          'anthropic',
+          modelRequestOptions(anthropicBaseUrl, {
+            'anthropic-version': ANTHROPIC_VERSION,
+            ...(apiKey ? { 'x-api-key': apiKey } : {}),
+          }),
+        ),
+      )
+      return payload.data.map(item => ({
+        id: item.id,
+        label: item.display_name ?? item.id,
+        providerKind: 'universal' as const,
+        capabilities: readProviderDefaultModelCapabilities('anthropic'),
+      }))
+    }
+    catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
   }

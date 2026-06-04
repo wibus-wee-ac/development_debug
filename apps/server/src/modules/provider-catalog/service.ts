@@ -27,7 +27,7 @@ const NullableProviderRefSchema = z
 
 export const ProviderRequestSchema = z
   .object({
-    providerKind: z.enum(['openai-compatible', 'anthropic']),
+    providerKind: z.enum(['openai-compatible', 'anthropic', 'universal']),
     label: z.string().min(1),
     config: z.record(z.string(), z.unknown()),
     secretRef: NullableProviderRefSchema,

@@ -1,9 +1,9 @@
 import { t } from 'elysia'
 
-import { modelCapabilitiesSchema } from '../provider-contracts/model'
+import { modelCapabilitiesSchema, providerKindSchema } from '../provider-contracts/model'
 
 const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
-const providerKind = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')])
+const providerKind = providerKindSchema
 const nullableString = t.Union([t.String(), t.Null()])
 
 export const ProviderTargetsModel = {

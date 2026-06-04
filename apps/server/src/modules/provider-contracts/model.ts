@@ -1,6 +1,6 @@
 import { t } from 'elysia'
 
-export const providerKindSchema = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic')])
+export const providerKindSchema = t.Union([t.Literal('openai-compatible'), t.Literal('anthropic'), t.Literal('universal')])
 
 export const providerTargetKindSchema = t.Union([t.Literal('manual'), t.Literal('external')])
 

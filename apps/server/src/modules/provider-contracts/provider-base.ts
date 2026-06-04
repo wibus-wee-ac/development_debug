@@ -49,6 +49,29 @@ export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
   maxTurns: z.number().default(100),
 })
 
+export const UniversalProviderConfigSchema = z.object({
+  baseUrl: z.string().nullable().default(null),
+  model: z.string().nullable().default(null),
+  enabledModels: z.array(z.string()).default([]),
+  maxMessages: z.number().default(50),
+})
+
+export const UniversalProviderConfigJsonSchema = z.string()
+  .transform(raw => JSON.parse(raw))
+  .pipe(UniversalProviderConfigSchema)
+
+export type UniversalProviderConfig = z.infer<typeof UniversalProviderConfigSchema>
+
+export function readTrustedUniversalConfig(raw: string): UniversalProviderConfig {
+  const config = JSON.parse(raw) as Partial<UniversalProviderConfig>
+  return {
+    baseUrl: config.baseUrl ?? null,
+    model: config.model ?? null,
+    enabledModels: config.enabledModels ?? [],
+    maxMessages: config.maxMessages ?? 50,
+  }
+}
+
 export const SystemAgentConfigSchema = z.object({
   /** Upstream provider for jar-core, for example "openai", "anthropic", or "google". */
   provider: z.string().nullable().default(null),

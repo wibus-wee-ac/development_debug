@@ -1,4 +1,4 @@
-import { kvCache } from '@cradle/db'
+import { kvCache, modelRegistryMappings } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -145,6 +145,44 @@ async function fetchModelsDevData(): Promise<ModelsDevData | null> {
 /** Pre-warm the models.dev cache on server startup (fire and forget) */
 export function warmupModelsDevCache(): void {
   void fetchModelsDevData()
+}
+
+/**
+ * Synchronously look up a model's pricing.
+ * Resolution order:
+ *  1. Local model_registry_mappings table (user-configured overrides)
+ *  2. In-memory models.dev cache (fuzzy matching)
+ * Returns null if no cost data is found.
+ */
+export function getCachedModelsDevCost(modelId: string): { input: number, output: number } | null {
+  // 1. Local mapping override (DB)
+  try {
+    const row = db().select().from(modelRegistryMappings).where(eq(modelRegistryMappings.modelId, modelId)).get()
+    if (row?.modelJson) {
+      const parsed = ModelsDevModelSchema.parse(JSON.parse(row.modelJson))
+      const cost = parsed.cost
+      if (cost && (cost.input != null || cost.output != null)) {
+        return { input: cost.input ?? 0, output: cost.output ?? 0 }
+      }
+    }
+  }
+  catch {
+    // non-critical, fall through
+  }
+
+  // 2. models.dev cache (fuzzy)
+  if (!memCache) {
+    return null
+  }
+  const result = findModelFuzzy(memCache, modelId)
+  const cost = result?.model?.cost
+  if (!cost || (cost.input == null && cost.output == null)) {
+    return null
+  }
+  return {
+    input: cost.input ?? 0,
+    output: cost.output ?? 0,
+  }
 }
 
 function findModel(data: ModelsDevData, modelId: string): ModelsDevModel | null {

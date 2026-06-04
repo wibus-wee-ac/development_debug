@@ -1,4 +1,4 @@
-export const providerKinds = ['openai-compatible', 'anthropic'] as const
+export const providerKinds = ['openai-compatible', 'anthropic', 'universal'] as const
 
 export type ProviderKind = (typeof providerKinds)[number]
 
