@@ -236,9 +236,78 @@ function tryDecodeBase64(token: string): string {
   }
 }
 
+// ── JSON snippet parsing ──
+
+interface JsonObject { [key: string]: unknown }
+
+/**
+ * Known JSON field names for API key and base URL.
+ * Covers New API, One API, and similar gateways.
+ */
+const JSON_KEY_FIELDS = ['key', 'apiKey', 'api_key', 'token', 'secret_key', 'secretKey']
+const JSON_URL_FIELDS = ['url', 'baseUrl', 'base_url', 'endpoint', 'baseURL']
+
+function tryParseJsonSnippet(text: string): JsonObject | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) { return null }
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed)) {
+      return parsed.length > 0 && typeof parsed[0] === 'object' && parsed[0] !== null
+        ? parsed[0] as JsonObject
+        : null
+    }
+    return typeof parsed === 'object' && parsed !== null ? parsed as JsonObject : null
+  }
+  catch {
+    return null
+  }
+}
+
+function extractFromJsonObject(obj: JsonObject): { apiKey?: string, baseUrl?: string } {
+  let apiKey: string | undefined
+  let baseUrl: string | undefined
+
+  for (const field of JSON_KEY_FIELDS) {
+    if (typeof obj[field] === 'string' && obj[field]) {
+      apiKey = obj[field] as string
+      break
+    }
+  }
+
+  for (const field of JSON_URL_FIELDS) {
+    if (typeof obj[field] === 'string' && obj[field]) {
+      baseUrl = obj[field] as string
+      break
+    }
+  }
+
+  return { apiKey, baseUrl }
+}
+
 // ── main ──
 
 export function parseProviderConfig(text: string): ParseResult {
+  // 0. Try JSON snippet first (most structured)
+  const jsonObj = tryParseJsonSnippet(text)
+  if (jsonObj) {
+    const { apiKey: jsonKey, baseUrl: jsonUrl } = extractFromJsonObject(jsonObj)
+    if (jsonKey || jsonUrl) {
+      const urls: ParsedUrl[] = jsonUrl ? [{ url: jsonUrl, kind: classifyUrl(jsonUrl) }] : []
+      const providers: ParsedProvider[] = []
+      if (jsonUrl) {
+        const kind = classifyUrl(jsonUrl)
+        providers.push({
+          providerKind: kind === 'unknown' ? 'openai-compatible' : kind,
+          name: hostnameFromUrl(jsonUrl),
+          apiKey: jsonKey ?? '',
+          baseUrl: jsonUrl,
+        })
+      }
+      return { token: jsonKey ?? null, urls, providers }
+    }
+  }
+
   const exportGroups = parseExportGroups(text)
 
   const urls = extractUrls(text).map(url => ({
