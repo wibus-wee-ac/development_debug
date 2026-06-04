@@ -63,7 +63,7 @@ export interface ExternalRuntimeTargetView {
   id: string
   sourceKey: string
   externalRecordId: string
-  providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool'
+  providerKind: 'anthropic' | 'openai-compatible' | 'universal' | 'cli-tool'
   displayName: string
   enabled: boolean
   credentialRef: string | null

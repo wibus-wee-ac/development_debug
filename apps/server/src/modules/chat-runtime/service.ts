@@ -1841,7 +1841,17 @@ export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Pro
 }
 
 export function listRuntimes() {
-  return { items: listRuntimeCatalog() }
+  const catalog = listRuntimeCatalog()
+  // DEBUG: write to project root
+  try {
+    const fs = require('node:fs')
+    const path = require('node:path')
+    const debugPath = path.join(process.cwd(), 'runtime-catalog-debug.json')
+    fs.writeFileSync(debugPath, JSON.stringify(catalog, null, 2))
+  } catch (e) {
+    // ignore
+  }
+  return { items: catalog }
 }
 
 export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind: RuntimeKind, states: RuntimeUiSlotState[] }> {
