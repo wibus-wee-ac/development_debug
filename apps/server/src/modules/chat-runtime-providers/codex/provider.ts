@@ -30,6 +30,8 @@ import type {
   RuntimeCrewCallItem,
   RuntimeCrewUiSlotState,
   RuntimeDiffUiSlotState,
+  ExecuteShellCommandInput,
+  ExecuteShellCommandResult,
   RuntimeFilesystemUiSlotState,
   RuntimeGoalStatus,
   RuntimeMcpAuthStatus,
@@ -59,7 +61,7 @@ import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { CreateEventInput } from '../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
 import type { CodexConfig } from '../../provider-contracts/provider-base'
-import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/provider-base'
+import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
 import type { RuntimeKind } from '../../provider-contracts/types'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
@@ -67,6 +69,12 @@ import { buildDefaultCodexAppServerRequestResult } from './app-server-bridge'
 import { CODEX_APP_SERVER_CAPABILITIES } from './app-server-capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
+import {
+  buildCodexChatgptAuthLoginParams,
+  ensureCodexChatgptAuthAccessToken,
+  resolveCodexAppServerAuth,
+  type CodexChatgptAuthCredential,
+} from './chatgpt-auth'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
@@ -84,6 +92,7 @@ import { projectCodexUiSlots } from './ui-slots'
 
 interface CodexProviderDeps {
   readSecret: (credentialRef: string) => string
+  updateSecretValue?: (credentialRef: string, secret: string) => void
   resolveSkillPaths: (workspacePath: string) => string[]
   recordObservability: (input: CreateEventInput) => void
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
@@ -376,8 +385,8 @@ interface CodexRateLimitsResponse {
 interface CodexRateLimitSnapshot {
   limitId?: string | null
   limitName?: string | null
-  primary?: { usedPercent?: number | null, resetsAt?: number | null } | null
-  secondary?: { usedPercent?: number | null, resetsAt?: number | null } | null
+  primary?: { usedPercent?: number | null, windowDurationMins?: number | null, resetsAt?: number | null } | null
+  secondary?: { usedPercent?: number | null, windowDurationMins?: number | null, resetsAt?: number | null } | null
   credits?: { hasCredits?: boolean, unlimited?: boolean, balance?: string | null } | null
   planType?: string | null
   rateLimitReachedType?: string | null
@@ -405,6 +414,10 @@ interface CodexThreadItem {
   id?: string
   text?: string
   command?: string
+  aggregatedOutput?: string | null
+  exitCode?: number | null
+  durationMs?: number | null
+  source?: string
   server?: string
   tool?: string
   status?: string
@@ -659,10 +672,13 @@ interface CodexGoalUpdatedNotificationParams {
 }
 
 interface CodexProviderErrorData {
-  details: string | null
-  runtimeKind: RuntimeKind
-  diagnostics: CodexStreamDiagnostics
+  details?: string | null
+  runtimeKind?: RuntimeKind
+  diagnostics?: CodexStreamDiagnostics
   notification?: Record<string, unknown>
+  threadId?: string
+  command?: string
+  timeoutMs?: number
 }
 
 type RuntimeMessageInput = UIMessage | string
@@ -683,6 +699,7 @@ const MAX_DIAGNOSTIC_DEPTH = 4
 const ACTIVE_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_THREAD_TURNS_LIST_LIMIT = 100
 const CODEX_CREW_TURNS_LIST_LIMIT = 50
+const CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS = 60_000
 
 function createCodexRuntimeCapabilities(): ChatRuntimeCapabilities {
   return {
@@ -781,8 +798,8 @@ export class CodexProvider implements ChatRuntime {
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
-    if (!apiKey) {
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (config.baseUrl && !auth.apiKey) {
       return []
     }
 
@@ -805,7 +822,7 @@ export class CodexProvider implements ChatRuntime {
       return []
     }
     const client = this.createAppServerClient({
-      apiKey,
+      apiKey: auth.apiKey ?? undefined,
       config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
@@ -814,11 +831,14 @@ export class CodexProvider implements ChatRuntime {
         agentId: input.agentId ?? snapshot.agentId ?? null,
         agentHome: runtimeContext.agentHome,
       }),
-      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
+      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+        chatgptAuth: auth.chatgptAuth,
+        updateSecretValue: this.deps.updateSecretValue,
+      }),
     })
 
     try {
-      await client.initialize()
+      await this.initializeAppServerClient(client, auth.chatgptAuth)
       const [goalResult, configResult, providerCapabilitiesResult, modelListResult, mcpStatusResult, rateLimitsResult, configRequirementsResult, skillsResult, pluginResult, appsResult, collaborationModesResult] = await Promise.allSettled([
         client.request('thread/goal/get', {
           threadId: runtimeSession.providerSessionId,
@@ -1003,17 +1023,90 @@ export class CodexProvider implements ChatRuntime {
     }
   }
 
+  async executeShellCommand(input: ExecuteShellCommandInput): Promise<ExecuteShellCommandResult> {
+    const command = input.command.trim()
+    if (!command) {
+      throw new Error('Codex shell command must not be empty')
+    }
+
+    const config = readTrustedCodexConfig(input.profile.configJson)
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (config.baseUrl && !auth.apiKey) {
+      throw new Error('Codex provider requires an API key for external model providers')
+    }
+
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const workspacePath = snapshot.workspacePath ?? input.workspacePath
+    const agentId = input.agentId ?? snapshot.agentId ?? null
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
+    const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
+    const client = this.createAppServerClient({
+      apiKey: auth.apiKey ?? undefined,
+      config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, effectiveModel),
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: input.runtimeSession.chatSessionId,
+        workspaceId: input.workspaceId,
+        workspacePath,
+        agentId,
+        agentHome: runtimeContext.agentHome,
+      }),
+      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+        chatgptAuth: auth.chatgptAuth,
+        updateSecretValue: this.deps.updateSecretValue,
+      }),
+    })
+    const startedAt = Date.now()
+
+    try {
+      await this.initializeAppServerClient(client, auth.chatgptAuth)
+      const threadStart = await startOrResumeThread(client, input.runtimeSession, {
+        model: effectiveModel,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+        approvalPolicy: config.approvalPolicy,
+        sandbox: config.sandboxMode,
+        config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, effectiveModel),
+      })
+      const threadId = threadStart.threadId
+      input.runtimeSession.providerSessionId = threadId
+      this._lastModelId = threadStart.modelId ?? effectiveModel ?? null
+      writeCodexThreadSnapshot(input.runtimeSession, threadStart)
+
+      await client.request('thread/shellCommand', { threadId, command })
+      const result = await waitForCodexShellCommandCompletion(client, {
+        threadId,
+        command,
+        signal: input.signal,
+      })
+      await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
+
+      const output = result.item.aggregatedOutput ?? result.output ?? ''
+      return {
+        command: result.item.command ?? command,
+        stdout: output,
+        stderr: '',
+        exitCode: result.item.exitCode ?? null,
+        durationMs: result.item.durationMs ?? Math.max(0, Date.now() - startedAt),
+        timedOut: false,
+        truncated: output.endsWith('...<truncated>'),
+      }
+    }
+    finally {
+      client.close()
+    }
+  }
+
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const apiKey = resolveApiKey(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     const effectiveModel = input.modelId ?? config.model
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
     const userPromptText = extractUiMessageText(input.message).trim()
     const goalContinuationRequested = typeof input.message !== 'string' && isCodexGoalContinuationMessage(input.message)
     const goalCommandObjective = readCodexGoalCommandObjective(input.message)
     const compactCommandRequested = isCodexCompactCommand(input.message)
-    if (!apiKey) {
-      throw new Error('Codex provider requires an API key')
+    if (config.baseUrl && !auth.apiKey) {
+      throw new Error('Codex provider requires an API key for external model providers')
     }
 
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
@@ -1022,7 +1115,7 @@ export class CodexProvider implements ChatRuntime {
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
     const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile, effectiveModel)
     const client = this.createAppServerClient({
-      apiKey,
+      apiKey: auth.apiKey ?? undefined,
       config: codexConfig,
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
@@ -1031,7 +1124,10 @@ export class CodexProvider implements ChatRuntime {
         agentId: input.agentId ?? snapshot.agentId ?? null,
         agentHome: runtimeContext.agentHome,
       }),
-      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
+      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+        chatgptAuth: auth.chatgptAuth,
+        updateSecretValue: this.deps.updateSecretValue,
+      }),
     })
     const abortController = new AbortController()
     const sessionId = input.runtimeSession.chatSessionId
@@ -1059,7 +1155,7 @@ export class CodexProvider implements ChatRuntime {
     const outputTextCollector = createBoundedTextCollector()
 
     try {
-      await client.initialize()
+      await this.initializeAppServerClient(client, auth.chatgptAuth)
       const threadStart = await startOrResumeThread(client, input.runtimeSession, {
         model: effectiveModel,
         cwd: runtimeContext.cwd,
@@ -1293,6 +1389,20 @@ export class CodexProvider implements ChatRuntime {
     return this.deps.createAppServerClient?.(options) ?? new CodexAppServerClient(options)
   }
 
+  private async initializeAppServerClient(
+    client: CodexAppServerClientLike,
+    chatgptAuth: CodexChatgptAuthCredential | null,
+  ): Promise<void> {
+    await client.initialize()
+    if (!chatgptAuth) {
+      return
+    }
+    const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
+      updateSecretValue: this.deps.updateSecretValue,
+    })
+    await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+  }
+
   private captureLastTokenUsage(notification: CodexAppServerMessage): void {
     if (notification.method !== 'thread/tokenUsage/updated') {
       return
@@ -1303,6 +1413,105 @@ export class CodexProvider implements ChatRuntime {
       this._lastUsage = usage
     }
   }
+}
+
+async function waitForCodexShellCommandCompletion(
+  client: CodexAppServerClientLike,
+  input: {
+    threadId: string
+    command: string
+    signal?: AbortSignal
+  },
+): Promise<{ item: CodexThreadItem, output: string }> {
+  const output = createBoundedTextCollector()
+  const controller = new AbortController()
+  let timedOut = false
+  let commandItemId: string | null = null
+
+  const timeout = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS)
+  const abort = () => controller.abort()
+  input.signal?.addEventListener('abort', abort, { once: true })
+
+  try {
+    while (true) {
+      const notification = await readCodexShellCommandNotification(client, controller.signal, () => {
+        if (input.signal?.aborted) {
+          throw new DOMException('Codex shell command aborted', 'AbortError')
+        }
+        if (timedOut) {
+          throw new CodexProviderError('codex_shell_command_timeout', 'Timed out waiting for Codex shell command completion', {
+            threadId: input.threadId,
+            command: input.command,
+            timeoutMs: CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS,
+          })
+        }
+      })
+      if (!notification) {
+        throw new CodexProviderError('codex_shell_command_stream_closed', 'Codex app-server stream closed before shell command completed', {
+          threadId: input.threadId,
+          command: input.command,
+        })
+      }
+      if (notification.method === 'item/started') {
+        const params = notification.params as ItemNotificationParams | undefined
+        const item = params?.item
+        if (params?.threadId === input.threadId && isMatchingUserShellCommandItem(item, input.command)) {
+          commandItemId = item.id ?? null
+        }
+        continue
+      }
+      if (notification.method === 'item/commandExecution/outputDelta') {
+        const params = notification.params as CommandExecutionOutputDeltaNotificationParams | undefined
+        if (params?.threadId === input.threadId && params.itemId === commandItemId && params.delta) {
+          output.append(params.delta)
+        }
+        continue
+      }
+      if (notification.method === 'item/completed') {
+        const params = notification.params as ItemNotificationParams | undefined
+        const item = params?.item
+        if (
+          params?.threadId === input.threadId
+          && item?.type === 'commandExecution'
+          && (
+            (commandItemId !== null && item.id === commandItemId)
+            || isMatchingUserShellCommandItem(item, input.command)
+          )
+        ) {
+          return { item, output: output.read() ?? '' }
+        }
+      }
+    }
+  }
+  finally {
+    clearTimeout(timeout)
+    input.signal?.removeEventListener('abort', abort)
+  }
+}
+
+async function readCodexShellCommandNotification(
+  client: CodexAppServerClientLike,
+  signal: AbortSignal,
+  onAbort: () => void,
+): Promise<CodexAppServerMessage | null> {
+  try {
+    return await client.nextNotification(signal)
+  }
+  catch (error) {
+    if (signal.aborted) {
+      onAbort()
+    }
+    throw error
+  }
+}
+
+function isMatchingUserShellCommandItem(item: CodexThreadItem | undefined, command: string): item is CodexThreadItem {
+  return item?.type === 'commandExecution'
+    && typeof item.id === 'string'
+    && (item.source === 'userShell' || item.command === command)
 }
 
 function projectCodexGoalState(goal: ThreadGoalGetResponse['goal']): RuntimeUiSlotState | null {
@@ -1816,8 +2025,8 @@ function projectCodexCompactState(
   const modelContextWindow = readPositiveNumber(snapshot.tokenUsage.modelContextWindow)
     ?? readConfigNumber(configResponse?.config?.model_context_window)
   const autoCompactTokenLimit = readConfigNumber(configResponse?.config?.model_auto_compact_token_limit)
-  const usagePercent = modelContextWindow ? readPercent(last.totalTokens, modelContextWindow) : null
-  const autoCompactPercent = autoCompactTokenLimit ? readPercent(last.totalTokens, autoCompactTokenLimit) : null
+  const usagePercent = modelContextWindow ? readPercent(total.totalTokens, modelContextWindow) : null
+  const autoCompactPercent = autoCompactTokenLimit ? readPercent(total.totalTokens, autoCompactTokenLimit) : null
   const status = readCompactStatus({
     lifecycleStatus: snapshot.status ?? null,
     lastCompactedAt: snapshot.lastCompactedAt ?? null,
@@ -2989,8 +3198,13 @@ function projectCodexUsageState(
     kind: 'usage',
     slotId: 'codex:usage',
     threadId,
+    limitName: typeof rateLimits.limitName === 'string' ? rateLimits.limitName : null,
     usedPercent: readNullablePercent(rateLimits.primary?.usedPercent),
+    primaryWindowDurationMins: readNullableNumber(rateLimits.primary?.windowDurationMins),
+    primaryResetsAt: readNullableNumber(rateLimits.primary?.resetsAt),
     secondaryUsedPercent: readNullablePercent(rateLimits.secondary?.usedPercent),
+    secondaryWindowDurationMins: readNullableNumber(rateLimits.secondary?.windowDurationMins),
+    secondaryResetsAt: readNullableNumber(rateLimits.secondary?.resetsAt),
     creditsBalance: typeof rateLimits.credits?.balance === 'string' ? rateLimits.credits.balance : null,
     hasCredits: typeof rateLimits.credits?.hasCredits === 'boolean' ? rateLimits.credits.hasCredits : null,
     rateLimitReachedType: typeof rateLimits.rateLimitReachedType === 'string' ? rateLimits.rateLimitReachedType : null,
@@ -3392,6 +3606,10 @@ function readPercent(value: number, limit: number): number {
 
 function readNullablePercent(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null
+}
+
+function readNullableNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 async function startOrResumeThread(

@@ -375,8 +375,13 @@ export interface RuntimeUsageUiSlotState {
   kind: 'usage'
   slotId: string
   threadId: string
+  limitName: string | null
   usedPercent: number | null
+  primaryWindowDurationMins: number | null
+  primaryResetsAt: number | null
   secondaryUsedPercent: number | null
+  secondaryWindowDurationMins: number | null
+  secondaryResetsAt: number | null
   creditsBalance: string | null
   hasCredits: boolean | null
   rateLimitReachedType: string | null
@@ -484,7 +489,7 @@ export interface StreamTurnInput {
   workspacePath?: string
   agentId?: string | null
   providerOptions?: {
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
     permissionMode?: ChatPermissionMode
   }
   systemPrompt?: string
@@ -501,6 +506,27 @@ export interface SteerTurnInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
   message: UIMessage
+}
+
+export interface ExecuteShellCommandInput {
+  runtimeSession: RuntimeSession
+  profile: RuntimeProviderTargetProfile
+  workspaceId?: string | null
+  workspacePath: string
+  agentId?: string | null
+  modelId?: string
+  command: string
+  signal?: AbortSignal
+}
+
+export interface ExecuteShellCommandResult {
+  command: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  durationMs: number
+  timedOut: boolean
+  truncated: boolean
 }
 
 export interface GetCapabilitiesInput {
@@ -540,9 +566,10 @@ export interface ChatRuntime {
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.
-   */
+  */
   streamTurn: (input: StreamTurnInput) => AsyncGenerator<UIMessageChunk, void, void>
   steerTurn?: (input: SteerTurnInput) => Promise<void>
+  executeShellCommand?: (input: ExecuteShellCommandInput) => Promise<ExecuteShellCommandResult>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
   setPermissionMode?: (input: SetPermissionModeInput) => Promise<void>
 }

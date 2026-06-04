@@ -8,6 +8,8 @@ Claude session titles are read from SDK session metadata with `getSessionInfo()`
 
 Agent-scoped Claude Agent sessions use `~/.cradle/agents/{agentId}` as SDK `cwd`. The original project workspace remains explicit through SDK `additionalDirectories` and `CRADLE_WORKSPACE_PATH`; agent context is also passed through `CRADLE_AGENT_ID` and `CRADLE_AGENT_HOME`. The agent home is initialized by the Skills module, including `.agents/skills` and `.claude/skills` links to the Cradle-owned agent `skills/` directory.
 
+When resuming an existing Claude Agent SDK session, the provider avoids replaying normal chat history because the SDK owns that session memory. Cradle-local transcript entries that the SDK never saw, such as Composer bang command input/output, are replayed into the next prompt from Cradle-owned message metadata.
+
 ## Files
 
 - `provider.ts`: Claude Agent `ChatRuntime` implementation; starts/resumes SDK sessions, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering/cancellation/permission mode changes.

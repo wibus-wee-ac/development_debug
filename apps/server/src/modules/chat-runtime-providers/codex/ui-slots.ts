@@ -166,6 +166,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'usage',
     commandText: '/usage ',
+    surfaces: ['composerState', 'runtimePanel'],
     anyMethods: ['account/rateLimits/read'],
     anyNotifications: ['account/rateLimits/updated'],
   },

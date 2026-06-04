@@ -3,11 +3,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import type { UIMessage, UIMessageChunk } from 'ai'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
 import { CodexProvider } from './provider'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 class FakeCodexAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
@@ -94,8 +98,9 @@ class FakeCodexAppServerClient {
     if (method === 'account/rateLimits/read') {
       return {
         rateLimits: {
-          primary: { usedPercent: 91, resetsAt: 1_900_000_000 },
-          secondary: { usedPercent: 44, resetsAt: 1_900_000_500 },
+          limitName: 'Pro usage',
+          primary: { usedPercent: 91, windowDurationMins: 300, resetsAt: 1_900_000_000 },
+          secondary: { usedPercent: 44, windowDurationMins: 10_080, resetsAt: 1_900_000_500 },
           credits: { hasCredits: true, unlimited: false, balance: '12.50' },
           planType: 'pro',
         },
@@ -259,6 +264,9 @@ class FakeCodexAppServerClient {
     if (method === 'turn/steer') {
       return { turnId: 'codex-turn-1' }
     }
+    if (method === 'thread/shellCommand') {
+      return {}
+    }
     return {}
   }
 
@@ -363,6 +371,25 @@ function createMessage(parts: UIMessage['parts']): UIMessage {
   }
 }
 
+function createFakeChatgptJwt(input: {
+  accountId: string
+  planType?: string
+  email?: string
+}): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return [
+    encode({ alg: 'none', typ: 'JWT' }),
+    encode({
+      email: input.email ?? 'user@example.com',
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: input.accountId,
+        chatgpt_plan_type: input.planType ?? 'plus',
+      },
+    }),
+    'sig',
+  ].join('.')
+}
+
 function createProvider(client: FakeCodexAppServerClient): CodexProvider {
   return new CodexProvider({
     readSecret: () => 'sk-secret',
@@ -443,6 +470,80 @@ describe('codexProvider app-server integration', () => {
     })
     expect(client.initialize).not.toHaveBeenCalled()
     expect(client.requests).toEqual([])
+  })
+
+  it('executes shell commands through Codex thread/shellCommand and returns the native commandExecution result', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const resultPromise = provider.executeShellCommand({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      command: 'echo hello',
+    })
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toContain('thread/shellCommand')
+    })
+    expect(client.requests.map(request => request.method).slice(0, 2)).toEqual(['thread/resume', 'thread/shellCommand'])
+    expect(client.requests[1]).toEqual({
+      method: 'thread/shellCommand',
+      params: { threadId: 'codex-thread-1', command: 'echo hello' },
+    })
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: {
+          type: 'commandExecution',
+          id: 'command-1',
+          source: 'userShell',
+          command: 'echo hello',
+          status: 'inProgress',
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/commandExecution/outputDelta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'command-1',
+        delta: 'hello\n',
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: {
+          type: 'commandExecution',
+          id: 'command-1',
+          source: 'userShell',
+          command: 'echo hello',
+          status: 'completed',
+          aggregatedOutput: 'hello\n',
+          exitCode: 0,
+          durationMs: 12,
+        },
+      },
+    })
+
+    await expect(resultPromise).resolves.toEqual({
+      command: 'echo hello',
+      stdout: 'hello\n',
+      stderr: '',
+      exitCode: 0,
+      durationMs: 12,
+      timedOut: false,
+      truncated: false,
+    })
+    expect(client.requests.map(request => request.method)).toContain('thread/turns/list')
+    expect(client.close).toHaveBeenCalled()
   })
 
   it('maps image attachments to Codex app-server user input', async () => {
@@ -1471,8 +1572,9 @@ describe('codexProvider app-server integration', () => {
       method: 'account/rateLimits/updated',
       params: {
         rateLimits: {
-          primary: { usedPercent: 73, resetsAt: 1_900_000_000 },
-          secondary: { usedPercent: 18, resetsAt: 1_900_000_500 },
+          limitName: 'Pro usage',
+          primary: { usedPercent: 73, windowDurationMins: 300, resetsAt: 1_900_000_000 },
+          secondary: { usedPercent: 18, windowDurationMins: 10_080, resetsAt: 1_900_000_500 },
           credits: { hasCredits: false, unlimited: false, balance: '0' },
           planType: 'team',
           rateLimitReachedType: 'primary',
@@ -1565,8 +1667,13 @@ describe('codexProvider app-server integration', () => {
         kind: 'usage',
         slotId: 'codex:usage',
         threadId: 'codex-thread-1',
+        limitName: 'Pro usage',
         usedPercent: 91,
+        primaryWindowDurationMins: 300,
+        primaryResetsAt: 1_900_000_000,
         secondaryUsedPercent: 44,
+        secondaryWindowDurationMins: 10_080,
+        secondaryResetsAt: 1_900_000_500,
         creditsBalance: '12.50',
         hasCredits: true,
         planType: 'pro',
@@ -2268,6 +2375,155 @@ describe('codexProvider app-server integration', () => {
     for await (const _chunk of stream) {
       // Drain stream.
     }
+  })
+
+  it('logs into Codex app-server with ChatGPT auth tokens without API key env', async () => {
+    const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      updateSecretValue: vi.fn(),
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-chatgpt-auth',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({ apiKey: undefined, baseUrl: undefined }),
+        credentialRef: 'credential-chatgpt',
+      },
+      message: createUserMessage('Use ChatGPT auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method).slice(0, 3)).toEqual([
+        'account/login/start',
+        'thread/start',
+        'turn/start',
+      ])
+    })
+
+    expect(appServerOptions[0]?.apiKey).toBeUndefined()
+    expect(clients[0]?.requests[0]).toEqual({
+      method: 'account/login/start',
+      params: {
+        type: 'chatgptAuthTokens',
+        accessToken,
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      },
+    })
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
+  it('refreshes ChatGPT auth token requests and updates the credential secret', async () => {
+    const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const refreshedAccessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'pro' })
+    const updateSecretValue = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      access_token: refreshedAccessToken,
+      refresh_token: 'refresh-token-2',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const client = new FakeCodexAppServerClient({})
+    const provider = new CodexProvider({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      updateSecretValue,
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-chatgpt-refresh',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({ apiKey: undefined, baseUrl: undefined }),
+        credentialRef: 'credential-chatgpt',
+      },
+      message: createUserMessage('Use ChatGPT auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toContain('turn/start')
+    })
+
+    await expect(client.pushServerRequest({
+      id: 100,
+      method: 'account/chatgptAuthTokens/refresh',
+      params: { reason: 'unauthorized', previousAccountId: 'workspace-1' },
+    })).resolves.toEqual({
+      accessToken: refreshedAccessToken,
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'pro',
+    })
+    expect(updateSecretValue).toHaveBeenCalledWith('credential-chatgpt', expect.stringContaining('"refreshToken":"refresh-token-2"'))
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
   })
 
   it('passes Cradle session context into the Codex app-server environment', async () => {

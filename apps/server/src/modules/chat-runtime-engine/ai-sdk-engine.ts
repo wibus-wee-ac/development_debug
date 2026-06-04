@@ -27,7 +27,7 @@ export interface AiSdkEngineInput {
   abortSignal?: AbortSignal
   abortController?: AbortController
   providerOptions?: {
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   }
   /** Callback to receive usage data when available */
   onUsage?: (usage: TokenUsage) => void

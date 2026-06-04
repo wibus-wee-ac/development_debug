@@ -123,7 +123,7 @@ function readProviderVisibleResultText(input: {
   return input.truncated ? `${text}\n\n[Output truncated]` : text
 }
 
-function persistBangCommandMessages(input: {
+export function persistBangCommandMessages(input: {
   sessionId: string
   command: string
   stdout: string
@@ -203,7 +203,7 @@ function persistBangCommandMessages(input: {
   }
 }
 
-export async function executeBangCommand(input: {
+export async function executeLocalBangCommand(input: {
   sessionId: string
   command: string
   signal?: AbortSignal

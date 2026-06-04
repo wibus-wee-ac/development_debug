@@ -168,6 +168,47 @@ function createUserMessage(text: string): UIMessage {
   }
 }
 
+function createBangCommandMessage(command: string): UIMessage {
+  return {
+    id: `bang-command-${command}`,
+    role: 'user',
+    parts: [{ type: 'text', text: `!${command}` }],
+    metadata: {
+      cradle: {
+        bangCommand: { command },
+      },
+    },
+  } as UIMessage
+}
+
+function createBangResultMessage(input: {
+  command: string
+  stdout?: string
+  stderr?: string
+  exitCode?: number | null
+  durationMs?: number
+}): UIMessage {
+  const text = input.stdout ?? input.stderr ?? ''
+  return {
+    id: `bang-result-${input.command}`,
+    role: 'user',
+    parts: [{ type: 'text', text }],
+    metadata: {
+      cradle: {
+        bangResult: {
+          command: input.command,
+          stdout: input.stdout ?? '',
+          stderr: input.stderr ?? '',
+          exitCode: input.exitCode ?? 0,
+          durationMs: input.durationMs ?? 1,
+          timedOut: false,
+          truncated: false,
+        },
+      },
+    },
+  } as UIMessage
+}
+
 describe('claudeAgentProvider MCP integration', () => {
   afterEach(() => {
     removeHostMcpServer('browser-use')
@@ -681,6 +722,58 @@ describe('claudeAgentProvider MCP integration', () => {
       '',
       'Current user message:',
       'What did I say earlier?',
+    ].join('\n'))
+  })
+
+  it('replays Cradle-local bang command history into resumed Claude Agent SDK sessions', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-1',
+        message: {
+          content: [{ type: 'text', text: 'The command counted the workspace.' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-1',
+        usage: { input_tokens: 10, output_tokens: 4 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-resumed-bang-history',
+      runtimeSession: createResumedRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Can you see the local command output?'),
+      history: [
+        createUserMessage('Normal previous chat already lives in the SDK session'),
+        createBangCommandMessage('scc'),
+        createBangResultMessage({
+          command: 'scc',
+          stdout: 'TypeScript 1911 files\nTotal 3978 files\n',
+          exitCode: 0,
+          durationMs: 171,
+        }),
+      ],
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream to force query construction.
+    }
+
+    await expect(readPromptText(0)).resolves.toBe([
+      'Previous messages in this Cradle chat session:',
+      'User ran local shell command: $ scc',
+      '',
+      'Local shell command result for `$ scc` (exit code 0, 171ms):',
+      'TypeScript 1911 files',
+      'Total 3978 files',
+      '',
+      'Current user message:',
+      'Can you see the local command output?',
     ].join('\n'))
   })
 

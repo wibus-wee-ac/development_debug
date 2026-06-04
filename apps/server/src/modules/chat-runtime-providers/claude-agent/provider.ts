@@ -141,7 +141,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
     const userContent = buildClaudeAgentTurnContent({
       userContent: projectedUserContent,
-      history: input.runtimeSession.providerSessionId ? undefined : input.history,
+      history: input.runtimeSession.providerSessionId
+        ? selectClaudeAgentResumedCradleHistory(input.history)
+        : input.history,
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
@@ -468,7 +470,27 @@ function formatClaudeAgentHistory(history: UIMessage[] | undefined): string | nu
   return entries.length > 0 ? entries.join('\n\n') : null
 }
 
+function selectClaudeAgentResumedCradleHistory(history: UIMessage[] | undefined): UIMessage[] | undefined {
+  const entries = history?.filter(message => readBangCommandMetadata(message) || readBangResultMetadata(message)) ?? []
+  return entries.length > 0 ? entries : undefined
+}
+
 function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
+  const bangCommand = readBangCommandMetadata(message)
+  if (bangCommand) {
+    return `User ran local shell command: $ ${bangCommand.command}`
+  }
+
+  const bangResult = readBangResultMetadata(message)
+  if (bangResult) {
+    const output = bangResult.stdout || bangResult.stderr || '(no output)'
+    const status = bangResult.exitCode === null ? 'unknown exit code' : `exit code ${bangResult.exitCode}`
+    return [
+      `Local shell command result for \`$ ${bangResult.command}\` (${status}, ${bangResult.durationMs}ms):`,
+      output.trimEnd(),
+    ].join('\n')
+  }
+
   const textParts = message.parts
     .flatMap((part) => {
       if (part.type === 'text') {
@@ -483,6 +505,44 @@ function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
 
   const role = message.role === 'assistant' ? 'Assistant' : message.role === 'user' ? 'User' : 'System'
   return `${role}: ${textParts.join('\n')}`
+}
+
+function readBangCommandMetadata(message: UIMessage): { command: string } | null {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  const bangCommand = readRecord(cradleMetadata.bangCommand)
+  const command = typeof bangCommand.command === 'string' ? bangCommand.command.trim() : ''
+  return command ? { command } : null
+}
+
+function readBangResultMetadata(message: UIMessage): {
+  command: string
+  stdout: string
+  stderr: string
+  exitCode: number | null
+  durationMs: number
+} | null {
+  const metadata = readRecord((message as { metadata?: unknown }).metadata)
+  const cradleMetadata = readRecord(metadata.cradle)
+  const bangResult = readRecord(cradleMetadata.bangResult)
+  const command = typeof bangResult.command === 'string' ? bangResult.command.trim() : ''
+  if (!command) {
+    return null
+  }
+
+  return {
+    command,
+    stdout: typeof bangResult.stdout === 'string' ? bangResult.stdout : '',
+    stderr: typeof bangResult.stderr === 'string' ? bangResult.stderr : '',
+    exitCode: typeof bangResult.exitCode === 'number' ? bangResult.exitCode : null,
+    durationMs: typeof bangResult.durationMs === 'number' ? bangResult.durationMs : 0,
+  }
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
 }
 
 function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, runtimeLabel: string): ClaudeAgentContentBlock {

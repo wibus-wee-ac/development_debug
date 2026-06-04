@@ -166,6 +166,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     }
     registry.register(new CodexProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
+      updateSecretValue: (secretRef, secret) => Secrets.updateSecretValue(secretRef, secret),
       recordObservability,
       resolveSkillPaths: resolveRuntimeSkillPaths,
     }), {

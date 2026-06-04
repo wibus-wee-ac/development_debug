@@ -1,5 +1,5 @@
 import type { CodexConfig } from '../../provider-contracts/provider-base'
-import { readTrustedCodexConfig, resolveApiKey } from '../../provider-contracts/provider-base'
+import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import { getRegisteredMcpServers } from '../../../plugins'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
@@ -12,6 +12,13 @@ import {
 } from './app-server-capabilities'
 import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
 import { resolveCodexRuntimeContext } from './runtime-context'
+import {
+  buildCodexChatgptAuthLoginParams,
+  ensureCodexChatgptAuthAccessToken,
+  refreshCodexChatgptAuthCredential,
+  resolveCodexAppServerAuth,
+  type CodexChatgptAuthCredential,
+} from './chatgpt-auth'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
 
 export type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
@@ -21,6 +28,7 @@ const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 
 interface CodexAppServerBridgeDeps {
   readSecret: (credentialRef: string) => string
+  updateSecretValue?: (credentialRef: string, secret: string) => void
   resolveSkillPaths: (workspacePath: string) => string[]
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
 }
@@ -56,6 +64,11 @@ export interface CodexAppServerStreamInput extends CodexAppServerInvokeInput {
   closeOnMethods?: string[]
 }
 
+type CodexAppServerBridgeRequestHandler = (
+  request: CodexAppServerServerRequest,
+  chatgptAuth: CodexChatgptAuthCredential | null,
+) => Promise<unknown> | unknown
+
 export function getCodexAppServerCapabilities(): CodexAppServerCapabilityManifest {
   return CODEX_APP_SERVER_CAPABILITIES
 }
@@ -65,11 +78,14 @@ export class CodexAppServerBridge {
 
   async invoke(input: CodexAppServerInvokeInput): Promise<CodexAppServerInvokeResponse> {
     const capability = requireCodexAppServerMethod(input.method)
-    const client = this.createClient(input, {
-      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request),
+    const { client, chatgptAuth } = this.createClient(input, {
+      serverRequestHandler: (request, auth) => buildDefaultCodexAppServerRequestResult(request, {
+        chatgptAuth: auth,
+        updateSecretValue: this.deps.updateSecretValue,
+      }),
     })
     try {
-      await client.initialize()
+      await this.initializeClient(client, chatgptAuth, input.method)
       const result = await client.request(input.method, normalizeParams(capability, input.params))
       return { method: input.method, capability, result }
     }
@@ -93,9 +109,12 @@ export class CodexAppServerBridge {
 
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
-        client = this.createClient(input, {
-          serverRequestHandler: async request => {
-            const result = buildDefaultCodexAppServerRequestResult(request)
+        const created = this.createClient(input, {
+          serverRequestHandler: async (request, auth) => {
+            const result = await buildDefaultCodexAppServerRequestResult(request, {
+              chatgptAuth: auth,
+              updateSecretValue: this.deps.updateSecretValue,
+            })
             writeSse(controller, encoder, 'server_request', {
               method: request.method,
               id: request.id,
@@ -106,10 +125,11 @@ export class CodexAppServerBridge {
             return result
           },
         })
+        client = created.client
 
         void (async () => {
           try {
-            await client!.initialize()
+            await this.initializeClient(client!, created.chatgptAuth, input.method)
             const resultPromise = client!.request(input.method, normalizeParams(capability, input.params))
             writeSse(controller, encoder, 'request_started', { method: input.method, capability })
 
@@ -153,16 +173,16 @@ export class CodexAppServerBridge {
 
   private createClient(
     context: CodexAppServerBridgeContext,
-    options: Pick<CodexAppServerClientOptions, 'serverRequestHandler'> = {},
-  ): CodexAppServerClientLike {
+    options: { serverRequestHandler?: CodexAppServerBridgeRequestHandler } = {},
+  ): { client: CodexAppServerClientLike, chatgptAuth: CodexChatgptAuthCredential | null } {
     const config = readTrustedCodexConfig(context.profile.configJson)
-    const apiKey = resolveApiKey(context.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
-    if (!apiKey) {
-      throw new Error('Codex app-server bridge requires an API key')
+    const auth = resolveCodexAppServerAuth(context.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (config.baseUrl && !auth.apiKey) {
+      throw new Error('Codex app-server bridge requires an API key for external model providers')
     }
     const runtimeContext = resolveCodexRuntimeContext(context.workspacePath, context.agentId)
-    return this.deps.createAppServerClient?.({
-      apiKey,
+    const client = this.deps.createAppServerClient?.({
+      apiKey: auth.apiKey ?? undefined,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
@@ -171,9 +191,11 @@ export class CodexAppServerBridge {
         agentId: context.agentId,
         agentHome: runtimeContext.agentHome,
       }),
-      serverRequestHandler: options.serverRequestHandler,
+      serverRequestHandler: options.serverRequestHandler
+        ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
+        : undefined,
     }) ?? new CodexAppServerClient({
-      apiKey,
+      apiKey: auth.apiKey ?? undefined,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
@@ -182,9 +204,33 @@ export class CodexAppServerBridge {
         agentId: context.agentId,
         agentHome: runtimeContext.agentHome,
       }),
-      serverRequestHandler: options.serverRequestHandler,
+      serverRequestHandler: options.serverRequestHandler
+        ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
+        : undefined,
     })
+    return { client, chatgptAuth: auth.chatgptAuth }
   }
+
+  private async initializeClient(
+    client: CodexAppServerClientLike,
+    chatgptAuth: CodexChatgptAuthCredential | null,
+    requestedMethod: string,
+  ): Promise<void> {
+    await client.initialize()
+    if (!chatgptAuth || isAccountAuthMutationMethod(requestedMethod)) {
+      return
+    }
+    const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
+      updateSecretValue: this.deps.updateSecretValue,
+    })
+    await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+  }
+}
+
+function isAccountAuthMutationMethod(method: string): boolean {
+  return method === 'account/login/start'
+    || method === 'account/login/cancel'
+    || method === 'account/logout'
 }
 
 function requireCodexAppServerMethod(method: string): CodexAppServerMethodCapability {
@@ -333,7 +379,13 @@ function writeDone(controller: ReadableStreamDefaultController<Uint8Array>, enco
   controller.close()
 }
 
-export function buildDefaultCodexAppServerRequestResult(request: CodexAppServerServerRequest): unknown {
+export async function buildDefaultCodexAppServerRequestResult(
+  request: CodexAppServerServerRequest,
+  options: {
+    chatgptAuth?: CodexChatgptAuthCredential | null
+    updateSecretValue?: (credentialRef: string, secret: string) => void
+  } = {},
+): Promise<unknown> {
   switch (request.method) {
     case 'item/commandExecution/requestApproval':
       return { decision: 'decline' }
@@ -348,7 +400,12 @@ export function buildDefaultCodexAppServerRequestResult(request: CodexAppServerS
     case 'item/tool/call':
       return { contentItems: [{ type: 'text', text: 'Cradle Codex app-server bridge does not execute external dynamic tools.' }], success: false }
     case 'account/chatgptAuthTokens/refresh':
-      throw new Error('Cradle Codex app-server bridge cannot refresh ChatGPT auth tokens')
+      if (!options.chatgptAuth) {
+        throw new Error('Cradle Codex app-server bridge cannot refresh ChatGPT auth tokens without a ChatGPT credential')
+      }
+      return projectChatgptAuthRefreshResponse(await refreshCodexChatgptAuthCredential(options.chatgptAuth, {
+        updateSecretValue: options.updateSecretValue,
+      }))
     case 'attestation/generate':
       throw new Error('Cradle Codex app-server bridge cannot generate client attestation tokens')
     case 'applyPatchApproval':
@@ -357,5 +414,16 @@ export function buildDefaultCodexAppServerRequestResult(request: CodexAppServerS
       return { decision: 'denied' }
     default:
       throw new Error(`Unhandled Codex app-server request: ${request.method}`)
+  }
+}
+
+function projectChatgptAuthRefreshResponse(credential: CodexChatgptAuthCredential): unknown {
+  if (!credential.accessToken) {
+    throw new Error('Codex ChatGPT auth refresh did not return an access token')
+  }
+  return {
+    accessToken: credential.accessToken,
+    chatgptAccountId: credential.chatgptAccountId,
+    chatgptPlanType: credential.chatgptPlanType,
   }
 }

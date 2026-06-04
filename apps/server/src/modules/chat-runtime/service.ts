@@ -37,6 +37,11 @@ import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry, listRuntimeCatalog, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
+import {
+  executeLocalBangCommand,
+  persistBangCommandMessages,
+  type BangCommandExecutionResult,
+} from './bang-command'
 import type { ChatContextPart } from './context-parts'
 import {
   annotateCodexGoalContinuationMessage,
@@ -305,7 +310,7 @@ export interface ChatSessionQueueItemDto {
   contextParts: ChatContextPart[]
   providerTargetId: string | null
   modelId: string | null
-  thinkingEffort: 'low' | 'medium' | 'high' | null
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | null
   permissionMode: ChatPermissionMode | null
   position: number
   sourceRunId: string | null
@@ -323,7 +328,7 @@ export interface EnqueueSessionQueueItemInput {
   contextParts?: ChatContextPart[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   permissionMode?: ChatPermissionMode
 }
 
@@ -1384,6 +1389,150 @@ function assertRuntimeCompatibleTarget(
   })
 }
 
+function normalizeBangCommandOrThrow(commandText: string): string {
+  const command = commandText.trim()
+  if (!command) {
+    throw new AppError({
+      code: 'chat_bang_command_empty',
+      status: 400,
+      message: 'Bang command must not be empty',
+    })
+  }
+  if (command.includes('\n') || command.includes('\r')) {
+    throw new AppError({
+      code: 'chat_bang_command_multiline_unsupported',
+      status: 400,
+      message: 'Bang command must be a single line',
+    })
+  }
+  return command
+}
+
+async function resolveRuntimeSessionForBangCommand(input: {
+  sessionId: string
+  context: SessionRunContext
+  runtimeKind: RuntimeKind
+  runtime: ChatRuntime
+}): Promise<{
+  runtimeSession: RuntimeSession
+  requestedModelId: string | null
+}> {
+  const binding = getBinding(input.sessionId)
+  const reusableBinding
+    = binding?.providerTargetId === input.context.providerTarget.id
+      && binding.runtimeKind === input.runtimeKind
+      ? binding
+      : undefined
+
+  const runtimeSession = reusableBinding
+    ? await input.runtime.resumeChatSession({
+        runtimeSession: {
+          id: input.sessionId,
+          chatSessionId: input.sessionId,
+          providerTargetId: input.context.providerTarget.id,
+          runtimeKind: input.runtimeKind,
+          providerSessionId: reusableBinding.backendSessionId,
+          providerStateSnapshot: reusableBinding.backendStateSnapshot,
+        },
+        profile: input.context.profile,
+        workspacePath: input.context.workspacePath,
+        agentId: input.context.session.agentId,
+        modelId: reusableBinding.requestedModelId ?? undefined,
+      })
+    : await input.runtime.startChatSession({
+        chatSessionId: input.sessionId,
+        profile: input.context.profile,
+        workspacePath: input.context.workspacePath,
+        agentId: input.context.session.agentId,
+        previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
+      })
+
+  const requestedModelId = reusableBinding?.requestedModelId
+    ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId
+    ?? null
+
+  return { runtimeSession, requestedModelId }
+}
+
+export async function executeBangCommand(input: {
+  sessionId: string
+  command: string
+  signal?: AbortSignal
+}): Promise<BangCommandExecutionResult> {
+  const command = normalizeBangCommandOrThrow(input.command)
+  const session = assertStoredSession(input.sessionId)
+  const runtimeKind = session.runtimeKind ?? 'standard'
+
+  if (runtimeKind !== 'codex') {
+    return await executeLocalBangCommand({ ...input, command })
+  }
+
+  const context = assertRuntimeCompatibleTarget(assertRunnableSession(input.sessionId))
+  if (!context.profile.enabled) {
+    throw new AppError({
+      code: 'chat_provider_target_not_available',
+      status: 409,
+      message: 'Provider target is disabled',
+      details: {
+        providerTargetId: context.providerTarget.id,
+      },
+    })
+  }
+
+  const activeRunId = activeRunIdsBySession.get(input.sessionId)
+  if (activeRunId && activeRuns.get(activeRunId)?.runtimeSession.runtimeKind === 'codex') {
+    throw new AppError({
+      code: 'chat_bang_command_runtime_busy',
+      status: 409,
+      message: 'Codex bang commands cannot run while a Codex response is streaming',
+      details: { sessionId: input.sessionId },
+    })
+  }
+
+  const runtime = getRuntimeRegistry().get('codex')
+  if (!runtime?.executeShellCommand) {
+    throw new AppError({
+      code: 'chat_runtime_shell_command_unavailable',
+      status: 501,
+      message: 'Codex runtime does not support shell command execution',
+    })
+  }
+
+  const { runtimeSession, requestedModelId } = await resolveRuntimeSessionForBangCommand({
+    sessionId: input.sessionId,
+    context,
+    runtimeKind,
+    runtime,
+  })
+
+  const output = await runtime.executeShellCommand({
+    runtimeSession,
+    profile: context.profile,
+    workspaceId: context.session.workspaceId,
+    workspacePath: context.workspacePath,
+    agentId: context.session.agentId,
+    modelId: requestedModelId ?? undefined,
+    command,
+    signal: input.signal,
+  })
+
+  attachBinding({
+    sessionId: input.sessionId,
+    providerTargetId: context.providerTarget.id,
+    runtimeKind: runtimeSession.runtimeKind,
+    runtimeSession,
+    requestedModelId,
+  })
+
+  return {
+    ...output,
+    ...persistBangCommandMessages({
+      sessionId: input.sessionId,
+      ...output,
+    }),
+  }
+}
+
 function listPendingQueueRows(sessionId: string): Array<typeof chatSessionQueueItems.$inferSelect> {
   return db()
     .select()
@@ -1958,6 +2107,7 @@ async function resolveCodexAppServerBridgeContext(input: {
 function createCodexAppServerBridge(): CodexAppServerBridge {
   return new CodexAppServerBridge({
     readSecret: secretRef => Secrets.readSecret(secretRef),
+    updateSecretValue: (secretRef, secret) => Secrets.updateSecretValue(secretRef, secret),
     resolveSkillPaths: resolveRuntimeSkillPaths,
   })
 }
@@ -1970,7 +2120,7 @@ export async function createRun(input: {
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   permissionMode?: ChatPermissionMode
   continuationMode?: ChatSessionQueueMode
   queueItemId?: string
@@ -2298,7 +2448,7 @@ export async function streamResponse(input: {
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   permissionMode?: ChatPermissionMode
 }): Promise<{
   runId: string
@@ -3053,7 +3203,7 @@ async function executeRun(
     message: UIMessage
     profile: RuntimeProviderTargetProfile
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high'
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
     permissionMode?: ChatPermissionMode
     systemPrompt?: string
     transcript?: CradleTurnTranscript
@@ -4615,7 +4765,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
           contextParts: parseQueueContextParts(claimed.contextPartsJson),
           providerTargetId: claimed.providerTargetId ?? undefined,
           modelId: claimed.modelId ?? undefined,
-          thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | undefined,
+          thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | 'xhigh' | undefined,
           permissionMode: normalizeChatPermissionMode(claimed.permissionMode) ?? undefined,
           continuationMode: claimed.mode,
           queueItemId: claimed.id,

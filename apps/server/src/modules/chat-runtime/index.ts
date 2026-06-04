@@ -1,6 +1,5 @@
 import { Elysia } from 'elysia'
 
-import { executeBangCommand } from './bang-command'
 import { ChatRuntimeModel } from './model'
 import * as ChatRuntime from './service'
 
@@ -53,7 +52,7 @@ export const chatRuntime = new Elysia({
   })
   // POST /chat/sessions/:sessionId/bang-command -> run a user-entered shell command and persist transcript context
   .post('/sessions/:sessionId/bang-command', async ({ params, body, request }) => {
-    return await executeBangCommand({
+    return await ChatRuntime.executeBangCommand({
       sessionId: params.sessionId,
       command: body.command,
       signal: request.signal,
