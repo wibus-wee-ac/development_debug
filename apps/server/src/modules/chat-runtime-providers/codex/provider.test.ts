@@ -432,7 +432,7 @@ describe('codexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
 
-    await expect(provider.getCapabilities({
+    await expect(provider.getPresentation({
       runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       workspaceId: 'workspace-1',
@@ -458,7 +458,7 @@ describe('codexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
 
-    expect(provider.getDraftCapabilities()).toMatchObject({
+    expect(provider.getDraftPresentation()).toMatchObject({
       runtimeKind: 'codex',
       slashCommands: [],
       skills: [],
@@ -2438,7 +2438,7 @@ describe('codexProvider app-server integration', () => {
         chatgptAccountId: 'workspace-1',
         chatgptPlanType: 'plus',
       }),
-      updateSecretValue: vi.fn(),
+      updateSecret: vi.fn(),
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
       createAppServerClient: (options) => {
@@ -2502,7 +2502,7 @@ describe('codexProvider app-server integration', () => {
   it('refreshes ChatGPT auth token requests and updates the credential secret', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
     const refreshedAccessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'pro' })
-    const updateSecretValue = vi.fn()
+    const updateSecret = vi.fn()
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       access_token: refreshedAccessToken,
       refresh_token: 'refresh-token-2',
@@ -2520,7 +2520,7 @@ describe('codexProvider app-server integration', () => {
         chatgptAccountId: 'workspace-1',
         chatgptPlanType: 'plus',
       }),
-      updateSecretValue,
+      updateSecret,
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
       createAppServerClient: (options) => {
@@ -2553,7 +2553,7 @@ describe('codexProvider app-server integration', () => {
       chatgptAccountId: 'workspace-1',
       chatgptPlanType: 'pro',
     })
-    expect(updateSecretValue).toHaveBeenCalledWith('credential-chatgpt', expect.stringContaining('"refreshToken":"refresh-token-2"'))
+    expect(updateSecret).toHaveBeenCalledWith('credential-chatgpt', expect.stringContaining('"refreshToken":"refresh-token-2"'))
 
     client.pushNotification({
       method: 'item/agentMessage/delta',

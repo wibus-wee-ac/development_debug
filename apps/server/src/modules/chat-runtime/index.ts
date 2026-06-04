@@ -105,6 +105,15 @@ export const chatRuntime = new Elysia({
     },
     response: { 200: ChatRuntimeModel.runtimeCatalog },
   })
+  // GET /chat/runtimes/health -> optional runtime provider health checks.
+  .get('/runtimes/health', async () => {
+    return await ChatRuntime.listRuntimeHealthStatuses()
+  }, {
+    detail: {
+      summary: 'List chat runtime health statuses',
+    },
+    response: { 200: ChatRuntimeModel.runtimeHealth },
+  })
   // GET /chat/sessions/:sessionId/queue → durable continuation queue
   .get('/sessions/:sessionId/queue', ({ params }) => {
     return { items: ChatRuntime.listSessionQueueItems(params.sessionId) }

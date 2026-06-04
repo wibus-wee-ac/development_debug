@@ -6,19 +6,19 @@ import type { RuntimeKind } from '../../provider-contracts/types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import { buildModelMessages, executeAiSdkTurn } from '../../chat-runtime-engine/ai-sdk-engine'
 import { createLanguageModel, detectApiFormat } from '../../chat-runtime-engine/providers'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
+  ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
+  ProviderContext,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
 import { readProviderStateSnapshot } from '../provider-state-snapshot'
-
-interface OpenAICompatibleProviderDeps {
-  readSecret: (credentialRef: string) => string
-}
 
 export interface StepUsageEntry {
   stepNumber: number
@@ -27,8 +27,32 @@ export interface StepUsageEntry {
   usage: TokenUsage
 }
 
+const STANDARD_RUNTIME_METADATA = {
+  label: 'Standard',
+  description: 'Direct OpenAI-compatible chat runtime',
+  providerKinds: ['openai-compatible', 'universal'],
+  iconKey: 'custom',
+  surfaces: ['chat', 'jarvis'],
+  sortOrder: 50,
+} satisfies ChatRuntimeMetadata
+
+const STANDARD_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: false,
+  supportsShellExecution: false,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'in-session',
+} satisfies ChatRuntimeCapabilities
+
+export function createStandardProvider(ctx: ProviderContext): ChatRuntime {
+  return new OpenAICompatibleProvider(ctx)
+}
+
 export class OpenAICompatibleProvider implements ChatRuntime {
   readonly runtimeKind = 'standard' as const satisfies RuntimeKind
+  readonly metadata = STANDARD_RUNTIME_METADATA
+  readonly capabilities = STANDARD_RUNTIME_CAPABILITIES
 
   private readonly activeTurns = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
@@ -42,7 +66,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
     return this._lastStepUsages
   }
 
-  constructor(private readonly deps: OpenAICompatibleProviderDeps) {}
+  constructor(private readonly deps: ProviderContext) {}
 
   private releaseTurn(sessionId: string, abortController: AbortController): void {
     if (this.activeTurns.get(sessionId) === abortController) {
@@ -87,7 +111,9 @@ export class OpenAICompatibleProvider implements ChatRuntime {
     const { baseUrl, model, apiMode } = resolveOpenAICompatibleEndpoint(profile)
     const effectiveModel = requestedModelId ?? model
     if (!baseUrl || !effectiveModel) {
-      throw new Error('OpenAI-compatible provider requires baseUrl and model')
+      throw new ProviderRuntimeError(
+        ProviderErrors.requestFailed(this.runtimeKind, 'streamTurn', 'OpenAI-compatible provider requires baseUrl and model'),
+      )
     }
 
     const apiKey = profile.credentialRef

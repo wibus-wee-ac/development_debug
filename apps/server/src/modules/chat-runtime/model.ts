@@ -49,6 +49,24 @@ const runtimeCatalogItemSchema = t.Object({
   pluginOwner: t.Union([t.String(), t.Null()]),
 })
 
+const runtimeHealthItemSchema = t.Object({
+  runtimeKind: t.String(),
+  source: t.Union([
+    t.Literal('builtin'),
+    t.Literal('plugin'),
+  ]),
+  pluginOwner: t.Union([t.String(), t.Null()]),
+  hasHealthCheck: t.Boolean(),
+  status: t.Union([
+    t.Literal('healthy'),
+    t.Literal('unhealthy'),
+    t.Literal('unknown'),
+  ]),
+  message: t.Optional(t.String()),
+  latencyMs: t.Optional(t.Number()),
+  lastCheckedAt: t.Number(),
+})
+
 const runtimeUiSlotSchema = t.Object({
   id: t.String(),
   name: t.String(),
@@ -781,6 +799,10 @@ export const ChatRuntimeModel = {
 
   runtimeCatalog: t.Object({
     items: t.Array(runtimeCatalogItemSchema),
+  }),
+
+  runtimeHealth: t.Object({
+    items: t.Array(runtimeHealthItemSchema),
   }),
 
   capabilities: t.Object({

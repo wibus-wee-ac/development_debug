@@ -470,7 +470,7 @@ describe('claudeAgentProvider MCP integration', () => {
     const runtimeSession = createRuntimeSession()
     const profile = createProfile()
 
-    await expect(provider.getCapabilities({
+    await expect(provider.getPresentation({
       runtimeSession,
       profile,
       workspaceId: 'workspace-1',

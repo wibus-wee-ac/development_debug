@@ -13,13 +13,17 @@ import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
 import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { isCodexGoalContinuationMessage, readGoalMessageObjective } from '../../chat-runtime/message-snapshots'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
   ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
   GetCapabilitiesInput,
   GetUiSlotStatesInput,
+  ProviderContext,
   ResumeChatSessionInput,
+  RuntimePresentationCapabilities,
   RuntimeAlertSeverity,
   RuntimeAlertUiSlotState,
   RuntimeApprovalStatus,
@@ -58,7 +62,6 @@ import type {
 } from '../../chat-runtime/runtime-provider-types'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
-import type { CreateEventInput } from '../../observability/contract'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
 import type { CodexConfig } from '../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
@@ -90,13 +93,11 @@ import { resolveCodexRuntimeContext } from './runtime-context'
 import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlots } from './ui-slots'
 
-interface CodexProviderDeps {
-  readSecret: (credentialRef: string) => string
-  updateSecretValue?: (credentialRef: string, secret: string) => void
-  resolveSkillPaths: (workspacePath: string) => string[]
-  recordObservability: (input: CreateEventInput) => void
+interface CodexProviderConfig {
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
 }
+
+type CodexProviderDeps = ProviderContext & CodexProviderConfig
 
 interface CodexAppServerClientLike {
   initialize: () => Promise<void>
@@ -701,13 +702,39 @@ const CODEX_THREAD_TURNS_LIST_LIMIT = 100
 const CODEX_CREW_TURNS_LIST_LIMIT = 50
 const CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS = 60_000
 
-function createCodexRuntimeCapabilities(): ChatRuntimeCapabilities {
+function createCodexRuntimePresentation(): RuntimePresentationCapabilities {
   return {
     runtimeKind: RUNTIME_KIND,
     slashCommands: [],
     uiSlots: projectCodexUiSlots(CODEX_APP_SERVER_CAPABILITIES),
     skills: [],
   }
+}
+
+const CODEX_RUNTIME_METADATA = {
+  label: 'Codex',
+  description: 'Codex app-server runtime',
+  providerKinds: ['openai-compatible', 'universal'],
+  iconKey: 'codex',
+  surfaces: ['chat', 'jarvis'],
+  sortOrder: 20,
+} satisfies ChatRuntimeMetadata
+
+const CODEX_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: true,
+  supportsShellExecution: true,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: true,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'in-session',
+} satisfies ChatRuntimeCapabilities
+
+function codexRequestError(method: string, detail: string): ProviderRuntimeError {
+  return new ProviderRuntimeError(ProviderErrors.requestFailed(RUNTIME_KIND, method, detail))
+}
+
+export function createCodexProvider(ctx: ProviderContext, config: CodexProviderConfig = {}): ChatRuntime {
+  return new CodexProvider({ ...ctx, ...config })
 }
 
 class CodexProviderError extends Error {
@@ -724,6 +751,8 @@ class CodexProviderError extends Error {
 
 export class CodexProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
+  readonly metadata = CODEX_RUNTIME_METADATA
+  readonly capabilities = CODEX_RUNTIME_CAPABILITIES
 
   private readonly activeTurns = new Map<string, ActiveCodexTurn>()
   private _lastUsage: TokenUsage | null = null
@@ -738,6 +767,20 @@ export class CodexProvider implements ChatRuntime {
   }
 
   constructor(private readonly deps: CodexProviderDeps) {}
+
+  private readonly resolveSkillPaths = (workspacePath: string): string[] => {
+    if (!this.deps.resolveSkillPaths) {
+      throw codexRequestError('resolveSkillPaths', 'Codex provider requires resolveSkillPaths in ProviderContext')
+    }
+    return this.deps.resolveSkillPaths(workspacePath)
+  }
+
+  private recordObservability(input: Parameters<NonNullable<ProviderContext['recordObservability']>>[0]): void {
+    if (!this.deps.recordObservability) {
+      return
+    }
+    this.deps.recordObservability(input)
+  }
 
   private releaseTurn(sessionId: string, entry: ActiveCodexTurn): void {
     if (this.activeTurns.get(sessionId) === entry) {
@@ -788,12 +831,12 @@ export class CodexProvider implements ChatRuntime {
     }
   }
 
-  async getCapabilities(_input: GetCapabilitiesInput): Promise<ChatRuntimeCapabilities> {
-    return createCodexRuntimeCapabilities()
+  async getPresentation(_input: GetCapabilitiesInput): Promise<RuntimePresentationCapabilities> {
+    return createCodexRuntimePresentation()
   }
 
-  getDraftCapabilities(): ChatRuntimeCapabilities {
-    return createCodexRuntimeCapabilities()
+  getDraftPresentation(): RuntimePresentationCapabilities {
+    return createCodexRuntimePresentation()
   }
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
@@ -823,7 +866,7 @@ export class CodexProvider implements ChatRuntime {
     }
     const client = this.createAppServerClient({
       apiKey: auth.apiKey ?? undefined,
-      config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
+      config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
         workspaceId: input.workspaceId,
@@ -833,7 +876,7 @@ export class CodexProvider implements ChatRuntime {
       }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
         chatgptAuth: auth.chatgptAuth,
-        updateSecretValue: this.deps.updateSecretValue,
+        updateSecretValue: this.deps.updateSecret,
       }),
     })
 
@@ -1026,13 +1069,13 @@ export class CodexProvider implements ChatRuntime {
   async executeShellCommand(input: ExecuteShellCommandInput): Promise<ExecuteShellCommandResult> {
     const command = input.command.trim()
     if (!command) {
-      throw new Error('Codex shell command must not be empty')
+      throw new ProviderRuntimeError(ProviderErrors.requestFailed(this.runtimeKind, 'executeShellCommand', 'Codex shell command must not be empty'))
     }
 
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     if (config.baseUrl && !auth.apiKey) {
-      throw new Error('Codex provider requires an API key for external model providers')
+      throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
@@ -1042,7 +1085,7 @@ export class CodexProvider implements ChatRuntime {
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
     const client = this.createAppServerClient({
       apiKey: auth.apiKey ?? undefined,
-      config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, effectiveModel),
+      config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: input.runtimeSession.chatSessionId,
         workspaceId: input.workspaceId,
@@ -1052,7 +1095,7 @@ export class CodexProvider implements ChatRuntime {
       }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
         chatgptAuth: auth.chatgptAuth,
-        updateSecretValue: this.deps.updateSecretValue,
+        updateSecretValue: this.deps.updateSecret,
       }),
     })
     const startedAt = Date.now()
@@ -1065,7 +1108,7 @@ export class CodexProvider implements ChatRuntime {
         runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
         approvalPolicy: config.approvalPolicy,
         sandbox: config.sandboxMode,
-        config: buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, null, effectiveModel),
+        config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel),
       })
       const threadId = threadStart.threadId
       input.runtimeSession.providerSessionId = threadId
@@ -1106,14 +1149,14 @@ export class CodexProvider implements ChatRuntime {
     const goalCommandObjective = readCodexGoalCommandObjective(input.message)
     const compactCommandRequested = isCodexCompactCommand(input.message)
     if (config.baseUrl && !auth.apiKey) {
-      throw new Error('Codex provider requires an API key for external model providers')
+      throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? '.'
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, input.agentId ?? snapshot.agentId ?? null)
     const systemPromptFile = writeSystemPromptFile(input.systemPrompt)
-    const codexConfig = buildCodexConfig(config, workspacePath, this.deps.resolveSkillPaths, systemPromptFile, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, systemPromptFile, effectiveModel)
     const client = this.createAppServerClient({
       apiKey: auth.apiKey ?? undefined,
       config: codexConfig,
@@ -1126,7 +1169,7 @@ export class CodexProvider implements ChatRuntime {
       }),
       serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
         chatgptAuth: auth.chatgptAuth,
-        updateSecretValue: this.deps.updateSecretValue,
+        updateSecretValue: this.deps.updateSecret,
       }),
     })
     const abortController = new AbortController()
@@ -1299,7 +1342,7 @@ export class CodexProvider implements ChatRuntime {
       const validation = validateCodexStreamOutput(diagnostics)
       if (!validation.ok) {
         const errorText = validation.errorText ?? 'Codex app-server stream produced no timeline output events'
-        this.deps.recordObservability({
+        this.recordObservability({
           source: 'provider',
           code: OBSERVABILITY_CODES.providerEmptyEventStream,
           severity: 'error',
@@ -1351,7 +1394,7 @@ export class CodexProvider implements ChatRuntime {
   async steerTurn(input: SteerTurnInput): Promise<void> {
     const entry = this.activeTurns.get(input.runtimeSession.chatSessionId)
     if (!entry?.turnId) {
-      throw new Error('Codex live steer requires an active turn')
+      throw new ProviderRuntimeError(ProviderErrors.sessionNotFound(this.runtimeKind, input.runtimeSession.chatSessionId))
     }
     const userInput = projectCodexUserInput(input.message, 'Codex provider live steer')
     await entry.client.request('turn/steer', {
@@ -1398,7 +1441,7 @@ export class CodexProvider implements ChatRuntime {
       return
     }
     const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
-      updateSecretValue: this.deps.updateSecretValue,
+      updateSecretValue: this.deps.updateSecret,
     })
     await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
   }
@@ -3648,7 +3691,7 @@ async function startOrResumeThread(
   ) as ThreadResponse
   const threadId = response.thread?.id
   if (!threadId) {
-    throw new Error('Codex app-server did not return a thread id')
+    throw codexRequestError('startOrResumeCodexThread', 'Codex app-server did not return a thread id')
   }
   return {
     threadId,
@@ -3757,7 +3800,7 @@ async function listFullCodexTurns(
       ? response.nextCursor
       : null
     if (nextCursor && seenCursors.has(nextCursor)) {
-      throw new Error(`Codex thread/turns/list returned a repeated cursor: ${nextCursor}`)
+      throw codexRequestError('hydrateCodexNativeHistory', `Codex thread/turns/list returned a repeated cursor: ${nextCursor}`)
     }
     if (nextCursor) {
       seenCursors.add(nextCursor)
@@ -3964,7 +4007,7 @@ function projectCodexUserInput(message: RuntimeMessageInput, runtimeLabel: strin
   if (typeof message === 'string') {
     const text = message.trim()
     if (!text) {
-      throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+      throw codexRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
     }
     return [toTextUserInput(text)]
   }
@@ -3997,10 +4040,10 @@ function projectCodexUserInput(message: RuntimeMessageInput, runtimeLabel: strin
   }
 
   if (unsupportedParts.length > 0) {
-    throw new Error(`${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw codexRequestError('projectInput', `${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (input.length === 0) {
-    throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+    throw codexRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
   }
   return input
 }

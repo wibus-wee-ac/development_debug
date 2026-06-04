@@ -11,7 +11,7 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
-import type { ChatRuntime, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
 
 interface ChatMessageRow {
   messageId: string
@@ -35,6 +35,20 @@ interface ChatQueueItemView {
 }
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
+
+const TEST_CODEX_RUNTIME_METADATA = {
+  label: 'Test Codex',
+  providerKinds: ['openai-compatible', 'universal'],
+} satisfies ChatRuntimeMetadata
+
+const TEST_CODEX_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: false,
+  supportsShellExecution: false,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'in-session',
+} satisfies ChatRuntimeCapabilities
 
 interface ChatCompletionRequestBody {
   messages: Array<{ role: string, content: string }>
@@ -210,6 +224,8 @@ async function collectSseChunks(response: Response): Promise<UIMessageChunk[]> {
 
 class TestCodexGoalContinuationRuntime implements ChatRuntime {
   readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
   readonly streamInputs: StreamTurnInput[] = []
 
   constructor(private readonly options: { failFirstRun?: boolean } = {}) {}
@@ -275,6 +291,11 @@ class TestCodexGoalContinuationRuntime implements ChatRuntime {
 
 class TestCodexShellCommandRuntime implements ChatRuntime {
   readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = {
+    ...TEST_CODEX_RUNTIME_CAPABILITIES,
+    supportsShellExecution: true,
+  } satisfies ChatRuntimeCapabilities
   readonly shellInputs: ExecuteShellCommandInput[] = []
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
@@ -306,6 +327,8 @@ class TestCodexShellCommandRuntime implements ChatRuntime {
   }
 
   async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {}
+
+  async cancelTurn(): Promise<void> {}
 }
 
 describe('chat runtime capability', () => {
@@ -1009,6 +1032,12 @@ describe('chat runtime capability', () => {
         id: 'workspace-chat-memory',
         name: 'Workspace Chat Memory',
         path: workspaceRoot,
+      }).onConflictDoUpdate({
+        target: workspaces.id,
+        set: {
+          name: 'Workspace Chat Memory',
+          path: workspaceRoot,
+        },
       }).run()
 
       await createProfileAndSession(app, 'workspace-chat-memory', {

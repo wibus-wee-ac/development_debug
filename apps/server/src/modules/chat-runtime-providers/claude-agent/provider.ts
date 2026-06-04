@@ -9,12 +9,16 @@ import { getRegisteredMcpServers } from '../../../plugins'
 import { readTrustedClaudeAgentConfig, readTrustedUniversalConfig, resolveApiKey } from '../../provider-contracts/provider-base'
 import type { RuntimeKind } from '../../provider-contracts/types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
   ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
   GetCapabilitiesInput,
+  ProviderContext,
   ResumeChatSessionInput,
+  RuntimePresentationCapabilities,
   RuntimeSession,
   RuntimeSlashCommand,
   SetPermissionModeInput,
@@ -28,11 +32,6 @@ import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './mapper'
 import { resolveClaudeAgentRuntimeContext } from './runtime-context'
-
-interface ClaudeAgentProviderDeps {
-  readSecret: (credentialRef: string) => string
-  resolveSkillPaths?: (workspacePath: string) => string[]
-}
 
 interface ClaudeAgentSessionInfo {
   summary?: string
@@ -58,8 +57,36 @@ type ClaudeAgentContentBlock
       | { type: 'url', url: string }
   }
 
+const CLAUDE_AGENT_RUNTIME_METADATA = {
+  label: 'Claude Agent',
+  description: 'Claude Agent SDK runtime',
+  providerKinds: ['anthropic', 'universal'],
+  iconKey: 'claude-agent',
+  surfaces: ['chat', 'jarvis'],
+  sortOrder: 30,
+} satisfies ChatRuntimeMetadata
+
+const CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: true,
+  supportsShellExecution: false,
+  supportsPermissionMode: true,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'restart-session',
+} satisfies ChatRuntimeCapabilities
+
+function claudeAgentRequestError(method: string, detail: string): ProviderRuntimeError {
+  return new ProviderRuntimeError(ProviderErrors.requestFailed(RUNTIME_KIND, method, detail))
+}
+
+export function createClaudeAgentProvider(ctx: ProviderContext): ChatRuntime {
+  return new ClaudeAgentProvider(ctx)
+}
+
 export class ClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
+  readonly metadata = CLAUDE_AGENT_RUNTIME_METADATA
+  readonly capabilities = CLAUDE_AGENT_RUNTIME_CAPABILITIES
 
   private readonly activeQueries = new Map<string, ActiveClaudeQuery>()
   private _lastUsage: TokenUsage | null = null
@@ -68,7 +95,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     return this._lastUsage
   }
 
-  constructor(private readonly deps: ClaudeAgentProviderDeps) {}
+  constructor(private readonly deps: ProviderContext) {}
 
   private releaseQuery(sessionId: string, entry: ActiveClaudeQuery): void {
     if (this.activeQueries.get(sessionId) === entry) {
@@ -111,7 +138,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
   }
 
-  async getCapabilities(input: GetCapabilitiesInput): Promise<ChatRuntimeCapabilities> {
+  async getPresentation(input: GetCapabilitiesInput): Promise<RuntimePresentationCapabilities> {
     const abortController = new AbortController()
     const queryOptions = buildClaudeQueryOptions({
       deps: this.deps,
@@ -291,7 +318,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const sessionId = input.runtimeSession.chatSessionId
     const entry = this.activeQueries.get(sessionId)
     if (!entry) {
-      throw new Error('Claude Agent query is not active')
+      throw new ProviderRuntimeError(ProviderErrors.sessionNotFound(this.runtimeKind, sessionId))
     }
 
     const userContent = projectClaudeAgentInput(input.message, 'Claude Agent steer')
@@ -394,7 +421,7 @@ function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: str
   if (typeof message === 'string') {
     const text = message.trim()
     if (!text) {
-      throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+      throw claudeAgentRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
     }
     return text
   }
@@ -425,10 +452,10 @@ function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: str
   }
 
   if (unsupportedParts.length > 0) {
-    throw new Error(`${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw claudeAgentRequestError('projectInput', `${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (blocks.length === 0) {
-    throw new Error(`${runtimeLabel} requires non-empty text or image input`)
+    throw claudeAgentRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
   }
   if (blocks.length === 1 && blocks[0]?.type === 'text') {
     return blocks[0].text
@@ -548,13 +575,13 @@ function readRecord(value: unknown): Record<string, unknown> {
 function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, runtimeLabel: string): ClaudeAgentContentBlock {
   const mediaType = toAnthropicImageMediaType(part.mediaType)
   if (!mediaType) {
-    throw new Error(`${runtimeLabel} only supports jpeg, png, gif, and webp image input; unsupported file: ${describeUnsupportedFilePart(part)}`)
+    throw claudeAgentRequestError('projectImageInput', `${runtimeLabel} only supports jpeg, png, gif, and webp image input; unsupported file: ${describeUnsupportedFilePart(part)}`)
   }
 
   const dataUrl = parseDataUrl(part.url)
   if (dataUrl) {
     if (dataUrl.mediaType && dataUrl.mediaType !== mediaType) {
-      throw new Error(`${runtimeLabel} image media type mismatch for ${describeFilePart(part)}: declared ${mediaType}, url ${dataUrl.mediaType}`)
+      throw claudeAgentRequestError('projectImageInput', `${runtimeLabel} image media type mismatch for ${describeFilePart(part)}: declared ${mediaType}, url ${dataUrl.mediaType}`)
     }
     return {
       type: 'image',
@@ -576,7 +603,7 @@ function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, r
     }
   }
 
-  throw new Error(`${runtimeLabel} image input requires a data URL or http(s) URL; unsupported file: ${describeUnsupportedFilePart(part)}`)
+  throw claudeAgentRequestError('projectImageInput', `${runtimeLabel} image input requires a data URL or http(s) URL; unsupported file: ${describeUnsupportedFilePart(part)}`)
 }
 
 function toAnthropicImageMediaType(mediaType: string): AnthropicImageMediaType | null {
@@ -641,7 +668,7 @@ function isClaudeImageBlock(block: unknown): block is Extract<ClaudeAgentContent
 }
 
 function buildClaudeQueryOptions(input: {
-  deps: ClaudeAgentProviderDeps
+  deps: ProviderContext
   input: StreamTurnInput | GetCapabilitiesInput
   abortController: AbortController
   attachPermissionHandler: boolean
@@ -654,7 +681,7 @@ function buildClaudeQueryOptions(input: {
     : undefined) ?? config.permissionMode
 
   if (!apiKey) {
-    throw new Error('Claude Agent provider requires an API key')
+    throw new ProviderRuntimeError(ProviderErrors.authFailed(RUNTIME_KIND))
   }
 
   const snapshot = readWorkspaceProviderStateSnapshot(input.input.runtimeSession.providerStateSnapshot)

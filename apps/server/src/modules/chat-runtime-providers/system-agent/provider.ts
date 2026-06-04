@@ -13,9 +13,13 @@ import {
   readTrustedSystemAgentConfig,
 } from '../../provider-contracts/provider-base'
 import type { RuntimeKind } from '../../provider-contracts/types'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
+  ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
+  ProviderContext,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -24,11 +28,6 @@ import type {
 } from '../../chat-runtime/runtime-provider-types'
 import { projectTextOnlyInput } from '../../chat-runtime/ui-message-input'
 import { readProviderStateSnapshot } from '../provider-state-snapshot'
-
-interface SystemAgentProviderDeps {
-  readSecret: (credentialRef: string) => string
-  resolveSkillPaths: (workspacePath: string) => string[]
-}
 
 const RUNTIME_KIND: RuntimeKind = 'jar-core'
 type JarvisThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -51,6 +50,28 @@ function inferApiFromKind(providerKind: string): string {
     case 'openai-compatible': return 'openai-completions'
     default: return 'openai-completions'
   }
+}
+
+const SYSTEM_AGENT_RUNTIME_METADATA = {
+  label: 'HiJarvis',
+  description: 'Multi-surface AI agent with local memory',
+  providerKinds: ['openai-compatible', 'anthropic', 'universal'],
+  iconKey: 'hijarvis',
+  surfaces: ['jarvis'],
+  sortOrder: 10,
+} satisfies ChatRuntimeMetadata
+
+const SYSTEM_AGENT_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: false,
+  supportsShellExecution: false,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'in-session',
+} satisfies ChatRuntimeCapabilities
+
+export function createSystemAgentProvider(ctx: ProviderContext): ChatRuntime {
+  return new SystemAgentProvider(ctx)
 }
 
 function supportsExtendedThinking(modelId: string, family?: string): boolean {
@@ -90,6 +111,8 @@ async function resolveMappedRegistryModel(modelId: string): Promise<Awaited<Retu
 
 export class SystemAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
+  readonly metadata = SYSTEM_AGENT_RUNTIME_METADATA
+  readonly capabilities = SYSTEM_AGENT_RUNTIME_CAPABILITIES
 
   private readonly activeTurns = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
@@ -103,7 +126,7 @@ export class SystemAgentProvider implements ChatRuntime {
     return this._lastModelId
   }
 
-  constructor(private readonly deps: SystemAgentProviderDeps) {}
+  constructor(private readonly deps: ProviderContext) {}
 
   private releaseTurn(sessionId: string, abortController: AbortController): void {
     if (this.activeTurns.get(sessionId) === abortController) {
@@ -151,7 +174,7 @@ export class SystemAgentProvider implements ChatRuntime {
     const model = jarvisPrefs.model
     const { baseUrl } = config
     if (!model) {
-      throw new Error('No model configured for Jarvis. Set a model in Settings → Jarvis.')
+      throw new ProviderRuntimeError(ProviderErrors.modelNotFound(this.runtimeKind, ''))
     }
 
     const secretRef = input.profile.credentialRef
@@ -325,7 +348,7 @@ export class SystemAgentProvider implements ChatRuntime {
     }
 
     // Resolve skill roots — use jarvis workspace root (always has a valid path)
-    const skillRoots = this.deps.resolveSkillPaths(jarvisWorkspaceRoot)
+    const skillRoots = this.resolveSkillPaths(jarvisWorkspaceRoot)
 
     const commandPromise = executeIngressCommand({ config: jarConfig, command, pluginOverrides: { skillRoots } }).then((result) => {
       if (result.kind === 'message') {
@@ -390,6 +413,15 @@ export class SystemAgentProvider implements ChatRuntime {
       completionTokens: result.usage.outputTokens,
       totalTokens: result.usage.totalTokens,
     }
+  }
+
+  private resolveSkillPaths(workspacePath: string): string[] {
+    if (!this.deps.resolveSkillPaths) {
+      throw new ProviderRuntimeError(
+        ProviderErrors.requestFailed(this.runtimeKind, 'resolveSkillPaths', 'System Agent provider requires resolveSkillPaths in ProviderContext'),
+      )
+    }
+    return this.deps.resolveSkillPaths(workspacePath)
   }
 }
 

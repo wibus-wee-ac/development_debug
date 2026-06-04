@@ -2,8 +2,8 @@ import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import type { McpServerConfig, ServerPluginContext, ServerPluginRouteRegistration } from '@cradle/plugin-sdk/server'
 
 import { createChildLogger } from '../logging/logger'
-import { registerRuntime, unregisterRuntime } from '../modules/chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntime, ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
+import { assertChatRuntime, registerRuntime, unregisterRuntime } from '../modules/chat-runtime/chat-runtime-provider-registry'
+import type { ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import type { ProviderKind } from '../modules/provider-contracts/types'
 import { createPluginEventBus } from './event-bus'
 import { registerExternalProviderSource } from './external-provider-source-registry'
@@ -160,7 +160,8 @@ export function createServerPluginContext(
 
   const runtimes = {
     register(runtime, metadata) {
-      const runtimeProvider = runtime as ChatRuntime
+      assertChatRuntime(runtime)
+      const runtimeProvider = runtime
       if (runtimeProvider.runtimeKind !== metadata.runtimeKind) {
         throw new Error(`Plugin runtime metadata id ${metadata.runtimeKind} does not match runtime id ${runtimeProvider.runtimeKind}.`)
       }

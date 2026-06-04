@@ -1,5 +1,7 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
 
+import type { Logger } from '../../logging/logger'
+import type { CreateEventInput } from '../observability/contract'
 import type { ProviderKind, RuntimeKind } from '../provider-contracts/types'
 import type { CradleTurnTranscript } from './transcript'
 
@@ -424,12 +426,130 @@ export type RuntimeUiSlotState
     | RuntimeToolActivityUiSlotState
     | RuntimeUsageUiSlotState
 
-export interface ChatRuntimeCapabilities {
+export interface RuntimePresentationCapabilities {
   runtimeKind: RuntimeKind
   slashCommands: RuntimeSlashCommand[]
   uiSlots: RuntimeUiSlot[]
   skills: string[]
 }
+
+export interface ChatRuntimeCapabilities {
+  readonly supportsSteerTurn: boolean
+  readonly supportsShellExecution: boolean
+  readonly supportsPermissionMode: boolean
+  readonly supportsUiSlotStates: boolean
+  readonly supportsDynamicCapabilities: boolean
+  readonly sessionModelSwitch: 'in-session' | 'restart-session' | 'unsupported'
+}
+
+export interface ProviderHealthStatus {
+  status: 'healthy' | 'unhealthy' | 'unknown'
+  message?: string
+  latencyMs?: number
+  lastCheckedAt: number
+}
+
+export interface ChatRuntimeHealthItem extends ProviderHealthStatus {
+  runtimeKind: RuntimeKind
+  source: 'builtin' | 'plugin'
+  pluginOwner: string | null
+  hasHealthCheck: boolean
+}
+
+export interface ProviderContext {
+  readSecret: (credentialRef: string) => string
+  updateSecret?: (credentialRef: string, value: string) => void
+  resolveSkillPaths?: (workspacePath: string) => string[]
+  recordObservability?: (input: CreateEventInput) => void
+  logger?: Logger
+}
+
+export type ProviderError =
+  | { _tag: 'provider_unsupported', provider: string }
+  | { _tag: 'session_not_found', provider: string, sessionId: string }
+  | { _tag: 'session_closed', provider: string, sessionId: string }
+  | { _tag: 'request_failed', provider: string, method: string, detail: string }
+  | { _tag: 'process_error', provider: string, detail: string }
+  | { _tag: 'auth_failed', provider: string }
+  | { _tag: 'rate_limited', provider: string, retryAfter?: number }
+  | { _tag: 'model_not_found', provider: string, model: string }
+
+export class ProviderRuntimeError extends Error {
+  constructor(
+    readonly providerError: ProviderError,
+    options?: { cause?: unknown },
+  ) {
+    super(formatProviderErrorMessage(providerError), options)
+    this.name = 'ProviderRuntimeError'
+  }
+}
+
+function formatProviderErrorMessage(error: ProviderError): string {
+  switch (error._tag) {
+    case 'provider_unsupported':
+      return `Provider is unsupported: ${error.provider}`
+    case 'session_not_found':
+      return `Provider session was not found: ${error.provider}/${error.sessionId}`
+    case 'session_closed':
+      return `Provider session is closed: ${error.provider}/${error.sessionId}`
+    case 'request_failed':
+      return error.detail
+    case 'process_error':
+      return error.detail
+    case 'auth_failed':
+      return `${error.provider} authentication failed`
+    case 'rate_limited':
+      return error.retryAfter === undefined
+        ? `${error.provider} is rate limited`
+        : `${error.provider} is rate limited; retry after ${error.retryAfter}s`
+    case 'model_not_found':
+      return error.model
+        ? `${error.provider} model was not found: ${error.model}`
+        : `${error.provider} model was not configured`
+  }
+}
+
+export const ProviderErrors = {
+  providerUnsupported: (provider: string): ProviderError => ({
+    _tag: 'provider_unsupported',
+    provider,
+  }),
+  sessionNotFound: (provider: string, sessionId: string): ProviderError => ({
+    _tag: 'session_not_found',
+    provider,
+    sessionId,
+  }),
+  sessionClosed: (provider: string, sessionId: string): ProviderError => ({
+    _tag: 'session_closed',
+    provider,
+    sessionId,
+  }),
+  requestFailed: (provider: string, method: string, detail: string): ProviderError => ({
+    _tag: 'request_failed',
+    provider,
+    method,
+    detail,
+  }),
+  processError: (provider: string, detail: string): ProviderError => ({
+    _tag: 'process_error',
+    provider,
+    detail,
+  }),
+  authFailed: (provider: string): ProviderError => ({
+    _tag: 'auth_failed',
+    provider,
+  }),
+  rateLimited: (provider: string, retryAfter?: number): ProviderError => ({
+    _tag: 'rate_limited',
+    provider,
+    ...(retryAfter === undefined ? {} : { retryAfter }),
+  }),
+  modelNotFound: (provider: string, model: string): ProviderError => ({
+    _tag: 'model_not_found',
+    provider,
+    model,
+  }),
+} as const
 
 export type RuntimeCatalogSurface = 'chat' | 'jarvis'
 
@@ -555,13 +675,15 @@ export interface TokenUsage {
 
 export interface ChatRuntime {
   readonly runtimeKind: RuntimeKind
-  readonly metadata?: ChatRuntimeMetadata
+  readonly metadata: ChatRuntimeMetadata
+  readonly capabilities: ChatRuntimeCapabilities
   readonly lastUsage?: TokenUsage | null
   readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
-  getDraftCapabilities?: () => Promise<ChatRuntimeCapabilities> | ChatRuntimeCapabilities
-  getCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
+  getDraftPresentation?: () => Promise<RuntimePresentationCapabilities> | RuntimePresentationCapabilities
+  getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
+  getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
@@ -572,4 +694,6 @@ export interface ChatRuntime {
   executeShellCommand?: (input: ExecuteShellCommandInput) => Promise<ExecuteShellCommandResult>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
   setPermissionMode?: (input: SetPermissionModeInput) => Promise<void>
+  healthCheck?: () => Promise<ProviderHealthStatus>
+  dispose?: () => Promise<void>
 }

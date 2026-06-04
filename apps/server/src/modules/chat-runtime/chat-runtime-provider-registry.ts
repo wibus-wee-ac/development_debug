@@ -6,16 +6,21 @@ import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-comp
 import type { RuntimeKind } from '../provider-contracts/types'
 import * as Secrets from '../secrets/service'
 import { resolveScopeRoot } from '../skills/skills-paths'
-import { AcpConnectionManager } from '../chat-runtime-providers/acp/connection-manager'
-import { AcpProcessManager } from '../chat-runtime-providers/acp/process-manager'
-import { AcpChatProvider } from '../chat-runtime-providers/acp/provider'
-import { wireAcpIntegration } from '../chat-runtime-providers/acp/runtime-integration'
-import { ClaudeAgentProvider } from '../chat-runtime-providers/claude-agent/provider'
-import { CodexProvider } from '../chat-runtime-providers/codex/provider'
-import { MockClaudeAgentProvider } from '../chat-runtime-providers/mock-claude-agent/provider'
-import { OpenAICompatibleProvider } from '../chat-runtime-providers/openai-compatible/provider'
-import { SystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
-import type { ChatRuntime, ChatRuntimeCatalogItem, ChatRuntimeMetadata } from './runtime-provider-types'
+import { createAcpProvider } from '../chat-runtime-providers/acp/provider'
+import { createClaudeAgentProvider } from '../chat-runtime-providers/claude-agent/provider'
+import { createCodexProvider } from '../chat-runtime-providers/codex/provider'
+import { createMockClaudeAgentProvider } from '../chat-runtime-providers/mock-claude-agent/provider'
+import { createStandardProvider } from '../chat-runtime-providers/openai-compatible/provider'
+import { createSystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
+import { createChildLogger } from '../../logging/logger'
+import type {
+  ChatRuntime,
+  ChatRuntimeCatalogItem,
+  ChatRuntimeHealthItem,
+  ChatRuntimeMetadata,
+  ProviderContext,
+  ProviderHealthStatus,
+} from './runtime-provider-types'
 
 const SKILL_PATH_CACHE_TTL_MS = 30_000
 
@@ -32,6 +37,7 @@ export class RuntimeRegistry {
   }>()
 
   register(runtime: ChatRuntime, metadata?: ChatRuntimeMetadata, pluginOwner: string | null = null): void {
+    assertChatRuntime(runtime)
     const existing = this.runtimes.get(runtime.runtimeKind)
     const resolvedMetadata = metadata ?? runtime.metadata ?? existing?.metadata
     if (!resolvedMetadata) {
@@ -78,6 +84,129 @@ export class RuntimeRegistry {
         || left.runtimeKind.localeCompare(right.runtimeKind),
       )
   }
+
+  async listHealth(): Promise<ChatRuntimeHealthItem[]> {
+    const entries = [...this.runtimes.entries()]
+    const items = await Promise.all(entries.map(async ([runtimeKind, entry]) => {
+      const base = {
+        runtimeKind,
+        source: entry.pluginOwner ? 'plugin' as const : 'builtin' as const,
+        pluginOwner: entry.pluginOwner,
+        hasHealthCheck: typeof entry.runtime.healthCheck === 'function',
+      }
+
+      if (!entry.runtime.healthCheck) {
+        return {
+          ...base,
+          status: 'unknown' as const,
+          message: 'Runtime does not expose a health check.',
+          lastCheckedAt: currentUnixSeconds(),
+        }
+      }
+
+      const startedAt = Date.now()
+      try {
+        const status = await entry.runtime.healthCheck()
+        return normalizeRuntimeHealthItem(base, status, Date.now() - startedAt)
+      }
+      catch (error) {
+        return {
+          ...base,
+          status: 'unhealthy' as const,
+          message: error instanceof Error ? error.message : String(error),
+          latencyMs: Date.now() - startedAt,
+          lastCheckedAt: currentUnixSeconds(),
+        }
+      }
+    }))
+
+    return items.sort((left, right) =>
+      left.source.localeCompare(right.source)
+      || left.runtimeKind.localeCompare(right.runtimeKind),
+    )
+  }
+}
+
+export function assertChatRuntime(runtime: unknown): asserts runtime is ChatRuntime {
+  if (!runtime || typeof runtime !== 'object') {
+    throw new Error('Chat runtime must be an object.')
+  }
+
+  const candidate = runtime as Partial<ChatRuntime>
+  if (typeof candidate.runtimeKind !== 'string' || candidate.runtimeKind.length === 0) {
+    throw new Error('Chat runtime must declare runtimeKind.')
+  }
+  if (!candidate.metadata || !Array.isArray(candidate.metadata.providerKinds)) {
+    throw new Error(`Runtime ${candidate.runtimeKind} must declare metadata with providerKinds.`)
+  }
+  if (!candidate.capabilities || typeof candidate.capabilities !== 'object') {
+    throw new Error(`Runtime ${candidate.runtimeKind} must declare static capabilities.`)
+  }
+
+  assertRuntimeFunction(candidate, 'startChatSession')
+  assertRuntimeFunction(candidate, 'resumeChatSession')
+  assertRuntimeFunction(candidate, 'streamTurn')
+  assertRuntimeFunction(candidate, 'cancelTurn')
+  assertRuntimeCapabilities(candidate)
+}
+
+function assertRuntimeFunction(runtime: Partial<ChatRuntime>, key: keyof ChatRuntime): void {
+  if (typeof runtime[key] !== 'function') {
+    throw new Error(`Runtime ${runtime.runtimeKind ?? '<unknown>'} must implement ${key}.`)
+  }
+}
+
+function assertRuntimeCapabilities(runtime: Partial<ChatRuntime>): void {
+  const capabilities = runtime.capabilities
+  if (!capabilities) {
+    throw new Error(`Runtime ${runtime.runtimeKind ?? '<unknown>'} must declare static capabilities.`)
+  }
+
+  const booleanKeys = [
+    'supportsSteerTurn',
+    'supportsShellExecution',
+    'supportsPermissionMode',
+    'supportsUiSlotStates',
+    'supportsDynamicCapabilities',
+  ] as const
+  for (const key of booleanKeys) {
+    if (typeof capabilities[key] !== 'boolean') {
+      throw new Error(`Runtime ${runtime.runtimeKind} capability ${key} must be boolean.`)
+    }
+  }
+  if (!['in-session', 'restart-session', 'unsupported'].includes(capabilities.sessionModelSwitch)) {
+    throw new Error(`Runtime ${runtime.runtimeKind} has invalid sessionModelSwitch capability.`)
+  }
+
+  assertCapabilityHook(runtime, capabilities.supportsSteerTurn, 'steerTurn')
+  assertCapabilityHook(runtime, capabilities.supportsShellExecution, 'executeShellCommand')
+  assertCapabilityHook(runtime, capabilities.supportsPermissionMode, 'setPermissionMode')
+  assertCapabilityHook(runtime, capabilities.supportsUiSlotStates, 'getUiSlotStates')
+  assertCapabilityHook(runtime, capabilities.supportsDynamicCapabilities, 'getDynamicCapabilities')
+}
+
+function assertCapabilityHook(runtime: Partial<ChatRuntime>, supported: boolean, key: keyof ChatRuntime): void {
+  if (supported && typeof runtime[key] !== 'function') {
+    throw new Error(`Runtime ${runtime.runtimeKind} declares ${key} support but does not implement the hook.`)
+  }
+}
+
+function currentUnixSeconds(): number {
+  return Math.floor(Date.now() / 1000)
+}
+
+function normalizeRuntimeHealthItem(
+  base: Pick<ChatRuntimeHealthItem, 'runtimeKind' | 'source' | 'pluginOwner' | 'hasHealthCheck'>,
+  status: ProviderHealthStatus,
+  measuredLatencyMs: number,
+): ChatRuntimeHealthItem {
+  return {
+    ...base,
+    ...status,
+    status: status.status,
+    latencyMs: status.latencyMs ?? Math.round(measuredLatencyMs),
+    lastCheckedAt: status.lastCheckedAt || currentUnixSeconds(),
+  }
 }
 
 const skillPathCache = new Map<string, SkillPathCacheEntry>()
@@ -118,76 +247,30 @@ export function resolveRuntimeSkillPaths(workspacePath: string): string[] {
 
 let registry: RuntimeRegistry | null = null
 
+function createProviderContext(): ProviderContext {
+  return {
+    readSecret: ref => Secrets.readSecret(ref),
+    updateSecret: (ref, val) => Secrets.updateSecretValue(ref, val),
+    resolveSkillPaths: resolveRuntimeSkillPaths,
+    recordObservability,
+    logger: createChildLogger({ module: 'chat-runtime-provider' }),
+  }
+}
+
 export function getRuntimeRegistry(): RuntimeRegistry {
   if (!registry) {
     registry = new RuntimeRegistry()
-    const acpRuntime = new AcpConnectionManager(new AcpProcessManager())
-    wireAcpIntegration(acpRuntime)
-    registry.register(new AcpChatProvider({ runtime: acpRuntime }), {
-      label: 'ACP Chat',
-      description: 'Cloud Agent SDK runtime',
-      providerKinds: ['openai-compatible', 'anthropic', 'universal'],
-      iconKey: 'custom',
-      surfaces: ['chat', 'jarvis'],
-      sortOrder: 40,
-    })
-    registry.register(new OpenAICompatibleProvider({
-      readSecret: secretRef => Secrets.readSecret(secretRef),
-    }), {
-      label: 'Standard',
-      description: 'Direct OpenAI-compatible chat runtime',
-      providerKinds: ['openai-compatible', 'universal'],
-      iconKey: 'custom',
-      surfaces: ['chat', 'jarvis'],
-      sortOrder: 50,
-    })
+    const ctx = createProviderContext()
+    registry.register(createAcpProvider(ctx))
+    registry.register(createStandardProvider(ctx))
     if (process.env.CRADLE_MOCK_LLM_URL) {
-      registry.register(new MockClaudeAgentProvider(), {
-        label: 'Claude Agent',
-        description: 'Claude Agent SDK runtime',
-        providerKinds: ['anthropic', 'universal'],
-        iconKey: 'claude-agent',
-        surfaces: ['chat', 'jarvis'],
-        sortOrder: 30,
-      })
+      registry.register(createMockClaudeAgentProvider(ctx))
     }
     else {
-      registry.register(new ClaudeAgentProvider({
-        readSecret: secretRef => Secrets.readSecret(secretRef),
-        resolveSkillPaths: resolveRuntimeSkillPaths,
-      }), {
-        label: 'Claude Agent',
-        description: 'Claude Agent SDK runtime',
-        providerKinds: ['anthropic', 'universal'],
-        iconKey: 'claude-agent',
-        surfaces: ['chat', 'jarvis'],
-        sortOrder: 30,
-      })
+      registry.register(createClaudeAgentProvider(ctx))
     }
-    registry.register(new CodexProvider({
-      readSecret: secretRef => Secrets.readSecret(secretRef),
-      updateSecretValue: (secretRef, secret) => Secrets.updateSecretValue(secretRef, secret),
-      recordObservability,
-      resolveSkillPaths: resolveRuntimeSkillPaths,
-    }), {
-      label: 'Codex',
-      description: 'Codex app-server runtime',
-      providerKinds: ['openai-compatible', 'universal'],
-      iconKey: 'codex',
-      surfaces: ['chat', 'jarvis'],
-      sortOrder: 20,
-    })
-    registry.register(new SystemAgentProvider({
-      readSecret: secretRef => Secrets.readSecret(secretRef),
-      resolveSkillPaths: resolveRuntimeSkillPaths,
-    }), {
-      label: 'HiJarvis',
-      description: 'Multi-surface AI agent with local memory',
-      providerKinds: ['openai-compatible', 'anthropic', 'universal'],
-      iconKey: 'hijarvis',
-      surfaces: ['jarvis'],
-      sortOrder: 10,
-    })
+    registry.register(createCodexProvider(ctx))
+    registry.register(createSystemAgentProvider(ctx))
   }
   return registry
 }
@@ -202,4 +285,8 @@ export function unregisterRuntime(runtimeKind: RuntimeKind, pluginOwner: string)
 
 export function listRuntimeCatalog(): ChatRuntimeCatalogItem[] {
   return getRuntimeRegistry().list()
+}
+
+export async function listRuntimeHealth(): Promise<ChatRuntimeHealthItem[]> {
+  return await getRuntimeRegistry().listHealth()
 }

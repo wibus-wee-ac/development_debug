@@ -7,7 +7,7 @@ import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { listRuntimeCatalog } from '../modules/chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntime } from '../modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import { createServerPluginContext } from './context'
 import { getRegisteredMcpServers } from './mcp-registry'
 import {
@@ -202,6 +202,18 @@ describe('server plugin context lifecycle', () => {
     const ctx = createServerPluginContext(pluginManifest, new Elysia())
     const runtime = {
       runtimeKind: 'plugin-runtime',
+      metadata: {
+        label: 'Plugin Runtime',
+        providerKinds: ['openai-compatible'],
+      } satisfies ChatRuntimeMetadata,
+      capabilities: {
+        supportsSteerTurn: false,
+        supportsShellExecution: false,
+        supportsPermissionMode: false,
+        supportsUiSlotStates: false,
+        supportsDynamicCapabilities: false,
+        sessionModelSwitch: 'unsupported',
+      } satisfies ChatRuntimeCapabilities,
       async startChatSession(input) {
         return {
           id: input.chatSessionId,

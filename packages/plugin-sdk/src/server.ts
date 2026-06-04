@@ -133,7 +133,7 @@ export interface ChatRuntimeContributionMetadata {
 }
 
 export interface ServerPluginRuntimeRegistry {
-  /** Register a Chat Runtime provider. The runtime object must satisfy Cradle's server ChatRuntime contract. */
+  /** Register a Chat Runtime provider. The runtime must declare runtimeKind, metadata, static capabilities, and the four core ChatRuntime methods. */
   register: (runtime: unknown, metadata: ChatRuntimeContributionMetadata) => Disposable
 }
 

@@ -3,9 +3,13 @@ import type { UIMessageChunk } from 'ai'
 
 import type { RuntimeKind } from '../../provider-contracts/types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
+  ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
+  ProviderContext,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -19,8 +23,32 @@ const RUNTIME_KIND = 'claude-agent' as RuntimeKind
 const TRAILING_SLASH_RE = /\/$/
 const DEFAULT_MOCK_BASE_URL = process.env.CRADLE_MOCK_LLM_URL?.trim() || 'http://127.0.0.1:56344/v1'
 
+const MOCK_CLAUDE_AGENT_RUNTIME_METADATA = {
+  label: 'Claude Agent',
+  description: 'Claude Agent SDK runtime',
+  providerKinds: ['anthropic', 'universal'],
+  iconKey: 'claude-agent',
+  surfaces: ['chat', 'jarvis'],
+  sortOrder: 30,
+} satisfies ChatRuntimeMetadata
+
+const MOCK_CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: false,
+  supportsShellExecution: false,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'restart-session',
+} satisfies ChatRuntimeCapabilities
+
+export function createMockClaudeAgentProvider(_ctx: ProviderContext): ChatRuntime {
+  return new MockClaudeAgentProvider()
+}
+
 export class MockClaudeAgentProvider implements ChatRuntime {
   readonly runtimeKind = RUNTIME_KIND
+  readonly metadata = MOCK_CLAUDE_AGENT_RUNTIME_METADATA
+  readonly capabilities = MOCK_CLAUDE_AGENT_RUNTIME_CAPABILITIES
 
   private readonly activeAbortControllers = new Map<string, AbortController>()
   private _lastUsage: TokenUsage | null = null
@@ -85,11 +113,13 @@ export class MockClaudeAgentProvider implements ChatRuntime {
       })
 
       if (!response.ok) {
-        throw new Error(`Mock server returned ${response.status}: ${response.statusText}`)
+        throw new ProviderRuntimeError(
+          ProviderErrors.requestFailed(this.runtimeKind, 'streamTurn', `Mock server returned ${response.status}: ${response.statusText}`),
+        )
       }
 
       if (!response.body) {
-        throw new Error('Mock server returned empty body')
+        throw new ProviderRuntimeError(ProviderErrors.requestFailed(this.runtimeKind, 'streamTurn', 'Mock server returned empty body'))
       }
 
       const reader = response.body.getReader()

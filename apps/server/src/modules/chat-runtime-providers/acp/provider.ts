@@ -1,9 +1,13 @@
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
+  ChatRuntimeCapabilities,
+  ChatRuntimeMetadata,
+  ProviderContext,
   ResumeChatSessionInput,
   RuntimeSession,
   StartChatSessionInput,
@@ -11,14 +15,46 @@ import type {
 } from '../../chat-runtime/runtime-provider-types'
 import { projectTextOnlyInput } from '../../chat-runtime/ui-message-input'
 import { buildAcpConnectionRecord } from './config'
-import type { AcpConnectionManager } from './connection-manager'
+import { AcpConnectionManager } from './connection-manager'
+import { AcpProcessManager } from './process-manager'
+import { wireAcpIntegration } from './runtime-integration'
 
 interface AcpChatProviderDeps {
   runtime: AcpConnectionManager
 }
 
+const ACP_RUNTIME_METADATA = {
+  label: 'ACP Chat',
+  description: 'Cloud Agent SDK runtime',
+  providerKinds: ['openai-compatible', 'anthropic', 'universal'],
+  iconKey: 'custom',
+  surfaces: ['chat', 'jarvis'],
+  sortOrder: 40,
+} satisfies ChatRuntimeMetadata
+
+const ACP_RUNTIME_CAPABILITIES = {
+  supportsSteerTurn: false,
+  supportsShellExecution: false,
+  supportsPermissionMode: false,
+  supportsUiSlotStates: false,
+  supportsDynamicCapabilities: false,
+  sessionModelSwitch: 'in-session',
+} satisfies ChatRuntimeCapabilities
+
+export function createAcpProvider(_ctx: ProviderContext, deps?: AcpChatProviderDeps): ChatRuntime {
+  return new AcpChatProvider(deps ?? { runtime: createDefaultAcpRuntime() })
+}
+
+function createDefaultAcpRuntime(): AcpConnectionManager {
+  const runtime = new AcpConnectionManager(new AcpProcessManager())
+  wireAcpIntegration(runtime)
+  return runtime
+}
+
 export class AcpChatProvider implements ChatRuntime {
   readonly runtimeKind = 'acp-chat' as const
+  readonly metadata = ACP_RUNTIME_METADATA
+  readonly capabilities = ACP_RUNTIME_CAPABILITIES
 
   private _lastUsage: TokenUsage | null = null
 
@@ -110,7 +146,7 @@ export class AcpChatProvider implements ChatRuntime {
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const acpSessionId = input.runtimeSession.providerSessionId
     if (!acpSessionId) {
-      throw new Error('Cannot stream ACP turn without a provider session ID')
+      throw new ProviderRuntimeError(ProviderErrors.sessionNotFound(this.runtimeKind, input.runtimeSession.chatSessionId))
     }
 
     await this.ensureConnected(input.profile.id, input.profile.configJson)

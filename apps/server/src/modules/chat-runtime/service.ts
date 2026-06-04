@@ -36,13 +36,14 @@ import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { estimateCost } from '../usage/pricing'
-import { getRuntimeRegistry, listRuntimeCatalog, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
+import { getRuntimeRegistry, listRuntimeCatalog, listRuntimeHealth, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import {
   executeLocalBangCommand,
   persistBangCommandMessages,
   type BangCommandExecutionResult,
 } from './bang-command'
 import type { ChatContextPart } from './context-parts'
+import { ProviderRuntimeError } from './runtime-provider-types'
 import {
   annotateCodexGoalContinuationMessage,
   annotateGoalMessage,
@@ -57,7 +58,7 @@ import {
 import type {
   ChatPermissionMode,
   ChatRuntime,
-  ChatRuntimeCapabilities,
+  RuntimePresentationCapabilities,
   RuntimeProviderTargetProfile,
   RuntimeSession,
   RuntimeUiSlotState,
@@ -1496,7 +1497,7 @@ export async function executeBangCommand(input: {
   }
 
   const runtime = getRuntimeRegistry().get('codex')
-  if (!runtime?.executeShellCommand) {
+  if (!runtime?.capabilities.supportsShellExecution || !runtime.executeShellCommand) {
     throw new AppError({
       code: 'chat_runtime_shell_command_unavailable',
       status: 501,
@@ -1758,16 +1759,20 @@ function parseStoredMessageSnapshot(
   }
 }
 
-export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCapabilities> {
+function emptyRuntimePresentation(runtimeKind: RuntimeKind): RuntimePresentationCapabilities {
+  return {
+    runtimeKind,
+    slashCommands: [],
+    uiSlots: [],
+    skills: [],
+  }
+}
+
+export async function getCapabilities(sessionId: string): Promise<RuntimePresentationCapabilities> {
   const context = getSessionRunContext(sessionId)
   if (!context) {
     const session = assertStoredSession(sessionId)
-    return {
-      runtimeKind: session.runtimeKind ?? 'standard',
-      slashCommands: [],
-      uiSlots: [],
-      skills: [],
-    }
+    return emptyRuntimePresentation(session.runtimeKind ?? 'standard')
   }
 
   const registry = getRuntimeRegistry()
@@ -1781,8 +1786,8 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
     })
   }
 
-  if (!runtime.getCapabilities) {
-    return { runtimeKind, slashCommands: [], uiSlots: [], skills: [] }
+  if (!runtime.getPresentation) {
+    return emptyRuntimePresentation(runtimeKind)
   }
 
   const binding = getBinding(sessionId)
@@ -1810,7 +1815,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
         previousProviderStateSnapshot: null,
       })
 
-  return runtime.getCapabilities({
+  return runtime.getPresentation({
     runtimeSession,
     profile: context.profile,
     workspaceId: context.session.workspaceId,
@@ -1822,7 +1827,7 @@ export async function getCapabilities(sessionId: string): Promise<ChatRuntimeCap
   })
 }
 
-export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Promise<ChatRuntimeCapabilities> {
+export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Promise<RuntimePresentationCapabilities> {
   const registry = getRuntimeRegistry()
   const runtime = registry.get(runtimeKind)
   if (!runtime) {
@@ -1833,25 +1838,19 @@ export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Pro
     })
   }
 
-  if (!runtime.getDraftCapabilities) {
-    return { runtimeKind, slashCommands: [], uiSlots: [], skills: [] }
+  if (!runtime.getDraftPresentation) {
+    return emptyRuntimePresentation(runtimeKind)
   }
 
-  return await runtime.getDraftCapabilities()
+  return await runtime.getDraftPresentation()
 }
 
 export function listRuntimes() {
-  const catalog = listRuntimeCatalog()
-  // DEBUG: write to project root
-  try {
-    const fs = require('node:fs')
-    const path = require('node:path')
-    const debugPath = path.join(process.cwd(), 'runtime-catalog-debug.json')
-    fs.writeFileSync(debugPath, JSON.stringify(catalog, null, 2))
-  } catch (e) {
-    // ignore
-  }
-  return { items: catalog }
+  return { items: listRuntimeCatalog() }
+}
+
+export async function listRuntimeHealthStatuses() {
+  return { items: await listRuntimeHealth() }
 }
 
 export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind: RuntimeKind, states: RuntimeUiSlotState[] }> {
@@ -1875,7 +1874,7 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
     })
   }
 
-  if (!runtime.getUiSlotStates) {
+  if (!runtime.capabilities.supportsUiSlotStates || !runtime.getUiSlotStates) {
     return { runtimeKind, states: [] }
   }
 
@@ -2905,7 +2904,7 @@ async function tryApplyLiveSteer(input: {
   }
 
   const activeRun = activeRuns.get(runId)
-  if (!activeRun?.runtime.steerTurn || activeRun.terminalStatus) {
+  if (!activeRun?.runtime.capabilities.supportsSteerTurn || !activeRun.runtime.steerTurn || activeRun.terminalStatus) {
     return null
   }
 
@@ -3044,7 +3043,7 @@ export async function setSessionPermissionMode(input: {
   }
 
   const activeRun = activeRuns.get(runId)
-  if (!activeRun?.runtime.setPermissionMode || activeRun.terminalStatus) {
+  if (!activeRun?.runtime.capabilities.supportsPermissionMode || !activeRun.runtime.setPermissionMode || activeRun.terminalStatus) {
     return false
   }
 
@@ -5035,6 +5034,10 @@ function resolveTurnFailureObservabilityCode(chunk: UIMessageChunk): string {
 }
 
 function serializeChatError(error: unknown): SerializedChatError {
+  if (error instanceof ProviderRuntimeError) {
+    return serializeProviderRuntimeError(error)
+  }
+
   const payload: SerializedChatError['payload'] = {
     message: error instanceof Error ? error.message : String(error),
   }
@@ -5061,6 +5064,45 @@ function serializeChatError(error: unknown): SerializedChatError {
     : `${codePrefix}${payload.message}`
 
   return { text, payload }
+}
+
+function serializeProviderRuntimeError(error: ProviderRuntimeError): SerializedChatError {
+  const providerError = error.providerError
+  const payload: SerializedChatError['payload'] = {
+    name: error.name,
+    message: error.message,
+    code: providerError._tag,
+    data: providerError,
+    stack: error.stack,
+  }
+
+  return {
+    text: formatProviderRuntimeErrorText(providerError),
+    payload,
+  }
+}
+
+function formatProviderRuntimeErrorText(error: ProviderRuntimeError['providerError']): string {
+  switch (error._tag) {
+    case 'provider_unsupported':
+      return `Provider is unsupported: ${error.provider}`
+    case 'session_not_found':
+      return `Provider session was not found: ${error.provider}/${error.sessionId}`
+    case 'session_closed':
+      return `Provider session is closed: ${error.provider}/${error.sessionId}`
+    case 'request_failed':
+      return `${error.provider} request failed in ${error.method}: ${error.detail}`
+    case 'process_error':
+      return `${error.provider} process error: ${error.detail}`
+    case 'auth_failed':
+      return `${error.provider} authentication failed`
+    case 'rate_limited':
+      return error.retryAfter === undefined
+        ? `${error.provider} is rate limited`
+        : `${error.provider} is rate limited; retry after ${error.retryAfter}s`
+    case 'model_not_found':
+      return `${error.provider} model was not found: ${error.model}`
+  }
 }
 
 function formatErrorDetails(data: unknown): string | null {
