@@ -179,60 +179,60 @@ export function ExternalProviderRecordDetailPanel({
         }),
       apiProviderTarget
         ? Promise.all([
-            queryClient
-              .fetchQuery(
-                getProvidersTargetsByProviderTargetIdModelsCacheOptions({
-                  path: { providerTargetId: apiProviderTarget.id },
-                }),
-              )
-              .then(async (next) => {
-                if (!active) {
-                  return
-                }
-                if (next.cached) {
-                  setModels(next.models as ModelDescriptor[])
-                  return
-                }
-                if (!apiProviderKind) {
-                  setModels([])
-                  return
-                }
-                const requestId = ++initialModelsFetchRef.current
-                setLoadingModels(true)
-                try {
-                  const fetched = await fetchProviderModels({
-                    body: createProviderTargetRequestBody(record, apiProviderKind),
-                  })
-                  if (active && requestId === initialModelsFetchRef.current) {
-                    setModels(fetched as ModelDescriptor[])
-                    void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
-                  }
-                }
- finally {
-                  if (active && requestId === initialModelsFetchRef.current) {
-                    setLoadingModels(false)
-                  }
-                }
-              })
-              .catch(() => {
-                if (active) {
-                  setModels([])
-                }
+          queryClient
+            .fetchQuery(
+              getProvidersTargetsByProviderTargetIdModelsCacheOptions({
+                path: { providerTargetId: apiProviderTarget.id },
               }),
-            loadProviderTargetModelSettings(apiProviderTarget)
-              .then((next) => {
-                if (active) {
-                  setEnabledModels(enabledModelsFromConfig(next.configJson))
-                  setCustomModels(CustomModelsJsonSchema.parse(next.customModelsJson))
+            )
+            .then(async (next) => {
+              if (!active) {
+                return
+              }
+              if (next.cached) {
+                setModels(next.models as ModelDescriptor[])
+                return
+              }
+              if (!apiProviderKind) {
+                setModels([])
+                return
+              }
+              const requestId = ++initialModelsFetchRef.current
+              setLoadingModels(true)
+              try {
+                const fetched = await fetchProviderModels({
+                  body: createProviderTargetRequestBody(record, apiProviderKind),
+                })
+                if (active && requestId === initialModelsFetchRef.current) {
+                  setModels(fetched as ModelDescriptor[])
+                  void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
                 }
-              })
-              .catch(() => {
-                if (active) {
-                  setEnabledModels([])
-                  setCustomModels([])
+              }
+              finally {
+                if (active && requestId === initialModelsFetchRef.current) {
+                  setLoadingModels(false)
                 }
-              }),
-          ])
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setModels([])
+              }
+            }),
+          loadProviderTargetModelSettings(apiProviderTarget)
+            .then((next) => {
+              if (active) {
+                setEnabledModels(enabledModelsFromConfig(next.configJson))
+                setCustomModels(CustomModelsJsonSchema.parse(next.customModelsJson))
+              }
+            })
+            .catch(() => {
+              if (active) {
+                setEnabledModels([])
+                setCustomModels([])
+              }
+            }),
+        ])
         : Promise.resolve(),
     ]).finally(() => {
       if (active) {
@@ -257,14 +257,14 @@ export function ExternalProviderRecordDetailPanel({
       setModels(next as ModelDescriptor[])
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
     }
- catch (error) {
+    catch (error) {
       toastManager.add({
         type: 'error',
         title: 'Fetch models failed',
         description: error instanceof Error ? error.message : 'Unknown error',
       })
     }
- finally {
+    finally {
       setLoadingModels(false)
     }
   }, [apiProviderKind, apiProviderTarget, fetchProviderModels, queryClient, record])
@@ -282,7 +282,7 @@ export function ExternalProviderRecordDetailPanel({
         void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
         onUpdated?.()
       }
- catch (error) {
+      catch (error) {
         setEnabledModels(previous)
         toastManager.add({
           type: 'error',
@@ -316,7 +316,7 @@ export function ExternalProviderRecordDetailPanel({
         void refreshModels()
         onUpdated?.()
       }
- catch (error) {
+      catch (error) {
         setCustomModels(previous)
         toastManager.add({
           type: 'error',
@@ -344,14 +344,14 @@ export function ExternalProviderRecordDetailPanel({
         void queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
         onUpdated?.()
       }
- catch (error) {
+      catch (error) {
         toastManager.add({
           type: 'error',
           title: 'Update connected provider failed',
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
- finally {
+      finally {
         setUpdatingEnabled(false)
       }
     },
@@ -380,8 +380,8 @@ export function ExternalProviderRecordDetailPanel({
           </div>
           <p className="mt-1 truncate text-[11.5px] text-muted-foreground/80">
             From
-{' '}
-{source?.label ?? record.app}
+            {' '}
+            {source?.label ?? record.app}
           </p>
         </div>
 
@@ -401,6 +401,31 @@ export function ExternalProviderRecordDetailPanel({
       </header>
 
       <div className="flex flex-col gap-3">
+
+        {
+          import.meta.env.DEV && (
+            <>
+              <SettingsRow label="ID" description="">
+                <div className='text-[12px] font-mono hover:bg-muted p-1 px-3 rounded-xl transition-colors duration-200 cursor-copy'
+                  onClick={() => {
+                    navigator.clipboard.writeText(source?.id || "");
+                    toastManager.add({
+                      type: "success",
+                      title: "Copied Source ID",
+                      description: "You can use it to track with Provider",
+                      timeout: 3000,
+                    })
+                  }}
+                >
+                  {source?.id}
+                </div>
+              </SettingsRow>
+
+              <Separator className="bg-foreground/6" />
+            </>
+          )
+        }
+
         <SettingsRow label="Connection" description="Imported from an app you already use">
           <div className="flex flex-col gap-1 text-[12px]">
             <span className="text-foreground">{source?.label ?? 'Unknown source'}</span>
@@ -420,14 +445,14 @@ export function ExternalProviderRecordDetailPanel({
 
         <SettingsRow label="Sign-in" description="Credential availability for this provider">
           {loadingTarget
-? (
-            <Spinner className="size-4" />
-          )
-: (
-            <span className="text-[12px] text-foreground">
-              {runtimeTarget?.credentialRef ? 'Ready' : 'Needs setup'}
-            </span>
-          )}
+            ? (
+              <Spinner className="size-4" />
+            )
+            : (
+              <span className="text-[12px] text-foreground">
+                {runtimeTarget?.credentialRef ? 'Ready' : 'Needs setup'}
+              </span>
+            )}
         </SettingsRow>
 
         <Separator className="bg-foreground/6" />
@@ -474,21 +499,21 @@ export function ExternalProviderRecordDetailPanel({
             >
               <div className="flex flex-col gap-1">
                 {record.warnings.length > 0 || (source?.warnings.length ?? 0) > 0
-? (
-                  [...record.warnings, ...(source?.warnings ?? [])].map(warning => (
-                    <div
-                      key={`${warning.severity}:${warning.code}:${warning.message}`}
-                      className="text-[12px] text-muted-foreground"
-                    >
-                      {warning.severity}
-                      {': '}
-                      {warning.message}
-                    </div>
-                  ))
-                )
-: (
-                  <span className="text-[12px] text-muted-foreground">None</span>
-                )}
+                  ? (
+                    [...record.warnings, ...(source?.warnings ?? [])].map(warning => (
+                      <div
+                        key={`${warning.severity}:${warning.code}:${warning.message}`}
+                        className="text-[12px] text-muted-foreground"
+                      >
+                        {warning.severity}
+                        {': '}
+                        {warning.message}
+                      </div>
+                    ))
+                  )
+                  : (
+                    <span className="text-[12px] text-muted-foreground">None</span>
+                  )}
               </div>
             </SettingsRow>
 

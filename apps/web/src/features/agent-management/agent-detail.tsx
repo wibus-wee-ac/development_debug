@@ -63,7 +63,7 @@ type RuntimeOptionDescriptionKey
     | 'detail.runtime.codex.description'
     | 'detail.runtime.cliTui.description'
 
-const RUNTIME_OPTIONS: { value: RuntimeKind, labelKey: RuntimeOptionLabelKey, descriptionKey: RuntimeOptionDescriptionKey, icon: React.ReactNode }[] = [
+const LEGACY_RUNTIME_OPTIONS: { value: RuntimeKind, labelKey: RuntimeOptionLabelKey, descriptionKey: RuntimeOptionDescriptionKey, icon: React.ReactNode }[] = [
   {
     value: 'standard',
     labelKey: 'detail.runtime.standard.label',
@@ -89,6 +89,8 @@ const RUNTIME_OPTIONS: { value: RuntimeKind, labelKey: RuntimeOptionLabelKey, de
     icon: <span className="flex size-5 items-center justify-center rounded bg-foreground/8 text-foreground/70 text-[9px] font-semibold leading-none">&gt;_</span>,
   },
 ]
+
+const RUNTIME_OPTIONS = LEGACY_RUNTIME_OPTIONS.filter(option => option.value !== 'standard')
 
 const CLI_TUI_PRESETS = [
   { id: 'claude-code', label: 'Claude Code', executable: 'claude', args: '--dangerously-skip-permissions' },
@@ -398,7 +400,7 @@ function getAgentDetailFormValues(agent: Agent | undefined, providerTargets: Pro
   const initialConfig = AgentRuntimeConfigJsonSchema.parse(agent?.configJson)
   const cliTuiPreset = inferCliPreset(initialConfig.cliTui)
   const presetExecutable = CLI_TUI_PRESETS.find(preset => preset.id === cliTuiPreset)?.executable ?? ''
-  const runtimeKind = (agent?.runtimeKind as RuntimeKind) ?? 'standard'
+  const runtimeKind = (agent?.runtimeKind as RuntimeKind) ?? 'codex'
   return {
     name: agent?.name ?? '',
     description: agent?.description ?? '',
@@ -892,7 +894,7 @@ function AgentIdentitySection({
           <SelectTrigger size="sm" className="h-8 w-48 text-[12.5px]" data-testid="agent-runtime-select">
             <div className="flex items-center gap-2">
               {(() => {
-                const opt = RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
+                const opt = LEGACY_RUNTIME_OPTIONS.find(o => o.value === draft.runtimeKind)
                 return opt
                   ? (
                       <span>
@@ -1155,7 +1157,7 @@ function useAgentDetailOwner({
     providerTargetId: watchedValues.providerTargetId ?? null,
     modelId: watchedValues.modelId ?? null,
     thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
-    runtimeKind: watchedValues.runtimeKind ?? 'standard',
+    runtimeKind: watchedValues.runtimeKind ?? 'codex',
     systemPrompt: watchedValues.systemPrompt ?? '',
     claudeAgentHaikuModel: watchedValues.claudeAgentHaikuModel ?? '',
     claudeAgentSonnetModel: watchedValues.claudeAgentSonnetModel ?? '',

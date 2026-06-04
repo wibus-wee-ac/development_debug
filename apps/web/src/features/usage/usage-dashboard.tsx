@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -9,6 +10,7 @@ import {
   getUsageStatsOptions,
   getUsageSummaryOptions,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
 import { formatTokenCount, formatUsd } from '~/lib/number-format'
 
@@ -28,6 +30,12 @@ const UsageSummarySchema = z.object({
   totalTokens: z.number(),
   totalTurns: z.number(),
   byAgent: z.array(z.object({
+    agentId: z.string(),
+    agentName: z.string(),
+    totalTokens: z.number(),
+    count: z.number(),
+  })),
+  byProviderTarget: z.array(z.object({
     providerTargetId: z.string(),
     providerTargetName: z.string().nullable(),
     totalTokens: z.number(),
@@ -104,7 +112,7 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
     <svg width={w} height={h} className="overflow-visible">
       <defs>
         <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.3" />
+          <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.2" />
           <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0" />
         </linearGradient>
       </defs>
@@ -114,8 +122,41 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
   )
 }
 
+
+/** Tiny SVG sparkline for daily cost */
+function CostSparkline({ data }: { data: DailyCost[] }) {
+  const last30 = data.slice(-30)
+  if (last30.length < 2) {
+    return null
+  }
+  const max = Math.max(...last30.map(d => d.costUsd), 0.001)
+  const w = 400
+  const h = 40
+  const points = last30.map((d, i) => {
+    const x = (i / (last30.length - 1)) * w
+    const y = h - (d.costUsd / max) * (h - 4) - 2
+    return `${x},${y}`
+  })
+  const pathD = `M${points.join(' L')}`
+  const areaD = `${pathD} L${w},${h} L0,${h} Z`
+
+  return (
+    <svg width={w} height={h} className="overflow-visible" data-testid="cost-sparkline">
+      <defs>
+        <linearGradient id="costSparkFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.2" />
+          <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill="url(#costSparkFill)" />
+      <path d={pathD} fill="none" stroke="var(--color-accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function UsageDashboard() {
   const { t } = useTranslation('usage')
+  const [agentView, setAgentView] = useState<'agent' | 'provider'>('agent')
   const dailyQuery = useQuery({
     ...getUsageDailyOptions({ query: { days: '365' } }),
     select: DailyUsageListSchema.parse,
@@ -139,10 +180,10 @@ export function UsageDashboard() {
 
   const usageReady
     = dailyQuery.isSuccess
-      && summaryQuery.isSuccess
-      && statsQuery.isSuccess
-      && costSummaryQuery.isSuccess
-      && dailyCostQuery.isSuccess
+    && summaryQuery.isSuccess
+    && statsQuery.isSuccess
+    && costSummaryQuery.isSuccess
+    && dailyCostQuery.isSuccess
 
   const daily = dailyQuery.data ?? []
   const summary = summaryQuery.data ?? null
@@ -198,6 +239,14 @@ export function UsageDashboard() {
             <div className="flex-1">
               <p className="text-[11px] text-muted-foreground mb-1.5">{t('chart.last30Days')}</p>
               <Sparkline data={daily} />
+
+              {/* Cost sparkline */}
+              {dailyCost.length > 1 && (
+                <div className="mt-6">
+                  <p className="text-[11px] text-muted-foreground mb-1.5">{t('chart.dailyCostLast30Days')}</p>
+                  <CostSparkline data={dailyCost} />
+                </div>
+              )}
             </div>
             <div className="text-right">
               {costSummary && costSummary.totalCostUsd > 0 && (
@@ -217,14 +266,6 @@ export function UsageDashboard() {
               </p>
               <p className="text-[11px] text-muted-foreground mt-0.5">{t('summary.totalTokens')}</p>
             </div>
-          </div>
-        )}
-
-        {/* Cost sparkline */}
-        {dailyCost.length > 1 && (
-          <div className="mt-6">
-            <p className="text-[11px] text-muted-foreground mb-1.5">{t('chart.dailyCostLast30Days')}</p>
-            <CostSparkline data={dailyCost} />
           </div>
         )}
 
@@ -258,14 +299,41 @@ export function UsageDashboard() {
                 </div>
               </div>
             )}
-            {/* By Agent */}
-            {summary!.byAgent.length > 0 && (
+            {/* By Agent / Provider */}
+            {(summary!.byAgent.length > 0 || summary!.byProviderTarget.length > 0) && (
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.byAgent')}</p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    {agentView === 'agent' ? t('breakdown.byAgent') : t('breakdown.byProvider')}
+                  </p>
+                  <ToggleGroup
+                    type="single"
+                    value={agentView}
+                    onValueChange={(value) => {
+                      if (value === 'agent' || value === 'provider') {
+                        setAgentView(value)
+                      }
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="h-5 shrink-0 gap-px rounded-md"
+                  >
+                    <ToggleGroupItem value="agent" className="h-5 px-1.5 text-[10px]">
+                      {t('breakdown.toggleAgent')}
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="provider" className="h-5 px-1.5 text-[10px]">
+                      {t('breakdown.toggleProvider')}
+                    </ToggleGroupItem>
+                  </ToggleGroup>
+                </div>
                 <div className="space-y-2.5">
-                  {summary!.byAgent.map(a => (
-                    <BarRow key={a.providerTargetId} label={a.providerTargetName ?? a.providerTargetId} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
-                  ))}
+                  {agentView === 'agent'
+                    ? summary!.byAgent.map(a => (
+                      <BarRow key={a.agentId} label={a.agentName} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
+                    ))
+                    : summary!.byProviderTarget.map(p => (
+                      <BarRow key={p.providerTargetId} label={p.providerTargetName ?? p.providerTargetId} value={p.totalTokens} max={summary!.byProviderTarget[0].totalTokens} />
+                    ))}
                 </div>
               </div>
             )}
@@ -318,7 +386,7 @@ function BarRow({ label, value, max }: { label: string, value: number, max: numb
       </div>
       <div className="h-1 w-full rounded-full bg-foreground/5">
         <div
-          className="h-full rounded-full bg-accent/60"
+          className="h-full rounded-full  bg-foreground/50"
           style={{ width: `${pct}%` }}
         />
       </div>
@@ -339,41 +407,10 @@ function CostBarRow({ label, costUsd, tokens, max }: { label: string, costUsd: n
       </div>
       <div className="h-1 w-full rounded-full bg-foreground/5">
         <div
-          className="h-full rounded-full bg-accent/60"
+          className="h-full rounded-full bg-foreground/50"
           style={{ width: `${pct}%` }}
         />
       </div>
     </div>
-  )
-}
-
-/** Tiny SVG sparkline for daily cost */
-function CostSparkline({ data }: { data: DailyCost[] }) {
-  const last30 = data.slice(-30)
-  if (last30.length < 2) {
-    return null
-  }
-  const max = Math.max(...last30.map(d => d.costUsd), 0.001)
-  const w = 400
-  const h = 40
-  const points = last30.map((d, i) => {
-    const x = (i / (last30.length - 1)) * w
-    const y = h - (d.costUsd / max) * (h - 4) - 2
-    return `${x},${y}`
-  })
-  const pathD = `M${points.join(' L')}`
-  const areaD = `${pathD} L${w},${h} L0,${h} Z`
-
-  return (
-    <svg width={w} height={h} className="overflow-visible" data-testid="cost-sparkline">
-      <defs>
-        <linearGradient id="costSparkFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--color-accent)" stopOpacity="0.2" />
-          <stop offset="100%" stopColor="var(--color-accent)" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={areaD} fill="url(#costSparkFill)" />
-      <path d={pathD} fill="none" stroke="var(--color-accent)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   )
 }

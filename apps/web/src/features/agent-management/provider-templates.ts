@@ -22,7 +22,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'anthropic',
     name: 'Anthropic',
-    tagline: 'Claude — high-capability models',
+    tagline: 'Official Claude API',
     providerKind: 'anthropic',
     accent: 'orange',
     fields: [
@@ -34,7 +34,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    tagline: 'GPT / o-series models',
+    tagline: 'Official OpenAI API',
     providerKind: 'openai-compatible',
     accent: 'emerald',
     fields: [
@@ -44,10 +44,10 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     defaults: { baseUrl: 'https://api.openai.com/v1' },
   },
   {
-    id: 'custom',
-    name: 'Custom',
-    tagline: 'Any OpenAI-compatible endpoint',
-    providerKind: 'openai-compatible',
+    id: 'universal',
+    name: 'Universal',
+    tagline: 'Custom endpoint with auto-detection',
+    providerKind: 'universal',
     accent: 'violet',
     fields: [
       { key: 'baseUrl', label: 'Endpoint', type: 'url', placeholder: 'https://api.example.com/v1', mono: true },

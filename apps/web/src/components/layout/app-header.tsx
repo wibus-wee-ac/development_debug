@@ -22,6 +22,7 @@ interface AppHeaderProps {
   browserPanelOwnerId?: string | null
   browserPanelOpen?: boolean
   sessionScoped?: boolean
+  headerActions?: React.ReactNode
 }
 
 export function AppHeader({
@@ -31,6 +32,7 @@ export function AppHeader({
   browserPanelOwnerId = null,
   browserPanelOpen = false,
   sessionScoped = false,
+  headerActions,
 }: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
@@ -207,6 +209,7 @@ export function AppHeader({
 
       {/* Right: panel toggles */}
       <div className="ml-auto flex shrink-0 items-center gap-0.5" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+        {headerActions}
         <ResourcesPopover />
         {!isSettingsActive && hasBrowserPanel && (
           <Button

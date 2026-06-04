@@ -11,6 +11,7 @@ export const ALL_DISABLED_SENTINEL = ALL_MODELS_DISABLED_SENTINEL
 export const PROVIDER_KIND_LABELS: Record<ProviderKind, string> = {
   'openai-compatible': 'OpenAI-compatible',
   'anthropic': 'Anthropic',
+  'universal': 'Universal',
   'cli-tool': 'CLI Tool',
 }
 
@@ -111,5 +112,5 @@ export function presetForProfile(profile: AgentProfile): ProviderPreset {
 }
 
 export function isApiProviderKind(providerKind: ProviderKind): providerKind is ApiProviderKind {
-  return providerKind === 'openai-compatible' || providerKind === 'anthropic'
+  return providerKind === 'openai-compatible' || providerKind === 'anthropic' || providerKind === 'universal'
 }

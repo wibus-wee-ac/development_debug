@@ -11,6 +11,7 @@ export interface LayoutSlots {
   hasAside?: boolean
   hasPanel?: boolean
   hasBrowserPanel?: boolean
+  headerActions?: ReactNode
 }
 
 interface RegistrationState {
@@ -47,13 +48,16 @@ export function LayoutSlotsProvider({
 
   const register = useCallback((id: string, newSlots: LayoutSlots) => {
     setState((prev) => {
-      if (prev.activeId === id && prev.map[id] === newSlots) {
+      const existing = prev.map[id]
+      const merged = existing ? { ...existing, ...newSlots } : newSlots
+      // Shallow equality: skip update if all keys match
+      if (existing && Object.keys(merged).every(k => merged[k as keyof LayoutSlots] === existing[k as keyof LayoutSlots])) {
         return prev
       }
       // Only set activeId on first registration (new id not yet in map)
       const isNew = !(id in prev.map)
       return {
-        map: { ...prev.map, [id]: newSlots },
+        map: { ...prev.map, [id]: merged },
         activeId: isNew ? id : prev.activeId,
       }
     })

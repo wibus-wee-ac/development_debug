@@ -116,7 +116,7 @@ const EMPTY_ENABLED_MODELS: string[] = []
 const ModelDescriptorSchema = z.object({
   id: z.string(),
   label: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  providerKind: z.enum(['openai-compatible', 'anthropic', 'universal']),
   capabilities: z
     .object({
       contextWindow: z.number().optional(),
@@ -661,6 +661,8 @@ function ProfileGeneralSettings({
   supportsModels: boolean
   readOnly: boolean
 }) {
+  const isUniversal = profile.providerKind === 'universal'
+
   return (
     <>
       <SettingsRow label="Display name" description="The name shown in the provider list">
@@ -683,31 +685,35 @@ function ProfileGeneralSettings({
               onChange={e => onTextFieldChange('baseUrl', e.target.value)}
               disabled={readOnly}
               className="h-9 w-56 text-[12.5px] font-mono"
-              placeholder="https://api.openai.com/v1"
+              placeholder="https://api.example.com/v1"
             />
           </SettingsRow>
 
-          <SettingsDivider />
-          <SettingsRow label="API protocol" description="Communication protocol for this endpoint">
-            <Select
-              value={values.api || 'auto'}
-              onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)}
-              disabled={readOnly}
-            >
-              <SelectTrigger className="h-9 w-56 text-[12.5px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">Auto-detect</SelectItem>
-                <SelectItem value="openai-completions">OpenAI Completions</SelectItem>
-                <SelectItem value="openai-responses">OpenAI Responses</SelectItem>
-                <SelectItem value="anthropic-messages">Anthropic Messages</SelectItem>
-                <SelectItem value="google-generative-ai">Google Generative AI</SelectItem>
-                <SelectItem value="bedrock-converse-stream">AWS Bedrock</SelectItem>
-                <SelectItem value="mistral-conversations">Mistral</SelectItem>
-              </SelectContent>
-            </Select>
-          </SettingsRow>
+          {!isUniversal && (
+            <>
+              <SettingsDivider />
+              <SettingsRow label="API protocol" description="Communication protocol for this endpoint">
+                <Select
+                  value={values.api || 'auto'}
+                  onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)}
+                  disabled={readOnly}
+                >
+                  <SelectTrigger className="h-9 w-56 text-[12.5px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto-detect</SelectItem>
+                    <SelectItem value="openai-completions">OpenAI Completions</SelectItem>
+                    <SelectItem value="openai-responses">OpenAI Responses</SelectItem>
+                    <SelectItem value="anthropic-messages">Anthropic Messages</SelectItem>
+                    <SelectItem value="google-generative-ai">Google Generative AI</SelectItem>
+                    <SelectItem value="bedrock-converse-stream">AWS Bedrock</SelectItem>
+                    <SelectItem value="mistral-conversations">Mistral</SelectItem>
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </>
+          )}
 
           <SettingsDivider />
           <SettingsRow

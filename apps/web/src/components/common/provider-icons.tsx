@@ -66,6 +66,7 @@ export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Elem
   'hijarvis': HiJarvisIcon,
   'openai': OpenAIIcon,
   'custom': CustomIcon,
+  'universal': CustomIcon,
 }
 
 export const RUNTIME_ICON_KEYS: Record<BuiltinRuntimeKind, keyof typeof PROVIDER_ICONS> = {
