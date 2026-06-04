@@ -1,13 +1,6 @@
 import { t } from 'elysia'
 
-const runtimeKindSchema = t.Union([
-  t.Literal('standard'),
-  t.Literal('claude-agent'),
-  t.Literal('codex'),
-  t.Literal('jar-core'),
-  t.Literal('acp-chat'),
-  t.Literal('cli-tui'),
-])
+const runtimeKindSchema = t.String({ minLength: 1 })
 
 const uiMessageSchema = t.Object({
   id: t.String(),
@@ -15,6 +8,7 @@ const uiMessageSchema = t.Object({
   parts: t.Array(t.Object({
     type: t.String(),
   }, { additionalProperties: t.Any() })),
+  metadata: t.Optional(t.Any()),
 }, { additionalProperties: true })
 
 const chatMessageSnapshotSchema = t.Object({
@@ -35,6 +29,24 @@ const slashCommandSchema = t.Object({
   description: t.String(),
   argumentHint: t.String(),
   aliases: t.Optional(t.Array(t.String())),
+})
+
+const runtimeCatalogItemSchema = t.Object({
+  runtimeKind: t.String(),
+  label: t.String(),
+  description: t.Optional(t.String()),
+  providerKinds: t.Array(t.String()),
+  iconKey: t.Optional(t.String()),
+  surfaces: t.Optional(t.Array(t.Union([
+    t.Literal('chat'),
+    t.Literal('jarvis'),
+  ]))),
+  sortOrder: t.Optional(t.Number()),
+  source: t.Union([
+    t.Literal('builtin'),
+    t.Literal('plugin'),
+  ]),
+  pluginOwner: t.Union([t.String(), t.Null()]),
 })
 
 const runtimeUiSlotSchema = t.Object({
@@ -527,6 +539,12 @@ const messageStatusSchema = t.Union([
   t.Literal('aborted'),
   t.Literal('failed'),
 ])
+const runSnapshotStatusSchema = t.Union([
+  t.Literal('running'),
+  t.Literal('complete'),
+  t.Literal('aborted'),
+  t.Literal('failed'),
+])
 const tracePhaseSchema = t.Union([
   t.Literal('run_started'),
   t.Literal('provider_raw'),
@@ -586,6 +604,48 @@ const runTraceSchema = t.Object({
   path: t.String(),
   recordCount: t.Number(),
   records: t.Array(traceRecordSchema),
+})
+
+const runSnapshotEventSchema = t.Object({
+  id: t.String(),
+  snapshotId: t.String(),
+  chatSessionId: t.Union([t.String(), t.Null()]),
+  runId: t.Union([t.String(), t.Null()]),
+  seq: t.Number(),
+  phase: t.String(),
+  chunkType: t.Optional(t.String()),
+  toolCallId: t.Optional(t.String()),
+  toolName: t.Optional(t.String()),
+  modelId: t.Optional(t.String()),
+  promptTokens: t.Optional(t.Number()),
+  completionTokens: t.Optional(t.Number()),
+  totalTokens: t.Optional(t.Number()),
+  estimatedCostUsd: t.Optional(t.Number()),
+  occurredAt: t.Number(),
+  durationMs: t.Optional(t.Number()),
+  payload: t.Record(t.String(), t.Unknown()),
+})
+
+const runSnapshotSchema = t.Object({
+  id: t.String(),
+  schemaVersion: t.Number(),
+  traceId: t.String(),
+  chatSessionId: t.Union([t.String(), t.Null()]),
+  runId: t.Union([t.String(), t.Null()]),
+  messageId: t.Optional(t.String()),
+  providerTargetId: t.Optional(t.String()),
+  runtimeKind: t.String(),
+  providerSessionId: t.Optional(t.String()),
+  modelId: t.Optional(t.String()),
+  agentId: t.Optional(t.String()),
+  workspaceId: t.Optional(t.String()),
+  status: runSnapshotStatusSchema,
+  startedAt: t.Number(),
+  completedAt: t.Optional(t.Number()),
+  completionReason: t.Optional(t.String()),
+  errorText: t.Optional(t.String()),
+  summary: t.Record(t.String(), t.Unknown()),
+  events: t.Array(runSnapshotEventSchema),
 })
 
 const runtimeStatusSchema = t.Union([
@@ -714,6 +774,10 @@ export const ChatRuntimeModel = {
     result: t.Any(),
   }),
 
+  runtimeCatalog: t.Object({
+    items: t.Array(runtimeCatalogItemSchema),
+  }),
+
   capabilities: t.Object({
     runtimeKind: t.String(),
     slashCommands: t.Array(slashCommandSchema),
@@ -760,9 +824,16 @@ export const ChatRuntimeModel = {
 
   runTrace: runTraceSchema,
 
+  runSnapshot: runSnapshotSchema,
+
   sessionTraces: t.Object({
     sessionId: t.String(),
     traces: t.Array(runTraceSchema),
+  }),
+
+  sessionRunSnapshots: t.Object({
+    sessionId: t.String(),
+    snapshots: t.Array(runSnapshotSchema),
   }),
 
   queueEnqueueBody: t.Object({

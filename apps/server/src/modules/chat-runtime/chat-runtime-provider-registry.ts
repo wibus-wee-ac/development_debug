@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { record as recordObservability } from '../observability/service'
+import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
 import * as Secrets from '../secrets/service'
 import { resolveScopeRoot } from '../skills/skills-paths'
@@ -14,7 +15,7 @@ import { CodexProvider } from '../chat-runtime-providers/codex/provider'
 import { MockClaudeAgentProvider } from '../chat-runtime-providers/mock-claude-agent/provider'
 import { OpenAICompatibleProvider } from '../chat-runtime-providers/openai-compatible/provider'
 import { SystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
-import type { ChatRuntime } from './runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCatalogItem, ChatRuntimeMetadata } from './runtime-provider-types'
 
 const SKILL_PATH_CACHE_TTL_MS = 30_000
 
@@ -24,14 +25,58 @@ interface SkillPathCacheEntry {
 }
 
 export class RuntimeRegistry {
-  private readonly runtimes = new Map<RuntimeKind, ChatRuntime>()
+  private readonly runtimes = new Map<RuntimeKind, {
+    runtime: ChatRuntime
+    metadata: ChatRuntimeMetadata
+    pluginOwner: string | null
+  }>()
 
-  register(runtime: ChatRuntime): void {
-    this.runtimes.set(runtime.runtimeKind, runtime)
+  register(runtime: ChatRuntime, metadata?: ChatRuntimeMetadata, pluginOwner: string | null = null): void {
+    const resolvedMetadata = metadata ?? runtime.metadata
+    if (!resolvedMetadata) {
+      throw new Error(`Runtime ${runtime.runtimeKind} must declare catalog metadata.`)
+    }
+    const existing = this.runtimes.get(runtime.runtimeKind)
+    if (existing) {
+      throw new Error(`Runtime ${runtime.runtimeKind} is already registered by ${existing.pluginOwner ?? 'builtin'}.`)
+    }
+    this.runtimes.set(runtime.runtimeKind, {
+      runtime,
+      metadata: {
+        ...resolvedMetadata,
+        providerKinds: [...resolvedMetadata.providerKinds],
+        surfaces: resolvedMetadata.surfaces ? [...resolvedMetadata.surfaces] : ['chat'],
+      },
+      pluginOwner,
+    })
+    registerRuntimeProviderKinds(runtime.runtimeKind, resolvedMetadata.providerKinds)
   }
 
   get(runtimeKind: RuntimeKind): ChatRuntime | undefined {
-    return this.runtimes.get(runtimeKind)
+    return this.runtimes.get(runtimeKind)?.runtime
+  }
+
+  unregister(runtimeKind: RuntimeKind, pluginOwner: string): void {
+    const entry = this.runtimes.get(runtimeKind)
+    if (entry?.pluginOwner === pluginOwner) {
+      this.runtimes.delete(runtimeKind)
+      registerRuntimeProviderKinds(runtimeKind, [])
+    }
+  }
+
+  list(): ChatRuntimeCatalogItem[] {
+    return [...this.runtimes.entries()]
+      .map(([runtimeKind, entry]) => ({
+        runtimeKind,
+        ...entry.metadata,
+        source: entry.pluginOwner ? 'plugin' as const : 'builtin' as const,
+        pluginOwner: entry.pluginOwner,
+      }))
+      .sort((left, right) =>
+        (left.sortOrder ?? 1000) - (right.sortOrder ?? 1000)
+        || left.label.localeCompare(right.label)
+        || left.runtimeKind.localeCompare(right.runtimeKind),
+      )
   }
 }
 
@@ -78,32 +123,82 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     registry = new RuntimeRegistry()
     const acpRuntime = new AcpConnectionManager(new AcpProcessManager())
     wireAcpIntegration(acpRuntime)
-    registry.register(new AcpChatProvider({ runtime: acpRuntime }))
+    registry.register(new AcpChatProvider({ runtime: acpRuntime }), {
+      label: 'ACP Chat',
+      description: 'Cloud Agent SDK runtime',
+      providerKinds: ['openai-compatible', 'anthropic'],
+      iconKey: 'custom',
+      surfaces: ['chat', 'jarvis'],
+      sortOrder: 40,
+    })
     registry.register(new OpenAICompatibleProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
-    }))
+    }), {
+      label: 'Standard',
+      description: 'Direct OpenAI-compatible chat runtime',
+      providerKinds: ['openai-compatible'],
+      iconKey: 'custom',
+      surfaces: ['chat', 'jarvis'],
+      sortOrder: 50,
+    })
     if (process.env.CRADLE_MOCK_LLM_URL) {
-      registry.register(new MockClaudeAgentProvider())
+      registry.register(new MockClaudeAgentProvider(), {
+        label: 'Claude Agent',
+        description: 'Claude Agent SDK runtime',
+        providerKinds: ['anthropic'],
+        iconKey: 'claude-agent',
+        surfaces: ['chat', 'jarvis'],
+        sortOrder: 30,
+      })
     }
     else {
       registry.register(new ClaudeAgentProvider({
         readSecret: secretRef => Secrets.readSecret(secretRef),
         resolveSkillPaths: resolveRuntimeSkillPaths,
-      }))
+      }), {
+        label: 'Claude Agent',
+        description: 'Claude Agent SDK runtime',
+        providerKinds: ['anthropic'],
+        iconKey: 'claude-agent',
+        surfaces: ['chat', 'jarvis'],
+        sortOrder: 30,
+      })
     }
     registry.register(new CodexProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
       recordObservability,
       resolveSkillPaths: resolveRuntimeSkillPaths,
-    }))
+    }), {
+      label: 'Codex',
+      description: 'Codex app-server runtime',
+      providerKinds: ['openai-compatible'],
+      iconKey: 'codex',
+      surfaces: ['chat', 'jarvis'],
+      sortOrder: 20,
+    })
     registry.register(new SystemAgentProvider({
       readSecret: secretRef => Secrets.readSecret(secretRef),
       resolveSkillPaths: resolveRuntimeSkillPaths,
-    }))
+    }), {
+      label: 'Jar Core',
+      description: 'HiJarvis system-agent runtime',
+      providerKinds: ['openai-compatible', 'anthropic'],
+      iconKey: 'hijarvis',
+      surfaces: ['jarvis'],
+      sortOrder: 10,
+    })
   }
   return registry
 }
 
-export function registerRuntime(runtime: ChatRuntime): void {
-  getRuntimeRegistry().register(runtime)
+export function registerRuntime(runtime: ChatRuntime, metadata?: ChatRuntimeMetadata, pluginOwner: string | null = null): void {
+  getRuntimeRegistry().register(runtime, metadata, pluginOwner)
+}
+
+export function unregisterRuntime(runtimeKind: RuntimeKind, pluginOwner: string): void {
+  getRuntimeRegistry().unregister(runtimeKind, pluginOwner)
+}
+
+export function listRuntimeCatalog(): ChatRuntimeCatalogItem[] {
+  return getRuntimeRegistry().list()
 }

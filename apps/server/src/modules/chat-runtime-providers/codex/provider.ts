@@ -27,6 +27,7 @@ import type {
   RuntimeCompactUiSlotState,
   RuntimeConfigUiSlotState,
   RuntimeCrewAgentItem,
+  RuntimeCrewCallItem,
   RuntimeCrewUiSlotState,
   RuntimeDiffUiSlotState,
   RuntimeFilesystemUiSlotState,
@@ -681,6 +682,7 @@ const MAX_DIAGNOSTIC_OBJECT_KEYS = 40
 const MAX_DIAGNOSTIC_DEPTH = 4
 const ACTIVE_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_THREAD_TURNS_LIST_LIMIT = 100
+const CODEX_CREW_TURNS_LIST_LIMIT = 50
 
 function createCodexRuntimeCapabilities(): ChatRuntimeCapabilities {
   return {
@@ -857,10 +859,11 @@ export class CodexProvider implements ChatRuntime {
       const plugins = pluginResult.status === 'fulfilled' ? pluginResult.value : null
       const apps = appsResult.status === 'fulfilled' ? appsResult.value : null
       const collaborationModes = collaborationModesResult.status === 'fulfilled' ? collaborationModesResult.value : null
-      const crewThreadMetadata = await readCrewThreadMetadata(
+      const crewState = await readCodexCrewState(
         client,
         runtimeSession.providerSessionId,
         readCodexProviderSnapshot(runtimeSession.providerStateSnapshot),
+        collaborationModes,
       )
       const statusState = projectCodexStatusState(
         runtimeSession.providerSessionId,
@@ -968,12 +971,6 @@ export class CodexProvider implements ChatRuntime {
       if (searchState) {
         states.push(searchState)
       }
-      const crewState = projectCodexCrewState(
-        runtimeSession.providerSessionId,
-        readCodexProviderSnapshot(runtimeSession.providerStateSnapshot),
-        collaborationModes,
-        crewThreadMetadata,
-      )
       if (crewState) {
         states.push(crewState)
       }
@@ -2664,12 +2661,44 @@ function projectCodexSearchState(
   }
 }
 
-async function readCrewThreadMetadata(
+async function readCodexCrewState(
   client: CodexAppServerClientLike,
   parentThreadId: string,
   snapshot: CodexProviderSnapshot,
+  collaborationModes: CodexCollaborationModeListResponse | null,
+): Promise<RuntimeCrewUiSlotState | null> {
+  try {
+    const turns = await listRecentCodexCrewTurns(client, parentThreadId)
+    const calls = mergeCodexCrewCalls(
+      projectCodexCrewCallsFromTurns(parentThreadId, turns),
+      projectCodexCrewCallsFromSnapshot(snapshot),
+    )
+    const threadMetadata = await readCrewThreadMetadata(client, readCrewReceiverThreadIdsFromCalls(parentThreadId, calls))
+    return projectCodexCrewStateFromCalls(parentThreadId, calls, collaborationModes, threadMetadata)
+  }
+  catch {
+    const threadMetadata = await readCrewThreadMetadata(client, readCrewReceiverThreadIdsFromSnapshot(parentThreadId, snapshot))
+    return projectCodexCrewStateFromSnapshot(parentThreadId, snapshot, collaborationModes, threadMetadata)
+  }
+}
+
+async function listRecentCodexCrewTurns(
+  client: CodexAppServerClientLike,
+  threadId: string,
+): Promise<Turn[]> {
+  const response = await client.request('thread/turns/list', {
+    threadId,
+    limit: CODEX_CREW_TURNS_LIST_LIMIT,
+    sortDirection: 'desc',
+    itemsView: 'full',
+  }) as ThreadTurnsListResponse
+  return Array.isArray(response.data) ? response.data : []
+}
+
+async function readCrewThreadMetadata(
+  client: CodexAppServerClientLike,
+  threadIds: string[],
 ): Promise<Map<string, CodexThreadMetadata>> {
-  const threadIds = readCrewReceiverThreadIds(parentThreadId, snapshot)
   if (threadIds.length === 0) {
     return new Map()
   }
@@ -2691,7 +2720,7 @@ async function readCrewThreadMetadata(
   return metadata
 }
 
-function readCrewReceiverThreadIds(parentThreadId: string, snapshot: CodexProviderSnapshot): string[] {
+function readCrewReceiverThreadIdsFromSnapshot(parentThreadId: string, snapshot: CodexProviderSnapshot): string[] {
   const ids = new Set<string>()
   for (const item of snapshot.codex?.toolActivity?.items ?? []) {
     if (item.type !== 'collabAgentToolCall') {
@@ -2711,6 +2740,23 @@ function readCrewReceiverThreadIds(parentThreadId: string, snapshot: CodexProvid
   return Array.from(ids).slice(0, 12)
 }
 
+function readCrewReceiverThreadIdsFromCalls(parentThreadId: string, calls: RuntimeCrewCallItem[]): string[] {
+  const ids = new Set<string>()
+  for (const call of calls) {
+    for (const threadId of call.receiverThreadIds) {
+      if (threadId && threadId !== parentThreadId) {
+        ids.add(threadId)
+      }
+    }
+    for (const agent of call.agents) {
+      if (agent.threadId && agent.threadId !== parentThreadId) {
+        ids.add(agent.threadId)
+      }
+    }
+  }
+  return Array.from(ids).slice(0, 24)
+}
+
 function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadResponse): CodexThreadMetadata | null {
   const thread = response.thread as Partial<ThreadReadResponse['thread']> | undefined
   if (!thread) {
@@ -2727,15 +2773,124 @@ function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadR
   }
 }
 
-function projectCodexCrewState(
+function projectCodexCrewCallsFromTurns(parentThreadId: string, turns: Turn[]): RuntimeCrewCallItem[] {
+  const calls: RuntimeCrewCallItem[] = []
+  for (const turn of turns) {
+    for (const item of turn.items ?? []) {
+      if (item.type !== 'collabAgentToolCall') {
+        continue
+      }
+      if (item.senderThreadId && item.senderThreadId !== parentThreadId) {
+        continue
+      }
+      const receiverThreadIds = Array.isArray(item.receiverThreadIds)
+        ? item.receiverThreadIds.filter(threadId => typeof threadId === 'string')
+        : []
+      const agentsStates = item.agentsStates ?? {}
+      calls.push({
+        id: item.id,
+        tool: item.tool ?? 'Agent',
+        status: normalizeCollabToolCallStatus(item.status),
+        senderThreadId: item.senderThreadId ?? null,
+        receiverThreadIds,
+        prompt: typeof item.prompt === 'string' ? item.prompt : null,
+        model: typeof item.model === 'string' ? item.model : null,
+        reasoningEffort: typeof item.reasoningEffort === 'string' ? item.reasoningEffort : null,
+        agents: readCrewAgents(receiverThreadIds, agentsStates, new Map()),
+        startedAt: typeof turn.startedAt === 'number' ? turn.startedAt * 1000 : null,
+        completedAt: typeof turn.completedAt === 'number' ? turn.completedAt * 1000 : null,
+      })
+    }
+  }
+  return calls.slice(0, 24)
+}
+
+function projectCodexCrewStateFromSnapshot(
   threadId: string,
   snapshot: CodexProviderSnapshot,
   collaborationModes: CodexCollaborationModeListResponse | null,
   threadMetadata: Map<string, CodexThreadMetadata>,
 ): RuntimeCrewUiSlotState | null {
   const activity = snapshot.codex?.toolActivity
-  const crewItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
-  const modes = (collaborationModes?.data ?? []).flatMap((mode) => {
+  const calls = projectCodexCrewCallsFromSnapshot(snapshot)
+  const recentItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
+  return projectCodexCrewStateFromCalls(threadId, calls, collaborationModes, threadMetadata, activity?.updatedAt ?? 0, recentItems)
+}
+
+function projectCodexCrewCallsFromSnapshot(snapshot: CodexProviderSnapshot): RuntimeCrewCallItem[] {
+  return (snapshot.codex?.toolActivity?.items ?? []).filter(item => item.type === 'collabAgentToolCall').map(item => ({
+    id: item.id,
+    tool: item.label,
+    status: item.status,
+    senderThreadId: item.senderThreadId ?? null,
+    receiverThreadIds: item.receiverThreadIds ?? [],
+    prompt: item.prompt ?? null,
+    model: item.model ?? null,
+    reasoningEffort: item.reasoningEffort ?? null,
+    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}, new Map()),
+    startedAt: item.startedAt,
+    completedAt: item.completedAt,
+  }))
+}
+
+function mergeCodexCrewCalls(primaryCalls: RuntimeCrewCallItem[], fallbackCalls: RuntimeCrewCallItem[]): RuntimeCrewCallItem[] {
+  const seen = new Set<string>()
+  const calls: RuntimeCrewCallItem[] = []
+  for (const call of [...primaryCalls, ...fallbackCalls]) {
+    if (seen.has(call.id)) {
+      continue
+    }
+    seen.add(call.id)
+    calls.push(call)
+  }
+  return calls.slice(0, 24)
+}
+
+function projectCodexCrewStateFromCalls(
+  threadId: string,
+  calls: RuntimeCrewCallItem[],
+  collaborationModes: CodexCollaborationModeListResponse | null,
+  threadMetadata: Map<string, CodexThreadMetadata>,
+  fallbackUpdatedAt = 0,
+  recentItems = calls.map(call => ({
+    id: call.id,
+    type: 'collabAgentToolCall',
+    label: call.tool,
+    status: call.status,
+    startedAt: call.startedAt,
+    completedAt: call.completedAt,
+  })),
+): RuntimeCrewUiSlotState | null {
+  const modes = projectCodexCrewCollaborationModes(collaborationModes)
+  const hydratedCalls = calls.map(call => ({
+    ...call,
+    agents: readCrewAgents(call.receiverThreadIds, Object.fromEntries(
+      call.agents.map(agent => [agent.threadId, { status: agent.status, message: agent.message }]),
+    ), threadMetadata),
+  }))
+  if (calls.length === 0 && modes.length === 0) {
+    return null
+  }
+  const agents = hydratedCalls.flatMap(call => call.agents)
+  return {
+    kind: 'crew',
+    slotId: 'codex:crew',
+    threadId,
+    activeCount: agents.filter(agent => isActiveCrewAgentStatus(agent.status)).length,
+    completedCount: agents.filter(agent => isCompletedCrewAgentStatus(agent.status)).length,
+    failedCount: agents.filter(agent => isFailedCrewAgentStatus(agent.status)).length,
+    recentItems: recentItems.slice(0, 12),
+    collaborationModeCount: modes.length,
+    collaborationModes: modes,
+    calls: hydratedCalls,
+    updatedAt: Math.max(fallbackUpdatedAt, modes.length > 0 || calls.length > 0 ? Date.now() : 0),
+  }
+}
+
+function projectCodexCrewCollaborationModes(
+  collaborationModes: CodexCollaborationModeListResponse | null,
+): RuntimeCrewUiSlotState['collaborationModes'] {
+  return (collaborationModes?.data ?? []).flatMap((mode) => {
     const name = mode.name ?? mode.id
     if (!name) {
       return []
@@ -2747,35 +2902,28 @@ function projectCodexCrewState(
       reasoningEffort: mode.reasoning_effort ?? null,
     }]
   })
-  const calls = crewItems.map(item => ({
-    id: item.id,
-    tool: item.label,
-    status: item.status,
-    senderThreadId: item.senderThreadId ?? null,
-    receiverThreadIds: item.receiverThreadIds ?? [],
-    prompt: item.prompt ?? null,
-    model: item.model ?? null,
-    reasoningEffort: item.reasoningEffort ?? null,
-    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}, threadMetadata),
-    startedAt: item.startedAt,
-    completedAt: item.completedAt,
-  }))
-  if (calls.length === 0 && modes.length === 0) {
-    return null
+}
+
+function normalizeCollabToolCallStatus(status: unknown): RuntimeToolActivityStatus {
+  if (status === 'failed') {
+    return 'failed'
   }
-  return {
-    kind: 'crew',
-    slotId: 'codex:crew',
-    threadId,
-    activeCount: crewItems.filter(item => item.status === 'running').length,
-    completedCount: crewItems.filter(item => item.status === 'completed').length,
-    failedCount: crewItems.filter(item => item.status === 'failed').length,
-    recentItems: crewItems,
-    collaborationModeCount: modes.length,
-    collaborationModes: modes,
-    calls,
-    updatedAt: Math.max(activity?.updatedAt ?? 0, modes.length > 0 ? Date.now() : 0),
+  if (status === 'completed') {
+    return 'completed'
   }
+  return 'running'
+}
+
+function isActiveCrewAgentStatus(status: string | null): boolean {
+  return status === 'pendingInit' || status === 'running'
+}
+
+function isCompletedCrewAgentStatus(status: string | null): boolean {
+  return status === 'completed' || status === 'shutdown'
+}
+
+function isFailedCrewAgentStatus(status: string | null): boolean {
+  return status === 'errored' || status === 'interrupted' || status === 'notFound'
 }
 
 function readCrewAgents(

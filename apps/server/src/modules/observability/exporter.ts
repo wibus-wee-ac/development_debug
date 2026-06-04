@@ -19,8 +19,28 @@ export interface ObservabilityBundle {
   redaction: Record<string, unknown>
   events: ObservabilityEvent[]
   incidents: ObservabilityIncident[]
+  errorPatterns: ObservabilityBundleErrorPattern[]
   timeline: Array<Record<string, unknown>>
   logs: Record<string, unknown>
+}
+
+export interface ObservabilityBundleErrorPattern {
+  patternId: string
+  source: string
+  code: string
+  category: string
+  severity: string
+  runtimeKind?: string
+  providerTargetId?: string
+  modelId?: string
+  messageFingerprint: string
+  messagePreview: string
+  count: number
+  firstSeenAt: number
+  lastSeenAt: number
+  sampleRunIds: string[]
+  sampleTraceIds: string[]
+  sampleMessages: string[]
 }
 
 const MAX_LOG_BYTES = 128 * 1024
@@ -37,13 +57,15 @@ export function exportObservabilityBundle(
     db: BetterSQLite3Database<Record<string, unknown>>
     queryEvents: (filter: { chatSessionId?: string, runId?: string, since?: number, limit?: number }) => ObservabilityEvent[]
     queryIncidents: (filter: { chatSessionId?: string, runId?: string, limit?: number }) => ObservabilityIncident[]
+    queryErrorPatterns: (filter: { chatSessionId?: string, runId?: string, sinceUnix?: number, limit?: number }) => ObservabilityBundleErrorPattern[]
+    queryTimeline: (filter: { chatSessionId?: string, runId?: string, since?: number, limit?: number }) => Array<Record<string, unknown>>
   },
 ): ObservabilityBundle {
   const exportedAt = Date.now()
   const events = deps.queryEvents({
     chatSessionId: input.chatSessionId,
     runId: input.runId,
-    since: input.sinceUnix,
+    since: input.sinceUnix === undefined ? undefined : input.sinceUnix * 1000,
     limit: 10000,
   })
 
@@ -51,6 +73,18 @@ export function exportObservabilityBundle(
     chatSessionId: input.chatSessionId,
     runId: input.runId,
     limit: 2000,
+  })
+  const errorPatterns = deps.queryErrorPatterns({
+    chatSessionId: input.chatSessionId,
+    runId: input.runId,
+    sinceUnix: input.sinceUnix,
+    limit: 500,
+  })
+  const timeline = deps.queryTimeline({
+    chatSessionId: input.chatSessionId,
+    runId: input.runId,
+    since: input.sinceUnix === undefined ? undefined : input.sinceUnix * 1000,
+    limit: 200,
   })
   const redaction = createRedactionSummary()
   const logBundle = readServerLogTail(redaction)
@@ -62,7 +96,8 @@ export function exportObservabilityBundle(
     redaction,
     events: redactJson(events, redaction) as ObservabilityEvent[],
     incidents: redactJson(incidents, redaction) as ObservabilityIncident[],
-    timeline: [],
+    errorPatterns: redactJson(errorPatterns, redaction) as ObservabilityBundleErrorPattern[],
+    timeline: redactJson(timeline, redaction) as Array<Record<string, unknown>>,
     logs: logBundle,
   }
 }

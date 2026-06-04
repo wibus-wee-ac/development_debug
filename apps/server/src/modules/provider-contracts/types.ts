@@ -15,7 +15,9 @@ export const runtimeKinds = [
   'cli-tui',
 ] as const
 
-export type RuntimeKind = (typeof runtimeKinds)[number]
+export type BuiltinRuntimeKind = (typeof runtimeKinds)[number]
+
+export type RuntimeKind = string
 
 export interface ProviderRequest {
   providerKind: ProviderKind

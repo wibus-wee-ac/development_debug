@@ -37,6 +37,8 @@ import { register as registerChatQueue } from './chat/queue'
 import { register as registerChatQueueAdd } from './chat/queue/add'
 import { register as registerChatQueueCancel } from './chat/queue/cancel'
 import { register as registerChatQueueReorder } from './chat/queue/reorder'
+import { register as registerChatSnapshotRun } from './chat/snapshot/run'
+import { register as registerChatSnapshotSession } from './chat/snapshot/session'
 import { register as registerChatTraceRun } from './chat/trace/run'
 import { register as registerChatTraceSession } from './chat/trace/session'
 import { register as registerChronicleAccessibilityEventsList } from './chronicle/accessibility-events/list'
@@ -97,6 +99,7 @@ import { register as registerIssueCreate } from './issue/create'
 import { register as registerIssueDelegate } from './issue/delegate'
 import { register as registerIssueDelegation } from './issue/delegation'
 import { register as registerIssueDelete } from './issue/delete'
+import { register as registerIssueFieldChangeList } from './issue/field-change/list'
 import { register as registerIssueGet } from './issue/get'
 import { register as registerIssueList } from './issue/list'
 import { register as registerIssueMilestoneCreate } from './issue/milestone/create'
@@ -119,6 +122,7 @@ import { register as registerIssueUpdate } from './issue/update'
 import { register as registerIssueAgentSessionActivities } from './issue-agent-session/activities'
 import { register as registerIssueAgentSessionRerun } from './issue-agent-session/rerun'
 import { register as registerIssueAgentSessionStop } from './issue-agent-session/stop'
+import { register as registerObservabilityErrorPatterns } from './observability/error-patterns'
 import { register as registerObservabilityEvents } from './observability/events'
 import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
@@ -235,6 +239,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerChatQueueAdd(program)
   registerChatQueueCancel(program)
   registerChatQueueReorder(program)
+  registerChatSnapshotRun(program)
+  registerChatSnapshotSession(program)
   registerChatTraceRun(program)
   registerChatTraceSession(program)
   registerChronicleAccessibilityEventsList(program)
@@ -295,6 +301,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerIssueDelegate(program)
   registerIssueDelegation(program)
   registerIssueDelete(program)
+  registerIssueFieldChangeList(program)
   registerIssueGet(program)
   registerIssueList(program)
   registerIssueMilestoneCreate(program)
@@ -317,6 +324,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerIssueAgentSessionActivities(program)
   registerIssueAgentSessionRerun(program)
   registerIssueAgentSessionStop(program)
+  registerObservabilityErrorPatterns(program)
   registerObservabilityEvents(program)
   registerObservabilityExport(program)
   registerObservabilityIncidents(program)

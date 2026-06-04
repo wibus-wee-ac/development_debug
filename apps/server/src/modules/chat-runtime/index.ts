@@ -97,6 +97,15 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
   })
+  // GET /chat/runtimes -> registered runtime provider catalog for Chat and Jarvis selectors.
+  .get('/runtimes', () => {
+    return ChatRuntime.listRuntimes()
+  }, {
+    detail: {
+      summary: 'List registered chat runtimes',
+    },
+    response: { 200: ChatRuntimeModel.runtimeCatalog },
+  })
   // GET /chat/sessions/:sessionId/queue → durable continuation queue
   .get('/sessions/:sessionId/queue', ({ params }) => {
     return { items: ChatRuntime.listSessionQueueItems(params.sessionId) }
@@ -277,21 +286,34 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.chatMessages },
   })
   // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
-  .get('/runs/:runId/trace', ({ params }) => {
-    return ChatRuntime.getRunTrace(params.runId)
-  }, {
+	  .get('/runs/:runId/trace', ({ params }) => {
+	    return ChatRuntime.getRunTrace(params.runId)
+	  }, {
     detail: {
       'summary': 'Get chat stream trace records for a run',
       'x-cradle-cli': {
         command: ['chat', 'trace', 'run'],
       },
     },
-    params: ChatRuntimeModel.runIdParams,
-    response: { 200: ChatRuntimeModel.runTrace },
-  })
-  // GET /chat/sessions/:sessionId/traces → all dev-mode stream traces for a session
-  .get('/sessions/:sessionId/traces', ({ params }) => {
-    return ChatRuntime.getSessionTraces(params.sessionId)
+	    params: ChatRuntimeModel.runIdParams,
+	    response: { 200: ChatRuntimeModel.runTrace },
+	  })
+	  // GET /chat/runs/:runId/snapshot → durable backend-run snapshot summary
+	  .get('/runs/:runId/snapshot', ({ params }) => {
+	    return ChatRuntime.getRunSnapshotDto(params.runId)
+	  }, {
+	    detail: {
+	      'summary': 'Get durable chat run snapshot',
+	      'x-cradle-cli': {
+	        command: ['chat', 'snapshot', 'run'],
+	      },
+	    },
+	    params: ChatRuntimeModel.runIdParams,
+	    response: { 200: ChatRuntimeModel.runSnapshot },
+	  })
+	  // GET /chat/sessions/:sessionId/traces → all dev-mode stream traces for a session
+	  .get('/sessions/:sessionId/traces', ({ params }) => {
+	    return ChatRuntime.getSessionTraces(params.sessionId)
   }, {
     detail: {
       'summary': 'Get chat stream traces for a session',
@@ -299,9 +321,22 @@ export const chatRuntime = new Elysia({
         command: ['chat', 'trace', 'session'],
       },
     },
-    params: ChatRuntimeModel.sessionIdParams,
-    response: { 200: ChatRuntimeModel.sessionTraces },
-  })
+	    params: ChatRuntimeModel.sessionIdParams,
+	    response: { 200: ChatRuntimeModel.sessionTraces },
+	  })
+	  // GET /chat/sessions/:sessionId/run-snapshots → durable backend-run snapshots for a session
+	  .get('/sessions/:sessionId/run-snapshots', ({ params }) => {
+	    return ChatRuntime.getSessionRunSnapshots(params.sessionId)
+	  }, {
+	    detail: {
+	      'summary': 'Get durable chat run snapshots for a session',
+	      'x-cradle-cli': {
+	        command: ['chat', 'snapshot', 'session'],
+	      },
+	    },
+	    params: ChatRuntimeModel.sessionIdParams,
+	    response: { 200: ChatRuntimeModel.sessionRunSnapshots },
+	  })
   // POST /chat/sessions/:sessionId/cancel → abort active run
   .post('/sessions/:sessionId/cancel', async ({ params }) => {
     await ChatRuntime.cancelSession(params.sessionId)

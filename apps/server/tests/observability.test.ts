@@ -161,6 +161,7 @@ describe('observability capability', () => {
         redaction: { [key: string]: unknown }
         events: Array<{ code: string, attrs?: { error?: { stack?: string } } }>
         incidents: Array<{ code: string }>
+        errorPatterns: Array<{ code: string }>
         timeline: Array<Record<string, unknown>>
         logs: { serverLog?: { available?: boolean, path?: string | null, tail?: string } }
       }
@@ -176,6 +177,7 @@ describe('observability capability', () => {
       expect(bundle.events[0]?.attrs?.error?.stack).toContain('~/Cradle/apps/web/src/main.tsx')
       expect(bundle.events[0]?.attrs?.error?.stack).not.toContain('sk-renderer-secret-value')
       expect(bundle.incidents).toEqual([expect.objectContaining({ code: 'RENDERER_UNHANDLED_ERROR' })])
+      expect(bundle.errorPatterns).toEqual([expect.objectContaining({ code: 'RENDERER_UNHANDLED_ERROR' })])
       expect(bundle.timeline).toEqual([])
       expect(bundle.logs.serverLog).toEqual(expect.objectContaining({ available: true }))
       expect(bundle.logs.serverLog?.tail).not.toContain(process.env.HOME ?? 'unreachable-home')
@@ -296,11 +298,37 @@ describe('observability capability', () => {
       const bundle = await exportRes.json() as {
         events: Array<{ runId?: string, code: string }>
         incidents: Array<{ runId?: string, code: string }>
-        timeline: Array<{ runId: string, eventType: string }>
+        errorPatterns: Array<{ code: string, count: number, sampleRunIds: string[], sampleTraceIds: string[] }>
+        timeline: Array<{ runId: string, schema: string, status: string, events: Array<{ phase: string }> }>
       }
       expect(bundle.events).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
       expect(bundle.incidents).toEqual([])
-      expect(bundle.timeline).toEqual([])
+      expect(bundle.errorPatterns).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          code: 'CHAT_EMPTY_OUTPUT_COMPLETION',
+          count: 1,
+          sampleRunIds: [finalRunId],
+        }),
+        expect.objectContaining({
+          code: 'RUN_FAILED',
+          count: 1,
+          sampleRunIds: [finalRunId],
+          sampleTraceIds: [finalRunId],
+        }),
+      ]))
+      expect(bundle.timeline).toEqual([
+        expect.objectContaining({
+          schema: 'cradle.backend-run-snapshot.v1',
+          runId: finalRunId,
+          status: 'failed',
+          events: expect.arrayContaining([
+            expect.objectContaining({ phase: 'run_started' }),
+            expect.objectContaining({ phase: 'model_stream_started' }),
+            expect.objectContaining({ phase: 'model_stream_finished' }),
+            expect.objectContaining({ phase: 'run_finalized' }),
+          ]),
+        }),
+      ])
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(3)
     }
     finally {
@@ -381,10 +409,14 @@ describe('observability capability', () => {
       const runId = events[0]?.runId ?? ''
       expect(runId).not.toBe('')
 
-      const incidentsRes = await app.handle(new Request(`http://localhost/observability/incidents?runId=${encodeURIComponent(runId)}&code=TURN_STREAM_FAILED`))
+      const incidentsRes = await app.handle(new Request('http://localhost/observability/incidents?code=TURN_STREAM_FAILED'))
       expect(incidentsRes.status).toBe(200)
-      const incidents = await incidentsRes.json() as Array<{ code: string, status: string }>
-      expect(incidents).toEqual([expect.objectContaining({ code: 'TURN_STREAM_FAILED', status: 'open' })])
+      const incidents = await incidentsRes.json() as Array<{ code: string, status: string, dedupeKey?: string }>
+      expect(incidents).toEqual([expect.objectContaining({
+        code: 'TURN_STREAM_FAILED',
+        dedupeKey: 'TURN_STREAM_FAILED:-:-:-',
+        status: 'open',
+      })])
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions'))).toHaveLength(1)
     }
     finally {

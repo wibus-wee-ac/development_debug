@@ -20,6 +20,7 @@ class FakeCodexAppServerClient {
   threadReadName: string | null = 'Codex native title'
   threadReadTitle: string | null = null
   threadReadPreview: string | null = null
+  threadTurnsListData: unknown[] | null = null
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
@@ -211,7 +212,7 @@ class FakeCodexAppServerClient {
     }
     if (method === 'thread/turns/list') {
       return {
-        data: [
+        data: this.threadTurnsListData ?? [
           {
             id: 'history-turn-1',
             itemsView: 'full',
@@ -1589,6 +1590,85 @@ describe('codexProvider app-server integration', () => {
       'plugin/list',
       'app/list',
       'collaborationMode/list',
+    ]))
+  })
+
+  it('reads Codex crew state from app-server thread history when the live activity snapshot is empty', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadTurnsListData = [
+      {
+        id: 'history-turn-with-crew',
+        itemsView: 'full',
+        status: 'completed',
+        error: null,
+        startedAt: 10,
+        completedAt: 20,
+        durationMs: 10_000,
+        items: [
+          {
+            id: 'crew-history-1',
+            type: 'collabAgentToolCall',
+            tool: 'spawn',
+            status: 'completed',
+            senderThreadId: 'codex-thread-1',
+            receiverThreadIds: ['subagent-thread-1'],
+            prompt: 'Review server changes',
+            model: 'gpt-5-codex',
+            reasoningEffort: 'high',
+            agentsStates: {
+              'subagent-thread-1': { status: 'completed', message: 'Review finished' },
+            },
+          },
+        ],
+      },
+    ]
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'crew',
+        slotId: 'codex:crew',
+        threadId: 'codex-thread-1',
+        activeCount: 0,
+        completedCount: 1,
+        failedCount: 0,
+        calls: [expect.objectContaining({
+          id: 'crew-history-1',
+          tool: 'spawn',
+          prompt: 'Review server changes',
+          agents: [expect.objectContaining({
+            threadId: 'subagent-thread-1',
+            status: 'completed',
+            message: 'Review finished',
+            name: 'Review worker',
+            preview: 'Review server changes',
+          })],
+        })],
+      }),
+    ]))
+
+    expect(client.requests).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        method: 'thread/turns/list',
+        params: expect.objectContaining({
+          threadId: 'codex-thread-1',
+          itemsView: 'full',
+          sortDirection: 'desc',
+        }),
+      }),
+      expect.objectContaining({
+        method: 'thread/read',
+        params: expect.objectContaining({
+          threadId: 'subagent-thread-1',
+          includeTurns: false,
+        }),
+      }),
     ]))
   })
 

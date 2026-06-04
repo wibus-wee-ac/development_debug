@@ -1,6 +1,6 @@
-import type { ProviderKind, RuntimeKind } from './types'
+import type { BuiltinRuntimeKind, ProviderKind, RuntimeKind } from './types'
 
-const RUNTIME_PROVIDER_KINDS: Record<RuntimeKind, readonly ProviderKind[]> = {
+const RUNTIME_PROVIDER_KINDS: Record<BuiltinRuntimeKind, ProviderKind[]> = {
   'standard': ['openai-compatible'],
   'claude-agent': ['anthropic'],
   'codex': ['openai-compatible'],
@@ -9,10 +9,18 @@ const RUNTIME_PROVIDER_KINDS: Record<RuntimeKind, readonly ProviderKind[]> = {
   'cli-tui': [],
 }
 
+const runtimeProviderKinds = new Map<RuntimeKind, readonly ProviderKind[]>(
+  Object.entries(RUNTIME_PROVIDER_KINDS),
+)
+
+export function registerRuntimeProviderKinds(runtimeKind: RuntimeKind, providerKinds: readonly ProviderKind[]): void {
+  runtimeProviderKinds.set(runtimeKind, [...providerKinds])
+}
+
 export function listProviderKindsForRuntime(runtimeKind: RuntimeKind): readonly ProviderKind[] {
-  return RUNTIME_PROVIDER_KINDS[runtimeKind]
+  return runtimeProviderKinds.get(runtimeKind) ?? []
 }
 
 export function runtimeSupportsProviderKind(runtimeKind: RuntimeKind, providerKind: ProviderKind): boolean {
-  return RUNTIME_PROVIDER_KINDS[runtimeKind].includes(providerKind)
+  return listProviderKindsForRuntime(runtimeKind).includes(providerKind)
 }

@@ -45,6 +45,16 @@ const ObservabilityExportQuerySchema = z.object({
   sinceUnix: OptionalNonNegativeIntegerSchema,
 }).passthrough()
 
+const ObservabilityErrorPatternsQuerySchema = z.object({
+  chatSessionId: OptionalTrimmedStringSchema,
+  runId: OptionalTrimmedStringSchema,
+  code: OptionalTrimmedStringSchema,
+  runtimeKind: OptionalTrimmedStringSchema,
+  providerTargetId: OptionalTrimmedStringSchema,
+  sinceUnix: OptionalNonNegativeIntegerSchema,
+  limit: OptionalPositiveIntegerSchema,
+}).passthrough()
+
 const CreateObservabilityEventBodySchema = z.object({
   source: z.custom<CreateEventInput['source']>(),
   code: z.string().min(1),
@@ -95,6 +105,16 @@ export const observability = new Elysia({
     },
     query: ObservabilityModel.incidentsQuery,
     response: { 200: t.Array(ObservabilityModel.incident) },
+  })
+  .get('/error-patterns', ({ query }) => Observability.getErrorPatterns(ObservabilityErrorPatternsQuerySchema.parse(query)), {
+    detail: {
+      'summary': 'List observability error patterns',
+      'x-cradle-cli': {
+        command: ['observability', 'error-patterns'],
+      },
+    },
+    query: ObservabilityModel.errorPatternsQuery,
+    response: { 200: t.Array(ObservabilityModel.errorPattern) },
   })
   .post('/flush', async () => {
     await Observability.flushEvents()

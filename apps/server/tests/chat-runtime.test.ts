@@ -20,7 +20,7 @@ interface ChatMessageRow {
   errorText?: string
   content: string
   parentToolCallId?: string | null
-  message: { parts: Array<{ type: string, text?: string, [key: string]: unknown }> }
+  message: { parts: Array<{ type: string, text?: string, [key: string]: unknown }>, metadata?: Record<string, unknown> }
 }
 
 interface ChatQueueItemView {
@@ -1657,6 +1657,94 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('preserves UIMessage metadata when hydrating stored message snapshots', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-message-metadata',
+        name: 'Workspace Chat Message Metadata',
+        path: workspaceRoot,
+      }).run()
+      db().insert(sessions).values({
+        id: 'session-chat-message-metadata',
+        workspaceId: 'workspace-chat-message-metadata',
+        title: 'Chat Message Metadata',
+        providerTargetId: null,
+        runtimeKind: 'codex',
+        agentId: null,
+        configJson: '{}',
+        linkedIssueId: null,
+      }).run()
+
+      db().insert(messages).values({
+        id: 'message-bang-command-metadata',
+        sessionId: 'session-chat-message-metadata',
+        parentMessageId: null,
+        parentToolCallId: null,
+        taskId: null,
+        depth: 0,
+        role: 'user',
+        status: 'complete',
+        content: '!echo hello',
+        messageJson: JSON.stringify({
+          id: 'message-bang-command-metadata',
+          role: 'user',
+          parts: [{ type: 'text', text: '!echo hello' }],
+          metadata: {
+            cradle: {
+              bangCommand: { command: 'echo hello' },
+            },
+          },
+        } satisfies UIMessage),
+        errorText: null,
+        createdAt: 1700000000,
+        updatedAt: 1700000000,
+      }).run()
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-chat-message-metadata/messages'))
+      expect(response.status).toBe(200)
+      const rows = await response.json() as ChatMessageRow[]
+      expect(rows).toHaveLength(1)
+      expect(rows[0].message.metadata).toEqual({
+        cradle: {
+          bangCommand: { command: 'echo hello' },
+        },
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      vi.restoreAllMocks()
     }
   })
 

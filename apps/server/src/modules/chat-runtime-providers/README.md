@@ -4,6 +4,7 @@ Concrete chat runtime provider implementations consumed by `chat-runtime`.
 
 This module owns provider-specific runtime adapters only. Shared provider metadata, provider target ownership, secrets, sessions, queues, and persistence stay in their owning modules.
 Provider adapters parse provider-native protocols, but Cradle-owned tool identity is owned by `tools/`. Tool calls emitted from providers should carry the stable `{ identifier, apiName, args, result }` envelope in their input/output payloads.
+Runtime selection metadata is registered by `../chat-runtime/chat-runtime-provider-registry.ts`; provider directories own execution semantics, while Chat Runtime owns the catalog used by Chat, Jarvis, and plugin-registered runtimes.
 
 ## Files
 

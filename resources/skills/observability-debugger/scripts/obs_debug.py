@@ -93,6 +93,51 @@ def build_event_where(args: argparse.Namespace) -> tuple[str, list[Any]]:
     return where, vals
 
 
+def build_snapshot_where(args: argparse.Namespace, table_alias: str = "") -> tuple[str, list[Any]]:
+    prefix = f"{table_alias}." if table_alias else ""
+    parts: list[str] = []
+    vals: list[Any] = []
+    if args.chat_session_id:
+        parts.append(f"{prefix}chat_session_id = ?")
+        vals.append(args.chat_session_id)
+    if args.run_id:
+        parts.append(f"{prefix}run_id = ?")
+        vals.append(args.run_id)
+    if getattr(args, "since_min", None) is not None:
+        cutoff = int(time.time() * 1000) - args.since_min * 60 * 1000
+        parts.append(f"{prefix}started_at >= ?")
+        vals.append(cutoff)
+    where = ""
+    if parts:
+        where = "WHERE " + " AND ".join(parts)
+    return where, vals
+
+
+def snapshot_payload(conn: sqlite3.Connection, rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+    payload: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        item["summary_json"] = parse_attrs(item.get("summary_json"))
+        events = conn.execute(
+            """
+            SELECT id, snapshot_id, chat_session_id, run_id, seq, phase, chunk_type,
+                   tool_call_id, tool_name, model_id, prompt_tokens, completion_tokens,
+                   total_tokens, estimated_cost_usd, occurred_at, duration_ms, payload_json
+            FROM backend_run_snapshot_events
+            WHERE snapshot_id = ?
+            ORDER BY seq ASC
+            """,
+            [item["id"]],
+        ).fetchall()
+        item["events"] = []
+        for event in events:
+            event_item = dict(event)
+            event_item["payload_json"] = parse_attrs(event_item.get("payload_json"))
+            item["events"].append(event_item)
+        payload.append(item)
+    return payload
+
+
 def command_summary(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     since_clause = ""
     params: list[Any] = []
@@ -195,35 +240,22 @@ def command_incidents(conn: sqlite3.Connection, args: argparse.Namespace) -> int
 
 
 def command_timeline(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
-    parts: list[str] = []
-    vals: list[Any] = []
-    if args.chat_session_id:
-        parts.append("chat_session_id = ?")
-        vals.append(args.chat_session_id)
-    if args.run_id:
-        parts.append("run_id = ?")
-        vals.append(args.run_id)
-    where = ""
-    if parts:
-        where = "WHERE " + " AND ".join(parts)
+    where, vals = build_snapshot_where(args)
 
     rows = conn.execute(
         f"""
-        SELECT id, run_id, chat_session_id, sequence_number, event_type, created_at, payload_json, source_json
-        FROM backend_timeline_events
+        SELECT id, schema_version, trace_id, chat_session_id, run_id, message_id,
+               provider_target_id, runtime_kind, provider_session_id, model_id,
+               agent_id, workspace_id, status, started_at, completed_at,
+               completion_reason, error_text, summary_json
+        FROM backend_run_snapshots
         {where}
-        ORDER BY created_at DESC, sequence_number DESC
+        ORDER BY started_at DESC
         LIMIT ?
         """,
         [*vals, args.limit],
     ).fetchall()
-    payload = []
-    for row in rows:
-        item = dict(row)
-        item["payload_json"] = parse_attrs(item.get("payload_json"))
-        item["source_json"] = parse_attrs(item.get("source_json"))
-        payload.append(item)
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+    print(json.dumps(snapshot_payload(conn, rows), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -307,33 +339,21 @@ def command_bundle(conn: sqlite3.Connection, args: argparse.Namespace, db_path: 
         item["attrs_json"] = parse_attrs(item.get("attrs_json"))
         incidents_payload.append(item)
 
-    tl_parts: list[str] = []
-    tl_vals: list[Any] = []
-    if args.chat_session_id:
-        tl_parts.append("chat_session_id = ?")
-        tl_vals.append(args.chat_session_id)
-    if args.run_id:
-        tl_parts.append("run_id = ?")
-        tl_vals.append(args.run_id)
-    tl_where = ""
-    if tl_parts:
-        tl_where = "WHERE " + " AND ".join(tl_parts)
+    tl_where, tl_vals = build_snapshot_where(args)
     timeline = conn.execute(
         f"""
-        SELECT id, run_id, chat_session_id, sequence_number, event_type, created_at, payload_json, source_json
-        FROM backend_timeline_events
+        SELECT id, schema_version, trace_id, chat_session_id, run_id, message_id,
+               provider_target_id, runtime_kind, provider_session_id, model_id,
+               agent_id, workspace_id, status, started_at, completed_at,
+               completion_reason, error_text, summary_json
+        FROM backend_run_snapshots
         {tl_where}
-        ORDER BY created_at DESC, sequence_number DESC
+        ORDER BY started_at DESC
         LIMIT ?
         """,
         [*tl_vals, args.limit],
     ).fetchall()
-    timeline_payload = []
-    for row in timeline:
-        item = dict(row)
-        item["payload_json"] = parse_attrs(item.get("payload_json"))
-        item["source_json"] = parse_attrs(item.get("source_json"))
-        timeline_payload.append(item)
+    timeline_payload = snapshot_payload(conn, timeline)
 
     bundle = {
         "meta": {
@@ -382,9 +402,10 @@ def build_parser() -> argparse.ArgumentParser:
     incidents.add_argument("--status", choices=["open", "resolved"], default=None)
     incidents.add_argument("--limit", type=int, default=200)
 
-    timeline = sub.add_parser("timeline", help="Print backend timeline events as JSON")
+    timeline = sub.add_parser("timeline", help="Print backend run snapshots with ordered events as JSON")
     timeline.add_argument("--chat-session-id", default=None)
     timeline.add_argument("--run-id", default=None)
+    timeline.add_argument("--since-min", type=int, default=None)
     timeline.add_argument("--limit", type=int, default=500)
 
     bundle = sub.add_parser("bundle", help="Export event/incident/timeline bundle")

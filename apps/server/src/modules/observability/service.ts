@@ -1,6 +1,7 @@
-import type { ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
-import { observabilityEvents, observabilityIncidents } from '@cradle/db'
-import { desc, eq } from 'drizzle-orm'
+import type { BackendRunSnapshot, BackendRunSnapshotEvent, ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
+import { backendRunSnapshotEvents, backendRunSnapshots, observabilityEvents, observabilityIncidents } from '@cradle/db'
+import type { SQL } from 'drizzle-orm'
+import { and, desc, eq, gte } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
@@ -9,6 +10,7 @@ import type { CreateEventInput, ObservabilityEvent, ObservabilityIncident } from
 import {
   createDedupeKey,
   createObservabilityEvent,
+  OBSERVABILITY_CODES,
 } from './contract'
 import type { ExportObservabilityBundleInput, ObservabilityBundle } from './exporter'
 import { exportObservabilityBundle } from './exporter'
@@ -60,6 +62,35 @@ export interface ObservabilityIncidentFilter {
   limit?: number
 }
 
+export interface ObservabilityErrorPatternFilter {
+  chatSessionId?: string
+  runId?: string
+  code?: string
+  runtimeKind?: string
+  providerTargetId?: string
+  sinceUnix?: number
+  limit?: number
+}
+
+export interface ObservabilityErrorPattern {
+  patternId: string
+  source: 'event' | 'run-snapshot'
+  code: string
+  category: string
+  severity: string
+  runtimeKind?: string
+  providerTargetId?: string
+  modelId?: string
+  messageFingerprint: string
+  messagePreview: string
+  count: number
+  firstSeenAt: number
+  lastSeenAt: number
+  sampleRunIds: string[]
+  sampleTraceIds: string[]
+  sampleMessages: string[]
+}
+
 // ---------------------------------------------------------------------------
 // Queue state (module-level singleton)
 // ---------------------------------------------------------------------------
@@ -84,12 +115,7 @@ export function record(input: CreateEventInput): void {
   try {
     const event = createObservabilityEvent(input)
     const dedupeProjection = EventDedupeProjectionSchema.partial().extend({
-      dedupeKey: z.string().default(() => createDedupeKey({
-        code: event.code,
-        chatSessionId: event.chatSessionId,
-        runId: event.runId,
-        handlerName: HandlerAttrsSchema.parse(event.attrs).handlerName,
-      })),
+      dedupeKey: z.string().default(() => createDefaultDedupeKey(event)),
     }).parse(event)
     const recordedEvent = { ...event, dedupeKey: dedupeProjection.dedupeKey }
 
@@ -100,6 +126,19 @@ export function record(input: CreateEventInput): void {
   catch (error) {
     logger.error('failed to record event', { input, error })
   }
+}
+
+function createDefaultDedupeKey(event: ObservabilityEvent): string {
+  if (event.code === OBSERVABILITY_CODES.turnStreamFailed) {
+    return createDedupeKey({ code: event.code })
+  }
+
+  return createDedupeKey({
+    code: event.code,
+    chatSessionId: event.chatSessionId,
+    runId: event.runId,
+    handlerName: HandlerAttrsSchema.parse(event.attrs).handlerName,
+  })
 }
 
 export async function flushEvents(): Promise<void> {
@@ -187,11 +226,116 @@ export function getIncidents(filter: ObservabilityIncidentFilter = {}): Observab
     .map(toObservabilityIncident)
 }
 
+export function getErrorPatterns(filter: ObservabilityErrorPatternFilter = {}): ObservabilityErrorPattern[] {
+  const patterns = new Map<string, MutableErrorPattern>()
+
+  for (const event of getEvents({
+    chatSessionId: filter.chatSessionId,
+    runId: filter.runId,
+    code: filter.code,
+    since: filter.sinceUnix === undefined ? undefined : filter.sinceUnix * 1000,
+    limit: 10000,
+  })) {
+    if (!isErrorSeverity(event.severity)) {
+      continue
+    }
+    const runtimeKind = readOptionalString(event.attrs?.runtimeKind)
+    const providerTargetId = readOptionalString(event.attrs?.providerTargetId)
+    if (filter.runtimeKind && runtimeKind !== filter.runtimeKind) {
+      continue
+    }
+    if (filter.providerTargetId && providerTargetId !== filter.providerTargetId) {
+      continue
+    }
+    addErrorPattern(patterns, {
+      source: 'event',
+      code: event.code,
+      category: event.category,
+      severity: event.severity,
+      runtimeKind,
+      providerTargetId,
+      modelId: readOptionalString(event.attrs?.modelId),
+      message: event.message,
+      seenAt: event.recordedAt,
+      runId: event.runId,
+      traceId: event.traceId,
+    })
+  }
+
+  const snapshotRows = db()
+    .select()
+    .from(backendRunSnapshots)
+    .orderBy(desc(backendRunSnapshots.startedAt))
+    .all()
+
+  for (const row of snapshotRows) {
+    if (row.status !== 'failed' || !row.errorText) {
+      continue
+    }
+    if (filter.chatSessionId && row.chatSessionId !== filter.chatSessionId) {
+      continue
+    }
+    if (filter.runId && row.runId !== filter.runId) {
+      continue
+    }
+    if (filter.sinceUnix !== undefined && row.startedAt < filter.sinceUnix * 1000) {
+      continue
+    }
+    if (filter.runtimeKind && row.runtimeKind !== filter.runtimeKind) {
+      continue
+    }
+    if (filter.providerTargetId && row.providerTargetId !== filter.providerTargetId) {
+      continue
+    }
+    const code = row.completionReason === 'error' ? 'RUN_FAILED' : `RUN_${normalizePatternToken(row.completionReason ?? 'failed')}`
+    if (filter.code && code !== filter.code) {
+      continue
+    }
+    addErrorPattern(patterns, {
+      source: 'run-snapshot',
+      code,
+      category: 'chat',
+      severity: 'error',
+      runtimeKind: row.runtimeKind,
+      providerTargetId: row.providerTargetId ?? undefined,
+      modelId: row.modelId ?? undefined,
+      message: row.errorText,
+      seenAt: row.completedAt ?? row.startedAt,
+      runId: row.runId ?? undefined,
+      traceId: row.traceId,
+    })
+  }
+
+  return [...patterns.values()]
+    .sort((a, b) => b.count - a.count || b.lastSeenAt - a.lastSeenAt)
+    .slice(0, filter.limit ?? 200)
+    .map(pattern => ({
+      patternId: pattern.patternId,
+      source: pattern.source,
+      code: pattern.code,
+      category: pattern.category,
+      severity: pattern.severity,
+      runtimeKind: pattern.runtimeKind,
+      providerTargetId: pattern.providerTargetId,
+      modelId: pattern.modelId,
+      messageFingerprint: pattern.messageFingerprint,
+      messagePreview: pattern.messagePreview,
+      count: pattern.count,
+      firstSeenAt: pattern.firstSeenAt,
+      lastSeenAt: pattern.lastSeenAt,
+      sampleRunIds: [...pattern.sampleRunIds],
+      sampleTraceIds: [...pattern.sampleTraceIds],
+      sampleMessages: pattern.sampleMessages,
+    }))
+}
+
 export function getExportBundle(input: ExportObservabilityBundleInput): ObservabilityBundle {
   return exportObservabilityBundle(input, {
     db: db(),
     queryEvents: getEvents,
     queryIncidents: getIncidents,
+    queryErrorPatterns: getErrorPatterns,
+    queryTimeline: getTimeline,
   })
 }
 
@@ -343,6 +487,162 @@ function persistBatch(batch: ObservabilityEvent[]): void {
   })).run()
 }
 
+interface ErrorPatternInput {
+  source: ObservabilityErrorPattern['source']
+  code: string
+  category: string
+  severity: string
+  runtimeKind?: string
+  providerTargetId?: string
+  modelId?: string
+  message: string
+  seenAt: number
+  runId?: string
+  traceId?: string
+}
+
+interface MutableErrorPattern extends Omit<ObservabilityErrorPattern, 'sampleRunIds' | 'sampleTraceIds'> {
+  sampleRunIds: Set<string>
+  sampleTraceIds: Set<string>
+}
+
+function addErrorPattern(patterns: Map<string, MutableErrorPattern>, input: ErrorPatternInput): void {
+  const messageFingerprint = fingerprintErrorMessage(input.message)
+  const patternId = [
+    input.source,
+    input.code,
+    input.runtimeKind ?? '-',
+    input.providerTargetId ?? '-',
+    input.modelId ?? '-',
+    messageFingerprint,
+  ].join(':')
+
+  const existing = patterns.get(patternId)
+  if (existing) {
+    existing.count += 1
+    existing.firstSeenAt = Math.min(existing.firstSeenAt, input.seenAt)
+    existing.lastSeenAt = Math.max(existing.lastSeenAt, input.seenAt)
+    if (input.runId) {
+      existing.sampleRunIds.add(input.runId)
+    }
+    if (input.traceId) {
+      existing.sampleTraceIds.add(input.traceId)
+    }
+    if (existing.sampleMessages.length < 3 && !existing.sampleMessages.includes(input.message)) {
+      existing.sampleMessages.push(input.message)
+    }
+    return
+  }
+
+  patterns.set(patternId, {
+    patternId,
+    source: input.source,
+    code: input.code,
+    category: input.category,
+    severity: input.severity,
+    runtimeKind: input.runtimeKind,
+    providerTargetId: input.providerTargetId,
+    modelId: input.modelId,
+    messageFingerprint,
+    messagePreview: previewErrorMessage(input.message),
+    count: 1,
+    firstSeenAt: input.seenAt,
+    lastSeenAt: input.seenAt,
+    sampleRunIds: new Set(input.runId ? [input.runId] : []),
+    sampleTraceIds: new Set(input.traceId ? [input.traceId] : []),
+    sampleMessages: [input.message],
+  })
+}
+
+function fingerprintErrorMessage(message: string): string {
+  return normalizeErrorMessage(message).slice(0, 180)
+}
+
+function normalizeErrorMessage(message: string): string {
+  return message
+    .toLowerCase()
+    .replace(/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/g, '<uuid>')
+    .replace(/\b\d{3,}\b/g, '<number>')
+    .replace(/\breq_[a-z0-9_-]+\b/g, '<request-id>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function normalizePatternToken(value: string): string {
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .toUpperCase()
+  return normalized || 'FAILED'
+}
+
+function previewErrorMessage(message: string): string {
+  return message.length > 320 ? `${message.slice(0, 317)}...` : message
+}
+
+function readOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined
+}
+
+function isErrorSeverity(severity: string): boolean {
+  return severity === 'error' || severity === 'fatal'
+}
+
+function getTimeline(filter: {
+  chatSessionId?: string
+  runId?: string
+  since?: number
+  limit?: number
+}): Array<Record<string, unknown>> {
+  const conditions: SQL[] = []
+  if (filter.chatSessionId) {
+    conditions.push(eq(backendRunSnapshots.chatSessionId, filter.chatSessionId))
+  }
+  if (filter.runId) {
+    conditions.push(eq(backendRunSnapshots.runId, filter.runId))
+  }
+  if (filter.since !== undefined) {
+    conditions.push(gte(backendRunSnapshots.startedAt, filter.since))
+  }
+
+  const limit = clampTimelineLimit(filter.limit)
+  const rows = conditions.length > 0
+    ? db()
+        .select()
+        .from(backendRunSnapshots)
+        .where(and(...conditions))
+        .orderBy(desc(backendRunSnapshots.startedAt))
+        .limit(limit)
+        .all()
+    : db()
+        .select()
+        .from(backendRunSnapshots)
+        .orderBy(desc(backendRunSnapshots.startedAt))
+        .limit(limit)
+        .all()
+
+  return rows.map((row) => {
+    const events = db()
+      .select()
+      .from(backendRunSnapshotEvents)
+      .where(eq(backendRunSnapshotEvents.snapshotId, row.id))
+      .all()
+      .sort((a, b) => a.seq - b.seq)
+    return toTimelineSnapshot(row, events)
+  })
+}
+
+function clampTimelineLimit(limit: number | undefined): number {
+  if (limit === undefined) {
+    return 200
+  }
+  if (!Number.isFinite(limit)) {
+    return 200
+  }
+  return Math.min(Math.max(Math.floor(limit), 1), 1000)
+}
+
 function mergeSeverity(current: string, next: string): ObservabilityIncident['severity'] {
   return severityPriority(next) >= severityPriority(current)
     ? (next as ObservabilityIncident['severity'])
@@ -399,5 +699,48 @@ function toObservabilityIncident(row: ObservabilityIncidentRow): ObservabilityIn
     count: row.count,
     lastEventId: row.lastEventId ?? undefined,
     attrs: row.attrsJson ? ObservabilityAttrsJsonSchema.parse(row.attrsJson) : undefined,
+  }
+}
+
+function toTimelineSnapshot(
+  row: BackendRunSnapshot,
+  events: BackendRunSnapshotEvent[],
+): Record<string, unknown> {
+  return {
+    schema: 'cradle.backend-run-snapshot.v1',
+    id: row.id,
+    schemaVersion: row.schemaVersion,
+    traceId: row.traceId,
+    chatSessionId: row.chatSessionId,
+    runId: row.runId,
+    messageId: row.messageId,
+    providerTargetId: row.providerTargetId,
+    runtimeKind: row.runtimeKind,
+    providerSessionId: row.providerSessionId,
+    modelId: row.modelId,
+    agentId: row.agentId,
+    workspaceId: row.workspaceId,
+    status: row.status,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    completionReason: row.completionReason,
+    errorText: row.errorText,
+    summary: row.summaryJson ? ObservabilityAttrsJsonSchema.parse(row.summaryJson) : {},
+    events: events.map(event => ({
+      id: event.id,
+      seq: event.seq,
+      phase: event.phase,
+      chunkType: event.chunkType,
+      toolCallId: event.toolCallId,
+      toolName: event.toolName,
+      modelId: event.modelId,
+      promptTokens: event.promptTokens,
+      completionTokens: event.completionTokens,
+      totalTokens: event.totalTokens,
+      estimatedCostUsd: event.estimatedCostUsd,
+      occurredAt: event.occurredAt,
+      durationMs: event.durationMs,
+      payload: event.payloadJson ? ObservabilityAttrsJsonSchema.parse(event.payloadJson) : {},
+    })),
   }
 }

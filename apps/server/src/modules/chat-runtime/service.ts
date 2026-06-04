@@ -36,7 +36,7 @@ import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { estimateCost } from '../usage/pricing'
-import { getRuntimeRegistry, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
+import { getRuntimeRegistry, listRuntimeCatalog, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import type { ChatContextPart } from './context-parts'
 import {
   annotateCodexGoalContinuationMessage,
@@ -58,6 +58,14 @@ import type {
   RuntimeUiSlotState,
   TokenUsage,
 } from './runtime-provider-types'
+import {
+  appendRunSnapshotEvent,
+  finalizeRunSnapshot,
+  getRunSnapshot,
+  getRunSnapshots,
+  startRunSnapshot,
+  type ChatRunSnapshot,
+} from './run-snapshot'
 import type { ChatStreamTraceRecord } from './stream-trace'
 import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
 import type { CradleTurnTranscript } from './transcript'
@@ -145,6 +153,8 @@ interface ActiveRun {
   queueItemId?: string
   permissionMode?: ChatPermissionMode
   internalContinuation?: 'codexGoal'
+  runSnapshotId?: string | null
+  runSnapshotSeq: number
 }
 
 interface ChatRuntimeProfile {
@@ -217,6 +227,13 @@ export interface ChatSessionTraceDto {
   traces: ChatRunTraceDto[]
 }
 
+export type ChatRunSnapshotDto = ChatRunSnapshot
+
+export interface ChatSessionRunSnapshotsDto {
+  sessionId: string
+  snapshots: ChatRunSnapshotDto[]
+}
+
 export type RuntimeSessionStatusKind = 'idle' | 'pending' | 'streaming' | 'cancelling'
 
 export interface RuntimeSessionRunDto {
@@ -268,6 +285,7 @@ interface TurnOutputDiagnostics {
   assistantBoundaryCount: number
   assistantTextCharCount: number
   reasoningTextCharCount: number
+  toolInputDeltaCharCount: number
   toolEventCount: number
   commandEventCount: number
   commandOutputCharCount: number
@@ -510,6 +528,10 @@ function readPositiveIntegerEnv(name: string, fallback: number): number {
 
 function isChatRuntimeProfileEnabled(): boolean {
   return process.env.CRADLE_CHAT_RUNTIME_PROFILE === '1'
+}
+
+function readStoredToolPayloadLimit(): number {
+  return readPositiveIntegerEnv('CRADLE_CHAT_STORED_TOOL_PAYLOAD_MAX_CHARS', DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS)
 }
 
 function startChatRuntimeProfile(): ChatRuntimeProfile {
@@ -858,6 +880,28 @@ export function getRunTrace(runId: string): ChatRunTraceDto {
   return toRunTraceDto(run)
 }
 
+export function getRunSnapshotDto(runId: string): ChatRunSnapshotDto {
+  const run = getRun(runId)
+  if (!run) {
+    throw new AppError({
+      code: 'chat_run_not_found',
+      status: 404,
+      message: 'Chat run not found',
+      details: { runId },
+    })
+  }
+  const snapshot = getRunSnapshot(runId)
+  if (!snapshot) {
+    throw new AppError({
+      code: 'chat_run_snapshot_not_found',
+      status: 404,
+      message: 'Chat run snapshot not found',
+      details: { runId },
+    })
+  }
+  return snapshot
+}
+
 export function getSessionTraces(sessionId: string): ChatSessionTraceDto {
   const rows = db()
     .select()
@@ -870,6 +914,22 @@ export function getSessionTraces(sessionId: string): ChatSessionTraceDto {
     sessionId,
     traces: rows.map(toRunTraceDto),
   }
+}
+
+export function getSessionRunSnapshots(sessionId: string): ChatSessionRunSnapshotsDto {
+  return {
+    sessionId,
+    snapshots: getRunSnapshots({ chatSessionId: sessionId, limit: 200 }),
+  }
+}
+
+export function listRunSnapshotsForObservability(filter: {
+  chatSessionId?: string
+  runId?: string
+  since?: number
+  limit?: number
+}): ChatRunSnapshotDto[] {
+  return getRunSnapshots(filter)
 }
 
 export function listActiveRunSummaries(): ActiveRunSummary[] {
@@ -1625,6 +1685,10 @@ export async function getDraftRuntimeCapabilities(runtimeKind: RuntimeKind): Pro
   return await runtime.getDraftCapabilities()
 }
 
+export function listRuntimes() {
+  return { items: listRuntimeCatalog() }
+}
+
 export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind: RuntimeKind, states: RuntimeUiSlotState[] }> {
   const context = getSessionRunContext(sessionId)
   if (!context) {
@@ -2127,12 +2191,18 @@ export async function createRun(input: {
         ? lastRequestMessage
         : createAssistantMessage(draft.assistantMessageId),
       finalProjection: createFinalMessageProjectionState(),
-      queueItemId: input.queueItemId,
-      permissionMode: input.permissionMode,
-      internalContinuation: input.internalContinuation,
-    }
-    activeRuns.set(run.id, activeRun)
-    startSnapshotTimer(activeRun)
+	      queueItemId: input.queueItemId,
+	      permissionMode: input.permissionMode,
+	      internalContinuation: input.internalContinuation,
+	      runSnapshotId: null,
+	      runSnapshotSeq: 0,
+	    }
+	    activeRuns.set(run.id, activeRun)
+	    startActiveRunSnapshot(activeRun, {
+	      workspaceId: context.session.workspaceId,
+	      agentId: context.session.agentId,
+	    })
+	    startSnapshotTimer(activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
     if (isChatStreamTraceEnabled()) {
       recordChatStreamTrace({
@@ -2942,6 +3012,39 @@ export function reorderSessionQueueItems(
   return listPendingQueueRows(sessionId).map(toQueueItemDto)
 }
 
+function startActiveRunSnapshot(
+  activeRun: ActiveRun,
+  input: { workspaceId?: string | null, agentId?: string | null },
+): void {
+  const snapshot = startRunSnapshot({
+    chatSessionId: activeRun.sessionId,
+    runId: activeRun.runId,
+    messageId: activeRun.messageId,
+    providerTargetId: activeRun.providerTargetId,
+    runtimeKind: activeRun.runtimeSession.runtimeKind,
+    providerSessionId: activeRun.runtimeSession.providerSessionId,
+    modelId: activeRun.modelId,
+    workspaceId: input.workspaceId,
+    agentId: input.agentId,
+    summary: {
+      providerTargetKind: activeRun.providerTargetKind,
+      queueItemId: activeRun.queueItemId ?? null,
+      permissionMode: activeRun.permissionMode ?? null,
+      internalContinuation: activeRun.internalContinuation ?? null,
+    },
+  })
+  activeRun.runSnapshotId = snapshot?.id ?? null
+  recordActiveRunSnapshotEvent(activeRun, {
+    phase: 'run_started',
+    payload: {
+      providerTargetKind: activeRun.providerTargetKind,
+      providerTargetId: activeRun.providerTargetId,
+      modelId: activeRun.modelId,
+      queueItemId: activeRun.queueItemId ?? null,
+    },
+  })
+}
+
 // ── run execution (private) ──
 
 async function executeRun(
@@ -2966,6 +3069,7 @@ async function executeRun(
     assistantBoundaryCount: 0,
     assistantTextCharCount: 0,
     reasoningTextCharCount: 0,
+    toolInputDeltaCharCount: 0,
     toolEventCount: 0,
     commandEventCount: 0,
     commandOutputCharCount: 0,
@@ -3014,10 +3118,16 @@ async function executeRun(
         })
       }
       accumulateDiagnostics(diagnostics, chunk)
+      if (shouldRecordHarnessSnapshotChunk(chunk)) {
+        recordActiveRunSnapshotEvent(activeRun, {
+          phase: readHarnessSnapshotPhase(chunk),
+          chunk,
+        })
+      }
       if (isTerminalUIMessageChunk(chunk)) {
         finalChunk = chunk
       }
- else {
+      else {
         if (chunk.type === 'start' && activeRun.startChunkPublished) {
           continue
         }
@@ -3032,19 +3142,36 @@ async function executeRun(
     finalChunk = resolveTerminalChunkWithDiagnostics(finalChunk, diagnostics, {
       allowEmptyAssistantOutput: isProviderNativeNoOutputCommandTurn(activeRun, input.message),
     })
+    recordActiveRunSnapshotEvent(activeRun, {
+      phase: 'stream_finished',
+      chunk: finalChunk,
+      payload: {
+        terminalChunk: summarizeSnapshotChunk(finalChunk),
+        diagnostics,
+      },
+    })
     profile.streamFinishedAtMs = performance.now()
   }
- catch (error) {
+  catch (error) {
     flushPendingRunDelta(activeRun)
     profile.streamFinishedAtMs = performance.now()
     if (isAbortError(error)) {
       finalChunk = { type: 'abort', reason: 'user' }
     }
- else {
+    else {
       const serializedError = serializeChatError(error)
       failurePayload = serializedError.payload
       finalChunk = { type: 'error', errorText: serializedError.text }
     }
+    recordActiveRunSnapshotEvent(activeRun, {
+      phase: 'stream_failed',
+      chunk: finalChunk,
+      payload: {
+        terminalChunk: summarizeSnapshotChunk(finalChunk),
+        diagnostics,
+        ...(failurePayload ? { payload: failurePayload } : {}),
+      },
+    })
   }
 
   try {
@@ -3084,15 +3211,24 @@ async function executeRun(
 
       const usage = activeRun.runtime?.lastUsage
       actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
-      if (usage) {
-        insertUsage({
-          sessionId: activeRun.sessionId,
-          messageId: activeRun.messageId,
-          providerTargetId: activeRun.providerTargetId,
-          modelId: actualModelId,
-          usage,
-        })
-      }
+	      if (usage) {
+	        insertUsage({
+	          sessionId: activeRun.sessionId,
+	          messageId: activeRun.messageId,
+	          providerTargetId: activeRun.providerTargetId,
+	          modelId: actualModelId,
+	          usage,
+	        })
+	        recordActiveRunSnapshotEvent(activeRun, {
+	          phase: 'usage',
+	          modelId: actualModelId,
+	          usage,
+	          estimatedCostUsd: estimateCost(actualModelId ?? 'gpt-4o', usage),
+	          payload: {
+	            source: 'runtime.lastUsage',
+	          },
+	        })
+	      }
 
       // Write per-step usage if the runtime supports it
       const runtimeWithSteps = activeRun.runtime as {
@@ -3108,8 +3244,8 @@ async function executeRun(
         const fallbackModelId = actualModelId ?? 'gpt-4o'
         for (const step of steps) {
           const effectiveModelId = step.modelId ?? fallbackModelId
-          db()
-            .insert(stepUsageTable)
+	          db()
+	            .insert(stepUsageTable)
             .values({
               id: randomUUID(),
               runId: activeRun.runId,
@@ -3122,10 +3258,20 @@ async function executeRun(
               totalTokens: step.usage.totalTokens,
               estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
               createdAt: currentUnixSeconds(),
-            })
-            .run()
-        }
-      }
+	            })
+	            .run()
+	          recordActiveRunSnapshotEvent(activeRun, {
+	            phase: 'step_usage',
+	            modelId: effectiveModelId,
+	            usage: step.usage,
+	            estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
+	            payload: {
+	              stepNumber: step.stepNumber,
+	              stepType: step.stepType,
+	            },
+	          })
+	        }
+	      }
     }
   }
  catch (error) {
@@ -3146,10 +3292,15 @@ async function executeRun(
     }
  catch {
       // session may have been deleted during the run
-    }
-    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
-    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation(activeRun, finalChunk)
-    recordChatRuntimeProfile(activeRun, diagnostics, profile)
+	    }
+	    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
+	    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation(activeRun, finalChunk)
+	    finalizeActiveRunSnapshot(activeRun, finalChunk, {
+	      modelId: actualModelId,
+	      diagnostics,
+	      profile,
+	    })
+	    recordChatRuntimeProfile(activeRun, diagnostics, profile)
     releaseActiveRun(activeRun)
     scheduleSessionQueueDrain(activeRun.sessionId)
     if (shouldContinueCodexGoal) {
@@ -3221,6 +3372,207 @@ export function flushAllActiveRunSnapshots(): void {
 function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
   const value = (chunk as { toolCallId?: unknown }).toolCallId
   return typeof value === 'string' ? value : null
+}
+
+function readChunkTraceToolName(chunk: UIMessageChunk): string | null {
+  const value = (chunk as { toolName?: unknown }).toolName
+  return typeof value === 'string' ? value : null
+}
+
+function readHarnessSnapshotPhase(chunk: UIMessageChunk): string {
+  switch (chunk.type) {
+    case 'start':
+      return 'model_stream_started'
+    case 'text-start':
+      return 'model_text_started'
+    case 'text-delta':
+      return 'model_text_delta'
+    case 'text-end':
+      return 'model_text_completed'
+    case 'reasoning-start':
+      return 'model_reasoning_started'
+    case 'reasoning-delta':
+      return 'model_reasoning_delta'
+    case 'reasoning-end':
+      return 'model_reasoning_completed'
+    case 'tool-input-start':
+      return 'tool_call_started'
+    case 'tool-input-delta':
+      return 'tool_call_input_delta'
+    case 'tool-input-available':
+      return 'tool_call_input_available'
+    case 'tool-input-error':
+      return 'tool_call_input_failed'
+    case 'tool-output-available':
+      return 'tool_call_output_available'
+    case 'tool-output-error':
+      return 'tool_call_output_failed'
+    case 'tool-output-denied':
+      return 'tool_call_denied'
+    case 'finish':
+      return 'model_stream_finished'
+    case 'abort':
+      return 'run_aborted'
+    case 'error':
+      return 'run_failed'
+    default:
+      return `runtime_chunk:${chunk.type}`
+  }
+}
+
+function shouldRecordHarnessSnapshotChunk(chunk: UIMessageChunk): boolean {
+  switch (chunk.type) {
+    case 'text-delta':
+    case 'reasoning-delta':
+    case 'tool-input-delta':
+      return false
+    default:
+      return true
+  }
+}
+
+function recordActiveRunSnapshotEvent(
+  activeRun: ActiveRun,
+  input: {
+    phase: string
+    chunk?: UIMessageChunk
+    modelId?: string | null
+    usage?: TokenUsage
+    estimatedCostUsd?: number | null
+    durationMs?: number | null
+    payload?: Record<string, unknown>
+  },
+): void {
+  if (!activeRun.runSnapshotId) {
+    return
+  }
+  const chunk = input.chunk
+  appendRunSnapshotEvent({
+    snapshotId: activeRun.runSnapshotId,
+    chatSessionId: activeRun.sessionId,
+    runId: activeRun.runId,
+    seq: activeRun.runSnapshotSeq,
+    phase: input.phase,
+    chunkType: chunk?.type,
+    toolCallId: chunk ? readChunkTraceToolCallId(chunk) : null,
+    toolName: chunk ? readChunkTraceToolName(chunk) : null,
+    modelId: input.modelId ?? activeRun.modelId,
+    promptTokens: input.usage?.promptTokens,
+    completionTokens: input.usage?.completionTokens,
+    totalTokens: input.usage?.totalTokens,
+    estimatedCostUsd: input.estimatedCostUsd,
+    durationMs: input.durationMs,
+    payload: input.payload ?? (chunk ? summarizeSnapshotChunk(chunk) : {}),
+  })
+  activeRun.runSnapshotSeq += 1
+}
+
+function finalizeActiveRunSnapshot(
+  activeRun: ActiveRun,
+  finalChunk: UIMessageChunk,
+  input: {
+    modelId: string | null
+    diagnostics: TurnOutputDiagnostics
+    profile: ChatRuntimeProfile
+  },
+): void {
+  if (!activeRun.runSnapshotId) {
+    return
+  }
+  const terminalStatus = readTerminalStatus(finalChunk)
+  const status: 'complete' | 'failed' | 'aborted' = terminalStatus === 'complete'
+    ? 'complete'
+    : terminalStatus === 'aborted' ? 'aborted' : 'failed'
+  const profileSummary = {
+    enabled: input.profile.enabled,
+    streamMs: input.profile.streamFinishedAtMs
+      ? Math.round(input.profile.streamFinishedAtMs - input.profile.streamStartedAtMs)
+      : null,
+    finalizeMs: input.profile.finalizeFinishedAtMs && input.profile.finalizeStartedAtMs
+      ? Math.round(input.profile.finalizeFinishedAtMs - input.profile.finalizeStartedAtMs)
+      : null,
+    finalMessageJsonBytes: input.profile.finalMessageJsonBytes,
+  }
+  recordActiveRunSnapshotEvent(activeRun, {
+    phase: 'run_finalized',
+    chunk: finalChunk,
+    modelId: input.modelId,
+    payload: {
+      status,
+      terminalChunk: summarizeSnapshotChunk(finalChunk),
+      replayBuffer: getActiveRunReplayBufferSummary(activeRun.runId),
+      diagnostics: input.diagnostics,
+      profile: profileSummary,
+    },
+  })
+  finalizeRunSnapshot({
+    snapshotId: activeRun.runSnapshotId,
+    status,
+    completionReason: readSnapshotCompletionReason(finalChunk),
+    errorText: finalChunk.type === 'error' ? finalChunk.errorText : null,
+    modelId: input.modelId,
+    providerSessionId: activeRun.runtimeSession.providerSessionId,
+    summary: {
+      diagnostics: input.diagnostics,
+      profile: profileSummary,
+      replayBuffer: getActiveRunReplayBufferSummary(activeRun.runId),
+    },
+  })
+}
+
+function readSnapshotCompletionReason(chunk: UIMessageChunk): string {
+  if (chunk.type === 'finish') {
+    return chunk.finishReason ?? 'stop'
+  }
+  if (chunk.type === 'abort') {
+    return chunk.reason ?? 'abort'
+  }
+  if (chunk.type === 'error') {
+    return 'error'
+  }
+  return chunk.type
+}
+
+function summarizeSnapshotChunk(chunk: UIMessageChunk): Record<string, unknown> {
+  switch (chunk.type) {
+    case 'text-delta':
+    case 'reasoning-delta':
+      return {
+        id: chunk.id,
+        deltaChars: chunk.delta.length,
+        providerMetadata: chunk.providerMetadata ?? null,
+      }
+    case 'tool-input-delta':
+      return {
+        toolCallId: chunk.toolCallId,
+        inputDeltaChars: chunk.inputTextDelta.length,
+      }
+    case 'tool-input-available':
+      return {
+        toolCallId: chunk.toolCallId,
+        toolName: chunk.toolName,
+        input: truncateJsonPayload(chunk.input, readStoredToolPayloadLimit()),
+      }
+    case 'tool-output-available':
+      return {
+        toolCallId: chunk.toolCallId,
+        output: truncateJsonPayload(chunk.output, readStoredToolPayloadLimit()),
+      }
+    case 'error':
+      return {
+        errorText: chunk.errorText,
+      }
+    case 'finish':
+      return {
+        finishReason: chunk.finishReason,
+      }
+    case 'abort':
+      return {
+        reason: chunk.reason,
+      }
+    default:
+      return truncateJsonPayload(chunk, readStoredToolPayloadLimit()) as Record<string, unknown>
+  }
 }
 
 function createFinalMessageProjectionState(): FinalMessageProjectionState {
@@ -4408,6 +4760,9 @@ function accumulateDiagnostics(diagnostics: TurnOutputDiagnostics, chunk: UIMess
       break
     case 'reasoning-delta':
       diagnostics.reasoningTextCharCount += chunk.delta.length
+      break
+    case 'tool-input-delta':
+      diagnostics.toolInputDeltaCharCount += chunk.inputTextDelta.length
       break
     case 'tool-input-start':
     case 'tool-input-available':

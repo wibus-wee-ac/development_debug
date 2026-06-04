@@ -426,6 +426,23 @@ export interface ChatRuntimeCapabilities {
   skills: string[]
 }
 
+export type RuntimeCatalogSurface = 'chat' | 'jarvis'
+
+export interface ChatRuntimeMetadata {
+  label: string
+  description?: string
+  providerKinds: ProviderKind[]
+  iconKey?: string
+  surfaces?: RuntimeCatalogSurface[]
+  sortOrder?: number
+}
+
+export interface ChatRuntimeCatalogItem extends ChatRuntimeMetadata {
+  runtimeKind: RuntimeKind
+  source: 'builtin' | 'plugin'
+  pluginOwner: string | null
+}
+
 export type ChatPermissionMode = 'bypassPermissions' | 'plan'
 
 export interface RuntimeSession {
@@ -512,6 +529,7 @@ export interface TokenUsage {
 
 export interface ChatRuntime {
   readonly runtimeKind: RuntimeKind
+  readonly metadata?: ChatRuntimeMetadata
   readonly lastUsage?: TokenUsage | null
   readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
