@@ -7,14 +7,7 @@ const thinkingEffortEnum = t.Union([
   t.Literal('auto'),
 ])
 
-const runtimeKindEnum = t.Union([
-  t.Literal('standard'),
-  t.Literal('claude-agent'),
-  t.Literal('codex'),
-  t.Literal('jar-core'),
-  t.Literal('acp-chat'),
-  t.Literal('cli-tui'),
-])
+const runtimeKindSchema = t.String({ minLength: 1 })
 
 const importCandidateSourceKindEnum = t.Union([
   t.Literal('cc-switch'),
@@ -44,7 +37,7 @@ interface AgentIdentityRecord {
   providerTargetId: string | null
   modelId: string | null
   thinkingEffort: 'low' | 'medium' | 'high' | 'auto'
-  runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+  runtimeKind: string
   configJson: string
   enabled: boolean
   createdAt: number
@@ -63,7 +56,7 @@ const agentRecord = t.Object({
   providerTargetId: nullableString,
   modelId: nullableString,
   thinkingEffort: thinkingEffortEnum,
-  runtimeKind: runtimeKindEnum,
+  runtimeKind: runtimeKindSchema,
   configJson: t.String(),
   enabled: t.Boolean(),
   createdAt: t.Number(),
@@ -139,7 +132,7 @@ export const AgentIdentityModel = {
     providerTargetId: t.Optional(nullableString),
     modelId: t.Optional(nullableString),
     thinkingEffort: t.Optional(thinkingEffortEnum),
-    runtimeKind: t.Optional(runtimeKindEnum),
+    runtimeKind: t.Optional(runtimeKindSchema),
     configJson: t.Optional(t.String()),
   }),
 
@@ -151,7 +144,7 @@ export const AgentIdentityModel = {
     providerTargetId: t.Optional(nullableString),
     modelId: t.Optional(nullableString),
     thinkingEffort: t.Optional(thinkingEffortEnum),
-    runtimeKind: t.Optional(runtimeKindEnum),
+    runtimeKind: t.Optional(runtimeKindSchema),
     configJson: t.Optional(t.String()),
     enabled: t.Optional(t.Boolean()),
   }),

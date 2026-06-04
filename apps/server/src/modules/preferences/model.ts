@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableProfileRef = t.Union([t.String({ description: 'ID of the agent profile to use for Jarvis' }), t.Null()])
+const runtimeKindRef = t.String({ minLength: 1, description: 'Chat runtime ID used by Jarvis sessions' })
 
 export const PreferencesModel = {
   chatPreferences: t.Object({
@@ -22,6 +23,7 @@ export const PreferencesModel = {
     ], { default: 'queue' })),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
+    runtimeKind: t.Optional(runtimeKindRef),
     profileId: nullableProfileRef,
     model: t.Optional(t.String({ description: 'Explicit model ID for Jarvis (e.g. gpt-4o, claude-3-7-sonnet)' })),
     thinkingLevel: t.Union([
@@ -54,10 +56,12 @@ export const JarvisPreferencesJsonSchema = z.union([
   z.string().transform(raw => JSON.parse(raw)),
   z.undefined(),
 ]).pipe(z.object({
+  runtimeKind: z.string().min(1).default('jar-core'),
   profileId: z.string().nullable().default(null),
   model: z.string().optional(),
   thinkingLevel: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('medium'),
 }).default({
+  runtimeKind: 'jar-core',
   profileId: null,
   thinkingLevel: 'medium',
 }))

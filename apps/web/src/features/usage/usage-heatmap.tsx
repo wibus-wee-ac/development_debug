@@ -148,11 +148,11 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
                           className="transition-opacity duration-150 hover:ring-1 hover:ring-foreground hover:opacity-100 cursor-default"
                         />
                       </TooltipTrigger>
-                      <TooltipContent side="top">
+                      <TooltipContent side="bottom" className='flex-col gap-0'>
                         <p className="font-medium" data-testid="usage-heatmap-tooltip-date">{cell.date}</p>
                         <p className="text-background/70 mt-0.5" data-testid="usage-heatmap-tooltip-metrics">
                           {cell.tokens > 0
-                            ? `${cell.tokens.toLocaleString()} tokens · ${cell.usage?.count ?? 0} turns`
+                            ? `${cell.tokens.toLocaleString()} tokens`
                             : 'No usage'}
                         </p>
                       </TooltipContent>

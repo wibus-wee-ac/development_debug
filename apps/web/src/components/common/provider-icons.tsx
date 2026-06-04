@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl } from '~/lib/lobe-icons'
-import type { RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
 
 type IconProps = ComponentProps<'svg'>
 
@@ -53,22 +53,33 @@ function CustomIcon({ className, ...props }: IconProps) {
   )
 }
 
+const HIJARVIS_ICON_URL = 'https://github.com/wibus-wee/HiJarvis/raw/main/.github/jarvis.png'
+
+function HiJarvisIcon({ className }: IconProps) {
+  return <img src={HIJARVIS_ICON_URL} alt="" className={cn('size-4 object-contain', className)} />
+}
+
 export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Element> = {
   'anthropic': ClaudeIcon,
   'claude-agent': ClaudeIcon,
   'claude-cli': ClaudeCodeIcon,
   'codex': CodexIcon,
+  'hijarvis': HiJarvisIcon,
   'openai': OpenAIIcon,
   'custom': CustomIcon,
 }
 
-export const RUNTIME_ICON_KEYS: Record<RuntimeKind, keyof typeof PROVIDER_ICONS> = {
+export const RUNTIME_ICON_KEYS: Record<BuiltinRuntimeKind, keyof typeof PROVIDER_ICONS> = {
   'standard': 'custom',
   'claude-agent': 'claude-agent',
   'codex': 'codex',
-  'jar-core': 'anthropic',
+  'jar-core': 'hijarvis',
   'acp-chat': 'custom',
   'cli-tui': 'claude-cli',
+}
+
+export function getRuntimeIconKey(runtimeKind: RuntimeKind): keyof typeof PROVIDER_ICONS {
+  return RUNTIME_ICON_KEYS[runtimeKind as BuiltinRuntimeKind] ?? 'custom'
 }
 
 // ── Unified provider icon component ──

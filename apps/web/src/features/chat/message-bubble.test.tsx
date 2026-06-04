@@ -443,6 +443,35 @@ describe('message bubble', () => {
     expect(screen.queryByRole('button', { name: 'Set message as goal' })).toBeNull()
   })
 
+  it('renders sent bang commands as terminal prompts instead of normal user text', () => {
+    const userMessage: UIMessage = {
+      id: 'user-bang-command',
+      role: 'user',
+      parts: [{ type: 'text', text: '!git status' }],
+      metadata: {
+        cradle: {
+          bangCommand: {
+            command: 'git status',
+          },
+        },
+      },
+    }
+
+    render(
+      <TooltipProvider>
+        <MessageBubble
+          message={userMessage}
+          isStreaming={false}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByTestId('chat-bang-command-prompt')).toBeTruthy()
+    expect(screen.getByText('$')).toBeTruthy()
+    expect(screen.getByText('git status')).toBeTruthy()
+    expect(screen.queryByText('!git status')).toBeNull()
+  })
+
   it('opens Cradle AppShot previews and toggles accessibility text', () => {
     const messageWithAppshot: UIMessage = {
       id: 'user-appshot-preview',

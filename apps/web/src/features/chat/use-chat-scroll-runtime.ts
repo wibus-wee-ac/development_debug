@@ -1,3 +1,4 @@
+// Chat-owned scroll controller for virtualized session transcripts.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { VirtualizerHandle } from 'virtua'
 import { useShallow } from 'zustand/react/shallow'
@@ -33,7 +34,7 @@ interface UseChatScrollRuntimeOptions {
 }
 
 const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, viewportHeight: 0 }
-const BOTTOM_PROXIMITY_PX = 200
+const BOTTOM_PROXIMITY_PX = 80
 
 function readScrollRatio(metrics: ChatScrollMetrics): number {
   const scrollable = Math.max(metrics.scrollHeight - metrics.viewportHeight, 0)
@@ -54,11 +55,17 @@ export function useChatScrollRuntime({
   const virtualizerRef = useRef<VirtualizerHandle>(null)
   const minimapRef = useRef<ChatMinimapHandle>(null)
   const isAtBottomRef = useRef(true)
+  const shouldFollowBottomRef = useRef(true)
   const initialScrollDoneRef = useRef(false)
   const messageIdsRef = useRef(messageIds)
   const sessionIdRef = useRef(sessionId)
   const metricsRef = useRef<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
   const minimapRafIdRef = useRef(0)
+  const followBottomRafIdRef = useRef(0)
+  const initialBottomRafIdRef = useRef(0)
+  const lastScrollOffsetRef = useRef(0)
+  const userScrollIntentUntilRef = useRef(0)
+  const lastTouchYRef = useRef<number | null>(null)
   const [metrics, setMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   useEffect(() => {
@@ -66,9 +73,17 @@ export function useChatScrollRuntime({
   }, [messageIds])
 
   useEffect(() => {
+    if (initialBottomRafIdRef.current !== 0) {
+      cancelAnimationFrame(initialBottomRafIdRef.current)
+    }
     sessionIdRef.current = sessionId
     initialScrollDoneRef.current = false
     isAtBottomRef.current = true
+    shouldFollowBottomRef.current = true
+    initialBottomRafIdRef.current = 0
+    lastScrollOffsetRef.current = 0
+    userScrollIntentUntilRef.current = 0
+    lastTouchYRef.current = null
     metricsRef.current = EMPTY_SCROLL_METRICS
     setMetrics(EMPTY_SCROLL_METRICS)
     minimapRef.current?.setActiveMessageIndex(0)
@@ -165,13 +180,75 @@ export function useChatScrollRuntime({
     }
   }, [writeChatAttentionSnapshot])
 
+  const cancelScheduledFollowBottom = useCallback(() => {
+    if (followBottomRafIdRef.current !== 0) {
+      cancelAnimationFrame(followBottomRafIdRef.current)
+      followBottomRafIdRef.current = 0
+    }
+  }, [])
+
+  const cancelInitialBottomScroll = useCallback(() => {
+    if (initialBottomRafIdRef.current !== 0) {
+      cancelAnimationFrame(initialBottomRafIdRef.current)
+      initialBottomRafIdRef.current = 0
+    }
+  }, [])
+
+  const detachFromBottomFollow = useCallback(() => {
+    shouldFollowBottomRef.current = false
+    cancelInitialBottomScroll()
+    cancelScheduledFollowBottom()
+  }, [cancelInitialBottomScroll, cancelScheduledFollowBottom])
+
+  const markUserScrollIntent = useCallback(() => {
+    userScrollIntentUntilRef.current = Date.now() + 1200
+  }, [])
+
+  const commitScrollMetrics = useCallback((nextMetrics: ChatScrollMetrics, options?: { userScroll?: boolean }) => {
+    const scrolledUp = nextMetrics.offset < lastScrollOffsetRef.current - 1
+    const isAtBottom = readIsAtBottom(nextMetrics)
+    const isUserScroll = options?.userScroll === true || Date.now() <= userScrollIntentUntilRef.current
+
+    isAtBottomRef.current = isAtBottom
+    if (isUserScroll && scrolledUp) {
+      detachFromBottomFollow()
+    }
+    else if (isAtBottom && !scrolledUp) {
+      shouldFollowBottomRef.current = true
+    }
+
+    lastScrollOffsetRef.current = nextMetrics.offset
+    scheduleMinimapSync(nextMetrics)
+  }, [detachFromBottomFollow, scheduleMinimapSync])
+
   const scrollToBottom = useCallback(() => {
     const viewport = viewportRef.current
     if (viewport) {
       viewport.scrollTop = viewport.scrollHeight
       isAtBottomRef.current = true
+      shouldFollowBottomRef.current = true
+      lastScrollOffsetRef.current = viewport.scrollTop
     }
   }, [])
+
+  const scheduleFollowBottom = useCallback(() => {
+    if (followBottomRafIdRef.current !== 0) {
+      return
+    }
+
+    followBottomRafIdRef.current = requestAnimationFrame(() => {
+      followBottomRafIdRef.current = 0
+      if (!shouldFollowBottomRef.current) {
+        return
+      }
+
+      scrollToBottom()
+      const nextMetrics = readScrollMetrics()
+      if (nextMetrics) {
+        commitScrollMetrics(nextMetrics)
+      }
+    })
+  }, [commitScrollMetrics, readScrollMetrics, scrollToBottom])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -187,38 +264,58 @@ export function useChatScrollRuntime({
 
     initialScrollDoneRef.current = true
     virtualizerRef.current?.scrollToIndex(messageIds.length - 1, { align: 'end' })
-    requestAnimationFrame(() => {
-      const viewport = viewportRef.current
-      if (viewport) {
-        viewport.scrollTop = viewport.scrollHeight
+    shouldFollowBottomRef.current = true
+    initialBottomRafIdRef.current = requestAnimationFrame(() => {
+      initialBottomRafIdRef.current = 0
+      if (!shouldFollowBottomRef.current) {
+        return
       }
-      const nextMetrics = readScrollMetrics()
-      if (nextMetrics) {
-        scheduleMinimapSync(nextMetrics)
-      }
+      scrollToBottom()
+      scheduleFollowBottom()
     })
-  }, [messageIds.length, readScrollMetrics, scheduleMinimapSync])
+  }, [messageIds.length, scheduleFollowBottom, scrollToBottom])
 
   useEffect(() => {
-    if (!isAtBottomRef.current) {
+    if (!shouldFollowBottomRef.current) {
       return
     }
 
-    scrollToBottom()
-    requestAnimationFrame(() => {
-      const nextMetrics = readScrollMetrics()
-      if (nextMetrics) {
-        scheduleMinimapSync(nextMetrics)
-      }
-    })
-  }, [messageIds.length, status, readScrollMetrics, scheduleMinimapSync, scrollToBottom])
+    scheduleFollowBottom()
+  }, [messageIds.length, status, scheduleFollowBottom])
 
   const handleVirtualScroll = useCallback((offset: number) => {
     const viewport = viewportRef.current
     if (!viewport) {
       return
     }
-    isAtBottomRef.current = offset + viewport.offsetHeight >= viewport.scrollHeight - BOTTOM_PROXIMITY_PX
+    commitScrollMetrics({
+      offset,
+      scrollHeight: viewport.scrollHeight,
+      viewportHeight: viewport.offsetHeight,
+    }, { userScroll: Date.now() <= userScrollIntentUntilRef.current })
+  }, [commitScrollMetrics])
+
+  const syncCurrentMetrics = useCallback(() => {
+    const nextMetrics = readScrollMetrics()
+    if (nextMetrics) {
+      commitScrollMetrics(nextMetrics)
+    }
+  }, [commitScrollMetrics, readScrollMetrics])
+
+  const handleTranscriptLayoutChange = useCallback(() => {
+    if (shouldFollowBottomRef.current) {
+      scheduleFollowBottom()
+      return
+    }
+
+    syncCurrentMetrics()
+  }, [scheduleFollowBottom, syncCurrentMetrics])
+
+  const getTranscriptContentElement = useCallback(() => {
+    const viewport = viewportRef.current
+    return viewport?.firstElementChild instanceof HTMLElement
+      ? viewport.firstElementChild
+      : null
   }, [])
 
   // Event-driven scroll observation — replaces the rAF loop
@@ -229,48 +326,133 @@ export function useChatScrollRuntime({
     }
 
     let lastScrollHeight = viewport.scrollHeight
+    let observedTranscriptContent: HTMLElement | null = null
+
+    const onWheel = (event: WheelEvent) => {
+      markUserScrollIntent()
+      if (event.deltaY < 0) {
+        detachFromBottomFollow()
+      }
+    }
+
+    const onPointerDown = () => {
+      markUserScrollIntent()
+    }
+
+    const onTouchStart = (event: TouchEvent) => {
+      markUserScrollIntent()
+      lastTouchYRef.current = event.touches[0]?.clientY ?? null
+    }
+
+    const onTouchMove = (event: TouchEvent) => {
+      markUserScrollIntent()
+      const nextTouchY = event.touches[0]?.clientY ?? null
+      const lastTouchY = lastTouchYRef.current
+      if (nextTouchY !== null && lastTouchY !== null && nextTouchY > lastTouchY + 1) {
+        detachFromBottomFollow()
+      }
+      lastTouchYRef.current = nextTouchY
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'ArrowUp' || event.key === 'PageUp' || event.key === 'Home') {
+        markUserScrollIntent()
+        detachFromBottomFollow()
+      }
+      else if (event.key === 'ArrowDown' || event.key === 'PageDown' || event.key === 'End') {
+        markUserScrollIntent()
+      }
+    }
 
     const onScroll = () => {
-      const scrollTop = viewport.scrollTop
-      const scrollHeight = viewport.scrollHeight
-      const viewportHeight = viewport.offsetHeight
-      const nextMetrics = { offset: scrollTop, scrollHeight, viewportHeight }
-      isAtBottomRef.current = readIsAtBottom(nextMetrics)
-      scheduleMinimapSync(nextMetrics)
+      commitScrollMetrics({
+        offset: viewport.scrollTop,
+        scrollHeight: viewport.scrollHeight,
+        viewportHeight: viewport.offsetHeight,
+      }, { userScroll: Date.now() <= userScrollIntentUntilRef.current })
     }
 
     const onResize = () => {
       const scrollHeight = viewport.scrollHeight
       const viewportHeight = viewport.offsetHeight
 
-      // Auto-scroll to bottom when content grows and user was at bottom
-      if (isAtBottomRef.current && scrollHeight > lastScrollHeight) {
-        viewport.scrollTop = scrollHeight
+      if (scrollHeight !== lastScrollHeight) {
+        handleTranscriptLayoutChange()
       }
       lastScrollHeight = scrollHeight
 
-      const nextMetrics = {
-        offset: viewport.scrollTop,
-        scrollHeight: viewport.scrollHeight,
-        viewportHeight,
-      }
-      isAtBottomRef.current = readIsAtBottom(nextMetrics)
-      scheduleMinimapSync(nextMetrics)
+      commitScrollMetrics({ offset: viewport.scrollTop, scrollHeight: viewport.scrollHeight, viewportHeight })
     }
 
-    viewport.addEventListener('scroll', onScroll, { passive: true })
     const resizeObserver = new ResizeObserver(onResize)
+
+    const observeTranscriptContent = () => {
+      const transcriptContent = getTranscriptContentElement()
+      if (transcriptContent === observedTranscriptContent) {
+        return
+      }
+      if (observedTranscriptContent) {
+        resizeObserver.unobserve(observedTranscriptContent)
+      }
+      observedTranscriptContent = transcriptContent
+      if (observedTranscriptContent) {
+        resizeObserver.observe(observedTranscriptContent)
+      }
+    }
+
+    const onTranscriptMutation = () => {
+      observeTranscriptContent()
+      handleTranscriptLayoutChange()
+    }
+
+    viewport.addEventListener('wheel', onWheel, { capture: true, passive: true })
+    viewport.addEventListener('pointerdown', onPointerDown, { capture: true })
+    viewport.addEventListener('touchstart', onTouchStart, { capture: true, passive: true })
+    viewport.addEventListener('touchmove', onTouchMove, { capture: true, passive: true })
+    viewport.addEventListener('keydown', onKeyDown, { capture: true })
+    viewport.addEventListener('scroll', onScroll, { passive: true })
     resizeObserver.observe(viewport)
+    observeTranscriptContent()
+
+    const mutationObserver = new MutationObserver(onTranscriptMutation)
+    mutationObserver.observe(viewport, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+
+    syncCurrentMetrics()
 
     return () => {
+      viewport.removeEventListener('wheel', onWheel, { capture: true })
+      viewport.removeEventListener('pointerdown', onPointerDown, { capture: true })
+      viewport.removeEventListener('touchstart', onTouchStart, { capture: true })
+      viewport.removeEventListener('touchmove', onTouchMove, { capture: true })
+      viewport.removeEventListener('keydown', onKeyDown, { capture: true })
       viewport.removeEventListener('scroll', onScroll)
       resizeObserver.disconnect()
+      mutationObserver.disconnect()
       if (minimapRafIdRef.current !== 0) {
         cancelAnimationFrame(minimapRafIdRef.current)
         minimapRafIdRef.current = 0
       }
+      if (followBottomRafIdRef.current !== 0) {
+        cancelScheduledFollowBottom()
+      }
+      if (initialBottomRafIdRef.current !== 0) {
+        cancelInitialBottomScroll()
+      }
     }
-  }, [scheduleMinimapSync])
+  }, [
+    cancelInitialBottomScroll,
+    cancelScheduledFollowBottom,
+    commitScrollMetrics,
+    detachFromBottomFollow,
+    getTranscriptContentElement,
+    handleTranscriptLayoutChange,
+    markUserScrollIntent,
+    syncCurrentMetrics,
+  ])
 
   const handleComposerFocusChange = useCallback((focused: boolean) => {
     updateChatAttentionSnapshot(sessionIdRef.current, {
@@ -280,11 +462,8 @@ export function useChatScrollRuntime({
   }, [])
 
   useEffect(() => {
-    const nextMetrics = readScrollMetrics()
-    if (nextMetrics) {
-      scheduleMinimapSync(nextMetrics)
-    }
-  }, [messageIds.length, readScrollMetrics, scheduleMinimapSync])
+    syncCurrentMetrics()
+  }, [messageIds.length, syncCurrentMetrics])
 
   const scrollToMessageIndex = useCallback((index: number) => {
     const virtualizer = virtualizerRef.current
@@ -292,12 +471,14 @@ export function useChatScrollRuntime({
     if (!virtualizer || !viewport) {
       return
     }
+    shouldFollowBottomRef.current = false
     virtualizer.scrollToIndex(index, { align: 'start', smooth: true })
   }, [])
 
   const scrollToOffset = useCallback((offset: number) => {
     const viewport = viewportRef.current
     if (viewport) {
+      shouldFollowBottomRef.current = offset + viewport.offsetHeight >= viewport.scrollHeight - BOTTOM_PROXIMITY_PX
       viewport.scrollTop = offset
     }
   }, [])

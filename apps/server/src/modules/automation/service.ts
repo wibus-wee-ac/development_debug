@@ -10,6 +10,7 @@ import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
+import type { RuntimeKind } from '../provider-contracts/types'
 import * as Session from '../session/service'
 import type { AutomationTrigger, DueOccurrence } from './scheduler'
 import { getNextOccurrence, listDueOccurrences } from './scheduler'
@@ -33,7 +34,7 @@ export interface AutomationRecipe {
   artifactRequests: AutomationArtifactRequest[]
   agentId?: string
   providerTargetId?: string
-  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat'
+  runtimeKind?: RuntimeKind
   modelId?: string
   thinkingEffort?: 'low' | 'medium' | 'high'
 }

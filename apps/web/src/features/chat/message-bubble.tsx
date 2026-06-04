@@ -17,9 +17,9 @@ import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 import { AppshotAttachmentCard } from './appshot-attachment'
 import { readCradleAppshotMetadata } from './appshot-attachment-model'
-import type { BangResultMetadata } from './bang-command-metadata'
-import { readBangResultMetadata } from './bang-command-metadata'
-import { BangCommandBlock } from './blocks/bang-command-block'
+import type { BangCommandMetadata, BangResultMetadata } from './bang-command-metadata'
+import { readBangCommandMetadata, readBangResultMetadata } from './bang-command-metadata'
+import { BangCommandBlock, BangCommandPromptBlock } from './blocks/bang-command-block'
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
@@ -40,6 +40,19 @@ const MESSAGE_STREAMING_ANIMATION_MAX_CHARS = 12000
 const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
 const ACTIVE_TOOL_STATES = new Set(['input-streaming', 'input-available', 'approval-requested'])
 const CODEX_GOAL_COMMAND_PREFIX = '/goal '
+const STEER_MESSAGE_CONTAINER_CLASS = 'max-w-[78%]'
+const STEER_MESSAGE_BUBBLE_CLASS = 'rounded-br-sm bg-background px-3 py-2 text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.45)]'
+
+function SteerMessageLabel() {
+  const { t } = useTranslation('chat')
+  return (
+    <div className="mb-1 flex justify-end pr-1">
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {t('continuation.steer.label')}
+      </span>
+    </div>
+  )
+}
 
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
@@ -438,6 +451,7 @@ interface MessageFrame {
   role: UIMessage['role']
   isSteerMessage: boolean
   isGoalMessage: boolean
+  bangCommand: BangCommandMetadata | null
   bangResult: BangResultMetadata | null
 }
 
@@ -456,6 +470,7 @@ function readMessageFrameFromState(state: ChatStoreSnapshot, sessionId: string, 
     role: message.role,
     isSteerMessage: message.role === 'user' && continuationMetadata?.mode === 'steer',
     isGoalMessage: isCodexGoalUserMessage(message),
+    bangCommand: message.role === 'user' ? readBangCommandMetadata(message) : null,
     bangResult: message.role === 'user' ? readBangResultMetadata(message) : null,
   }
 }
@@ -465,6 +480,7 @@ function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | 
     && left?.role === right?.role
     && left?.isSteerMessage === right?.isSteerMessage
     && left?.isGoalMessage === right?.isGoalMessage
+    && left?.bangCommand?.command === right?.bangCommand?.command
     && areBangResultsEqual(left?.bangResult ?? null, right?.bangResult ?? null)
 }
 
@@ -1072,7 +1088,6 @@ const MessageBubbleSegmentsView = memo(({
 }) => {
   const isUser = frame.role === 'user'
   const isAssistant = frame.role === 'assistant'
-  const { t } = useTranslation('chat')
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
   const executionPhaseSplit = useMemo(
@@ -1094,6 +1109,10 @@ const MessageBubbleSegmentsView = memo(({
   }
 
   function renderContent() {
+    if (frame.bangCommand) {
+      return <BangCommandPromptBlock command={frame.bangCommand.command} />
+    }
+
     if (frame.bangResult) {
       return <BangCommandBlock result={frame.bangResult} />
     }
@@ -1133,26 +1152,20 @@ const MessageBubbleSegmentsView = memo(({
       <div
         className={cn(
           'min-w-0',
-          isUser && !frame.isSteerMessage && !frame.bangResult && 'max-w-[70%]',
-          frame.bangResult && 'max-w-[78%]',
-          frame.isSteerMessage && 'max-w-[78%]',
+          isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'max-w-[70%]',
+          (frame.bangCommand || frame.bangResult) && 'max-w-[78%]',
+          frame.isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
           !isUser && 'w-full',
         )}
       >
-        {frame.isSteerMessage && (
-          <div className="mb-1 flex justify-end pr-1">
-            <span className="text-[10px] font-medium uppercase text-muted-foreground/60">
-              {t('continuation.steer.label')}
-            </span>
-          </div>
-        )}
+        {frame.isSteerMessage && <SteerMessageLabel />}
         {frame.isGoalMessage && <GoalMessageLabel />}
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser && !frame.isSteerMessage && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
-            frame.bangResult && 'rounded-br-sm',
-            frame.isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
+            isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
+            frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
             isAssistant && 'text-foreground',
           )}
         >
@@ -1225,8 +1238,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   const continuationMetadata = readChatContinuationMetadata(message)
   const isSteerMessage = isUser && continuationMetadata?.mode === 'steer'
   const isGoalMessage = isCodexGoalUserMessage(message)
+  const bangCommand = isUser ? readBangCommandMetadata(message) : null
   const bangResult = isUser ? readBangResultMetadata(message) : null
-  const { t } = useTranslation('chat')
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
 
@@ -1332,6 +1345,10 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
   /* ─── Separate execution-phase items from final reply ─── */
   function renderContent() {
+    if (bangCommand) {
+      return <BangCommandPromptBlock command={bangCommand.command} />
+    }
+
     if (bangResult) {
       return <BangCommandBlock result={bangResult} />
     }
@@ -1371,27 +1388,21 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       <div
         className={cn(
           'min-w-0',
-          isUser && !isSteerMessage && !bangResult && 'max-w-[70%]',
-          bangResult && 'max-w-[78%]',
-          isSteerMessage && 'max-w-[78%]',
+          isUser && !isSteerMessage && !bangCommand && !bangResult && 'max-w-[70%]',
+          (bangCommand || bangResult) && 'max-w-[78%]',
+          isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
           !isUser && 'w-full',
         )}
       >
-        {isSteerMessage && (
-          <div className="mb-1 flex justify-end pr-1">
-            <span className="text-[10px] font-medium uppercase text-muted-foreground/60">
-              {t('continuation.steer.label')}
-            </span>
-          </div>
-        )}
+        {isSteerMessage && <SteerMessageLabel />}
         {isGoalMessage && <GoalMessageLabel />}
         {/* Bubble */}
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser && !isSteerMessage && !bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
-            bangResult && 'rounded-br-sm',
-            isSteerMessage && 'rounded-br-sm bg-transparent px-3 py-2 text-foreground/75 shadow-[inset_0_0_0_1px_hsl(var(--border)/0.35)] backdrop-blur-[1px]',
+            isUser && !isSteerMessage && !bangCommand && !bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            (bangCommand || bangResult) && 'rounded-br-sm',
+            isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
             isAssistant && 'text-foreground',
           )}
         >

@@ -97,6 +97,10 @@ export type GetPreferencesJarvisResponses = {
      */
     200: {
         /**
+         * Chat runtime ID used by Jarvis sessions
+         */
+        runtimeKind?: string;
+        /**
          * ID of the agent profile to use for Jarvis
          */
         profileId: string | null;
@@ -112,6 +116,10 @@ export type GetPreferencesJarvisResponse = GetPreferencesJarvisResponses[keyof G
 
 export type PutPreferencesJarvisData = {
     body: {
+        /**
+         * Chat runtime ID used by Jarvis sessions
+         */
+        runtimeKind?: string;
         /**
          * ID of the agent profile to use for Jarvis
          */
@@ -2147,7 +2155,7 @@ export type GetAgentsResponses = {
         providerTargetId: string | null;
         modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         configJson: string;
         enabled: boolean;
         createdAt: number;
@@ -2166,7 +2174,7 @@ export type PostAgentsData = {
         providerTargetId?: string | null;
         modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind?: string;
         configJson?: string;
     };
     path?: never;
@@ -2188,7 +2196,7 @@ export type PostAgentsResponses = {
         providerTargetId: string | null;
         modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         configJson: string;
         enabled: boolean;
         createdAt: number;
@@ -2241,7 +2249,7 @@ export type GetAgentsByIdResponses = {
         providerTargetId: string | null;
         modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         configJson: string;
         enabled: boolean;
         createdAt: number;
@@ -2260,7 +2268,7 @@ export type PatchAgentsByIdData = {
         providerTargetId?: string | null;
         modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind?: string;
         configJson?: string;
         enabled?: boolean;
     };
@@ -2285,7 +2293,7 @@ export type PatchAgentsByIdResponses = {
         providerTargetId: string | null;
         modelId: string | null;
         thinkingEffort: 'low' | 'medium' | 'high' | 'auto';
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         configJson: string;
         enabled: boolean;
         createdAt: number;
@@ -2503,7 +2511,7 @@ export type GetAutomationsResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2556,7 +2564,7 @@ export type PostAutomationsData = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2609,7 +2617,7 @@ export type PostAutomationsResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2694,7 +2702,7 @@ export type GetAutomationsByIdResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2744,7 +2752,7 @@ export type PatchAutomationsByIdData = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2799,7 +2807,7 @@ export type PatchAutomationsByIdResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2864,7 +2872,7 @@ export type PostAutomationsByIdEnableResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2929,7 +2937,7 @@ export type PostAutomationsByIdDisableResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -2998,7 +3006,7 @@ export type PostAutomationsByIdRunResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -3068,7 +3076,7 @@ export type GetAutomationsByIdRunsResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -3139,7 +3147,7 @@ export type GetAutomationsByIdRunsByRunIdResponses = {
             }>;
             agentId?: string;
             providerTargetId?: string;
-            runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat';
+            runtimeKind?: string;
             modelId?: string;
             thinkingEffort?: 'low' | 'medium' | 'high';
         };
@@ -3275,7 +3283,7 @@ export type GetSessionsResponses = {
         agentId: string | null;
         modelId: string | null;
         linkedIssueId: string | null;
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
@@ -3293,7 +3301,7 @@ export type PostSessionsData = {
         title: string;
         providerTargetId?: string | null;
         agentId?: string;
-        runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind?: string;
         id?: string;
     };
     path?: never;
@@ -3313,7 +3321,7 @@ export type PostSessionsResponses = {
         agentId: string | null;
         modelId: string | null;
         linkedIssueId: string | null;
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
@@ -3366,7 +3374,7 @@ export type GetSessionsByIdResponses = {
         agentId: string | null;
         modelId: string | null;
         linkedIssueId: string | null;
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
@@ -3404,7 +3412,7 @@ export type PatchSessionsByIdResponses = {
         agentId: string | null;
         modelId: string | null;
         linkedIssueId: string | null;
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
@@ -3439,7 +3447,7 @@ export type PostSessionsByIdArchiveResponses = {
         agentId: string | null;
         modelId: string | null;
         linkedIssueId: string | null;
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
@@ -4259,6 +4267,7 @@ export type GetIssuesSearchResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4303,6 +4312,7 @@ export type GetIssuesResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4330,6 +4340,9 @@ export type PostIssuesData = {
          * Issue status name or slug, for example "In Progress" or "in_progress".
          */
         statusName?: string | null;
+        dueDate?: number | null;
+        assigneeKind?: string | null;
+        assigneeId?: string | null;
     };
     path?: never;
     query?: never;
@@ -4353,6 +4366,7 @@ export type PostIssuesResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4412,6 +4426,7 @@ export type GetIssuesByIdResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4440,6 +4455,7 @@ export type PatchIssuesByIdData = {
         statusName?: string | null;
         assigneeKind?: string | null;
         assigneeId?: string | null;
+        dueDate?: number | null;
         order?: number;
     };
     path: {
@@ -4466,6 +4482,7 @@ export type PatchIssuesByIdResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4489,6 +4506,7 @@ export type PatchIssuesBulkData = {
             milestoneId?: string | null;
             assigneeKind?: string | null;
             assigneeId?: string | null;
+            dueDate?: number | null;
         };
     };
     path?: never;
@@ -4537,6 +4555,7 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4549,6 +4568,33 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
 };
 
 export type PatchIssuesByIdStatusByStatusNameResponse = PatchIssuesByIdStatusByStatusNameResponses[keyof PatchIssuesByIdStatusByStatusNameResponses];
+
+export type GetIssuesByIdFieldChangesData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/issues/{id}/field-changes';
+};
+
+export type GetIssuesByIdFieldChangesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        issueId: string;
+        field: string;
+        fromValue: string | null;
+        toValue: string | null;
+        actorKind: 'user' | 'agent' | 'system';
+        actorId: string | null;
+        createdAt: number;
+    }>;
+};
+
+export type GetIssuesByIdFieldChangesResponse = GetIssuesByIdFieldChangesResponses[keyof GetIssuesByIdFieldChangesResponses];
 
 export type GetIssuesByIdCommentsData = {
     body?: never;
@@ -4736,6 +4782,7 @@ export type PostIssuesByIdContextRefsResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -4776,6 +4823,7 @@ export type DeleteIssuesByIdContextRefsByIndexResponses = {
         labels: Array<string>;
         assigneeKind: string | null;
         assigneeId: string | null;
+        dueDate: number | null;
         createdByKind: 'user' | 'agent' | 'system';
         createdById: string;
         delegateAgentId: string | null;
@@ -5884,6 +5932,7 @@ export type PostChatSessionsBySessionIdResponseData = {
                 type: string;
                 [key: string]: unknown;
             }>;
+            metadata?: unknown;
             [key: string]: unknown;
         }>;
         providerTargetId?: string;
@@ -5907,6 +5956,56 @@ export type PostChatSessionsBySessionIdResponseResponses = {
 
 export type PostChatSessionsBySessionIdResponseResponse = PostChatSessionsBySessionIdResponseResponses[keyof PostChatSessionsBySessionIdResponseResponses];
 
+export type PostChatSessionsBySessionIdBangCommandData = {
+    body: {
+        command: string;
+    };
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/bang-command';
+};
+
+export type PostChatSessionsBySessionIdBangCommandResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        command: string;
+        stdout: string;
+        stderr: string;
+        exitCode: number | null;
+        durationMs: number;
+        timedOut: boolean;
+        truncated: boolean;
+        userMessageId: string;
+        resultMessageId: string;
+        userMessage: {
+            id: string;
+            role: 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        };
+        resultMessage: {
+            id: string;
+            role: 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostChatSessionsBySessionIdBangCommandResponse = PostChatSessionsBySessionIdBangCommandResponses[keyof PostChatSessionsBySessionIdBangCommandResponses];
+
 export type GetChatSessionsBySessionIdStreamData = {
     body?: never;
     path: {
@@ -5924,6 +6023,34 @@ export type GetChatSessionsBySessionIdStreamResponses = {
 };
 
 export type GetChatSessionsBySessionIdStreamResponse = GetChatSessionsBySessionIdStreamResponses[keyof GetChatSessionsBySessionIdStreamResponses];
+
+export type GetChatRuntimesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/chat/runtimes';
+};
+
+export type GetChatRuntimesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        items: Array<{
+            runtimeKind: string;
+            label: string;
+            description?: string;
+            providerKinds: Array<string>;
+            iconKey?: string;
+            surfaces?: Array<'chat' | 'jarvis'>;
+            sortOrder?: number;
+            source: 'builtin' | 'plugin';
+            pluginOwner: string | null;
+        }>;
+    };
+};
+
+export type GetChatRuntimesResponse = GetChatRuntimesResponses[keyof GetChatRuntimesResponses];
 
 export type GetChatSessionsBySessionIdQueueData = {
     body?: never;
@@ -6159,7 +6286,7 @@ export type GetChatDraftRuntimeCapabilitiesData = {
     body?: never;
     path?: never;
     query: {
-        runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui';
+        runtimeKind: string;
     };
     url: '/chat/draft-runtime-capabilities';
 };
@@ -6703,6 +6830,7 @@ export type GetChatSessionsBySessionIdMessagesResponses = {
                 type: string;
                 [key: string]: unknown;
             }>;
+            metadata?: unknown;
             [key: string]: unknown;
         };
         parentMessageId: string | null;
@@ -6754,6 +6882,66 @@ export type GetChatRunsByRunIdTraceResponses = {
 
 export type GetChatRunsByRunIdTraceResponse = GetChatRunsByRunIdTraceResponses[keyof GetChatRunsByRunIdTraceResponses];
 
+export type GetChatRunsByRunIdSnapshotData = {
+    body?: never;
+    path: {
+        runId: string;
+    };
+    query?: never;
+    url: '/chat/runs/{runId}/snapshot';
+};
+
+export type GetChatRunsByRunIdSnapshotResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        schemaVersion: number;
+        traceId: string;
+        chatSessionId: string;
+        runId: string;
+        messageId?: string;
+        providerTargetId?: string;
+        runtimeKind: string;
+        providerSessionId?: string;
+        modelId?: string;
+        agentId?: string;
+        workspaceId?: string;
+        status: 'running' | 'complete' | 'aborted' | 'failed';
+        startedAt: number;
+        completedAt?: number;
+        completionReason?: string;
+        errorText?: string;
+        summary: {
+            [key: string]: unknown;
+        };
+        events: Array<{
+            id: string;
+            snapshotId: string;
+            chatSessionId: string;
+            runId: string;
+            seq: number;
+            phase: string;
+            chunkType?: string;
+            toolCallId?: string;
+            toolName?: string;
+            modelId?: string;
+            promptTokens?: number;
+            completionTokens?: number;
+            totalTokens?: number;
+            estimatedCostUsd?: number;
+            occurredAt: number;
+            durationMs?: number;
+            payload: {
+                [key: string]: unknown;
+            };
+        }>;
+    };
+};
+
+export type GetChatRunsByRunIdSnapshotResponse = GetChatRunsByRunIdSnapshotResponses[keyof GetChatRunsByRunIdSnapshotResponses];
+
 export type GetChatSessionsBySessionIdTracesData = {
     body?: never;
     path: {
@@ -6796,6 +6984,69 @@ export type GetChatSessionsBySessionIdTracesResponses = {
 };
 
 export type GetChatSessionsBySessionIdTracesResponse = GetChatSessionsBySessionIdTracesResponses[keyof GetChatSessionsBySessionIdTracesResponses];
+
+export type GetChatSessionsBySessionIdRunSnapshotsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/run-snapshots';
+};
+
+export type GetChatSessionsBySessionIdRunSnapshotsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sessionId: string;
+        snapshots: Array<{
+            id: string;
+            schemaVersion: number;
+            traceId: string;
+            chatSessionId: string;
+            runId: string;
+            messageId?: string;
+            providerTargetId?: string;
+            runtimeKind: string;
+            providerSessionId?: string;
+            modelId?: string;
+            agentId?: string;
+            workspaceId?: string;
+            status: 'running' | 'complete' | 'aborted' | 'failed';
+            startedAt: number;
+            completedAt?: number;
+            completionReason?: string;
+            errorText?: string;
+            summary: {
+                [key: string]: unknown;
+            };
+            events: Array<{
+                id: string;
+                snapshotId: string;
+                chatSessionId: string;
+                runId: string;
+                seq: number;
+                phase: string;
+                chunkType?: string;
+                toolCallId?: string;
+                toolName?: string;
+                modelId?: string;
+                promptTokens?: number;
+                completionTokens?: number;
+                totalTokens?: number;
+                estimatedCostUsd?: number;
+                occurredAt: number;
+                durationMs?: number;
+                payload: {
+                    [key: string]: unknown;
+                };
+            }>;
+        }>;
+    };
+};
+
+export type GetChatSessionsBySessionIdRunSnapshotsResponse = GetChatSessionsBySessionIdRunSnapshotsResponses[keyof GetChatSessionsBySessionIdRunSnapshotsResponses];
 
 export type PostChatSessionsBySessionIdCancelData = {
     body?: never;
@@ -9913,6 +10164,47 @@ export type GetObservabilityIncidentsResponses = {
 
 export type GetObservabilityIncidentsResponse = GetObservabilityIncidentsResponses[keyof GetObservabilityIncidentsResponses];
 
+export type GetObservabilityErrorPatternsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        chatSessionId?: string;
+        runId?: string;
+        code?: string;
+        runtimeKind?: string;
+        providerTargetId?: string;
+        sinceUnix?: string;
+        limit?: string;
+    };
+    url: '/observability/error-patterns';
+};
+
+export type GetObservabilityErrorPatternsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        patternId: string;
+        source: string;
+        code: string;
+        category: string;
+        severity: string;
+        runtimeKind?: string;
+        providerTargetId?: string;
+        modelId?: string;
+        messageFingerprint: string;
+        messagePreview: string;
+        count: number;
+        firstSeenAt: number;
+        lastSeenAt: number;
+        sampleRunIds: Array<string>;
+        sampleTraceIds: Array<string>;
+        sampleMessages: Array<string>;
+    }>;
+};
+
+export type GetObservabilityErrorPatternsResponse = GetObservabilityErrorPatternsResponses[keyof GetObservabilityErrorPatternsResponses];
+
 export type PostObservabilityFlushData = {
     body?: never;
     path?: never;
@@ -9994,6 +10286,24 @@ export type GetObservabilityExportResponses = {
             attrs?: {
                 [key: string]: unknown;
             };
+        }>;
+        errorPatterns: Array<{
+            patternId: string;
+            source: string;
+            code: string;
+            category: string;
+            severity: string;
+            runtimeKind?: string;
+            providerTargetId?: string;
+            modelId?: string;
+            messageFingerprint: string;
+            messagePreview: string;
+            count: number;
+            firstSeenAt: number;
+            lastSeenAt: number;
+            sampleRunIds: Array<string>;
+            sampleTraceIds: Array<string>;
+            sampleMessages: Array<string>;
         }>;
         timeline: Array<{
             [key: string]: unknown;

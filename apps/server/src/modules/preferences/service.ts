@@ -62,6 +62,7 @@ export async function getJarvisPreferences(): Promise<Static<typeof PreferencesM
 
 export async function setJarvisPreferences(preferences: Static<typeof PreferencesModel['jarvisPreferences']>): Promise<void> {
   const filePath = getPath('jarvis')
+  const normalized = JarvisPreferencesJsonSchema.parse(JSON.stringify(preferences))
   await mkdir(dirname(filePath), { recursive: true })
-  await writeFile(filePath, JSON.stringify(preferences, null, 2), 'utf8')
+  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }

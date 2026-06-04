@@ -580,7 +580,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const handleCapsuleSend = useCallback(async (
     text: string,
     files: FileUIPart[],
-    opts: { runtimeKind: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui', agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
+    opts: { runtimeKind: RuntimeKind, agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' },
   ) => {
     if (!workspace) {
       return

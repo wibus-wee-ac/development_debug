@@ -9,6 +9,7 @@ export const zPutPreferencesChatBody = z.object({
 });
 
 export const zPutPreferencesJarvisBody = z.object({
+    runtimeKind: z.string().min(1).optional(),
     profileId: z.string().nullable(),
     model: z.string().optional(),
     thinkingLevel: z.enum([
@@ -473,14 +474,7 @@ export const zPostAgentsBody = z.object({
         'high',
         'auto'
     ]).optional(),
-    runtimeKind: z.enum([
-        'standard',
-        'claude-agent',
-        'codex',
-        'jar-core',
-        'acp-chat',
-        'cli-tui'
-    ]).optional(),
+    runtimeKind: z.string().min(1).optional(),
     configJson: z.string().optional()
 });
 
@@ -505,14 +499,7 @@ export const zPatchAgentsByIdBody = z.object({
         'high',
         'auto'
     ]).optional(),
-    runtimeKind: z.enum([
-        'standard',
-        'claude-agent',
-        'codex',
-        'jar-core',
-        'acp-chat',
-        'cli-tui'
-    ]).optional(),
+    runtimeKind: z.string().min(1).optional(),
     configJson: z.string().optional(),
     enabled: z.boolean().optional()
 });
@@ -583,13 +570,7 @@ export const zPostAutomationsBody = z.object({
         })),
         agentId: z.string().min(1).optional(),
         providerTargetId: z.string().min(1).optional(),
-        runtimeKind: z.enum([
-            'standard',
-            'claude-agent',
-            'codex',
-            'jar-core',
-            'acp-chat'
-        ]).optional(),
+        runtimeKind: z.string().min(1).optional(),
         modelId: z.string().min(1).optional(),
         thinkingEffort: z.enum([
             'low',
@@ -657,13 +638,7 @@ export const zPatchAutomationsByIdBody = z.object({
         })),
         agentId: z.string().min(1).optional(),
         providerTargetId: z.string().min(1).optional(),
-        runtimeKind: z.enum([
-            'standard',
-            'claude-agent',
-            'codex',
-            'jar-core',
-            'acp-chat'
-        ]).optional(),
+        runtimeKind: z.string().min(1).optional(),
         modelId: z.string().min(1).optional(),
         thinkingEffort: z.enum([
             'low',
@@ -733,14 +708,7 @@ export const zPostSessionsBody = z.object({
     title: z.string().min(1),
     providerTargetId: z.string().min(1).nullish(),
     agentId: z.string().min(1).optional(),
-    runtimeKind: z.enum([
-        'standard',
-        'claude-agent',
-        'codex',
-        'jar-core',
-        'acp-chat',
-        'cli-tui'
-    ]).optional(),
+    runtimeKind: z.string().min(1).optional(),
     id: z.string().optional()
 });
 
@@ -977,7 +945,10 @@ export const zPostIssuesBody = z.object({
     milestoneId: z.string().nullish(),
     parentIssueId: z.string().nullish(),
     statusId: z.string().nullish(),
-    statusName: z.string().min(1).nullish()
+    statusName: z.string().min(1).nullish(),
+    dueDate: z.number().nullish(),
+    assigneeKind: z.string().nullish(),
+    assigneeId: z.string().nullish()
 });
 
 export const zDeleteIssuesByIdPath = z.object({
@@ -1005,6 +976,7 @@ export const zPatchIssuesByIdBody = z.object({
     statusName: z.string().min(1).nullish(),
     assigneeKind: z.string().nullish(),
     assigneeId: z.string().nullish(),
+    dueDate: z.number().nullish(),
     order: z.number().optional()
 });
 
@@ -1026,13 +998,18 @@ export const zPatchIssuesBulkBody = z.object({
         labels: z.array(z.string()).optional(),
         milestoneId: z.string().nullish(),
         assigneeKind: z.string().nullish(),
-        assigneeId: z.string().nullish()
+        assigneeId: z.string().nullish(),
+        dueDate: z.number().nullish()
     })
 });
 
 export const zPatchIssuesByIdStatusByStatusNamePath = z.object({
     id: z.string().min(1),
     statusName: z.string().min(1)
+});
+
+export const zGetIssuesByIdFieldChangesPath = z.object({
+    id: z.string().min(1)
 });
 
 export const zGetIssuesByIdCommentsPath = z.object({
@@ -1424,7 +1401,8 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         role: z.enum(['user', 'assistant']),
         parts: z.array(z.object({
             type: z.string()
-        }))
+        })),
+        metadata: z.unknown().optional()
     })).optional(),
     providerTargetId: z.string().optional(),
     modelId: z.string().optional(),
@@ -1437,6 +1415,14 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
 });
 
 export const zPostChatSessionsBySessionIdResponsePath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdBangCommandBody = z.object({
+    command: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdBangCommandPath = z.object({
     sessionId: z.string().min(1)
 });
 
@@ -1501,14 +1487,7 @@ export const zDeleteChatSessionsBySessionIdQueueByQueueItemIdPath = z.object({
 });
 
 export const zGetChatDraftRuntimeCapabilitiesQuery = z.object({
-    runtimeKind: z.enum([
-        'standard',
-        'claude-agent',
-        'codex',
-        'jar-core',
-        'acp-chat',
-        'cli-tui'
-    ])
+    runtimeKind: z.string().min(1)
 });
 
 export const zGetChatSessionsBySessionIdCapabilitiesPath = z.object({
@@ -1558,7 +1537,15 @@ export const zGetChatRunsByRunIdTracePath = z.object({
     runId: z.string().min(1)
 });
 
+export const zGetChatRunsByRunIdSnapshotPath = z.object({
+    runId: z.string().min(1)
+});
+
 export const zGetChatSessionsBySessionIdTracesPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdRunSnapshotsPath = z.object({
     sessionId: z.string().min(1)
 });
 
@@ -2235,6 +2222,16 @@ export const zGetObservabilityIncidentsQuery = z.object({
     runId: z.string().optional(),
     code: z.string().optional(),
     status: z.enum(['open', 'resolved']).optional(),
+    limit: z.string().optional()
+});
+
+export const zGetObservabilityErrorPatternsQuery = z.object({
+    chatSessionId: z.string().optional(),
+    runId: z.string().optional(),
+    code: z.string().optional(),
+    runtimeKind: z.string().optional(),
+    providerTargetId: z.string().optional(),
+    sinceUnix: z.string().optional(),
     limit: z.string().optional()
 });
 

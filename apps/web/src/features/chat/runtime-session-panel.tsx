@@ -222,6 +222,7 @@ function ProgressPanel({
   items: ProgressTaskItem[]
   loading: boolean
 }) {
+  if (items.length === 0) return null
   return (
     <section className="space-y-2">
       <PanelHeading icon={ListChecksIcon} label="Progress" />
@@ -282,6 +283,8 @@ function SubagentsPanel({
   const calls = readCrewCalls(crewState)
   const recentCalls = calls.slice(0, 4)
   const hasCrewState = agents.length > 0 || calls.length > 0 || (crewState?.collaborationModeCount ?? 0) > 0
+
+  if (agents.length === 0) return null
 
   return (
     <section className="space-y-2">

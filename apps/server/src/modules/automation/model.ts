@@ -1,12 +1,6 @@
 import { t } from 'elysia'
 
-const runtimeKindSchema = t.Union([
-  t.Literal('standard'),
-  t.Literal('claude-agent'),
-  t.Literal('codex'),
-  t.Literal('jar-core'),
-  t.Literal('acp-chat'),
-])
+const runtimeKindSchema = t.String({ minLength: 1 })
 
 const automationInputSchema = t.Union([
   t.Object({

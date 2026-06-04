@@ -7,9 +7,22 @@ import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { formatShortDurationMs } from '~/lib/number-format'
 
-import type { BangResultMetadata } from '../bang-command-metadata'
+import type { BangCommandMetadata, BangResultMetadata } from '../bang-command-metadata'
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { ToolPayload } from '../tool-ui-classifier'
+
+export function BangCommandPromptBlock({ command }: BangCommandMetadata) {
+  return (
+    <div
+      className="flex min-w-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-left font-mono text-xs text-zinc-50 shadow-xs"
+      data-testid="chat-bang-command-prompt"
+    >
+      <SquareTerminalIcon className="size-4 shrink-0 text-emerald-300" aria-hidden="true" />
+      <span className="shrink-0 text-emerald-300">$</span>
+      <span className="min-w-0 truncate">{command}</span>
+    </div>
+  )
+}
 
 export function BangCommandBlock({ result }: { result: BangResultMetadata }) {
   const [expanded, setExpanded] = useState(() => result.exitCode !== 0 || result.timedOut)

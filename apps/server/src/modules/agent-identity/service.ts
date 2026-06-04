@@ -21,6 +21,7 @@ import {
   assertProviderTargetCompatibleWithRuntime,
   getProviderTarget,
 } from '../provider-targets/service'
+import type { RuntimeKind } from '../provider-contracts/types'
 import { buildAgentAvatarUrl } from './avatar'
 
 export interface AgentListFilters {
@@ -36,7 +37,7 @@ export interface CreateAgentInput {
   providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
-  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+  runtimeKind?: RuntimeKind
   configJson?: string
 }
 
@@ -48,7 +49,7 @@ export interface UpdateAgentInput {
   providerTargetId?: string | null
   modelId?: string | null
   thinkingEffort?: 'low' | 'medium' | 'high' | 'auto'
-  runtimeKind?: 'standard' | 'claude-agent' | 'codex' | 'jar-core' | 'acp-chat' | 'cli-tui'
+  runtimeKind?: RuntimeKind
   configJson?: string
   enabled?: boolean
 }
@@ -111,14 +112,7 @@ export interface ImportLocalConfigResult {
   agents: ImportedAgentResult[]
 }
 
-const AgentRuntimeKindSchema = z.enum([
-  'standard',
-  'claude-agent',
-  'codex',
-  'jar-core',
-  'acp-chat',
-  'cli-tui',
-])
+const AgentRuntimeKindSchema = z.string().trim().min(1)
 const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'auto'])
 const ImportLocalConfigInputSchema = z.object({
   includeProcessEnv: z.boolean().optional(),

@@ -16,6 +16,7 @@ import { useSessionLayoutStore } from '~/store/session-layout'
 
 import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readBangCommand } from './bang-command'
+import { annotateBangCommandMessage, annotateBangResultMessage } from './bang-command-metadata'
 import type { ChatContextPart } from './chat-context-parts'
 import { toOrderedUserMessageParts } from './chat-context-parts'
 import { createContinuationUserMessage } from './chat-continuation-metadata'
@@ -431,11 +432,14 @@ export function useChatSession(chatSessionId: string | null) {
       const controller = new AbortController()
       const driverMessageId = `${BANG_COMMAND_DRIVER_PREFIX}-${Date.now()}`
       const store = useChatStore.getState()
-      store.appendMessage(chatSessionId, {
-        id: driverMessageId,
-        role: 'user',
-        parts: [{ type: 'text', text: `!${bangCommand}` }],
-      })
+      store.appendMessage(chatSessionId, annotateBangCommandMessage(
+        {
+          id: driverMessageId,
+          role: 'user',
+          parts: [{ type: 'text', text: `!${bangCommand}` }],
+        },
+        bangCommand,
+      ))
       if (!isBusy) {
         store.startGeneration(chatSessionId, driverMessageId, controller)
       }
@@ -449,11 +453,35 @@ export function useChatSession(chatSessionId: string | null) {
         })
         useChatStore.getState().removeMessage(chatSessionId, driverMessageId)
         const latestMessages = useChatStore.getState().messagesMap.get(chatSessionId) ?? []
-        if (!latestMessages.some(message => message.id === result.userMessage.id)) {
-          useChatStore.getState().appendMessage(chatSessionId, result.userMessage)
+        const userMessage = annotateBangCommandMessage(result.userMessage, result.command)
+        const resultMessage = annotateBangResultMessage(result.resultMessage, {
+          command: result.command,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          timedOut: result.timedOut,
+          truncated: result.truncated,
+        })
+        if (latestMessages.some(message => message.id === userMessage.id)) {
+          useChatStore.getState().updateMessage(chatSessionId, userMessage.id, current => annotateBangCommandMessage(current, result.command))
         }
-        if (!latestMessages.some(message => message.id === result.resultMessage.id)) {
-          useChatStore.getState().appendMessage(chatSessionId, result.resultMessage)
+        else {
+          useChatStore.getState().appendMessage(chatSessionId, userMessage)
+        }
+        if (latestMessages.some(message => message.id === resultMessage.id)) {
+          useChatStore.getState().updateMessage(chatSessionId, resultMessage.id, current => annotateBangResultMessage(current, {
+            command: result.command,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            exitCode: result.exitCode,
+            durationMs: result.durationMs,
+            timedOut: result.timedOut,
+            truncated: result.truncated,
+          }))
+        }
+        else {
+          useChatStore.getState().appendMessage(chatSessionId, resultMessage)
         }
         useChatStore.getState().finishGeneration(driverMessageId)
         scheduleSnapshotRefresh(0)

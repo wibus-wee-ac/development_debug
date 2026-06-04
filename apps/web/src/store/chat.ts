@@ -924,7 +924,11 @@ function applyAssistantDisplaySplits(
         const split = splits.get(sourceMessage.id)
         if (split) {
           const fullSourceMessage = sourceMessages.get(sourceMessage.id) ?? sourceMessage
-          result.splice(sourceIndex + 1, 0, message, projectAssistantTailMessage(fullSourceMessage, split.splitParts, split.tailMessageId))
+          const tailMessage = projectAssistantTailMessage(fullSourceMessage, split.splitParts, split.tailMessageId)
+          const nextMessages = hasVisibleMessageParts(tailMessage.parts)
+            ? [message, tailMessage]
+            : [message]
+          result.splice(sourceIndex + 1, 0, ...nextMessages)
           continue
         }
       }
