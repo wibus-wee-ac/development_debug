@@ -4,5 +4,4 @@ This directory owns the sandboxed Electron preload bridge exposed to renderer wi
 
 ## Files
 
-- `index.ts`: Exposes server URL/environment metadata, typed invoke/listener wrappers, window controls, desktop update events, desktop app badge updates, tray action events, and desktop-owned chat stream IPC methods plus chunk/close/error event subscriptions.
-- `browser-panel.ts`: Guest preload for Browser Panel webviews; exposes `window.codex.sendPrompt(...)` and forwards page requests to the embedding renderer with `sendToHost`.
+- `index.ts`: Exposes server URL/environment metadata, typed invoke/listener wrappers, window controls, desktop update events, desktop app badge updates, tray action events, desktop-owned chat stream IPC methods plus chunk/close/error event subscriptions, and the native BrowserPanel bridge backed by Electron `WebContentsView`.

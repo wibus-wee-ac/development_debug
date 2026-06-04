@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 // Parse --server-url and --session-id from additionalArguments
 function getArg(name: string): string | null {
   const prefix = `--${name}=`
-  const arg = process.argv.find(a => a.startsWith(prefix))
+  const arg = process.argv.find((a) => a.startsWith(prefix))
   return arg ? arg.slice(prefix.length) : null
 }
 
@@ -36,7 +36,7 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener(channel, listener)
       }
-    },
+    }
   },
 
   /** Environment info */
@@ -46,7 +46,7 @@ const cradleElectron = {
     isTearoff,
     surface,
     platform: process.platform as 'darwin' | 'win32' | 'linux',
-    isElectron: true as const,
+    isElectron: true as const
   },
 
   /** Window controls (for custom titlebar if needed) */
@@ -64,12 +64,13 @@ const cradleElectron = {
       }
     },
     onPointerOutsideWindow: (handler: (screenX: number, screenY: number) => void) => {
-      const listener = (_event: Electron.IpcRendererEvent, screenX: number, screenY: number) => handler(screenX, screenY)
+      const listener = (_event: Electron.IpcRendererEvent, screenX: number, screenY: number) =>
+        handler(screenX, screenY)
       ipcRenderer.on('window:pointer-outside-window', listener)
       return () => {
         ipcRenderer.removeListener('window:pointer-outside-window', listener)
       }
-    },
+    }
   },
 
   /** Desktop update status events pushed by the main process */
@@ -80,23 +81,27 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener('desktop-update:status-changed', listener)
       }
-    },
+    }
   },
 
   /** Desktop app icon badge bridge */
   desktopAppBadge: {
-    setUnreadCount: (count: number) => ipcRenderer.invoke('desktop-app-badge:set-unread-count', count),
+    setUnreadCount: (count: number) =>
+      ipcRenderer.invoke('desktop-app-badge:set-unread-count', count)
   },
 
   /** Desktop-owned long-lived chat stream bridge */
   chatStream: {
     startResponse: (request: unknown) => ipcRenderer.invoke('chatStream.startResponse', request),
-    subscribeSession: (request: unknown) => ipcRenderer.invoke('chatStream.subscribeSession', request),
+    subscribeSession: (request: unknown) =>
+      ipcRenderer.invoke('chatStream.subscribeSession', request),
     abort: (request: unknown) => ipcRenderer.invoke('chatStream.abort', request),
     diagnostics: () => ipcRenderer.invoke('chatStream.diagnostics'),
-    onChunk: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CHUNK_CHANNEL, handler),
-    onClosed: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_CLOSED_CHANNEL, handler),
-    onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler),
+    onChunk: (handler: (event: unknown) => void) =>
+      subscribeIpc(CHAT_STREAM_CHUNK_CHANNEL, handler),
+    onClosed: (handler: (event: unknown) => void) =>
+      subscribeIpc(CHAT_STREAM_CLOSED_CHANNEL, handler),
+    onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler)
   },
 
   /** Native BrowserPanel bridge backed by Electron WebContentsView. */
@@ -106,8 +111,10 @@ const cradleElectron = {
     hide: (input: unknown) => ipcRenderer.invoke('desktop:browser-hide', input),
     getState: (input: unknown) => ipcRenderer.invoke('desktop:browser-get-state', input),
     setBounds: (input: unknown) => ipcRenderer.send('desktop:browser-set-bounds', input),
-    captureScreenshot: (input: unknown) => ipcRenderer.invoke('desktop:browser-capture-screenshot', input),
-    copyScreenshotToClipboard: (input: unknown) => ipcRenderer.invoke('desktop:browser-copy-screenshot-to-clipboard', input),
+    captureScreenshot: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-capture-screenshot', input),
+    copyScreenshotToClipboard: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-copy-screenshot-to-clipboard', input),
     executeCdp: (input: unknown) => ipcRenderer.invoke('desktop:browser-execute-cdp', input),
     navigate: (input: unknown) => ipcRenderer.invoke('desktop:browser-navigate', input),
     reload: (input: unknown) => ipcRenderer.invoke('desktop:browser-reload', input),
@@ -117,12 +124,13 @@ const cradleElectron = {
     closeTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-close-tab', input),
     selectTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-select-tab', input),
     openDevTools: (input: unknown) => ipcRenderer.invoke('desktop:browser-open-devtools', input),
-    onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler),
+    onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler)
   },
 
   /** Desktop tray action bridge */
   desktopTray: {
-    performAction: (actionId: string, payload?: unknown) => ipcRenderer.invoke('desktop-tray:perform-action', actionId, payload),
+    performAction: (actionId: string, payload?: unknown) =>
+      ipcRenderer.invoke('desktop-tray:perform-action', actionId, payload),
     consumePendingActionRequests: () => ipcRenderer.invoke('desktop-tray:consume-pending-actions'),
     onActionRequested: (handler: (request: unknown) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, request: unknown) => handler(request)
@@ -130,8 +138,8 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener('desktop-tray:action-requested', listener)
       }
-    },
-  },
+    }
+  }
 }
 
 contextBridge.exposeInMainWorld('cradle', cradleElectron)

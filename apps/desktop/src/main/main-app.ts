@@ -7,10 +7,7 @@ import { registerBrowserIpcHandlers, sendBrowserState } from './browser-ipc'
 import { DesktopBrowserManager } from './browser-manager'
 import { ChatStreamBroker } from './chat-stream-broker'
 import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
-import {
-  resolveDesktopPreloadPath,
-  resolveDesktopRendererIndexPath,
-} from './desktop-assets'
+import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
@@ -18,9 +15,13 @@ import {
   collectPluginInstallUrls,
   installPluginFromRequest,
   parsePluginInstallUrl,
-  PluginInstallLinkError,
+  PluginInstallLinkError
 } from './plugin-install-links'
-import { activateDesktopPlugins, deactivateDesktopPlugins, notifyWebviewCreated } from './plugin-loader'
+import {
+  activateDesktopPlugins,
+  deactivateDesktopPlugins,
+  notifyWebviewCreated
+} from './plugin-loader'
 import { bindDesktopObservabilityServerUrl } from './observability-reporter'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
 import { startServer, stopServer } from './server-process'
@@ -56,23 +57,23 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   const mainWindowState = windowStateKeeper({
     defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
     defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
-    file: MAIN_WINDOW_STATE_FILE,
+    file: MAIN_WINDOW_STATE_FILE
   })
   const restoredBounds = resolveVisibleWindowBounds(
     storedBounds ?? {
       x: mainWindowState.x,
       y: mainWindowState.y,
       width: mainWindowState.width,
-      height: mainWindowState.height,
+      height: mainWindowState.height
     },
-    screen.getAllDisplays().map(display => display.workArea),
+    screen.getAllDisplays().map((display) => display.workArea),
     {
       defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
       defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
       minWidth: MAIN_WINDOW_MIN_WIDTH,
-      minHeight: MAIN_WINDOW_MIN_HEIGHT,
+      minHeight: MAIN_WINDOW_MIN_HEIGHT
     },
-    screen.getPrimaryDisplay().workArea,
+    screen.getPrimaryDisplay().workArea
   )
 
   const win = new BrowserWindow({
@@ -90,9 +91,9 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: true,
       webviewTag: false,
-      additionalArguments: [`--server-url=${serverUrl}`],
+      additionalArguments: [`--server-url=${serverUrl}`]
     },
-    show: false,
+    show: false
   })
   mainWindowState.manage(win)
 
@@ -102,8 +103,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
 
   if (process.env.ELECTRON_RENDERER_URL) {
     await win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  }
-  else {
+  } else {
     await win.loadFile(resolveDesktopRendererIndexPath())
   }
 
@@ -162,21 +162,28 @@ function broadcastUpdateStatus(status: unknown): void {
 
 function registerPluginInstallProtocol(): void {
   if (process.defaultApp && process.argv.length >= 2) {
-    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [resolve(process.argv[1]!)])
+    app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
+      resolve(process.argv[1]!)
+    ])
     return
   }
   app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL)
 }
 
 function describePluginInstallSummary(summary: PluginInstallSummary): string {
-  const capabilities = summary.declaredCapabilities.length > 0
-    ? summary.declaredCapabilities
-        .map(capability => `- ${capability.type}:${capability.localId}${capability.layer ? ` (${capability.layer})` : ''}`)
-        .join('\n')
-    : '- None declared'
-  const permissions = summary.requiredPermissions.length > 0
-    ? summary.requiredPermissions.map(permission => `- ${permission}`).join('\n')
-    : '- None required'
+  const capabilities =
+    summary.declaredCapabilities.length > 0
+      ? summary.declaredCapabilities
+          .map(
+            (capability) =>
+              `- ${capability.type}:${capability.localId}${capability.layer ? ` (${capability.layer})` : ''}`
+          )
+          .join('\n')
+      : '- None declared'
+  const permissions =
+    summary.requiredPermissions.length > 0
+      ? summary.requiredPermissions.map((permission) => `- ${permission}`).join('\n')
+      : '- None required'
 
   return [
     `Package: ${summary.packageName}`,
@@ -191,7 +198,7 @@ function describePluginInstallSummary(summary: PluginInstallSummary): string {
     permissions,
     '',
     'Declared capabilities:',
-    capabilities,
+    capabilities
   ].join('\n')
 }
 
@@ -203,15 +210,16 @@ async function askPluginInstallConsent(summary: PluginInstallSummary): Promise<b
     detail: `${describePluginInstallSummary(summary)}\n\nCradle will install this first-party plugin into the desktop Marketplace plugin directory. The plugin is activated after restart.`,
     buttons: ['Install', 'Cancel'],
     defaultId: 0,
-    cancelId: 1,
+    cancelId: 1
   })
   return response === 0
 }
 
 async function showPluginInstallSuccess(result: PluginInstallResult): Promise<void> {
-  const detail = result.mode === 'alreadyAvailable'
-    ? 'This plugin is already available in the current Cradle plugin directory. Cradle recorded the Marketplace install request.'
-    : 'Restart Cradle to activate the plugin in the desktop and server runtimes.'
+  const detail =
+    result.mode === 'alreadyAvailable'
+      ? 'This plugin is already available in the current Cradle plugin directory. Cradle recorded the Marketplace install request.'
+      : 'Restart Cradle to activate the plugin in the desktop and server runtimes.'
   const { response } = await dialog.showMessageBox({
     type: 'info',
     title: 'Plugin Installed',
@@ -219,7 +227,7 @@ async function showPluginInstallSuccess(result: PluginInstallResult): Promise<vo
     detail,
     buttons: ['Restart Now', 'Later'],
     defaultId: 0,
-    cancelId: 1,
+    cancelId: 1
   })
   if (response === 0) {
     app.relaunch()
@@ -232,9 +240,12 @@ async function showPluginInstallFailure(err: unknown): Promise<void> {
   await dialog.showMessageBox({
     type: 'error',
     title: 'Plugin Install Failed',
-    message: err instanceof PluginInstallLinkError ? 'The plugin install link is invalid.' : 'Cradle could not install the plugin.',
+    message:
+      err instanceof PluginInstallLinkError
+        ? 'The plugin install link is invalid.'
+        : 'Cradle could not install the plugin.',
     detail: message,
-    buttons: ['OK'],
+    buttons: ['OK']
   })
 }
 
@@ -247,14 +258,13 @@ async function installPluginFromDeepLink(rawUrl: string): Promise<void> {
     const result = await installPluginFromRequest(request, {
       availablePluginsDir: resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname }),
       confirmInstall: askPluginInstallConsent,
-      userDataPath: app.getPath('userData'),
+      userDataPath: app.getPath('userData')
     })
     if (!result) {
       return
     }
     await showPluginInstallSuccess(result)
-  }
-  catch (err) {
+  } catch (err) {
     console.error('[plugin-marketplace] install link failed:', err)
     await showPluginInstallFailure(err)
   }
@@ -311,12 +321,12 @@ export async function startDesktopApp(): Promise<void> {
   }
 
   updateManager = new DesktopUpdateManager({
-    beforeApplyUpdate: shutdownDesktopRuntime,
+    beforeApplyUpdate: shutdownDesktopRuntime
   })
   const appBadgeManager = new DesktopAppBadgeManager()
   desktopAppBadgeManager = appBadgeManager
   macBridgeManager = new MacBridgeManager({
-    moduleDir: __dirname,
+    moduleDir: __dirname
   })
   macBridgeManager.on('hotkeyTriggered', (event) => {
     console.log('[mac-bridge] forwarding Appshot hotkey to renderer:', event)
@@ -330,7 +340,7 @@ export async function startDesktopApp(): Promise<void> {
     getWindowManager: () => windowManager,
     getUpdateManager: () => updateManager,
     getMacBridgeManager: () => macBridgeManager,
-    getChatStreamBroker: () => chatStreamBroker,
+    getChatStreamBroker: () => chatStreamBroker
   })
   updateManager.on('statusChanged', broadcastUpdateStatus)
 
@@ -342,10 +352,12 @@ export async function startDesktopApp(): Promise<void> {
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
       await macBridgeManager?.start()
-      const inputConfiguration = await macBridgeManager?.configureInput({ trigger: 'bothCommand', enabled: true }).catch((error) => {
-        console.warn('[mac-bridge] both-command hotkey unavailable:', error)
-        return null
-      })
+      const inputConfiguration = await macBridgeManager
+        ?.configureInput({ trigger: 'bothCommand', enabled: true })
+        .catch((error) => {
+          console.warn('[mac-bridge] both-command hotkey unavailable:', error)
+          return null
+        })
       if (inputConfiguration) {
         console.debug('[mac-bridge] both-command hotkey configured:', inputConfiguration)
       }
@@ -369,7 +381,7 @@ export async function startDesktopApp(): Promise<void> {
         const win = await createMainWindow(serverUrl)
         setMainWindow(win)
         return win
-      },
+      }
     })
     trayManager.initialize()
 

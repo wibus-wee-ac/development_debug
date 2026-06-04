@@ -5,14 +5,16 @@
 ## 文件清单
 
 - `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
-- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，为 Browser Panel webviews 安装 guest preload / popup routing / permissive browser session handler，并把 webview creation event 转发给 plugin loader。
+- `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，并把 native BrowserPanel `WebContentsView` runtime 事件投影给 plugin loader。
+- `browser-manager.ts`：拥有 native BrowserPanel runtime；按 BrowserPanel owner 管理 `WebContentsView` tab、owner-scoped Electron session partition、tab suspend/resume、截图、CDP 执行、popup 新 tab 路由和 panel bounds attachment。
+- `browser-ipc.ts`：注册 native BrowserPanel IPC contract；renderer 通过 preload 调用 open/close/hide/bounds/navigation/tab/screenshot/CDP 方法，main process 推送 browser state snapshots。
 - `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames。
 - `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、per-WebContents subscriber lifecycle cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
 - `desktop-app-badge-manager.ts`：拥有 Electron app icon badge IPC；renderer 只投影 unread count，main process 负责 macOS Dock badge 写入和清理。
 - `desktop-app-badge-manager.test.ts`：覆盖 unread count 正规化、macOS Dock badge 投影、IPC handler 注册/移除，以及非 macOS 平台 no-op 行为。
 - `desktop-assets.ts`：解析 Electron main process 在 dev 和 packaged runtime 中使用的 preload、main renderer、tear-off renderer asset 路径，兼容 electron-vite main chunk 输出目录。
 - `desktop-assets.test.ts`：覆盖 dev preload 路径从 `dist/main/chunks` 回溯到 `dist/preload/index.js`，以及 packaged preload / tear-off renderer 路径解析。
-- `browser-tab-scripts.ts`：拥有 Browser Panel webview 的 UserScript-like 注入 runtime，通过 IPC 接收 renderer 声明的脚本列表，使用 CDP `Page.addScriptToEvaluateOnNewDocument` 支持 `document-start`，并用 webContents lifecycle 支持 `document-end` / `document-idle`，同时负责 webContents listener cleanup。
+- `browser-tab-scripts.ts`：legacy Browser Panel script injection service。native BrowserPanel 迁移后 renderer 不再通过 `<webview>` 同步脚本；该服务仅保留给旧调用面和后续 native script injection 收敛参考。
 - `tray-manager.ts`：拥有 Electron native tray icon、native tray menu、tray action IPC，以及主窗口聚焦/转发流程。
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑，以及 tear-off window 的 size-only 持久化 helper；主窗口在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置，tear-off 只保存宽高不保存位置。
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 从专用 renderer entry 初始化、按释放点选择目标 display，在释放点附近打开并限制在目标 workArea 内、只记忆宽高，同一 session 的重复 open 会聚合到已登记窗口，并在关闭时通知 main renderer 恢复对应 main-window chat tab。
@@ -41,11 +43,11 @@
 
 ## Browser-use backend ownership
 
-当前 browser-use 的生产路径由 plugin system 拥有：
+当前 browser-use 的生产路径仍由 plugin system 拥有，但浏览器 surface 已切到 native `WebContentsView`：
 
 1. `plugin-loader.ts` 激活 desktop plugin，并提供 `DesktopPluginContext`。
 2. `plugins/browser-use/src/desktop.ts` 启动 browser backend socket。
-3. renderer bridge 创建、激活、查询 browser panel tab，并把 webview creation event 回传给 plugin backend。
+3. renderer bridge 创建、激活、查询 browser panel tab；`browser-manager.ts` 创建 native `WebContentsView` runtime 后把其 `WebContents` 投影为 existing plugin webview facade，供 plugin backend 复用 CDP/socket protocol。
 
 `browser-backend.ts` 只保留为 legacy/compatibility path。它不拥有 browser panel tab creation 语义，也不应该作为新功能入口继续扩展。需要变更 browser automation 行为时，优先修改 plugin-owned backend 和 plugin SDK bridge；如果 legacy backend 需要恢复为 active path，应先对齐 `tabs_new`、active tab lookup、screenshot capture 等语义，再接入 main process 启动流程。
 

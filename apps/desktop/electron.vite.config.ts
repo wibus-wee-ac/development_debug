@@ -12,20 +12,22 @@ const desktopUpdateUrl = process.env.CRADLE_DESKTOP_UPDATE_URL ?? ''
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin({
-      exclude: ['get-port', '@cradle/ipc', '@cradle/browser-use'],
-    })],
+    plugins: [
+      externalizeDepsPlugin({
+        exclude: ['get-port', '@cradle/ipc', '@cradle/browser-use']
+      })
+    ],
     define: {
-      __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl),
+      __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl)
     },
     build: {
       outDir: resolve(__dirname, 'dist/main'),
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/main/index.ts'),
-        },
-      },
-    },
+          index: resolve(__dirname, 'src/main/index.ts')
+        }
+      }
+    }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
@@ -33,14 +35,14 @@ export default defineConfig({
       outDir: resolve(__dirname, 'dist/preload'),
       rollupOptions: {
         input: {
-          index: resolve(__dirname, 'src/preload/index.ts'),
+          index: resolve(__dirname, 'src/preload/index.ts')
         },
         output: {
           format: 'cjs',
-          entryFileNames: '[name].js',
-        },
-      },
-    },
+          entryFileNames: '[name].js'
+        }
+      }
+    }
   },
   renderer: {
     root: webRoot,
@@ -48,24 +50,24 @@ export default defineConfig({
       tailwindcss(),
       viteReact({
         babel: {
-          plugins: ['babel-plugin-react-compiler'],
-        },
+          plugins: ['babel-plugin-react-compiler']
+        }
       }),
-      pluginImportMap(),
+      pluginImportMap()
     ],
     resolve: {
       alias: {
-        '~': resolve(webRoot, 'src'),
-      },
+        '~': resolve(webRoot, 'src')
+      }
     },
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
       rollupOptions: {
         input: {
           main: resolve(webRoot, 'index.html'),
-          tearoff: resolve(webRoot, 'tearoff.html'),
-        },
-      },
-    },
-  },
+          tearoff: resolve(webRoot, 'tearoff.html')
+        }
+      }
+    }
+  }
 })
