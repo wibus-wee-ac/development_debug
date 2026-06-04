@@ -1,7 +1,10 @@
 {
   "breakdown.byAgent": "按 Agent",
   "breakdown.byModel": "按模型",
+  "breakdown.byProvider": "按 Provider",
   "breakdown.costByModel": "按模型统计成本",
+  "breakdown.toggleAgent": "Agent",
+  "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "每日成本（最近 30 天）",
   "chart.last30Days": "最近 30 天",
   "description": "过去一年的 token 消耗",

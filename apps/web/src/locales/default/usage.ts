@@ -19,5 +19,8 @@ export default {
   'breakdown.costByModel': 'Cost by Model',
   'breakdown.byModel': 'By Model',
   'breakdown.byAgent': 'By Agent',
+  'breakdown.byProvider': 'By Provider',
+  'breakdown.toggleAgent': 'Agent',
+  'breakdown.toggleProvider': 'Provider',
   'empty.noData': 'No usage data yet: send a message to start tracking',
 } as const

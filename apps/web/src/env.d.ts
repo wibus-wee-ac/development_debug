@@ -45,32 +45,69 @@ interface Window {
       setUnreadCount: (count: number) => Promise<unknown>
     }
     browser?: {
-      open: (input: { threadId: string, initialUrl?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      close: (input: { threadId: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      open: (input: {
+        threadId: string
+        initialUrl?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      close: (input: {
+        threadId: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
       hide: (input: { threadId: string }) => Promise<void>
-      getState: (input: { threadId: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      getState: (input: {
+        threadId: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
       setBounds: (input: {
         threadId: string
         surface?: 'native'
-        bounds: { x: number, y: number, width: number, height: number } | null
+        bounds: { x: number; y: number; width: number; height: number } | null
       }) => void
-      captureScreenshot: (input: { threadId: string, tabId?: string }) => Promise<{
+      captureScreenshot: (input: { threadId: string; tabId?: string }) => Promise<{
         name: string
         mimeType: 'image/png'
         sizeBytes: number
         bytes: Uint8Array
       }>
-      copyScreenshotToClipboard: (input: { threadId: string, tabId?: string }) => Promise<void>
-      executeCdp: (input: { threadId: string, tabId?: string, method: string, params?: Record<string, unknown> }) => Promise<unknown>
-      navigate: (input: { threadId: string, tabId?: string, url: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      reload: (input: { threadId: string, tabId?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      goBack: (input: { threadId: string, tabId?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      goForward: (input: { threadId: string, tabId?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      newTab: (input: { threadId: string, url?: string, activate?: boolean }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      closeTab: (input: { threadId: string, tabId?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      selectTab: (input: { threadId: string, tabId?: string }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      openDevTools: (input: { threadId: string, tabId?: string }) => Promise<void>
-      onState: (handler: (state: import('~/store/browser-panel').ThreadBrowserState) => void) => () => void
+      copyScreenshotToClipboard: (input: { threadId: string; tabId?: string }) => Promise<void>
+      executeCdp: (input: {
+        threadId: string
+        tabId?: string
+        method: string
+        params?: Record<string, unknown>
+      }) => Promise<unknown>
+      navigate: (input: {
+        threadId: string
+        tabId?: string
+        url: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      reload: (input: {
+        threadId: string
+        tabId?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      goBack: (input: {
+        threadId: string
+        tabId?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      goForward: (input: {
+        threadId: string
+        tabId?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      newTab: (input: {
+        threadId: string
+        url?: string
+        activate?: boolean
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      closeTab: (input: {
+        threadId: string
+        tabId?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      selectTab: (input: {
+        threadId: string
+        tabId?: string
+      }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
+      openDevTools: (input: { threadId: string; tabId?: string }) => Promise<void>
+      onState: (
+        handler: (state: import('~/store/browser-panel').ThreadBrowserState) => void
+      ) => () => void
     }
     // eslint-disable-next-line ts/no-explicit-any
     chatStream?: any
@@ -82,40 +119,54 @@ interface Window {
   }
   codex?: {
     sendPrompt: (
-      input: string | {
-        attachments?: Array<string | Blob | {
-          dataURL?: string
-          dataUrl?: string
-          filename?: string
-          mediaType?: string
-          mimeType?: string
-          name?: string
-          type?: string
-          url?: string
-        }>
-        files?: Array<string | Blob | {
-          dataURL?: string
-          dataUrl?: string
-          filename?: string
-          mediaType?: string
-          mimeType?: string
-          name?: string
-          type?: string
-          url?: string
-        }>
-        prompt?: string
-        text?: string
-      },
-      attachments?: Array<string | Blob | {
-        dataURL?: string
-        dataUrl?: string
-        filename?: string
-        mediaType?: string
-        mimeType?: string
-        name?: string
-        type?: string
-        url?: string
-      }>,
+      input:
+        | string
+        | {
+            attachments?: Array<
+              | string
+              | Blob
+              | {
+                  dataURL?: string
+                  dataUrl?: string
+                  filename?: string
+                  mediaType?: string
+                  mimeType?: string
+                  name?: string
+                  type?: string
+                  url?: string
+                }
+            >
+            files?: Array<
+              | string
+              | Blob
+              | {
+                  dataURL?: string
+                  dataUrl?: string
+                  filename?: string
+                  mediaType?: string
+                  mimeType?: string
+                  name?: string
+                  type?: string
+                  url?: string
+                }
+            >
+            prompt?: string
+            text?: string
+          },
+      attachments?: Array<
+        | string
+        | Blob
+        | {
+            dataURL?: string
+            dataUrl?: string
+            filename?: string
+            mediaType?: string
+            mimeType?: string
+            name?: string
+            type?: string
+            url?: string
+          }
+      >
     ) => Promise<void>
   }
   __cradleBrowserUseCreateTab?: (url?: string) => string | Promise<string>

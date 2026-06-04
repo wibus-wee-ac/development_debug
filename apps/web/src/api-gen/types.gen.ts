@@ -743,6 +743,12 @@ export type GetUsageSummaryResponses = {
         totalTokens: number;
         totalTurns: number;
         byAgent: Array<{
+            agentId: string;
+            agentName: string;
+            totalTokens: number;
+            count: number;
+        }>;
+        byProviderTarget: Array<{
             providerTargetId: string;
             providerTargetName: string | null;
             totalTokens: number;
@@ -905,7 +911,7 @@ export type GetProfilesResponses = {
     200: Array<{
         id: string;
         name: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled: boolean;
         configJson: string;
         credentialRef: string | null;
@@ -954,7 +960,7 @@ export type GetProfilesByIdResponses = {
     200: {
         id: string;
         name: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled: boolean;
         configJson: string;
         credentialRef: string | null;
@@ -970,7 +976,7 @@ export type GetProfilesByIdResponse = GetProfilesByIdResponses[keyof GetProfiles
 export type PutProfilesByIdData = {
     body: {
         name: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled: boolean;
         config: {
             [key: string]: unknown;
@@ -992,7 +998,7 @@ export type PutProfilesByIdResponses = {
     200: {
         id: string;
         name: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled: boolean;
         configJson: string;
         credentialRef: string | null;
@@ -1023,7 +1029,7 @@ export type PatchProfilesByIdIconResponses = {
     200: {
         id: string;
         name: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled: boolean;
         configJson: string;
         credentialRef: string | null;
@@ -1120,7 +1126,7 @@ export type GetProviderTargetsResponses = {
     200: Array<{
         id: string;
         kind: 'manual' | 'external';
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         displayName: string;
         enabled: boolean;
         iconSlug: string | null;
@@ -1161,7 +1167,7 @@ export type DeleteProviderTargetsByProviderTargetIdResponse = DeleteProviderTarg
 export type PutProviderTargetsByProviderTargetIdData = {
     body: {
         displayName: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         enabled?: boolean;
         connectionConfig: {
             [key: string]: unknown;
@@ -1183,7 +1189,7 @@ export type PutProviderTargetsByProviderTargetIdResponses = {
     200: {
         id: string;
         kind: 'manual' | 'external';
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         displayName: string;
         enabled: boolean;
         iconSlug: string | null;
@@ -1406,7 +1412,7 @@ export type GetExternalProviderSourcesRecordsResponses = {
         externalId: string;
         app: string;
         name: string;
-        providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool';
+        providerKind: 'anthropic' | 'openai-compatible' | 'universal' | 'cli-tool';
         status: 'active' | 'stale' | 'missing' | 'unsupported' | 'error';
         runtimeTargetEnabled: boolean;
         fingerprint: string;
@@ -1444,7 +1450,7 @@ export type GetExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntim
         id: string;
         sourceKey: string;
         externalRecordId: string;
-        providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool';
+        providerKind: 'anthropic' | 'openai-compatible' | 'universal' | 'cli-tool';
         displayName: string;
         enabled: boolean;
         credentialRef: string | null;
@@ -1477,7 +1483,7 @@ export type PatchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRunt
         id: string;
         sourceKey: string;
         externalRecordId: string;
-        providerKind: 'anthropic' | 'openai-compatible' | 'cli-tool';
+        providerKind: 'anthropic' | 'openai-compatible' | 'universal' | 'cli-tool';
         displayName: string;
         enabled: boolean;
         credentialRef: string | null;
@@ -1895,7 +1901,7 @@ export type PutModelRegistryMappingsByModelIdResponse = PutModelRegistryMappings
 
 export type PostProvidersModelsData = {
     body: {
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         label: string;
         config: {
             baseUrl?: string;
@@ -1920,7 +1926,7 @@ export type PostProvidersModelsResponses = {
     200: Array<{
         id: string;
         label: string;
-        providerKind: 'openai-compatible' | 'anthropic';
+        providerKind: 'openai-compatible' | 'anthropic' | 'universal';
         capabilities: {
             contextWindow?: number;
             maxOutput?: number;
@@ -1965,7 +1971,7 @@ export type GetProvidersTargetsByProviderTargetIdModelsCacheResponses = {
         models: Array<{
             id: string;
             label: string;
-            providerKind: 'openai-compatible' | 'anthropic';
+            providerKind: 'openai-compatible' | 'anthropic' | 'universal';
             capabilities: {
                 contextWindow?: number;
                 maxOutput?: number;
@@ -2014,7 +2020,7 @@ export type GetProvidersByProfileIdModelsCacheResponses = {
         models: Array<{
             id: string;
             label: string;
-            providerKind: 'openai-compatible' | 'anthropic';
+            providerKind: 'openai-compatible' | 'anthropic' | 'universal';
             capabilities: {
                 contextWindow?: number;
                 maxOutput?: number;

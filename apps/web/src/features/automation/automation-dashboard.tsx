@@ -106,7 +106,7 @@ function createDefaultDraft(providerTargetId = ''): CreateAutomationDraft {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     misfirePolicy: 'run_latest',
     providerTargetId,
-    runtimeKind: 'standard',
+    runtimeKind: 'codex',
     modelId: null,
     thinkingEffort: null,
     prompt: '',

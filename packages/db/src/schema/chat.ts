@@ -10,6 +10,7 @@ export const sessions = sqliteTable('sessions', {
   workspaceId: text('workspace_id')
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
+  titleSource: text('title_source', { enum: ['user', 'provider', 'initial'] }).notNull().default('initial'),
   providerTargetId: text('provider_target_id')
     .references(() => providerTargets.id, { onDelete: 'restrict' }),
   runtimeKind: text('runtime_kind').notNull().default('standard'),

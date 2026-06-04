@@ -186,7 +186,11 @@ export const zGetProfilesByIdPath = z.object({
 
 export const zPutProfilesByIdBody = z.object({
     name: z.string().min(1),
-    providerKind: z.enum(['openai-compatible', 'anthropic']),
+    providerKind: z.enum([
+        'openai-compatible',
+        'anthropic',
+        'universal'
+    ]),
     enabled: z.boolean(),
     config: z.record(z.string(), z.unknown()),
     credentialRef: z.string().min(1).nullish(),
@@ -250,7 +254,11 @@ export const zDeleteProviderTargetsByProviderTargetIdPath = z.object({
 
 export const zPutProviderTargetsByProviderTargetIdBody = z.object({
     displayName: z.string().min(1),
-    providerKind: z.enum(['openai-compatible', 'anthropic']),
+    providerKind: z.enum([
+        'openai-compatible',
+        'anthropic',
+        'universal'
+    ]),
     enabled: z.boolean().optional(),
     connectionConfig: z.record(z.string(), z.unknown()),
     credentialRef: z.string().nullish(),
@@ -423,7 +431,11 @@ export const zPutModelRegistryMappingsByModelIdPath = z.object({
 });
 
 export const zPostProvidersModelsBody = z.object({
-    providerKind: z.enum(['openai-compatible', 'anthropic']),
+    providerKind: z.enum([
+        'openai-compatible',
+        'anthropic',
+        'universal'
+    ]),
     label: z.string().min(1),
     config: z.object({
         baseUrl: z.string().optional(),

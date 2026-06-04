@@ -8,7 +8,7 @@ export const runtimeAuditLog = sqliteTable('runtime_audit_log', {
   id: int('id').primaryKey({ autoIncrement: true }),
   providerTargetId: text('provider_target_id').references(() => providerTargets.id, { onDelete: 'set null' }),
   providerKind: text('provider_kind', {
-    enum: ['openai-compatible', 'anthropic'],
+    enum: ['openai-compatible', 'anthropic', 'universal'],
   }).notNull(),
   action: text('action').notNull(),
   subject: text('subject'),

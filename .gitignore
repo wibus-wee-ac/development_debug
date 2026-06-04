@@ -4,6 +4,7 @@ out
 .DS_Store
 .eslintcache
 *.log*
+!*.logic.ts
 e2e/artifacts
 .github/copilot-instructions.md
 *.tsbuildinfo

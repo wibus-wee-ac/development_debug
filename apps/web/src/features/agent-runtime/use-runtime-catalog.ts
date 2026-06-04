@@ -39,8 +39,8 @@ export const RUNTIME_CATALOG_QUERY_KEY = ['chat', 'runtimes'] as const
 export const FALLBACK_RUNTIME_CATALOG: RuntimeCatalogItem[] = [
   {
     runtimeKind: 'jar-core',
-    label: 'Jar Core',
-    description: 'HiJarvis system-agent runtime',
+    label: 'HiJarvis',
+    description: 'Multi-surface AI agent with local memory',
     providerKinds: ['openai-compatible', 'anthropic'],
     iconKey: 'hijarvis',
     surfaces: ['jarvis'],
@@ -105,6 +105,8 @@ export const FALLBACK_RUNTIME_CATALOG: RuntimeCatalogItem[] = [
   },
 ]
 
+const HIDDEN_RUNTIME_KINDS = new Set<RuntimeKind>(['acp-chat', 'standard'])
+
 function normalizeCatalogItem(item: z.infer<typeof RuntimeCatalogSchema>['items'][number]): RuntimeCatalogItem {
   return {
     ...item,
@@ -135,5 +137,6 @@ export function listRuntimeCatalogForSurface(
   runtimes: RuntimeCatalogItem[],
   surface: RuntimeCatalogSurface,
 ): RuntimeCatalogItem[] {
-  return runtimes.filter(runtime => runtime.surfaces.includes(surface))
+  return runtimes.filter(runtime =>
+    runtime.surfaces.includes(surface) && !HIDDEN_RUNTIME_KINDS.has(runtime.runtimeKind))
 }

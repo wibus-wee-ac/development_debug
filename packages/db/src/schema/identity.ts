@@ -7,7 +7,7 @@ export const agentProfiles = sqliteTable('agent_profiles', {
   id: textPk(),
   name: text('name').notNull(),
   providerKind: text('provider_kind', {
-    enum: ['openai-compatible', 'anthropic'],
+    enum: ['openai-compatible', 'anthropic', 'universal'],
   }).notNull(),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
   configJson: text('config_json').notNull().default('{}'),

@@ -14,7 +14,7 @@ export const providerTargets = sqliteTable('provider_targets', {
   id: textPk(),
   kind: providerTargetKindColumn('kind').notNull(),
   providerKind: text('provider_kind', {
-    enum: ['openai-compatible', 'anthropic'],
+    enum: ['openai-compatible', 'anthropic', 'universal'],
   }).notNull(),
   displayName: text('display_name').notNull(),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
