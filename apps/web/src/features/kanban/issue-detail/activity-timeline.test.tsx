@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanIssueCommentView } from '~/lib/types'
+import type { KanbanIssueCommentView, KanbanIssueFieldChangeView } from '~/lib/types'
 
 import { ActivityTimeline } from './activity-timeline'
 
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   addCommentMutate: vi.fn(),
   comments: [] as KanbanIssueCommentView[],
   deleteCommentMutate: vi.fn(),
+  fieldChanges: [] as KanbanIssueFieldChangeView[],
 }))
 
 vi.mock('../use-kanban', () => ({
@@ -20,6 +21,9 @@ vi.mock('../use-kanban', () => ({
   }),
   useDeleteComment: () => ({
     mutate: mocks.deleteCommentMutate,
+  }),
+  useFieldChanges: () => ({
+    data: mocks.fieldChanges,
   }),
 }))
 
@@ -51,6 +55,7 @@ describe('activity timeline', () => {
     mocks.addCommentMutate.mockReset()
     mocks.deleteCommentMutate.mockReset()
     mocks.comments = []
+    mocks.fieldChanges = []
   })
 
   it('renders agent comments as static markdown', () => {

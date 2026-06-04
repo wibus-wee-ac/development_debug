@@ -48,6 +48,7 @@ export const issues = sqliteTable('kanban_issues', {
   labels: text('labels').notNull().default('[]'),
   assigneeKind: text('assignee_kind'),
   assigneeId: text('assignee_id'),
+  dueDate: int('due_date'),
   createdByKind: text('created_by_kind', { enum: ['user', 'agent', 'system'] }).notNull().default('user'),
   createdById: text('created_by_id').notNull().default('__self__'),
   delegateAgentId: text('delegate_agent_id').references(() => agents.id, { onDelete: 'set null' }),
@@ -95,14 +96,31 @@ export const issueRelations = sqliteTable('kanban_issue_relations', {
   byTarget: index('kanban_issue_relations_target_issue_id_idx').on(table.targetIssueId),
 }))
 
+export const issueFieldChanges = sqliteTable('kanban_issue_field_changes', {
+  id: textPk(),
+  issueId: text('issue_id')
+    .notNull()
+    .references(() => issues.id, { onDelete: 'cascade' }),
+  field: text('field').notNull(),
+  fromValue: text('from_value'),
+  toValue: text('to_value'),
+  actorKind: text('actor_kind', { enum: ['user', 'agent', 'system'] }).notNull().default('user'),
+  actorId: text('actor_id'),
+  ...createdAt(),
+}, table => ({
+  byIssue: index('kanban_issue_field_changes_issue_id_idx').on(table.issueId),
+}))
+
 export type IssueStatus = typeof issueStatuses.$inferSelect
 export type IssueMilestone = typeof issueMilestones.$inferSelect
 export type Issue = typeof issues.$inferSelect
 export type IssueComment = typeof issueComments.$inferSelect
 export type IssueRelation = typeof issueRelations.$inferSelect
+export type IssueFieldChange = typeof issueFieldChanges.$inferSelect
 
 export {
   issueComments as kanbanIssueComments,
+  issueFieldChanges as kanbanIssueFieldChanges,
   issueRelations as kanbanIssueRelations,
   issues as kanbanIssues,
   issueMilestones as kanbanMilestones,
@@ -114,3 +132,4 @@ export type KanbanMilestone = IssueMilestone
 export type KanbanIssue = Issue
 export type KanbanIssueComment = IssueComment
 export type KanbanIssueRelation = IssueRelation
+export type KanbanIssueFieldChange = IssueFieldChange

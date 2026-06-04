@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Issue, IssueComment, IssueMilestone, IssueRelation, IssueStatus, Workspace } from '@cradle/db'
+import type { Issue, IssueComment, IssueFieldChange, IssueMilestone, IssueRelation, IssueStatus, Workspace } from '@cradle/db'
 import {
   agents,
   issueComments,
+  issueFieldChanges,
   issueMilestones,
   issueRelations,
   issues,
@@ -37,6 +38,9 @@ const CreateIssueInputSchema = z.object({
   parentIssueId: z.string().nullable().default(null),
   statusId: z.string().nullable().default(null),
   statusName: z.string().nullable().default(null),
+  dueDate: z.number().nullable().default(null),
+  assigneeKind: z.string().nullable().default(null),
+  assigneeId: z.string().nullable().default(null),
 })
 
 const CreateStatusInputSchema = z.object({
@@ -65,6 +69,10 @@ const AddCommentInputSchema = AddCommentBaseInputSchema.transform(input => ({
   ...input,
   authorId: z.string().nullable().default(() => input.authorKind.startsWith('system') ? null : '__self__').parse(input.authorId),
 }))
+
+type IssueMutationActor = { kind: 'user' | 'agent' | 'system', id: string | null }
+
+export type IssueFieldChangeView = IssueFieldChange
 
 export const IssueContextRefsJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
@@ -422,6 +430,9 @@ export function createIssue(rawInput: {
   parentIssueId?: string | null
   statusId?: string | null
   statusName?: string | null
+  dueDate?: number | null
+  assigneeKind?: string | null
+  assigneeId?: string | null
 }, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): IssueView {
   const input = CreateIssueInputSchema.parse(rawInput)
   const workspace = requireWorkspace(input.workspaceId)
@@ -442,8 +453,9 @@ export function createIssue(rawInput: {
     parentIssueId: input.parentIssueId,
     statusId,
     number: identity.number,
-    assigneeKind: null,
-    assigneeId: null,
+    assigneeKind: input.assigneeKind,
+    assigneeId: input.assigneeId,
+    dueDate: input.dueDate,
     createdByKind,
     createdById: actor.id,
     delegateAgentId: null,
@@ -454,6 +466,58 @@ export function createIssue(rawInput: {
     updatedAt: now,
   }).returning().get()
   return toIssueView(issue)
+}
+
+const TRACKED_FIELDS = [
+  'title',
+  'description',
+  'priority',
+  'labels',
+  'milestoneId',
+  'parentIssueId',
+  'statusId',
+  'assigneeKind',
+  'assigneeId',
+  'dueDate',
+  'delegateAgentId',
+  'delegateAgentProfileId',
+  'contextRefs',
+  'order',
+] as const
+
+function normalizeIssueMutationActor(actor: MutationActor | IssueMutationActor): IssueMutationActor {
+  return {
+    kind: actor.kind === 'provider-target' ? 'system' : actor.kind,
+    id: actor.id ?? null,
+  }
+}
+
+function recordFieldChanges(issueId: string, before: Issue, updates: Record<string, unknown>, rawActor: MutationActor | IssueMutationActor): void {
+  const now = currentUnixSeconds()
+  const actor = normalizeIssueMutationActor(rawActor)
+  for (const field of TRACKED_FIELDS) {
+    if (!(field in updates)) {
+      continue
+    }
+    const dbField = field === 'labels' ? 'labels' : field
+    const rawBefore = before[dbField as keyof Issue]
+    const rawAfter = updates[field]
+    const fromValue = rawBefore == null ? null : String(rawBefore)
+    const toValue = rawAfter == null ? null : String(rawAfter)
+    if (fromValue === toValue) {
+      continue
+    }
+    db().insert(issueFieldChanges).values({
+      id: randomUUID(),
+      issueId,
+      field,
+      fromValue,
+      toValue,
+      actorKind: actor.kind,
+      actorId: actor.id ?? null,
+      createdAt: now,
+    }).run()
+  }
 }
 
 export function updateIssue(id: string, patch: Partial<{
@@ -467,8 +531,9 @@ export function updateIssue(id: string, patch: Partial<{
   statusName: string | null
   assigneeKind: string | null
   assigneeId: string | null
+  dueDate: number | null
   order: number
-}>): IssueView {
+}>, actor: MutationActor | IssueMutationActor = { kind: 'user', id: '__self__' }): IssueView {
   const issue = getIssueRow(id)
   const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if (patch.title !== undefined) {
@@ -498,24 +563,40 @@ export function updateIssue(id: string, patch: Partial<{
   if ('assigneeId' in patch) {
     updates.assigneeId = patch.assigneeId ?? null
   }
+  if ('dueDate' in patch) {
+    updates.dueDate = patch.dueDate ?? null
+  }
   if (patch.order !== undefined) {
     updates.order = patch.order
   }
 
+  recordFieldChanges(id, issue, updates, actor)
   db().update(issues).set(updates).where(eq(issues.id, id)).run()
   return getIssue(id)
 }
 
-export function moveIssueToStatusName(id: string, statusName: string): IssueView {
-  return updateIssue(id, { statusName })
+export function listFieldChanges(issueId: string): IssueFieldChangeView[] {
+  getIssueRow(issueId)
+  return db().select().from(issueFieldChanges).where(eq(issueFieldChanges.issueId, issueId)).orderBy(issueFieldChanges.createdAt).all()
 }
 
-export function updateIssueDelegation(id: string, delegation: { agentId: string, providerTargetId: string } | null): IssueView {
-  db().update(issues).set({
+export function moveIssueToStatusName(id: string, statusName: string, actor?: MutationActor | IssueMutationActor): IssueView {
+  return updateIssue(id, { statusName }, actor)
+}
+
+export function updateIssueDelegation(
+  id: string,
+  delegation: { agentId: string, providerTargetId: string } | null,
+  actor: MutationActor | IssueMutationActor = { kind: 'system', id: 'issue-agent' },
+): IssueView {
+  const issue = getIssueRow(id)
+  const updates = {
     delegateAgentId: delegation?.agentId ?? null,
     delegateAgentProfileId: delegation?.providerTargetId ?? null,
     updatedAt: currentUnixSeconds(),
-  }).where(eq(issues.id, id)).run()
+  }
+  recordFieldChanges(id, issue, updates, actor)
+  db().update(issues).set(updates).where(eq(issues.id, id)).run()
   return getIssue(id)
 }
 
@@ -525,10 +606,19 @@ export function deleteIssue(id: string): void {
   db().delete(issues).where(eq(issues.id, id)).run()
 }
 
-export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string | null, priority?: string, labels?: string[], milestoneId?: string | null, assigneeKind?: string | null, assigneeId?: string | null }): number {
+export function bulkUpdateIssues(issueIds: string[], update: {
+  statusId?: string | null
+  priority?: string
+  labels?: string[]
+  milestoneId?: string | null
+  assigneeKind?: string | null
+  assigneeId?: string | null
+  dueDate?: number | null
+}, actor: MutationActor | IssueMutationActor = { kind: 'user', id: '__self__' }): number {
   if (issueIds.length === 0) {
     return 0
   }
+  const uniqueIssueIds = [...new Set(issueIds)]
   const updates: Record<string, unknown> = { updatedAt: currentUnixSeconds() }
   if ('statusId' in update) {
     updates.statusId = update.statusId ?? null
@@ -548,8 +638,21 @@ export function bulkUpdateIssues(issueIds: string[], update: { statusId?: string
   if ('assigneeId' in update) {
     updates.assigneeId = update.assigneeId ?? null
   }
+  if ('dueDate' in update) {
+    updates.dueDate = update.dueDate ?? null
+  }
 
-  const result = db().update(issues).set(updates).where(sql`${issues.id} IN (${sql.join(issueIds.map(id => sql`${id}`), sql`, `)})`).run()
+  const beforeRows = db()
+    .select()
+    .from(issues)
+    .where(sql`${issues.id} IN (${sql.join(uniqueIssueIds.map(id => sql`${id}`), sql`, `)})`)
+    .all()
+
+  for (const issue of beforeRows) {
+    recordFieldChanges(issue.id, issue, updates, actor)
+  }
+
+  const result = db().update(issues).set(updates).where(sql`${issues.id} IN (${sql.join(uniqueIssueIds.map(id => sql`${id}`), sql`, `)})`).run()
   return result.changes
 }
 
@@ -658,22 +761,36 @@ export function deleteRelation(id: string): void {
   db().delete(issueRelations).where(eq(issueRelations.id, id)).run()
 }
 
-export function addContextRef(issueId: string, ref: string): IssueView {
+export function addContextRef(
+  issueId: string,
+  ref: string,
+  actor: MutationActor | IssueMutationActor = { kind: 'user', id: '__self__' },
+): IssueView {
   const issue = getIssue(issueId)
   const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   refs.push(ref)
-  db().update(issues).set({ contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }).where(eq(issues.id, issueId)).run()
+  const row = getIssueRow(issueId)
+  const updates = { contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }
+  recordFieldChanges(issueId, row, updates, actor)
+  db().update(issues).set(updates).where(eq(issues.id, issueId)).run()
   return getIssue(issueId)
 }
 
-export function removeContextRef(issueId: string, index: number): IssueView {
+export function removeContextRef(
+  issueId: string,
+  index: number,
+  actor: MutationActor | IssueMutationActor = { kind: 'user', id: '__self__' },
+): IssueView {
   const issue = getIssue(issueId)
   const refs = IssueContextRefsJsonSchema.parse(issue.contextRefs)
   if (index < 0 || index >= refs.length) {
     throw new AppError({ code: 'issue_context_ref_invalid_index', status: 400, message: 'Invalid context ref index', details: { issueId, index } })
   }
   refs.splice(index, 1)
-  db().update(issues).set({ contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }).where(eq(issues.id, issueId)).run()
+  const row = getIssueRow(issueId)
+  const updates = { contextRefs: JSON.stringify(refs), updatedAt: currentUnixSeconds() }
+  recordFieldChanges(issueId, row, updates, actor)
+  db().update(issues).set(updates).where(eq(issues.id, issueId)).run()
   return getIssue(issueId)
 }
 

@@ -7,6 +7,7 @@ import {
   PlusIcon,
   SlidersHorizontalIcon,
   SortAscIcon,
+  TableIcon,
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
@@ -131,6 +132,17 @@ export function KanbanToolbar({
             )}
           >
             <ListIcon className="size-3.5" aria-hidden="true" />
+          </button>
+          <button
+            onClick={() => setConfig({ layout: 'table' })}
+            aria-label={t('layout.tableAria')}
+            aria-pressed={config.layout === 'table'}
+            className={cn(
+              'flex items-center justify-center size-7 rounded-full transition-colors duration-100',
+              config.layout === 'table' ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            <TableIcon className="size-3.5" aria-hidden="true" />
           </button>
         </div>
       </div>

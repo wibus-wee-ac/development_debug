@@ -1,7 +1,8 @@
-import { BotIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon, TagsIcon, Trash2Icon, UserRoundXIcon, XIcon } from 'lucide-react'
+import { BotIcon, CalendarIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon, TagsIcon, Trash2Icon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Calendar } from '~/components/ui/calendar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -54,6 +55,7 @@ type IssuePatch = Partial<{
   statusId: string | null
   assigneeKind: string | null
   assigneeId: string | null
+  dueDate: number | null
 }>
 
 const CURRENT_USER_ASSIGNEE_ID = '__self__'
@@ -162,6 +164,11 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
             </DropdownMenuContent>
           </DropdownMenu>
         </PropertyRow>
+
+        {/* Due date */}
+        <PropertyRow label={t('display.dueDate')}>
+          <DueDateEditor dueDate={issue.dueDate} onUpdate={dueDate => onUpdate({ dueDate })} />
+        </PropertyRow>
       </div>
 
       <div className="my-3" />
@@ -181,6 +188,62 @@ function PropertyRow({ label, children }: { label: string, children: React.React
       <span className="shrink-0 text-[12px] text-muted-foreground">{label}</span>
       <div className="flex min-w-0 items-center">{children}</div>
     </div>
+  )
+}
+
+function toDateInputValue(ts: number | null | undefined): string {
+  return ts ? formatIssueDate(new Date(ts * 1000)) : ''
+}
+
+function toCalendarDate(ts: number | null | undefined): Date | undefined {
+  return ts ? new Date(ts * 1000) : undefined
+}
+
+function fromCalendarDate(value: Date | undefined): number | null {
+  return value ? Math.floor(new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime() / 1000) : null
+}
+
+function formatIssueDate(value: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).format(value)
+}
+
+function DueDateEditor({ dueDate, onUpdate }: { dueDate: number | null, onUpdate: (dueDate: number | null) => void }) {
+  const { t } = useTranslation('kanban')
+  const selectedDate = toCalendarDate(dueDate)
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'flex max-w-40 items-center gap-1.5 rounded px-1.5 py-0.5 text-[13px]',
+            'transition-colors hover:bg-fill',
+            selectedDate ? 'text-foreground' : 'text-muted-foreground',
+          )}
+        >
+          <CalendarIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <span className="truncate">{selectedDate ? toDateInputValue(dueDate) : t('priority.none')}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto p-0">
+        <Calendar
+          mode="single"
+          selected={selectedDate}
+          onSelect={date => onUpdate(fromCalendarDate(date))}
+        />
+        {selectedDate && (
+          <div className="border-t border-border p-2">
+            <button type="button" onClick={() => onUpdate(null)} className="w-full rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-fill hover:text-foreground">
+              {t('filter.clear')}
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
   )
 }
 

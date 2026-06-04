@@ -5,8 +5,8 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 
 ## Files
 
-- **create-issue-dialog.tsx**: Floating create-issue panel with status and priority metadata controls.
-- **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring, accepts tab-provided milestone focus filters, and keeps list view read/select/create focused.
+- **create-issue-dialog.tsx**: Floating create-issue panel with status, priority, assignee, and label metadata controls.
+- **index.tsx**: Kanban feature entrypoint and page composition; board view owns status move wiring, accepts tab-provided milestone focus filters, and keeps board/list/table read/select/create flows focused.
 - **issue-aside-panel.tsx**: Right-aside linked issue panel for chat sessions, including linked issue summary, unlink/open actions, and a searchable combobox picker with status icons and issue badges; records the right-aside Issue first-render mark after linked issue state, workspace list, statuses, board list, comments, and picker issues are ready.
 - **issue-aside-panel-loader.ts**: Issue aside panel 的共享 lazy loader 与 intent preload 入口，供 right aside Issue tab 使用
 - **issue-aside-panel.test.tsx**: Regression tests for linked issue rendering, Kanban navigation, unlink actions, and combobox-based issue linking.
@@ -22,6 +22,7 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-list.tsx**: List-view composition for issues; group collapse uses instant layout changes instead of height/auto motion animation.
 - **kanban-item-actions.test.tsx**: Regression tests for native issue card/list row button semantics.
 - **kanban-list-row.tsx**: Compact list row for individual issues; rows use native named buttons for opening detail views, indent child issues, and expose separate parent issue quick-jump affordances.
+- **kanban-table.tsx**: TanStack Table issue view with dense Linear-style rows, sorting, global filtering, column visibility, and external issue selection state.
 - **kanban-parent-issue-link.test.tsx**: Regression tests for parent issue indicators on Kanban cards and list rows.
 - **kanban-selection.ts**: Pure helper functions for visible-order multi-selection, toggle, and range semantics.
 - **kanban-selection.test.ts**: Regression tests for Linear-style issue selection ranges and toggles.
@@ -32,5 +33,5 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Kanban 内部复用的视觉与元数据 helper，包括 priority label、彩色 label metadata、父 issue affordance、图标和头像。
 - **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.
-- **use-kanban.ts**: Kanban board 与 Issue-owned status、milestone、relation、comment、label patching、delegation 操作的 TanStack Query hooks；高影响 workspace 读取使用共享 query refresh policy，使外部 CLI、agent 和多窗口变更无需整页刷新即可可见。
-- **use-view-config.ts**: Local view configuration state for board/list display options.
+- **use-kanban.ts**: Kanban board 与 Issue-owned status、milestone、relation、comment、field-change history、bulk update、label patching、delegation 操作的 TanStack Query hooks；高影响 workspace 读取使用共享 query refresh policy，使外部 CLI、agent 和多窗口变更无需整页刷新即可可见。
+- **use-view-config.ts**: Local view configuration state for board/list/table display options.

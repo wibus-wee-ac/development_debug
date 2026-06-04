@@ -85,6 +85,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "dueDate",
+      "required": false,
+      "target": "body.dueDate",
+      "type": "number"
+    },
+    {
       "name": "order",
       "required": false,
       "target": "body.order",

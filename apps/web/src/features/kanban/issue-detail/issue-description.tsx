@@ -41,6 +41,7 @@ const IssueSearchListSchema = z.array(z.object({
   labels: z.array(z.string()),
   assigneeKind: z.string().nullable(),
   assigneeId: z.string().nullable(),
+  dueDate: z.number().nullable(),
   createdByKind: z.enum(['user', 'agent', 'system']),
   createdById: z.string(),
   delegateAgentId: z.string().nullable(),

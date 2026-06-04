@@ -52,6 +52,7 @@ export const IssueModel = {
     labels: t.Array(t.String()),
     assigneeKind: t.Nullable(t.String()),
     assigneeId: t.Nullable(t.String()),
+    dueDate: t.Nullable(t.Number()),
     createdByKind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
     createdById: t.String(),
     delegateAgentId: t.Nullable(t.String()),
@@ -101,6 +102,17 @@ export const IssueModel = {
     createdAt: t.Number(),
   }),
 
+  fieldChange: t.Object({
+    id: t.String(),
+    issueId: t.String(),
+    field: t.String(),
+    fromValue: t.Nullable(t.String()),
+    toValue: t.Nullable(t.String()),
+    actorKind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
+    actorId: t.Nullable(t.String()),
+    createdAt: t.Number(),
+  }),
+
   requiredWorkspaceIdQuery: t.Object({
     workspaceId: t.String({ minLength: 1 }),
   }),
@@ -147,6 +159,9 @@ export const IssueModel = {
       minLength: 1,
       description: 'Issue status name or slug, for example "In Progress" or "in_progress".',
     }))),
+    dueDate: t.Optional(t.Nullable(t.Number())),
+    assigneeKind: t.Optional(t.Nullable(t.String())),
+    assigneeId: t.Optional(t.Nullable(t.String())),
   }),
 
   updateIssueBody: t.Object({
@@ -163,6 +178,7 @@ export const IssueModel = {
     }))),
     assigneeKind: t.Optional(t.Nullable(t.String())),
     assigneeId: t.Optional(t.Nullable(t.String())),
+    dueDate: t.Optional(t.Nullable(t.Number())),
     order: t.Optional(t.Number()),
   }),
 
@@ -175,6 +191,7 @@ export const IssueModel = {
       milestoneId: t.Optional(t.Nullable(t.String())),
       assigneeKind: t.Optional(t.Nullable(t.String())),
       assigneeId: t.Optional(t.Nullable(t.String())),
+      dueDate: t.Optional(t.Nullable(t.Number())),
     }),
   }),
 

@@ -1,9 +1,10 @@
-import { ChevronRightIcon, MaximizeIcon, PaperclipIcon, XIcon } from 'lucide-react'
+import { CalendarIcon, ChevronRightIcon, MaximizeIcon, PaperclipIcon, SearchIcon, TagsIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
+import { Calendar } from '~/components/ui/calendar'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,11 +12,15 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/lib/types'
 
+import { AssigneeAvatar } from './shared/assignee-avatar'
 import { priorityOptions } from './shared/issue-metadata'
+import { LabelChip } from './shared/label-chip'
+import { collectWorkspaceLabelOptions, filterWorkspaceLabelOptions } from './shared/label-metadata'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import type { IssuePriority } from './use-kanban'
@@ -29,19 +34,49 @@ const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' 
   urgent: 'priority.urgent',
 }
 
+const CURRENT_USER_ASSIGNEE_ID = '__self__'
+const LABEL_SUGGESTION_LIMIT = 8
+
+function normalizeLabelForCompare(label: string): string {
+  return label.trim().toLowerCase()
+}
+
+function toDateInputValue(ts: number | null | undefined): string {
+  return ts ? formatIssueDate(new Date(ts * 1000)) : ''
+}
+
+function toCalendarDate(ts: number | null | undefined): Date | undefined {
+  return ts ? new Date(ts * 1000) : undefined
+}
+
+function fromCalendarDate(value: Date | undefined): number | null {
+  return value ? Math.floor(new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime() / 1000) : null
+}
+
+function formatIssueDate(value: Date): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+  }).format(value)
+}
+
 interface CreateIssueDialogProps {
   workspaceId: string
+  issues: KanbanIssue[]
   defaultStatusId?: string
   open: boolean
   onClose: () => void
 }
 
-export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
+export function CreateIssueDialog({ workspaceId, issues, defaultStatusId, open, onClose }: CreateIssueDialogProps) {
   const { t } = useTranslation('kanban')
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [priority, setPriority] = useState('none')
   const [statusId, setStatusId] = useState(defaultStatusId ?? '')
+  const [assigneeId, setAssigneeId] = useState('')
+  const [labels, setLabels] = useState<string[]>([])
+  const [dueDate, setDueDate] = useState<number | null>(null)
   const titleInputRef = useRef<HTMLInputElement>(null)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { workspaces } = useWorkspaces()
@@ -71,12 +106,19 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
       description: description.trim() || null,
       priority: priority as IssuePriority,
       statusId: statusId || undefined,
+      assigneeKind: assigneeId ? 'user' : null,
+      assigneeId: assigneeId || null,
+      dueDate,
+      labels,
     }, {
       onSuccess: () => {
         setTitle('')
         setDescription('')
         setPriority('none')
         setStatusId('')
+        setAssigneeId('')
+        setLabels([])
+        setDueDate(null)
         onClose()
       },
     })
@@ -171,8 +213,9 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
                 currentStatus={currentStatus}
               />
               <PriorityPicker value={priority} onChange={setPriority} />
-              <MetaBadge label={t('property.assignee')} />
-              <MetaBadge label={t('property.labels')} />
+              <AssigneePicker value={assigneeId} onChange={setAssigneeId} />
+              <DueDatePicker value={dueDate} onChange={setDueDate} />
+              <LabelsPicker labels={labels} issues={issues} onChange={setLabels} />
             </div>
 
             {/* ── Footer ── */}
@@ -205,22 +248,6 @@ export function CreateIssueDialog({ workspaceId, defaultStatusId, open, onClose 
         </div>
       )}
     </AnimatePresence>
-  )
-}
-
-function MetaBadge({ label, icon, className }: { label: string, icon?: React.ReactNode, className?: string }) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        'flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground',
-        'hover:text-foreground transition-colors',
-        className,
-      )}
-    >
-      {icon}
-      <span>{label}</span>
-    </button>
   )
 }
 
@@ -260,6 +287,208 @@ function StatusPicker({ statuses, value, onChange, currentStatus }: {
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  )
+}
+
+function AssigneePicker({ value, onChange }: { value: string, onChange: (value: string) => void }) {
+  const { t } = useTranslation('kanban')
+  const currentUserName = t('assignee.currentUser')
+  const selectedValue = value ? `user:${value}` : ''
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {value
+            ? <AssigneeAvatar name={currentUserName} size={13} />
+            : <UserRoundXIcon className="size-3.5" aria-hidden="true" />}
+          <span>{value ? currentUserName : t('assignee.unassigned')}</span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52">
+        <DropdownMenuRadioGroup
+          value={selectedValue}
+          onValueChange={(nextValue) => {
+            if (!nextValue) {
+              onChange('')
+              return
+            }
+
+            const [, id] = nextValue.split(':', 2)
+            onChange(id ?? '')
+          }}
+        >
+          <DropdownMenuRadioItem value="">
+            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <span>{t('assignee.unassigned')}</span>
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value={`user:${CURRENT_USER_ASSIGNEE_ID}`}>
+            <AssigneeAvatar name={currentUserName} size={16} />
+            <span>{currentUserName}</span>
+          </DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+function DueDatePicker({ value, onChange }: { value: number | null, onChange: (value: number | null) => void }) {
+  const { t } = useTranslation('kanban')
+  const selectedDate = toCalendarDate(value)
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            'flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px]',
+            value ? 'text-foreground' : 'text-muted-foreground',
+            'hover:text-foreground transition-colors',
+          )}
+          aria-label={t('display.dueDate')}
+        >
+          <CalendarIcon className="size-3.5" aria-hidden="true" />
+          <span>{selectedDate ? toDateInputValue(value) : t('display.dueDate')}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0">
+        <Calendar
+          mode="single"
+          selected={selectedDate}
+          onSelect={date => onChange(fromCalendarDate(date))}
+        />
+        {selectedDate && (
+          <div className="border-t border-border p-2">
+            <button type="button" onClick={() => onChange(null)} className="w-full rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-fill hover:text-foreground">
+              {t('filter.clear')}
+            </button>
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function LabelsPicker({ labels, issues, onChange }: { labels: string[], issues: KanbanIssue[], onChange: (labels: string[]) => void }) {
+  const { t } = useTranslation('kanban')
+  const [open, setOpen] = useState(false)
+  const [inputValue, setInputValue] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+  const selectedLabelKeys = useMemo(() => new Set(labels.map(normalizeLabelForCompare)), [labels])
+  const workspaceLabelOptions = useMemo(() => collectWorkspaceLabelOptions(issues), [issues])
+  const labelSuggestions = useMemo(
+    () => filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT),
+    [inputValue, labels, workspaceLabelOptions],
+  )
+  const trimmedInput = inputValue.trim()
+  const canCreateLabel = trimmedInput.length > 0 && !selectedLabelKeys.has(normalizeLabelForCompare(trimmedInput))
+
+  useEffect(() => {
+    if (!open) {
+      return
+    }
+    requestAnimationFrame(() => inputRef.current?.focus())
+  }, [open])
+
+  const addLabel = (label: string) => {
+    const trimmed = label.trim()
+    const key = normalizeLabelForCompare(trimmed)
+    if (!trimmed || selectedLabelKeys.has(key)) {
+      return
+    }
+    onChange([...labels, trimmed])
+    setInputValue('')
+  }
+
+  const removeLabel = (label: string) => {
+    const key = normalizeLabelForCompare(label)
+    onChange(labels.filter(candidate => normalizeLabelForCompare(candidate) !== key))
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="flex max-w-60 items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <TagsIcon className="size-3.5 shrink-0" aria-hidden="true" />
+          {labels.length > 0
+            ? (
+                <span className="flex min-w-0 items-center gap-1">
+                  {labels.slice(0, 2).map(label => <LabelChip key={label} label={label} className="h-4 max-w-20 truncate" />)}
+                  {labels.length > 2 && (
+<span className="tabular-nums">
++
+{labels.length - 2}
+</span>
+)}
+                </span>
+              )
+            : <span>{t('property.labels')}</span>}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-72 p-0">
+        <div className="border-b border-border p-2">
+          <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
+            <SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <input
+              ref={inputRef}
+              value={inputValue}
+              onChange={event => setInputValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  const exactSuggestion = labelSuggestions.find(option => normalizeLabelForCompare(option.label) === normalizeLabelForCompare(inputValue))
+                  addLabel(exactSuggestion?.label ?? inputValue)
+                }
+              }}
+              placeholder={t('issue.label.inputPlaceholder')}
+              className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+            />
+          </div>
+          {labels.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {labels.map(label => (
+                <button key={label} type="button" onClick={() => removeLabel(label)} aria-label={`Remove label ${label}`}>
+                  <LabelChip label={label} className="cursor-pointer hover:line-through" />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="max-h-60 overflow-y-auto p-1">
+          {canCreateLabel && (
+            <button
+              type="button"
+              onClick={() => addLabel(inputValue)}
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-fill"
+            >
+              <span className="truncate">{trimmedInput}</span>
+              <span className="text-[11px] text-muted-foreground">{t('issue.label.create', { label: trimmedInput })}</span>
+            </button>
+          )}
+          {labelSuggestions.map(option => (
+            <button
+              key={option.label}
+              type="button"
+              onClick={() => addLabel(option.label)}
+              className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-left hover:bg-fill"
+            >
+              <LabelChip label={option.label} tone={option.tone} className="max-w-40 truncate" />
+              <span className="text-[11px] text-muted-foreground tabular-nums">{option.count}</span>
+            </button>
+          ))}
+          {!canCreateLabel && labelSuggestions.length === 0 && (
+            <div className="px-2 py-4 text-center text-[12px] text-muted-foreground">{t('issue.label.noMatches')}</div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 

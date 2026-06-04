@@ -70,6 +70,24 @@ const spec = {
       "required": false,
       "target": "body.statusName",
       "type": "string"
+    },
+    {
+      "name": "dueDate",
+      "required": false,
+      "target": "body.dueDate",
+      "type": "number"
+    },
+    {
+      "name": "assigneeKind",
+      "required": false,
+      "target": "body.assigneeKind",
+      "type": "string"
+    },
+    {
+      "name": "assigneeId",
+      "required": false,
+      "target": "body.assigneeId",
+      "type": "string"
     }
   ],
   "method": "post",

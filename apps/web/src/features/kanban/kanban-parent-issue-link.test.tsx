@@ -61,6 +61,7 @@ const childIssue: KanbanIssue = {
   labels: [],
   assigneeKind: null,
   assigneeId: null,
+  dueDate: null,
   createdByKind: 'user',
   createdById: '__self__',
   delegateAgentId: null,

@@ -136,15 +136,15 @@ export const issue = new Elysia({
     body: IssueModel.createIssueBody,
     response: { 200: IssueModel.issue },
   })
-  .patch('/bulk', ({ body }) => {
-    const updated = Issue.bulkUpdateIssues(body.issueIds, body.update)
+  .patch('/bulk', ({ body, request }) => {
+    const updated = Issue.bulkUpdateIssues(body.issueIds, body.update, resolveActorContext(request))
     return { updated }
   }, {
     detail: { summary: 'Bulk update issues' },
     body: IssueModel.bulkUpdateBody,
     response: { 200: t.Object({ updated: t.Number() }) },
   })
-  .patch('/:id/status/:statusName', ({ params }) => Issue.moveIssueToStatusName(params.id, params.statusName), {
+  .patch('/:id/status/:statusName', ({ params, request }) => Issue.moveIssueToStatusName(params.id, params.statusName, resolveActorContext(request)), {
     detail: {
       'summary': 'Move issue to status by name',
       'x-cradle-cli': { command: ['issue', 'move'] },
@@ -152,7 +152,7 @@ export const issue = new Elysia({
     params: IssueModel.moveIssueByStatusNameParams,
     response: { 200: IssueModel.issue },
   })
-  .patch('/:id', ({ params, body }) => Issue.updateIssue(params.id, body), {
+  .patch('/:id', ({ params, body, request }) => Issue.updateIssue(params.id, body, resolveActorContext(request)), {
     detail: {
       'summary': 'Update issue',
       'x-cradle-cli': { command: ['issue', 'update'] },
@@ -160,6 +160,14 @@ export const issue = new Elysia({
     params: IssueModel.idParams,
     body: IssueModel.updateIssueBody,
     response: { 200: IssueModel.issue },
+  })
+  .get('/:id/field-changes', ({ params }) => Issue.listFieldChanges(params.id), {
+    detail: {
+      'summary': 'List issue field changes',
+      'x-cradle-cli': { command: ['issue', 'field-change', 'list'] },
+    },
+    params: IssueModel.idParams,
+    response: { 200: t.Array(IssueModel.fieldChange) },
   })
   .delete('/:id', ({ params }) => {
     Issue.deleteIssue(params.id)
@@ -236,7 +244,7 @@ export const issue = new Elysia({
     params: IssueModel.idParams,
     response: { 200: t.Object({ ok: t.Literal(true) }) },
   })
-  .post('/:id/context-refs', ({ params, body }) => Issue.addContextRef(params.id, body.ref), {
+  .post('/:id/context-refs', ({ params, body, request }) => Issue.addContextRef(params.id, body.ref, resolveActorContext(request)), {
     detail: {
       'summary': 'Add issue context ref',
       'x-cradle-cli': { command: ['issue', 'context-ref', 'add'] },
@@ -245,7 +253,7 @@ export const issue = new Elysia({
     body: IssueModel.addContextRefBody,
     response: { 200: IssueModel.issue },
   })
-  .delete('/:id/context-refs/:index', ({ params }) => Issue.removeContextRef(params.id, Number(params.index)), {
+  .delete('/:id/context-refs/:index', ({ params, request }) => Issue.removeContextRef(params.id, Number(params.index), resolveActorContext(request)), {
     detail: {
       'summary': 'Remove issue context ref',
       'x-cradle-cli': { command: ['issue', 'context-ref', 'remove'] },

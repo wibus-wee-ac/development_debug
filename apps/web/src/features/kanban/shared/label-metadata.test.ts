@@ -25,6 +25,7 @@ function issue(id: string, labels: string[]): KanbanIssue {
     labels,
     assigneeKind: null,
     assigneeId: null,
+    dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
     delegateAgentId: null,

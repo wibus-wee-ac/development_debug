@@ -41,6 +41,7 @@ function issue(id: string, milestoneId: string | null, statusId: string | null):
     labels: [],
     assigneeKind: null,
     assigneeId: null,
+    dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
     delegateAgentId: null,

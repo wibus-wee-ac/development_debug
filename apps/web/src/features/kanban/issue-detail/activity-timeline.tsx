@@ -1,14 +1,14 @@
 import { StaticRender } from '@cradle/streamdown'
 import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
-import type { KanbanIssueCommentView } from '~/lib/types'
+import type { KanbanIssueCommentView, KanbanIssueFieldChangeView } from '~/lib/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
-import { useAddComment, useComments, useDeleteComment } from '../use-kanban'
+import { useAddComment, useComments, useDeleteComment, useFieldChanges } from '../use-kanban'
 
 interface ActivityTimelineProps {
   issueId: string
@@ -17,9 +17,16 @@ interface ActivityTimelineProps {
 export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
   const { data: comments = [] } = useComments(issueId)
+  const { data: fieldChanges = [] } = useFieldChanges(issueId)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
   const [commentText, setCommentText] = useState('')
+  const timelineItems = useMemo(() => {
+    return [
+      ...comments.map(comment => ({ type: 'comment' as const, id: comment.id, createdAt: comment.createdAt, comment })),
+      ...fieldChanges.map(change => ({ type: 'field-change' as const, id: change.id, createdAt: change.createdAt, change })),
+    ].sort((left, right) => left.createdAt - right.createdAt)
+  }, [comments, fieldChanges])
 
   const handleSubmit = useCallback(() => {
     const trimmed = commentText.trim()
@@ -39,12 +46,16 @@ export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
       <h3 className="text-sm font-semibold text-foreground text-balance">{t('issue.activity.title')}</h3>
 
       <div className="mt-3 flex flex-col gap-3">
-        {comments.map(comment => (
-          <CommentItem
-            key={comment.id}
-            comment={comment}
-            onDeleteComment={comment.author.kind === 'user' ? handleDeleteComment : undefined}
-          />
+        {timelineItems.map(item => (
+          item.type === 'comment'
+            ? (
+                <CommentItem
+                  key={item.id}
+                  comment={item.comment}
+                  onDeleteComment={item.comment.author.kind === 'user' ? handleDeleteComment : undefined}
+                />
+              )
+            : <FieldChangeItem key={item.id} change={item.change} />
         ))}
       </div>
 
@@ -87,6 +98,65 @@ const systemEventConfig: Record<string, { icon: React.ElementType }> = {
   'system.undelegated': { icon: UserRoundMinusIcon },
   'system': { icon: GitBranchIcon },
 }
+
+function formatFieldName(field: string): string {
+  return field
+    .replace(/Id$/, '')
+    .replace(/([A-Z])/g, ' $1')
+    .trim()
+    .toLowerCase()
+}
+
+function formatFieldValue(value: string | null): string {
+  if (value == null || value === '') {
+    return 'empty'
+  }
+
+  if (value.startsWith('[') || value.startsWith('{')) {
+    try {
+      const parsed = JSON.parse(value) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed.length > 0 ? parsed.join(', ') : 'empty'
+      }
+    }
+    catch {
+      return value
+    }
+  }
+
+  return value
+}
+
+function formatActor(change: KanbanIssueFieldChangeView): string {
+  if (change.actorKind === 'system') {
+    return change.actorId ? `System (${change.actorId})` : 'System'
+  }
+  if (change.actorKind === 'agent') {
+    return change.actorId ? `Agent ${change.actorId}` : 'Agent'
+  }
+  return change.actorId === '__self__' || !change.actorId ? 'You' : change.actorId
+}
+
+const FieldChangeItem = memo(({ change }: { change: KanbanIssueFieldChangeView }) => {
+  return (
+    <div className="group flex gap-2.5" data-testid={`field-change-${change.id}`}>
+      <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
+        <GitBranchIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
+      </div>
+      <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]">
+        <span className="font-medium text-foreground">{formatActor(change)}</span>
+        <span className="text-text-dim">
+changed
+{formatFieldName(change.field)}
+        </span>
+        <span className="rounded bg-fill px-1 py-0.5 font-mono text-[11px] text-text-tertiary">{formatFieldValue(change.fromValue)}</span>
+        <span className="text-text-dim">to</span>
+        <span className="rounded bg-fill px-1 py-0.5 font-mono text-[11px] text-text-tertiary">{formatFieldValue(change.toValue)}</span>
+        <span className="text-text-dim">{formatRelativeTime(change.createdAt)}</span>
+      </div>
+    </div>
+  )
+})
 
 const CommentItem = memo(({
   comment,

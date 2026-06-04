@@ -14,12 +14,14 @@ import {
   getIssues,
   getIssuesById,
   getIssuesByIdComments,
+  getIssuesByIdFieldChanges,
   getIssuesByIdRelations,
   getIssuesMilestones,
   getIssuesSearch,
   getIssuesStatuses,
   getKanbanBoards,
   getSessionsByIdLinkedIssue,
+  patchIssuesBulk,
   patchIssuesById,
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
@@ -36,7 +38,7 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
@@ -48,6 +50,7 @@ export const kanbanKeys = {
   searchIssues: (query: string, limit: number) => ['kanban', 'searchIssues', query, limit] as const,
   issue: (id: string) => ['kanban', 'issue', id] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
+  fieldChanges: (issueId: string) => ['kanban', 'fieldChanges', issueId] as const,
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
 }
 
@@ -89,6 +92,9 @@ type CreateIssueInput = {
   milestoneId?: string | null
   parentIssueId?: string | null
   statusId?: string | null
+  dueDate?: number | null
+  assigneeKind?: string | null
+  assigneeId?: string | null
 }
 
 type UpdateIssueInput = {
@@ -103,11 +109,23 @@ type UpdateIssueInput = {
     statusId: string | null
     assigneeKind: string | null
     assigneeId: string | null
+    dueDate: number | null
   }>
 }
 
 type PatchIssueLabelsInput = { patches: { issueId: string, labels: string[] }[] }
-type BulkUpdateIssuesInput = { ids: string[], patch: UpdateIssueInput['patch'] }
+type BulkUpdateIssuesInput = {
+  ids: string[]
+  patch: Partial<{
+    statusId: string | null
+    priority: IssuePriority
+    labels: string[]
+    milestoneId: string | null
+    assigneeKind: string | null
+    assigneeId: string | null
+    dueDate: number | null
+  }>
+}
 type MoveIssueInput = { id: string, statusId: string | null }
 type AddCommentInput = { issueId: string, content: string }
 type DeleteCommentInput = { id: string, issueId: string }
@@ -162,6 +180,7 @@ const KanbanIssueSchema = z.object({
   labels: z.array(z.string()),
   assigneeKind: z.string().nullable(),
   assigneeId: z.string().nullable(),
+  dueDate: z.number().nullable(),
   createdByKind: z.enum(['user', 'agent', 'system']),
   createdById: z.string(),
   delegateAgentId: z.string().nullable(),
@@ -191,6 +210,18 @@ const KanbanIssueCommentSchema = z.object({
   createdAt: z.number(),
 })
 const KanbanIssueCommentListSchema = z.array(KanbanIssueCommentSchema).default([])
+
+const KanbanIssueFieldChangeSchema = z.object({
+  id: z.string(),
+  issueId: z.string(),
+  field: z.string(),
+  fromValue: z.string().nullable(),
+  toValue: z.string().nullable(),
+  actorKind: z.enum(['user', 'agent', 'system']),
+  actorId: z.string().nullable(),
+  createdAt: z.number(),
+})
+const KanbanIssueFieldChangeListSchema = z.array(KanbanIssueFieldChangeSchema).default([])
 
 const KanbanIssueRelationSchema = z.object({
   id: z.string(),
@@ -458,6 +489,7 @@ export function useUpdateIssue() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.id) })
     },
   })
 }
@@ -466,16 +498,19 @@ export function useBulkUpdateIssues() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: BulkUpdateIssuesInput) => {
-      const rows = await Promise.all(vars.ids.map(async (id) => {
-        const { data } = await patchIssuesById({ path: { id }, body: vars.patch })
-        return KanbanIssueSchema.parse(data) satisfies KanbanIssue
-      }))
-      return rows
+      const { data } = await patchIssuesBulk({
+        body: {
+          issueIds: vars.ids,
+          update: vars.patch,
+        },
+      })
+      return z.object({ updated: z.number() }).parse(data)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       for (const id of vars.ids) {
         qc.invalidateQueries({ queryKey: kanbanKeys.issue(id) })
+        qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(id) })
       }
     },
   })
@@ -495,6 +530,7 @@ export function usePatchIssueLabels() {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       for (const patch of vars.patches) {
         qc.invalidateQueries({ queryKey: kanbanKeys.issue(patch.issueId) })
+        qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(patch.issueId) })
       }
     },
   })
@@ -507,8 +543,10 @@ export function useMoveIssue() {
       const { data } = await patchIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.id) })
     },
   })
 }
@@ -529,6 +567,18 @@ export function useComments(issueId: string) {
     queryFn: async () => {
       const { data } = await getIssuesByIdComments({ path: { id: issueId } })
       return KanbanIssueCommentListSchema.parse(data) satisfies KanbanIssueCommentView[]
+    },
+    enabled: !!issueId,
+    ...queryRefreshPolicies.interactive,
+  })
+}
+
+export function useFieldChanges(issueId: string) {
+  return useQuery({
+    queryKey: kanbanKeys.fieldChanges(issueId),
+    queryFn: async () => {
+      const { data } = await getIssuesByIdFieldChanges({ path: { id: issueId } })
+      return KanbanIssueFieldChangeListSchema.parse(data) satisfies KanbanIssueFieldChangeView[]
     },
     enabled: !!issueId,
     ...queryRefreshPolicies.interactive,
@@ -611,6 +661,7 @@ export function useDelegateIssue() {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.issueId) })
     },
   })
 }
@@ -625,6 +676,7 @@ export function useUndelegateIssue() {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.issueId) })
     },
   })
 }
@@ -640,6 +692,7 @@ function useAddContextRef() {
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.issueId) })
     },
   })
 }
@@ -653,6 +706,7 @@ function useRemoveContextRef() {
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.issueId) })
     },
   })
 }

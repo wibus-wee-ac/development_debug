@@ -17,6 +17,7 @@ import { KanbanList } from './kanban-list'
 import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
 import { KanbanSelectionBar } from './kanban-selection-bar'
+import { KanbanTable } from './kanban-table'
 import { KanbanToolbar } from './kanban-toolbar'
 import { formatIssueId } from './shared/format-issue-id'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
@@ -571,8 +572,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
             onCreateIssue={() => setCreateDialogOpen(true)}
           />
 
-          {config.layout === 'board'
-? (
+          {config.layout === 'board' && (
             <KanbanBoard
               workspaceId={workspaceId}
               issues={filteredIssues}
@@ -588,8 +588,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
               highlightedIssueId={focusedIssueId}
               selectedIssueIds={selectedIssueIds}
             />
-          )
-: (
+          )}
+
+          {config.layout === 'list' && (
             <KanbanList
               issues={filteredIssues}
               statuses={statuses}
@@ -605,6 +606,20 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
             />
           )}
 
+          {config.layout === 'table' && (
+            <KanbanTable
+              issues={filteredIssues}
+              statuses={statuses}
+              milestones={milestones}
+              parentIssueRefs={parentIssueRefs}
+              displayProperties={config.displayProperties}
+              highlightedIssueId={focusedIssueId}
+              selectedIssueIds={selectedIssueIds}
+              onIssueClick={handleIssueClick}
+              onIssueSelectionGesture={handleIssueSelectionGesture}
+            />
+          )}
+
           <KanbanSelectionBar
             issues={selectedIssues}
             statuses={statuses}
@@ -613,6 +628,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
           <CreateIssueDialog
             workspaceId={workspaceId}
+            issues={allIssues}
             defaultStatusId={createDefaultStatusId}
             open={createDialogOpen}
             onClose={() => setCreateDialogOpen(false)}

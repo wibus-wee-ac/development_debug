@@ -135,6 +135,7 @@ function issue(id: string, number: number, title: string): KanbanIssue {
     labels: [],
     assigneeKind: null,
     assigneeId: null,
+    dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
     delegateAgentId: null,
