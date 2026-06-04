@@ -50,7 +50,7 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.responseBody,
   })
-  // POST /chat/sessions/:sessionId/bang-command -> run a user-entered shell command and persist transcript context
+  // POST /chat/sessions/:sessionId/bang-command -> execute a user-entered shell command through the session runtime and persist transcript context
   .post('/sessions/:sessionId/bang-command', async ({ params, body, request }) => {
     return await ChatRuntime.executeBangCommand({
       sessionId: params.sessionId,

@@ -2026,6 +2026,34 @@ describe('codexProvider app-server integration', () => {
           } as UIMessage['parts'][number],
         ],
       },
+      {
+        id: 'history-bang-command',
+        role: 'user',
+        parts: [{ type: 'text', text: '!echo hello' }],
+        metadata: {
+          cradle: {
+            bangCommand: { command: 'echo hello' },
+          },
+        },
+      },
+      {
+        id: 'history-bang-result',
+        role: 'user',
+        parts: [{ type: 'text', text: 'hello\n' }],
+        metadata: {
+          cradle: {
+            bangResult: {
+              command: 'echo hello',
+              stdout: 'hello\n',
+              stderr: '',
+              exitCode: 0,
+              durationMs: 17,
+              timedOut: false,
+              truncated: false,
+            },
+          },
+        },
+      },
     ]
     const stream = provider.streamTurn({
       runId: 'run-codex-history-reconstruction',
@@ -2101,6 +2129,27 @@ describe('codexProvider app-server integration', () => {
             type: 'function_call_output',
             call_id: 'tool-2',
             output: JSON.stringify({ error: 'failed' }),
+          },
+          {
+            type: 'function_call',
+            name: 'command_execution',
+            arguments: JSON.stringify({ command: 'echo hello' }),
+            call_id: 'cradle-bang-history-bang-result',
+          },
+          {
+            type: 'function_call_output',
+            call_id: 'cradle-bang-history-bang-result',
+            output: JSON.stringify({
+              command: 'echo hello',
+              output: 'hello\n',
+              stdout: 'hello\n',
+              stderr: '',
+              exitCode: 0,
+              code: 0,
+              durationMs: 17,
+              timedOut: false,
+              truncated: false,
+            }),
           },
         ],
       },

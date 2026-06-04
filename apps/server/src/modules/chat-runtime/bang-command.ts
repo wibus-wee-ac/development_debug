@@ -1,4 +1,4 @@
-// Executes Composer bang commands and persists their transcript snapshots.
+// Executes standard-runtime Composer bang commands and persists their transcript snapshots.
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 

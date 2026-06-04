@@ -14,6 +14,11 @@ export function projectCradleTranscriptToCodexItems(messages: UIMessage[]): Code
 }
 
 function projectMessage(message: UIMessage): CodexResponseItem[] {
+  const bangItems = projectBangMetadataMessage(message)
+  if (bangItems) {
+    return bangItems
+  }
+
   const items: CodexResponseItem[] = []
   let pendingContent: CodexContentItem[] = []
 
@@ -49,6 +54,55 @@ function projectMessage(message: UIMessage): CodexResponseItem[] {
     })
   }
   return items
+}
+
+function projectBangMetadataMessage(message: UIMessage): CodexResponseItem[] | null {
+  const cradleMetadata = asRecord(asRecord(message.metadata)?.cradle)
+  if (!cradleMetadata) {
+    return null
+  }
+
+  const bangResult = asRecord(cradleMetadata.bangResult)
+  if (bangResult) {
+    const command = typeof bangResult.command === 'string' ? bangResult.command.trim() : ''
+    if (!command) {
+      return []
+    }
+    const stdout = typeof bangResult.stdout === 'string' ? bangResult.stdout : ''
+    const stderr = typeof bangResult.stderr === 'string' ? bangResult.stderr : ''
+    const output = stdout || stderr
+    const exitCode = typeof bangResult.exitCode === 'number' ? bangResult.exitCode : null
+    const callId = `cradle-bang-${message.id}`
+    return [
+      {
+        type: 'function_call',
+        name: 'command_execution',
+        arguments: stringifyForCodex({ command }),
+        call_id: callId,
+      },
+      {
+        type: 'function_call_output',
+        call_id: callId,
+        output: stringifyForCodex({
+          command,
+          output,
+          stdout,
+          stderr,
+          exitCode,
+          code: exitCode,
+          durationMs: typeof bangResult.durationMs === 'number' ? bangResult.durationMs : 0,
+          timedOut: bangResult.timedOut === true,
+          truncated: bangResult.truncated === true,
+        }),
+      },
+    ]
+  }
+
+  if (asRecord(cradleMetadata.bangCommand)) {
+    return []
+  }
+
+  return null
 }
 
 function projectContentPart(role: UIMessage['role'], part: MessagePart): CodexContentItem[] | null {

@@ -32,12 +32,12 @@ export class RuntimeRegistry {
   }>()
 
   register(runtime: ChatRuntime, metadata?: ChatRuntimeMetadata, pluginOwner: string | null = null): void {
-    const resolvedMetadata = metadata ?? runtime.metadata
+    const existing = this.runtimes.get(runtime.runtimeKind)
+    const resolvedMetadata = metadata ?? runtime.metadata ?? existing?.metadata
     if (!resolvedMetadata) {
       throw new Error(`Runtime ${runtime.runtimeKind} must declare catalog metadata.`)
     }
-    const existing = this.runtimes.get(runtime.runtimeKind)
-    if (existing) {
+    if (existing && (existing.pluginOwner !== null || pluginOwner !== null)) {
       throw new Error(`Runtime ${runtime.runtimeKind} is already registered by ${existing.pluginOwner ?? 'builtin'}.`)
     }
     this.runtimes.set(runtime.runtimeKind, {

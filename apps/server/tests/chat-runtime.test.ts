@@ -11,7 +11,7 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
-import type { ChatRuntime, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
 
 interface ChatMessageRow {
   messageId: string
@@ -271,6 +271,41 @@ class TestCodexGoalContinuationRuntime implements ChatRuntime {
   }
 
   async cancelTurn(): Promise<void> {}
+}
+
+class TestCodexShellCommandRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly shellInputs: ExecuteShellCommandInput[] = []
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: 'provider-target-codex-bang-command',
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-bang-command',
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-test-model' } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async executeShellCommand(input: ExecuteShellCommandInput): Promise<ExecuteShellCommandResult> {
+    this.shellInputs.push(input)
+    return {
+      command: input.command,
+      stdout: 'hello from codex\n',
+      stderr: '',
+      exitCode: 0,
+      durationMs: 11,
+      timedOut: false,
+      truncated: false,
+    }
+  }
+
+  async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {}
 }
 
 describe('chat runtime capability', () => {
@@ -2094,6 +2129,105 @@ describe('chat runtime capability', () => {
       }
       restoreEnv('CRADLE_CHAT_STORED_TEXT_MAX_CHARS', previousTextLimit)
       vi.restoreAllMocks()
+    }
+  })
+
+  it('routes Codex bang commands through the Codex runtime shell command hook', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexShellCommandRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-bang-command',
+        name: 'Workspace Codex Bang Command',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-bang-command', {
+        providerTargetId: 'provider-target-codex-bang-command',
+        sessionId: 'session-codex-bang-command',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-bang-command/bang-command', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ command: ' echo hello ' }),
+      }))
+      expect(response.status).toBe(200)
+      const body = await response.json() as {
+        command: string
+        stdout: string
+        stderr: string
+        exitCode: number | null
+        userMessage: UIMessage
+        resultMessage: UIMessage
+      }
+
+      expect(runtime.shellInputs).toHaveLength(1)
+      expect(runtime.shellInputs[0]).toEqual(expect.objectContaining({
+        command: 'echo hello',
+        workspaceId: 'workspace-codex-bang-command',
+        workspacePath: workspaceRoot,
+        modelId: 'codex-test-model',
+      }))
+      expect(body).toEqual(expect.objectContaining({
+        command: 'echo hello',
+        stdout: 'hello from codex\n',
+        stderr: '',
+        exitCode: 0,
+      }))
+      expect(body.userMessage.metadata).toEqual({
+        cradle: {
+          bangCommand: { command: 'echo hello' },
+        },
+      })
+      expect(body.resultMessage.metadata).toEqual({
+        cradle: {
+          bangResult: {
+            command: 'echo hello',
+            stdout: 'hello from codex\n',
+            stderr: '',
+            exitCode: 0,
+            durationMs: 11,
+            timedOut: false,
+            truncated: false,
+          },
+        },
+      })
+
+      const rows = await getChatMessages(app, 'session-codex-bang-command')
+      expect(rows.map(row => row.content)).toEqual(['!echo hello', 'hello from codex\n'])
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
     }
   })
 
