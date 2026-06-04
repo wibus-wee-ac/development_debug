@@ -126,7 +126,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     registry.register(new AcpChatProvider({ runtime: acpRuntime }), {
       label: 'ACP Chat',
       description: 'Cloud Agent SDK runtime',
-      providerKinds: ['openai-compatible', 'anthropic'],
+      providerKinds: ['openai-compatible', 'anthropic', 'universal'],
       iconKey: 'custom',
       surfaces: ['chat', 'jarvis'],
       sortOrder: 40,
@@ -136,7 +136,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     }), {
       label: 'Standard',
       description: 'Direct OpenAI-compatible chat runtime',
-      providerKinds: ['openai-compatible'],
+      providerKinds: ['openai-compatible', 'universal'],
       iconKey: 'custom',
       surfaces: ['chat', 'jarvis'],
       sortOrder: 50,
@@ -145,7 +145,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
       registry.register(new MockClaudeAgentProvider(), {
         label: 'Claude Agent',
         description: 'Claude Agent SDK runtime',
-        providerKinds: ['anthropic'],
+        providerKinds: ['anthropic', 'universal'],
         iconKey: 'claude-agent',
         surfaces: ['chat', 'jarvis'],
         sortOrder: 30,
@@ -158,7 +158,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
       }), {
         label: 'Claude Agent',
         description: 'Claude Agent SDK runtime',
-        providerKinds: ['anthropic'],
+        providerKinds: ['anthropic', 'universal'],
         iconKey: 'claude-agent',
         surfaces: ['chat', 'jarvis'],
         sortOrder: 30,
@@ -172,7 +172,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     }), {
       label: 'Codex',
       description: 'Codex app-server runtime',
-      providerKinds: ['openai-compatible'],
+      providerKinds: ['openai-compatible', 'universal'],
       iconKey: 'codex',
       surfaces: ['chat', 'jarvis'],
       sortOrder: 20,
@@ -181,9 +181,9 @@ export function getRuntimeRegistry(): RuntimeRegistry {
       readSecret: secretRef => Secrets.readSecret(secretRef),
       resolveSkillPaths: resolveRuntimeSkillPaths,
     }), {
-      label: 'Jar Core',
-      description: 'HiJarvis system-agent runtime',
-      providerKinds: ['openai-compatible', 'anthropic'],
+      label: 'HiJarvis',
+      description: 'Multi-surface AI agent with local memory',
+      providerKinds: ['openai-compatible', 'anthropic', 'universal'],
       iconKey: 'hijarvis',
       surfaces: ['jarvis'],
       sortOrder: 10,

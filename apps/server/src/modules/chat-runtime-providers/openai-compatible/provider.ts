@@ -1,7 +1,7 @@
 import type { UIMessageChunk } from 'ai'
 
 import { lookupContextWindow } from '../../model-registry/model-info-registry'
-import { readTrustedOpenAICompatibleConfig } from '../../provider-contracts/provider-base'
+import { readTrustedOpenAICompatibleConfig, readTrustedUniversalConfig } from '../../provider-contracts/provider-base'
 import type { RuntimeKind } from '../../provider-contracts/types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import { buildModelMessages, executeAiSdkTurn } from '../../chat-runtime-engine/ai-sdk-engine'
@@ -51,8 +51,8 @@ export class OpenAICompatibleProvider implements ChatRuntime {
   }
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
-    const config = readTrustedOpenAICompatibleConfig(input.profile.configJson)
-    const currentModelId = input.modelId ?? config.model
+    const { baseUrl, model } = resolveOpenAICompatibleEndpoint(input.profile)
+    const currentModelId = input.modelId ?? model
 
     return {
       id: input.chatSessionId,
@@ -61,7 +61,7 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       runtimeKind: this.runtimeKind,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
-        baseUrl: config.baseUrl,
+        baseUrl,
         models: { currentModelId },
       }),
     }
@@ -84,9 +84,9 @@ export class OpenAICompatibleProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const { runtimeSession, profile, message, modelId: requestedModelId, providerOptions } = input
-    const config = readTrustedOpenAICompatibleConfig(profile.configJson)
-    const effectiveModel = requestedModelId ?? config.model
-    if (!config.baseUrl || !effectiveModel) {
+    const { baseUrl, model, apiMode } = resolveOpenAICompatibleEndpoint(profile)
+    const effectiveModel = requestedModelId ?? model
+    if (!baseUrl || !effectiveModel) {
       throw new Error('OpenAI-compatible provider requires baseUrl and model')
     }
 
@@ -101,19 +101,20 @@ export class OpenAICompatibleProvider implements ChatRuntime {
     this._lastStepUsages = []
 
     try {
-      const apiFormat = detectApiFormat(config.baseUrl)
+      const apiFormat = detectApiFormat(baseUrl)
       const model = createLanguageModel({
         apiFormat,
         apiKey,
-        baseUrl: config.baseUrl,
+        baseUrl,
         modelId: effectiveModel,
-        apiMode: config.apiMode,
+        apiMode,
       })
 
+      const { maxMessages } = resolveOpenAICompatibleEndpoint(profile)
       const messages = await buildModelMessages(
         input.history,
         message,
-        config.maxMessages,
+        maxMessages,
       )
 
       const contextWindow = await lookupContextWindow(effectiveModel) ?? 128_000
@@ -153,6 +154,33 @@ export class OpenAICompatibleProvider implements ChatRuntime {
       controller.abort()
       this.releaseTurn(sessionId, controller)
     }
+  }
+}
+
+interface ResolvedOpenAICompatibleEndpoint {
+  baseUrl: string | null
+  model: string | null
+  maxMessages: number
+  apiMode?: 'responses' | 'chat-completions'
+}
+
+function resolveOpenAICompatibleEndpoint(
+  profile: import('../../chat-runtime/runtime-provider-types').RuntimeProviderTargetProfile,
+): ResolvedOpenAICompatibleEndpoint {
+  if (profile.providerKind === 'universal') {
+    const config = readTrustedUniversalConfig(profile.configJson)
+    return {
+      baseUrl: config.baseUrl,
+      model: config.model,
+      maxMessages: config.maxMessages,
+    }
+  }
+  const config = readTrustedOpenAICompatibleConfig(profile.configJson)
+  return {
+    baseUrl: config.baseUrl,
+    model: config.model,
+    maxMessages: config.maxMessages,
+    apiMode: config.apiMode,
   }
 }
 

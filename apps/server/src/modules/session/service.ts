@@ -424,6 +424,7 @@ export function update(input: {
 
   if (input.title !== undefined) {
     patch.title = input.title
+    patch.titleSource = 'user'
   }
   if (input.pinned !== undefined) {
     patch.pinned = input.pinned ? 1 : 0

@@ -492,7 +492,7 @@ function reportRuntimeSessionTitle(input: {
   }
 
   const session = db()
-    .select({ title: sessions.title })
+    .select({ title: sessions.title, titleSource: sessions.titleSource })
     .from(sessions)
     .where(eq(sessions.id, input.sessionId))
     .get()
@@ -500,10 +500,16 @@ function reportRuntimeSessionTitle(input: {
     return
   }
 
+  // Don't overwrite user-set titles
+  if (session.titleSource === 'user') {
+    return
+  }
+
   db()
     .update(sessions)
     .set({
       title,
+      titleSource: 'provider',
       updatedAt: currentUnixSeconds(),
     })
     .where(eq(sessions.id, input.sessionId))

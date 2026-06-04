@@ -1,10 +1,16 @@
+import { getCachedModelsDevCost } from '../model-registry/model-info-registry'
+
 /** USD per 1M tokens */
 interface ModelPricing {
   input: number
   output: number
 }
 
-const MODEL_PRICING: Record<string, ModelPricing> = {
+/**
+ * Hardcoded fallback pricing for models not yet in the models.dev cache.
+ * Only used when the registry cache is cold or has no cost data for the model.
+ */
+const FALLBACK_PRICING: Record<string, ModelPricing> = {
   'gpt-4o': { input: 2.50, output: 10.00 },
   'gpt-4o-mini': { input: 0.15, output: 0.60 },
   'gpt-4.1': { input: 2.00, output: 8.00 },
@@ -23,25 +29,27 @@ const MODEL_PRICING: Record<string, ModelPricing> = {
   'deepseek-reasoner': { input: 0.55, output: 2.19 },
 }
 
-function findPricing(modelId: string): ModelPricing {
-  if (MODEL_PRICING[modelId]) {
-    return MODEL_PRICING[modelId]
+function findFallbackPricing(modelId: string): ModelPricing | null {
+  if (FALLBACK_PRICING[modelId]) {
+    return FALLBACK_PRICING[modelId]!
   }
-  // Longest prefix match to avoid "gpt-4o" matching "gpt-4o-mini-*"
-  const sortedKeys = Object.keys(MODEL_PRICING).sort((a, b) => b.length - a.length)
+  // Longest prefix match
+  const sortedKeys = Object.keys(FALLBACK_PRICING).sort((a, b) => b.length - a.length)
   for (const key of sortedKeys) {
     if (modelId.startsWith(key)) {
-      return MODEL_PRICING[key]!
+      return FALLBACK_PRICING[key]!
     }
   }
-  // Unknown model — don't estimate cost
-  return { input: 0, output: 0 }
+  return null
 }
 
 export function estimateCost(
   modelId: string,
   usage: { promptTokens: number, completionTokens: number },
 ): number {
-  const pricing = findPricing(modelId)
+  const pricing = getCachedModelsDevCost(modelId) ?? findFallbackPricing(modelId)
+  if (!pricing) {
+    return 0
+  }
   return (usage.promptTokens * pricing.input + usage.completionTokens * pricing.output) / 1_000_000
 }

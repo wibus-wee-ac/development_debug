@@ -6,7 +6,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
-import { readTrustedClaudeAgentConfig, resolveApiKey } from '../../provider-contracts/provider-base'
+import { readTrustedClaudeAgentConfig, readTrustedUniversalConfig, resolveApiKey } from '../../provider-contracts/provider-base'
 import type { RuntimeKind } from '../../provider-contracts/types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type {
@@ -730,8 +730,9 @@ function buildClaudeQueryOptions(input: {
     delete env[key]
   }
   env.ANTHROPIC_API_KEY = apiKey
-  if (config.baseUrl) {
-    env.ANTHROPIC_BASE_URL = config.baseUrl
+  const anthropicBaseUrl = resolveAnthropicBaseUrl(input.input.profile, config)
+  if (anthropicBaseUrl) {
+    env.ANTHROPIC_BASE_URL = anthropicBaseUrl
   }
   env.CRADLE_CHAT_SESSION_ID = input.input.runtimeSession.chatSessionId
   env.CRADLE_WORKSPACE_ID = input.input.workspaceId ?? undefined
@@ -763,6 +764,17 @@ function readSelectedSkillNames(message: RuntimeMessageInput): string[] {
     const skillPart = readChatSkillContextPart(part)
     return skillPart ? [skillPart.name] : []
   })
+}
+
+function resolveAnthropicBaseUrl(
+  profile: import('../../chat-runtime/runtime-provider-types').RuntimeProviderTargetProfile,
+  config: ReturnType<typeof readTrustedClaudeAgentConfig>,
+): string | undefined {
+  if (profile.providerKind === 'universal') {
+    const universalConfig = readTrustedUniversalConfig(profile.configJson)
+    return universalConfig.baseUrl ?? undefined
+  }
+  return config.baseUrl ?? undefined
 }
 
 function readClaudeAgentModelId(

@@ -1,7 +1,8 @@
-import { providerTargets, stepUsage, usageLogs } from '@cradle/db'
+import { agents, providerTargets, sessions, usageLogs } from '@cradle/db'
 import { sql } from 'drizzle-orm'
 
 import { db } from '../../infra'
+import { estimateCost } from './pricing'
 
 export interface DailyUsage {
   date: string
@@ -16,7 +17,8 @@ export interface UsageSummary {
   totalCompletionTokens: number
   totalTokens: number
   totalTurns: number
-  byAgent: Array<{ providerTargetId: string, providerTargetName: string | null, totalTokens: number, count: number }>
+  byAgent: Array<{ agentId: string, agentName: string, totalTokens: number, count: number }>
+  byProviderTarget: Array<{ providerTargetId: string, providerTargetName: string | null, totalTokens: number, count: number }>
   byModel: Array<{ modelId: string, totalTokens: number, count: number }>
 }
 
@@ -64,7 +66,27 @@ export function getUsageSummary(): UsageSummary {
     FROM ${usageLogs}
   `)
 
+  // Agent-level aggregation: usage_logs → sessions → agents
   const byAgent = db().all<{
+    agent_id: string
+    agent_name: string
+    total_tokens: number
+    count: number
+  }>(sql`
+    SELECT
+      ${agents.id} AS agent_id,
+      ${agents.name} AS agent_name,
+      SUM(${usageLogs.totalTokens}) AS total_tokens,
+      COUNT(*) AS count
+    FROM ${usageLogs}
+    INNER JOIN ${sessions} ON ${sessions.id} = ${usageLogs.sessionId}
+    INNER JOIN ${agents} ON ${agents.id} = ${sessions.agentId}
+    GROUP BY ${agents.id}, ${agents.name}
+    ORDER BY total_tokens DESC
+  `)
+
+  // Provider-level aggregation (which provider endpoint handled the request)
+  const byProviderTarget = db().all<{
     provider_target_id: string
     provider_target_name: string | null
     total_tokens: number
@@ -103,6 +125,12 @@ export function getUsageSummary(): UsageSummary {
     totalTokens: totals?.total_tokens ?? 0,
     totalTurns: totals?.count ?? 0,
     byAgent: byAgent.map(row => ({
+      agentId: row.agent_id,
+      agentName: row.agent_name,
+      totalTokens: row.total_tokens,
+      count: row.count,
+    })),
+    byProviderTarget: byProviderTarget.map(row => ({
       providerTargetId: row.provider_target_id,
       providerTargetName: row.provider_target_name,
       totalTokens: row.total_tokens,
@@ -238,7 +266,9 @@ export function getSessionUsage(sessionId: string): {
   }
 }
 
-// ── Cost Dashboard queries (Phase 4) ──
+// ── Cost Dashboard queries ──
+// Cost is calculated on-the-fly from usage_logs token counts × current model pricing.
+// Uses usage_logs (always populated) instead of step_usage (may be empty for some providers).
 
 export interface CostSummary {
   totalCostUsd: number
@@ -248,61 +278,51 @@ export interface CostSummary {
   byModel: Array<{ modelId: string, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, count: number }>
 }
 
-export function getCostSummary(from?: string, to?: string): CostSummary {
+function resolveTimeRange(from?: string, to?: string): { fromEpoch: number, toEpoch: number } {
   const fromEpoch = from ? Math.floor(new Date(from).getTime() / 1000) : 0
   const toEpoch = to ? Math.floor(new Date(to).getTime() / 1000) + 86400 : Math.floor(Date.now() / 1000) + 86400
+  return { fromEpoch, toEpoch }
+}
 
-  const totals = db().get<{
-    cost: number
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-  }>(sql`
-    SELECT
-      COALESCE(SUM(${stepUsage.estimatedCostUsd}), 0) AS cost,
-      COALESCE(SUM(${stepUsage.promptTokens}), 0) AS prompt_tokens,
-      COALESCE(SUM(${stepUsage.completionTokens}), 0) AS completion_tokens,
-      COALESCE(SUM(${stepUsage.totalTokens}), 0) AS total_tokens
-    FROM ${stepUsage}
-    WHERE ${stepUsage.createdAt} >= ${fromEpoch}
-      AND ${stepUsage.createdAt} < ${toEpoch}
-  `)
+export function getCostSummary(from?: string, to?: string): CostSummary {
+  const { fromEpoch, toEpoch } = resolveTimeRange(from, to)
 
   const byModel = db().all<{
     model_id: string
-    cost: number
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
     count: number
   }>(sql`
     SELECT
-      COALESCE(${stepUsage.modelId}, 'unknown') AS model_id,
-      SUM(${stepUsage.estimatedCostUsd}) AS cost,
-      SUM(${stepUsage.promptTokens}) AS prompt_tokens,
-      SUM(${stepUsage.completionTokens}) AS completion_tokens,
-      SUM(${stepUsage.totalTokens}) AS total_tokens,
+      COALESCE(${usageLogs.modelId}, 'unknown') AS model_id,
+      SUM(${usageLogs.promptTokens}) AS prompt_tokens,
+      SUM(${usageLogs.completionTokens}) AS completion_tokens,
+      SUM(${usageLogs.totalTokens}) AS total_tokens,
       COUNT(*) AS count
-    FROM ${stepUsage}
-    WHERE ${stepUsage.createdAt} >= ${fromEpoch}
-      AND ${stepUsage.createdAt} < ${toEpoch}
-    GROUP BY ${stepUsage.modelId}
-    ORDER BY cost DESC
+    FROM ${usageLogs}
+    WHERE ${usageLogs.createdAt} >= ${fromEpoch}
+      AND ${usageLogs.createdAt} < ${toEpoch}
+    GROUP BY ${usageLogs.modelId}
   `)
 
+  const modelEntries = byModel.map(row => ({
+    modelId: row.model_id,
+    promptTokens: row.prompt_tokens,
+    completionTokens: row.completion_tokens,
+    totalTokens: row.total_tokens,
+    count: row.count,
+    costUsd: estimateCost(row.model_id, { promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens }),
+  }))
+
+  modelEntries.sort((a, b) => b.costUsd - a.costUsd)
+
   return {
-    totalCostUsd: totals?.cost ?? 0,
-    totalPromptTokens: totals?.prompt_tokens ?? 0,
-    totalCompletionTokens: totals?.completion_tokens ?? 0,
-    totalTokens: totals?.total_tokens ?? 0,
-    byModel: byModel.map(row => ({
-      modelId: row.model_id,
-      costUsd: row.cost,
-      promptTokens: row.prompt_tokens,
-      completionTokens: row.completion_tokens,
-      totalTokens: row.total_tokens,
-      count: row.count,
-    })),
+    totalCostUsd: modelEntries.reduce((sum, r) => sum + r.costUsd, 0),
+    totalPromptTokens: modelEntries.reduce((sum, r) => sum + r.promptTokens, 0),
+    totalCompletionTokens: modelEntries.reduce((sum, r) => sum + r.completionTokens, 0),
+    totalTokens: modelEntries.reduce((sum, r) => sum + r.totalTokens, 0),
+    byModel: modelEntries,
   }
 }
 
@@ -316,39 +336,54 @@ export interface SessionCostEntry {
 }
 
 export function getSessionsCost(from?: string, to?: string): SessionCostEntry[] {
-  const fromEpoch = from ? Math.floor(new Date(from).getTime() / 1000) : 0
-  const toEpoch = to ? Math.floor(new Date(to).getTime() / 1000) + 86400 : Math.floor(Date.now() / 1000) + 86400
+  const { fromEpoch, toEpoch } = resolveTimeRange(from, to)
 
   const rows = db().all<{
     session_id: string
-    cost: number
+    model_id: string
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
     step_count: number
   }>(sql`
     SELECT
-      ${stepUsage.sessionId} AS session_id,
-      SUM(${stepUsage.estimatedCostUsd}) AS cost,
-      SUM(${stepUsage.promptTokens}) AS prompt_tokens,
-      SUM(${stepUsage.completionTokens}) AS completion_tokens,
-      SUM(${stepUsage.totalTokens}) AS total_tokens,
+      ${usageLogs.sessionId} AS session_id,
+      COALESCE(${usageLogs.modelId}, 'unknown') AS model_id,
+      SUM(${usageLogs.promptTokens}) AS prompt_tokens,
+      SUM(${usageLogs.completionTokens}) AS completion_tokens,
+      SUM(${usageLogs.totalTokens}) AS total_tokens,
       COUNT(*) AS step_count
-    FROM ${stepUsage}
-    WHERE ${stepUsage.createdAt} >= ${fromEpoch}
-      AND ${stepUsage.createdAt} < ${toEpoch}
-    GROUP BY ${stepUsage.sessionId}
-    ORDER BY cost DESC
+    FROM ${usageLogs}
+    WHERE ${usageLogs.createdAt} >= ${fromEpoch}
+      AND ${usageLogs.createdAt} < ${toEpoch}
+    GROUP BY ${usageLogs.sessionId}, ${usageLogs.modelId}
   `)
 
-  return rows.map(row => ({
-    sessionId: row.session_id,
-    costUsd: row.cost,
-    promptTokens: row.prompt_tokens,
-    completionTokens: row.completion_tokens,
-    totalTokens: row.total_tokens,
-    stepCount: row.step_count,
-  }))
+  const sessionMap = new Map<string, { costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, stepCount: number }>()
+  for (const row of rows) {
+    const cost = estimateCost(row.model_id, { promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens })
+    const entry = sessionMap.get(row.session_id)
+    if (entry) {
+      entry.costUsd += cost
+      entry.promptTokens += row.prompt_tokens
+      entry.completionTokens += row.completion_tokens
+      entry.totalTokens += row.total_tokens
+      entry.stepCount += row.step_count
+    }
+    else {
+      sessionMap.set(row.session_id, {
+        costUsd: cost,
+        promptTokens: row.prompt_tokens,
+        completionTokens: row.completion_tokens,
+        totalTokens: row.total_tokens,
+        stepCount: row.step_count,
+      })
+    }
+  }
+
+  return Array.from(sessionMap.entries())
+    .map(([sessionId, data]) => ({ sessionId, ...data }))
+    .sort((a, b) => b.costUsd - a.costUsd)
 }
 
 export interface DailyCostEntry {
@@ -361,46 +396,74 @@ export interface DailyCostEntry {
 }
 
 export function getDailyCost(from?: string, to?: string): DailyCostEntry[] {
-  const fromEpoch = from ? Math.floor(new Date(from).getTime() / 1000) : 0
-  const toEpoch = to ? Math.floor(new Date(to).getTime() / 1000) + 86400 : Math.floor(Date.now() / 1000) + 86400
+  const { fromEpoch, toEpoch } = resolveTimeRange(from, to)
 
   const rows = db().all<{
     date: string
-    cost: number
+    model_id: string
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
     step_count: number
   }>(sql`
     SELECT
-      date(${stepUsage.createdAt}, 'unixepoch', 'localtime') AS date,
-      SUM(${stepUsage.estimatedCostUsd}) AS cost,
-      SUM(${stepUsage.promptTokens}) AS prompt_tokens,
-      SUM(${stepUsage.completionTokens}) AS completion_tokens,
-      SUM(${stepUsage.totalTokens}) AS total_tokens,
+      date(${usageLogs.createdAt}, 'unixepoch', 'localtime') AS date,
+      COALESCE(${usageLogs.modelId}, 'unknown') AS model_id,
+      SUM(${usageLogs.promptTokens}) AS prompt_tokens,
+      SUM(${usageLogs.completionTokens}) AS completion_tokens,
+      SUM(${usageLogs.totalTokens}) AS total_tokens,
       COUNT(*) AS step_count
-    FROM ${stepUsage}
-    WHERE ${stepUsage.createdAt} >= ${fromEpoch}
-      AND ${stepUsage.createdAt} < ${toEpoch}
-    GROUP BY date(${stepUsage.createdAt}, 'unixepoch', 'localtime')
+    FROM ${usageLogs}
+    WHERE ${usageLogs.createdAt} >= ${fromEpoch}
+      AND ${usageLogs.createdAt} < ${toEpoch}
+    GROUP BY date(${usageLogs.createdAt}, 'unixepoch', 'localtime'), ${usageLogs.modelId}
     ORDER BY date ASC
   `)
 
-  return rows.map(row => ({
-    date: row.date,
-    costUsd: row.cost,
-    promptTokens: row.prompt_tokens,
-    completionTokens: row.completion_tokens,
-    totalTokens: row.total_tokens,
-    stepCount: row.step_count,
-  }))
+  const dateMap = new Map<string, { costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, stepCount: number }>()
+  for (const row of rows) {
+    const cost = estimateCost(row.model_id, { promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens })
+    const entry = dateMap.get(row.date)
+    if (entry) {
+      entry.costUsd += cost
+      entry.promptTokens += row.prompt_tokens
+      entry.completionTokens += row.completion_tokens
+      entry.totalTokens += row.total_tokens
+      entry.stepCount += row.step_count
+    }
+    else {
+      dateMap.set(row.date, {
+        costUsd: cost,
+        promptTokens: row.prompt_tokens,
+        completionTokens: row.completion_tokens,
+        totalTokens: row.total_tokens,
+        stepCount: row.step_count,
+      })
+    }
+  }
+
+  return Array.from(dateMap.entries())
+    .map(([date, data]) => ({ date, ...data }))
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export function getTodayCostUsd(): number {
-  const row = db().get<{ cost: number }>(sql`
-    SELECT COALESCE(SUM(${stepUsage.estimatedCostUsd}), 0) AS cost
-    FROM ${stepUsage}
-    WHERE date(${stepUsage.createdAt}, 'unixepoch', 'localtime') = date('now', 'localtime')
+  const rows = db().all<{
+    model_id: string
+    prompt_tokens: number
+    completion_tokens: number
+  }>(sql`
+    SELECT
+      COALESCE(${usageLogs.modelId}, 'unknown') AS model_id,
+      SUM(${usageLogs.promptTokens}) AS prompt_tokens,
+      SUM(${usageLogs.completionTokens}) AS completion_tokens
+    FROM ${usageLogs}
+    WHERE date(${usageLogs.createdAt}, 'unixepoch', 'localtime') = date('now', 'localtime')
+    GROUP BY ${usageLogs.modelId}
   `)
-  return row?.cost ?? 0
+
+  return rows.reduce(
+    (sum, row) => sum + estimateCost(row.model_id, { promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens }),
+    0,
+  )
 }
