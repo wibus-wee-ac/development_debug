@@ -379,8 +379,13 @@ export interface ChatRuntimeUsageUiSlotState {
   kind: 'usage'
   slotId: string
   threadId: string
+  limitName: string | null
   usedPercent: number | null
+  primaryWindowDurationMins: number | null
+  primaryResetsAt: number | null
   secondaryUsedPercent: number | null
+  secondaryWindowDurationMins: number | null
+  secondaryResetsAt: number | null
   creditsBalance: string | null
   hasCredits: boolean | null
   rateLimitReachedType: string | null

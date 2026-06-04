@@ -13,7 +13,7 @@ export interface ChatResponseRequestBody {
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   permissionMode?: ChatPermissionMode
 }
 
@@ -31,7 +31,7 @@ export interface ChatQueueItem {
   contextParts: ChatContextPart[]
   providerTargetId: string | null
   modelId: string | null
-  thinkingEffort: 'low' | 'medium' | 'high' | null
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | null
   permissionMode: ChatPermissionMode | null
   position: number
   sourceRunId: string | null

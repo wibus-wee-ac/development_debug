@@ -2,7 +2,7 @@
 
 # Features/Composer Toolbar
 
-Shared composer controls for selecting runtime, provider target, provider-owned model, and thinking effort across chat entry points. Runtime options come from the Chat Runtime catalog when available, with builtin fallbacks for offline/dev startup.
+Shared composer controls for selecting runtime, provider target, provider-owned model, and thinking effort across chat entry points. Runtime options come from the Chat Runtime catalog when available, with builtin fallbacks for offline/dev startup. Thinking effort supports model-filtered `low`, `medium`, `high`, and extended `xhigh` choices.
 
 ## Files
 

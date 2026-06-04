@@ -54,7 +54,7 @@ export type { ChatPermissionMode } from './chat-response-command'
 export interface SendMessageOptions {
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null | undefined
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null | undefined
   permissionMode?: ChatPermissionMode
   continuationMode?: ChatContinuationMode
 }

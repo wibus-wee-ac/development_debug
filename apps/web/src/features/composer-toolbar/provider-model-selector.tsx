@@ -15,6 +15,7 @@ const thinkingLabelKeys = {
   low: 'thinking.low.label',
   medium: 'thinking.medium.label',
   high: 'thinking.high.label',
+  xhigh: 'thinking.xhigh.label',
 } satisfies Record<ThinkingOptionKey, CommonKey>
 
 const thinkingDescriptionKeys = {
@@ -22,6 +23,7 @@ const thinkingDescriptionKeys = {
   low: 'thinking.low.description',
   medium: 'thinking.medium.description',
   high: 'thinking.high.description',
+  xhigh: 'thinking.xhigh.description',
 } satisfies Record<ThinkingOptionKey, CommonKey>
 
 interface ProviderModelSelectorProps {

@@ -8,6 +8,7 @@ export const THINKING_EFFORTS: { value: ThinkingEffort, label: string, descripti
   { value: 'low', label: '', description: '' },
   { value: 'medium', label: '', description: '' },
   { value: 'high', label: '', description: '' },
+  { value: 'xhigh', label: '', description: '' },
 ]
 
 export interface RuntimeKindOption {

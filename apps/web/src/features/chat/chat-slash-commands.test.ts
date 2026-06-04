@@ -319,6 +319,60 @@ describe('chat slash commands', () => {
     })
   })
 
+  it('uses context-window usage instead of auto-compact threshold usage for compact command copy', () => {
+    const [compactCommand] = createRuntimeUiSlotCommands([
+      {
+        id: 'codex:compact',
+        name: 'compact',
+        label: 'Compact',
+        description: 'Compact this conversation context.',
+        argumentHint: '[instructions]',
+        iconKey: 'compact',
+        commandText: '/compact ',
+        surfaces: ['slashCommand'],
+      },
+    ], [
+      {
+        kind: 'compact',
+        slotId: 'codex:compact',
+        threadId: 'thread-1',
+        turnId: null,
+        status: 'nearLimit',
+        isCompactRelevant: true,
+        total: {
+          totalTokens: 880,
+          inputTokens: 880,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+        },
+        last: {
+          totalTokens: 0,
+          inputTokens: 0,
+          cachedInputTokens: 0,
+          outputTokens: 0,
+          reasoningOutputTokens: 0,
+        },
+        modelContextWindow: 1_000,
+        autoCompactTokenLimit: 2_000,
+        usagePercent: 88,
+        autoCompactPercent: 44,
+        lastCompactedAt: null,
+        compactionItemId: null,
+        updatedAt: 1,
+      },
+    ])
+
+    expect(compactCommand).toMatchObject({
+      stateLabel: 'Used 88%',
+      stateVisual: {
+        kind: 'compactUsage',
+        percent: 88,
+        status: 'nearLimit',
+      },
+    })
+  })
+
   it('projects provider-owned lifecycle state onto expanded runtime slot commands', () => {
     const commands = createRuntimeUiSlotCommands([
       {
@@ -415,8 +469,13 @@ describe('chat slash commands', () => {
         kind: 'usage',
         slotId: 'codex:usage',
         threadId: 'thread-1',
+        limitName: null,
         usedPercent: 91,
+        primaryWindowDurationMins: null,
+        primaryResetsAt: null,
         secondaryUsedPercent: null,
+        secondaryWindowDurationMins: null,
+        secondaryResetsAt: null,
         creditsBalance: null,
         hasCredits: true,
         rateLimitReachedType: null,

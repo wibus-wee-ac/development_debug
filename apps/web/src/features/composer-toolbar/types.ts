@@ -2,7 +2,7 @@ import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } f
 
 export type ComposerContext = 'new-chat' | 'capsule' | 'chat'
 
-export type ThinkingEffort = 'low' | 'medium' | 'high' | null
+export type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | null
 
 export interface ComposerSelection {
   agentId: string | null

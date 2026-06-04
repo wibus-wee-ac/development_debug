@@ -67,7 +67,7 @@ export function ChatRuntimeView({
   const sendOverridesRef = useRef({
     providerTargetId: undefined as string | undefined,
     modelId: undefined as string | undefined,
-    thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'auto' | null | undefined,
+    thinkingEffort: undefined as 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null | undefined,
   })
   useLayoutEffect(() => {
     sendOverridesRef.current = {

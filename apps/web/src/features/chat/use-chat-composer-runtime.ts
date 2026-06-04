@@ -10,7 +10,7 @@ import { useChatPreferencesQuery } from '~/features/settings/use-chat-preference
 import { isElectron, platform } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
-import type { ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
+import type { ChatRuntimeCompactUiSlotState, ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
 import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import type { ChatContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
@@ -25,7 +25,7 @@ import type { SendMessageOptions } from './use-chat-session'
 interface ChatComposerSendOverrides {
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null
 }
 
 export interface ChatComposerRuntime {
@@ -209,6 +209,9 @@ export function useChatComposerRuntime({
     staleTime: 10_000,
     retry: false,
   })
+  const compactSlotState = useMemo(() => {
+    return (runtimeUiSlotStates?.states ?? []).find((state): state is ChatRuntimeCompactUiSlotState => state.kind === 'compact') ?? null
+  }, [runtimeUiSlotStates?.states])
 
   const send = useCallback(
     (text: string, files: FileUIPart[], contextParts: ChatContextPart[], options?: { invertContinuationMode?: boolean }) => {
@@ -236,8 +239,8 @@ export function useChatComposerRuntime({
     slotStates: runtimeUiSlotStates?.states ?? [],
     supportsAttachments,
     tokenUsage: {
-      tokens: sessionTokens,
-      contextWindow: sessionContextWindow,
+      tokens: compactSlotState?.total.totalTokens ?? sessionTokens,
+      contextWindow: compactSlotState?.modelContextWindow ?? sessionContextWindow,
     },
   }
 }

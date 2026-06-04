@@ -64,7 +64,7 @@ interface ChatViewProps {
   sendOverridesRef?: React.MutableRefObject<{
     providerTargetId?: string
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'auto' | null
+    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null
   }>
   /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
   composerModel?: ModelDescriptor | null
