@@ -169,6 +169,7 @@ export default {
   'models.time.minutesAgo': '{{minuteCount}}m ago',
   'runtime.action.addManualProvider': 'Add manual provider',
   'runtime.action.import': 'Import',
+  'runtime.action.refreshSources': 'Refresh sources',
   'runtime.draft.description': 'Pick a template',
   'runtime.draft.title': 'New provider',
   'runtime.empty.noMatches': 'No matches',
@@ -192,7 +193,10 @@ export default {
   'runtime.selection.enable': 'Enable',
   'runtime.selection.selected': '{{selectedCount}} selected',
   'runtime.summary.providers': '{{manualCount}} providers',
+  'runtime.toast.externalSourcesRefreshFailed': 'Failed to refresh external sources',
   'runtime.toast.refreshFailed': 'Refresh failed',
+  'runtime.toast.sourcesRefreshed': 'Refreshed {{sourceCount}} source(s)',
+  'runtime.toast.syncFailed': 'Sync failed for {{sourceCount}} source(s)',
   'runtime.visible.count': '{{visibleCount}} visible',
   'runtime.visible.select': 'Select visible',
   'runtime.visible.unselect': 'Unselect visible'

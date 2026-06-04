@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ChevronDownIcon,
   ChevronRightIcon,
   DownloadIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
   ServerIcon,
   SparklesIcon,
@@ -18,6 +19,8 @@ import { useTranslation } from 'react-i18next'
 import {
   getExternalProviderSourcesOptions,
   getExternalProviderSourcesRecordsOptions,
+  getProviderTargetsQueryKey,
+  postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -33,6 +36,7 @@ import {
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
+import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
@@ -187,6 +191,7 @@ ProviderRow.displayName = 'ProviderRow'
 
 export function AgentRuntimeSettings() {
   const { t } = useTranslation('agentManagement')
+  const queryClient = useQueryClient()
   const {
     profiles,
     isSuccess: profilesReady,
@@ -237,6 +242,40 @@ export function AgentRuntimeSettings() {
     [ccSwitchSources],
   )
   const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
+
+  const refreshExternalSources = useMutation({
+    ...postExternalProviderSourcesRefreshMutation(),
+    onSuccess: async (data) => {
+      await Promise.all([refetch(), refetchExternalSources(), refetchExternalRecords()])
+      await queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
+
+      const results = Array.isArray(data) ? data : [data]
+      const errors = results.filter((r: { status: string }) => r.status === 'error')
+      const ok = results.filter((r: { status: string }) => r.status !== 'error')
+
+      if (errors.length > 0) {
+        toastManager.add({
+          type: 'error',
+          title: t('runtime.toast.syncFailed', { sourceCount: errors.length }),
+          description: errors.map((e: { message?: string; sourceKey: string }) => e.message ?? e.sourceKey).join(', ') || undefined,
+        })
+      }
+      if (ok.length > 0) {
+        toastManager.add({
+          type: 'success',
+          title: t('runtime.toast.sourcesRefreshed', { sourceCount: ok.length }),
+        })
+      }
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: 'error',
+        title: t('runtime.toast.refreshFailed'),
+        description:
+          error instanceof Error ? error.message : t('runtime.toast.externalSourcesRefreshFailed'),
+      })
+    },
+  })
 
   const providerGroups = useMemo(
     () => collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources),
@@ -514,6 +553,17 @@ export function AgentRuntimeSettings() {
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => refreshExternalSources.mutate({})}
+            disabled={refreshExternalSources.isPending}
+          >
+            <RefreshCwIcon
+              className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
+            />
+            {t('runtime.action.refreshSources')}
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
             <DownloadIcon />
             {t('runtime.action.import')}
