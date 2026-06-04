@@ -9,7 +9,7 @@ import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { deriveActiveLayoutContract } from '~/components/layout/layout-contract'
 import {
   LayoutGeometryProvider,
-  useLayoutGeometry,
+  useLayoutGeometry
 } from '~/components/layout/layout-geometry-context'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
@@ -40,10 +40,10 @@ const MemoizedRightAside = memo(RightAside)
 MemoizedRightAside.displayName = 'MemoizedRightAside'
 
 function parseBrowserTabRequest(payload: unknown): string | undefined {
-  return typeof payload === 'object'
-    && payload !== null
-    && 'url' in payload
-    && typeof payload.url === 'string'
+  return typeof payload === 'object' &&
+    payload !== null &&
+    'url' in payload &&
+    typeof payload.url === 'string'
     ? payload.url
     : undefined
 }
@@ -52,7 +52,7 @@ function installBrowserUseBridge({
   ownerId,
   openBrowserPanel,
   closeBrowserPanel,
-  readBrowserTabSource: _readBrowserTabSource,
+  readBrowserTabSource: _readBrowserTabSource
 }: {
   ownerId: string | null
   openBrowserPanel: () => void
@@ -72,7 +72,11 @@ function installBrowserUseBridge({
     }
     const currentState = await bridge.getState({ threadId: resolvedOwnerId })
     const nextState = currentState.open
-      ? await bridge.newTab({ threadId: resolvedOwnerId, url: url ?? 'about:blank', activate: true })
+      ? await bridge.newTab({
+          threadId: resolvedOwnerId,
+          url: url ?? 'about:blank',
+          activate: true
+        })
       : await bridge.open({ threadId: resolvedOwnerId, initialUrl: url ?? 'about:blank' })
     useBrowserPanelStore.getState().upsertOwnerState(nextState)
     return nextState.activeTabId ?? nextState.tabs.at(-1)?.id ?? ''
@@ -87,8 +91,7 @@ function installBrowserUseBridge({
       const nextState = await bridge.selectTab({ threadId: resolvedOwnerId, tabId })
       useBrowserPanelStore.getState().upsertOwnerState(nextState)
       return true
-    }
-    catch {
+    } catch {
       return false
     }
   }
@@ -107,7 +110,7 @@ function installBrowserUseBridge({
     const bridge = window.cradle?.browser
     if (tabId && bridge) {
       const state = await bridge.getState({ threadId: resolvedOwnerId })
-      if (!state.tabs.some(tab => tab.id === tabId)) {
+      if (!state.tabs.some((tab) => tab.id === tabId)) {
         return false
       }
     }
@@ -123,7 +126,10 @@ function installBrowserUseBridge({
   window.__cradleBrowserUseGoOffScreen = hideBrowserPanel
   window.__cradleBrowserUseGetActiveTab = getActiveBrowserTab
   const unsubscribeBrowserUse = window.cradle?.ipc.on('browser-use:create-tab', requestBrowserTab)
-  const unsubscribeBrowserPanelPopup = window.cradle?.ipc.on('browser-panel:open-url', requestBrowserTab)
+  const unsubscribeBrowserPanelPopup = window.cradle?.ipc.on(
+    'browser-panel:open-url',
+    requestBrowserTab
+  )
 
   return () => {
     if (window.__cradleBrowserUseCreateTab) {
@@ -157,7 +163,14 @@ interface AppLayoutProps {
   showFooter?: boolean
 }
 
-export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, sessionScoped = false, showFooter = true }: AppLayoutProps) {
+export function AppLayout({
+  children,
+  hasBrowserPanel,
+  hasPanel,
+  panel,
+  sessionScoped = false,
+  showFooter = true
+}: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
       <AppLayoutContent
@@ -173,7 +186,14 @@ export function AppLayout({ children, hasBrowserPanel, hasPanel, panel, sessionS
   )
 }
 
-function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionScoped = false, showFooter = true }: AppLayoutProps) {
+function AppLayoutContent({
+  children,
+  hasBrowserPanel,
+  hasPanel,
+  panel,
+  sessionScoped = false,
+  showFooter = true
+}: AppLayoutProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const mainElementRef = useRef<HTMLElement | null>(null)
   const browserPanelElementRef = useRef<HTMLDivElement | null>(null)
@@ -193,29 +213,32 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
 
   // Per-tab layout slots registered by tab content components
   const { slots } = useLayoutSlotsCtx()
-  const activeTab = useCradleTabStore(useShallow((s) => {
-    const tab = s.tabs.find(t => t.id === s.activeTabId)
-    return tab
-      ? {
-        id: tab.id,
-        type: tab.type,
-        label: tab.label,
-        params: tab.params,
-      }
-      : undefined
-  }))
+  const activeTab = useCradleTabStore(
+    useShallow((s) => {
+      const tab = s.tabs.find((t) => t.id === s.activeTabId)
+      return tab
+        ? {
+            id: tab.id,
+            type: tab.type,
+            label: tab.label,
+            params: tab.params
+          }
+        : undefined
+    })
+  )
   const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
   const activeSessionTitle = activeTab?.type === 'chat' ? activeTab.label : null
   const activeBrowserPanelOwnerId = activeTab?.id ?? null
-  const activeSessionLayout = useSessionLayoutStore(state =>
-    activeSessionId ? state.sessions[activeSessionId] : undefined)
+  const activeSessionLayout = useSessionLayoutStore((state) =>
+    activeSessionId ? state.sessions[activeSessionId] : undefined
+  )
   const layoutContract = deriveActiveLayoutContract({
     activeTab,
     slots,
     sessionLayout: activeSessionLayout,
     explicitPanel: panel,
     explicitHasBrowserPanel: hasBrowserPanel,
-    explicitHasPanel: hasPanel,
+    explicitHasPanel: hasPanel
   })
 
   const resolvedPanel = layoutContract.panel
@@ -224,56 +247,71 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
   const resolvedHasAside = layoutContract.hasAside
   const resolvedHasBrowserPanel = layoutContract.hasBrowserPanel
   const resolvedHasPanel = layoutContract.hasPanel
-  const resolvedWorkspaceLayout = useSessionLayoutStore(state =>
-    resolvedAsideWorkspaceId ? state.workspaces[resolvedAsideWorkspaceId] : undefined)
-  const resolvedAsideWorkspacePath = resolvedWorkspaceLayout?.workspacePath
-    ?? (activeSessionLayout?.workspaceId === resolvedAsideWorkspaceId ? activeSessionLayout.workspacePath : null)
+  const resolvedWorkspaceLayout = useSessionLayoutStore((state) =>
+    resolvedAsideWorkspaceId ? state.workspaces[resolvedAsideWorkspaceId] : undefined
+  )
+  const resolvedAsideWorkspacePath =
+    resolvedWorkspaceLayout?.workspacePath ??
+    (activeSessionLayout?.workspaceId === resolvedAsideWorkspaceId
+      ? activeSessionLayout.workspacePath
+      : null)
   const resolvedAsideWorkspaceName = resolvedWorkspaceLayout?.workspaceName ?? null
-  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
-  const jarvisExpanded = useJarvisUiStore(s => s.expanded)
+  const settingsTabId = useSettingsOverlayStore((s) => s.settingsTabId)
+  const jarvisExpanded = useJarvisUiStore((s) => s.expanded)
 
-  const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
-  const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
-  const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
-  const browserPanelOpen = useLayoutStore(state =>
-    activeBrowserPanelOwnerId ? state.browserPanelOpenByOwnerId[activeBrowserPanelOwnerId] ?? false : false)
-  const browserPanelRatio = useLayoutStore(state => state.browserPanelRatio)
-  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
-  const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
-  const setActiveBrowserPanelOwner = useLayoutStore(state => state.setActiveBrowserPanelOwner)
+  const bottomPanelHeight = useLayoutStore((state) => state.bottomPanelHeight)
+  const setBottomPanelHeight = useLayoutStore((state) => state.setBottomPanelHeight)
+  const bottomPanelOpen = useLayoutStore((state) => state.bottomPanelOpen)
+  const browserPanelOpen = useLayoutStore((state) =>
+    activeBrowserPanelOwnerId
+      ? (state.browserPanelOpenByOwnerId[activeBrowserPanelOwnerId] ?? false)
+      : false
+  )
+  const browserPanelRatio = useLayoutStore((state) => state.browserPanelRatio)
+  const setBrowserPanelOpen = useLayoutStore((state) => state.setBrowserPanelOpen)
+  const setBrowserPanelRatio = useLayoutStore((state) => state.setBrowserPanelRatio)
+  const setActiveBrowserPanelOwner = useLayoutStore((state) => state.setActiveBrowserPanelOwner)
   const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
-  const canUseRightAside = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
+  const canUseRightAside =
+    !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
   const readBrowserTabSource = useCallback((): BrowserTabSource => {
     return {
       sessionId: activeSessionId,
-      sessionTitle: activeSessionTitle,
+      sessionTitle: activeSessionTitle
     }
   }, [activeSessionId, activeSessionTitle])
-  const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
-    setBrowserPanelOpen(false, ownerId)
-  }, [setBrowserPanelOpen])
+  const handleCloseLastBrowserPanelTab = useCallback(
+    (ownerId: string) => {
+      setBrowserPanelOpen(false, ownerId)
+    },
+    [setBrowserPanelOpen]
+  )
   const handleBrowserPanelResize = useCallback((px: number) => {
     const panel = browserPanelElementRef.current
     if (panel) {
       panel.style.flexBasis = `${px}px`
     }
   }, [])
-  const handleBrowserPanelResizeEnd = useCallback((px: number) => {
-    const mainWidth = readMainWidth()
-    const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
-    const panel = browserPanelElementRef.current
-    if (panel) {
-      panel.style.flexBasis = `${ratio * 100}%`
-    }
-    setBrowserPanelRatio(ratio)
-    updateDragging(null)
-  }, [readMainWidth, setBrowserPanelRatio, updateDragging])
+  const handleBrowserPanelResizeEnd = useCallback(
+    (px: number) => {
+      const mainWidth = readMainWidth()
+      const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
+      const panel = browserPanelElementRef.current
+      if (panel) {
+        panel.style.flexBasis = `${ratio * 100}%`
+      }
+      setBrowserPanelRatio(ratio)
+      updateDragging(null)
+    },
+    [readMainWidth, setBrowserPanelRatio, updateDragging]
+  )
 
   const handleToggleZenSidebars = useCallback(() => {
-    const { asideOpen, setAsideOpen, setSidebarCollapsed, sidebarCollapsed } = useLayoutStore.getState()
+    const { asideOpen, setAsideOpen, setSidebarCollapsed, sidebarCollapsed } =
+      useLayoutStore.getState()
     const shouldCollapse = !sidebarCollapsed && (!canUseRightAside || asideOpen)
     setSidebarCollapsed(shouldCollapse)
     if (canUseRightAside) {
@@ -296,7 +334,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
       ownerId: activeBrowserPanelOwnerId,
       openBrowserPanel: () => setBrowserPanelOpen(true, activeBrowserPanelOwnerId),
       closeBrowserPanel: () => setBrowserPanelOpen(false, activeBrowserPanelOwnerId),
-      readBrowserTabSource,
+      readBrowserTabSource
     })
   }, [activeBrowserPanelOwnerId, readBrowserTabSource, setBrowserPanelOpen])
 
@@ -398,7 +436,7 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
               ref={browserPanelElementRef}
               className={cn(
                 'flex shrink-0 flex-col overflow-hidden',
-                browserPanelVisible && 'border-l border-border/50',
+                browserPanelVisible && 'border-l border-border/50'
               )}
               style={{ flexBasis: browserPanelVisible ? `${browserPanelRatio * 100}%` : '0%' }}
               data-testid="app-layout-browser-panel"
@@ -436,11 +474,11 @@ function AppLayoutContent({ children, hasBrowserPanel, hasPanel, panel, sessionS
             <m.div
               initial={{
                 height: bottomPanelOpen ? bottomPanelHeight : 0,
-                opacity: bottomPanelOpen ? 1 : 0,
+                opacity: bottomPanelOpen ? 1 : 0
               }}
               animate={{
                 height: bottomPanelOpen ? bottomPanelHeight : 0,
-                opacity: bottomPanelOpen ? 1 : 0,
+                opacity: bottomPanelOpen ? 1 : 0
               }}
               transition={dragging === 'panel' ? INSTANT : SPRING}
               className="bg-background border-t border-border overflow-hidden shrink-0"
@@ -481,14 +519,14 @@ function AppRightAside({
   sessionId,
   workspaceId,
   workspaceName,
-  workspacePath,
+  workspacePath
 }: AppRightAsideProps) {
   const [dragging, setDragging] = useState<string | null>(null)
   const asideElementRef = useRef<HTMLElement | null>(null)
   const asideContentElementRef = useRef<HTMLDivElement | null>(null)
-  const asideWidth = useLayoutStore(state => state.asideWidth)
-  const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
-  const asideOpen = useLayoutStore(state => state.asideOpen)
+  const asideWidth = useLayoutStore((state) => state.asideWidth)
+  const setAsideWidth = useLayoutStore((state) => state.setAsideWidth)
+  const asideOpen = useLayoutStore((state) => state.asideOpen)
 
   const handleAsideResize = useCallback((width: number) => {
     const aside = asideElementRef.current
@@ -500,18 +538,21 @@ function AppRightAside({
       content.style.width = `${width}px`
     }
   }, [])
-  const handleAsideResizeEnd = useCallback((width: number) => {
-    const aside = asideElementRef.current
-    const content = asideContentElementRef.current
-    if (aside) {
-      aside.style.width = `${width}px`
-    }
-    if (content) {
-      content.style.width = `${width}px`
-    }
-    setAsideWidth(width)
-    setDragging(null)
-  }, [setAsideWidth])
+  const handleAsideResizeEnd = useCallback(
+    (width: number) => {
+      const aside = asideElementRef.current
+      const content = asideContentElementRef.current
+      if (aside) {
+        aside.style.width = `${width}px`
+      }
+      if (content) {
+        content.style.width = `${width}px`
+      }
+      setAsideWidth(width)
+      setDragging(null)
+    },
+    [setAsideWidth]
+  )
 
   return (
     <>
@@ -531,11 +572,11 @@ function AppRightAside({
         ref={asideElementRef}
         initial={{
           width: asideOpen ? asideWidth : 0,
-          opacity: asideOpen ? 1 : 0,
+          opacity: asideOpen ? 1 : 0
         }}
         animate={{
           width: asideOpen ? asideWidth : 0,
-          opacity: asideOpen ? 1 : 0,
+          opacity: asideOpen ? 1 : 0
         }}
         transition={dragging === 'aside' ? INSTANT : SPRING}
         className="flex shrink-0 overflow-hidden bg-sidebar"

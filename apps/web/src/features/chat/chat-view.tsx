@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
 import { postChatSessionsBySessionIdCodexAppServerInvoke } from '~/api-gen/sdk.gen'
+import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import {
   Dialog,
@@ -18,7 +19,6 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
-import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { getServerUrl } from '~/lib/electron'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
@@ -36,7 +36,10 @@ import type { ComposerReviewSlotActions, ComposerUsageSlotActions } from './comp
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
-import { registerChatPromptIngressHandler } from './prompt-ingress'
+import {
+  registerChatComposerFileIngressHandler,
+  registerChatPromptIngressHandler,
+} from './prompt-ingress'
 import { RuntimeDiagnosticsPopover } from './runtime-diagnostics-popover'
 import { RuntimeToolbarOptions } from './runtime-toolbar-options'
 import type { SkillMentionItem } from './skill-mention-panel'
@@ -358,6 +361,13 @@ export function ChatView({
       composerSend(text, files, contextParts)
     })
   }, [composerSend, sessionId])
+
+  useEffect(() => {
+    if (!sessionId) {
+      return
+    }
+    return registerChatComposerFileIngressHandler(sessionId, appshotRuntime.appendFileParts)
+  }, [appshotRuntime.appendFileParts, sessionId])
 
   const refreshGoalRuntimeState = useCallback(() => {
     if (!sessionId) {

@@ -17,6 +17,7 @@ export interface ComposerAppshotRuntime {
   externalFileParts: FileUIPart[]
   externalFilePartsKey: number
   setActionTargetElement: (element: HTMLDivElement | null) => void
+  appendFileParts: (fileParts: FileUIPart[]) => void
   capture: (options?: ComposerAppshotCaptureOptions) => Promise<void>
 }
 
@@ -149,6 +150,16 @@ export function useComposerAppshotCapture({
 
   const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
     actionTargetRef.current = element
+  }, [])
+
+  const appendFileParts = useCallback((fileParts: FileUIPart[]) => {
+    if (fileParts.length === 0) {
+      return
+    }
+    flushSync(() => {
+      setExternalFileParts(fileParts)
+      setExternalFilePartsKey(key => key + 1)
+    })
   }, [])
 
   const capture = useCallback(async ({
@@ -326,6 +337,7 @@ export function useComposerAppshotCapture({
     externalFileParts,
     externalFilePartsKey,
     setActionTargetElement,
+    appendFileParts,
     capture,
   }
 }

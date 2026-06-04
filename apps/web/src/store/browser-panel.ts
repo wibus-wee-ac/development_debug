@@ -52,7 +52,7 @@ export interface ThreadBrowserState {
   lastError: string | null
 }
 
-export type BrowserPanelTab = BrowserTabState & {
+export type BrowserWebTab = BrowserTabState & {
   kind: 'browser'
   sessionId: string | null
   sessionTitle: string | null
@@ -61,6 +61,41 @@ export type BrowserPanelTab = BrowserTabState & {
   loading: boolean
   favicon: string | null
 }
+
+export interface BrowserWorkspaceFileTab {
+  kind: 'workspace-file'
+  id: string
+  workspaceId: string
+  path: string
+  view: 'editor' | 'preview'
+  title: string
+  loading: false
+  favicon: null
+}
+
+export interface BrowserWorkspaceDiffTab {
+  kind: 'workspace-diff'
+  id: string
+  workspaceId: string
+  paths?: string[]
+  title: string
+  loading: false
+  favicon: null
+}
+
+export interface BrowserSubagentTab {
+  kind: 'subagent'
+  id: string
+  sessionId: string
+  threadId: string
+  agentName: string
+  agentRole: string | null
+  title: string
+  loading: false
+  favicon: null
+}
+
+export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab | BrowserWorkspaceDiffTab | BrowserSubagentTab
 
 export interface BrowserHistoryEntry {
   url: string
@@ -85,7 +120,13 @@ interface BrowserPanelOwnerState {
   threadState: ThreadBrowserState | null
   tabs: BrowserPanelTab[]
   activeTabId: string | null
-  requestedTab: { id: number, url?: string, sessionId?: string | null, sessionTitle?: string | null } | null
+  requestedTab: {
+    id: number
+    url?: string
+    sessionId?: string | null
+    sessionTitle?: string | null
+  } | null
+  scrollToFilePath: { path: string, tabId: string, nonce: number } | null
 }
 
 interface BrowserPanelState {
@@ -94,6 +135,7 @@ interface BrowserPanelState {
   tabs: BrowserPanelTab[]
   activeTabId: string | null
   requestedTab: BrowserPanelOwnerState['requestedTab']
+  scrollToFilePath: BrowserPanelOwnerState['scrollToFilePath']
   recentHistoryByOwnerId: Record<string, BrowserHistoryEntry[] | undefined>
   setActiveOwner: (ownerId: string | null | undefined) => void
   upsertOwnerState: (state: ThreadBrowserState) => void
@@ -103,12 +145,33 @@ interface BrowserPanelState {
   createTab: (url?: string, source?: BrowserTabSource, ownerId?: string | null) => string
   closeTab: (id: string, ownerId?: string | null) => BrowserPanelCloseTabResult
   setActiveTab: (id: string, ownerId?: string | null) => void
-  updateTab: (id: string, updates: Partial<BrowserPanelTab>, ownerId?: string | null) => void
+  updateTab: (id: string, updates: Partial<BrowserWebTab>, ownerId?: string | null) => void
   navigateTo: (id: string, url: string, ownerId?: string | null) => void
   setBrowserTabScripts: (id: string, scriptIds: string[], ownerId?: string | null) => void
-  addBrowserTabCustomScript: (id: string, input: Omit<BrowserPanelCustomScript, 'id'>, ownerId?: string | null) => string
-  openWorkspaceFileTab: (input: { workspaceId: string, path: string, view: 'editor' | 'preview', ownerId?: string | null }) => string
-  openWorkspaceDiffTab: (input: { workspaceId: string, paths?: string[], title?: string, ownerId?: string | null }) => string
+  addBrowserTabCustomScript: (
+    id: string,
+    input: Omit<BrowserPanelCustomScript, 'id'>,
+    ownerId?: string | null,
+  ) => string
+  openWorkspaceFileTab: (input: {
+    workspaceId: string
+    path: string
+    view: 'editor' | 'preview'
+    ownerId?: string | null
+  }) => string
+  openWorkspaceDiffTab: (input: {
+    workspaceId: string
+    paths?: string[]
+    title?: string
+    ownerId?: string | null
+  }) => string
+  openSubagentTab: (input: {
+    sessionId: string
+    threadId: string
+    agentName: string
+    agentRole?: string | null
+    ownerId?: string | null
+  }) => string
   requestScrollToFilePath: (input: { path: string, tabId: string }) => void
   clearScrollToFilePath: (ownerId?: string | null) => void
 }
@@ -137,10 +200,11 @@ function createEmptyOwnerState(ownerId: string): BrowserPanelOwnerState {
     tabs: [],
     activeTabId: null,
     requestedTab: null,
+    scrollToFilePath: null,
   }
 }
 
-function toBrowserPanelTab(tab: BrowserTabState): BrowserPanelTab {
+function toBrowserPanelTab(tab: BrowserTabState): BrowserWebTab {
   return {
     ...tab,
     kind: 'browser',
@@ -153,12 +217,57 @@ function toBrowserPanelTab(tab: BrowserTabState): BrowserPanelTab {
   }
 }
 
-function projectThreadState(state: ThreadBrowserState): BrowserPanelOwnerState {
+function projectThreadState(
+  state: ThreadBrowserState,
+  previousOwnerState?: BrowserPanelOwnerState,
+): BrowserPanelOwnerState {
+  const nextBrowserTabsById = new Map(state.tabs.map(tab => [tab.id, toBrowserPanelTab(tab)]))
+  const projectedTabs: BrowserPanelTab[] = []
+  const seenBrowserTabIds = new Set<string>()
+
+  for (const previousTab of previousOwnerState?.tabs ?? []) {
+    if (previousTab.kind !== 'browser') {
+      projectedTabs.push(previousTab)
+      continue
+    }
+
+    const nextBrowserTab = nextBrowserTabsById.get(previousTab.id)
+    if (!nextBrowserTab) {
+      continue
+    }
+
+    seenBrowserTabIds.add(previousTab.id)
+    projectedTabs.push({
+      ...nextBrowserTab,
+      sessionId: previousTab.sessionId,
+      sessionTitle: previousTab.sessionTitle,
+      scriptIds: previousTab.scriptIds,
+      customScripts: previousTab.customScripts,
+    })
+  }
+
+  for (const nextBrowserTab of nextBrowserTabsById.values()) {
+    if (!seenBrowserTabIds.has(nextBrowserTab.id)) {
+      projectedTabs.push(nextBrowserTab)
+    }
+  }
+
+  const previousActiveTab = previousOwnerState?.tabs.find(
+    tab => tab.id === previousOwnerState.activeTabId,
+  )
+  const previousActiveWorkspaceTab
+    = previousActiveTab && previousActiveTab.kind !== 'browser' ? previousActiveTab : null
+  const shouldKeepWorkspaceActiveTab = previousActiveWorkspaceTab !== null
+    && projectedTabs.some(tab => tab.id === previousActiveWorkspaceTab.id)
+
   return {
     threadState: state,
-    tabs: state.tabs.map(toBrowserPanelTab),
-    activeTabId: state.activeTabId,
+    tabs: projectedTabs,
+    activeTabId: shouldKeepWorkspaceActiveTab
+      ? previousActiveWorkspaceTab.id
+      : (state.activeTabId ?? projectedTabs.at(-1)?.id ?? null),
     requestedTab: null,
+    scrollToFilePath: null,
   }
 }
 
@@ -171,6 +280,7 @@ function projectActiveOwner(ownerState: BrowserPanelOwnerState) {
     tabs: ownerState.tabs,
     activeTabId: ownerState.activeTabId,
     requestedTab: ownerState.requestedTab,
+    scrollToFilePath: ownerState.scrollToFilePath,
   }
 }
 
@@ -202,7 +312,9 @@ function upsertRecentHistoryEntry(
     return entries ?? []
   }
 
-  const nextEntries = (entries ?? []).filter(entry => normalizeHistoryUrl(entry.url) !== normalizedUrl)
+  const nextEntries = (entries ?? []).filter(
+    entry => normalizeHistoryUrl(entry.url) !== normalizedUrl,
+  )
   nextEntries.unshift({
     ...nextEntry,
     url: normalizedUrl,
@@ -230,7 +342,7 @@ function buildHistoryFromState(
   )
 }
 
-function createLocalBrowserTab(url = 'about:blank', source?: BrowserTabSource): BrowserPanelTab {
+function createLocalBrowserTab(url = 'about:blank', source?: BrowserTabSource): BrowserWebTab {
   const id = `local-browser-${++localTabCounter}`
   return {
     kind: 'browser',
@@ -261,6 +373,7 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
       tabs: [],
       activeTabId: null,
       requestedTab: null,
+      scrollToFilePath: null,
       recentHistoryByOwnerId: {},
 
       setActiveOwner: (ownerIdInput) => {
@@ -285,8 +398,9 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           }
 
           const ownerState = {
-            ...projectThreadState(threadState),
+            ...projectThreadState(threadState, previousOwnerState),
             requestedTab: previousOwnerState?.requestedTab ?? null,
+            scrollToFilePath: previousOwnerState?.scrollToFilePath ?? null,
           }
           return {
             ...applyOwnerState(state, ownerId, ownerState),
@@ -320,7 +434,12 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           const ownerState = getOwnerState(state, ownerId)
           return applyOwnerState(state, ownerId, {
             ...ownerState,
-            requestedTab: { id: Date.now(), url, sessionId: source?.sessionId ?? null, sessionTitle: source?.sessionTitle ?? null },
+            requestedTab: {
+              id: Date.now(),
+              url,
+              sessionId: source?.sessionId ?? null,
+              sessionTitle: source?.sessionTitle ?? null,
+            },
           })
         })
       },
@@ -366,7 +485,8 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           return applyOwnerState(state, ownerId, {
             ...ownerState,
             tabs,
-            activeTabId: ownerState.activeTabId === id ? tabs.at(-1)?.id ?? null : ownerState.activeTabId,
+            activeTabId:
+              ownerState.activeTabId === id ? (tabs.at(-1)?.id ?? null) : ownerState.activeTabId,
           })
         })
         return result
@@ -386,7 +506,10 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           const ownerState = getOwnerState(state, ownerId)
           return applyOwnerState(state, ownerId, {
             ...ownerState,
-            tabs: ownerState.tabs.map(tab => (tab.id === id ? { ...tab, ...updates } : tab)),
+            tabs: ownerState.tabs.map(tab =>
+              tab.id === id && tab.kind === 'browser'
+                ? ({ ...tab, ...updates } satisfies BrowserWebTab)
+                : tab),
           })
         })
       },
@@ -407,20 +530,131 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           const ownerState = getOwnerState(state, ownerId)
           return applyOwnerState(state, ownerId, {
             ...ownerState,
-            tabs: ownerState.tabs.map(tab => (tab.id === id ? { ...tab, customScripts: [...tab.customScripts, script] } : tab)),
+            tabs: ownerState.tabs.map(tab =>
+              tab.id === id && tab.kind === 'browser'
+                ? ({
+                    ...tab,
+                    customScripts: [...tab.customScripts, script],
+                  } satisfies BrowserWebTab)
+                : tab),
           })
         })
         return scriptId
       },
 
-      openWorkspaceFileTab: ({ path, ownerId }) =>
-        get().createTab(path ? `file://${path}` : 'about:blank', undefined, ownerId),
+      openWorkspaceFileTab: ({ workspaceId, path, view, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const existing = getOwnerState(get(), ownerId).tabs.find(
+          tab =>
+            tab.kind === 'workspace-file'
+            && tab.workspaceId === workspaceId
+            && tab.path === path
+            && tab.view === view,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserWorkspaceFileTab = {
+          kind: 'workspace-file',
+          id: `legacy-workspace-file-${++localTabCounter}`,
+          workspaceId,
+          path,
+          view,
+          title: path.split('/').filter(Boolean).at(-1) ?? path,
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
 
-      openWorkspaceDiffTab: ({ ownerId }) =>
-        get().createTab('about:blank', undefined, ownerId),
+      openWorkspaceDiffTab: ({ workspaceId, paths, title, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const tab: BrowserWorkspaceDiffTab = {
+          kind: 'workspace-diff',
+          id: `legacy-workspace-diff-${++localTabCounter}`,
+          workspaceId,
+          paths,
+          title:
+            title
+            ?? (paths?.length === 1
+              ? (paths[0]?.split('/').filter(Boolean).at(-1) ?? 'Changes')
+              : 'Changes'),
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
 
-      requestScrollToFilePath: () => {},
-      clearScrollToFilePath: () => {},
+      openSubagentTab: ({ sessionId, threadId, agentName, agentRole, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const existing = getOwnerState(get(), ownerId).tabs.find(
+          tab => tab.kind === 'subagent' && tab.threadId === threadId && tab.sessionId === sessionId,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserSubagentTab = {
+          kind: 'subagent',
+          id: `subagent-${threadId}-${++localTabCounter}`,
+          sessionId,
+          threadId,
+          agentName,
+          agentRole: agentRole ?? null,
+          title: agentName,
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      requestScrollToFilePath: ({ path, tabId }) => {
+        set((state) => {
+          const ownerEntry = Object.entries(state.owners).find(([, ownerState]) =>
+            ownerState?.tabs.some(tab => tab.id === tabId))
+          const ownerId = ownerEntry?.[0] ?? state.activeOwnerId
+          const ownerState = ownerEntry?.[1] ?? getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            scrollToFilePath: { path, tabId, nonce: Date.now() },
+          })
+        })
+      },
+      clearScrollToFilePath: (ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            scrollToFilePath: null,
+          })
+        })
+      },
     }),
     {
       name: BROWSER_PANEL_STORAGE_KEY,
@@ -431,23 +665,31 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
       merge: (persisted, current) => ({
         ...current,
         recentHistoryByOwnerId:
-          (persisted as { recentHistoryByOwnerId?: Record<string, BrowserHistoryEntry[]> } | undefined)?.recentHistoryByOwnerId ?? {},
+          (
+            persisted as
+            | { recentHistoryByOwnerId?: Record<string, BrowserHistoryEntry[]> }
+            | undefined
+          )?.recentHistoryByOwnerId ?? {},
       }),
     },
   ),
 )
 
-function isBrowserPanelTabShortcutPayload(payload: unknown): payload is BrowserPanelTabShortcutInput {
+function isBrowserPanelTabShortcutPayload(
+  payload: unknown,
+): payload is BrowserPanelTabShortcutInput {
   if (!payload || typeof payload !== 'object') {
     return false
   }
 
   const candidate = payload as Partial<BrowserPanelTabShortcutInput>
-  return typeof candidate.key === 'string'
+  return (
+    typeof candidate.key === 'string'
     && typeof candidate.metaKey === 'boolean'
     && typeof candidate.altKey === 'boolean'
     && typeof candidate.ctrlKey === 'boolean'
     && typeof candidate.shiftKey === 'boolean'
+  )
 }
 
 export function selectOwnerBrowserState(ownerId: string) {
