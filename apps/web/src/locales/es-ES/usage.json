@@ -1,8 +1,6 @@
 {
   "breakdown.byAgent": "Por Agent",
-  "breakdown.byModel": "Por modelo",
   "breakdown.byProvider": "Por proveedor",
-  "breakdown.costByModel": "Costo por modelo",
   "breakdown.toggleAgent": "Agent",
   "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "Costo diario (últimos 30 días)",
@@ -22,5 +20,13 @@
   "streak.day": "días de racha",
   "summary.estimatedCost": "costo estimado",
   "summary.totalTokens": "tokens totales",
-  "title": "Uso"
+  "title": "Uso",
+  "topUsage.agents": "Agents",
+  "topUsage.description": "Modelos, agents y proveedores clasificados por tokens o costo.",
+  "topUsage.models": "Modelos",
+  "topUsage.providers": "Providers",
+  "topUsage.title": "Uso principal",
+  "topUsage.toggleCost": "Costo",
+  "topUsage.toggleTokens": "Tokens",
+  "topUsage.turnCount": "{{value}} turnos"
 }

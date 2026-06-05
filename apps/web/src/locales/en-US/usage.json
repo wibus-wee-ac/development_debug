@@ -1,8 +1,6 @@
 {
   "breakdown.byAgent": "By Agent",
-  "breakdown.byModel": "By Model",
   "breakdown.byProvider": "By Provider",
-  "breakdown.costByModel": "Cost by Model",
   "breakdown.toggleAgent": "Agent",
   "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "Daily cost (last 30 days)",
@@ -22,5 +20,13 @@
   "streak.day": "day streak",
   "summary.estimatedCost": "estimated cost",
   "summary.totalTokens": "total tokens",
-  "title": "Usage"
+  "title": "Usage",
+  "topUsage.agents": "Agents",
+  "topUsage.description": "Models, agents, and provider targets ranked by tokens or cost.",
+  "topUsage.models": "Models",
+  "topUsage.providers": "Providers",
+  "topUsage.title": "Top usage",
+  "topUsage.toggleCost": "Cost",
+  "topUsage.toggleTokens": "Tokens",
+  "topUsage.turnCount": "{{value}} turns"
 }

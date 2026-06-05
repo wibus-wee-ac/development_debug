@@ -9,6 +9,7 @@ import {
   PuzzleIcon,
   SettingsIcon,
   TerminalIcon,
+  UserCircleIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -297,6 +298,17 @@ function useCommands(close: () => void): CommandAction[] {
           handler: () => {
             close()
             toggleSidebar()
+          },
+        },
+        {
+          id: 'open-profile',
+          label: t('command.openProfile.label'),
+          keywords: t('command.openProfile.keywords'),
+          icon: UserCircleIcon,
+          source: 'app',
+          handler: () => {
+            close()
+            openTab('profile', {})
           },
         },
         {

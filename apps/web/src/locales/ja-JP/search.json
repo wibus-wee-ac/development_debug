@@ -3,6 +3,8 @@
   "aria.input": "グローバル検索",
   "command.newChat.keywords": "new chat session create 新規 チャット 会話",
   "command.newChat.label": "新しい会話",
+  "command.openProfile.keywords": "profile user activity streak tokens プロフィール アクティビティ",
+  "command.openProfile.label": "Profile を開く",
   "command.openSettings.keywords": "settings preferences 設定",
   "command.openSettings.label": "設定を開く",
   "command.openUsage.keywords": "usage cost token 使用量 コスト",

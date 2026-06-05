@@ -61,7 +61,7 @@ function MainAppRuntime() {
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
   const onboardingCompleted = useOnboardingStore(s => s.completed)
-  const showDevOnboarding = import.meta.env.DEV && !onboardingCompleted
+  const showDevOnboarding = !onboardingCompleted
 
   const activeSlotId = useCradleTabStore((s) => {
     const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)

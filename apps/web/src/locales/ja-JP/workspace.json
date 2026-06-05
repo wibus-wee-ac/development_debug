@@ -58,6 +58,7 @@
   "fileTree.toast.renameFailed": "ファイルの名前を変更できませんでした",
   "nav.automation": "自動化",
   "nav.newChat": "新規チャット",
+  "nav.profile": "Profile",
   "nav.search": "検索",
   "nav.settings": "設定",
   "nav.usage": "使用量",

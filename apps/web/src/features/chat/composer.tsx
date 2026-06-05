@@ -8,8 +8,8 @@ import { cn } from '~/lib/cn'
 import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
-import type { ChatContextPart } from './chat-context-parts'
 import { readBangCommand } from './bang-command'
+import type { ChatContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type {
   ComposerActionContextOptions,
@@ -44,12 +44,14 @@ import {
 import { SlashCommandPanel } from './slash-command-panel'
 import type { SendMessageResult } from './use-chat-session'
 
+type ComposerSendResult = SendMessageResult | boolean
+
 export type ComposerSendHandler = (
   text: string,
   files: FileUIPart[],
   contextParts: ChatContextPart[],
   options?: { invertContinuationMode?: boolean },
-) => SendMessageResult | boolean | Promise<SendMessageResult | boolean>
+) => ComposerSendResult | Promise<ComposerSendResult>
 
 export interface ComposerSendController {
   submit: ComposerSendHandler
@@ -142,6 +144,74 @@ const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
+
+function isComposerSendPromise(
+  result: ComposerSendResult | Promise<ComposerSendResult>,
+): result is Promise<ComposerSendResult> {
+  return typeof result === 'object'
+    && result !== null
+    && 'then' in result
+    && typeof result.then === 'function'
+}
+
+function reportComposerSubmitError(error: unknown) {
+  console.error('[Composer] submit failed:', error)
+}
+
+function clearSubmittedDraft({
+  clearAttachments,
+  dispatch,
+  promptEditor,
+}: {
+  clearAttachments: () => void
+  dispatch: (action: ComposerAction) => void
+  promptEditor: PromptEditorController | null
+}) {
+  clearAttachments()
+  promptEditor?.clear()
+  dispatch({ type: 'input/cleared' })
+}
+
+function submitAndClearDraft({
+  clearAttachments,
+  contextParts,
+  dispatch,
+  files,
+  options,
+  promptEditor,
+  submit,
+  text,
+}: {
+  clearAttachments: () => void
+  contextParts: ChatContextPart[]
+  dispatch: (action: ComposerAction) => void
+  files: FileUIPart[]
+  options?: { invertContinuationMode?: boolean }
+  promptEditor: PromptEditorController | null
+  submit: ComposerSendHandler
+  text: string
+}) {
+  let result: ComposerSendResult | Promise<ComposerSendResult>
+  try {
+    result = options
+      ? submit(text, files, contextParts, options)
+      : submit(text, files, contextParts)
+  }
+  catch (error) {
+    reportComposerSubmitError(error)
+    return
+  }
+
+  if (result === false) {
+    return
+  }
+
+  clearSubmittedDraft({ clearAttachments, dispatch, promptEditor })
+
+  if (isComposerSendPromise(result)) {
+    void result.catch(reportComposerSubmitError)
+  }
+}
 
 function readBangCommandDraft(text: string): string | null {
   const normalized = text.trimStart()
@@ -472,6 +542,9 @@ export function Composer({
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
   const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const attachmentController = useComposerAttachments({ supportsAttachments })
+  const composerAttachments = attachmentController.attachments
+  const appendComposerFileParts = attachmentController.appendFileParts
+  const clearComposerAttachments = attachmentController.clearAttachments
   const promptEditorRef = useRef<PromptEditorController>(null)
   const actionTargetRef = useRef<HTMLDivElement>(null)
   const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
@@ -577,7 +650,7 @@ export function Composer({
         const readActionContext = (options?: ComposerActionContextOptions) => readComposerActionContext(actionTargetRef.current, options)
         const result = await onSlashCommandAction(command, readActionContext(), { readActionContext })
         if (result?.fileParts?.length) {
-          attachmentController.appendFileParts(result.fileParts)
+          appendComposerFileParts(result.fileParts)
         }
         if (typeof result?.insertText !== 'string') {
           return
@@ -598,22 +671,22 @@ export function Composer({
 
     if (command.action.kind === 'submitText') {
       const submitText = command.action.text
-      const hasComposerPayload = attachmentController.attachments.length > 0 || state.contextParts.length > 0
+      const hasComposerPayload = composerAttachments.length > 0 || state.contextParts.length > 0
       if (disabled || isSending || sendDisabled || (command.action.requiresEmptyComposer && hasComposerPayload)) {
         requestAnimationFrame(() => promptEditorRef.current?.focus())
         return
       }
 
       dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
-      void (async () => {
-        const result = await submit(submitText, [], [])
-        if (result === false) {
-          return
-        }
-        attachmentController.clearAttachments()
-        promptEditorRef.current?.clear()
-        dispatch({ type: 'input/cleared' })
-      })()
+      submitAndClearDraft({
+        clearAttachments: clearComposerAttachments,
+        contextParts: [],
+        dispatch,
+        files: [],
+        promptEditor: promptEditorRef.current,
+        submit,
+        text: submitText,
+      })
       requestAnimationFrame(() => promptEditorRef.current?.focus())
       return
     }
@@ -622,29 +695,28 @@ export function Composer({
     const next = replaceSlashTrigger(state.inputValue, range.to - 1, range.from - 1, insertText)
     dispatch({ type: 'slash/selected', inputValue: next.value, command })
     promptEditorRef.current?.replaceRangeWithText(range, insertText)
-  }, [attachmentController, disabled, isSending, onSlashCommandAction, sendDisabled, state.contextParts.length, state.inputValue, submit])
+  }, [appendComposerFileParts, clearComposerAttachments, composerAttachments.length, disabled, isSending, onSlashCommandAction, sendDisabled, state.contextParts.length, state.inputValue, submit])
 
   const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
     const text = state.inputValue.trim()
     if (disabled || isSending || sendDisabled || sendBlocked) {
       return
     }
-    if (!allowEmptySend && !text && attachmentController.attachments.length === 0 && state.contextParts.length === 0) {
+    if (!allowEmptySend && !text && composerAttachments.length === 0 && state.contextParts.length === 0) {
       return
     }
 
-    void (async () => {
-      const result = options
-        ? await submit(text, attachmentController.attachments, state.contextParts, options)
-        : await submit(text, attachmentController.attachments, state.contextParts)
-      if (result === false) {
-        return
-      }
-      attachmentController.clearAttachments()
-      promptEditorRef.current?.clear()
-      dispatch({ type: 'input/cleared' })
-    })()
-  }, [allowEmptySend, attachmentController, disabled, isSending, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
+    submitAndClearDraft({
+      clearAttachments: clearComposerAttachments,
+      contextParts: state.contextParts,
+      dispatch,
+      files: composerAttachments,
+      options,
+      promptEditor: promptEditorRef.current,
+      submit,
+      text,
+    })
+  }, [allowEmptySend, clearComposerAttachments, composerAttachments, disabled, isSending, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
 
   const handlePaste = useCallback((event: ClipboardEvent) => {
     attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)

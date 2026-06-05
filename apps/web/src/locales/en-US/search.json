@@ -3,6 +3,8 @@
   "aria.input": "Global search",
   "command.newChat.keywords": "new chat session create",
   "command.newChat.label": "New conversation",
+  "command.openProfile.keywords": "profile user activity streak tokens",
+  "command.openProfile.label": "Open profile",
   "command.openSettings.keywords": "settings preferences",
   "command.openSettings.label": "Open settings",
   "command.openUsage.keywords": "usage cost token",

@@ -27,4 +27,5 @@ The registry exports the store instance consumed by the rest of the app.
 - **kanban-board-tab-content.tsx**: Wrapper component resolving board → workspace and managing issue panel plus optional milestone focus
 - **workspace-detail.tab.tsx**: Workspace detail tab (params: `workspaceId`), syncs the runtime tab label to the loaded workspace name and registers workspace-scoped bottom terminal plus browser panel and right aside capability
 - **workspace-detail.tab.test.tsx**: Regression test covering workspace-detail runtime tab label updates
+- **profile.tab.tsx**: Global user profile tab (no params), lazily loads the Usage-backed profile dashboard.
 - **usage.tab.tsx**: Usage/cost dashboard tab (no params)

@@ -1,8 +1,6 @@
 {
   "breakdown.byAgent": "Agent 別",
-  "breakdown.byModel": "モデル別",
   "breakdown.byProvider": "プロバイダー別",
-  "breakdown.costByModel": "モデル別コスト",
   "breakdown.toggleAgent": "Agent",
   "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "日別コスト（直近 30 日）",
@@ -22,5 +20,13 @@
   "streak.day": "日継続",
   "summary.estimatedCost": "推定コスト",
   "summary.totalTokens": "総 tokens",
-  "title": "使用量"
+  "title": "使用量",
+  "topUsage.agents": "Agents",
+  "topUsage.description": "token 数またはコストでランク付けされたモデル、agents、プロバイダー。",
+  "topUsage.models": "モデル",
+  "topUsage.providers": "Providers",
+  "topUsage.title": "使用ランキング",
+  "topUsage.toggleCost": "コスト",
+  "topUsage.toggleTokens": "Tokens",
+  "topUsage.turnCount": "{{value}} ターン"
 }

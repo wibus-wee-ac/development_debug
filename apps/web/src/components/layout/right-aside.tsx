@@ -46,8 +46,11 @@ const HORIZONTAL_SWIPE_LOCK_IDLE_MS = 220
 const HORIZONTAL_SWIPE_COMMIT_RATIO = 0.24
 const HORIZONTAL_SWIPE_DELTA_SCALE = 0.88
 const HORIZONTAL_SWIPE_MAX_DELTA = 64
+const HORIZONTAL_SWIPE_FLICK_VELOCITY = 0.62
+const HORIZONTAL_SWIPE_MIN_FLICK_DISTANCE = 18
 const HORIZONTAL_SWIPE_MIN_COMMIT_DISTANCE = 52
 const HORIZONTAL_SWIPE_MAX_COMMIT_DISTANCE = 112
+const HORIZONTAL_SWIPE_REVERSAL_EPSILON = 2
 const HORIZONTAL_SCROLL_EPSILON = 1
 const EDITABLE_WHEEL_TARGET_SELECTOR = 'input, textarea, select, [contenteditable], [role="textbox"]'
 
@@ -122,6 +125,12 @@ const PANEL_SLIDE_VARIANTS = {
 type HorizontalSwipePreview = {
   direction: -1 | 1
   targetTabId: string
+}
+
+type HorizontalSwipeGesture = {
+  lastWheelTime: number
+  peakVelocity: number
+  velocity: number
 }
 
 type TabPillRect = {
@@ -206,6 +215,11 @@ function getHorizontalSwipeTargetOffset(direction: -1 | 1, width: number): numbe
   return -direction * width
 }
 
+function shouldCommitHorizontalSwipe(distance: number, width: number, velocity: number): boolean {
+  return distance >= getHorizontalSwipeCommitDistance(width)
+    || (distance >= HORIZONTAL_SWIPE_MIN_FLICK_DISTANCE && velocity >= HORIZONTAL_SWIPE_FLICK_VELOCITY)
+}
+
 function lerp(start: number, end: number, progress: number): number {
   return start + (end - start) * progress
 }
@@ -216,6 +230,22 @@ function clampProgress(value: number): number {
 
 function normalizeHorizontalSwipeDelta(deltaX: number): number {
   return Math.sign(deltaX) * Math.min(Math.abs(deltaX) * HORIZONTAL_SWIPE_DELTA_SCALE, HORIZONTAL_SWIPE_MAX_DELTA)
+}
+
+function readSwipeVelocity(gesture: HorizontalSwipeGesture, delta: number, now: number): number {
+  const elapsed = gesture.lastWheelTime > 0
+    ? Math.max(8, Math.min(48, now - gesture.lastWheelTime))
+    : 16
+  gesture.lastWheelTime = now
+
+  const velocity = Math.abs(delta) / elapsed
+  gesture.velocity = (gesture.velocity * 0.68) + (velocity * 0.32)
+  gesture.peakVelocity = Math.max(gesture.peakVelocity, gesture.velocity)
+  return gesture.peakVelocity
+}
+
+function getTabById(tabId: string): Tab | null {
+  return TABS.find(tab => tab.id === tabId) ?? null
 }
 
 interface RightAsideProps {
@@ -346,20 +376,24 @@ export function RightAside({
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const tabListRef = useRef<HTMLDivElement | null>(null)
-  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const currentPanelX = useMotionValue(0)
   const adjacentPanelX = useMotionValue(0)
   const tabPillX = useMotionValue(0)
   const tabPillWidth = useMotionValue(0)
   const tabPillOpacity = useMotionValue(0)
   const swipePreviewRef = useRef<HorizontalSwipePreview | null>(null)
+  const swipeGestureRef = useRef<HorizontalSwipeGesture>({
+    lastWheelTime: 0,
+    peakVelocity: 0,
+    velocity: 0,
+  })
   const swipeIdleTimerRef = useRef<number | null>(null)
   const swipeLockedUntilIdleRef = useRef(false)
   const swipeSettlingRef = useRef(false)
   const swipeAnimationsRef = useRef<Array<{ stop: () => void }>>([])
   const tabPillAnimationsRef = useRef<Array<{ stop: () => void }>>([])
   const tabPillMeasureFrameRef = useRef(0)
-  const [swipePreview, setSwipePreviewState] = useState<HorizontalSwipePreview | null>(null)
+  const [swipePreview, setSwipePreview] = useState<HorizontalSwipePreview | null>(null)
   const [tabPillReady, setTabPillReady] = useState(false)
   const [panelDirection, setPanelDirection] = useState(1)
   const [packOpen, setPackOpen] = useState(false)
@@ -394,6 +428,8 @@ export function RightAside({
   // Badge: pending awaits for Feed tab
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const hasPendingAwaits = awaitSummary?.awaiting ?? false
+  const swipePreviewTab = swipePreview ? getTabById(swipePreview.targetTabId) : null
+  const SwipePreviewIcon = swipePreviewTab?.icon ?? null
 
   const handlePackRequested = useCallback((paths: string[]) => {
     setPackInitialPaths(paths)
@@ -415,6 +451,12 @@ export function RightAside({
     swipeAnimationsRef.current = []
   }, [])
 
+  const resetSwipeGesture = useCallback(() => {
+    swipeGestureRef.current.lastWheelTime = 0
+    swipeGestureRef.current.peakVelocity = 0
+    swipeGestureRef.current.velocity = 0
+  }, [])
+
   const stopTabPillAnimations = useCallback(() => {
     for (const animation of tabPillAnimationsRef.current) {
       animation.stop()
@@ -424,7 +466,7 @@ export function RightAside({
 
   const measureTabPillRect = useCallback((tabId: string): TabPillRect | null => {
     const tabList = tabListRef.current
-    const button = tabButtonRefs.current[tabId]
+    const button = tabList?.querySelector<HTMLButtonElement>(`[data-right-aside-tab-id="${tabId}"]`) ?? null
     if (!tabList || !button) {
       return null
     }
@@ -500,9 +542,9 @@ export function RightAside({
     })
   }, [activeTab, animateTabPillToRect, applyTabPillRect, measureTabPillRect, tabPillReady])
 
-  const setSwipePreview = useCallback((preview: HorizontalSwipePreview | null) => {
+  const syncSwipePreview = useCallback((preview: HorizontalSwipePreview | null) => {
     swipePreviewRef.current = preview
-    setSwipePreviewState(preview)
+    setSwipePreview(preview)
   }, [])
 
   const unlockSwipeAfterIdle = useCallback(() => {
@@ -516,9 +558,10 @@ export function RightAside({
   const resetHorizontalSwipe = useCallback((measureActiveTab = true) => {
     clearSwipeIdleTimer()
     stopSwipeAnimations()
+    resetSwipeGesture()
     swipeLockedUntilIdleRef.current = false
     swipeSettlingRef.current = false
-    setSwipePreview(null)
+    syncSwipePreview(null)
     currentPanelX.set(0)
     adjacentPanelX.set(0)
     if (measureActiveTab) {
@@ -529,8 +572,9 @@ export function RightAside({
     clearSwipeIdleTimer,
     currentPanelX,
     scheduleActiveTabPillMeasurement,
-    setSwipePreview,
+    resetSwipeGesture,
     stopSwipeAnimations,
+    syncSwipePreview,
   ])
 
   const settleHorizontalSwipe = useCallback((commit: boolean) => {
@@ -564,13 +608,14 @@ export function RightAside({
       if (commit) {
         setPanelDirection(preview.direction)
         setActiveTab(preview.targetTabId)
-        swipeLockedUntilIdleRef.current = true
-        unlockSwipeAfterIdle()
       }
+      swipeLockedUntilIdleRef.current = true
+      unlockSwipeAfterIdle()
 
-      setSwipePreview(null)
+      syncSwipePreview(null)
       currentPanelX.set(0)
       adjacentPanelX.set(0)
+      resetSwipeGesture()
       swipeAnimationsRef.current = []
       if (!commit) {
         scheduleActiveTabPillMeasurement()
@@ -592,8 +637,9 @@ export function RightAside({
     measureTabPillRect,
     scheduleActiveTabPillMeasurement,
     setActiveTab,
-    setSwipePreview,
+    resetSwipeGesture,
     stopSwipeAnimations,
+    syncSwipePreview,
     unlockSwipeAfterIdle,
   ])
 
@@ -609,7 +655,9 @@ export function RightAside({
 
       const width = Math.max(root.clientWidth, 1)
       const distance = Math.abs(currentPanelX.get())
-      settleHorizontalSwipe(distance >= getHorizontalSwipeCommitDistance(width))
+      settleHorizontalSwipe(
+        shouldCommitHorizontalSwipe(distance, width, swipeGestureRef.current.peakVelocity),
+      )
     }, HORIZONTAL_SWIPE_SETTLE_IDLE_MS)
   }, [clearSwipeIdleTimer, currentPanelX, settleHorizontalSwipe])
 
@@ -659,29 +707,43 @@ export function RightAside({
         return
       }
 
+      const incomingDirection = deltaX > 0 ? 1 : -1
       let preview = swipePreviewRef.current
+      if (
+        preview
+        && incomingDirection !== preview.direction
+        && Math.abs(currentPanelX.get()) <= HORIZONTAL_SWIPE_REVERSAL_EPSILON
+      ) {
+        syncSwipePreview(null)
+        adjacentPanelX.set(0)
+        resetSwipeGesture()
+        preview = null
+      }
+
       if (!preview) {
         if (shouldKeepHorizontalWheelForContent(event.target, root, deltaX)) {
           return
         }
 
-        const direction = deltaX > 0 ? 1 : -1
-        const targetTabId = getAdjacentTabId(activeTab, direction)
+        const targetTabId = getAdjacentTabId(activeTab, incomingDirection)
         if (!targetTabId) {
           return
         }
 
         const width = Math.max(root.clientWidth, 1)
-        preview = { direction, targetTabId }
+        preview = { direction: incomingDirection, targetTabId }
         stopSwipeAnimations()
-        setPanelDirection(direction)
-        setSwipePreview(preview)
+        resetSwipeGesture()
+        setPanelDirection(incomingDirection)
+        syncSwipePreview(preview)
         currentPanelX.set(0)
-        adjacentPanelX.set(direction * width)
+        adjacentPanelX.set(incomingDirection * width)
       }
 
       const width = Math.max(root.clientWidth, 1)
+      const now = performance.now()
       const horizontalDelta = normalizeHorizontalSwipeDelta(deltaX)
+      readSwipeVelocity(swipeGestureRef.current, horizontalDelta, now)
       const nextCurrentX = clampHorizontalSwipeOffset(
         currentPanelX.get() - horizontalDelta,
         preview.direction,
@@ -703,9 +765,10 @@ export function RightAside({
     activeTab,
     adjacentPanelX,
     currentPanelX,
+    resetSwipeGesture,
     scheduleHorizontalSwipeSettle,
-    setSwipePreview,
     stopSwipeAnimations,
+    syncSwipePreview,
     updateTabPillForSwipe,
     unlockSwipeAfterIdle,
   ])
@@ -728,6 +791,19 @@ export function RightAside({
     }
     scheduleActiveTabPillMeasurement()
   }, [activeTab, scheduleActiveTabPillMeasurement, swipePreview])
+
+  useLayoutEffect(() => {
+    const root = rootRef.current
+    if (!root || !swipePreview) {
+      return
+    }
+
+    updateTabPillForSwipe(
+      swipePreview,
+      currentPanelX.get(),
+      Math.max(root.clientWidth, 1),
+    )
+  }, [currentPanelX, swipePreview, updateTabPillForSwipe])
 
   useEffect(() => {
     const tabList = tabListRef.current
@@ -766,26 +842,35 @@ export function RightAside({
               aria-hidden="true"
               className="absolute inset-y-0 left-0 z-0 rounded-md bg-accent will-change-transform"
               style={{
-                opacity: tabPillOpacity,
+                opacity: swipePreview ? 0 : tabPillOpacity,
                 width: tabPillWidth,
                 x: tabPillX,
               }}
             />
+            {swipePreviewTab && SwipePreviewIcon && (
+              <m.div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-0 z-20 inline-flex h-7 items-center justify-center rounded-md bg-accent px-2 text-xs text-foreground will-change-transform"
+                style={{ x: tabPillX }}
+              >
+                <SwipePreviewIcon className="relative size-3.5 shrink-0" />
+                <span className="ml-1.5 whitespace-nowrap">{t(swipePreviewTab.labelKey)}</span>
+              </m.div>
+            )}
             {TABS.map(({ id, labelKey, icon: Icon }) => {
               const isActive = activeTab === id
               const isPreviewTarget = swipePreview?.targetTabId === id
+              const showBaseLabel = isActive && !swipePreview
               const showBadge = id === 'await' && hasPendingAwaits && !isActive
               const label = t(labelKey)
 
               const button = (
                 <m.button
-                  ref={(node) => {
-                    tabButtonRefs.current[id] = node
-                  }}
                   type="button"
                   layout
                   onClick={() => activateTab(id)}
                   aria-label={label}
+                  data-right-aside-tab-id={id}
                   data-testid={`right-aside-tab-${id}`}
                   data-active={isActive ? 'true' : 'false'}
                   initial={false}
@@ -803,7 +888,7 @@ export function RightAside({
                   <span className="relative flex min-w-0 items-center justify-center">
                     <Icon className="relative size-3.5 shrink-0" aria-hidden="true" />
                     <m.span
-                      aria-hidden={!isActive}
+                      aria-hidden={!showBaseLabel}
                       initial={false}
                       animate={{
                         width: isActive ? 'auto' : 0,
@@ -816,9 +901,9 @@ export function RightAside({
                       <m.span
                         initial={false}
                         animate={{
-                          opacity: isActive ? 1 : 0,
+                          opacity: showBaseLabel ? 1 : 0,
                           x: isActive ? 0 : 6,
-                          filter: isActive ? 'blur(0px)' : 'blur(3px)',
+                          filter: showBaseLabel ? 'blur(0px)' : 'blur(3px)',
                         }}
                         transition={{
                           opacity: TAB_LABEL_TRANSITION.opacity,

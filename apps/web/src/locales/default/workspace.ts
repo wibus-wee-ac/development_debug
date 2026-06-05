@@ -58,6 +58,7 @@ export default {
   'fileTree.toast.renameFailed': 'File could not be renamed',
   'nav.automation': 'Automations',
   'nav.newChat': 'New chat',
+  'nav.profile': 'Profile',
   'nav.search': 'Search',
   'nav.settings': 'Settings',
   'nav.usage': 'Usage',

@@ -31,6 +31,7 @@ import {
   SettingsIcon,
   SlidersHorizontalIcon,
   Trash2Icon,
+  UserCircleIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -1509,6 +1510,13 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             collapsed={collapsed}
             to="automation"
             dataTestId="nav-automation"
+          />
+          <TopNavItem
+            icon={<UserCircleIcon className="size-3.5" />}
+            label={t('nav.profile')}
+            collapsed={collapsed}
+            to="profile"
+            dataTestId="nav-profile"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}

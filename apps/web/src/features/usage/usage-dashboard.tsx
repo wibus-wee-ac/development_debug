@@ -1,94 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { z } from 'zod'
 
-import {
-  getUsageCostDailyOptions,
-  getUsageCostSummaryOptions,
-  getUsageDailyOptions,
-  getUsageStatsOptions,
-  getUsageSummaryOptions,
-} from '~/api-gen/@tanstack/react-query.gen'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import { boundedPercent, formatPercentFromRatio, formatTokenCount, formatUsd } from '~/lib/number-format'
 import { cn } from '~/lib/cn'
-import { formatTokenCount, formatUsd } from '~/lib/number-format'
 
 import { UsageHeatmap } from './usage-heatmap'
+import type { DailyCost, DailyUsage } from './use-usage-overview'
+import { useUsageOverview } from './use-usage-overview'
 
-const DailyUsageSchema = z.object({
-  date: z.string(),
-  totalTokens: z.number(),
-  promptTokens: z.number(),
-  completionTokens: z.number(),
-  count: z.number(),
-})
-
-const UsageSummarySchema = z.object({
-  totalPromptTokens: z.number(),
-  totalCompletionTokens: z.number(),
-  totalTokens: z.number(),
-  totalTurns: z.number(),
-  byAgent: z.array(z.object({
-    agentId: z.string(),
-    agentName: z.string(),
-    totalTokens: z.number(),
-    count: z.number(),
-  })),
-  byProviderTarget: z.array(z.object({
-    providerTargetId: z.string(),
-    providerTargetName: z.string().nullable(),
-    totalTokens: z.number(),
-    count: z.number(),
-  })),
-  byModel: z.array(z.object({
-    modelId: z.string(),
-    totalTokens: z.number(),
-    count: z.number(),
-  })),
-})
-
-const UsageStatsSchema = z.object({
-  currentStreak: z.number(),
-  longestStreak: z.number(),
-  activeDays: z.number(),
-  avgDailyTokens: z.number(),
-  peakDay: z.object({
-    date: z.string(),
-    totalTokens: z.number(),
-  }).nullable(),
-  todayTokens: z.number(),
-})
-
-const CostSummarySchema = z.object({
-  totalCostUsd: z.number(),
-  totalPromptTokens: z.number(),
-  totalCompletionTokens: z.number(),
-  totalTokens: z.number(),
-  byModel: z.array(z.object({
-    modelId: z.string(),
-    costUsd: z.number(),
-    promptTokens: z.number(),
-    completionTokens: z.number(),
-    totalTokens: z.number(),
-    count: z.number(),
-  })),
-})
-
-const DailyCostSchema = z.object({
-  date: z.string(),
-  costUsd: z.number(),
-  promptTokens: z.number(),
-  completionTokens: z.number(),
-  totalTokens: z.number(),
-  stepCount: z.number(),
-})
-
-const DailyUsageListSchema = z.array(DailyUsageSchema)
-const DailyCostListSchema = z.array(DailyCostSchema)
-
-type DailyUsage = z.infer<typeof DailyUsageSchema>
-type DailyCost = z.infer<typeof DailyCostSchema>
+const TOP_ITEM_LIMIT = 5
 
 /** Tiny SVG sparkline for the last 30 days */
 function Sparkline({ data }: { data: DailyUsage[] }) {
@@ -155,43 +76,18 @@ function CostSparkline({ data }: { data: DailyCost[] }) {
 }
 
 export function UsageDashboard() {
-  const { t } = useTranslation('usage')
+  const { t, i18n } = useTranslation('usage')
   const [agentView, setAgentView] = useState<'agent' | 'provider'>('agent')
-  const dailyQuery = useQuery({
-    ...getUsageDailyOptions({ query: { days: '365' } }),
-    select: DailyUsageListSchema.parse,
-  })
-  const summaryQuery = useQuery({
-    ...getUsageSummaryOptions(),
-    select: UsageSummarySchema.parse,
-  })
-  const statsQuery = useQuery({
-    ...getUsageStatsOptions(),
-    select: UsageStatsSchema.parse,
-  })
-  const costSummaryQuery = useQuery({
-    ...getUsageCostSummaryOptions(),
-    select: CostSummarySchema.parse,
-  })
-  const dailyCostQuery = useQuery({
-    ...getUsageCostDailyOptions(),
-    select: DailyCostListSchema.parse,
-  })
+  const [rankingMode, setRankingMode] = useState<'tokens' | 'cost'>('tokens')
+  const { daily, summary, stats, costSummary, dailyCost, usageReady, hasData } = useUsageOverview()
+  const locale = i18n.language
 
-  const usageReady
-    = dailyQuery.isSuccess
-    && summaryQuery.isSuccess
-    && statsQuery.isSuccess
-    && costSummaryQuery.isSuccess
-    && dailyCostQuery.isSuccess
+  const hasRankedUsage = Boolean(
+    summary
+    && (summary.byModel.length > 0 || summary.byAgent.length > 0 || summary.byProviderTarget.length > 0),
+  )
 
-  const daily = dailyQuery.data ?? []
-  const summary = summaryQuery.data ?? null
-  const stats = statsQuery.data ?? null
-  const costSummary = costSummaryQuery.data ?? null
-  const dailyCost = dailyCostQuery.data ?? []
-
-  const hasData = summary && summary.totalTokens > 0
+  const hasCostData = Boolean(costSummary && costSummary.totalCostUsd > 0)
 
   return (
     <div
@@ -199,7 +95,7 @@ export function UsageDashboard() {
       data-testid="usage-dashboard"
       data-usage-ready={usageReady ? 'true' : 'false'}
     >
-      <div className="mx-auto max-w-4xl px-8 py-10">
+      <div className="mx-auto max-w-5xl px-8 py-10">
         {/* Header row with streak */}
         <div className="flex items-end justify-between">
           <div>
@@ -274,69 +170,136 @@ export function UsageDashboard() {
           <UsageHeatmap data={daily} />
         </div>
 
-        {/* Breakdown */}
-        {hasData && (
-          <div className="mt-10 grid grid-cols-2 gap-8">
-            {/* By Model — cost */}
-            {costSummary && costSummary.byModel.length > 0 && (
+        {/* Top Usage Section */}
+        {hasData && hasRankedUsage && (
+          <div className="mt-10">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.costByModel')}</p>
-                <div className="space-y-2.5">
-                  {costSummary.byModel.map(m => (
-                    <CostBarRow key={m.modelId} label={m.modelId} costUsd={m.costUsd} tokens={m.totalTokens} max={costSummary.byModel[0].costUsd} />
+                <h2 className="text-sm font-semibold text-foreground">{t('topUsage.title')}</h2>
+                <p className="mt-1 text-xs text-muted-foreground">{t('topUsage.description')}</p>
+              </div>
+              {hasCostData && (
+                <ToggleGroup
+                  type="single"
+                  value={rankingMode}
+                  onValueChange={(value) => {
+                    if (value === 'tokens' || value === 'cost') {
+                      setRankingMode(value)
+                    }
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0 gap-px rounded-md"
+                >
+                  <ToggleGroupItem value="tokens" className="h-7 px-2.5 text-xs">
+                    {t('topUsage.toggleTokens')}
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="cost" className="h-7 px-2.5 text-xs">
+                    {t('topUsage.toggleCost')}
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+              {/* Models ranking */}
+              {rankingMode === 'tokens' && summary!.byModel.length > 0 && (
+                <RankGroup title={t('topUsage.models')}>
+                  {summary!.byModel.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedUsageRow
+                      key={item.modelId}
+                      label={item.modelId}
+                      tokens={item.totalTokens}
+                      maxTokens={summary!.byModel[0]?.totalTokens ?? 0}
+                      totalTokens={summary!.totalTokens}
+                      turnsLabel={t('topUsage.turnCount', { value: new Intl.NumberFormat(locale).format(item.count) })}
+                    />
                   ))}
-                </div>
-              </div>
-            )}
-            {/* By Model — tokens (fallback if no cost data) */}
-            {(!costSummary || costSummary.byModel.length === 0) && summary!.byModel.length > 0 && (
-              <div>
-                <p className="text-[11px] font-medium text-muted-foreground mb-3">{t('breakdown.byModel')}</p>
-                <div className="space-y-2.5">
-                  {summary!.byModel.map(m => (
-                    <BarRow key={m.modelId} label={m.modelId} value={m.totalTokens} max={summary!.byModel[0].totalTokens} />
+                </RankGroup>
+              )}
+              {rankingMode === 'cost' && costSummary && costSummary.byModel.length > 0 && (
+                <RankGroup title={t('topUsage.models')}>
+                  {costSummary.byModel.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedCostRow
+                      key={item.modelId}
+                      label={item.modelId}
+                      costUsd={item.costUsd}
+                      maxCost={costSummary.byModel[0]?.costUsd ?? 0}
+                      totalCost={costSummary.totalCostUsd}
+                      tokens={item.totalTokens}
+                    />
                   ))}
-                </div>
-              </div>
-            )}
-            {/* By Agent / Provider */}
-            {(summary!.byAgent.length > 0 || summary!.byProviderTarget.length > 0) && (
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-[11px] font-medium text-muted-foreground">
-                    {agentView === 'agent' ? t('breakdown.byAgent') : t('breakdown.byProvider')}
-                  </p>
-                  <ToggleGroup
-                    type="single"
-                    value={agentView}
-                    onValueChange={(value) => {
-                      if (value === 'agent' || value === 'provider') {
-                        setAgentView(value)
-                      }
-                    }}
-                    variant="outline"
-                    size="sm"
-                    className="h-5 shrink-0 gap-px rounded-md"
-                  >
-                    <ToggleGroupItem value="agent" className="h-5 px-1.5 text-[10px]">
-                      {t('breakdown.toggleAgent')}
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="provider" className="h-5 px-1.5 text-[10px]">
-                      {t('breakdown.toggleProvider')}
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
-                <div className="space-y-2.5">
-                  {agentView === 'agent'
-                    ? summary!.byAgent.map(a => (
-                      <BarRow key={a.agentId} label={a.agentName} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
-                    ))
-                    : summary!.byProviderTarget.map(p => (
-                      <BarRow key={p.providerTargetId} label={p.providerTargetName ?? p.providerTargetId} value={p.totalTokens} max={summary!.byProviderTarget[0].totalTokens} />
-                    ))}
-                </div>
-              </div>
-            )}
+                </RankGroup>
+              )}
+              {/* Agents ranking */}
+              {summary!.byAgent.length > 0 && (
+                <RankGroup title={t('topUsage.agents')}>
+                  {summary!.byAgent.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedUsageRow
+                      key={item.agentId}
+                      label={item.agentName}
+                      tokens={item.totalTokens}
+                      maxTokens={summary!.byAgent[0]?.totalTokens ?? 0}
+                      totalTokens={summary!.totalTokens}
+                      turnsLabel={t('topUsage.turnCount', { value: new Intl.NumberFormat(locale).format(item.count) })}
+                    />
+                  ))}
+                </RankGroup>
+              )}
+              {/* Providers ranking */}
+              {summary!.byProviderTarget.length > 0 && (
+                <RankGroup title={t('topUsage.providers')}>
+                  {summary!.byProviderTarget.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedUsageRow
+                      key={item.providerTargetId}
+                      label={item.providerTargetName ?? item.providerTargetId}
+                      tokens={item.totalTokens}
+                      maxTokens={summary!.byProviderTarget[0]?.totalTokens ?? 0}
+                      totalTokens={summary!.totalTokens}
+                      turnsLabel={t('topUsage.turnCount', { value: new Intl.NumberFormat(locale).format(item.count) })}
+                    />
+                  ))}
+                </RankGroup>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Breakdown - Agent/Provider only */}
+        {hasData && (summary!.byAgent.length > 0 || summary!.byProviderTarget.length > 0) && (
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-medium text-muted-foreground">
+                {agentView === 'agent' ? t('breakdown.byAgent') : t('breakdown.byProvider')}
+              </p>
+              <ToggleGroup
+                type="single"
+                value={agentView}
+                onValueChange={(value) => {
+                  if (value === 'agent' || value === 'provider') {
+                    setAgentView(value)
+                  }
+                }}
+                variant="outline"
+                size="sm"
+                className="h-5 shrink-0 gap-px rounded-md"
+              >
+                <ToggleGroupItem value="agent" className="h-5 px-1.5 text-[10px]">
+                  {t('breakdown.toggleAgent')}
+                </ToggleGroupItem>
+                <ToggleGroupItem value="provider" className="h-5 px-1.5 text-[10px]">
+                  {t('breakdown.toggleProvider')}
+                </ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div className="space-y-2.5">
+              {agentView === 'agent'
+                ? summary!.byAgent.map(a => (
+                  <BarRow key={a.agentId} label={a.agentName} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
+                ))
+                : summary!.byProviderTarget.map(p => (
+                  <BarRow key={p.providerTargetId} label={p.providerTargetName ?? p.providerTargetId} value={p.totalTokens} max={summary!.byProviderTarget[0].totalTokens} />
+                ))}
+            </div>
           </div>
         )}
 
@@ -414,3 +377,81 @@ function CostBarRow({ label, costUsd, tokens, max }: { label: string, costUsd: n
     </div>
   )
 }
+
+function RankGroup({ title, children }: { title: string, children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <h3 className="mb-3 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">{title}</h3>
+      <div className="space-y-3">{children}</div>
+    </div>
+  )
+}
+
+function RankedUsageRow({
+  label,
+  tokens,
+  maxTokens,
+  totalTokens,
+  turnsLabel,
+}: {
+  label: string
+  tokens: number
+  maxTokens: number
+  totalTokens: number
+  turnsLabel: string
+}) {
+  const tokenShare = totalTokens > 0 ? tokens / totalTokens : 0
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{label}</span>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">{formatTokenCount(tokens)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/5">
+        <div
+          className="h-full rounded-full bg-foreground/55"
+          style={{ width: `${boundedPercent(tokens, maxTokens)}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+        <span className="truncate">{turnsLabel}</span>
+        <span className="shrink-0 tabular-nums">{formatPercentFromRatio(tokenShare)}</span>
+      </div>
+    </div>
+  )
+}
+
+function RankedCostRow({
+  label,
+  costUsd,
+  maxCost,
+  totalCost,
+  tokens,
+}: {
+  label: string
+  costUsd: number
+  maxCost: number
+  totalCost: number
+  tokens: number
+}) {
+  const costShare = totalCost > 0 ? costUsd / totalCost : 0
+  return (
+    <div className="min-w-0">
+      <div className="mb-1 flex items-baseline justify-between gap-3">
+        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground">{label}</span>
+        <span className="shrink-0 text-xs font-medium tabular-nums text-foreground">{formatUsd(costUsd)}</span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-foreground/5">
+        <div
+          className="h-full rounded-full bg-foreground/55"
+          style={{ width: `${boundedPercent(costUsd, maxCost)}%` }}
+        />
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 text-[10px] text-muted-foreground">
+        <span className="truncate">{formatTokenCount(tokens)}</span>
+        <span className="shrink-0 tabular-nums">{formatPercentFromRatio(costShare)}</span>
+      </div>
+    </div>
+  )
+}
+

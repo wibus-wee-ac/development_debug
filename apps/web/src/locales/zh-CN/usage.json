@@ -1,8 +1,6 @@
 {
   "breakdown.byAgent": "按 Agent",
-  "breakdown.byModel": "按模型",
   "breakdown.byProvider": "按 Provider",
-  "breakdown.costByModel": "按模型统计成本",
   "breakdown.toggleAgent": "Agent",
   "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "每日成本（最近 30 天）",
@@ -22,5 +20,13 @@
   "streak.day": "天连续",
   "summary.estimatedCost": "预估成本",
   "summary.totalTokens": "总 tokens",
-  "title": "使用量"
+  "title": "使用量",
+  "topUsage.agents": "Agents",
+  "topUsage.description": "按 tokens 或成本排名的模型、agents 和 provider targets。",
+  "topUsage.models": "模型",
+  "topUsage.providers": "Providers",
+  "topUsage.title": "使用排行",
+  "topUsage.toggleCost": "成本",
+  "topUsage.toggleTokens": "Tokens",
+  "topUsage.turnCount": "{{value}} 轮次"
 }
