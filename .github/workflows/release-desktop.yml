@@ -1,0 +1,158 @@
+name: Release Desktop
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version without leading v
+        required: true
+        type: string
+      update_url:
+        description: Generic electron-updater feed URL embedded into the Desktop app
+        required: false
+        type: string
+      skip_s3_upload:
+        description: Skip S3 update feed upload
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+
+jobs:
+  release-inputs:
+    name: Resolve Release Inputs
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      channel: ${{ steps.release.outputs.channel }}
+      update-url: ${{ steps.release.outputs.update-url }}
+      prerelease: ${{ steps.release.outputs.prerelease }}
+    steps:
+      - name: Resolve version and update feed
+        id: release
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+            update_url="${{ inputs.update_url }}"
+          else
+            version="${GITHUB_REF_NAME#v}"
+            update_url="${{ vars.CRADLE_DESKTOP_UPDATE_URL }}"
+          fi
+
+          if [ -z "$update_url" ]; then
+            echo "CRADLE_DESKTOP_UPDATE_URL repository variable or workflow input update_url is required." >&2
+            exit 1
+          fi
+
+          channel="stable"
+          prerelease="false"
+          if [[ "$version" == *-* ]]; then
+            prerelease="true"
+            channel="${version#*-}"
+            channel="${channel%%.*}"
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "channel=$channel" >> "$GITHUB_OUTPUT"
+          echo "update-url=$update_url" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build Desktop (${{ matrix.name }})
+    needs: release-inputs
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: mac
+            os: macos-latest
+            script: dist:mac
+            arch: arm64
+          - name: windows
+            os: windows-latest
+            script: dist:win
+            arch: x64
+          - name: linux
+            os: ubuntu-latest
+            script: dist:linux
+            arch: x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup desktop build environment
+        uses: ./.github/actions/desktop-build-setup
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Set desktop package version
+        run: pnpm --filter @cradle/desktop set-version -- ${{ needs.release-inputs.outputs.version }}
+
+      - name: Build and package desktop
+        run: pnpm --filter @cradle/desktop ${{ matrix.script }}
+        env:
+          CRADLE_DESKTOP_UPDATE_URL: ${{ needs.release-inputs.outputs.update-url }}
+          CRADLE_ELECTRON_REBUILD_ARCH: ${{ matrix.arch }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Upload desktop artifacts
+        uses: ./.github/actions/desktop-upload-artifacts
+        with:
+          artifact-name: desktop-${{ matrix.name }}
+
+  github-release:
+    name: Publish GitHub Release
+    needs:
+      - release-inputs
+      - build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.release-inputs.outputs.version }}
+          name: v${{ needs.release-inputs.outputs.version }}
+          prerelease: ${{ needs.release-inputs.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: release-assets/**/*
+
+  publish-s3:
+    name: Publish Update Feed
+    needs:
+      - release-inputs
+      - build
+    runs-on: ubuntu-latest
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_s3_upload) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish desktop update feed
+        uses: ./.github/actions/desktop-publish-s3
+        with:
+          channel: ${{ needs.release-inputs.outputs.channel }}
+          version: ${{ needs.release-inputs.outputs.version }}
+          aws-access-key-id: ${{ secrets.UPDATE_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.UPDATE_AWS_SECRET_ACCESS_KEY }}
+          s3-bucket: ${{ secrets.UPDATE_S3_BUCKET }}
+          s3-region: ${{ secrets.UPDATE_S3_REGION }}
+          s3-endpoint: ${{ secrets.UPDATE_S3_ENDPOINT }}

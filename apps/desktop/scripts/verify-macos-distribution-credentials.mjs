@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Verifies local macOS signing and notarization credentials before preview distribution packaging.
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const desktopRoot = resolve(scriptDir, '..')
@@ -14,7 +13,7 @@ function printHelp() {
 Options:
   --mac-app-sign <identity>       Expected Developer ID Application identity. Defaults to CSC_NAME or auto-discovery.
   --mac-installer-sign <identity> Expected Developer ID Installer identity. Defaults to CRADLE_MAC_INSTALLER_SIGN_IDENTITY or auto-discovery.
-  --mac-notary-profile <profile>  notarytool keychain profile used by release:preview. Defaults to APPLE_KEYCHAIN_PROFILE.
+  --mac-notary-profile <profile>  notarytool keychain profile used by desktop release packaging. Defaults to APPLE_KEYCHAIN_PROFILE.
   --check-app-signing             Check Developer ID Application and Electron Builder signing credentials.
   --check-installer-signing       Check Developer ID Installer credentials.
   --check-notary-profile          Check notarytool keychain profile access.
@@ -67,15 +66,15 @@ function summarizeOutput(output) {
   return lines.slice(0, 8).join('\n')
 }
 
-function readYamlScalar(raw, key, fallback) {
-  const match = raw.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'))
-  return match?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? fallback
+async function readBuilderConfig() {
+  const configUrl = pathToFileURL(resolve(desktopRoot, 'electron-builder.mjs'))
+  configUrl.search = `t=${Date.now()}`
+  const configModule = await import(configUrl.href)
+  return configModule.default ?? {}
 }
 
-function readMacIdentityConfig(raw) {
-  const macSection = raw.match(/^mac:\n(?<body>(?: {2}.*\n?)*)/m)?.groups?.body ?? ''
-  const identity = macSection.match(/^ {2}identity:\s*(.+)$/m)?.[1]?.trim().replace(/^['"]|['"]$/g, '') ?? null
-  return identity
+function readMacIdentityConfig(config) {
+  return config.mac?.identity ?? null
 }
 
 function parseCodesigningIdentities(output) {
@@ -153,7 +152,7 @@ function checkDeveloperIdentity({ identities, expected, certificatePrefix, label
       return {
         name: `${label} identity is available`,
         pass: true,
-        detail: 'CSC_LINK and CSC_KEY_PASSWORD are set. electron-builder can import the certificate during packaging; release:preview still verifies the final .app signature before Velopack packaging.',
+        detail: 'CSC_LINK and CSC_KEY_PASSWORD are set. electron-builder can import the certificate during packaging.',
       }
     }
     return {
@@ -177,14 +176,14 @@ function checkElectronBuilderSigning({ appIdentity, builderIdentity, identities 
     return {
       name: 'Electron Builder mac signing configuration can produce Developer ID app',
       pass: false,
-      detail: 'electron-builder.yml sets mac.identity to "-", which produces an ad-hoc signature.',
+      detail: 'electron-builder.mjs sets mac.identity to "-", which produces an ad-hoc signature.',
     }
   }
   if (builderIdentity === 'null') {
     return {
       name: 'Electron Builder mac signing configuration can produce Developer ID app',
       pass: false,
-      detail: 'electron-builder.yml sets mac.identity to null, which skips app signing.',
+      detail: 'electron-builder.mjs sets mac.identity to null, which skips app signing.',
     }
   }
 
@@ -213,7 +212,7 @@ function checkElectronBuilderSigning({ appIdentity, builderIdentity, identities 
     return {
       name: 'Electron Builder mac signing configuration can produce Developer ID app',
       pass: false,
-      detail: `electron-builder.yml mac.identity is not a Developer ID Application identity: ${builderIdentity}`,
+      detail: `electron-builder.mjs mac.identity is not a Developer ID Application identity: ${builderIdentity}`,
     }
   }
 
@@ -229,7 +228,7 @@ function checkElectronBuilderSigning({ appIdentity, builderIdentity, identities 
     return {
       name: 'Electron Builder mac signing configuration can produce Developer ID app',
       pass: true,
-      detail: 'CSC_LINK and CSC_KEY_PASSWORD are set. release:preview still verifies the final .app signature after electron-builder imports the certificate.',
+      detail: 'CSC_LINK and CSC_KEY_PASSWORD are set. electron-builder can import the certificate during packaging.',
     }
   }
 
@@ -248,7 +247,7 @@ function checkNotaryProfile({ profile, skipAuthCheck }) {
     return {
       name: 'notarytool keychain profile is usable',
       pass: false,
-      detail: 'Pass --mac-notary-profile <profile> or set APPLE_KEYCHAIN_PROFILE. release:preview requires the same profile for notarization.',
+      detail: 'Pass --mac-notary-profile <profile> or set APPLE_KEYCHAIN_PROFILE before enabling notarized desktop distribution.',
     }
   }
   if (skipAuthCheck) {
@@ -274,16 +273,16 @@ function checkNotaryProfile({ profile, skipAuthCheck }) {
   }
 }
 
-function main() {
+async function main() {
   if (hasFlag('help')) {
     printHelp()
     return
   }
 
-  const builderConfigRaw = readFileSync(resolve(desktopRoot, 'electron-builder.yml'), 'utf8')
-  const builderIdentity = readMacIdentityConfig(builderConfigRaw)
-  const appId = readYamlScalar(builderConfigRaw, 'appId', 'com.cradle.app')
-  const productName = readYamlScalar(builderConfigRaw, 'productName', 'Cradle')
+  const builderConfig = await readBuilderConfig()
+  const builderIdentity = readMacIdentityConfig(builderConfig)
+  const appId = builderConfig.appId ?? 'com.cradle.app'
+  const productName = builderConfig.productName ?? 'Cradle'
   const appIdentity = readOption('mac-app-sign', process.env.CSC_NAME ?? builderIdentity)
   const installerIdentity = readOption('mac-installer-sign', process.env.CRADLE_MAC_INSTALLER_SIGN_IDENTITY ?? null)
   const notaryProfile = readOption('mac-notary-profile', process.env.APPLE_KEYCHAIN_PROFILE ?? null)
@@ -365,4 +364,7 @@ function main() {
   console.log('macOS distribution credential preflight passed.')
 }
 
-main()
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error))
+  process.exitCode = 1
+})
