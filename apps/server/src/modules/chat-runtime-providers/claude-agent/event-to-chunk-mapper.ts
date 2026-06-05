@@ -1,10 +1,23 @@
+/**
+ * Output: AI SDK UIMessageChunk events projected from Claude Agent SDK messages.
+ * Input: Claude Agent SDK stream messages, tool-use snapshots, result messages, and subagent parent tool ids.
+ * Position: Claude Agent provider package event mapper between SDK-native events and Chat Runtime chunks.
+ */
+
 import { randomUUID } from 'node:crypto'
 
 import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKResultMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import type { ProviderMetadata } from 'ai'
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import {
+  compactClaudeAgentSubagentProjection,
+  createClaudeAgentSubagentOutput,
+  createClaudeAgentSubagentProjection,
+  projectClaudeAgentSubagentMessage,
+  projectClaudeAgentSubagentOutputChunk,
+  type ClaudeAgentSubagentProjection,
+} from './subagent-projector'
 import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload } from './tools/mapper'
 import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './tools/todo-plugin-state'
 
@@ -59,49 +72,14 @@ export interface ClaudeAgentChunkMapperState {
   completedThinkingBlockIndices: Set<number>
 }
 
-interface ClaudeAgentSubagentStreamState {
-  message: UIMessage | null
+interface ClaudeAgentSubagentStreamState extends ClaudeAgentSubagentProjection {
   mapperState: ClaudeAgentChunkMapperState
-  projector: ClaudeAgentSubagentProjectorState
-  chunkCount: number
-  emittedChunkCount: number
 }
-
-interface ClaudeAgentSubagentProjectorState {
-  activeTextParts: Map<string, ProjectedTextPart<MutableTextPart>>
-  activeReasoningParts: Map<string, ProjectedTextPart<MutableReasoningPart>>
-  partialToolCalls: Map<string, ProjectedPartialToolCall>
-}
-
-type MutableTextPart = Extract<UIMessage['parts'][number], { type: 'text' }>
-type MutableReasoningPart = Extract<UIMessage['parts'][number], { type: 'reasoning' }>
-type MutableToolPart = Extract<UIMessage['parts'][number], { toolCallId: string }>
 
 interface TextAccumulator {
   parts: string[]
   length: number
 }
-
-interface ProjectedTextPart<TPart extends MutableTextPart | MutableReasoningPart> {
-  part: TPart
-  deltas: string[]
-}
-
-interface ProjectedPartialToolCall {
-  deltas: string[]
-  toolName: string
-  dynamic?: boolean
-  title?: string
-}
-
-interface ClaudeAgentSubagentOutput {
-  type: 'cradle.subagent-output.v1'
-  message: UIMessage
-  result?: unknown
-  truncated?: boolean
-}
-
-const PRELIMINARY_SUBAGENT_TEXT_LIMIT = 64 * 1024
 
 export interface ClaudeAgentChunkMapperResult {
   chunks: UIMessageChunk[]
@@ -120,7 +98,7 @@ export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: Clau
       return result
     }
 
-    const preliminaryChunk = await projectSubagentOutputChunk(parentToolUseId, result.chunks, state)
+    const preliminaryChunk = projectClaudeAgentSubagentOutputChunk(parentToolUseId, streamState, result.chunks)
     return {
       ...result,
       chunks: preliminaryChunk ? [preliminaryChunk] : [],
@@ -166,11 +144,8 @@ function subagentStreamState(parentToolUseId: string, state: ClaudeAgentChunkMap
   }
 
   const next: ClaudeAgentSubagentStreamState = {
-    message: createSubagentMessage(parentToolUseId),
+    ...createClaudeAgentSubagentProjection(parentToolUseId),
     mapperState: createClaudeAgentChunkMapperState(`subagent-text-${parentToolUseId}`),
-    projector: createSubagentProjectorState(),
-    chunkCount: 0,
-    emittedChunkCount: 0,
   }
   state.subagentStreams.set(parentToolUseId, next)
   return next
@@ -309,10 +284,10 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
           else {
             const subagentState = state.subagentStreams.get(b.tool_use_id)
             const subagentMessage = subagentState
-              ? projectSubagentMessage(b.tool_use_id, subagentState)
+              ? projectClaudeAgentSubagentMessage(b.tool_use_id, subagentState)
               : null
             if (subagentState) {
-              compactSubagentStreamState(subagentState, subagentMessage)
+              compactClaudeAgentSubagentProjection(subagentState, subagentMessage)
             }
             const output = createClaudeCodeToolResult(
               b.tool_use_id,
@@ -323,7 +298,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
               type: 'tool-output-available',
               toolCallId: b.tool_use_id,
               output: subagentMessage
-                ? createSubagentOutput(subagentMessage, b.content ?? output)
+                ? createClaudeAgentSubagentOutput(subagentMessage, b.content ?? output)
                 : output,
             })
           }
@@ -443,479 +418,6 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
   }
 
   return { chunks, sessionId: msg.session_id, usage: null }
-}
-
-async function projectSubagentOutputChunk(
-  parentToolUseId: string,
-  chunks: UIMessageChunk[],
-  state: ClaudeAgentChunkMapperState,
-): Promise<UIMessageChunk | null> {
-  const streamState = subagentStreamState(parentToolUseId, state)
-  projectSubagentChunks(streamState, chunks)
-
-  if (!shouldEmitSubagentProjection(streamState)) {
-    state.subagentStreams.set(parentToolUseId, streamState)
-    return null
-  }
-
-  const latestMessage = projectSubagentMessage(parentToolUseId, streamState)
-  const preliminaryMessage = compactPreliminarySubagentMessage(latestMessage)
-  streamState.message = latestMessage
-  streamState.emittedChunkCount = streamState.chunkCount
-  state.subagentStreams.set(parentToolUseId, streamState)
-  return {
-    type: 'tool-output-available',
-    toolCallId: parentToolUseId,
-    output: {
-      ...createSubagentOutput(preliminaryMessage, undefined, {
-        truncated: preliminaryMessage !== latestMessage,
-      }),
-    },
-    preliminary: true,
-  }
-}
-
-function projectSubagentMessage(
-  parentToolUseId: string,
-  streamState: ClaudeAgentSubagentStreamState,
-): UIMessage {
-  flushSubagentProjection(streamState)
-  streamState.emittedChunkCount = streamState.chunkCount
-  return streamState.message ?? createSubagentMessage(parentToolUseId)
-}
-
-function compactSubagentStreamState(
-  streamState: ClaudeAgentSubagentStreamState,
-  message: UIMessage | null,
-): void {
-  streamState.message = message
-  streamState.projector = createSubagentProjectorState()
-  streamState.chunkCount = 0
-  streamState.emittedChunkCount = 0
-}
-
-function shouldEmitSubagentProjection(streamState: ClaudeAgentSubagentStreamState): boolean {
-  const unprojectedCount = streamState.chunkCount - streamState.emittedChunkCount
-  if (unprojectedCount <= 0) {
-    return false
-  }
-  if (streamState.chunkCount < 32) {
-    return true
-  }
-  return unprojectedCount >= readSubagentProjectionWindow(streamState.chunkCount)
-}
-
-function readSubagentProjectionWindow(chunkCount: number): number {
-  if (chunkCount < 32) {
-    return 1
-  }
-  return Math.max(16, chunkCount / 4)
-}
-
-function createSubagentMessage(parentToolUseId: string): UIMessage {
-  return {
-    id: `subagent-${parentToolUseId}`,
-    role: 'assistant',
-    parts: [],
-  }
-}
-
-function createSubagentProjectorState(): ClaudeAgentSubagentProjectorState {
-  return {
-    activeTextParts: new Map(),
-    activeReasoningParts: new Map(),
-    partialToolCalls: new Map(),
-  }
-}
-
-function projectSubagentChunks(
-  streamState: ClaudeAgentSubagentStreamState,
-  chunks: UIMessageChunk[],
-): void {
-  for (const chunk of chunks) {
-    streamState.chunkCount += 1
-    projectSubagentChunk(streamState, chunk)
-  }
-}
-
-function projectSubagentChunk(
-  streamState: ClaudeAgentSubagentStreamState,
-  chunk: UIMessageChunk,
-): void {
-  const message = streamState.message ?? createSubagentMessage('unknown')
-  streamState.message = message
-
-  switch (chunk.type) {
-    case 'text-start': {
-      const part = {
-        type: 'text',
-        text: '',
-        state: 'streaming',
-        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
-      } satisfies MutableTextPart
-      streamState.projector.activeTextParts.set(chunk.id, { part, deltas: [] })
-      message.parts.push(part)
-      break
-    }
-    case 'text-delta': {
-      const activePart = streamState.projector.activeTextParts.get(chunk.id)
-      if (activePart) {
-        activePart.deltas.push(chunk.delta)
-        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
-      }
-      break
-    }
-    case 'text-end': {
-      const activePart = streamState.projector.activeTextParts.get(chunk.id)
-      if (activePart) {
-        flushProjectedTextPart(activePart)
-        activePart.part.state = 'done'
-        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
-        streamState.projector.activeTextParts.delete(chunk.id)
-      }
-      break
-    }
-    case 'reasoning-start': {
-      const part = {
-        type: 'reasoning',
-        text: '',
-        state: 'streaming',
-        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
-      } satisfies MutableReasoningPart
-      streamState.projector.activeReasoningParts.set(chunk.id, { part, deltas: [] })
-      message.parts.push(part)
-      break
-    }
-    case 'reasoning-delta': {
-      const activePart = streamState.projector.activeReasoningParts.get(chunk.id)
-      if (activePart) {
-        activePart.deltas.push(chunk.delta)
-        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
-      }
-      break
-    }
-    case 'reasoning-end': {
-      const activePart = streamState.projector.activeReasoningParts.get(chunk.id)
-      if (activePart) {
-        flushProjectedTextPart(activePart)
-        activePart.part.state = 'done'
-        activePart.part.providerMetadata = chunk.providerMetadata ?? activePart.part.providerMetadata
-        streamState.projector.activeReasoningParts.delete(chunk.id)
-      }
-      break
-    }
-    case 'tool-input-start': {
-      streamState.projector.partialToolCalls.set(chunk.toolCallId, {
-        deltas: [],
-        toolName: chunk.toolName,
-        dynamic: chunk.dynamic,
-        title: chunk.title,
-      })
-      upsertSubagentToolPart(message, {
-        toolCallId: chunk.toolCallId,
-        toolName: chunk.toolName,
-        state: 'input-streaming',
-        input: undefined,
-        providerExecuted: chunk.providerExecuted,
-        providerMetadata: chunk.providerMetadata,
-        dynamic: chunk.dynamic,
-        title: chunk.title,
-      })
-      break
-    }
-    case 'tool-input-delta': {
-      const partialToolCall = streamState.projector.partialToolCalls.get(chunk.toolCallId)
-      if (partialToolCall) {
-        partialToolCall.deltas.push(chunk.inputTextDelta)
-        upsertSubagentToolPart(message, {
-          toolCallId: chunk.toolCallId,
-          toolName: partialToolCall.toolName,
-          state: 'input-streaming',
-          input: undefined,
-          dynamic: partialToolCall.dynamic,
-          title: partialToolCall.title,
-        })
-      }
-      break
-    }
-    case 'tool-input-available':
-      streamState.projector.partialToolCalls.delete(chunk.toolCallId)
-      upsertSubagentToolPart(message, {
-        toolCallId: chunk.toolCallId,
-        toolName: chunk.toolName,
-        state: 'input-available',
-        input: chunk.input,
-        providerExecuted: chunk.providerExecuted,
-        providerMetadata: chunk.providerMetadata,
-        dynamic: chunk.dynamic,
-        title: chunk.title,
-      })
-      break
-    case 'tool-output-available':
-      updateSubagentToolOutput(message, chunk.toolCallId, {
-        state: 'output-available',
-        output: chunk.output,
-        providerExecuted: chunk.providerExecuted,
-        providerMetadata: chunk.providerMetadata,
-        preliminary: chunk.preliminary,
-        dynamic: chunk.dynamic,
-      })
-      break
-    case 'tool-output-error':
-      updateSubagentToolOutput(message, chunk.toolCallId, {
-        state: 'output-error',
-        errorText: chunk.errorText,
-        providerExecuted: chunk.providerExecuted,
-        providerMetadata: chunk.providerMetadata,
-        dynamic: chunk.dynamic,
-      })
-      break
-    case 'tool-output-denied':
-      updateSubagentToolOutput(message, chunk.toolCallId, { state: 'output-denied' })
-      break
-    case 'start-step':
-      message.parts.push({ type: 'step-start' })
-      break
-    case 'finish-step':
-      flushSubagentProjection(streamState)
-      break
-    case 'file':
-      message.parts.push({
-        type: 'file',
-        mediaType: chunk.mediaType,
-        url: chunk.url,
-        ...(chunk.providerMetadata ? { providerMetadata: chunk.providerMetadata } : {}),
-      })
-      break
-    case 'source-url':
-      message.parts.push({
-        type: 'source-url',
-        sourceId: chunk.sourceId,
-        url: chunk.url,
-        title: chunk.title,
-        providerMetadata: chunk.providerMetadata,
-      })
-      break
-    case 'source-document':
-      message.parts.push({
-        type: 'source-document',
-        sourceId: chunk.sourceId,
-        mediaType: chunk.mediaType,
-        title: chunk.title,
-        filename: chunk.filename,
-        providerMetadata: chunk.providerMetadata,
-      })
-      break
-  }
-}
-
-function flushSubagentProjection(streamState: ClaudeAgentSubagentStreamState): void {
-  for (const activePart of streamState.projector.activeTextParts.values()) {
-    flushProjectedTextPart(activePart)
-  }
-  for (const activePart of streamState.projector.activeReasoningParts.values()) {
-    flushProjectedTextPart(activePart)
-  }
-  const message = streamState.message
-  if (!message) {
-    return
-  }
-  for (const [toolCallId, partialToolCall] of streamState.projector.partialToolCalls) {
-    upsertSubagentToolPart(message, {
-      toolCallId,
-      toolName: partialToolCall.toolName,
-      state: 'input-streaming',
-      input: parseToolInputText(partialToolCall.deltas.join('')),
-      dynamic: partialToolCall.dynamic,
-      title: partialToolCall.title,
-    })
-  }
-}
-
-function flushProjectedTextPart<TPart extends MutableTextPart | MutableReasoningPart>(
-  activePart: ProjectedTextPart<TPart>,
-): void {
-  if (activePart.deltas.length === 0) {
-    return
-  }
-  activePart.part.text += activePart.deltas.join('')
-  activePart.deltas = []
-}
-
-function upsertSubagentToolPart(
-  message: UIMessage,
-  options: {
-    toolCallId: string
-    toolName: string
-    state: 'input-streaming' | 'input-available'
-    input: unknown
-    providerExecuted?: boolean
-    providerMetadata?: ProviderMetadata
-    dynamic?: boolean
-    title?: string
-  },
-): void {
-  const part = findSubagentToolPart(message, options.toolCallId)
-  if (part) {
-    assignToolPart(part, {
-      state: options.state,
-      input: options.input,
-      providerExecuted: options.providerExecuted,
-      title: options.title,
-      providerMetadata: options.providerMetadata,
-      isResultMetadata: false,
-    })
-    return
-  }
-
-  if (options.dynamic) {
-    message.parts.push({
-      type: 'dynamic-tool',
-      toolName: options.toolName,
-      toolCallId: options.toolCallId,
-      state: options.state,
-      input: options.input,
-      providerExecuted: options.providerExecuted,
-      title: options.title,
-      ...(options.providerMetadata ? { callProviderMetadata: options.providerMetadata } : {}),
-    } as UIMessage['parts'][number])
-    return
-  }
-
-  message.parts.push({
-    type: `tool-${options.toolName}`,
-    toolCallId: options.toolCallId,
-    state: options.state,
-    input: options.input,
-    providerExecuted: options.providerExecuted,
-    title: options.title,
-    ...(options.providerMetadata ? { callProviderMetadata: options.providerMetadata } : {}),
-  } as UIMessage['parts'][number])
-}
-
-function updateSubagentToolOutput(
-  message: UIMessage,
-  toolCallId: string,
-  options: {
-    state: 'output-available' | 'output-error' | 'output-denied'
-    output?: unknown
-    errorText?: string
-    providerExecuted?: boolean
-    providerMetadata?: ProviderMetadata
-    preliminary?: boolean
-    dynamic?: boolean
-  },
-): void {
-  const part = findSubagentToolPart(message, toolCallId)
-  if (!part) {
-    return
-  }
-
-  assignToolPart(part, {
-    state: options.state,
-    output: options.output,
-    errorText: options.errorText,
-    providerExecuted: options.providerExecuted,
-    preliminary: options.preliminary,
-    providerMetadata: options.providerMetadata,
-    isResultMetadata: true,
-  })
-}
-
-function findSubagentToolPart(message: UIMessage, toolCallId: string): MutableToolPart | undefined {
-  return message.parts.find((part): part is MutableToolPart => 'toolCallId' in part && part.toolCallId === toolCallId)
-}
-
-function assignToolPart(
-  part: MutableToolPart,
-  values: {
-    state: 'input-streaming' | 'input-available' | 'output-available' | 'output-error' | 'output-denied'
-    input?: unknown
-    output?: unknown
-    errorText?: string
-    providerExecuted?: boolean
-    preliminary?: boolean
-    title?: string
-    providerMetadata?: ProviderMetadata
-    isResultMetadata: boolean
-  },
-): void {
-  const target = part as MutableToolPart & Record<string, unknown>
-  target.state = values.state
-  if ('input' in values) {
-    target.input = values.input
-  }
-  if ('output' in values) {
-    target.output = values.output
-  }
-  if ('errorText' in values) {
-    target.errorText = values.errorText
-  }
-  if (values.providerExecuted !== undefined) {
-    target.providerExecuted = values.providerExecuted
-  }
-  if (values.preliminary !== undefined) {
-    target.preliminary = values.preliminary
-  }
-  if (values.title !== undefined) {
-    target.title = values.title
-  }
-  if (values.providerMetadata !== undefined) {
-    target[values.isResultMetadata ? 'resultProviderMetadata' : 'callProviderMetadata'] = values.providerMetadata
-  }
-}
-
-function compactPreliminarySubagentMessage(message: UIMessage): UIMessage {
-  let remainingText = PRELIMINARY_SUBAGENT_TEXT_LIMIT
-  let truncated = false
-  const parts: UIMessage['parts'] = []
-
-  for (const part of message.parts) {
-    if (part.type !== 'text' && part.type !== 'reasoning') {
-      parts.push(part)
-      continue
-    }
-
-    if (remainingText <= 0) {
-      truncated = true
-      continue
-    }
-
-    if (part.text.length <= remainingText) {
-      remainingText -= part.text.length
-      parts.push(part)
-      continue
-    }
-
-    truncated = true
-    parts.push({
-      ...part,
-      text: part.text.slice(0, remainingText),
-    } as UIMessage['parts'][number])
-    remainingText = 0
-  }
-
-  if (!truncated) {
-    return message
-  }
-
-  return {
-    ...message,
-    parts,
-  }
-}
-
-function createSubagentOutput(
-  message: UIMessage,
-  result?: unknown,
-  options: { truncated?: boolean } = {},
-): ClaudeAgentSubagentOutput {
-  return {
-    type: 'cradle.subagent-output.v1',
-    message,
-    ...(options.truncated ? { truncated: true } : {}),
-    ...(result === undefined ? {} : { result }),
-  }
 }
 
 function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {

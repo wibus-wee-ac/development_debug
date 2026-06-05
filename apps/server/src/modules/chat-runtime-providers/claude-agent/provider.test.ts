@@ -513,7 +513,7 @@ describe('claudeAgentProvider MCP integration', () => {
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
   })
 
-  it('resumes the existing Claude Agent session and applies the requested model before sending the next prompt', async () => {
+  it('resumes the existing Claude Agent session and applies a requested model switch before sending the next prompt', async () => {
     const { query: activeQuery, releaseSetModel } = createModelSwitchQuery([
       {
         type: 'assistant',
@@ -533,7 +533,12 @@ describe('claudeAgentProvider MCP integration', () => {
     const provider = new ClaudeAgentProvider({
       readSecret: () => 'sk-ant-test',
     })
-    const runtimeSession = createResumedRuntimeSession()
+    const runtimeSession = await provider.resumeChatSession({
+      runtimeSession: createResumedRuntimeSession(),
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      modelId: 'claude-opus-4-20250514',
+    })
     const stream = provider.streamTurn({
       runId: 'run-claude-agent-model-switch',
       runtimeSession,
@@ -587,6 +592,44 @@ describe('claudeAgentProvider MCP integration', () => {
       expect.objectContaining({ type: 'text-delta', delta: 'Context preserved' }),
     ]))
     expect(runtimeSession.providerSessionId).toBe('claude-session-2')
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent?.pendingModelSwitchId).toBeUndefined()
+  })
+
+  it('does not call setModel when a resumed turn repeats the snapshot model override', async () => {
+    const activeQuery = createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-1',
+        message: {
+          content: [{ type: 'text', text: 'Same model continued' }],
+        },
+      },
+    ])
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = await provider.resumeChatSession({
+      runtimeSession: createResumedRuntimeSession(),
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      modelId: 'claude-sonnet-4-20250514',
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-same-model',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue on the same model'),
+      modelId: 'claude-sonnet-4-20250514',
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(activeQuery.setModel).not.toHaveBeenCalled()
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent?.pendingModelSwitchId).toBeUndefined()
   })
 
   it('projects Claude session titles from SDK session metadata into the Cradle session title callback', async () => {
@@ -662,10 +705,10 @@ describe('claudeAgentProvider MCP integration', () => {
       // Drain stream to force query construction.
     }
 
-    expect(activeQuery.setModel).toHaveBeenCalledWith('mimo-v2.5-pro')
     const call = sdkMocks.query.mock.calls[0]?.[0] as {
       options?: { model?: string, env?: Record<string, string | undefined> }
     } | undefined
+    expect(activeQuery.setModel).not.toHaveBeenCalled()
     expect(call?.options?.model).toBe('mimo-v2.5-pro')
     expect(call?.options?.env?.ANTHROPIC_MODEL).toBeUndefined()
   })

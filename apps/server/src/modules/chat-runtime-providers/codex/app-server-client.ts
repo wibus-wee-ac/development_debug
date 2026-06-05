@@ -5,7 +5,10 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
+import type { ClientInfo } from './app-server-protocol/ClientInfo'
+
 type RequestId = number
+type CodexUserAgentMode = 'cradle' | 'native'
 
 export interface CodexAppServerMessage {
   id?: RequestId
@@ -29,9 +32,13 @@ export interface CodexAppServerClientOptions {
   apiKey?: string
   config?: Record<string, unknown>
   env?: Record<string, string | undefined>
+  userAgentMode?: CodexUserAgentMode
   serverRequestHandler?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
   exposeServerRequestsAsNotifications?: boolean
 }
+
+const CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION = '0.0.0'
+const codexNativeClientVersionByPath = new Map<string, Promise<string>>()
 
 export function buildCradleCodexAppServerEnv(input: {
   chatSessionId: string
@@ -60,6 +67,9 @@ export class CodexAppServerClient {
   private readonly notificationWaiters: Array<(message: CodexAppServerMessage) => void> = []
   private readonly serverRequestHandler?: (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
   private readonly exposeServerRequestsAsNotifications: boolean
+  private readonly clientInfoVersion: string
+  private readonly codexPath: string
+  private readonly userAgentMode: CodexUserAgentMode
   private nextRequestId = 1
   private closed = false
   private stderrText = ''
@@ -75,6 +85,9 @@ export class CodexAppServerClient {
     }
 
     const env = { ...process.env, ...options.env }
+    this.clientInfoVersion = readCradleCodexClientVersion(env)
+    this.codexPath = options.codexPath ?? 'codex'
+    this.userAgentMode = options.userAgentMode ?? 'cradle'
     env.CODEX_HOME = prepareCodexAppServerHome()
     if (options.apiKey) {
       env.CRADLE_CODEX_API_KEY = options.apiKey
@@ -82,7 +95,7 @@ export class CodexAppServerClient {
       env.OPENAI_API_KEY = options.apiKey
     }
 
-    this.child = spawn(options.codexPath ?? 'codex', args, { env })
+    this.child = spawn(this.codexPath, args, { env })
     this.child.stderr.on('data', (chunk: Buffer) => {
       this.stderrText += chunk.toString('utf8')
     })
@@ -104,10 +117,26 @@ export class CodexAppServerClient {
   }
 
   async initialize(): Promise<void> {
+    const clientInfo = await this.readClientInfo()
     await this.request('initialize', {
-      clientInfo: { name: 'cradle', title: 'Cradle', version: '0.0.0' },
+      clientInfo,
       capabilities: { experimentalApi: true },
     })
+  }
+
+  private async readClientInfo(): Promise<ClientInfo> {
+    if (this.userAgentMode === 'native') {
+      return {
+        name: 'codex',
+        title: 'Codex',
+        version: await readCodexNativeClientVersion(this.codexPath),
+      }
+    }
+    return {
+      name: 'cradle',
+      title: 'Cradle',
+      version: this.clientInfoVersion,
+    }
   }
 
   request(method: string, params?: unknown): Promise<unknown> {
@@ -259,6 +288,58 @@ export class CodexAppServerClient {
       this.notificationWaiters.shift()?.({ method: 'error', params: { message: error.message } })
     }
   }
+}
+
+export function readCradleCodexClientVersion(env: Record<string, string | undefined> = process.env): string {
+  return env.CRADLE_VERSION?.trim() || env.npm_package_version?.trim() || '0.0.1'
+}
+
+export function readCodexNativeClientVersion(codexPath = 'codex'): Promise<string> {
+  const cached = codexNativeClientVersionByPath.get(codexPath)
+  if (cached) {
+    return cached
+  }
+
+  const pending = new Promise<string>((resolve) => {
+    let resolved = false
+    let stdoutText = ''
+    const child = spawn(codexPath, ['--version'], {
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
+
+    const finish = (version: string) => {
+      if (resolved) {
+        return
+      }
+      resolved = true
+      clearTimeout(timer)
+      resolve(version)
+    }
+
+    const timer = setTimeout(() => {
+      child.kill('SIGTERM')
+      finish(CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION)
+    }, 1500)
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutText += chunk.toString('utf8')
+    })
+    child.once('error', () => {
+      finish(CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION)
+    })
+    child.once('close', () => {
+      finish(readCodexVersionFromCliOutput(stdoutText))
+    })
+  })
+
+  codexNativeClientVersionByPath.set(codexPath, pending)
+  return pending
+}
+
+function readCodexVersionFromCliOutput(output: string): string {
+  return output.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/)?.[0]
+    ?? CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION
 }
 
 export function resolveCodexAppServerHome(input: {

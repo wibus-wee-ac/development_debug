@@ -1,6 +1,13 @@
+/**
+ * Output: AI SDK UIMessageChunk events projected from Codex app-server notifications.
+ * Input: Codex app-server item lifecycle, delta, patch, and server request notifications.
+ * Position: Codex provider package event mapper between app-server protocol and Chat Runtime chunks.
+ */
+
 import type { UIMessageChunk } from 'ai'
 
-import { createBoundedTextCollector, type BoundedTextCollector } from '../bounded-text-collector'
+import type { BoundedTextCollector } from '../bounded-text-collector'
+import { createBoundedTextCollector } from '../bounded-text-collector'
 import type { CodexAppServerItem } from './tools/mapper'
 import {
   buildCodexServerRequestToolInput,
@@ -278,7 +285,7 @@ function mapHandledServerRequest(rawParams: unknown): UIMessageChunk[] {
 }
 
 function toSafeToolName(value: string): string {
-  return value.replace(/[^A-Za-z0-9_-]/g, '_')
+  return value.replace(/[^\w-]/g, '_')
 }
 
 function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {

@@ -2,7 +2,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 import { describe, expect, it } from 'vitest'
 
-import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './mapper'
+import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 
 describe('mapClaudeAgentMessageToChunks', () => {
   it('synthesizes TodoWrite plugin state when the matching tool result arrives', async () => {

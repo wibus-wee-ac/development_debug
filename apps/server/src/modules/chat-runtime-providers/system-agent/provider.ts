@@ -1,24 +1,15 @@
-import { randomUUID } from 'node:crypto'
-import path from 'node:path'
-
 import type { DefaultRuntimeConfigOptions, MessageIngressCommand, MessageIngressResult } from '@hijarvis/core'
 import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/core'
 import type { UIMessageChunk } from 'ai'
 
-import { getServerConfig } from '../../../infra'
-import * as ModelRegistry from '../../model-registry/service'
 import * as Preferences from '../../preferences/service'
-import { lookupModelRaw, lookupModelRawExact } from '../../model-registry/model-info-registry'
 import {
   readTrustedSystemAgentConfig,
 } from '../../provider-contracts/provider-base'
-import type { RuntimeKind } from '../../provider-contracts/types'
 import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
-  ChatRuntimeCapabilities,
-  ChatRuntimeMetadata,
   ProviderContext,
   ResumeChatSessionInput,
   RuntimeSession,
@@ -26,91 +17,34 @@ import type {
   StreamTurnInput,
   TokenUsage,
 } from '../../chat-runtime/runtime-provider-types'
-import { projectTextOnlyInput } from '../../chat-runtime/ui-message-input'
-import { readProviderStateSnapshot } from '../provider-state-snapshot'
-
-const RUNTIME_KIND: RuntimeKind = 'jar-core'
-type JarvisThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-
-const EXTENDED_REASONING_MODEL_RE = /(?:^|[\s/:_-])(?:gpt-5(?:\.\d+)?|o1|o3|o4|claude-(?:opus|sonnet)-4|gemini-2\.5-pro|grok-4|deepseek-r1)(?:$|[\s:._-])/
-
-/** Map Cradle's providerKind to jar-core's provider identifier */
-function inferProviderFromKind(providerKind: string): string {
-  switch (providerKind) {
-    case 'anthropic': return 'anthropic'
-    case 'openai-compatible': return 'openai'
-    default: return 'openai'
-  }
-}
-
-/** Infer jar-core API protocol from Cradle's providerKind */
-function inferApiFromKind(providerKind: string): string {
-  switch (providerKind) {
-    case 'anthropic': return 'anthropic-messages'
-    case 'openai-compatible': return 'openai-completions'
-    default: return 'openai-completions'
-  }
-}
-
-const SYSTEM_AGENT_RUNTIME_METADATA = {
-  label: 'HiJarvis',
-  description: 'Multi-surface AI agent with local memory',
-  providerKinds: ['openai-compatible', 'anthropic', 'universal'],
-  iconKey: 'hijarvis',
-  surfaces: ['jarvis'],
-  sortOrder: 10,
-} satisfies ChatRuntimeMetadata
-
-const SYSTEM_AGENT_RUNTIME_CAPABILITIES = {
-  supportsSteerTurn: false,
-  supportsShellExecution: false,
-  supportsPermissionMode: false,
-  supportsUiSlotStates: false,
-  supportsDynamicCapabilities: false,
-  sessionModelSwitch: 'in-session',
-} satisfies ChatRuntimeCapabilities
+import {
+  closeSystemAgentBridgeState,
+  createSystemAgentBridgeState,
+  mapSystemAgentEventToChunks,
+} from './event-to-chunk-mapper'
+import { projectSystemAgentUserPrompt } from './input-projector'
+import {
+  applySystemAgentModelRegistryConfig,
+  inferSystemAgentApiFromKind,
+  inferSystemAgentProviderFromKind,
+  resolveSystemAgentRuntimeRegistryModel,
+  selectSystemAgentThinkingLevel,
+} from './model-registry-bridge'
+import {
+  SYSTEM_AGENT_RUNTIME_CAPABILITIES,
+  SYSTEM_AGENT_RUNTIME_KIND,
+  SYSTEM_AGENT_RUNTIME_METADATA,
+} from './metadata'
+import { resolveSystemAgentRuntimeContext } from './runtime-context'
+import { projectSystemAgentModelSnapshot } from './state-projector'
+import type { JarvisThinkingLevel } from './types'
 
 export function createSystemAgentProvider(ctx: ProviderContext): ChatRuntime {
   return new SystemAgentProvider(ctx)
 }
 
-function supportsExtendedThinking(modelId: string, family?: string): boolean {
-  return EXTENDED_REASONING_MODEL_RE.test(`${modelId} ${family ?? ''}`.toLowerCase())
-}
-
-function selectRuntimeThinkingLevel(
-  modelId: string,
-  requested: JarvisThinkingLevel,
-  registryModel: Awaited<ReturnType<typeof lookupModelRaw>>,
-): JarvisThinkingLevel | undefined {
-  if (registryModel?.reasoning !== true) {
-    return undefined
-  }
-  if (requested === 'minimal') {
-    return supportsExtendedThinking(modelId, registryModel.family) ? 'minimal' : 'low'
-  }
-  if (requested === 'xhigh') {
-    return supportsExtendedThinking(modelId, registryModel.family) ? 'xhigh' : 'high'
-  }
-  return requested
-}
-
-async function resolveMappedRegistryModel(modelId: string): Promise<Awaited<ReturnType<typeof lookupModelRaw>> | null> {
-  const mapping = ModelRegistry.getMapping(modelId)
-  if (!mapping) {
-    return null
-  }
-  if (mapping.model) {
-    return mapping.model
-  }
-  if (!mapping.registryModelId) {
-    return null
-  }
-  return lookupModelRawExact(mapping.registryModelId)
-}
-
 export class SystemAgentProvider implements ChatRuntime {
-  readonly runtimeKind = RUNTIME_KIND
+  readonly runtimeKind = SYSTEM_AGENT_RUNTIME_KIND
   readonly metadata = SYSTEM_AGENT_RUNTIME_METADATA
   readonly capabilities = SYSTEM_AGENT_RUNTIME_CAPABILITIES
 
@@ -141,7 +75,7 @@ export class SystemAgentProvider implements ChatRuntime {
       id: input.chatSessionId,
       chatSessionId: input.chatSessionId,
       providerTargetId: input.profile.providerTargetId,
-      runtimeKind: RUNTIME_KIND,
+      runtimeKind: SYSTEM_AGENT_RUNTIME_KIND,
       providerSessionId: null,
       providerStateSnapshot: JSON.stringify({
         models: { currentModelId },
@@ -155,22 +89,18 @@ export class SystemAgentProvider implements ChatRuntime {
     if (!currentModelId) {
       return input.runtimeSession
     }
-    const snapshot = readProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     return {
       ...input.runtimeSession,
-      providerStateSnapshot: JSON.stringify({
-        ...snapshot,
-        models: { currentModelId },
-      }),
+      providerStateSnapshot: projectSystemAgentModelSnapshot(input.runtimeSession.providerStateSnapshot, currentModelId),
     }
   }
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const jarvisPrefs = await Preferences.getJarvisPreferences()
     const config = readTrustedSystemAgentConfig(input.profile.configJson)
-    const userPrompt = projectTextOnlyInput(input.message, 'Jarvis provider')
+    const userPrompt = projectSystemAgentUserPrompt(input.message)
 
-    const provider = config.provider ?? inferProviderFromKind(input.profile.providerKind)
+    const provider = config.provider ?? inferSystemAgentProviderFromKind(input.profile.providerKind)
     const model = jarvisPrefs.model
     const { baseUrl } = config
     if (!model) {
@@ -182,10 +112,8 @@ export class SystemAgentProvider implements ChatRuntime {
       ? this.deps.readSecret(secretRef)
       : config.apiKey
 
-    const registryModel = await lookupModelRaw(model)
-    const mappedRegistryModel = await resolveMappedRegistryModel(model)
-    const runtimeRegistryModel = mappedRegistryModel ?? registryModel
-    const thinkingLevel = selectRuntimeThinkingLevel(
+    const runtimeRegistryModel = await resolveSystemAgentRuntimeRegistryModel(model)
+    const thinkingLevel = selectSystemAgentThinkingLevel(
       model,
       (jarvisPrefs.thinkingLevel ?? config.thinkingLevel) as JarvisThinkingLevel,
       runtimeRegistryModel,
@@ -193,18 +121,14 @@ export class SystemAgentProvider implements ChatRuntime {
     const systemPrompt = input.systemPrompt ?? 'You are Jarvis, a helpful system assistant.'
     const sessionId = input.runtimeSession.chatSessionId
 
-    const serverCfg = getServerConfig()
-    const dataDir = serverCfg.dataDir ?? path.join(process.cwd(), 'data')
-    const sessionsRootDir = path.join(dataDir, 'jar-sessions')
-    // Jarvis operates from its own workspace within the data dir (independent of user workspaces)
-    const jarvisWorkspaceRoot = path.join(dataDir, 'jarvis-workspace')
+    const runtimeContext = resolveSystemAgentRuntimeContext()
 
     const runtimeConfigOptions: DefaultRuntimeConfigOptions = {
       provider,
       model,
       systemPrompt,
-      sessionsRootDir,
-      workspaceRoot: jarvisWorkspaceRoot,
+      sessionsRootDir: runtimeContext.sessionsRootDir,
+      workspaceRoot: runtimeContext.jarvisWorkspaceRoot,
     }
     if (thinkingLevel) {
       runtimeConfigOptions.thinkingLevel = thinkingLevel as DefaultRuntimeConfigOptions['thinkingLevel']
@@ -220,68 +144,14 @@ export class SystemAgentProvider implements ChatRuntime {
     }
     else {
       // Always provide api protocol — jar-core requires it for non-builtin models
-      runtimeConfigOptions.api = inferApiFromKind(input.profile.providerKind) as DefaultRuntimeConfigOptions['api']
+      runtimeConfigOptions.api = inferSystemAgentApiFromKind(input.profile.providerKind) as DefaultRuntimeConfigOptions['api']
     }
 
-    // Build per-model metadata from models.dev registry for non-builtin providers
-    if (runtimeRegistryModel) {
-      const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
-      if (runtimeRegistryModel.limit?.context != null) {
-        modelConfig.contextWindow = runtimeRegistryModel.limit.context
-      }
-      if (runtimeRegistryModel.limit?.output != null) {
-        modelConfig.maxTokens = runtimeRegistryModel.limit.output
-      }
-      if (runtimeRegistryModel.reasoning != null) {
-        modelConfig.reasoning = runtimeRegistryModel.reasoning
-      }
-      if (runtimeRegistryModel.tool_call != null) {
-        modelConfig.toolCall = runtimeRegistryModel.tool_call
-      }
-      if (runtimeRegistryModel.modalities?.input) {
-        modelConfig.input = runtimeRegistryModel.modalities.input.filter(
-          (m): m is 'text' | 'image' => m === 'text' || m === 'image',
-        )
-      }
-      if (runtimeRegistryModel.cost) {
-        const cost: NonNullable<typeof modelConfig.cost> = {}
-        if (runtimeRegistryModel.cost.input != null) {
-          cost.input = runtimeRegistryModel.cost.input
-        }
-        if (runtimeRegistryModel.cost.output != null) {
-          cost.output = runtimeRegistryModel.cost.output
-        }
-        if (runtimeRegistryModel.cost.cache_read != null) {
-          cost.cacheRead = runtimeRegistryModel.cost.cache_read
-        }
-        if (runtimeRegistryModel.cost.cache_write != null) {
-          cost.cacheWrite = runtimeRegistryModel.cost.cache_write
-        }
-        if (Object.keys(cost).length > 0) {
-          modelConfig.cost = cost
-        }
-      }
-      if (config.headers) {
-        modelConfig.headers = config.headers
-      }
-      if (config.compat) {
-        modelConfig.compat = config.compat
-      }
-      if (Object.keys(modelConfig).length > 0) {
-        runtimeConfigOptions.models = { [model]: modelConfig }
-      }
-    }
-    else if (config.headers || config.compat) {
-      // Even without registry data, pass headers/compat if configured
-      const modelConfig: NonNullable<DefaultRuntimeConfigOptions['models']>[string] = {}
-      if (config.headers) {
-        modelConfig.headers = config.headers
-      }
-      if (config.compat) {
-        modelConfig.compat = config.compat
-      }
-      runtimeConfigOptions.models = { [model]: modelConfig }
-    }
+    applySystemAgentModelRegistryConfig(runtimeConfigOptions, {
+      model,
+      registryModel: runtimeRegistryModel,
+      config,
+    })
 
     // Inject Cradle context so bash subprocesses spawned by skills can call
     // Cradle APIs with the correct identity and workspace.
@@ -301,11 +171,7 @@ export class SystemAgentProvider implements ChatRuntime {
     let done = false
     let streamError: Error | null = null
     let resolveNext: (() => void) | null = null
-    const bridgeState: BridgeState = {
-      currentTextId: null,
-      currentReasoningId: null,
-      assistantStarted: false,
-    }
+    const bridgeState = createSystemAgentBridgeState()
 
     const command: MessageIngressCommand = {
       kind: 'message',
@@ -325,21 +191,14 @@ export class SystemAgentProvider implements ChatRuntime {
 
           if (event.type === 'message_update') {
             const ame = event.assistantMessageEvent
-            const newChunks = bridgeEvent(ame, bridgeState)
+            const newChunks = mapSystemAgentEventToChunks(ame, bridgeState)
             if (newChunks.length > 0) {
               chunks.push(...newChunks)
               resolveNext?.()
             }
           }
  else if (event.type === 'agent_end') {
-            if (bridgeState.currentTextId) {
-              chunks.push({ type: 'text-end', id: bridgeState.currentTextId })
-              bridgeState.currentTextId = null
-            }
-            if (bridgeState.currentReasoningId) {
-              chunks.push({ type: 'reasoning-end', id: bridgeState.currentReasoningId })
-              bridgeState.currentReasoningId = null
-            }
+            chunks.push(...closeSystemAgentBridgeState(bridgeState))
             done = true
             resolveNext?.()
           }
@@ -348,7 +207,7 @@ export class SystemAgentProvider implements ChatRuntime {
     }
 
     // Resolve skill roots — use jarvis workspace root (always has a valid path)
-    const skillRoots = this.resolveSkillPaths(jarvisWorkspaceRoot)
+    const skillRoots = this.resolveSkillPaths(runtimeContext.jarvisWorkspaceRoot)
 
     const commandPromise = executeIngressCommand({ config: jarConfig, command, pluginOverrides: { skillRoots } }).then((result) => {
       if (result.kind === 'message') {
@@ -423,97 +282,4 @@ export class SystemAgentProvider implements ChatRuntime {
     }
     return this.deps.resolveSkillPaths(workspacePath)
   }
-}
-
-// ── helpers ──
-
-type AssistantMessageEvent = {
-  type: string
-  delta?: string
-  contentIndex?: number
-  [key: string]: unknown
-}
-
-interface BridgeState {
-  currentTextId: string | null
-  currentReasoningId: string | null
-  assistantStarted: boolean
-}
-
-function bridgeEvent(
-  ame: AssistantMessageEvent,
-  state: BridgeState,
-): UIMessageChunk[] {
-  const out: UIMessageChunk[] = []
-
-  function closeTextBlock(): void {
-    if (state.currentTextId) {
-      out.push({ type: 'text-end', id: state.currentTextId })
-      state.currentTextId = null
-    }
-  }
-
-  function closeReasoningBlock(): void {
-    if (state.currentReasoningId) {
-      out.push({ type: 'reasoning-end', id: state.currentReasoningId })
-      state.currentReasoningId = null
-    }
-  }
-
-  function openTextBlock(delta?: string): void {
-    closeReasoningBlock()
-    const id = randomUUID()
-    state.currentTextId = id
-    out.push({ type: 'text-start', id } as UIMessageChunk)
-    if (delta) {
-      out.push({ type: 'text-delta', id, delta } as UIMessageChunk)
-    }
-    state.assistantStarted = true
-  }
-
-  function openReasoningBlock(delta?: string): void {
-    closeTextBlock()
-    const id = randomUUID()
-    state.currentReasoningId = id
-    out.push({ type: 'reasoning-start', id } as UIMessageChunk)
-    if (delta) {
-      out.push({ type: 'reasoning-delta', id, delta } as UIMessageChunk)
-    }
-  }
-
-  switch (ame.type) {
-    case 'text_start':
-      openTextBlock()
-      break
-    case 'text_delta':
-      if (!state.currentTextId) {
-        openTextBlock(ame.delta)
-      }
-      else if (ame.delta) {
-        out.push({ type: 'text-delta', id: state.currentTextId, delta: ame.delta } as UIMessageChunk)
-      }
-      break
-    case 'thinking_start':
-      openReasoningBlock()
-      break
-    case 'thinking_delta':
-      if (!state.currentReasoningId) {
-        openReasoningBlock(ame.delta)
-      }
-      else if (ame.delta) {
-        out.push({ type: 'reasoning-delta', id: state.currentReasoningId, delta: ame.delta } as UIMessageChunk)
-      }
-      break
-    case 'thinking_end':
-      closeReasoningBlock()
-      break
-    case 'error':
-      if (!state.currentTextId) {
-        openTextBlock()
-      }
-      out.push({ type: 'text-delta', id: state.currentTextId!, delta: '\n\n[Error occurred]' } as UIMessageChunk)
-      break
-  }
-
-  return out
 }

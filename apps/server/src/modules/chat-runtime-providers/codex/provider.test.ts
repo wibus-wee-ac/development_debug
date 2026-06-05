@@ -24,6 +24,8 @@ class FakeCodexAppServerClient {
   threadReadName: string | null = 'Codex native title'
   threadReadTitle: string | null = null
   threadReadPreview: string | null = null
+  generatedThreadTitle: string | null = 'Generated Codex title'
+  autoCompleteGeneratedTitle = true
   threadTurnsListData: unknown[] | null = null
 
   private readonly notifications: CodexAppServerMessage[] = []
@@ -181,6 +183,22 @@ class FakeCodexAppServerClient {
       }
     }
     if (method === 'thread/start') {
+      if ((params as { ephemeral?: boolean } | undefined)?.ephemeral === true) {
+        return {
+          thread: {
+            id: 'codex-title-thread-1',
+            name: null,
+            title: null,
+            preview: null,
+            modelProvider: 'openai',
+            status: { type: 'active', activeFlags: [] },
+          },
+          model: (params as { model?: string | null } | undefined)?.model ?? 'gpt-5-codex',
+          modelProvider: 'openai',
+          serviceTier: 'priority',
+          reasoningEffort: 'minimal',
+        }
+      }
       return {
         thread: {
           id: 'codex-thread-1',
@@ -198,6 +216,20 @@ class FakeCodexAppServerClient {
     }
     if (method === 'thread/resume') {
       return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
+    }
+    if (method === 'thread/fork') {
+      return {
+        thread: {
+          id: 'codex-fork-thread-1',
+          name: 'Codex side thread',
+          modelProvider: 'openai',
+          status: { type: 'active', activeFlags: [] },
+        },
+        model: 'gpt-5-codex',
+        modelProvider: 'openai',
+        serviceTier: 'priority',
+        reasoningEffort: 'high',
+      }
     }
     if (method === 'thread/read') {
       const threadId = (params as { threadId?: string }).threadId ?? 'codex-thread-1'
@@ -259,7 +291,18 @@ class FakeCodexAppServerClient {
       }
     }
     if (method === 'turn/start') {
+      const threadId = (params as { threadId?: string }).threadId
+      if (threadId === 'codex-title-thread-1') {
+        if (this.autoCompleteGeneratedTitle) {
+          this.completeGeneratedTitle()
+        }
+        return { turn: { id: 'codex-title-turn-1', status: 'inProgress' } }
+      }
       return { turn: { id: 'codex-turn-1', status: 'inProgress' } }
+    }
+    if (method === 'thread/name/set') {
+      this.threadReadName = (params as { name?: string }).name ?? this.threadReadName
+      return {}
     }
     if (method === 'turn/steer') {
       return { turnId: 'codex-turn-1' }
@@ -305,6 +348,30 @@ class FakeCodexAppServerClient {
       return
     }
     this.notifications.push(message)
+  }
+
+  completeGeneratedTitle(title = this.generatedThreadTitle): void {
+    if (title) {
+      this.pushNotification({
+        method: 'item/completed',
+        params: {
+          threadId: 'codex-title-thread-1',
+          turnId: 'codex-title-turn-1',
+          item: {
+            type: 'agentMessage',
+            id: 'codex-title-message-1',
+            text: title,
+          },
+        },
+      })
+    }
+    this.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-title-thread-1',
+        turn: { id: 'codex-title-turn-1', status: 'completed' },
+      },
+    })
   }
 
   async pushServerRequest(request: CodexAppServerServerRequest): Promise<unknown> {
@@ -470,6 +537,76 @@ describe('codexProvider app-server integration', () => {
     })
     expect(client.initialize).not.toHaveBeenCalled()
     expect(client.requests).toEqual([])
+  })
+
+  it('forks side sessions as durable Codex threads and injects the Cradle boundary', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    const runtimeSession = await provider.forkRuntimeSession({
+      sourceRuntimeSession: createRuntimeSession('codex-parent-thread-1'),
+      childChatSessionId: 'child-chat-session-1',
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      agentId: 'agent-1',
+      modelId: 'gpt-5-codex',
+    })
+
+    expect(client.initialize).toHaveBeenCalled()
+    expect(client.close).toHaveBeenCalled()
+    expect(client.requests.map(request => request.method)).toEqual(['thread/fork', 'thread/inject_items'])
+    expect(client.requests[0]).toEqual({
+      method: 'thread/fork',
+      params: expect.objectContaining({
+        threadId: 'codex-parent-thread-1',
+        path: null,
+        model: 'gpt-5-codex',
+        ephemeral: false,
+        threadSource: 'user',
+        excludeTurns: true,
+        persistExtendedHistory: false,
+      }),
+    })
+    expect(client.requests[1]).toEqual({
+      method: 'thread/inject_items',
+      params: {
+        threadId: 'codex-fork-thread-1',
+        items: [
+          {
+            type: 'message',
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: expect.stringContaining('You are in a Cradle side conversation'),
+              },
+            ],
+          },
+        ],
+      },
+    })
+    expect(runtimeSession).toMatchObject({
+      id: 'child-chat-session-1',
+      chatSessionId: 'child-chat-session-1',
+      providerTargetId: 'profile-codex',
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-fork-thread-1',
+    })
+    expect(runtimeSession.providerStateSnapshot).toEqual(expect.any(String))
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!)).toMatchObject({
+      workspacePath: '/tmp/cradle-workspace',
+      agentId: 'agent-1',
+      models: { currentModelId: 'gpt-5-codex' },
+      codex: {
+        model: {
+          threadId: 'codex-fork-thread-1',
+          modelId: 'gpt-5-codex',
+          modelProvider: 'openai',
+          serviceTier: 'priority',
+        },
+      },
+    })
   })
 
   it('executes shell commands through Codex thread/shellCommand and returns the native commandExecution result', async () => {
@@ -1835,10 +1972,93 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
+  it('generates missing Codex thread titles and writes them back to app-server', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadStartName = null
+    client.generatedThreadTitle = 'Generated Codex title.'
+    const provider = createProvider(client)
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-generate-title',
+      runtimeSession,
+      profile: createProfile({ titleModel: 'gpt-4o-mini' }),
+      message: createUserMessage('Build title generation for missing Codex thread names'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests).toContainEqual({
+        method: 'thread/name/set',
+        params: { threadId: 'codex-thread-1', name: 'Generated Codex title' },
+      })
+      expect(client.requests).toContainEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({ threadId: 'codex-thread-1' }),
+      })
+    })
+
+    expect(client.requests.map(request => request.method).slice(0, 6)).toEqual([
+      'thread/start',
+      'thread/start',
+      'turn/start',
+      'thread/unsubscribe',
+      'thread/name/set',
+      'turn/start',
+    ])
+    expect(client.requests[1]).toEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({
+        model: 'gpt-4o-mini',
+        approvalPolicy: 'never',
+        sandbox: 'read-only',
+        ephemeral: true,
+        threadSource: 'user',
+        persistExtendedHistory: false,
+        config: expect.objectContaining({ model: 'gpt-4o-mini' }),
+      }),
+    })
+    expect(client.requests[2]).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        threadId: 'codex-title-thread-1',
+        model: 'gpt-4o-mini',
+        effort: 'minimal',
+      }),
+    })
+    expect(reportSessionTitle).toHaveBeenCalledWith('Generated Codex title')
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
   it('reads the final Codex thread title after the turn finishes when start and notifications omit it', async () => {
     const client = new FakeCodexAppServerClient({})
     client.threadStartName = null
     client.threadReadName = 'Final Codex title'
+    client.generatedThreadTitle = null
     const provider = createProvider(client)
     const reportSessionTitle = vi.fn()
     const runtimeSession = createRuntimeSession()
@@ -1854,9 +2074,13 @@ describe('codexProvider app-server integration', () => {
     const firstChunkPromise = stream.next()
 
     await vi.waitFor(() => {
-      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+      expect(client.requests).toContainEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({ threadId: 'codex-thread-1' }),
+      })
     })
     expect(reportSessionTitle).not.toHaveBeenCalled()
+    expect(client.requests.map(request => request.method)).not.toContain('thread/name/set')
 
     client.pushNotification({
       method: 'item/agentMessage/delta',
@@ -1935,6 +2159,7 @@ describe('codexProvider app-server integration', () => {
     client.threadStartName = null
     client.threadReadName = null
     client.threadReadPreview = 'Final Codex preview'
+    client.generatedThreadTitle = null
     const provider = createProvider(client)
     const reportSessionTitle = vi.fn()
     const runtimeSession = createRuntimeSession()
@@ -1950,9 +2175,13 @@ describe('codexProvider app-server integration', () => {
     const firstChunkPromise = stream.next()
 
     await vi.waitFor(() => {
-      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+      expect(client.requests).toContainEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({ threadId: 'codex-thread-1' }),
+      })
     })
     expect(reportSessionTitle).not.toHaveBeenCalled()
+    expect(client.requests.map(request => request.method)).not.toContain('thread/name/set')
 
     client.pushNotification({
       method: 'item/agentMessage/delta',
@@ -2604,6 +2833,54 @@ describe('codexProvider app-server integration', () => {
         CRADLE_WORKSPACE_ID: 'workspace-1',
         CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
       })
+    })
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
+  it('uses native Codex user agent mode when Codex preferences disable Cradle UA', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      readCodexPreferences: () => ({ useCradleUserAgent: false }),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Use native user agent'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(appServerOptions[0]?.userAgentMode).toBe('native')
     })
 
     clients[0]?.pushNotification({

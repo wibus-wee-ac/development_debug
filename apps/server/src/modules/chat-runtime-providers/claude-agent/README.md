@@ -10,11 +10,19 @@ Agent-scoped Claude Agent sessions use `~/.cradle/agents/{agentId}` as SDK `cwd`
 
 When resuming an existing Claude Agent SDK session, the provider avoids replaying normal chat history because the SDK owns that session memory. Cradle-local transcript entries that the SDK never saw, such as Composer bang command input/output, are replayed into the next prompt from Cradle-owned message metadata.
 
+Resumed turns pass the resolved model through SDK query options and model alias environment variables. The provider calls live `setModel()` only when `resumeChatSession()` detects a model change from the stored snapshot, then clears that pending switch after the SDK call succeeds.
+
 ## Files
 
 - `provider.ts`: Claude Agent `ChatRuntime` implementation; starts/resumes SDK sessions, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering/cancellation/permission mode changes.
-- `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, and tool chunk mapping.
+- `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, model switching, and tool chunk mapping.
+- `metadata.ts`: Claude Agent runtime kind, catalog metadata, static capabilities, and slash-command presentation projection.
+- `types.ts`: Claude Agent provider-private content and session-info types shared by package modules.
 - `runtime-context.ts`: Resolves per-session Claude Agent cwd, agent home, project workspace path, and SDK additional directories.
-- `mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.
-- `mapper.test.ts`: Mapper-level regression tests.
+- `input-projector.ts`: Projects Cradle message input, history, selected Skills, provider config, and environment into Claude Agent SDK content and query options.
+- `async-input-stream.ts`: Claude Agent SDK async user-message input stream built on shared provider queue infrastructure.
+- `state-projector.ts`: Projects Claude Agent provider snapshot state such as pending resumed-session model switches.
+- `event-to-chunk-mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.
+- `subagent-projector.ts`: Projects forwarded subagent chunk streams into nested Cradle subagent output tool payloads.
+- `event-to-chunk-mapper.test.ts`: Mapper-level regression tests.
 - `tools/`: Claude Code tool identity, todo state projection, and tool envelope mapping.

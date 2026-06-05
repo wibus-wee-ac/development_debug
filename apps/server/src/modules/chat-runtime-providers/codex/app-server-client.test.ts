@@ -1,16 +1,37 @@
 import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
-import { Readable, Writable } from 'node:stream'
+import { PassThrough, Readable, Writable } from 'node:stream'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import { buildCradleCodexAppServerEnv, CodexAppServerClient, resolveCodexAppServerHome } from './app-server-client'
+import {
+  buildCradleCodexAppServerEnv,
+  CodexAppServerClient,
+  readCradleCodexClientVersion,
+  resolveCodexAppServerHome,
+} from './app-server-client'
 
 const spawnMock = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({
   spawn: spawnMock,
 }))
+
+function createCodexVersionProcess(output: string) {
+  const stdout = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdout: PassThrough
+    kill: ReturnType<typeof vi.fn>
+  }
+  child.stdout = stdout
+  child.kill = vi.fn()
+  queueMicrotask(() => {
+    stdout.write(output)
+    stdout.end()
+    child.emit('close', 0)
+  })
+  return child
+}
 
 describe('resolveCodexAppServerHome', () => {
   it('uses the Cradle data directory before database path fallback', () => {
@@ -44,6 +65,25 @@ describe('resolveCodexAppServerHome', () => {
   })
 })
 
+describe('readCradleCodexClientVersion', () => {
+  it('uses explicit Cradle version before package manager version', () => {
+    expect(readCradleCodexClientVersion({
+      CRADLE_VERSION: '1.2.3',
+      npm_package_version: '4.5.6',
+    })).toBe('1.2.3')
+  })
+
+  it('falls back to the package manager version', () => {
+    expect(readCradleCodexClientVersion({
+      npm_package_version: '4.5.6',
+    })).toBe('4.5.6')
+  })
+
+  it('falls back to the Cradle package version', () => {
+    expect(readCradleCodexClientVersion({})).toBe('0.0.1')
+  })
+})
+
 describe('CodexAppServerClient', () => {
   it('passes Cradle context environment into the app-server process', () => {
     spawnMock.mockReturnValueOnce({
@@ -72,6 +112,97 @@ describe('CodexAppServerClient', () => {
         }),
       }),
     )
+    client.close()
+  })
+
+  it('sends the Cradle client version during app-server initialization', async () => {
+    const stdout = new PassThrough()
+    let writtenLine = ''
+
+    spawnMock.mockReturnValueOnce({
+      stdin: new Writable({
+        write: (chunk, _encoding, callback) => {
+          writtenLine += chunk.toString('utf8')
+          stdout.write(`${JSON.stringify({
+            id: 1,
+            result: {
+              userAgent: 'cradle/1.2.3',
+              codexHome: '/tmp/codex-home',
+              platformFamily: 'unix',
+              platformOs: 'macos',
+            },
+          })}\n`)
+          callback()
+        },
+      }),
+      stdout,
+      stderr: new EventEmitter(),
+      once: vi.fn(),
+      kill: vi.fn(),
+    })
+
+    const client = new CodexAppServerClient({
+      codexPath: 'codex-test',
+      env: { CRADLE_VERSION: '1.2.3' },
+    })
+
+    await client.initialize()
+
+    expect(JSON.parse(writtenLine.trim())).toEqual({
+      id: 1,
+      method: 'initialize',
+      params: {
+        clientInfo: { name: 'cradle', title: 'Cradle', version: '1.2.3' },
+        capabilities: { experimentalApi: true },
+      },
+    })
+    client.close()
+  })
+
+  it('can initialize with Codex-native client info instead of Cradle client info', async () => {
+    const stdout = new PassThrough()
+    let writtenLine = ''
+
+    spawnMock
+      .mockReturnValueOnce({
+        stdin: new Writable({
+          write: (chunk, _encoding, callback) => {
+            writtenLine += chunk.toString('utf8')
+            stdout.write(`${JSON.stringify({
+              id: 1,
+              result: {
+                userAgent: 'codex/0.135.0',
+                codexHome: '/tmp/codex-home',
+                platformFamily: 'unix',
+                platformOs: 'macos',
+              },
+            })}\n`)
+            callback()
+          },
+        }),
+        stdout,
+        stderr: new EventEmitter(),
+        once: vi.fn(),
+        kill: vi.fn(),
+      })
+      .mockReturnValueOnce(createCodexVersionProcess('codex-cli 0.135.0\n'))
+
+    const client = new CodexAppServerClient({
+      codexPath: 'codex-native-test',
+      env: { CRADLE_VERSION: '1.2.3' },
+      userAgentMode: 'native',
+    })
+
+    await client.initialize()
+
+    expect(JSON.parse(writtenLine.trim())).toEqual({
+      id: 1,
+      method: 'initialize',
+      params: {
+        clientInfo: { name: 'codex', title: 'Codex', version: '0.135.0' },
+        capabilities: { experimentalApi: true },
+      },
+    })
     client.close()
   })
 })

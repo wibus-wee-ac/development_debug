@@ -16,7 +16,7 @@ import type {
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
 import { projectTextOnlyInput } from '../../chat-runtime/ui-message-input'
-import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from '../claude-agent/mapper'
+import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from '../claude-agent/event-to-chunk-mapper'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 
 const RUNTIME_KIND = 'claude-agent' as RuntimeKind
