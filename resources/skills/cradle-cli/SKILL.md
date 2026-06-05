@@ -1,6 +1,6 @@
 ---
 name: cradle-cli
-description: Interact with Cradle via the generated CLI. Use when you need to control Cradle from the terminal, or want to script interactions without using the HTTP API directly.
+description: Interact with Cradle via the generated CLI. Use for Cradle-owned workflows such as issues, delegation, session pause/resume awaits, CI/review waits, timed waits, workspace/git inspection, Chronicle memory/activity, automations, usage, observability, skills, agents, profiles, and server state instead of calling the HTTP API or defaulting to ad hoc bash/gh polling.
 ---
 
 # Cradle CLI
@@ -9,11 +9,27 @@ Use `cradle` to manage Cradle or query its state from the terminal. You can use 
 
 ## Core Rules
 
+- Prefer `cradle` for Cradle-owned product semantics. Use ordinary shell tools for local file/process work, but do not replace Cradle session awaits, issue state, delegation, Chronicle, automation, workspace, usage, or observability workflows with ad hoc scripts.
+- For waiting on external or future events, register a Cradle session await and end your turn. Do not use `sleep`, long polling loops, `gh run watch`, or repeated manual checks when Cradle has an await source for the condition.
+- Use `gh` only for GitHub actions that Cradle does not expose. If the goal is to pause this session until CI or PR review changes, use `cradle session await ...`.
 - `cradle man` prints the full generated command manual. Use `cradle man <module>` or `cradle man <command...>` to narrow it.
 - This skill is not the full route list. It gives operating patterns and an auto-generated module index; exact commands come from `cradle man`.
 - Default output is human-readable. Use `--json <fields>` for Agent workflows and `--format json` for compact pipeline output.
 - Most relationships use IDs, but issue statuses are Agent-facing names/slugs. Use status names like `triage`, `to_do`, or `in_progress` instead of status IDs when creating or moving issues.
 - Use `--server <url>` only when the default `CRADLE_SERVER_URL` / `http://localhost:21423` is not the intended server.
+
+## Use Cradle First For
+
+| Goal | Start Here | Avoid As Primary Path |
+| --- | --- | --- |
+| Wait for CI, review, approval, or later continuation | `cradle session await ...` | `sleep`, polling loops, `gh run watch` |
+| Manage tasks, status, comments, delegation, or issue sessions | `cradle issue ...`, `cradle issue-agent-session ...` | local TODO files, direct DB edits |
+| Inspect workspace identity, files, git state, or packed context | `cradle workspace ...` | guessing workspace IDs, raw HTTP |
+| Search Cradle state or past threads | `cradle search ...` | grepping data directories |
+| Read or maintain Chronicle memory/activity/knowledge | `cradle chronicle ...` | direct SQLite edits |
+| Schedule or inspect recurring work | `cradle automation ...` | cron scripts outside Cradle |
+| Inspect cost, tokens, incidents, traces, or runtime diagnostics | `cradle usage ...`, `cradle observability ...`, `cradle chat ...` | manual log spelunking first |
+| Manage agents, profiles, skills, ACP, providers, preferences | `cradle agent ...`, `cradle profile ...`, `cradle skill ...`, `cradle acp ...` | editing registry files by hand |
 
 ## Environment Variables
 
@@ -31,9 +47,12 @@ Use them directly in commands (e.g. `$CRADLE_CHAT_SESSION_ID`). They are availab
 ```bash
 cradle --help
 cradle man
+cradle man session await
 cradle man issue
 cradle man issue create
 cradle man workspace git status
+cradle man chronicle memories search
+cradle man automation create
 cradle workspace list --json id,name,path
 cradle issue status list --workspace-id <workspaceId> --json id,name
 cradle profile list --json id,name,providerKind,enabled
@@ -71,6 +90,8 @@ cradle workspace resolve --path "$PWD" --json id,name,path
 cradle workspace files <workspaceId> --json type,name,path
 cradle workspace file read <workspaceId> --path AGENTS.md
 cradle workspace git status <workspaceId> --json branch,tracking,ahead,behind,isDetached
+cradle workspace git diff <workspaceId> --paths src/index.ts --format json
+cradle workspace pack <workspaceId> --style markdown --include "src/**" --format json
 ```
 
 ## Output Patterns
@@ -127,6 +148,16 @@ cradle session await github-review owner/repo \
 cradle session await manual \
   --reason "Waiting for deploy approval"
 
+# Register a timed wait with the raw generated command
+fire_at=$(($(date +%s) + 1800))
+cradle session await-create \
+  --chat-session-id "$CRADLE_CHAT_SESSION_ID" \
+  --workspace-id "$CRADLE_WORKSPACE_ID" \
+  --source timer \
+  --filter-json '{}' \
+  --fire-at "$fire_at" \
+  --reason "Waiting 30 minutes before checking again"
+
 # Check await status
 cradle session await-summary --session-id "$CRADLE_CHAT_SESSION_ID"
 
@@ -147,8 +178,35 @@ cradle session await retry <awaitId>
 - `$CRADLE_CHAT_SESSION_ID` and `$CRADLE_WORKSPACE_ID` are automatically injected as environment variables by Cradle — they are always available in your shell without any setup.
 - After registering an await, end your turn. Cradle will resume the session with the trigger payload as a new user message.
 - Prefer the task-shaped `cradle session await ...` commands. The raw generated `cradle session await-create` command is still available when you need to pass a custom source/filter payload directly.
-- Supported sources: `github-ci` (`--pr`, `--sha`, or `--run-id`), `github-review` (`--mode approved|changes-requested|reviewed`), and `manual`.
+- Supported task-shaped sources: `github-ci` (`--pr`, `--sha`, or `--run-id`), `github-review` (`--mode approved|changes-requested|reviewed`), and `manual`.
+- Supported raw await sources include `github-ci`, `github-review`, `manual`, and `timer`. Use raw `await-create --source timer --fire-at <unixSeconds> --filter-json '{}'` for durable timed pauses.
 - Your session history is preserved — when resumed, you have full context of what you were doing.
+
+## Chronicle And Memory
+
+Chronicle is the Cradle-owned namespace for activity capture, memory, knowledge cards, privacy export, local model resources, transcripts, and activity pipeline operations. Use `cradle man chronicle` before assuming a direct data-store path.
+
+```bash
+cradle chronicle status --format json
+cradle chronicle timeline --limit 20 --format json
+cradle chronicle memories search --q "release decision" --limit 10 --format json
+cradle chronicle knowledge-cards list --limit 20 --format json
+cradle chronicle activity-segments list --limit 10 --format json
+cradle chronicle activity-pipeline tick --format json
+cradle chronicle privacy redact --text "Sensitive text to preview"
+```
+
+## Automation, Usage, And Diagnostics
+
+```bash
+cradle automation list --workspace-id "$CRADLE_WORKSPACE_ID" --format json
+cradle automation run <automationId> --format json
+cradle automation runs <automationId> --format json
+cradle usage summary --format json
+cradle usage cost summary --from 2026-01-01 --to 2026-01-31 --format json
+cradle observability incidents --status open --limit 20 --json id,code,status,lastSeenAt
+cradle observability events --chat-session-id "$CRADLE_CHAT_SESSION_ID" --limit 50 --format json
+```
 
 <!-- CRADLE_CLI_MODULES_START -->
 ## Command Modules
@@ -179,4 +237,3 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 21 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
-
