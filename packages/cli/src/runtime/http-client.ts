@@ -3,6 +3,12 @@ import { z } from 'zod'
 
 const PATH_PARAM_RE = /\{([^}]+)\}/g
 const CRADLE_CHAT_SESSION_ID_HEADER = 'x-cradle-chat-session-id'
+const CRADLE_RUNTIME_ENV_KEYS = [
+  'CRADLE_AGENT_HOME',
+  'CRADLE_AGENT_ID',
+  'CRADLE_WORKSPACE_ID',
+  'CRADLE_WORKSPACE_PATH',
+] as const
 const HttpErrorPayloadJsonSchema = z.string()
   .transform(value => JSON.parse(value))
   .pipe(z.object({ message: z.string() }).passthrough())
@@ -49,6 +55,23 @@ function appendQuery(url: URL, query: Record<string, unknown>): void {
   }
 }
 
+function isIssueMutation(input: Pick<RequestInput, 'method' | 'template'>): boolean {
+  const method = input.method.toLowerCase()
+  return method !== 'get' && method !== 'head' && /^\/issues(?:\/|$)/.test(input.template)
+}
+
+function isCradleRuntimeEnv(env: NodeJS.ProcessEnv): boolean {
+  return CRADLE_RUNTIME_ENV_KEYS.some(key => Boolean(env[key]?.trim()))
+}
+
+function assertIssueMutationRuntimeContext(input: Pick<RequestInput, 'method' | 'template'>, chatSessionId: string | undefined): void {
+  if (chatSessionId || !isIssueMutation(input) || !isCradleRuntimeEnv(process.env)) {
+    return
+  }
+
+  throw new Error('Issue mutations from a Cradle runtime require CRADLE_CHAT_SESSION_ID so Activity can record the real actor.')
+}
+
 async function readError(response: Response): Promise<string> {
   const text = await response.text()
   if (!text) {
@@ -67,6 +90,7 @@ export async function requestJson(input: RequestInput): Promise<unknown> {
     headers['content-type'] = 'application/json'
   }
   const chatSessionId = process.env.CRADLE_CHAT_SESSION_ID?.trim()
+  assertIssueMutationRuntimeContext(input, chatSessionId || undefined)
   if (chatSessionId) {
     headers[CRADLE_CHAT_SESSION_ID_HEADER] = chatSessionId
   }

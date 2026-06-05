@@ -64,6 +64,8 @@
   "session.action.archive": "セッションをアーカイブ",
   "session.action.copyMarkdown": "Markdown としてコピー",
   "session.action.copySessionId": "セッション ID をコピー",
+  "session.action.markRead": "既読にする",
+  "session.action.markUnread": "未読にする",
   "session.action.openInNewTab": "新しいタブで開く",
   "session.action.openInNewWindow": "新しいウィンドウで開く",
   "session.action.pin": "ピン留め",

@@ -66,7 +66,8 @@ const spec = {
       "values": [
         "low",
         "medium",
-        "high"
+        "high",
+        "xhigh"
       ]
     },
     {

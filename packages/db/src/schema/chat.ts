@@ -1,4 +1,5 @@
 import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'
 import { issues } from './issue'
@@ -7,6 +8,9 @@ import { createdAt, textPk, timestamps, workspaces } from './shared'
 
 export const sessions = sqliteTable('sessions', {
   id: textPk(),
+  parentSessionId: text('parent_session_id')
+    .references((): AnySQLiteColumn => sessions.id, { onDelete: 'set null' }),
+  sideContextSource: text('side_context_source', { enum: ['provider-native', 'cradle-context'] }),
   workspaceId: text('workspace_id')
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
@@ -24,6 +28,7 @@ export const sessions = sqliteTable('sessions', {
   ptyStartedAt: int('pty_started_at'),
   ...timestamps(),
 }, table => ({
+  byParentSession: index('sessions_parent_session_id_idx').on(table.parentSessionId),
   byWorkspace: index('sessions_workspace_id_idx').on(table.workspaceId),
   byProviderTarget: index('sessions_provider_target_id_idx').on(table.providerTargetId),
   byLinkedIssue: index('sessions_linked_issue_id_idx').on(table.linkedIssueId),

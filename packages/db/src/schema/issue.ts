@@ -49,8 +49,9 @@ export const issues = sqliteTable('kanban_issues', {
   assigneeKind: text('assignee_kind'),
   assigneeId: text('assignee_id'),
   dueDate: int('due_date'),
-  createdByKind: text('created_by_kind', { enum: ['user', 'agent', 'system'] }).notNull().default('user'),
+  createdByKind: text('created_by_kind', { enum: ['user', 'agent', 'system', 'provider-target'] }).notNull().default('user'),
   createdById: text('created_by_id').notNull().default('__self__'),
+  sourceChatSessionId: text('source_chat_session_id'),
   delegateAgentId: text('delegate_agent_id').references(() => agents.id, { onDelete: 'set null' }),
   delegateAgentProfileId: text('delegate_agent_profile_id'),
   contextRefs: text('context_refs').notNull().default('[]'),
@@ -72,9 +73,10 @@ export const issueComments = sqliteTable('kanban_issue_comments', {
     .references(() => issues.id, { onDelete: 'cascade' }),
   content: text('content').notNull(),
   authorKind: text('author_kind', {
-    enum: ['user', 'agent', 'system', 'system.delegated', 'system.undelegated'],
+    enum: ['user', 'agent', 'provider-target', 'system', 'system.delegated', 'system.undelegated'],
   }).notNull().default('user'),
   authorId: text('author_id'),
+  sourceChatSessionId: text('source_chat_session_id'),
   agentActivityId: text('agent_activity_id'),
   ...createdAt(),
 }, table => ({
@@ -104,8 +106,9 @@ export const issueFieldChanges = sqliteTable('kanban_issue_field_changes', {
   field: text('field').notNull(),
   fromValue: text('from_value'),
   toValue: text('to_value'),
-  actorKind: text('actor_kind', { enum: ['user', 'agent', 'system'] }).notNull().default('user'),
+  actorKind: text('actor_kind', { enum: ['user', 'agent', 'provider-target', 'system'] }).notNull().default('user'),
   actorId: text('actor_id'),
+  sourceChatSessionId: text('source_chat_session_id'),
   ...createdAt(),
 }, table => ({
   byIssue: index('kanban_issue_field_changes_issue_id_idx').on(table.issueId),

@@ -17,7 +17,8 @@ const spec = {
       "type": "string",
       "values": [
         "openai-compatible",
-        "anthropic"
+        "anthropic",
+        "universal"
       ]
     },
     {

@@ -90,6 +90,7 @@ import { register as registerChronicleSpeakerProfilesUpsert } from './chronicle/
 import { register as registerChronicleStatus } from './chronicle/status'
 import { register as registerChronicleTimeline } from './chronicle/timeline'
 import { register as registerHealth } from './health'
+import { register as registerIssueActivityList } from './issue/activity/list'
 import { register as registerIssueCommentAdd } from './issue/comment/add'
 import { register as registerIssueCommentDelete } from './issue/comment/delete'
 import { register as registerIssueCommentList } from './issue/comment/list'
@@ -128,6 +129,8 @@ import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
 import { register as registerPreferencesChatGet } from './preferences/chat/get'
 import { register as registerPreferencesChatSet } from './preferences/chat/set'
+import { register as registerPreferencesCodexGet } from './preferences/codex/get'
+import { register as registerPreferencesCodexSet } from './preferences/codex/set'
 import { register as registerPreferencesJarvisGet } from './preferences/jarvis/get'
 import { register as registerPreferencesJarvisSet } from './preferences/jarvis/set'
 import { register as registerProfileCustomModels } from './profile/custom-models'
@@ -292,6 +295,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerChronicleStatus(program)
   registerChronicleTimeline(program)
   registerHealth(program)
+  registerIssueActivityList(program)
   registerIssueCommentAdd(program)
   registerIssueCommentDelete(program)
   registerIssueCommentList(program)
@@ -330,6 +334,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerObservabilityIncidents(program)
   registerPreferencesChatGet(program)
   registerPreferencesChatSet(program)
+  registerPreferencesCodexGet(program)
+  registerPreferencesCodexSet(program)
   registerPreferencesJarvisGet(program)
   registerPreferencesJarvisSet(program)
   registerProfileCustomModels(program)

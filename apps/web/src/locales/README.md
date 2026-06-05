@@ -12,15 +12,15 @@
 - **default/common.ts**: Shared UI copy used across feature boundaries.
 - **default/devtool.ts**: Development diagnostics, health, memory, observability, and plugin panel copy.
 - **default/home.ts**: Home dashboard sections, quick actions, relative time labels, and automation copy.
-- **default/kanban.ts**: Kanban board, issue, filter, label, status, and detail-panel copy.
+- **default/kanban.ts**: Kanban board, issue, filter, label, status, detail-panel, and issue Activity timeline copy.
 - **default/new-chat.ts**: New chat composer placeholders, quick prompts, readiness notices, workspace picker, and recent session copy.
 - **default/pack-codebase.ts**: Pack-codebase dialog labels, option descriptions, status messages, and scope copy.
 - **default/search.ts**: Global search command palette labels, groups, result metadata, and empty states.
-- **default/settings.ts**: Settings navigation and appearance/language controls.
+- **default/settings.ts**: Settings navigation, appearance/language controls, chat archive recovery/search copy, and support/import/settings-section labels.
 - **default/skills.ts**: Skill import flow labels, loading states, selection summaries, and completion copy.
 - **default/system-agent.ts**: Jarvis/system-agent popover empty states and setup guidance.
 - **default/usage.ts**: Usage analytics headings, chart labels, stat pills, and empty state copy.
-- **default/workspace.ts**: Workspace sidebar app navigation, file tree, workspace detail, workspace composer copy, and native open/reveal failure toasts.
+- **default/workspace.ts**: Workspace sidebar app navigation, session menu read-state actions, file tree, workspace detail, workspace composer copy, and native open/reveal failure toasts.
 - **default/index.ts**: Namespace registry used by runtime and workflow scripts.
 - **en-US/*.json**: Generated baseline JSON for default English copy.
 - **zh-CN/*.json**, **ja-JP/*.json**, **es-ES/*.json**: Supported non-default locale translation files.

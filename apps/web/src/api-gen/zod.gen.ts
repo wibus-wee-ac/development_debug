@@ -8,6 +8,10 @@ export const zPutPreferencesChatBody = z.object({
     continuationBehavior: z.enum(['queue', 'steer']).optional()
 });
 
+export const zPutPreferencesCodexBody = z.object({
+    useCradleUserAgent: z.boolean().default(true)
+});
+
 export const zPutPreferencesJarvisBody = z.object({
     runtimeKind: z.string().min(1).optional(),
     profileId: z.string().nullable(),
@@ -1024,6 +1028,10 @@ export const zPatchIssuesByIdStatusByStatusNamePath = z.object({
     statusName: z.string().min(1)
 });
 
+export const zGetIssuesByIdActivityPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zGetIssuesByIdFieldChangesPath = z.object({
     id: z.string().min(1)
 });
@@ -1414,7 +1422,11 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
     })).optional(),
     messages: z.array(z.object({
         id: z.string(),
-        role: z.enum(['user', 'assistant']),
+        role: z.enum([
+            'system',
+            'user',
+            'assistant'
+        ]),
         parts: z.array(z.object({
             type: z.string()
         })),
@@ -1440,6 +1452,15 @@ export const zPostChatSessionsBySessionIdBangCommandBody = z.object({
 });
 
 export const zPostChatSessionsBySessionIdBangCommandPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdSideChatBody = z.object({
+    providerTargetId: z.string().optional(),
+    modelId: z.string().optional()
+});
+
+export const zPostChatSessionsBySessionIdSideChatPath = z.object({
     sessionId: z.string().min(1)
 });
 
@@ -1514,6 +1535,41 @@ export const zGetChatSessionsBySessionIdCapabilitiesPath = z.object({
 
 export const zGetChatSessionsBySessionIdUiSlotStatesPath = z.object({
     sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsQuery = z.object({
+    cursor: z.string().optional(),
+    limit: z.number().optional(),
+    sortKey: z.enum(['created_at', 'updated_at']).optional(),
+    sortDirection: z.enum(['asc', 'desc']).optional(),
+    sourceKinds: z.string().optional(),
+    archived: z.boolean().optional(),
+    searchTerm: z.string().optional()
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsByThreadIdPath = z.object({
+    sessionId: z.string().min(1),
+    threadId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsPath = z.object({
+    sessionId: z.string().min(1),
+    threadId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsQuery = z.object({
+    cursor: z.string().optional(),
+    limit: z.number().optional(),
+    sortDirection: z.enum(['asc', 'desc']).optional()
+});
+
+export const zGetChatSessionsBySessionIdProviderThreadsByThreadIdStreamPath = z.object({
+    sessionId: z.string().min(1),
+    threadId: z.string().min(1)
 });
 
 export const zGetChatSessionsBySessionIdRuntimeStatusPath = z.object({

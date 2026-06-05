@@ -84,6 +84,44 @@ export type PutPreferencesChatResponses = {
 
 export type PutPreferencesChatResponse = PutPreferencesChatResponses[keyof PutPreferencesChatResponses];
 
+export type GetPreferencesCodexData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/preferences/codex';
+};
+
+export type GetPreferencesCodexResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        useCradleUserAgent: boolean;
+    };
+};
+
+export type GetPreferencesCodexResponse = GetPreferencesCodexResponses[keyof GetPreferencesCodexResponses];
+
+export type PutPreferencesCodexData = {
+    body: {
+        useCradleUserAgent: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/preferences/codex';
+};
+
+export type PutPreferencesCodexResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PutPreferencesCodexResponse = PutPreferencesCodexResponses[keyof PutPreferencesCodexResponses];
+
 export type GetPreferencesJarvisData = {
     body?: never;
     path?: never;
@@ -3283,6 +3321,8 @@ export type GetSessionsResponses = {
      */
     200: Array<{
         id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
         providerTargetId: string | null;
@@ -3321,6 +3361,8 @@ export type PostSessionsResponses = {
      */
     200: {
         id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
         providerTargetId: string | null;
@@ -3374,6 +3416,8 @@ export type GetSessionsByIdResponses = {
      */
     200: {
         id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
         providerTargetId: string | null;
@@ -3412,6 +3456,8 @@ export type PatchSessionsByIdResponses = {
      */
     200: {
         id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
         providerTargetId: string | null;
@@ -3447,6 +3493,8 @@ export type PostSessionsByIdArchiveResponses = {
      */
     200: {
         id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
         providerTargetId: string | null;
@@ -4274,8 +4322,9 @@ export type GetIssuesSearchResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4319,8 +4368,9 @@ export type GetIssuesResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4373,8 +4423,9 @@ export type PostIssuesResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4433,8 +4484,9 @@ export type GetIssuesByIdResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4489,8 +4541,9 @@ export type PatchIssuesByIdResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4562,8 +4615,9 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4574,6 +4628,65 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
 };
 
 export type PatchIssuesByIdStatusByStatusNameResponse = PatchIssuesByIdStatusByStatusNameResponses[keyof PatchIssuesByIdStatusByStatusNameResponses];
+
+export type GetIssuesByIdActivityData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/issues/{id}/activity';
+};
+
+export type GetIssuesByIdActivityResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        issueId: string;
+        kind: 'comment' | 'created' | 'field-change';
+        actor: {
+            kind: 'user' | 'agent' | 'provider-target' | 'system';
+            id: string | null;
+            displayName: string;
+            avatarUrl: string | null;
+            label: string | null;
+        };
+        comment: {
+            content: string;
+            systemKind: string | null;
+        } | null;
+        fieldChange: {
+            action: string;
+            field: string | null;
+            fromValue: {
+                kind: string;
+                timestamp: number;
+            } | {
+                kind: string;
+                text: string;
+            } | {
+                kind: string;
+                token: string;
+            } | null;
+            toValue: {
+                kind: string;
+                timestamp: number;
+            } | {
+                kind: string;
+                text: string;
+            } | {
+                kind: string;
+                token: string;
+            } | null;
+        } | null;
+        sourceChatSessionId: string | null;
+        createdAt: number;
+    }>;
+};
+
+export type GetIssuesByIdActivityResponse = GetIssuesByIdActivityResponses[keyof GetIssuesByIdActivityResponses];
 
 export type GetIssuesByIdFieldChangesData = {
     body?: never;
@@ -4594,8 +4707,9 @@ export type GetIssuesByIdFieldChangesResponses = {
         field: string;
         fromValue: string | null;
         toValue: string | null;
-        actorKind: 'user' | 'agent' | 'system';
+        actorKind: 'user' | 'agent' | 'provider-target' | 'system';
         actorId: string | null;
+        sourceChatSessionId: string | null;
         createdAt: number;
     }>;
 };
@@ -4619,15 +4733,16 @@ export type GetIssuesByIdCommentsResponses = {
         id: string;
         issueId: string;
         content: string;
-        authorKind: 'user' | 'agent' | 'system' | 'system.delegated' | 'system.undelegated';
+        authorKind: 'user' | 'agent' | 'provider-target' | 'system' | 'system.delegated' | 'system.undelegated';
         authorId: string | null;
         author: {
-            kind: 'user' | 'agent' | 'system';
+            kind: 'user' | 'agent' | 'provider-target' | 'system';
             id: string | null;
             displayName: string;
             avatarUrl: string | null;
             label: string | null;
         };
+        sourceChatSessionId: string | null;
         agentActivityId: string | null;
         createdAt: number;
     }>;
@@ -4654,15 +4769,16 @@ export type PostIssuesByIdCommentsResponses = {
         id: string;
         issueId: string;
         content: string;
-        authorKind: 'user' | 'agent' | 'system' | 'system.delegated' | 'system.undelegated';
+        authorKind: 'user' | 'agent' | 'provider-target' | 'system' | 'system.delegated' | 'system.undelegated';
         authorId: string | null;
         author: {
-            kind: 'user' | 'agent' | 'system';
+            kind: 'user' | 'agent' | 'provider-target' | 'system';
             id: string | null;
             displayName: string;
             avatarUrl: string | null;
             label: string | null;
         };
+        sourceChatSessionId: string | null;
         agentActivityId: string | null;
         createdAt: number;
     };
@@ -4789,8 +4905,9 @@ export type PostIssuesByIdContextRefsResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -4830,8 +4947,9 @@ export type DeleteIssuesByIdContextRefsByIndexResponses = {
         assigneeKind: string | null;
         assigneeId: string | null;
         dueDate: number | null;
-        createdByKind: 'user' | 'agent' | 'system';
+        createdByKind: 'user' | 'agent' | 'provider-target' | 'system';
         createdById: string;
+        sourceChatSessionId: string | null;
         delegateAgentId: string | null;
         delegateAgentProfileId: string | null;
         contextRefs: string;
@@ -5933,7 +6051,7 @@ export type PostChatSessionsBySessionIdResponseData = {
         }>;
         messages?: Array<{
             id: string;
-            role: 'user' | 'assistant';
+            role: 'system' | 'user' | 'assistant';
             parts: Array<{
                 type: string;
                 [key: string]: unknown;
@@ -5989,7 +6107,7 @@ export type PostChatSessionsBySessionIdBangCommandResponses = {
         resultMessageId: string;
         userMessage: {
             id: string;
-            role: 'user' | 'assistant';
+            role: 'system' | 'user' | 'assistant';
             parts: Array<{
                 type: string;
                 [key: string]: unknown;
@@ -5999,7 +6117,7 @@ export type PostChatSessionsBySessionIdBangCommandResponses = {
         };
         resultMessage: {
             id: string;
-            role: 'user' | 'assistant';
+            role: 'system' | 'user' | 'assistant';
             parts: Array<{
                 type: string;
                 [key: string]: unknown;
@@ -6011,6 +6129,34 @@ export type PostChatSessionsBySessionIdBangCommandResponses = {
 };
 
 export type PostChatSessionsBySessionIdBangCommandResponse = PostChatSessionsBySessionIdBangCommandResponses[keyof PostChatSessionsBySessionIdBangCommandResponses];
+
+export type PostChatSessionsBySessionIdSideChatData = {
+    body: {
+        providerTargetId?: string;
+        modelId?: string;
+    };
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/side-chat';
+};
+
+export type PostChatSessionsBySessionIdSideChatResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sessionId: string;
+        parentSessionId: string;
+        runtimeKind: string;
+        providerTargetId: string | null;
+        providerSessionId: string | null;
+        sideContextSource: 'provider-native' | 'cradle-context';
+    };
+};
+
+export type PostChatSessionsBySessionIdSideChatResponse = PostChatSessionsBySessionIdSideChatResponses[keyof PostChatSessionsBySessionIdSideChatResponses];
 
 export type GetChatSessionsBySessionIdStreamData = {
     body?: never;
@@ -6057,6 +6203,33 @@ export type GetChatRuntimesResponses = {
 };
 
 export type GetChatRuntimesResponse = GetChatRuntimesResponses[keyof GetChatRuntimesResponses];
+
+export type GetChatRuntimesHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/chat/runtimes/health';
+};
+
+export type GetChatRuntimesHealthResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        items: Array<{
+            runtimeKind: string;
+            source: 'builtin' | 'plugin';
+            pluginOwner: string | null;
+            hasHealthCheck: boolean;
+            status: 'healthy' | 'unhealthy' | 'unknown';
+            message?: string;
+            latencyMs?: number;
+            lastCheckedAt: number;
+        }>;
+    };
+};
+
+export type GetChatRuntimesHealthResponse = GetChatRuntimesHealthResponses[keyof GetChatRuntimesHealthResponses];
 
 export type GetChatSessionsBySessionIdQueueData = {
     body?: never;
@@ -6665,6 +6838,162 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
 
 export type GetChatSessionsBySessionIdUiSlotStatesResponse = GetChatSessionsBySessionIdUiSlotStatesResponses[keyof GetChatSessionsBySessionIdUiSlotStatesResponses];
 
+export type GetChatSessionsBySessionIdProviderThreadsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+        sortKey?: 'created_at' | 'updated_at';
+        sortDirection?: 'asc' | 'desc';
+        sourceKinds?: string;
+        archived?: boolean;
+        searchTerm?: string;
+    };
+    url: '/chat/sessions/{sessionId}/provider-threads';
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        threads: Array<{
+            id: string;
+            providerSessionTreeId: string | null;
+            forkedFromId: string | null;
+            preview: string | null;
+            ephemeral: boolean;
+            modelProvider: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
+            status: string;
+            sourceKind: 'cli' | 'vscode' | 'exec' | 'appServer' | 'subAgent' | 'subAgentReview' | 'subAgentCompact' | 'subAgentThreadSpawn' | 'subAgentOther' | 'unknown';
+            source: unknown;
+            threadSource: unknown;
+            agentNickname: string | null;
+            agentRole: string | null;
+            name: string | null;
+            cwd: string | null;
+        }>;
+        nextCursor: string | null;
+        backwardsCursor: string | null;
+    };
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsResponse = GetChatSessionsBySessionIdProviderThreadsResponses[keyof GetChatSessionsBySessionIdProviderThreadsResponses];
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdData = {
+    body?: never;
+    path: {
+        sessionId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/provider-threads/{threadId}';
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        thread: {
+            id: string;
+            providerSessionTreeId: string | null;
+            forkedFromId: string | null;
+            preview: string | null;
+            ephemeral: boolean;
+            modelProvider: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
+            status: string;
+            sourceKind: 'cli' | 'vscode' | 'exec' | 'appServer' | 'subAgent' | 'subAgentReview' | 'subAgentCompact' | 'subAgentThreadSpawn' | 'subAgentOther' | 'unknown';
+            source: unknown;
+            threadSource: unknown;
+            agentNickname: string | null;
+            agentRole: string | null;
+            name: string | null;
+            cwd: string | null;
+        };
+    };
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdResponse = GetChatSessionsBySessionIdProviderThreadsByThreadIdResponses[keyof GetChatSessionsBySessionIdProviderThreadsByThreadIdResponses];
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+        threadId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+        sortDirection?: 'asc' | 'desc';
+    };
+    url: '/chat/sessions/{sessionId}/provider-threads/{threadId}/turns';
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        threadId: string;
+        turns: Array<{
+            id: string;
+            status: string;
+            startedAt: number | null;
+            completedAt: number | null;
+            durationMs: number | null;
+            itemsView: string;
+            items: Array<unknown>;
+        }>;
+        messages: Array<{
+            id: string;
+            role: 'system' | 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        nextCursor: string | null;
+        backwardsCursor: string | null;
+    };
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponse = GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponses[keyof GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponses];
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamData = {
+    body?: never;
+    path: {
+        sessionId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/provider-threads/{threadId}/stream';
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponses = {
+    /**
+     * AI SDK UIMessageChunk SSE stream for a provider-native thread such as a Codex subagent thread.
+     */
+    200: string;
+};
+
+export type GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponse = GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponses[keyof GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponses];
+
 export type GetChatSessionsBySessionIdRuntimeStatusData = {
     body?: never;
     path: {
@@ -6836,7 +7165,7 @@ export type GetChatSessionsBySessionIdMessagesResponses = {
         content: string;
         message: {
             id: string;
-            role: 'user' | 'assistant';
+            role: 'system' | 'user' | 'assistant';
             parts: Array<{
                 type: string;
                 [key: string]: unknown;

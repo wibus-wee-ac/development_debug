@@ -64,6 +64,8 @@
   "session.action.archive": "Archivar sesión",
   "session.action.copyMarkdown": "Copiar como Markdown",
   "session.action.copySessionId": "Copiar ID de sesión",
+  "session.action.markRead": "Marcar como leído",
+  "session.action.markUnread": "Marcar como no leído",
   "session.action.openInNewTab": "Abrir en nueva pestaña",
   "session.action.openInNewWindow": "Abrir en nueva ventana",
   "session.action.pin": "Fijar",
