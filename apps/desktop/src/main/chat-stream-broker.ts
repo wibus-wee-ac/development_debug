@@ -411,11 +411,16 @@ export class ChatStreamBroker {
       if (item.cursor < subscriber.replayCursor) {
         continue
       }
-      this.sendChunkToSubscriber(entry, subscriber, item.chunk)
+      this.sendChunkToSubscriber(entry, subscriber, item.chunk, item.cursor + 1)
     }
   }
 
-  private sendChunkToSubscriber(entry: UpstreamEntry, subscriber: StreamSubscriber, chunk: unknown): void {
+  private sendChunkToSubscriber(
+    entry: UpstreamEntry,
+    subscriber: StreamSubscriber,
+    chunk: unknown,
+    cursorAfter = entry.replayBuffer.nextCursor,
+  ): void {
     if (subscriber.webContents.isDestroyed()) {
       this.removeSubscriber(entry, subscriber.streamId)
       this.abortEntryIfUnobserved(entry)
@@ -427,7 +432,7 @@ export class ChatStreamBroker {
       runId: entry.runId,
       chunk,
     } satisfies DesktopChatStreamChunkEvent)
-    subscriber.replayCursor = entry.replayBuffer.nextCursor
+    subscriber.replayCursor = cursorAfter
   }
 
   private closeEntry(entry: UpstreamEntry, reason: DesktopChatStreamClosedEvent['reason']): void {

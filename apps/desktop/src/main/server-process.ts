@@ -84,24 +84,26 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
   ]
   const externalPluginsDirList = ExternalPluginsDirsSchema.parse(externalPluginsDirs).join(delimiter)
+  const serverEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    ...getPluginEnvVars(),
+    CRADLE_HOST: host,
+    CRADLE_PORT: String(port),
+    CRADLE_DATA_DIR: dataDir,
+    CRADLE_VERSION: app.getVersion(),
+    CRADLE_CREDENTIAL_SECRET: credentialSecret,
+    CRADLE_PLUGINS_DIR: pluginsDir,
+    CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
+    CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
+    CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
+    ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
+    NODE_ENV: isDev ? 'development' : 'production',
+    FORCE_COLOR: '1',
+  }
+  delete serverEnv.NO_COLOR
 
   serverProcess = fork(serverEntry, [], {
-    env: {
-      ...process.env,
-      ...getPluginEnvVars(),
-      CRADLE_HOST: host,
-      CRADLE_PORT: String(port),
-      CRADLE_DATA_DIR: dataDir,
-      CRADLE_VERSION: app.getVersion(),
-      CRADLE_CREDENTIAL_SECRET: credentialSecret,
-      CRADLE_PLUGINS_DIR: pluginsDir,
-      CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
-      CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
-      CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
-      ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
-      NODE_ENV: isDev ? 'development' : 'production',
-      FORCE_COLOR: '1',
-    },
+    env: serverEnv,
     execPath,
     execArgv,
     stdio: 'pipe',

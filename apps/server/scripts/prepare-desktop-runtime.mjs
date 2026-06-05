@@ -56,6 +56,11 @@ if (result.status !== 0) {
   process.exit(result.status ?? 1)
 }
 
+if (!existsSync(join(tempDeployDir, 'node_modules'))) {
+  rmSync(tempDeployDir, { recursive: true, force: true })
+  throw new Error(`pnpm deploy did not create ${join(tempDeployDir, 'node_modules')}`)
+}
+
 pruneDeployMetadata()
 writeFileSync(
   join(tempDeployDir, 'desktop-runtime.json'),

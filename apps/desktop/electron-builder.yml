@@ -12,6 +12,12 @@ extraResources:
     to: server
     filter:
       - '**/*'
+      - '!node_modules/**'
+  # Keep pnpm's runtime node_modules layout intact; dependency selection is owned by @cradle/server.
+  - from: ../server/dist/desktop-runtime/node_modules
+    to: server/node_modules
+    filter:
+      - '**/*'
   - from: ../../packages/db/drizzle
     to: drizzle
     filter:

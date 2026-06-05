@@ -68,6 +68,9 @@ export default defineConfig({
           tearoff: resolve(webRoot, 'tearoff.html')
         }
       }
+    },
+    worker: {
+      format: 'es'
     }
   }
 })

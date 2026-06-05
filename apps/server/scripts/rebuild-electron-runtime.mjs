@@ -37,6 +37,8 @@ const result = spawnSync(
     serverRuntimeDir,
     '--arch',
     targetArch,
+    '--force',
+    '--build-from-source',
   ],
   {
     cwd: serverRoot,
