@@ -1,4 +1,5 @@
 import type { UIMessage } from 'ai'
+import isEqual from 'fast-deep-equal'
 import type { Draft } from 'immer'
 import { enableMapSet, produce } from 'immer'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -79,7 +80,7 @@ interface ChatState {
 
   // --- Actions: Messages ---
   setMessages: (sessionId: string, messages: UIMessage[]) => void
-  updateMessage: (sessionId: string, messageId: string, updater: (msg: UIMessage) => UIMessage) => void
+  updateMessage: (sessionId: string, messageId: string, updater: (msg: UIMessage) => UIMessage, change?: MessageReconcileChange) => void
   appendMessage: (sessionId: string, message: UIMessage) => void
   insertLiveSteerMessage: (sessionId: string, message: UIMessage, sourceMessageId?: string | null) => void
   removeMessage: (sessionId: string, messageId: string) => void
@@ -122,6 +123,10 @@ interface ChatState {
 type MessagePart = UIMessage['parts'][number]
 const EMPTY_MESSAGES: UIMessage[] = []
 const DEFAULT_SESSION_META: SessionMeta = { passiveStatus: 'idle', locallyDriving: false, cancelling: false }
+
+export interface MessageReconcileChange {
+  dirtyToolCallIds?: ReadonlySet<string>
+}
 
 // ── Store ───────────────────────────────────────────────────
 
@@ -184,7 +189,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         })
       },
 
-      updateMessage: (sessionId, messageId, updater) => {
+      updateMessage: (sessionId, messageId, updater, change) => {
         set((state) => {
           const messages = state.messagesMap.get(sessionId)
           if (!messages) {
@@ -196,7 +201,11 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             return state
           }
 
-          const updatedMessage = updater(messages[idx])
+          const currentMessage = messages[idx]
+          const updatedMessage = reconcileMessage(currentMessage, updater(currentMessage), change)
+          if (updatedMessage === currentMessage) {
+            return state
+          }
 
           return produce(state, (draft) => {
             draft.messagesMap.get(sessionId)![idx] = updatedMessage as Draft<UIMessage>
@@ -888,21 +897,110 @@ function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMes
   if (currentMessages === incomingMessages) {
     return currentMessages
   }
-  if (currentMessages.length !== incomingMessages.length) {
-    return incomingMessages
-  }
 
   let hasChanges = false
+  const currentMessagesById = currentMessages.length === incomingMessages.length
+    ? null
+    : new Map(currentMessages.map(message => [message.id, message]))
   const nextMessages = incomingMessages.map((incomingMessage, index) => {
-    const currentMessage = currentMessages[index]
-    if (areMessagesEqual(currentMessage, incomingMessage)) {
+    const currentMessage = currentMessages[index]?.id === incomingMessage.id
+      ? currentMessages[index]
+      : currentMessagesById?.get(incomingMessage.id)
+    if (!currentMessage) {
+      hasChanges = true
+      return incomingMessage
+    }
+    const nextMessage = reconcileMessage(currentMessage, incomingMessage)
+    if (nextMessage === currentMessage) {
       return currentMessage
     }
     hasChanges = true
-    return incomingMessage
+    return nextMessage
   })
 
   return hasChanges ? nextMessages : currentMessages
+}
+
+function reconcileMessage(
+  currentMessage: UIMessage,
+  incomingMessage: UIMessage,
+  change?: MessageReconcileChange,
+): UIMessage {
+  if (currentMessage === incomingMessage) {
+    return currentMessage
+  }
+  if (currentMessage.id !== incomingMessage.id || currentMessage.role !== incomingMessage.role) {
+    return incomingMessage
+  }
+
+  const currentMetadata = (currentMessage as { metadata?: unknown }).metadata
+  const incomingMetadata = (incomingMessage as { metadata?: unknown }).metadata
+  const metadata = isEqual(currentMetadata, incomingMetadata)
+    ? currentMetadata
+    : incomingMetadata
+  const parts = reconcileMessageParts(currentMessage.parts, incomingMessage.parts, change)
+
+  if (metadata === currentMetadata && parts === currentMessage.parts) {
+    return currentMessage
+  }
+
+  return {
+    ...incomingMessage,
+    ...(metadata === undefined ? {} : { metadata }),
+    parts,
+  } as UIMessage
+}
+
+function reconcileMessageParts(
+  currentParts: MessagePart[],
+  incomingParts: MessagePart[],
+  change?: MessageReconcileChange,
+): MessagePart[] {
+  if (currentParts === incomingParts) {
+    return currentParts
+  }
+
+  let hasChanges = false
+  const nextParts = incomingParts.map((incomingPart, index) => {
+    const currentPart = currentParts[index]
+    if (!currentPart) {
+      hasChanges = true
+      return incomingPart
+    }
+    if (canReuseMessagePart(currentPart, incomingPart, change)) {
+      return currentPart
+    }
+    hasChanges = true
+    return incomingPart
+  })
+
+  return hasChanges || currentParts.length !== incomingParts.length ? nextParts : currentParts
+}
+
+function canReuseMessagePart(
+  currentPart: MessagePart,
+  incomingPart: MessagePart,
+  change?: MessageReconcileChange,
+): boolean {
+  if (currentPart === incomingPart) {
+    return true
+  }
+  if (currentPart.type !== incomingPart.type) {
+    return false
+  }
+
+  if (isToolMessagePart(currentPart) && isToolMessagePart(incomingPart)) {
+    const currentToolCallId = readToolCallId(currentPart)
+    if (!currentToolCallId || currentToolCallId !== readToolCallId(incomingPart)) {
+      return false
+    }
+    if (change?.dirtyToolCallIds && !change.dirtyToolCallIds.has(currentToolCallId)) {
+      return true
+    }
+    return isEqual(currentPart, incomingPart)
+  }
+
+  return areMessagePartsStructurallyEqual(currentPart, incomingPart)
 }
 
 interface PersistedAssistantDisplaySplit {
@@ -1237,33 +1335,6 @@ function slicePrefix(sourceText: string, prefixText: string): string {
   return sourceText.startsWith(prefixText) ? sourceText.slice(prefixText.length) : sourceText
 }
 
-function areMessagesEqual(currentMessage: UIMessage, incomingMessage: UIMessage): boolean {
-  if (currentMessage === incomingMessage) {
-    return true
-  }
-  return currentMessage.id === incomingMessage.id
-    && currentMessage.role === incomingMessage.role
-    && ((currentMessage as { metadata?: unknown }).metadata ?? null) === ((incomingMessage as { metadata?: unknown }).metadata ?? null)
-    && areMessagePartsEqual(currentMessage.parts, incomingMessage.parts)
-}
-
-function areMessagePartsEqual(currentParts: MessagePart[], incomingParts: MessagePart[]): boolean {
-  if (currentParts === incomingParts) {
-    return true
-  }
-  if (currentParts.length !== incomingParts.length) {
-    return false
-  }
-
-  for (let i = 0; i < currentParts.length; i++) {
-    if (!areMessagePartsStructurallyEqual(currentParts[i], incomingParts[i])) {
-      return false
-    }
-  }
-
-  return true
-}
-
 function areMessagePartsStructurallyEqual(currentPart: MessagePart, incomingPart: MessagePart): boolean {
   if (currentPart === incomingPart) {
     return true
@@ -1317,6 +1388,10 @@ function readReasoningPart(part: MessagePart): { text?: string, reasoning?: stri
 function readToolCallId(part: MessagePart): string | undefined {
   const record = isRecord(part) ? part as Record<string, unknown> : {}
   return typeof record.toolCallId === 'string' ? record.toolCallId : undefined
+}
+
+function isToolMessagePart(part: MessagePart): boolean {
+  return part.type === 'dynamic-tool' || part.type.startsWith('tool-')
 }
 
 function areActiveGoalsEqual(left: ChatActiveGoal | undefined, right: ChatActiveGoal): boolean {

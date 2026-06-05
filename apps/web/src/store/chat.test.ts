@@ -62,6 +62,148 @@ describe('chat store messages', () => {
     })
   })
 
+  it('reuses unchanged tool parts across hydration snapshots', () => {
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolCallId: 'tool-read-1',
+          toolName: 'Read',
+          state: 'output-available',
+          input: { file_path: '/tmp/readme.md' },
+          output: { text: 'Hello' },
+        } as unknown as UIMessage['parts'][number],
+        { type: 'text', text: 'Done.' },
+      ],
+    }
+
+    useChatStore.getState().setMessages('session-1', [message])
+    const firstToolPart = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts[0]
+
+    useChatStore.getState().setMessages('session-1', [structuredClone(message) as UIMessage])
+    const secondToolPart = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts[0]
+
+    expect(secondToolPart).toBe(firstToolPart)
+  })
+
+  it('reuses existing messages when hydration appends a message', () => {
+    const assistantMessage: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'dynamic-tool',
+          toolCallId: 'tool-read-1',
+          toolName: 'Read',
+          state: 'output-available',
+          input: { file_path: '/tmp/readme.md' },
+          output: { text: 'Hello' },
+        } as unknown as UIMessage['parts'][number],
+      ],
+    }
+
+    useChatStore.getState().setMessages('session-1', [assistantMessage])
+    const firstMessage = chatSelectors.messages('session-1')(useChatStore.getState())[0]
+
+    useChatStore.getState().setMessages('session-1', [
+      structuredClone(assistantMessage) as UIMessage,
+      {
+        id: 'assistant-2',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Next.' }],
+      },
+    ])
+
+    const messages = chatSelectors.messages('session-1')(useChatStore.getState())
+    expect(messages[0]).toBe(firstMessage)
+    expect(messages[1]?.id).toBe('assistant-2')
+  })
+
+  it('reuses non-dirty tool parts during streaming updates', () => {
+    const toolOne = {
+      type: 'dynamic-tool',
+      toolCallId: 'tool-read-1',
+      toolName: 'Read',
+      state: 'output-available',
+      input: { file_path: '/tmp/readme.md' },
+      output: { text: 'Hello' },
+    } as unknown as UIMessage['parts'][number]
+    const toolTwo = {
+      type: 'dynamic-tool',
+      toolCallId: 'tool-write-1',
+      toolName: 'Write',
+      state: 'input-streaming',
+      input: { file_path: '/tmp/app.ts', content: 'old' },
+    } as unknown as UIMessage['parts'][number]
+    const message: UIMessage = {
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [toolOne, toolTwo],
+    }
+
+    useChatStore.getState().setMessages('session-1', [message])
+    const firstParts = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts
+
+    useChatStore.getState().updateMessage(
+      'session-1',
+      'assistant-1',
+      () => ({
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          structuredClone(toolOne) as UIMessage['parts'][number],
+          {
+            ...(structuredClone(toolTwo) as UIMessage['parts'][number]),
+            input: { file_path: '/tmp/app.ts', content: 'new' },
+          },
+        ],
+      }),
+      { dirtyToolCallIds: new Set(['tool-write-1']) },
+    )
+
+    const secondParts = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts
+    expect(secondParts[0]).toBe(firstParts[0])
+    expect(secondParts[1]).not.toBe(firstParts[1])
+  })
+
+  it('reuses existing tool parts when streaming appends a new part', () => {
+    const toolPart = {
+      type: 'dynamic-tool',
+      toolCallId: 'tool-read-1',
+      toolName: 'Read',
+      state: 'output-available',
+      input: { file_path: '/tmp/readme.md' },
+      output: { text: 'Hello' },
+    } as unknown as UIMessage['parts'][number]
+
+    useChatStore.getState().setMessages('session-1', [{
+      id: 'assistant-1',
+      role: 'assistant',
+      parts: [toolPart],
+    }])
+    const firstToolPart = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts[0]
+
+    useChatStore.getState().updateMessage(
+      'session-1',
+      'assistant-1',
+      () => ({
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [
+          structuredClone(toolPart) as UIMessage['parts'][number],
+          { type: 'text', text: 'Done.' },
+        ],
+      }),
+      { dirtyToolCallIds: new Set() },
+    )
+
+    const secondParts = chatSelectors.messages('session-1')(useChatStore.getState())[0].parts
+    expect(secondParts[0]).toBe(firstToolPart)
+    expect(secondParts[1]).toEqual({ type: 'text', text: 'Done.' })
+  })
+
   it('tracks passive streaming only for messages in the hydrated session', () => {
     const message: UIMessage = {
       id: 'assistant-streaming',
