@@ -481,7 +481,7 @@ export class CodexProvider implements ChatRuntime {
         threadId: parentThreadId,
         includeTurns: false,
       }) as ThreadReadResponse
-      const parentTreeId = parent.thread.sessionId
+      const parentThread = parent.thread
       const params: ThreadListParams = {
         cursor: input.cursor ?? null,
         limit: input.limit ?? 50,
@@ -497,7 +497,7 @@ export class CodexProvider implements ChatRuntime {
         runtimeKind: this.runtimeKind,
         providerSessionId: parentThreadId,
         threads: (response.data ?? [])
-          .filter(thread => thread.sessionId === parentTreeId)
+          .filter(thread => codexThreadBelongsToRuntimeParent(parentThread, thread))
           .map(projectCodexThread),
         nextCursor: response.nextCursor ?? null,
         backwardsCursor: response.backwardsCursor ?? null,
@@ -1224,7 +1224,7 @@ async function generateAndSetCodexThreadTitle(
     if (!title || input.signal.aborted) {
       return null
     }
-    await mainClient.request('thread/name/set', {
+    await setCodexThreadTitleName(mainClient, titleClient, {
       threadId: input.mainThreadId,
       name: title,
     })
@@ -1232,6 +1232,23 @@ async function generateAndSetCodexThreadTitle(
   }
   catch {
     return null
+  }
+}
+
+async function setCodexThreadTitleName(
+  primaryClient: CodexAppServerClientLike,
+  fallbackClient: CodexAppServerClientLike,
+  params: {
+    threadId: string
+    name: string
+  },
+): Promise<void> {
+  try {
+    await primaryClient.request('thread/name/set', params)
+    return
+  }
+  catch {
+    await fallbackClient.request('thread/name/set', params)
   }
 }
 
@@ -1791,9 +1808,35 @@ async function assertCodexThreadBelongsToRuntimeSession(
     threadId: parentThreadId,
     includeTurns: false,
   }) as ThreadReadResponse
-  if (parent.thread.sessionId !== thread.sessionId) {
+  if (!codexThreadBelongsToRuntimeParent(parent.thread, thread)) {
     throw codexRequestError('thread/read', `Provider thread ${thread.id} does not belong to runtime thread ${parentThreadId}`)
   }
+}
+
+function codexThreadBelongsToRuntimeParent(parentThread: Thread, thread: Thread): boolean {
+  if (parentThread.sessionId && thread.sessionId === parentThread.sessionId) {
+    return true
+  }
+  if (thread.forkedFromId === parentThread.id) {
+    return true
+  }
+  return readCodexThreadSpawnParentThreadId(thread.source) === parentThread.id
+}
+
+function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | null {
+  if (!source || typeof source !== 'object' || !('subAgent' in source)) {
+    return null
+  }
+  const subAgentSource = source.subAgent
+  if (!subAgentSource || typeof subAgentSource !== 'object' || !('thread_spawn' in subAgentSource)) {
+    return null
+  }
+  const spawn = subAgentSource.thread_spawn
+  if (!spawn || typeof spawn !== 'object') {
+    return null
+  }
+  const parentThreadId = (spawn as { parent_thread_id?: unknown }).parent_thread_id
+  return typeof parentThreadId === 'string' && parentThreadId.length > 0 ? parentThreadId : null
 }
 
 function buildCodexConfig(

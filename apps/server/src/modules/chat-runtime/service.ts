@@ -4126,6 +4126,29 @@ export function flushAllActiveRunSnapshots(): void {
   }
 }
 
+export function recoverPersistedStreamingRuns(): number {
+  const streamingRuns = db()
+    .select()
+    .from(backendRuns)
+    .where(eq(backendRuns.status, 'streaming'))
+    .all()
+
+  let recovered = 0
+  for (const run of streamingRuns) {
+    if (activeRuns.has(run.id) || activeRunIdsBySession.has(run.chatSessionId) || pendingRunSessions.has(run.chatSessionId)) {
+      continue
+    }
+    abortPersistedRun(run)
+    recovered += 1
+  }
+
+  if (recovered > 0) {
+    chatLogger.warn('recovered persisted streaming runs', { recovered })
+  }
+
+  return recovered
+}
+
 function readChunkTraceToolCallId(chunk: UIMessageChunk): string | null {
   const value = (chunk as { toolCallId?: unknown }).toolCallId
   return typeof value === 'string' ? value : null
@@ -4995,15 +5018,9 @@ async function finalizeActiveRun(
   flushFinalMessageProjection(activeRun)
   flushProjectedToolInputs(activeRun)
 
-  const snapshotResult = persistMessageSnapshot({
-    sessionId: activeRun.sessionId,
-    messageId: activeRun.messageId,
-    message: activeRun.finalMessage,
-    messageStatus: status,
-    errorText,
-  })
+  const snapshotResult = persistTerminalMessageSnapshot(activeRun, status, errorText)
   if (profile) {
-    profile.finalMessageJsonBytes = snapshotResult.messageJsonBytes
+    profile.finalMessageJsonBytes = snapshotResult?.messageJsonBytes ?? null
   }
 
   finalizeRun(activeRun, status, errorText)
@@ -5026,6 +5043,32 @@ async function finalizeActiveRun(
         message: activeRun.finalMessage,
       },
     })
+  }
+}
+
+function persistTerminalMessageSnapshot(
+  activeRun: ActiveRun,
+  status: ChatMessageStatus,
+  errorText: string | null,
+): { messageJsonBytes: number } | null {
+  try {
+    return persistMessageSnapshot({
+      sessionId: activeRun.sessionId,
+      messageId: activeRun.messageId,
+      message: activeRun.finalMessage,
+      messageStatus: status,
+      errorText,
+    })
+  }
+  catch (error) {
+    chatLogger.error('failed to persist final message snapshot', {
+      error,
+      sessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+      messageId: activeRun.messageId,
+      status,
+    })
+    return null
   }
 }
 

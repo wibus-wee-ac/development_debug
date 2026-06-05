@@ -87,20 +87,6 @@ function readQueryOptions(callIndex: number): Record<string, unknown> {
   return call!.options!
 }
 
-function createModelSwitchQuery(items: unknown[]) {
-  let releaseSetModel: (() => void) | null = null
-  const query = createAsyncQuery(items)
-  query.setModel = vi.fn().mockImplementation(() => new Promise<void>((resolve) => {
-    releaseSetModel = resolve
-  }))
-  return {
-    query,
-    releaseSetModel: () => {
-      releaseSetModel?.()
-    },
-  }
-}
-
 async function readPromptText(callIndex: number): Promise<string> {
   const content = await readPromptContent(callIndex)
   return String(content)
@@ -297,6 +283,7 @@ describe('claudeAgentProvider MCP integration', () => {
     expect(readQueryOptions(0)).toEqual(expect.objectContaining({
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
+      persistSession: false,
     }))
   })
 
@@ -513,8 +500,8 @@ describe('claudeAgentProvider MCP integration', () => {
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
   })
 
-  it('resumes the existing Claude Agent session and applies a requested model switch before sending the next prompt', async () => {
-    const { query: activeQuery, releaseSetModel } = createModelSwitchQuery([
+  it('starts a fresh Claude Agent SDK session for stored Cradle chats and applies the requested model in query options', async () => {
+    const activeQuery = createAsyncQuery([
       {
         type: 'assistant',
         session_id: 'claude-session-2',
@@ -551,8 +538,8 @@ describe('claudeAgentProvider MCP integration', () => {
     const firstChunk = stream.next()
     await vi.waitFor(() => {
       expect(sdkMocks.query).toHaveBeenCalledOnce()
-      expect(activeQuery.setModel).toHaveBeenCalledWith('claude-opus-4-20250514')
     })
+    expect(activeQuery.setModel).not.toHaveBeenCalled()
 
     const call = sdkMocks.query.mock.calls[0]?.[0] as {
       options?: { model?: string, resume?: string }
@@ -560,19 +547,11 @@ describe('claudeAgentProvider MCP integration', () => {
     } | undefined
     expect(call?.options).toEqual(expect.objectContaining({
       model: 'claude-opus-4-20250514',
-      resume: 'claude-session-1',
+      persistSession: false,
     }))
+    expect(call?.options).not.toHaveProperty('resume')
 
-    let promptDelivered = false
-    const promptNext = call!.prompt![Symbol.asyncIterator]().next().then((result) => {
-      promptDelivered = true
-      return result
-    })
-    await Promise.resolve()
-    expect(promptDelivered).toBe(false)
-
-    releaseSetModel()
-    await expect(promptNext).resolves.toEqual(expect.objectContaining({
+    await expect(call!.prompt![Symbol.asyncIterator]().next()).resolves.toEqual(expect.objectContaining({
       done: false,
       value: expect.objectContaining({
         message: { role: 'user', content: 'Continue with the same context' },
@@ -660,7 +639,7 @@ describe('claudeAgentProvider MCP integration', () => {
     const reportSessionTitle = vi.fn()
     for await (const _chunk of provider.streamTurn({
       runId: 'run-claude-agent-title-projection',
-      runtimeSession: createResumedRuntimeSession({ providerSessionId: 'claude-session-title' }),
+      runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       message: createUserMessage('Continue the session'),
       workspaceId: 'workspace-1',
@@ -768,7 +747,7 @@ describe('claudeAgentProvider MCP integration', () => {
     ].join('\n'))
   })
 
-  it('replays Cradle-local bang command history into resumed Claude Agent SDK sessions', async () => {
+  it('replays Cradle-owned history when a stored Cradle chat starts a fresh Claude Agent SDK session', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {
         type: 'assistant',
@@ -809,6 +788,8 @@ describe('claudeAgentProvider MCP integration', () => {
 
     await expect(readPromptText(0)).resolves.toBe([
       'Previous messages in this Cradle chat session:',
+      'User: Normal previous chat already lives in the SDK session',
+      '',
       'User ran local shell command: $ scc',
       '',
       'Local shell command result for `$ scc` (exit code 0, 171ms):',

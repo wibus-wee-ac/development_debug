@@ -32,6 +32,8 @@ import type {
   RuntimeMessageInput,
 } from './types'
 
+export const CLAUDE_AGENT_SDK_PERSIST_SESSION = false
+
 export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: string): ClaudeAgentUserContent {
   if (typeof message === 'string') {
     const text = message.trim()
@@ -104,11 +106,6 @@ export function buildClaudeAgentTurnContent(input: {
   ]
 }
 
-export function selectClaudeAgentResumedCradleHistory(history: UIMessage[] | undefined): UIMessage[] | undefined {
-  const entries = history?.filter(message => readBangCommandMetadata(message) || readBangResultMetadata(message)) ?? []
-  return entries.length > 0 ? entries : undefined
-}
-
 export function describeClaudeAgentUserContent(content: ClaudeAgentUserContent): string {
   if (typeof content === 'string') {
     return content
@@ -163,6 +160,7 @@ export function buildClaudeQueryOptions(input: {
     includePartialMessages: true,
     forwardSubagentText: true,
     agentProgressSummaries: true,
+    persistSession: CLAUDE_AGENT_SDK_PERSIST_SESSION,
     systemPrompt: input.input.systemPrompt
       ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.input.systemPrompt }
       : undefined,
@@ -182,7 +180,7 @@ export function buildClaudeQueryOptions(input: {
   }
   const disallowedTools = [...(config.disallowedTools ?? []), 'AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']
   queryOptions.disallowedTools = [...new Set(disallowedTools)]
-  if (input.input.runtimeSession.providerSessionId) {
+  if (CLAUDE_AGENT_SDK_PERSIST_SESSION && input.input.runtimeSession.providerSessionId) {
     queryOptions.resume = input.input.runtimeSession.providerSessionId
   }
   // Always set the model because the SDK subprocess otherwise falls back to model env vars.

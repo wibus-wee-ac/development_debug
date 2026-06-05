@@ -2,7 +2,7 @@
 
 Cradle-owned import boundary for external AI application chat sessions.
 The module may read supported Claude / Codex session files and Electron-uploaded snapshots, but it only writes Cradle-owned session, message, and import-record rows.
-Session deduplication first checks prior import records, then reads Chat Runtime backend session bindings so Claude / Codex sessions already persisted by Cradle are treated as duplicates without creating import records.
+Session deduplication first checks prior import records, then reads Chat Runtime backend session bindings so Claude / Codex sessions already persisted by Cradle are excluded from preview and treated as duplicates at import time without creating import records.
 
 ## Files
 

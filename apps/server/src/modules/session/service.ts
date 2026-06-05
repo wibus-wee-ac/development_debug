@@ -67,44 +67,44 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
     })
     .from(backendRuns)
     .where(inArray(backendRuns.chatSessionId, sessionIds))
-    .orderBy(desc(backendRuns.startedAt))
+    .orderBy(desc(backendRuns.startedAt), desc(sql`backend_runs.rowid`))
     .all()
 
   const statusesBySessionId = new Map<string, SessionStatus>()
-  const latestStatusBySessionId = new Map<string, typeof runRows[number]['status']>()
 
   for (const row of runRows) {
+    if (statusesBySessionId.has(row.chatSessionId)) {
+      continue
+    }
     if (row.status === 'streaming') {
       statusesBySessionId.set(row.chatSessionId, 'streaming')
       continue
     }
-    if (!latestStatusBySessionId.has(row.chatSessionId)) {
-      latestStatusBySessionId.set(row.chatSessionId, row.status)
+    if (row.status === 'failed') {
+      statusesBySessionId.set(row.chatSessionId, 'error')
+      continue
     }
-  }
-
-  for (const [sessionId, latestStatus] of latestStatusBySessionId) {
-    if (!statusesBySessionId.has(sessionId) && latestStatus === 'failed') {
-      statusesBySessionId.set(sessionId, 'error')
-    }
+    statusesBySessionId.set(row.chatSessionId, 'idle')
   }
 
   return statusesBySessionId
 }
 
 function readSessionStatus(sessionId: string): SessionStatus {
-  const runRows = db()
-    .select({ status: backendRuns.status })
+  const latestRun = db()
+    .select({
+      status: backendRuns.status,
+    })
     .from(backendRuns)
     .where(eq(backendRuns.chatSessionId, sessionId))
-    .orderBy(desc(backendRuns.startedAt))
-    .all()
+    .orderBy(desc(backendRuns.startedAt), desc(sql`backend_runs.rowid`))
+    .get()
 
-  if (runRows.some(row => row.status === 'streaming')) {
+  if (latestRun?.status === 'streaming') {
     return 'streaming'
   }
 
-  return runRows[0]?.status === 'failed' ? 'error' : 'idle'
+  return latestRun?.status === 'failed' ? 'error' : 'idle'
 }
 
 function toSessionView(

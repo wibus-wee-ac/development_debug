@@ -235,18 +235,42 @@ describe('external work import', () => {
     const preview = await previewResponse.json() as {
       items: Array<Record<string, unknown>>
     }
-    expect(preview.items).toHaveLength(1)
-    expect(preview.items[0]).toMatchObject({
-      sourceApp: 'claude',
-      sourceKind: 'session',
-      duplicate: true,
-      duplicateImportId: null,
-      importable: false,
-      reason: 'Already exists in Cradle',
-    })
+    expect(preview.items).toHaveLength(0)
 
     const importResponse = await postJson('/external-work-import/import', {
-      items: preview.items,
+      items: [{
+        id: 'claude:session:stale-cradle-preview',
+        sourceApp: 'claude',
+        sourceScope: 'electron-upload',
+        sourceKind: 'session',
+        title: 'Existing Claude session',
+        summary: '2 messages',
+        sourcePath: '/Users/test/.claude/projects/demo/session.jsonl',
+        externalId: 'claude-session-in-cradle',
+        fingerprint: 'stale-cradle-fingerprint',
+        workspacePath: dataDir,
+        createdAt: 1_777_777_777,
+        updatedAt: 1_777_777_778,
+        duplicate: false,
+        duplicateImportId: null,
+        importable: true,
+        reason: null,
+        payloadJson: JSON.stringify({
+          kind: 'session',
+          messages: [
+            {
+              role: 'user',
+              content: 'This already came through Cradle.',
+              createdAt: 1_777_777_777,
+            },
+            {
+              role: 'assistant',
+              content: 'Do not import it again.',
+              createdAt: 1_777_777_778,
+            },
+          ],
+        }),
+      }],
     })
     expect(importResponse.status).toBe(200)
     const imported = await importResponse.json() as {

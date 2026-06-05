@@ -26,6 +26,7 @@ class FakeCodexAppServerClient {
   threadReadPreview: string | null = null
   generatedThreadTitle: string | null = 'Generated Codex title'
   autoCompleteGeneratedTitle = true
+  threadListData: unknown[] | null = null
   threadTurnsListData: unknown[] | null = null
 
   private readonly notifications: CodexAppServerMessage[] = []
@@ -187,6 +188,8 @@ class FakeCodexAppServerClient {
         return {
           thread: {
             id: 'codex-title-thread-1',
+            sessionId: 'codex-title-thread-1',
+            forkedFromId: null,
             name: null,
             title: null,
             preview: null,
@@ -202,6 +205,8 @@ class FakeCodexAppServerClient {
       return {
         thread: {
           id: 'codex-thread-1',
+          sessionId: 'codex-thread-1',
+          forkedFromId: null,
           name: this.threadStartName,
           title: this.threadStartTitle,
           preview: this.threadStartPreview,
@@ -215,12 +220,15 @@ class FakeCodexAppServerClient {
       }
     }
     if (method === 'thread/resume') {
-      return { thread: { id: (params as { threadId?: string }).threadId ?? 'codex-thread-1', name: 'Codex resumed title' } }
+      const threadId = (params as { threadId?: string }).threadId ?? 'codex-thread-1'
+      return { thread: { id: threadId, sessionId: threadId, forkedFromId: null, name: 'Codex resumed title' } }
     }
     if (method === 'thread/fork') {
       return {
         thread: {
           id: 'codex-fork-thread-1',
+          sessionId: 'codex-thread-1',
+          forkedFromId: 'codex-thread-1',
           name: 'Codex side thread',
           modelProvider: 'openai',
           status: { type: 'active', activeFlags: [] },
@@ -231,21 +239,63 @@ class FakeCodexAppServerClient {
         reasoningEffort: 'high',
       }
     }
+    if (method === 'thread/list') {
+      return {
+        data: this.threadListData ?? [],
+        nextCursor: null,
+        backwardsCursor: null,
+      }
+    }
     if (method === 'thread/read') {
       const threadId = (params as { threadId?: string }).threadId ?? 'codex-thread-1'
       if (threadId === 'subagent-thread-1') {
         return {
           thread: {
             id: threadId,
+            sessionId: threadId,
+            forkedFromId: 'codex-thread-1',
             name: 'Review worker',
             preview: 'Review server changes',
             modelProvider: 'openai',
+            source: {
+              subAgent: {
+                thread_spawn: {
+                  parent_thread_id: 'codex-thread-1',
+                  depth: 1,
+                  agent_path: null,
+                  agent_nickname: 'reviewer-1',
+                  agent_role: 'review',
+                },
+              },
+            },
             agentNickname: 'reviewer-1',
             agentRole: 'review',
           },
         }
       }
-      return { thread: { id: threadId, name: this.threadReadName, title: this.threadReadTitle, preview: this.threadReadPreview } }
+      if (threadId === 'foreign-thread-1') {
+        return {
+          thread: {
+            id: threadId,
+            sessionId: 'foreign-session-1',
+            forkedFromId: null,
+            name: 'Foreign thread',
+            preview: 'Foreign work',
+            modelProvider: 'openai',
+            source: 'vscode',
+          },
+        }
+      }
+      return {
+        thread: {
+          id: threadId,
+          sessionId: threadId,
+          forkedFromId: null,
+          name: this.threadReadName,
+          title: this.threadReadTitle,
+          preview: this.threadReadPreview,
+        },
+      }
     }
     if (method === 'thread/turns/list') {
       return {
@@ -458,21 +508,13 @@ function createFakeChatgptJwt(input: {
 }
 
 function createProvider(client: FakeCodexAppServerClient): CodexProvider {
-  let primaryClientCreated = false
   return new CodexProvider({
     readSecret: () => 'sk-secret',
     resolveSkillPaths: () => ['/tmp/cradle-skill'],
     recordObservability: vi.fn(),
     createAppServerClient: (options) => {
-      if (!primaryClientCreated) {
-        primaryClientCreated = true
-        client.options = options
-        return client
-      }
-      const titleClient = new FakeCodexAppServerClient(options)
-      titleClient.generatedThreadTitle = client.generatedThreadTitle
-      titleClient.autoCompleteGeneratedTitle = client.autoCompleteGeneratedTitle
-      return titleClient
+      client.options = options
+      return client
     },
   })
 }
@@ -502,6 +544,56 @@ function codexOutput(apiName: string, args: unknown, result: unknown) {
   }
 }
 
+function createSubagentThreadRecord() {
+  return {
+    id: 'subagent-thread-1',
+    sessionId: 'subagent-thread-1',
+    forkedFromId: 'codex-thread-1',
+    preview: 'Review server changes',
+    ephemeral: false,
+    modelProvider: 'openai',
+    createdAt: 1,
+    updatedAt: 2,
+    status: { type: 'notLoaded' },
+    source: {
+      subAgent: {
+        thread_spawn: {
+          parent_thread_id: 'codex-thread-1',
+          depth: 1,
+          agent_path: null,
+          agent_nickname: 'reviewer-1',
+          agent_role: 'review',
+        },
+      },
+    },
+    threadSource: null,
+    agentNickname: 'reviewer-1',
+    agentRole: 'review',
+    cwd: '/tmp/cradle-workspace',
+    name: 'Review worker',
+  }
+}
+
+function createForeignThreadRecord() {
+  return {
+    id: 'foreign-thread-1',
+    sessionId: 'foreign-session-1',
+    forkedFromId: null,
+    preview: 'Foreign work',
+    ephemeral: false,
+    modelProvider: 'openai',
+    createdAt: 1,
+    updatedAt: 2,
+    status: { type: 'notLoaded' },
+    source: 'vscode',
+    threadSource: null,
+    agentNickname: null,
+    agentRole: null,
+    cwd: '/tmp/cradle-workspace',
+    name: 'Foreign worker',
+  }
+}
+
 describe('codexProvider app-server integration', () => {
   it('projects Codex app-server capabilities into provider-owned UI slots', async () => {
     const client = new FakeCodexAppServerClient({})
@@ -527,6 +619,72 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status', surfaces: ['runtimePanel'] }),
       ]),
     })
+  })
+
+  it('lists Codex subagent threads spawned from the parent runtime thread', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.threadListData = [
+      createSubagentThreadRecord(),
+      createForeignThreadRecord(),
+    ]
+    const provider = createProvider(client)
+
+    await expect(provider.listProviderThreads({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toMatchObject({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      threads: [
+        {
+          id: 'subagent-thread-1',
+          providerSessionTreeId: 'subagent-thread-1',
+          forkedFromId: 'codex-thread-1',
+          sourceKind: 'subAgentThreadSpawn',
+          agentNickname: 'reviewer-1',
+          agentRole: 'review',
+        },
+      ],
+    })
+  })
+
+  it('reads Codex subagent thread details when the subagent has its own session id', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.readProviderThread({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'subagent-thread-1',
+    })).resolves.toMatchObject({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      thread: {
+        id: 'subagent-thread-1',
+        providerSessionTreeId: 'subagent-thread-1',
+        forkedFromId: 'codex-thread-1',
+        sourceKind: 'subAgentThreadSpawn',
+        agentNickname: 'reviewer-1',
+        agentRole: 'review',
+      },
+    })
+  })
+
+  it('rejects unrelated Codex provider threads', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.readProviderThread({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'foreign-thread-1',
+    })).rejects.toThrow('Provider thread foreign-thread-1 does not belong to runtime thread codex-thread-1')
   })
 
   it('projects draft Codex capabilities without starting an app-server session', () => {
@@ -1981,10 +2139,24 @@ describe('codexProvider app-server integration', () => {
   })
 
   it('generates missing Codex thread titles and writes them back to app-server', async () => {
-    const client = new FakeCodexAppServerClient({})
-    client.threadStartName = null
-    client.generatedThreadTitle = 'Generated Codex title.'
-    const provider = createProvider(client)
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        if (clients.length === 0) {
+          client.threadStartName = null
+        }
+        else {
+          client.autoCompleteGeneratedTitle = false
+          client.generatedThreadTitle = 'Generated Codex title.'
+        }
+        clients.push(client)
+        return client
+      },
+    })
     const reportSessionTitle = vi.fn()
     const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
@@ -1999,25 +2171,22 @@ describe('codexProvider app-server integration', () => {
     const firstChunkPromise = stream.next()
 
     await vi.waitFor(() => {
-      expect(client.requests).toContainEqual({
-        method: 'thread/name/set',
-        params: { threadId: 'codex-thread-1', name: 'Generated Codex title' },
-      })
-      expect(client.requests).toContainEqual({
+      expect(clients[0]?.requests).toContainEqual({
         method: 'turn/start',
         params: expect.objectContaining({ threadId: 'codex-thread-1' }),
       })
     })
+    expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    expect(reportSessionTitle).not.toHaveBeenCalled()
 
-    expect(client.requests.map(request => request.method).slice(0, 6)).toEqual([
-      'thread/start',
-      'thread/start',
-      'turn/start',
-      'thread/unsubscribe',
-      'thread/name/set',
-      'turn/start',
-    ])
-    expect(client.requests[1]).toEqual({
+    await vi.waitFor(() => {
+      expect(clients[1]?.requests).toContainEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({ threadId: 'codex-title-thread-1' }),
+      })
+    })
+    const titleClient = clients[1]!
+    expect(titleClient.requests[0]).toEqual({
       method: 'thread/start',
       params: expect.objectContaining({
         model: 'gpt-4o-mini',
@@ -2029,7 +2198,7 @@ describe('codexProvider app-server integration', () => {
         config: expect.objectContaining({ model: 'gpt-4o-mini' }),
       }),
     })
-    expect(client.requests[2]).toEqual({
+    expect(titleClient.requests[1]).toEqual({
       method: 'turn/start',
       params: expect.objectContaining({
         threadId: 'codex-title-thread-1',
@@ -2037,9 +2206,22 @@ describe('codexProvider app-server integration', () => {
         effort: 'minimal',
       }),
     })
-    expect(reportSessionTitle).toHaveBeenCalledWith('Generated Codex title')
+    expect(clients[0]?.requests.map(request => request.method)).not.toContain('thread/name/set')
 
-    client.pushNotification({
+    titleClient.completeGeneratedTitle()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests).toContainEqual({
+        method: 'thread/name/set',
+        params: { threadId: 'codex-thread-1', name: 'Generated Codex title' },
+      })
+    })
+    expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start', 'thread/name/set'])
+    expect(titleClient.requests.map(request => request.method)).not.toContain('thread/name/set')
+    expect(reportSessionTitle).toHaveBeenCalledWith('Generated Codex title')
+    expect(titleClient.requests.map(request => request.method)).toContain('thread/unsubscribe')
+
+    clients[0]?.pushNotification({
       method: 'item/agentMessage/delta',
       params: {
         threadId: 'codex-thread-1',
@@ -2049,7 +2231,7 @@ describe('codexProvider app-server integration', () => {
       },
     })
     await firstChunkPromise
-    client.pushNotification({
+    clients[0]?.pushNotification({
       method: 'turn/completed',
       params: {
         threadId: 'codex-thread-1',

@@ -9,6 +9,7 @@ import {
   backendSessionBindings,
   messages,
   providerTargets,
+  sessions,
   workspaces,
 } from '@cradle/db'
 import { eq } from 'drizzle-orm'
@@ -403,6 +404,31 @@ describe('session capability', () => {
         expect.objectContaining({ id: sessionId, status: 'idle' }),
       )
 
+      d.insert(backendRuns)
+        .values({
+          id: randomUUID(),
+          bindingId,
+          chatSessionId: sessionId,
+          messageId: assistantMessageId,
+          origin: 'user',
+          status: 'streaming',
+          startedAt: now + 3,
+          finishedAt: null,
+        })
+        .run()
+
+      const staleStreamingGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await staleStreamingGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'idle' }),
+      )
+
+      const staleStreamingListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await staleStreamingListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, status: 'idle' })]),
+      )
+
       const cliAgentId = randomUUID()
       d.insert(agents)
         .values({
@@ -484,14 +510,133 @@ describe('session capability', () => {
         }),
       ])
     }
- finally {
+    finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
       }
- else {
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('repairs persisted streaming runs during app startup', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      const d = db()
+      const now = Math.floor(Date.now() / 1000)
+      const workspaceId = randomUUID()
+      const providerTargetId = randomUUID()
+      const sessionId = randomUUID()
+      const bindingId = randomUUID()
+      const assistantMessageId = randomUUID()
+      const runId = randomUUID()
+
+      d.insert(workspaces)
+        .values({
+          id: workspaceId,
+          name: 'Workspace',
+          path: workspaceRoot,
+        })
+        .run()
+      d.insert(providerTargets)
+        .values({
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+      d.insert(sessions)
+        .values({
+          id: sessionId,
+          workspaceId,
+          title: 'Stale Streaming Session',
+          providerTargetId,
+          runtimeKind: 'standard',
+          agentId: null,
+          configJson: '{}',
+          linkedIssueId: null,
+          pinned: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+      d.insert(messages)
+        .values({
+          id: assistantMessageId,
+          sessionId,
+          role: 'assistant',
+          status: 'streaming',
+          content: 'partial response',
+          messageJson: JSON.stringify({
+            id: assistantMessageId,
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'partial response' }],
+          }),
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+      d.insert(backendSessionBindings)
+        .values({
+          id: bindingId,
+          chatSessionId: sessionId,
+          providerTargetId,
+          runtimeKind: 'standard',
+          requestedModelId: 'gpt-test',
+        })
+        .run()
+      d.insert(backendRuns)
+        .values({
+          id: runId,
+          bindingId,
+          chatSessionId: sessionId,
+          messageId: assistantMessageId,
+          origin: 'user',
+          status: 'streaming',
+          startedAt: now,
+          finishedAt: null,
+        })
+        .run()
+
+      app = await createServerApp()
+
+      const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await getRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        status: 'idle',
+      }))
+      expect(d.select().from(backendRuns).where(eq(backendRuns.id, runId)).get()).toEqual(
+        expect.objectContaining({
+          status: 'aborted',
+          stopReason: 'response.cancelled',
+          finishedAt: expect.any(Number),
+        }),
+      )
+      expect(d.select().from(messages).where(eq(messages.id, assistantMessageId)).get()).toEqual(
+        expect.objectContaining({
+          status: 'aborted',
+          errorText: null,
+        }),
+      )
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
     }

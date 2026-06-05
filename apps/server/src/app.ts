@@ -7,7 +7,7 @@ import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
 import { createRequestLoggerPlugin } from './http/request-logger'
 import { shutdownInfra } from './infra'
-import { flushAllActiveRunSnapshots } from './modules/chat-runtime/service'
+import { flushAllActiveRunSnapshots, recoverPersistedStreamingRuns } from './modules/chat-runtime/service'
 import { shutdownTraceStreams } from './modules/chat-runtime/stream-trace'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
@@ -79,6 +79,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     adapter: node(),
     normalize: 'typebox',
   })
+  recoverPersistedStreamingRuns()
 
   app.use(
     cors({

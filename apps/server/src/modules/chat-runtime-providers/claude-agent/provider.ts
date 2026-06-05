@@ -29,10 +29,10 @@ import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from
 import {
   buildClaudeAgentTurnContent,
   buildClaudeQueryOptions,
+  CLAUDE_AGENT_SDK_PERSIST_SESSION,
   describeClaudeAgentUserContent,
   projectClaudeAgentInput,
   readClaudeAgentModelId,
-  selectClaudeAgentResumedCradleHistory,
 } from './input-projector'
 import {
   CLAUDE_AGENT_RUNTIME_CAPABILITIES,
@@ -100,7 +100,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const agentId = input.agentId ?? snapshot.agentId ?? null
     const runtimeContext = resolveClaudeAgentRuntimeContext(input.workspacePath, agentId)
-    const pendingModelSwitchId = resolveClaudeAgentPendingModelSwitchId(snapshot, input.modelId ?? null)
+    const pendingModelSwitchId = CLAUDE_AGENT_SDK_PERSIST_SESSION
+      ? resolveClaudeAgentPendingModelSwitchId(snapshot, input.modelId ?? null)
+      : null
     const nextSnapshot = writeClaudeAgentPendingModelSwitch({
       ...snapshot,
       workspacePath: input.workspacePath,
@@ -139,12 +141,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const abortController = new AbortController()
+    const shouldResumeProviderSession = CLAUDE_AGENT_SDK_PERSIST_SESSION && Boolean(input.runtimeSession.providerSessionId)
     const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
     const userContent = buildClaudeAgentTurnContent({
       userContent: projectedUserContent,
-      history: input.runtimeSession.providerSessionId
-        ? selectClaudeAgentResumedCradleHistory(input.history)
-        : input.history,
+      history: input.history,
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
@@ -186,11 +187,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const outputTextCollector = createBoundedTextCollector()
 
     try {
-      if (input.runtimeSession.providerSessionId && pendingModelSwitchId) {
+      if (shouldResumeProviderSession && pendingModelSwitchId) {
         await activeQuery.setModel(pendingModelSwitchId)
         clearClaudeAgentPendingModelSwitch(input.runtimeSession)
       }
-      if (input.runtimeSession.providerSessionId) {
+      if (shouldResumeProviderSession) {
         await this.reportClaudeSessionTitle(input.runtimeSession.providerSessionId, input.reportSessionTitle)
       }
       inputStream.push(userContent)

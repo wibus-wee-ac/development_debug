@@ -4,7 +4,7 @@ import {
   workspaces,
 } from '@cradle/db'
 import { Jieba } from '@node-rs/jieba'
-import { dict } from '@node-rs/jieba/dict'
+import { dict } from '@node-rs/jieba/dict.js'
 import { desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 

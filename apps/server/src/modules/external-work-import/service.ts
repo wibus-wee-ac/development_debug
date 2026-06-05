@@ -306,7 +306,7 @@ function cradleSessionDuplicate(input: Pick<CandidateDraft, 'sourceApp' | 'sourc
 }
 
 function applyDuplicates(drafts: CandidateDraft[]): PreviewItem[] {
-  const items = drafts.map((draft) => {
+  const items = drafts.flatMap((draft) => {
     const fingerprint = createFingerprint({
       sourceApp: draft.sourceApp,
       sourceKind: draft.sourceKind,
@@ -316,20 +316,14 @@ function applyDuplicates(drafts: CandidateDraft[]): PreviewItem[] {
     const duplicate = duplicateRecord(fingerprint)
     const item = candidateFromDraft(draft, duplicate)
     if (duplicate) {
-      return item
+      return [item]
     }
 
     if (cradleSessionDuplicate(draft)) {
-      return {
-        ...item,
-        duplicate: true,
-        duplicateImportId: null,
-        importable: false,
-        reason: CRADLE_SESSION_DUPLICATE_REASON,
-      }
+      return []
     }
 
-    return item
+    return [item]
   })
 
   const byFingerprint = new Map<string, PreviewItem>()
