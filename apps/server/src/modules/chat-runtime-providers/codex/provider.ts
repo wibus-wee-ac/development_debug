@@ -22,6 +22,16 @@ import type {
   GetCapabilitiesInput,
   GetUiSlotStatesInput,
   ProviderContext,
+  ProviderThread,
+  ProviderThreadListInput,
+  ProviderThreadListResult,
+  ProviderThreadReadInput,
+  ProviderThreadReadResult,
+  ProviderThreadSourceKind,
+  ProviderThreadTurnsInput,
+  ProviderThreadTurnsResult,
+  ProviderThreadTurn,
+  ProviderThreadEvent,
   ResumeChatSessionInput,
   RuntimePresentationCapabilities,
   RuntimeAlertSeverity,
@@ -84,12 +94,18 @@ import {
   createCodexAppServerMapperState,
   mapCodexAppServerNotificationToChunks,
 } from './app-server-mapper'
+import type { Thread } from './app-server-protocol/v2/Thread'
 import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
+import type { ThreadListParams } from './app-server-protocol/v2/ThreadListParams'
+import type { ThreadListResponse } from './app-server-protocol/v2/ThreadListResponse'
 import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResponse'
 import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
+import type { ThreadSourceKind } from './app-server-protocol/v2/ThreadSourceKind'
 import type { Turn } from './app-server-protocol/v2/Turn'
+import type { UserInput } from './app-server-protocol/v2/UserInput'
 import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
 import { resolveCodexRuntimeContext } from './runtime-context'
+import { buildCodexToolInput, buildCodexToolOutput, readCodexToolError, readCodexToolName, type CodexAppServerItem } from './tools/mapper'
 import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlots } from './ui-slots'
 
@@ -1066,6 +1082,146 @@ export class CodexProvider implements ChatRuntime {
     }
   }
 
+  async listProviderThreads(input: ProviderThreadListInput): Promise<ProviderThreadListResult> {
+    const context = await this.createProviderThreadClient(input)
+    const parentThreadId = context.runtimeSession.providerSessionId
+    if (!parentThreadId) {
+      context.client.close()
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: null,
+        threads: [],
+        nextCursor: null,
+        backwardsCursor: null,
+      }
+    }
+
+    try {
+      const parent = await context.client.request('thread/read', {
+        threadId: parentThreadId,
+        includeTurns: false,
+      }) as ThreadReadResponse
+      const parentTreeId = parent.thread.sessionId
+      const params: ThreadListParams = {
+        cursor: input.cursor ?? null,
+        limit: input.limit ?? 50,
+        sortKey: input.sortKey ?? 'updated_at',
+        sortDirection: input.sortDirection ?? 'desc',
+        sourceKinds: input.sourceKinds?.map(toCodexThreadSourceKind) ?? ['subAgentThreadSpawn'],
+        archived: input.archived ?? false,
+        cwd: context.workspacePath,
+        searchTerm: input.searchTerm ?? null,
+      }
+      const response = await context.client.request('thread/list', params) as ThreadListResponse
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: parentThreadId,
+        threads: (response.data ?? [])
+          .filter(thread => thread.sessionId === parentTreeId)
+          .map(projectCodexThread),
+        nextCursor: response.nextCursor ?? null,
+        backwardsCursor: response.backwardsCursor ?? null,
+      }
+    }
+    finally {
+      context.client.close()
+    }
+  }
+
+  async readProviderThread(input: ProviderThreadReadInput): Promise<ProviderThreadReadResult> {
+    const context = await this.createProviderThreadClient(input)
+    try {
+      const response = await context.client.request('thread/read', {
+        threadId: input.threadId,
+        includeTurns: input.includeTurns ?? false,
+      }) as ThreadReadResponse
+      await assertCodexThreadBelongsToRuntimeSession(context.client, context.runtimeSession.providerSessionId, response.thread)
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: context.runtimeSession.providerSessionId,
+        thread: projectCodexThread(response.thread),
+      }
+    }
+    finally {
+      context.client.close()
+    }
+  }
+
+  async listProviderThreadTurns(input: ProviderThreadTurnsInput): Promise<ProviderThreadTurnsResult> {
+    const context = await this.createProviderThreadClient(input)
+    try {
+      const threadResponse = await context.client.request('thread/read', {
+        threadId: input.threadId,
+        includeTurns: false,
+      }) as ThreadReadResponse
+      await assertCodexThreadBelongsToRuntimeSession(context.client, context.runtimeSession.providerSessionId, threadResponse.thread)
+      const response = await context.client.request('thread/turns/list', {
+        threadId: input.threadId,
+        cursor: input.cursor ?? null,
+        limit: input.limit ?? 50,
+        sortDirection: input.sortDirection ?? 'asc',
+        itemsView: 'full',
+      }) as ThreadTurnsListResponse
+      const turns = response.data ?? []
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: context.runtimeSession.providerSessionId,
+        threadId: input.threadId,
+        turns: turns.map(projectCodexTurn),
+        messages: projectCodexTurnsToUiMessages(input.threadId, turns),
+        nextCursor: response.nextCursor ?? null,
+        backwardsCursor: response.backwardsCursor ?? null,
+      }
+    }
+    finally {
+      context.client.close()
+    }
+  }
+
+  private async createProviderThreadClient(input: GetCapabilitiesInput): Promise<{
+    client: CodexAppServerClientLike
+    runtimeSession: RuntimeSession
+    workspacePath: string
+  }> {
+    const config = readTrustedCodexConfig(input.profile.configJson)
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (config.baseUrl && !auth.apiKey) {
+      throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
+    }
+
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const workspacePath = snapshot.workspacePath ?? input.workspacePath
+    const agentId = input.agentId ?? snapshot.agentId ?? null
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
+    const runtimeSession = input.runtimeSession.providerSessionId
+      ? input.runtimeSession
+      : await this.resumeChatSession({
+          runtimeSession: input.runtimeSession,
+          profile: input.profile,
+          workspacePath,
+          agentId,
+          modelId: input.modelId,
+        })
+
+    const client = this.createAppServerClient({
+      apiKey: auth.apiKey ?? undefined,
+      config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
+      env: buildCradleCodexAppServerEnv({
+        chatSessionId: input.runtimeSession.chatSessionId,
+        workspaceId: input.workspaceId,
+        workspacePath,
+        agentId,
+        agentHome: runtimeContext.agentHome,
+      }),
+      serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+        chatgptAuth: auth.chatgptAuth,
+        updateSecretValue: this.deps.updateSecret,
+      }),
+    })
+    await this.initializeAppServerClient(client, auth.chatgptAuth)
+    return { client, runtimeSession, workspacePath }
+  }
+
   async executeShellCommand(input: ExecuteShellCommandInput): Promise<ExecuteShellCommandResult> {
     const command = input.command.trim()
     if (!command) {
@@ -1180,6 +1336,7 @@ export class CodexProvider implements ChatRuntime {
 
     const textItemId = randomUUID()
     const mapperState = createCodexAppServerMapperState(textItemId)
+    const providerThreadMapperStates = new Map<string, ReturnType<typeof createCodexAppServerMapperState>>()
     const diagnostics = createDiagnostics()
     let activeEntry: ActiveCodexTurn | null = null
 
@@ -1271,6 +1428,7 @@ export class CodexProvider implements ChatRuntime {
         turnId,
         abortController.signal,
         () => readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
+        providerNotification => publishProviderThreadEvent(input.onProviderThreadEvent, providerNotification, providerThreadMapperStates),
       )) {
         if (abortController.signal.aborted) {
           break
@@ -3844,12 +4002,266 @@ function readRestorableCodexNativeHistory(raw: string | null | undefined): Codex
   }
 }
 
+function toCodexThreadSourceKind(kind: ProviderThreadSourceKind): ThreadSourceKind {
+  switch (kind) {
+    case 'cli':
+    case 'vscode':
+    case 'exec':
+    case 'appServer':
+    case 'subAgent':
+    case 'subAgentReview':
+    case 'subAgentCompact':
+    case 'subAgentThreadSpawn':
+    case 'subAgentOther':
+    case 'unknown':
+      return kind
+    default:
+      return 'unknown'
+  }
+}
+
+function projectCodexThread(thread: Thread): ProviderThread {
+  return {
+    id: thread.id,
+    providerSessionTreeId: thread.sessionId ?? null,
+    forkedFromId: thread.forkedFromId ?? null,
+    preview: normalizeProviderTitle(thread.preview) ?? null,
+    ephemeral: thread.ephemeral === true,
+    modelProvider: normalizeProviderTitle(thread.modelProvider) ?? null,
+    createdAt: typeof thread.createdAt === 'number' ? thread.createdAt : null,
+    updatedAt: typeof thread.updatedAt === 'number' ? thread.updatedAt : null,
+    status: readThreadStatusType(thread.status),
+    sourceKind: readCodexThreadSourceKind(thread.source),
+    source: thread.source,
+    threadSource: thread.threadSource ?? null,
+    agentNickname: normalizeProviderTitle(thread.agentNickname) ?? null,
+    agentRole: normalizeProviderTitle(thread.agentRole) ?? null,
+    name: normalizeProviderTitle(thread.name) ?? null,
+    cwd: typeof thread.cwd === 'string' ? thread.cwd : null,
+  }
+}
+
+function projectCodexTurn(turn: Turn): ProviderThreadTurn {
+  return {
+    id: turn.id,
+    status: turn.status,
+    startedAt: turn.startedAt ?? null,
+    completedAt: turn.completedAt ?? null,
+    durationMs: turn.durationMs ?? null,
+    itemsView: turn.itemsView,
+    items: turn.items,
+  }
+}
+
+function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessage[] {
+  const messages: UIMessage[] = []
+  for (const turn of turns) {
+    let assistantParts: UIMessage['parts'] = []
+    let assistantMessageIndex = 0
+    const flushAssistant = () => {
+      if (assistantParts.length === 0) {
+        return
+      }
+      messages.push({
+        id: `provider-thread:${threadId}:turn:${turn.id}:assistant:${assistantMessageIndex}`,
+        role: 'assistant',
+        parts: assistantParts,
+      })
+      assistantParts = []
+      assistantMessageIndex += 1
+    }
+
+    for (const item of turn.items) {
+      switch (item.type) {
+        case 'userMessage':
+          flushAssistant()
+          messages.push({
+            id: `provider-thread:${threadId}:turn:${turn.id}:user:${item.id}`,
+            role: 'user',
+            parts: projectCodexUserInputsToUiParts(item.content),
+          })
+          break
+        case 'agentMessage':
+          if (item.text) {
+            assistantParts.push({
+              type: 'text',
+              text: item.text,
+              state: 'done',
+            })
+          }
+          break
+        case 'reasoning': {
+          const text = [...(item.summary ?? []), ...(item.content ?? [])].join('\n')
+          if (text) {
+            assistantParts.push({
+              type: 'reasoning',
+              text,
+              state: 'done',
+            })
+          }
+          break
+        }
+        case 'hookPrompt':
+          break
+        default:
+          assistantParts.push(projectCodexToolItemToUiPart(item as CodexAppServerItem))
+          break
+      }
+    }
+    flushAssistant()
+  }
+  return messages
+}
+
+function projectCodexUserInputsToUiParts(inputs: UserInput[]): UIMessage['parts'] {
+  const parts: UIMessage['parts'] = []
+  for (const input of inputs) {
+    switch (input.type) {
+      case 'text':
+        parts.push({ type: 'text', text: input.text, state: 'done' })
+        break
+      case 'image':
+        parts.push({ type: 'file', mediaType: 'image/*', url: input.url })
+        break
+      case 'localImage':
+        parts.push({ type: 'file', mediaType: 'image/*', url: `file://${input.path}` })
+        break
+      case 'skill':
+      case 'mention':
+        parts.push({ type: 'text', text: `@${input.name}`, state: 'done' })
+        break
+    }
+  }
+  return parts.length > 0 ? parts : [{ type: 'text', text: '', state: 'done' }]
+}
+
+function projectCodexToolItemToUiPart(item: CodexAppServerItem): UIMessage['parts'][number] {
+  const errorText = readCodexToolError(item)
+  const toolName = readCodexToolName(item)
+  const input = buildCodexToolInput(item)
+  if (errorText) {
+    return {
+      type: 'dynamic-tool',
+      toolCallId: item.id,
+      toolName,
+      state: 'output-error',
+      input,
+      errorText,
+    }
+  }
+  return {
+    type: 'dynamic-tool',
+    toolCallId: item.id,
+    toolName,
+    state: 'output-available',
+    input,
+    output: buildCodexToolOutput(item),
+  }
+}
+
+function readThreadStatusType(status: Thread['status']): string {
+  return typeof status === 'object' && status !== null && 'type' in status
+    ? String(status.type)
+    : 'unknown'
+}
+
+function readCodexThreadSourceKind(source: Thread['source']): ProviderThreadSourceKind {
+  if (typeof source === 'string') {
+    switch (source) {
+      case 'cli':
+      case 'vscode':
+      case 'exec':
+      case 'appServer':
+      case 'unknown':
+        return source
+      default:
+        return 'unknown'
+    }
+  }
+  if (!source || typeof source !== 'object' || !('subAgent' in source)) {
+    return 'unknown'
+  }
+  const subAgentSource = source.subAgent
+  if (subAgentSource === 'review') {
+    return 'subAgentReview'
+  }
+  if (subAgentSource === 'compact') {
+    return 'subAgentCompact'
+  }
+  if (subAgentSource && typeof subAgentSource === 'object') {
+    if ('thread_spawn' in subAgentSource) {
+      return 'subAgentThreadSpawn'
+    }
+    if ('other' in subAgentSource) {
+      return 'subAgentOther'
+    }
+  }
+  return 'subAgent'
+}
+
+async function assertCodexThreadBelongsToRuntimeSession(
+  client: CodexAppServerClientLike,
+  parentThreadId: string | null,
+  thread: Thread,
+): Promise<void> {
+  if (!parentThreadId) {
+    throw codexRequestError('thread/read', 'Cannot read provider thread before the parent runtime thread exists')
+  }
+  const parent = await client.request('thread/read', {
+    threadId: parentThreadId,
+    includeTurns: false,
+  }) as ThreadReadResponse
+  if (parent.thread.sessionId !== thread.sessionId) {
+    throw codexRequestError('thread/read', `Provider thread ${thread.id} does not belong to runtime thread ${parentThreadId}`)
+  }
+}
+
+function publishProviderThreadEvent(
+  onProviderThreadEvent: ((event: ProviderThreadEvent) => void) | undefined,
+  notification: CodexAppServerMessage,
+  mapperStates: Map<string, ReturnType<typeof createCodexAppServerMapperState>>,
+): void {
+  if (!onProviderThreadEvent) {
+    return
+  }
+  const providerThreadId = getThreadId(notification)
+  if (!providerThreadId) {
+    return
+  }
+  try {
+    let state = mapperStates.get(providerThreadId)
+    if (!state) {
+      state = createCodexAppServerMapperState(`provider-thread:${providerThreadId}`)
+      mapperStates.set(providerThreadId, state)
+    }
+    const chunks = mapCodexAppServerNotificationToChunks(notification, state)
+    if (notification.method === 'turn/completed') {
+      chunks.push(...closeOpenCodexAppServerReasoning(state))
+      chunks.push(...closeOpenCodexAppServerText(state))
+      chunks.push({ type: 'finish', finishReason: 'stop' })
+    }
+    if (chunks.length === 0) {
+      return
+    }
+    onProviderThreadEvent({
+      providerThreadId,
+      providerTurnId: getNotificationTurnId(notification),
+      notification,
+      chunks,
+    })
+  }
+  catch {
+    // Provider-thread subscribers must not affect the parent turn stream.
+  }
+}
+
 async function* readTurnNotifications(
   client: CodexAppServerClientLike,
   threadId: string,
   initialTurnId: string | null,
   signal: AbortSignal,
   readGoal: () => CodexGoalSnapshot | null | undefined,
+  onProviderNotification?: (notification: CodexAppServerMessage) => void,
 ): AsyncGenerator<CodexAppServerMessage, void, void> {
   let turnId = initialTurnId
   let turnCompleted = false
@@ -3867,6 +4279,7 @@ async function* readTurnNotifications(
     if (!notification) {
       return
     }
+    onProviderNotification?.(notification)
     const notificationThreadId = getThreadId(notification)
     if (notificationThreadId && notificationThreadId !== threadId) {
       continue

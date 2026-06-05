@@ -615,6 +615,101 @@ export interface StreamTurnInput {
   systemPrompt?: string
   history?: UIMessage[]
   reportSessionTitle?: (title: string) => void
+  onProviderThreadEvent?: (event: ProviderThreadEvent) => void
+}
+
+export type ProviderThreadSourceKind =
+  | 'cli'
+  | 'vscode'
+  | 'exec'
+  | 'appServer'
+  | 'subAgent'
+  | 'subAgentReview'
+  | 'subAgentCompact'
+  | 'subAgentThreadSpawn'
+  | 'subAgentOther'
+  | 'unknown'
+
+export interface ProviderThreadListInput extends GetCapabilitiesInput {
+  cursor?: string | null
+  limit?: number | null
+  sortKey?: 'created_at' | 'updated_at' | null
+  sortDirection?: 'asc' | 'desc' | null
+  sourceKinds?: ProviderThreadSourceKind[] | null
+  archived?: boolean | null
+  searchTerm?: string | null
+}
+
+export interface ProviderThreadReadInput extends GetCapabilitiesInput {
+  threadId: string
+  includeTurns?: boolean
+}
+
+export interface ProviderThreadTurnsInput extends GetCapabilitiesInput {
+  threadId: string
+  cursor?: string | null
+  limit?: number | null
+  sortDirection?: 'asc' | 'desc' | null
+}
+
+export interface ProviderThreadListResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  threads: ProviderThread[]
+  nextCursor: string | null
+  backwardsCursor: string | null
+}
+
+export interface ProviderThreadReadResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  thread: ProviderThread
+}
+
+export interface ProviderThreadTurnsResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  threadId: string
+  turns: ProviderThreadTurn[]
+  messages: UIMessage[]
+  nextCursor: string | null
+  backwardsCursor: string | null
+}
+
+export interface ProviderThread {
+  id: string
+  providerSessionTreeId: string | null
+  forkedFromId: string | null
+  preview: string | null
+  ephemeral: boolean
+  modelProvider: string | null
+  createdAt: number | null
+  updatedAt: number | null
+  status: string
+  sourceKind: ProviderThreadSourceKind
+  source: unknown
+  threadSource: unknown
+  agentNickname: string | null
+  agentRole: string | null
+  name: string | null
+  cwd: string | null
+}
+
+export interface ProviderThreadTurn {
+  id: string
+  status: string
+  startedAt: number | null
+  completedAt: number | null
+  durationMs: number | null
+  itemsView: string
+  items: unknown[]
+}
+
+export interface ProviderThreadEvent {
+  providerThreadId: string
+  providerTurnId: string | null
+  notification: unknown
+  chunks: UIMessageChunk[]
 }
 
 export interface CancelTurnInput {
@@ -685,6 +780,9 @@ export interface ChatRuntime {
   getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
   getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
+  listProviderThreads?: (input: ProviderThreadListInput) => Promise<ProviderThreadListResult>
+  readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
+  listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.

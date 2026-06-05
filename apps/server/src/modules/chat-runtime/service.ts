@@ -58,6 +58,12 @@ import {
 import type {
   ChatPermissionMode,
   ChatRuntime,
+  ProviderThreadEvent,
+  ProviderThreadListInput,
+  ProviderThreadListResult,
+  ProviderThreadReadResult,
+  ProviderThreadSourceKind,
+  ProviderThreadTurnsResult,
   RuntimePresentationCapabilities,
   RuntimeProviderTargetProfile,
   RuntimeSession,
@@ -87,6 +93,7 @@ const DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS = 512 * 1024
 const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
+const DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS = 1_000
 const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
 
@@ -161,6 +168,21 @@ interface ActiveRun {
   internalContinuation?: 'codexGoal'
   runSnapshotId?: string | null
   runSnapshotSeq: number
+}
+
+interface ProviderThreadStreamState {
+  sessionId: string
+  threadId: string
+  chunks: UIMessageChunk[]
+  terminal: boolean
+}
+
+interface ResolvedRuntimeSessionContext {
+  context: SessionRunContext
+  runtimeKind: RuntimeKind
+  runtime: ChatRuntime
+  runtimeSession: RuntimeSession
+  modelId: string | undefined
 }
 
 interface ChatRuntimeProfile {
@@ -273,6 +295,7 @@ export interface ChatRuntimeSessionStatusDto {
 }
 
 type RunSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
+type ProviderThreadSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
 type StreamFlushTimer = ReturnType<typeof setTimeout>
 
 interface SerializedChatError {
@@ -356,6 +379,8 @@ const activeRuns = new Map<string, ActiveRun>()
 const activeRunIdsBySession = new Map<string, string>()
 const pendingRunSessions = new Map<string, PendingRunState>()
 const runSubscribers = new Map<string, Set<RunSubscriber>>()
+const providerThreadStreams = new Map<string, ProviderThreadStreamState>()
+const providerThreadSubscribers = new Map<string, Set<ProviderThreadSubscriber>>()
 const drainingQueueSessionIds = new Set<string>()
 const requestedQueueDrainSessionIds = new Set<string>()
 const codexGoalContinuationFailures = new Map<string, number>()
@@ -1932,6 +1957,158 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
   }
 }
 
+export async function listProviderThreads(
+  sessionId: string,
+  query: {
+    cursor?: string | null
+    limit?: number | null
+    sortKey?: 'created_at' | 'updated_at' | null
+    sortDirection?: 'asc' | 'desc' | null
+    sourceKinds?: ProviderThreadSourceKind[] | null
+    archived?: boolean | null
+    searchTerm?: string | null
+  } = {},
+): Promise<ProviderThreadListResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.listProviderThreads) {
+    return {
+      runtimeKind: resolved.runtimeKind,
+      providerSessionId: resolved.runtimeSession.providerSessionId,
+      threads: [],
+      nextCursor: null,
+      backwardsCursor: null,
+    }
+  }
+  return await resolved.runtime.listProviderThreads({
+    ...buildRuntimeProviderInput(resolved),
+    ...query,
+  } satisfies ProviderThreadListInput)
+}
+
+export async function readProviderThread(sessionId: string, threadId: string): Promise<ProviderThreadReadResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.readProviderThread) {
+    throw new AppError({
+      code: 'chat_provider_threads_not_supported',
+      status: 501,
+      message: 'Runtime does not support provider thread reads',
+      details: { sessionId, runtimeKind: resolved.runtimeKind },
+    })
+  }
+  return await resolved.runtime.readProviderThread({
+    ...buildRuntimeProviderInput(resolved),
+    threadId,
+    includeTurns: false,
+  })
+}
+
+export async function listProviderThreadTurns(
+  sessionId: string,
+  threadId: string,
+  query: {
+    cursor?: string | null
+    limit?: number | null
+    sortDirection?: 'asc' | 'desc' | null
+  } = {},
+): Promise<ProviderThreadTurnsResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.listProviderThreadTurns) {
+    throw new AppError({
+      code: 'chat_provider_threads_not_supported',
+      status: 501,
+      message: 'Runtime does not support provider thread turns',
+      details: { sessionId, runtimeKind: resolved.runtimeKind },
+    })
+  }
+  return await resolved.runtime.listProviderThreadTurns({
+    ...buildRuntimeProviderInput(resolved),
+    threadId,
+    ...query,
+  })
+}
+
+async function resolveRuntimeSessionContext(sessionId: string): Promise<ResolvedRuntimeSessionContext> {
+  const context = getSessionRunContext(sessionId)
+  if (!context) {
+    assertStoredSession(sessionId)
+    throw new AppError({
+      code: 'chat_session_not_runnable',
+      status: 404,
+      message: 'Chat session runtime context was not found',
+      details: { sessionId },
+    })
+  }
+
+  const registry = getRuntimeRegistry()
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  const runtime = registry.get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: `Runtime is not available: ${runtimeKind}`,
+    })
+  }
+
+  const activeRunId = activeRunIdsBySession.get(sessionId)
+  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
+  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
+    return {
+      context,
+      runtimeKind,
+      runtime: activeRun.runtime,
+      runtimeSession: activeRun.runtimeSession,
+      modelId: readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
+    }
+  }
+
+  const binding = getBinding(sessionId)
+  if (!binding) {
+    throw new AppError({
+      code: 'chat_runtime_session_not_started',
+      status: 404,
+      message: 'Chat session has no provider runtime session',
+      details: { sessionId, runtimeKind },
+    })
+  }
+
+  const modelId = readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined
+  const runtimeSession = await runtime.resumeChatSession({
+    runtimeSession: {
+      id: sessionId,
+      chatSessionId: sessionId,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind,
+      providerSessionId: binding.backendSessionId,
+      providerStateSnapshot: binding.backendStateSnapshot,
+    },
+    profile: context.profile,
+    workspacePath: context.workspacePath,
+    agentId: context.session.agentId,
+    modelId,
+  })
+
+  return {
+    context,
+    runtimeKind,
+    runtime,
+    runtimeSession,
+    modelId,
+  }
+}
+
+function buildRuntimeProviderInput(resolved: ResolvedRuntimeSessionContext) {
+  return {
+    runtimeSession: resolved.runtimeSession,
+    profile: resolved.context.profile,
+    workspaceId: resolved.context.session.workspaceId,
+    workspacePath: resolved.context.workspacePath,
+    agentId: resolved.context.session.agentId,
+    modelId: resolved.modelId,
+    systemPrompt: resolveSessionSystemPrompt(resolved.context.session),
+  }
+}
+
 export function getCodexAppServerCapabilityManifest(): CodexAppServerCapabilityManifest {
   return getCodexAppServerCapabilities()
 }
@@ -2489,6 +2666,11 @@ export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Arr
   return openRunEventStream(runId)
 }
 
+export function openProviderThreadStream(sessionId: string, threadId: string): ReadableStream<Uint8Array> {
+  assertStoredSession(sessionId)
+  return openProviderThreadEventStream(sessionId, threadId)
+}
+
 export async function abortRun(runId: string): Promise<void> {
   const active = activeRuns.get(runId)
   if (!active) {
@@ -2702,6 +2884,140 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
         current.delete(subscriber)
         if (current.size === 0) {
           runSubscribers.delete(runId)
+        }
+      }
+    },
+    cancel: () => {
+      closed = true
+      if (flushTimer) {
+        clearTimeout(flushTimer)
+        flushTimer = null
+      }
+      queuedChunk = null
+      unsubscribe()
+    },
+  })
+}
+
+function openProviderThreadEventStream(sessionId: string, threadId: string): ReadableStream<Uint8Array> {
+  const key = providerThreadStreamKey(sessionId, threadId)
+  const state = providerThreadStreams.get(key)
+  const encoder = new TextEncoder()
+  let unsubscribe = () => {}
+  let queuedChunk: UIMessageChunk | null = null
+  let flushTimer: StreamFlushTimer | null = null
+  let closed = false
+  const clearQueuedFlush = () => {
+    if (flushTimer) {
+      clearTimeout(flushTimer)
+      flushTimer = null
+    }
+    queuedChunk = null
+  }
+
+  return new ReadableStream<Uint8Array>({
+    start: (controller) => {
+      const clearFlushTimer = () => {
+        if (flushTimer) {
+          clearTimeout(flushTimer)
+          flushTimer = null
+        }
+      }
+
+      const closeStream = (flushQueued: boolean) => {
+        if (closed) {
+          return
+        }
+        if (flushQueued) {
+          clearFlushTimer()
+          flushQueuedChunk()
+        }
+        closed = true
+        clearQueuedFlush()
+        unsubscribe()
+        controller.close()
+      }
+
+      const writeEncodedChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+        if (closed) {
+          return
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+        if (terminal) {
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          closeStream(false)
+        }
+      }
+
+      const flushQueuedChunk = () => {
+        flushTimer = null
+        const chunk = queuedChunk
+        queuedChunk = null
+        if (chunk) {
+          writeEncodedChunk(chunk, false)
+        }
+      }
+
+      const scheduleFlush = () => {
+        flushTimer ??= setTimeout(flushQueuedChunk, 0)
+      }
+
+      const writeChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+        if (closed) {
+          return
+        }
+        if (terminal) {
+          clearFlushTimer()
+          flushQueuedChunk()
+          writeEncodedChunk(chunk, true)
+          return
+        }
+        if (!queuedChunk) {
+          queuedChunk = chunk
+          scheduleFlush()
+          return
+        }
+        const merged = mergeSseStreamChunk(queuedChunk, chunk)
+        if (merged) {
+          queuedChunk = merged
+          scheduleFlush()
+          return
+        }
+        flushQueuedChunk()
+        queuedChunk = chunk
+        scheduleFlush()
+      }
+
+      for (const chunk of state?.chunks ?? []) {
+        const terminal = isTerminalUIMessageChunk(chunk)
+        writeChunk(chunk, terminal)
+        if (terminal) {
+          return
+        }
+      }
+
+      if (state?.terminal) {
+        closeStream(true)
+        return
+      }
+      if (!state && !activeRunIdsBySession.has(sessionId)) {
+        closeStream(true)
+        return
+      }
+
+      const subscribers = providerThreadSubscribers.get(key) ?? new Set<ProviderThreadSubscriber>()
+      const subscriber: ProviderThreadSubscriber = (chunk, terminal) => writeChunk(chunk, terminal)
+      subscribers.add(subscriber)
+      providerThreadSubscribers.set(key, subscribers)
+
+      unsubscribe = () => {
+        const current = providerThreadSubscribers.get(key)
+        if (!current) {
+          return
+        }
+        current.delete(subscriber)
+        if (current.size === 0) {
+          providerThreadSubscribers.delete(key)
         }
       }
     },
@@ -3267,6 +3583,7 @@ async function executeRun(
       history: input.history,
       originalMessages: input.originalMessages,
       reportSessionTitle: title => reportRuntimeSessionTitle({ sessionId: activeRun.sessionId, title }),
+      onProviderThreadEvent: event => publishActiveProviderThreadEvent(activeRun, event),
     })) {
       if (activeRun.terminalStatus) {
         break
@@ -3898,6 +4215,71 @@ function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, term
   if (terminal || subscribers.size === 0) {
     runSubscribers.delete(activeRun.runId)
   }
+}
+
+function publishActiveProviderThreadEvent(activeRun: ActiveRun, event: ProviderThreadEvent): void {
+  for (const chunk of event.chunks) {
+    publishProviderThreadChunk({
+      sessionId: activeRun.sessionId,
+      threadId: event.providerThreadId,
+      chunk,
+      terminal: isTerminalUIMessageChunk(chunk),
+    })
+  }
+}
+
+function publishProviderThreadChunk(input: {
+  sessionId: string
+  threadId: string
+  chunk: UIMessageChunk
+  terminal: boolean
+}): void {
+  const key = providerThreadStreamKey(input.sessionId, input.threadId)
+  const state = providerThreadStreams.get(key) ?? {
+    sessionId: input.sessionId,
+    threadId: input.threadId,
+    chunks: [],
+    terminal: false,
+  }
+  providerThreadStreams.set(key, state)
+
+  if (!state.terminal) {
+    state.chunks.push(input.chunk)
+    while (state.chunks.length > providerThreadReplayChunkLimit()) {
+      state.chunks.shift()
+    }
+  }
+  if (input.terminal) {
+    state.terminal = true
+  }
+
+  const subscribers = providerThreadSubscribers.get(key)
+  if (!subscribers) {
+    return
+  }
+  const dead: ProviderThreadSubscriber[] = []
+  for (const subscriber of subscribers) {
+    try {
+      subscriber(input.chunk, input.terminal)
+    }
+    catch {
+      dead.push(subscriber)
+    }
+  }
+  for (const subscriber of dead) {
+    subscribers.delete(subscriber)
+  }
+  if (input.terminal || subscribers.size === 0) {
+    providerThreadSubscribers.delete(key)
+  }
+}
+
+function providerThreadStreamKey(sessionId: string, threadId: string): string {
+  return `${sessionId}:${threadId}`
+}
+
+function providerThreadReplayChunkLimit(): number {
+  return readPositiveIntegerEnv('CRADLE_CHAT_PROVIDER_THREAD_REPLAY_CHUNKS', DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS)
 }
 
 function projectFinalMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {

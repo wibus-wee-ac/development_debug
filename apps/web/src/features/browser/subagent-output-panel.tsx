@@ -1,15 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import type { UIMessage } from 'ai'
 import { BotIcon, CheckCircle2Icon, LoaderCircleIcon, XCircleIcon } from 'lucide-react'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewUiSlotState } from '../chat/chat-capabilities'
-import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from '../chat/chat-capabilities'
-import { readSubagentOutputMessage } from '../chat/chat-tool-entities'
-import type { RuntimeSessionStatusKind } from '../chat/runtime-session-status-command'
+import { ChatStreamingHandler } from '../chat/chat-streaming-handler'
+import { MessageBubble } from '../chat/message-bubble'
+import {
+  getProviderThread,
+  getProviderThreadTurns,
+  providerThreadQueryKey,
+  providerThreadTurnsQueryKey,
+  subscribeProviderThreadStream,
+} from '../chat/provider-thread-command'
+import { buildUIMessageChunkStreamFromResponse } from '../chat/sse-chat-transport'
 
 interface SubagentOutputPanelProps {
   sessionId: string
@@ -24,64 +29,150 @@ export function SubagentOutputPanel({
   agentName,
   agentRole,
 }: SubagentOutputPanelProps) {
-  const { data: runtimeUiSlotStates } = useQuery({
-    queryKey: runtimeUiSlotStatesQueryKey(sessionId, null),
-    queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId, signal),
-    enabled: !!sessionId,
-    staleTime: 2_000,
-    refetchInterval: 2_000,
+  const viewSessionId = useMemo(
+    () => buildProviderThreadViewSessionId(sessionId, threadId),
+    [sessionId, threadId],
+  )
+
+  const threadQuery = useQuery({
+    queryKey: providerThreadQueryKey(sessionId, threadId),
+    queryFn: ({ signal }) => getProviderThread(sessionId, threadId, signal),
+    enabled: !!sessionId && !!threadId,
     retry: false,
   })
 
-  const crewState = runtimeUiSlotStates?.states.find(
-    (s): s is ChatRuntimeCrewUiSlotState => s.kind === 'crew',
-  ) ?? null
+  const turnsQuery = useQuery({
+    queryKey: providerThreadTurnsQueryKey(sessionId, threadId),
+    queryFn: ({ signal }) => getProviderThreadTurns(sessionId, threadId, signal),
+    enabled: !!sessionId && !!threadId,
+    retry: false,
+  })
 
-  const agent = crewState
-    ? findAgentByThreadId(crewState, threadId)
-    : null
+  useEffect(() => {
+    const messages = turnsQuery.data?.messages
+    if (!messages) {
+      return
+    }
+    const store = useChatStore.getState()
+    const hydratedIds = new Set(messages.map(message => message.id))
+    const liveMessages = (store.messagesMap.get(viewSessionId) ?? [])
+      .filter(message => !hydratedIds.has(message.id))
+    store.setMessages(viewSessionId, [...messages, ...liveMessages])
+  }, [turnsQuery.data?.messages, viewSessionId])
 
-  const messages = useChatStore(
-    sessionId ? chatSelectors.messages(sessionId) : () => [] as UIMessage[],
-  )
+  useEffect(() => {
+    if (!sessionId || !threadId) {
+      return
+    }
+    const controller = new AbortController()
+    const placeholderMessageId = `provider-thread:${sessionId}:${threadId}:live`
+    const handler = new ChatStreamingHandler(
+      viewSessionId,
+      placeholderMessageId,
+      performance.now(),
+      { mode: 'passive', useStoredMessageSnapshot: false },
+    )
+    handler.start(controller)
 
-  const subagentOutput = useMemo(() => {
-    return findSubagentOutputFromMessages(messages, threadId)
-  }, [messages, threadId])
+    void (async () => {
+      try {
+        const response = await subscribeProviderThreadStream({
+          sessionId,
+          threadId,
+          signal: controller.signal,
+        })
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          throw new Error(`Failed to subscribe provider thread stream: ${response.status} ${body}`)
+        }
+        const stream = buildUIMessageChunkStreamFromResponse(response, viewSessionId)
+        await handler.consume(stream)
+        handler.finish()
+      }
+      catch (error) {
+        if (controller.signal.aborted) {
+          return
+        }
+        handler.fail(error instanceof Error ? error.message : 'Provider thread stream failed')
+      }
+    })()
 
-  const status = agent?.status ?? 'pendingInit'
+    return () => {
+      controller.abort()
+      handler.dispose()
+    }
+  }, [sessionId, threadId, viewSessionId])
+
+  const messages = useChatStore(chatSelectors.messages(viewSessionId))
+  const thread = threadQuery.data?.thread ?? null
+  const displayName = thread?.agentNickname ?? thread?.name ?? agentName
+  const displayRole = thread?.agentRole ?? agentRole
+  const status = thread?.status ?? (turnsQuery.isLoading ? 'active' : 'idle')
   const statusLabel = formatAgentStatus(status)
+  const hasError = threadQuery.isError || turnsQuery.isError
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden" data-testid="subagent-output-panel">
-      {/* Agent header */}
       <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 py-2">
         <div className="flex size-6 shrink-0 items-center rounded-md bg-primary/10">
-          <BotIcon className="size-3.5 mx-auto text-primary" />
+          <BotIcon className="mx-auto size-3.5 text-primary" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-foreground">{agentName}</p>
-          {agentRole && (
-            <p className="truncate text-[10px] text-muted-foreground">{agentRole}</p>
+          <p className="truncate text-xs font-medium text-foreground">{displayName}</p>
+          {displayRole && (
+            <p className="truncate text-[10px] text-muted-foreground">{displayRole}</p>
           )}
         </div>
-        <AgentStatusBadge status={status} label={statusLabel} />
+        <AgentStatusBadge status={hasError ? 'errored' : status} label={hasError ? 'Error' : statusLabel} />
       </div>
 
-      {/* Agent output */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {subagentOutput ? (
-          <SubagentMessageParts message={subagentOutput} />
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {hasError ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground/60">
+            <XCircleIcon className="size-8 text-destructive/70" />
+            <p className="text-[11px]">Unable to load subagent thread</p>
+          </div>
+        ) : messages.length > 0 ? (
+          <div className="space-y-3">
+            {messages.map(message => (
+              <ProviderThreadMessage
+                key={message.id}
+                viewSessionId={viewSessionId}
+                messageId={message.id}
+              />
+            ))}
+          </div>
         ) : (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground/60">
             <BotIcon className="size-8 opacity-40" />
             <p className="text-[11px]">
-              {status === 'running' ? 'Waiting for output...' : 'No output yet'}
+              {turnsQuery.isLoading ? 'Loading output...' : 'No output yet'}
             </p>
           </div>
         )}
       </div>
     </div>
+  )
+}
+
+function ProviderThreadMessage({
+  viewSessionId,
+  messageId,
+}: {
+  viewSessionId: string
+  messageId: string
+}) {
+  const message = useChatStore(chatSelectors.message(viewSessionId, messageId))
+  const isStreaming = useChatStore(chatSelectors.isVisibleStreamingMessage(viewSessionId, messageId))
+  if (!message) {
+    return null
+  }
+  return (
+    <MessageBubble
+      message={message}
+      isStreaming={isStreaming}
+      executionDetailsDefaultOpen={false}
+    />
   )
 }
 
@@ -111,93 +202,16 @@ function AgentStatusBadge({
   )
 }
 
-function SubagentMessageParts({ message }: { message: UIMessage }) {
-  const parts = message.parts ?? []
-  if (parts.length === 0) {
-    return (
-      <p className="text-[11px] text-muted-foreground/60">No content</p>
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      {parts.map((part, index) => {
-        if (part.type === 'text') {
-          return (
-            <div
-              key={index}
-              className="whitespace-pre-wrap break-words text-xs text-foreground"
-            >
-              {(part as { text: string }).text}
-            </div>
-          )
-        }
-
-        if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
-          const toolPart = part as {
-            type: string
-            toolCallId: string
-            toolName?: string
-            state?: string
-            input?: unknown
-            output?: unknown
-          }
-          return (
-            <div
-              key={index}
-              className="rounded-md border border-border/50 bg-muted/30 px-2 py-1.5"
-            >
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <span className="font-medium text-foreground">
-                  {toolPart.toolName ?? toolPart.type.replace(/^tool-/, '')}
-                </span>
-                {toolPart.state && (
-                  <span className="text-[9px] opacity-60">({toolPart.state})</span>
-                )}
-              </div>
-            </div>
-          )
-        }
-
-        return null
-      })}
-    </div>
-  )
-}
-
-function findAgentByThreadId(
-  crewState: ChatRuntimeCrewUiSlotState,
-  threadId: string,
-): ChatRuntimeCrewAgentItem | null {
-  for (const call of crewState.calls ?? []) {
-    for (const agent of call.agents ?? []) {
-      if (agent.threadId === threadId) {
-        return agent
-      }
-    }
-  }
-  return null
-}
-
-function findSubagentOutputFromMessages(
-  messages: UIMessage[],
-  threadId: string,
-): UIMessage | null {
-  for (const msg of messages) {
-    for (const part of msg.parts ?? []) {
-      if (!('output' in part)) continue
-      const output = (part as { output?: unknown }).output
-      const subagentMsg = readSubagentOutputMessage(output)
-      if (subagentMsg && subagentMsg.id?.includes(threadId)) {
-        return subagentMsg
-      }
-    }
-  }
-  return null
+function buildProviderThreadViewSessionId(sessionId: string, threadId: string): string {
+  return `provider-thread:${sessionId}:${threadId}`
 }
 
 function formatAgentStatus(status: string): string {
   const labels: Record<string, string> = {
+    active: 'Running',
+    idle: 'Idle',
+    notLoaded: 'Pending',
+    systemError: 'Error',
     pendingInit: 'Pending',
     running: 'Running',
     interrupted: 'Interrupted',
@@ -210,8 +224,8 @@ function formatAgentStatus(status: string): string {
 }
 
 function getAgentStatusTone(status: string): 'active' | 'success' | 'error' | 'idle' {
-  if (status === 'running') return 'active'
+  if (status === 'active' || status === 'running') return 'active'
   if (status === 'completed') return 'success'
-  if (status === 'errored' || status === 'interrupted') return 'error'
+  if (status === 'errored' || status === 'interrupted' || status === 'systemError') return 'error'
   return 'idle'
 }

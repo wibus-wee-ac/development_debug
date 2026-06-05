@@ -1,7 +1,29 @@
 import { Elysia } from 'elysia'
 
+import type { ProviderThreadSourceKind } from './runtime-provider-types'
 import { ChatRuntimeModel } from './model'
 import * as ChatRuntime from './service'
+
+const PROVIDER_THREAD_SOURCE_KINDS = new Set<ProviderThreadSourceKind>([
+  'cli',
+  'vscode',
+  'exec',
+  'appServer',
+  'subAgent',
+  'subAgentReview',
+  'subAgentCompact',
+  'subAgentThreadSpawn',
+  'subAgentOther',
+  'unknown',
+])
+
+function parseProviderThreadSourceKinds(value: string | undefined): ProviderThreadSourceKind[] | undefined {
+  const kinds = value
+    ?.split(',')
+    .map(kind => kind.trim())
+    .filter((kind): kind is ProviderThreadSourceKind => PROVIDER_THREAD_SOURCE_KINDS.has(kind as ProviderThreadSourceKind))
+  return kinds && kinds.length > 0 ? kinds : undefined
+}
 
 export const chatRuntime = new Elysia({
   prefix: '/chat',
@@ -207,6 +229,78 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.uiSlotStates },
+  })
+  // GET /chat/sessions/:sessionId/provider-threads -> provider-native subagent/thread list
+  .get('/sessions/:sessionId/provider-threads', ({ params, query }) => {
+    return ChatRuntime.listProviderThreads(params.sessionId, {
+      cursor: query.cursor ?? null,
+      limit: query.limit ?? null,
+      sortKey: query.sortKey ?? null,
+      sortDirection: query.sortDirection ?? null,
+      sourceKinds: parseProviderThreadSourceKinds(query.sourceKinds) ?? null,
+      archived: query.archived ?? null,
+      searchTerm: query.searchTerm ?? null,
+    })
+  }, {
+    detail: {
+      summary: 'List provider-native threads for a chat session',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    query: ChatRuntimeModel.providerThreadsQuery,
+    response: { 200: ChatRuntimeModel.providerThreads },
+  })
+  // GET /chat/sessions/:sessionId/provider-threads/:threadId -> provider-native thread metadata
+  .get('/sessions/:sessionId/provider-threads/:threadId', ({ params }) => {
+    return ChatRuntime.readProviderThread(params.sessionId, params.threadId)
+  }, {
+    detail: {
+      summary: 'Read provider-native thread metadata for a chat session',
+    },
+    params: ChatRuntimeModel.providerThreadParams,
+    response: { 200: ChatRuntimeModel.providerThread },
+  })
+  // GET /chat/sessions/:sessionId/provider-threads/:threadId/turns -> provider-native thread turns and projected UI messages
+  .get('/sessions/:sessionId/provider-threads/:threadId/turns', ({ params, query }) => {
+    return ChatRuntime.listProviderThreadTurns(params.sessionId, params.threadId, {
+      cursor: query.cursor ?? null,
+      limit: query.limit ?? null,
+      sortDirection: query.sortDirection ?? null,
+    })
+  }, {
+    detail: {
+      summary: 'List provider-native thread turns for a chat session',
+    },
+    params: ChatRuntimeModel.providerThreadParams,
+    query: ChatRuntimeModel.providerThreadTurnsQuery,
+    response: { 200: ChatRuntimeModel.providerThreadTurns },
+  })
+  // GET /chat/sessions/:sessionId/provider-threads/:threadId/stream -> live provider-native thread AI SDK chunk stream
+  .get('/sessions/:sessionId/provider-threads/:threadId/stream', ({ params }) => {
+    const stream = ChatRuntime.openProviderThreadStream(params.sessionId, params.threadId)
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      },
+    })
+  }, {
+    detail: {
+      summary: 'Subscribe to provider-native thread live stream',
+      responses: {
+        200: {
+          description: 'AI SDK UIMessageChunk SSE stream for a provider-native thread such as a Codex subagent thread.',
+          content: {
+            'text/event-stream': {
+              schema: {
+                type: 'string',
+              },
+            },
+          },
+        },
+      },
+    },
+    params: ChatRuntimeModel.providerThreadParams,
   })
   // GET /chat/sessions/:sessionId/runtime-status → server-owned runtime session/run status
   .get('/sessions/:sessionId/runtime-status', ({ params }) => {

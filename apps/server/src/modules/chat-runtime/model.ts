@@ -4,7 +4,7 @@ const runtimeKindSchema = t.String({ minLength: 1 })
 
 const uiMessageSchema = t.Object({
   id: t.String(),
-  role: t.Union([t.Literal('user'), t.Literal('assistant')]),
+  role: t.Union([t.Literal('system'), t.Literal('user'), t.Literal('assistant')]),
   parts: t.Array(t.Object({
     type: t.String(),
   }, { additionalProperties: t.Any() })),
@@ -678,6 +678,48 @@ const runtimeStatusSchema = t.Union([
   t.Literal('cancelling'),
 ])
 
+const providerThreadSourceKindSchema = t.Union([
+  t.Literal('cli'),
+  t.Literal('vscode'),
+  t.Literal('exec'),
+  t.Literal('appServer'),
+  t.Literal('subAgent'),
+  t.Literal('subAgentReview'),
+  t.Literal('subAgentCompact'),
+  t.Literal('subAgentThreadSpawn'),
+  t.Literal('subAgentOther'),
+  t.Literal('unknown'),
+])
+
+const providerThreadSchema = t.Object({
+  id: t.String(),
+  providerSessionTreeId: t.Union([t.String(), t.Null()]),
+  forkedFromId: t.Union([t.String(), t.Null()]),
+  preview: t.Union([t.String(), t.Null()]),
+  ephemeral: t.Boolean(),
+  modelProvider: t.Union([t.String(), t.Null()]),
+  createdAt: t.Union([t.Number(), t.Null()]),
+  updatedAt: t.Union([t.Number(), t.Null()]),
+  status: t.String(),
+  sourceKind: providerThreadSourceKindSchema,
+  source: t.Any(),
+  threadSource: t.Any(),
+  agentNickname: t.Union([t.String(), t.Null()]),
+  agentRole: t.Union([t.String(), t.Null()]),
+  name: t.Union([t.String(), t.Null()]),
+  cwd: t.Union([t.String(), t.Null()]),
+})
+
+const providerThreadTurnSchema = t.Object({
+  id: t.String(),
+  status: t.String(),
+  startedAt: t.Union([t.Number(), t.Null()]),
+  completedAt: t.Union([t.Number(), t.Null()]),
+  durationMs: t.Union([t.Number(), t.Null()]),
+  itemsView: t.String(),
+  items: t.Array(t.Any()),
+})
+
 const runtimeSessionRunSchema = t.Object({
   runId: t.String(),
   messageId: t.Union([t.String(), t.Null()]),
@@ -717,8 +759,29 @@ export const ChatRuntimeModel = {
     runId: t.String({ minLength: 1 }),
   }),
 
+  providerThreadParams: t.Object({
+    sessionId: t.String({ minLength: 1 }),
+    threadId: t.String({ minLength: 1 }),
+  }),
+
   draftRuntimeCapabilitiesQuery: t.Object({
     runtimeKind: runtimeKindSchema,
+  }),
+
+  providerThreadsQuery: t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.Number()),
+    sortKey: t.Optional(t.Union([t.Literal('created_at'), t.Literal('updated_at')])),
+    sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
+    sourceKinds: t.Optional(t.String()),
+    archived: t.Optional(t.Boolean()),
+    searchTerm: t.Optional(t.String()),
+  }),
+
+  providerThreadTurnsQuery: t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.Number()),
+    sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
   }),
 
   queueItemParams: t.Object({
@@ -837,6 +900,30 @@ export const ChatRuntimeModel = {
       pending: t.Number(),
       running: t.Number(),
     }),
+  }),
+
+  providerThreads: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    threads: t.Array(providerThreadSchema),
+    nextCursor: t.Union([t.String(), t.Null()]),
+    backwardsCursor: t.Union([t.String(), t.Null()]),
+  }),
+
+  providerThread: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    thread: providerThreadSchema,
+  }),
+
+  providerThreadTurns: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    threadId: t.String(),
+    turns: t.Array(providerThreadTurnSchema),
+    messages: t.Array(uiMessageSchema),
+    nextCursor: t.Union([t.String(), t.Null()]),
+    backwardsCursor: t.Union([t.String(), t.Null()]),
   }),
 
   chatMessages: t.Array(chatMessageSnapshotSchema),
