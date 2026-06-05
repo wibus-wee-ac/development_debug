@@ -1,6 +1,7 @@
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
 
+import type { MessageReconcileChange } from '~/store/chat'
 import { useChatStore } from '~/store/chat'
 
 import { emitChatRunSettled } from './sse-chat-transport'
@@ -15,7 +16,8 @@ export class ChatStreamingHandler {
   private readonly useStoredMessageSnapshot: boolean
   private activeMessageId: string | null = null
   private terminated = false
-  private pendingMessages = new Map<string, { message: UIMessage, receivedAtMs: number }>()
+  private pendingMessages = new Map<string, { message: UIMessage, receivedAtMs: number, dirtyToolCallIds: Set<string> }>()
+  private pendingDirtyToolCallIds = new Set<string>()
   private rafId: number | null = null
   private flushTimerId: number | null = null
   private microtaskFlushQueued = false
@@ -64,7 +66,7 @@ export class ChatStreamingHandler {
         role: 'assistant',
         parts: [],
       },
-      stream,
+      stream: this.trackStreamChanges(stream),
       terminateOnError: true,
     })) {
       this.applyMessageSnapshot(message)
@@ -118,6 +120,7 @@ export class ChatStreamingHandler {
     }
     this.microtaskFlushQueued = false
     this.pendingMessages.clear()
+    this.pendingDirtyToolCallIds.clear()
   }
 
   private flushPendingMessages(): void {
@@ -135,13 +138,14 @@ export class ChatStreamingHandler {
       return
     }
     const store = useChatStore.getState()
-    for (const [messageId, { message, receivedAtMs }] of this.pendingMessages) {
+    for (const [messageId, { message, receivedAtMs, dirtyToolCallIds }] of this.pendingMessages) {
       store.markRunFirstEvent(messageId, receivedAtMs)
       if (hasVisibleContent(message)) {
         store.markRunFirstContent(messageId, receivedAtMs)
       }
       const displayMessage = store.projectStreamingMessageForDisplay(this.sessionId, message)
-      store.updateMessage(this.sessionId, displayMessage.id, () => displayMessage)
+      const reconcileChange: MessageReconcileChange = { dirtyToolCallIds }
+      store.updateMessage(this.sessionId, displayMessage.id, () => displayMessage, reconcileChange)
     }
     this.pendingMessages.clear()
     this.lastFlushAtMs = performance.now()
@@ -164,7 +168,13 @@ export class ChatStreamingHandler {
     const receivedAtMs = performance.now()
     this.activateServerMessage(message.id)
 
-    this.pendingMessages.set(message.id, { message, receivedAtMs })
+    const current = this.pendingMessages.get(message.id)
+    const dirtyToolCallIds = new Set(current?.dirtyToolCallIds)
+    for (const toolCallId of this.pendingDirtyToolCallIds) {
+      dirtyToolCallIds.add(toolCallId)
+    }
+    this.pendingDirtyToolCallIds.clear()
+    this.pendingMessages.set(message.id, { message, receivedAtMs, dirtyToolCallIds })
 
     if (typeof requestAnimationFrame !== 'function') {
       if (!this.microtaskFlushQueued) {
@@ -253,6 +263,21 @@ export class ChatStreamingHandler {
       messageId,
       status,
     })
+  }
+
+  private trackStreamChanges(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk> {
+    return stream.pipeThrough(new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform: (chunk, controller) => {
+        this.recordChunkChange(chunk)
+        controller.enqueue(chunk)
+      },
+    }))
+  }
+
+  private recordChunkChange(chunk: UIMessageChunk): void {
+    if ('toolCallId' in chunk && typeof chunk.toolCallId === 'string') {
+      this.pendingDirtyToolCallIds.add(chunk.toolCallId)
+    }
   }
 }
 

@@ -23,13 +23,11 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
 }
 
 function readTargetVersion(status: DesktopUpdateStatus): string | null {
-  return status.updateInfo?.TargetFullRelease.Version ?? null
+  return status.updateInfo?.version ?? null
 }
 
 function readTargetSize(status: DesktopUpdateStatus): number {
-  const fullSize = status.updateInfo?.TargetFullRelease.Size ?? 0
-  const deltaSize = status.updateInfo?.DeltasToTarget.reduce((sum, asset) => sum + asset.Size, 0) ?? 0
-  return deltaSize > 0 ? deltaSize : fullSize
+  return status.updateInfo?.files.reduce((sum, file) => sum + (file.size ?? 0), 0) ?? 0
 }
 
 function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
@@ -117,7 +115,7 @@ export function DesktopUpdateSettings() {
     >
       <SettingsSectionHeader
         title="Desktop Updates"
-        description="Manage Velopack updates for the packaged Desktop app."
+        description="Manage updates for the packaged Desktop app."
         action={<StatusBadge status={status} />}
       />
       <SettingsDivider />
@@ -144,7 +142,7 @@ export function DesktopUpdateSettings() {
 
       <SettingsRow
         label="Download progress"
-        description="Progress is reported by Velopack while the selected update is being downloaded."
+        description="Progress is reported while the selected update is being downloaded."
         vertical
       >
         <div className="flex w-full items-center gap-3">

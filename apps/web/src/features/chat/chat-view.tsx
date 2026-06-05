@@ -244,7 +244,7 @@ function ChatComposerSection({
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
-    <div className="shrink-0 bg-tra px-4 pb-3 backdrop-blur-sm">
+    <div className="shrink-0 bg-tra px-4 pb-3">
       <div className="mx-auto max-w-208">
         <ChatAwaitBanner awaitSummary={awaitSummary} />
         <ChatQueueList

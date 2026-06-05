@@ -182,21 +182,18 @@ interface WindowServiceMethods {
   stopPointerMonitor: () => Promise<void>
 }
 
-export interface DesktopUpdateAsset {
-  PackageId: string
-  Version: string
-  Type: string
-  FileName: string
-  Size: number
-  NotesMarkdown: string
-  NotesHtml: string
+export interface DesktopUpdateFile {
+  url: string
+  size: number | null
+  sha512: string | null
 }
 
 export interface DesktopUpdateInfo {
-  TargetFullRelease: DesktopUpdateAsset
-  BaseRelease?: DesktopUpdateAsset
-  DeltasToTarget: DesktopUpdateAsset[]
-  IsDowngrade: boolean
+  version: string
+  releaseName: string | null
+  releaseNotes: string | null
+  releaseDate: string | null
+  files: DesktopUpdateFile[]
 }
 
 export interface DesktopUpdateStatus {

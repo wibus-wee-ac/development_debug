@@ -1512,13 +1512,6 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
             dataTestId="nav-automation"
           />
           <TopNavItem
-            icon={<UserCircleIcon className="size-3.5" />}
-            label={t('nav.profile')}
-            collapsed={collapsed}
-            to="profile"
-            dataTestId="nav-profile"
-          />
-          <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}
             label={t('nav.usage')}
             collapsed={collapsed}

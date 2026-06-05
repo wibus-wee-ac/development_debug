@@ -36,6 +36,7 @@ const SecretCreateResponseSchema = z.object({ id: z.string().min(1) })
 const KIND_OPTIONS: { value: ApiProviderKind, label: string }[] = [
   { value: 'openai-compatible', label: 'OpenAI' },
   { value: 'anthropic', label: 'Anthropic' },
+  { value: 'universal', label: 'Universal' },
 ]
 
 function hostnameFromUrl(url: string): string {
@@ -287,9 +288,11 @@ export function ImportProviderDialog({
                     <SelectTrigger
                       className={cn(
                         'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
-                        manualKind === 'anthropic'
-                          ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-                          : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                        {
+                          'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400': manualKind === 'openai-compatible',
+                          'bg-orange-500/10 text-orange-600 dark:text-orange-400': manualKind === 'anthropic',
+                          'bg-violet-500/10 text-violet-600 dark:text-violet-400': manualKind === 'universal',
+                        },
                       )}
                     >
                       <SelectValue />
@@ -368,9 +371,11 @@ function ProviderCard({
             <SelectTrigger
               className={cn(
                 'h-6 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
-                kind === 'anthropic'
-                  ? 'bg-orange-500/10 text-orange-600 dark:text-orange-400'
-                  : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+                {
+                  'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400': kind === 'openai-compatible',
+                  'bg-orange-500/10 text-orange-600 dark:text-orange-400': kind === 'anthropic',
+                  'bg-violet-500/10 text-violet-600 dark:text-violet-400': kind === 'universal',
+                },
               )}
             >
               <SelectValue />
