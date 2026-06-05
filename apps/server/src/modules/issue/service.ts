@@ -109,49 +109,49 @@ export interface IssueCommentAuthorView {
 export type IssueCommentView = IssueComment & { author: IssueCommentAuthorView }
 export type IssueView = Omit<Issue, 'labels'> & { labels: string[] }
 
-export type IssueActivityValueToken =
-  | 'changed'
-  | 'current-user'
-  | 'empty'
-  | 'no-due-date'
-  | 'no-labels'
-  | 'no-milestone'
-  | 'no-parent'
-  | 'no-status'
-  | 'priority-high'
-  | 'priority-low'
-  | 'priority-medium'
-  | 'priority-none'
-  | 'priority-urgent'
-  | 'unassigned'
-  | 'unknown-issue'
-  | 'unknown-milestone'
-  | 'unknown-status'
-  | 'unknown-user'
+export type IssueActivityValueToken
+  = | 'changed'
+    | 'current-user'
+    | 'empty'
+    | 'no-due-date'
+    | 'no-labels'
+    | 'no-milestone'
+    | 'no-parent'
+    | 'no-status'
+    | 'priority-high'
+    | 'priority-low'
+    | 'priority-medium'
+    | 'priority-none'
+    | 'priority-urgent'
+    | 'unassigned'
+    | 'unknown-issue'
+    | 'unknown-milestone'
+    | 'unknown-status'
+    | 'unknown-user'
 
-export type IssueActivityValueView =
-  | { kind: 'date', timestamp: number }
-  | { kind: 'text', text: string }
-  | { kind: 'token', token: IssueActivityValueToken }
+export type IssueActivityValueView
+  = | { kind: 'date', timestamp: number }
+    | { kind: 'text', text: string }
+    | { kind: 'token', token: IssueActivityValueToken }
 
-export type IssueActivityField =
-  | 'assignee'
-  | 'description'
-  | 'due-date'
-  | 'labels'
-  | 'metadata'
-  | 'milestone'
-  | 'parent'
-  | 'priority'
-  | 'status'
-  | 'title'
+export type IssueActivityField
+  = | 'assignee'
+    | 'description'
+    | 'due-date'
+    | 'labels'
+    | 'metadata'
+    | 'milestone'
+    | 'parent'
+    | 'priority'
+    | 'status'
+    | 'title'
 
-export type IssueActivityAction =
-  | 'added-description'
-  | 'changed-field'
-  | 'cleared-description'
-  | 'renamed-issue'
-  | 'updated-description'
+export type IssueActivityAction
+  = | 'added-description'
+    | 'changed-field'
+    | 'cleared-description'
+    | 'renamed-issue'
+    | 'updated-description'
 
 export interface IssueActivityFieldChangeView {
   action: IssueActivityAction

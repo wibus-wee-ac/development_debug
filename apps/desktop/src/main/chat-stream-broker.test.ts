@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 import {
   ChatStreamBroker,
+  DESKTOP_CHAT_REPLAY_MAX_CHUNKS,
   DESKTOP_CHAT_STREAM_CHUNK_CHANNEL,
   DESKTOP_CHAT_STREAM_CLOSED_CHANNEL,
 } from './chat-stream-broker'
@@ -218,6 +219,72 @@ describe('chat stream broker', () => {
       expect(readChannelPayloads(first, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)).toHaveLength(3)
       expect(readChannelPayloads(late, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)).toHaveLength(3)
     })
+  })
+
+  it('keeps only a bounded replay tail for late subscribers', async () => {
+    const controlled = createControlledSseResponse({ 'x-cradle-run-id': 'run-bounded-replay' })
+    const fetchFn = vi.fn(async () => controlled.response)
+    const broker = new ChatStreamBroker({
+      serverUrl: 'http://127.0.0.1:21423',
+      fetchFn: fetchFn as typeof fetch,
+    })
+    const first = new FakeWebContents()
+    const late = new FakeWebContents()
+    const overflowCount = 8
+    const totalChunks = DESKTOP_CHAT_REPLAY_MAX_CHUNKS + overflowCount
+
+    await broker.startResponse(first as never, {
+      sessionId: 'session-bounded-replay',
+      body: { text: 'hello' },
+    })
+    for (let index = 0; index < totalChunks; index += 1) {
+      controlled.controller.enqueue(encodeSse({ type: 'text-start', id: `text-${index}` }))
+    }
+
+    await vi.waitFor(() => {
+      expect(readChannelPayloads(first, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)).toHaveLength(totalChunks)
+      expect(broker.diagnostics().streams[0]?.replayChunkCount).toBe(DESKTOP_CHAT_REPLAY_MAX_CHUNKS)
+    })
+
+    await broker.subscribeSession(late as never, {
+      sessionId: 'session-bounded-replay',
+    })
+
+    const lateChunks = readChannelPayloads(late, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)
+    expect(lateChunks).toHaveLength(DESKTOP_CHAT_REPLAY_MAX_CHUNKS)
+    expect(lateChunks[0]).toMatchObject({ chunk: { id: `text-${overflowCount}` } })
+    expect(lateChunks.at(-1)).toMatchObject({ chunk: { id: `text-${totalChunks - 1}` } })
+  })
+
+  it('coalesces replay deltas using the server stream merge rule', async () => {
+    const controlled = createControlledSseResponse({ 'x-cradle-run-id': 'run-coalesced-replay' })
+    const fetchFn = vi.fn(async () => controlled.response)
+    const broker = new ChatStreamBroker({
+      serverUrl: 'http://127.0.0.1:21423',
+      fetchFn: fetchFn as typeof fetch,
+    })
+    const first = new FakeWebContents()
+    const late = new FakeWebContents()
+
+    await broker.startResponse(first as never, {
+      sessionId: 'session-coalesced-replay',
+      body: { text: 'hello' },
+    })
+    controlled.controller.enqueue(encodeSse({ type: 'text-delta', id: 'text-1', delta: 'hello ' }))
+    controlled.controller.enqueue(encodeSse({ type: 'text-delta', id: 'text-1', delta: 'world' }))
+
+    await vi.waitFor(() => {
+      expect(readChannelPayloads(first, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)).toHaveLength(2)
+      expect(broker.diagnostics().streams[0]?.replayChunkCount).toBe(1)
+    })
+
+    await broker.subscribeSession(late as never, {
+      sessionId: 'session-coalesced-replay',
+    })
+
+    expect(readChannelPayloads(late, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)).toMatchObject([
+      { chunk: { type: 'text-delta', id: 'text-1', delta: 'hello world' } },
+    ])
   })
 
   it('does not replay duplicate chunks to an early subscriber when upstream data arrives before the handle resolves', async () => {

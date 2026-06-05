@@ -8,8 +8,8 @@
 - `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，并把 native BrowserPanel `WebContentsView` runtime 事件投影给 plugin loader。
 - `browser-manager.ts`：拥有 native BrowserPanel runtime；按 BrowserPanel owner 管理 `WebContentsView` tab、owner-scoped Electron session partition、tab suspend/resume、截图、CDP 执行、popup 新 tab 路由和 panel bounds attachment。
 - `browser-ipc.ts`：注册 native BrowserPanel IPC contract；renderer 通过 preload 调用 open/close/hide/bounds/navigation/tab/screenshot/CDP 方法，main process 推送 browser state snapshots。
-- `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames。
-- `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、per-WebContents subscriber lifecycle cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
+- `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames；late subscriber 只接收有界 replay tail，避免 Desktop bridge 为长流缓存完整 chunk 历史。
+- `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、有界 replay tail、delta replay coalescing、per-WebContents subscriber lifecycle cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
 - `desktop-app-badge-manager.ts`：拥有 Electron app icon badge IPC；renderer 只投影 unread count，main process 负责 macOS Dock badge 写入和清理。
 - `desktop-app-badge-manager.test.ts`：覆盖 unread count 正规化、macOS Dock badge 投影、IPC handler 注册/移除，以及非 macOS 平台 no-op 行为。
 - `desktop-assets.ts`：解析 Electron main process 在 dev 和 packaged runtime 中使用的 preload、main renderer、tear-off renderer asset 路径，兼容 electron-vite main chunk 输出目录。

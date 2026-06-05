@@ -65,6 +65,7 @@ export function useSmoothContent(
   }, [preset])
 
   const fullTextRef = useRef(content)
+  const bypassSmootherRef = useRef(shouldBypassSmoother(content))
   useEffect(() => {
     fullTextRef.current = content
   }, [content])
@@ -112,6 +113,17 @@ export function useSmoothContent(
     }
   }, [])
 
+  const scheduleWakeTimer = useCallback((onWake: () => void) => {
+    const s = stateRef.current
+    if (s.wakeTimerId) {
+      clearTimeout(s.wakeTimerId)
+    }
+    s.wakeTimerId = setTimeout(() => {
+      s.wakeTimerId = 0
+      onWake()
+    }, WAKE_TIMER_MS)
+  }, [])
+
   useEffect(() => {
     const tick: FrameRequestCallback = (now: number) => {
       const s = stateRef.current
@@ -120,11 +132,12 @@ export function useSmoothContent(
       const totalLen = fullText.length
 
       // Fence bypass: if content is inside a bypass-language fence, sync immediately
-      if (shouldBypassSmoother(fullText)) {
+      if (bypassSmootherRef.current) {
         s.cursor = totalLen
         s.lastRenderAdvance = now
+        s.phase = 'idle'
         setSmoothedContent(fullText)
-        s.rafId = requestAnimationFrame(tick)
+        s.rafId = 0
         return
       }
 
@@ -136,14 +149,13 @@ export function useSmoothContent(
         }
         // Still streaming but caught up — enter wake timer mode
         s.rafId = 0
-        s.wakeTimerId = setTimeout(() => {
-          s.wakeTimerId = 0
+        scheduleWakeTimer(() => {
           // Check if new content arrived while sleeping
           if (fullTextRef.current.length > s.cursor) {
             s.lastFrameTime = 0
             s.rafId = requestAnimationFrame(tick)
           }
-        }, WAKE_TIMER_MS)
+        })
         return
       }
 
@@ -283,7 +295,7 @@ export function useSmoothContent(
     }
     tickRef.current = tick
     return cancelScheduledLoop
-  }, [cancelScheduledLoop])
+  }, [cancelScheduledLoop, scheduleWakeTimer])
 
   const startLoop = useCallback(() => {
     const s = stateRef.current
@@ -304,8 +316,21 @@ export function useSmoothContent(
     const s = stateRef.current
     const now = performance.now()
     const appendLen = content.length - s.prevContentLen
+    const bypassSmoother = shouldBypassSmoother(content)
+    bypassSmootherRef.current = bypassSmoother
 
     if (appendLen > 0) {
+      if (bypassSmoother) {
+        cancelScheduledLoop()
+        s.cursor = content.length
+        s.prevContentLen = content.length
+        s.phase = 'idle'
+        s.lastInputTime = now
+        s.lastRenderAdvance = now
+        setSmoothedContent(content)
+        return
+      }
+
       // EMA chunk size
       s.emaChunkSize
         = s.emaChunkSize === 0
@@ -359,7 +384,7 @@ export function useSmoothContent(
       s.renderStalls = 0
       setSmoothedContent(content)
     }
-  }, [content, startLoop])
+  }, [cancelScheduledLoop, content, startLoop])
 
   // React to streaming state change
   useEffect(() => {

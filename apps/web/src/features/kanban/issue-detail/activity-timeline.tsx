@@ -96,15 +96,15 @@ const systemEventConfig = {
   undelegated: { icon: UserRoundMinusIcon },
 } satisfies Record<string, { icon: ElementType }>
 
-const actionLabelKeys: Record<IssueActivityAction, KanbanKey> = {
+const actionLabelKeys = {
   'added-description': 'issue.activity.action.addedDescription',
   'changed-field': 'issue.activity.action.changedField',
   'cleared-description': 'issue.activity.action.clearedDescription',
   'renamed-issue': 'issue.activity.action.renamedIssue',
   'updated-description': 'issue.activity.action.updatedDescription',
-}
+} as const satisfies Record<IssueActivityAction, KanbanKey>
 
-const fieldLabelKeys: Record<IssueActivityField, KanbanKey> = {
+const fieldLabelKeys = {
   'assignee': 'property.assignee',
   'description': 'issue.activity.field.description',
   'due-date': 'display.dueDate',
@@ -115,9 +115,9 @@ const fieldLabelKeys: Record<IssueActivityField, KanbanKey> = {
   'priority': 'property.priority',
   'status': 'property.status',
   'title': 'table.title',
-}
+} as const satisfies Record<IssueActivityField, KanbanKey>
 
-const valueTokenLabelKeys: Record<IssueActivityValueToken, KanbanKey> = {
+const valueTokenLabelKeys = {
   'changed': 'issue.activity.value.changed',
   'current-user': 'assignee.currentUser',
   'empty': 'issue.activity.value.empty',
@@ -136,7 +136,7 @@ const valueTokenLabelKeys: Record<IssueActivityValueToken, KanbanKey> = {
   'unknown-milestone': 'issue.activity.value.unknownMilestone',
   'unknown-status': 'issue.activity.value.unknownStatus',
   'unknown-user': 'assignee.unknownUser',
-}
+} as const satisfies Record<IssueActivityValueToken, KanbanKey>
 
 const ActivityItem = memo(({
   item,

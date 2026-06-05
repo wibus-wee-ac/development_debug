@@ -22,3 +22,5 @@ apps/web/i18n-unused-keys-report.json
 
 .build
 tmp
+
+artifacts

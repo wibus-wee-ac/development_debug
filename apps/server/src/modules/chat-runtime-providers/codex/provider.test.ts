@@ -458,13 +458,21 @@ function createFakeChatgptJwt(input: {
 }
 
 function createProvider(client: FakeCodexAppServerClient): CodexProvider {
+  let primaryClientCreated = false
   return new CodexProvider({
     readSecret: () => 'sk-secret',
     resolveSkillPaths: () => ['/tmp/cradle-skill'],
     recordObservability: vi.fn(),
     createAppServerClient: (options) => {
-      client.options = options
-      return client
+      if (!primaryClientCreated) {
+        primaryClientCreated = true
+        client.options = options
+        return client
+      }
+      const titleClient = new FakeCodexAppServerClient(options)
+      titleClient.generatedThreadTitle = client.generatedThreadTitle
+      titleClient.autoCompleteGeneratedTitle = client.autoCompleteGeneratedTitle
+      return titleClient
     },
   })
 }

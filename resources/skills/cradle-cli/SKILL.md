@@ -164,10 +164,10 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `chat` | 10 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 48 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
-| `issue` | 29 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
+| `issue` | 30 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
 | `observability` | 4 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
-| `preferences` | 4 | Read and update server preferences. | `cradle man preferences` |
+| `preferences` | 6 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 1 | Inspect provider model availability. | `cradle man provider` |
 | `search` | 2 | Search Cradle data. | `cradle man search` |
