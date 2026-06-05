@@ -10,7 +10,7 @@ import {
   FolderPlusIcon,
   PackageIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import {
@@ -30,9 +30,15 @@ import { Input } from '~/components/ui/input'
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut } from '~/components/ui/menu'
 
 import { getWorkspaceFileExtension } from './workspace-file-language'
+import {
+  isCopyPathChordStart,
+  isCopyPathShortcut,
+  isCopyRelativePathShortcut,
+  VSCODE_COPY_PATH_SHORTCUT,
+  VSCODE_COPY_RELATIVE_PATH_SHORTCUT,
+  WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE,
+} from './workspace-file-shortcuts'
 
-export const VSCODE_COPY_PATH_SHORTCUT = '⌘K P'
-export const VSCODE_COPY_RELATIVE_PATH_SHORTCUT = '⌘⇧⌥C'
 export const DEFAULT_NEW_FILE_NAME = 'untitled'
 export const DEFAULT_NEW_FOLDER_NAME = 'untitled-folder'
 
@@ -134,18 +140,6 @@ export async function renameWorkspaceFilePath(input: {
   }
 }
 
-export function isCopyPathShortcut(event: KeyboardEvent): boolean {
-  return !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'p'
-}
-
-export function isCopyPathChordStart(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'k'
-}
-
-export function isCopyRelativePathShortcut(event: KeyboardEvent): boolean {
-  return (event.metaKey || event.ctrlKey) && event.altKey && event.shiftKey && event.key.toLowerCase() === 'c'
-}
-
 export interface WorkspaceFileContextMenuProps {
   context: TreeContextMenuOpenContext
   item: TreeContextMenuItem
@@ -177,6 +171,7 @@ export function WorkspaceFileContextMenu({
   t,
   workspacePath,
 }: WorkspaceFileContextMenuProps) {
+  const copyPathChordActiveRef = useRef(false)
   const parentPath = item.kind === 'directory' ? item.path : getParentPath(item.path)
   const selectedPackPaths = selectedPaths.length > 0 && selectedPaths.includes(item.path)
     ? [...selectedPaths]
@@ -197,6 +192,34 @@ export function WorkspaceFileContextMenu({
         anchor={context.anchorElement}
         className="w-64"
         collisionAvoidance={{ side: 'flip', align: 'shift' }}
+        data-file-tree-context-menu-root="true"
+        {...{ [WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE]: 'true' }}
+        onKeyDown={(event) => {
+          if (isCopyPathChordStart(event.nativeEvent)) {
+            event.preventDefault()
+            event.stopPropagation()
+            copyPathChordActiveRef.current = true
+            return
+          }
+
+          if (copyPathChordActiveRef.current) {
+            copyPathChordActiveRef.current = false
+            if (isCopyPathShortcut(event.nativeEvent)) {
+              event.preventDefault()
+              event.stopPropagation()
+              void onCopyAbsolutePath(item.path)
+              context.close({ restoreFocus: true })
+            }
+            return
+          }
+
+          if (isCopyRelativePathShortcut(event.nativeEvent)) {
+            event.preventDefault()
+            event.stopPropagation()
+            void onCopyRelativePath(item.path)
+            context.close({ restoreFocus: true })
+          }
+        }}
         portalProps={{ container: context.anchorElement.ownerDocument.body }}
         side="bottom"
         sideOffset={4}

@@ -21,6 +21,9 @@ interface RegistrationState {
 
 export interface LayoutSlotsContextValue {
   slots: LayoutSlots
+}
+
+export interface LayoutSlotRegistrationContextValue {
   register: (id: string, slots: LayoutSlots) => void
   unregister: (id: string) => void
   activate: (id: string) => void
@@ -28,6 +31,9 @@ export interface LayoutSlotsContextValue {
 
 export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
   slots: {},
+})
+
+export const LayoutSlotRegistrationContext = createContext<LayoutSlotRegistrationContextValue>({
   register: () => { },
   unregister: () => { },
   activate: () => { },
@@ -143,9 +149,18 @@ export function LayoutSlotsProvider({
     }
   }, [slots])
 
+  const slotsContextValue = useMemo(() => ({ slots }), [slots])
+  const registrationContextValue = useMemo(() => ({
+    register,
+    unregister,
+    activate,
+  }), [activate, register, unregister])
+
   return (
-    <LayoutSlotsContext.Provider value={{ slots, register, unregister, activate }}>
-      {children}
-    </LayoutSlotsContext.Provider>
+    <LayoutSlotRegistrationContext.Provider value={registrationContextValue}>
+      <LayoutSlotsContext.Provider value={slotsContextValue}>
+        {children}
+      </LayoutSlotsContext.Provider>
+    </LayoutSlotRegistrationContext.Provider>
   )
 }

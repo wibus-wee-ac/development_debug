@@ -77,6 +77,7 @@ interface ChatViewProps {
   placeholder?: string
   runtimeKind?: RuntimeKind
   workspaceId?: string | null
+  onSideChatCreated?: (sessionId: string) => void
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -312,6 +313,7 @@ export function ChatView({
   placeholder,
   runtimeKind: _runtimeKind,
   workspaceId,
+  onSideChatCreated,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const {
@@ -351,7 +353,20 @@ export function ChatView({
   const appshotRuntime = useComposerAppshotCapture({
     supportsAttachments: composerRuntime.supportsAttachments,
   })
-  const composerSend = composerRuntime.send
+  const originalComposerSend = composerRuntime.send
+  const composerSend = useCallback(async (
+    ...args: Parameters<ChatComposerRuntime['send']>
+  ) => {
+    const result = await originalComposerSend(...args)
+    if (result?.kind === 'side-chat') {
+      onSideChatCreated?.(result.sessionId)
+    }
+    return result
+  }, [onSideChatCreated, originalComposerSend])
+  const navigableComposerRuntime = useMemo<ChatComposerRuntime>(() => ({
+    ...composerRuntime,
+    send: composerSend,
+  }), [composerRuntime, composerSend])
 
   useEffect(() => {
     if (!sessionId) {
@@ -523,8 +538,8 @@ export function ChatView({
   }, [appshotRuntime, composerRuntime.supportsAttachments, sessionId])
 
   const submitCodexReviewPrompt = useCallback((prompt: string) => {
-    composerRuntime.send(prompt, [], [])
-  }, [composerRuntime])
+    void composerSend(prompt, [], [])
+  }, [composerSend])
 
   const resolveCodexReviewMergeBase = useCallback(async (baseBranch: string) => {
     if (!workspaceId) {
@@ -606,7 +621,7 @@ export function ChatView({
         onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
         onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
         onSlashCommandAction={handleSlashCommandAction}
-        composerRuntime={composerRuntime}
+        composerRuntime={navigableComposerRuntime}
         appshotRuntime={appshotRuntime}
         placeholder={placeholder}
         availableFiles={availableFiles}

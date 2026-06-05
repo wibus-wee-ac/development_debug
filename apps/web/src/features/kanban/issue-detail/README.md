@@ -1,10 +1,10 @@
 # Kanban Issue Detail
 
-Issue detail owns focused subviews for editing issue metadata, reading activity, managing relations and sub-issues, and managing issue delegation metadata. Agent runtime sessions remain owned by Chat Runtime surfaces rather than the issue Activity timeline.
+Issue detail owns focused subviews for editing issue metadata, reading server-projected issue Activity, managing relations and sub-issues, and managing issue delegation metadata. Agent runtime sessions remain owned by Chat Runtime surfaces rather than the issue Activity timeline.
 
 ## Files
 
-- **activity-timeline.tsx**: Timeline rendering for issue comments, static Markdown comment bodies, decorative activity icons, and comment submission; comment rows keep a memo boundary and delete comments through a stable id-based handler.
+- **activity-timeline.tsx**: Timeline rendering for Issue-owned Activity items from `/issues/:id/activity`, including created events, semantic field-change activity, static Markdown comment bodies, decorative activity icons, and comment submission; raw field-change audit rows are not consumed by this UI.
 - **activity-timeline.test.tsx**: Regression tests for issue activity timeline comment rendering.
 - **index.tsx**: Issue detail 组合入口，解析父/子 issue 上下文、子 issue 进度、同级导航和 milestone 横幅进度。
 - **issue-description.tsx**: Editable issue description surface with issue-scoped Markdown document identity, Smart Mention candidate aggregation for Issue, Session, Workspace, Agent, Milestone, and File references plus owner-scoped navigation behavior.

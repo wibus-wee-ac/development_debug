@@ -1,8 +1,12 @@
 import {
   ArrowUpIcon,
+  CircleDotIcon,
+  FolderIcon,
   MaximizeIcon,
+  MessageSquareIcon,
   MinimizeIcon,
   MousePointer2Icon,
+  PanelsTopLeftIcon,
   PaperclipIcon,
   SquareIcon,
   XIcon,
@@ -10,16 +14,18 @@ import {
 import { m } from 'motion/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { useShallow } from 'zustand/react/shallow'
 
 import { postSessions } from '~/api-gen/sdk.gen'
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
+import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { Switch } from '~/components/ui/switch'
 import { MessageBubble } from '~/features/chat/message-bubble'
 import { useChatSession } from '~/features/chat/use-chat-session'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useCradleTabStore } from '~/tabs/registry'
 
 import { projectJarvisMessageForDisplay } from './display-context'
 import {
@@ -40,12 +46,53 @@ const PANEL_MIN_WIDTH = 320
 const PANEL_MAX_WIDTH = 900
 const PANEL_MIN_HEIGHT = 300
 const PANEL_MAX_HEIGHT = 800
+const MAX_CONTEXT_LABEL_CHARS = 32
+
+function resolveExpandedCenterRect(rect: {
+  top: number
+  left: number
+  width: number
+  height: number
+}) {
+  const width = rect.width * CENTER_COLUMN_EXPANDED_SCALE
+  const height = rect.height * CENTER_COLUMN_EXPANDED_SCALE
+
+  return {
+    top: rect.top + (rect.height - height) / 2 + CENTER_COLUMN_EXPANDED_Y,
+    left: rect.left + (rect.width - width) / 2,
+    width,
+    height,
+  }
+}
+
+function ActiveContextIcon({ tabType }: { tabType: string | null }) {
+  switch (tabType) {
+    case 'chat':
+    case 'new-chat':
+      return <MessageSquareIcon className="size-3.5 shrink-0" aria-hidden="true" />
+    case 'workspace-detail':
+      return <FolderIcon className="size-3.5 shrink-0" aria-hidden="true" />
+    case 'kanban-board':
+      return <CircleDotIcon className="size-3.5 shrink-0" aria-hidden="true" />
+    default:
+      return <PanelsTopLeftIcon className="size-3.5 shrink-0" aria-hidden="true" />
+  }
+}
+
+function clipContextLabel(label: string): string {
+  const trimmed = label.trim()
+  if (trimmed.length <= MAX_CONTEXT_LABEL_CHARS) {
+    return trimmed
+  }
+
+  return `${trimmed.slice(0, MAX_CONTEXT_LABEL_CHARS).trimEnd()}...`
+}
 
 export function JarvisPopover({
   open,
   onOpenChange,
   anchorRef,
-  anchorKey: _anchorKey,
+  anchorKey,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -59,8 +106,8 @@ export function JarvisPopover({
   const viewportRef = React.useRef<HTMLDivElement>(null)
   const panelRef = React.useRef<HTMLDivElement>(null)
   const textareaRef = React.useRef<HTMLTextAreaElement>(null)
-  const includeContextSwitchId = React.useId()
   const explicitAttachments = useExplicitContextAttachments()
+  const [anchorBounds, setAnchorBounds] = React.useState<{ left: number, width: number } | null>(null)
 
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
   const setJarvisExpanded = useJarvisUiStore(s => s.setExpanded)
@@ -72,6 +119,16 @@ export function JarvisPopover({
   const addSession = useJarvisUiStore(s => s.addSession)
   const includeContext = useJarvisUiStore(s => s.includeContext)
   const setIncludeContext = useJarvisUiStore(s => s.setIncludeContext)
+  const activeAmbientContext = useCradleTabStore(useShallow((state) => {
+    const activeTab = state.activeTabId
+      ? state.tabs.find(tab => tab.id === state.activeTabId) ?? null
+      : null
+
+    return {
+      label: activeTab ? activeTab.label || activeTab.type : null,
+      type: activeTab?.type ?? null,
+    }
+  }))
 
   const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
@@ -147,6 +204,38 @@ export function JarvisPopover({
       requestAnimationFrame(() => textareaRef.current?.focus())
     }
   }, [open])
+
+  React.useLayoutEffect(() => {
+    if (!open) {
+      setAnchorBounds(null)
+      return
+    }
+
+    const readAnchorBounds = () => {
+      const rect = anchorRef.current?.getBoundingClientRect()
+      const nextBounds = rect ? { left: rect.left, width: rect.width } : null
+      setAnchorBounds(previousBounds => (
+        previousBounds?.left === nextBounds?.left && previousBounds?.width === nextBounds?.width
+          ? previousBounds
+          : nextBounds
+      ))
+    }
+
+    readAnchorBounds()
+    const frameId = requestAnimationFrame(readAnchorBounds)
+    const observer = new ResizeObserver(readAnchorBounds)
+    const anchor = anchorRef.current
+    if (anchor) {
+      observer.observe(anchor)
+    }
+    window.addEventListener('resize', readAnchorBounds)
+
+    return () => {
+      cancelAnimationFrame(frameId)
+      observer.disconnect()
+      window.removeEventListener('resize', readAnchorBounds)
+    }
+  }, [open, anchorKey, anchorRef])
 
   const [sendError, setSendError] = React.useState<string | null>(null)
 
@@ -234,6 +323,10 @@ export function JarvisPopover({
     }
   }, [t])
 
+  const handleIncludeContextToggle = React.useCallback(() => {
+    setIncludeContext(!includeContext)
+  }, [includeContext, setIncludeContext])
+
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) {
       return
@@ -285,11 +378,12 @@ export function JarvisPopover({
     if (!centerColumnRect) {
       return FALLBACK_EXPANDED_BOUNDS
     }
+    const expandedCenterRect = resolveExpandedCenterRect(centerColumnRect)
     return {
-      top: centerColumnRect.top + 12,
-      left: centerColumnRect.left - 8,
-      width: centerColumnRect.width + 16,
-      height: centerColumnRect.height + 4,
+      top: expandedCenterRect.top + 12,
+      left: expandedCenterRect.left - 8,
+      width: expandedCenterRect.width + 16,
+      height: expandedCenterRect.height + 4,
     }
   }, [centerColumnRect])
 
@@ -298,9 +392,8 @@ export function JarvisPopover({
     if (!footerRect) {
       return { top: 0, left: 0, width: panelWidth, height: panelHeight }
     }
-    const anchorRect = anchorRef.current?.getBoundingClientRect()
-    const centerX = anchorRect
-      ? anchorRect.left + anchorRect.width / 2
+    const centerX = anchorBounds
+      ? anchorBounds.left + anchorBounds.width / 2
       : footerRect.right - 12 - panelWidth / 2
     const left = Math.max(8, Math.min(window.innerWidth - panelWidth - 8, centerX - panelWidth / 2))
     return {
@@ -309,7 +402,7 @@ export function JarvisPopover({
       width: panelWidth,
       height: panelHeight,
     }
-  }, [footerRect, panelWidth, panelHeight, anchorRef])
+  }, [footerRect, panelWidth, panelHeight, anchorBounds])
 
   const targetBounds = jarvisExpanded ? expandedBounds : popoverBounds
 
@@ -381,6 +474,8 @@ export function JarvisPopover({
           <ArrowUpIcon />
         </Button>
       )
+
+  const contextSwitchLabel = clipContextLabel(activeAmbientContext.label ?? t('input.includeContext'))
 
   return (
     <m.div
@@ -497,19 +592,26 @@ export function JarvisPopover({
             )}
             <div className="flex items-center justify-between gap-3 px-2.5 pb-2">
               <div className="flex min-w-0 items-center gap-2">
-                <Switch
-                  id={includeContextSwitchId}
-                  size="sm"
-                  checked={includeContext}
-                  onCheckedChange={setIncludeContext}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="xs"
+                  role="switch"
+                  aria-checked={includeContext}
+                  aria-label={`${t('input.includeContext')}: ${contextSwitchLabel}`}
                   disabled={!prefs?.profileId}
-                />
-                <label
-                  htmlFor={includeContextSwitchId}
-                  className="truncate text-[11px] text-muted-foreground"
+                  onClick={handleIncludeContextToggle}
+                  className={cn(
+                    'min-w-0 max-w-[180px] justify-start overflow-hidden px-1.5 text-[11px]',
+                    {
+                      'text-foreground': includeContext,
+                      'text-muted-foreground/55 hover:text-muted-foreground': !includeContext,
+                    },
+                  )}
                 >
-                  {t('input.includeContext')}
-                </label>
+                  <ActiveContextIcon tabType={activeAmbientContext.type} />
+                  <span className="min-w-0 truncate">{contextSwitchLabel}</span>
+                </Button>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 <Button

@@ -142,11 +142,13 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
       setMessages: (sessionId, messages) => {
         set((state) => {
-          const displayMessages = applyAssistantDisplaySplits(messages, state.assistantDisplaySplitMap)
+          const assistantDisplaySplitMap = hydrateAssistantDisplaySplits(messages, state.assistantDisplaySplitMap)
+          const displayMessages = applyAssistantDisplaySplits(messages, assistantDisplaySplitMap)
           const currentMessages = state.messagesMap.get(sessionId)
           const nextMessages = currentMessages
             ? reconcileMessages(currentMessages, displayMessages)
             : displayMessages
+          const splitMapChanged = assistantDisplaySplitMap !== state.assistantDisplaySplitMap
 
           const currentSessionMessageIds = new Set(
             (state.messagesMap.get(sessionId) ?? []).map(message => message.id),
@@ -159,6 +161,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             : []
           if (
             currentMessages === nextMessages
+            && !splitMapChanged
             && (removedMessageIds.length === 0 || state.passiveStreamingMessageIds.size === 0)
           ) {
             return state
@@ -166,6 +169,9 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
 
           return produce(state, (draft) => {
             draft.messagesMap.set(sessionId, nextMessages)
+            if (splitMapChanged) {
+              draft.assistantDisplaySplitMap = assistantDisplaySplitMap as Draft<Map<string, AssistantDisplaySplit>>
+            }
             if (removedMessageIds.length > 0 && state.passiveStreamingMessageIds.size > 0) {
               for (const id of removedMessageIds) {
                 draft.passiveStreamingMessageIds.delete(id)
@@ -897,6 +903,117 @@ function reconcileMessages(currentMessages: UIMessage[], incomingMessages: UIMes
   })
 
   return hasChanges ? nextMessages : currentMessages
+}
+
+interface PersistedAssistantDisplaySplit {
+  message: UIMessage
+  queueItemId: string | null
+  sourceMessageId: string
+  splitParts: UIMessage['parts']
+  order: number
+}
+
+function hydrateAssistantDisplaySplits(
+  messages: UIMessage[],
+  currentSplits: Map<string, AssistantDisplaySplit>,
+): Map<string, AssistantDisplaySplit> {
+  const groups = new Map<string, PersistedAssistantDisplaySplit[]>()
+  for (let order = 0; order < messages.length; order += 1) {
+    const message = messages[order]
+    if (message.role !== 'user') {
+      continue
+    }
+    const split = readPersistedAssistantDisplaySplit(message, order)
+    if (!split) {
+      continue
+    }
+    const existing = groups.get(split.sourceMessageId)
+    if (existing) {
+      existing.push(split)
+    }
+    else {
+      groups.set(split.sourceMessageId, [split])
+    }
+  }
+
+  if (groups.size === 0) {
+    return currentSplits
+  }
+
+  let nextSplits: Map<string, AssistantDisplaySplit> | null = null
+  const writableSplits = () => {
+    nextSplits ??= new Map(currentSplits)
+    return nextSplits
+  }
+
+  for (const [sourceMessageId, splits] of groups) {
+    let currentSourceMessageId = sourceMessageId
+    let previousPersistedSplitParts: UIMessage['parts'] | null = null
+
+    for (const split of splits.toSorted((left, right) => left.order - right.order)) {
+      const relativeSplitParts = previousPersistedSplitParts
+        ? projectTailParts(split.splitParts, previousPersistedSplitParts)
+        : split.splitParts
+      const tailMessageId = `${currentSourceMessageId}:steer-tail`
+      const existing = writableSplits().get(currentSourceMessageId)
+      const insertedMessageIds = pushUnique(existing?.insertedMessageIds ?? [], split.message.id)
+      const insertedQueueItemIds = split.queueItemId
+        ? pushUnique(existing?.insertedQueueItemIds ?? [], split.queueItemId)
+        : existing?.insertedQueueItemIds ?? []
+
+      writableSplits().set(currentSourceMessageId, {
+        sourceMessageId: currentSourceMessageId,
+        tailMessageId,
+        splitParts: trimTrailingEmptyParts(cloneMessageParts(relativeSplitParts)),
+        insertedMessageIds,
+        insertedQueueItemIds,
+      })
+
+      previousPersistedSplitParts = split.splitParts
+      currentSourceMessageId = tailMessageId
+    }
+  }
+
+  return nextSplits ?? currentSplits
+}
+
+function readPersistedAssistantDisplaySplit(message: UIMessage, order: number): PersistedAssistantDisplaySplit | null {
+  const metadata = readRecordValue((message as { metadata?: unknown }).metadata)
+  const cradle = readRecordValue(metadata?.cradle)
+  const continuation = readRecordValue(cradle?.continuation)
+  if (continuation?.mode !== 'steer') {
+    return null
+  }
+  const sourceMessageId = continuation.sourceMessageId
+  if (typeof sourceMessageId !== 'string' || sourceMessageId.length === 0) {
+    return null
+  }
+  const splitParts = readPersistedSplitParts(continuation.splitParts)
+  if (!splitParts) {
+    return null
+  }
+
+  return {
+    message,
+    queueItemId: readContinuationQueueItemId(message),
+    sourceMessageId,
+    splitParts,
+    order,
+  }
+}
+
+function readPersistedSplitParts(value: unknown): UIMessage['parts'] | null {
+  if (
+    !Array.isArray(value)
+    || !value.every(part => typeof part === 'object' && part !== null && !Array.isArray(part) && typeof (part as { type?: unknown }).type === 'string')
+  ) {
+    return null
+  }
+  return value as UIMessage['parts']
+}
+
+function pushUnique(values: string[], nextValue: string): string[] {
+  return values.includes(nextValue) ? values : [...values, nextValue]
 }
 
 function applyAssistantDisplaySplits(

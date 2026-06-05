@@ -275,6 +275,71 @@ describe('chat stream transport', () => {
     await expect(chunksPromise).rejects.toThrow('upstream failed')
   })
 
+  it('caps Electron events buffered before the renderer stream attaches', async () => {
+    const { bridge, chunkHandlers, closedHandlers } = createBridge()
+    vi.mocked(bridge.startResponse).mockImplementation(async request => {
+      for (let index = 0; index < 70; index += 1) {
+        chunkHandlers.forEach(handler => handler({
+          streamId: 'stream-1',
+          sessionId: request.sessionId,
+          runId: 'run-1',
+          chunk: { type: 'text-start', id: `text-${index}` },
+        }))
+      }
+      closedHandlers.forEach(handler => handler({
+        streamId: 'stream-1',
+        sessionId: request.sessionId,
+        runId: 'run-1',
+        reason: 'done',
+      }))
+      return {
+        streamId: 'stream-1',
+        sessionId: request.sessionId,
+        runId: 'run-1',
+        assistantMessageId: 'assistant-1',
+        userMessageId: 'user-1',
+      }
+    })
+    writeWindowCradle({
+      ipc: { invoke: vi.fn(), on: vi.fn() },
+      env: {
+        serverUrl: 'http://127.0.0.1:21423',
+        sessionId: null,
+        isTearoff: false,
+        surface: null,
+        platform: 'darwin',
+        isElectron: true,
+      },
+      window: {
+        minimize: vi.fn(),
+        maximize: vi.fn(),
+        close: vi.fn(),
+        startPointerMonitor: vi.fn(),
+        stopPointerMonitor: vi.fn(),
+        onTearoffSessionClosed: vi.fn(),
+        onPointerOutsideWindow: vi.fn(),
+      },
+      desktopUpdate: { onStatusChanged: vi.fn() },
+      chatStream: bridge,
+      desktopTray: {
+        performAction: vi.fn(),
+        consumePendingActionRequests: vi.fn(),
+        onActionRequested: vi.fn(),
+      },
+    })
+    const { startChatResponseStream } = await import('./chat-stream-transport')
+
+    const result = await startChatResponseStream({
+      sessionId: 'session-1',
+      body: { text: 'hello' },
+    })
+
+    const chunks = await readChunks(result.stream)
+    expect(chunks).toHaveLength(63)
+    expect(chunks[0]).toEqual({ type: 'text-start', id: 'text-7' })
+    expect(chunks.at(-1)).toEqual({ type: 'text-start', id: 'text-69' })
+  })
+
   it('falls back to HTTP SSE when the desktop bridge is absent', async () => {
     writeWindowCradle(undefined)
     vi.stubGlobal('fetch', vi.fn(async () => new Response(

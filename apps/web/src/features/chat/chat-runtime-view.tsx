@@ -19,6 +19,7 @@ export function ChatRuntimeView({
   runtimeKind,
   workspaceId,
   agentId,
+  onSideChatCreated,
 }: {
   sessionId: string
   sessionProviderTargetId: string | null
@@ -26,6 +27,7 @@ export function ChatRuntimeView({
   runtimeKind: RuntimeKind | undefined
   workspaceId: string | null
   agentId: string | null
+  onSideChatCreated?: (sessionId: string) => void
 }) {
   const queryClient = useQueryClient()
   const composerState = useComposerState({
@@ -146,6 +148,7 @@ export function ChatRuntimeView({
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}
+        onSideChatCreated={onSideChatCreated}
       />
     </Suspense>
   )

@@ -2,7 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { useTranslation } from 'react-i18next'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { I18nProvider, useI18n } from './client'
+import { I18nProvider } from './client'
+import { useI18n } from './i18n-context'
 import { LOCALE_COOKIE } from './locales'
 
 afterEach(() => {

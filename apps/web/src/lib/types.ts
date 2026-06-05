@@ -22,19 +22,88 @@ export type {
   Workspace,
 } from '@cradle/db'
 
-export type KanbanIssue = Omit<DbIssue, 'labels'> & { labels: string[] }
-export type KanbanIssueFieldChangeView = DbKanbanIssueFieldChange
+export type KanbanIssue = Omit<DbIssue, 'labels' | 'sourceChatSessionId'> & {
+  labels: string[]
+  sourceChatSessionId?: string | null
+}
+export type KanbanIssueFieldChangeView = Omit<DbKanbanIssueFieldChange, 'sourceChatSessionId'> & {
+  sourceChatSessionId?: string | null
+}
 
 export interface IssueCommentAuthor {
-  kind: 'user' | 'agent' | 'system'
+  kind: 'user' | 'agent' | 'provider-target' | 'system'
   id: string | null
   displayName: string
   avatarUrl: string | null
   label: string | null
 }
 
-export type KanbanIssueCommentView = DbKanbanIssueComment & {
+export type KanbanIssueCommentView = Omit<DbKanbanIssueComment, 'sourceChatSessionId'> & {
   author: IssueCommentAuthor
+  sourceChatSessionId?: string | null
+}
+
+export type IssueActivityValueToken
+  = | 'changed'
+    | 'current-user'
+    | 'empty'
+    | 'no-due-date'
+    | 'no-labels'
+    | 'no-milestone'
+    | 'no-parent'
+    | 'no-status'
+    | 'priority-high'
+    | 'priority-low'
+    | 'priority-medium'
+    | 'priority-none'
+    | 'priority-urgent'
+    | 'unassigned'
+    | 'unknown-issue'
+    | 'unknown-milestone'
+    | 'unknown-status'
+    | 'unknown-user'
+
+export type IssueActivityValue
+  = | { kind: 'date', timestamp: number }
+    | { kind: 'text', text: string }
+    | { kind: 'token', token: IssueActivityValueToken }
+
+export type IssueActivityField
+  = | 'assignee'
+    | 'description'
+    | 'due-date'
+    | 'labels'
+    | 'metadata'
+    | 'milestone'
+    | 'parent'
+    | 'priority'
+    | 'status'
+    | 'title'
+
+export type IssueActivityAction
+  = | 'added-description'
+    | 'changed-field'
+    | 'cleared-description'
+    | 'renamed-issue'
+    | 'updated-description'
+
+export interface KanbanIssueActivityItem {
+  id: string
+  issueId: string
+  kind: 'comment' | 'created' | 'field-change'
+  actor: IssueCommentAuthor
+  comment: {
+    content: string
+    systemKind: 'delegated' | 'system' | 'undelegated' | null
+  } | null
+  fieldChange: {
+    action: IssueActivityAction
+    field: IssueActivityField | null
+    fromValue: IssueActivityValue | null
+    toValue: IssueActivityValue | null
+  } | null
+  sourceChatSessionId: string | null
+  createdAt: number
 }
 
 // ── Provider / Runtime types ───────────────────────────────────────────────

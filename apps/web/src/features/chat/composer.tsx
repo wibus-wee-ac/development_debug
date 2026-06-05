@@ -42,13 +42,14 @@ import {
   replaceSlashTrigger,
 } from './slash-command-input'
 import { SlashCommandPanel } from './slash-command-panel'
+import type { SendMessageResult } from './use-chat-session'
 
 export type ComposerSendHandler = (
   text: string,
   files: FileUIPart[],
   contextParts: ChatContextPart[],
   options?: { invertContinuationMode?: boolean },
-) => void | boolean | Promise<void | boolean>
+) => SendMessageResult | boolean | Promise<SendMessageResult | boolean>
 
 export interface ComposerSendController {
   submit: ComposerSendHandler

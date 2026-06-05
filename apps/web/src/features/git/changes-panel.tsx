@@ -15,13 +15,16 @@ import {
   CreateWorkspaceFileDialog,
   createWorkspaceFileEntry,
   getWorkspaceFileDefaultView,
-  isCopyPathChordStart,
-  isCopyPathShortcut,
-  isCopyRelativePathShortcut,
   joinWorkspacePath,
   renameWorkspaceFilePath,
   WorkspaceFileContextMenu,
 } from '~/features/workspace/workspace-file-menu'
+import {
+  isCopyPathChordStart,
+  isCopyPathShortcut,
+  isCopyRelativePathShortcut,
+  WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE,
+} from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
 import type { GitFileStatus } from '~/lib/types'
@@ -446,6 +449,7 @@ function ChangesTreeView({
     <div
       className="min-h-0 flex-1"
       data-testid="changes-panel-tree"
+      {...{ [WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE]: 'true' }}
       onDoubleClick={handleTreeDoubleClick}
       onKeyDown={handleTreeKeyDown}
       role="tree"

@@ -71,13 +71,14 @@ import {
 } from './provider-target-model-settings'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api' | 'titleModel'
 
 interface ProfileDetailFormValues {
   name: string
   apiKey: string
   baseUrl: string
   model: string
+  titleModel: string
   api: string
   enabledModels: string[]
 }
@@ -179,6 +180,7 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     apiKey: '',
     baseUrl: config.baseUrl,
     model: config.model,
+    titleModel: config.titleModel,
     api: config.api,
     enabledModels: getInitialEnabledModels(config.enabledModels),
   }
@@ -200,11 +202,12 @@ function buildProfileConfig(
   values: ProfileDetailFormValues,
   currentConfig: Record<string, unknown>,
 ): Record<string, unknown> {
-  const { enabledModels: _, ...rest } = currentConfig
+  const { enabledModels: _, titleModel: _titleModel, ...rest } = currentConfig
   return {
     ...rest,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
+    titleModel: values.titleModel || undefined,
     api: values.api || undefined,
   }
 }
@@ -215,6 +218,7 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     apiKey: values.apiKey,
     baseUrl: values.baseUrl,
     model: values.model,
+    titleModel: values.titleModel,
     api: values.api,
     enabledModels: values.enabledModels,
   })
@@ -256,6 +260,7 @@ export function ProfileDetailPanel({
   const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
+  const titleModel = useWatch({ control: form.control, name: 'titleModel' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
   const enabledModels
     = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
@@ -476,10 +481,11 @@ export function ProfileDetailPanel({
         apiKey,
         baseUrl,
         model,
+        titleModel,
         api,
         enabledModels,
       }),
-    [name, apiKey, baseUrl, model, api, enabledModels],
+    [name, apiKey, baseUrl, model, titleModel, api, enabledModels],
   )
 
   // Auto-save with debounce — but skip the very first run after switching profiles
@@ -545,9 +551,10 @@ export function ProfileDetailPanel({
       <div className="flex flex-col">
         <ProfileGeneralSettings
           profile={profile}
-          values={{ name, apiKey, baseUrl, api }}
+          values={{ name, apiKey, baseUrl, api, titleModel }}
           onTextFieldChange={setTextField}
           supportsModels={supportsModels}
+          availableModels={availableModels}
           readOnly={false}
         />
 
@@ -653,15 +660,21 @@ function ProfileGeneralSettings({
   values,
   onTextFieldChange,
   supportsModels,
+  availableModels,
   readOnly,
 }: {
   profile: AgentProfile
   values: Pick<ProfileDetailFormValues, ProfileTextField>
   onTextFieldChange: (field: ProfileTextField, value: string) => void
   supportsModels: boolean
+  availableModels: ModelDescriptor[]
   readOnly: boolean
 }) {
   const isUniversal = profile.providerKind === 'universal'
+  const titleModelOptions = useMemo(
+    () => buildTitleModelOptions(values.titleModel, availableModels),
+    [values.titleModel, availableModels],
+  )
 
   return (
     <>
@@ -734,10 +747,48 @@ function ProfileGeneralSettings({
               className="h-9 w-56 text-[12.5px] font-mono"
             />
           </SettingsRow>
+
+          {profile.providerKind === 'openai-compatible' && (
+            <>
+              <SettingsDivider />
+              <SettingsRow label="Session title model" description="Model used by Codex to name new sessions">
+                <Select
+                  value={values.titleModel || 'default'}
+                  onValueChange={v => onTextFieldChange('titleModel', v === 'default' ? '' : v)}
+                  disabled={readOnly}
+                >
+                  <SelectTrigger className="h-9 w-56 text-[12.5px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Use chat model</SelectItem>
+                    {titleModelOptions.map(model => (
+                      <SelectItem key={model.id} value={model.id}>{model.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </SettingsRow>
+            </>
+          )}
         </>
       )}
     </>
   )
+}
+
+function buildTitleModelOptions(currentModelId: string, models: ModelDescriptor[]): ModelDescriptor[] {
+  if (!currentModelId || models.some(model => model.id === currentModelId)) {
+    return models
+  }
+  return [
+    {
+      id: currentModelId,
+      label: currentModelId,
+      providerKind: 'openai-compatible',
+      capabilities: {},
+    },
+    ...models,
+  ]
 }
 
 function ProfileModelsSection({

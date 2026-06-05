@@ -7,6 +7,8 @@ import type { ChatContinuationMode, ChatQueueItem } from './chat-response-comman
 export interface ChatContinuationMetadata {
   mode: ChatContinuationMode
   queueItemId?: string
+  sourceMessageId?: string
+  splitParts?: UIMessage['parts']
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
@@ -29,10 +31,25 @@ export function readChatContinuationMetadata(message: UIMessage): ChatContinuati
   }
 
   const queueItemId = continuation.queueItemId
+  const sourceMessageId = continuation.sourceMessageId
+  const splitParts = readMessageParts(continuation.splitParts)
   return {
     mode,
     ...(typeof queueItemId === 'string' && queueItemId.length > 0 ? { queueItemId } : {}),
+    ...(typeof sourceMessageId === 'string' && sourceMessageId.length > 0 ? { sourceMessageId } : {}),
+    ...(splitParts ? { splitParts } : {}),
   }
+}
+
+function readMessageParts(value: unknown): UIMessage['parts'] | null {
+  if (
+    !Array.isArray(value)
+    || !value.every(part => typeof part === 'object' && part !== null && !Array.isArray(part) && typeof (part as { type?: unknown }).type === 'string')
+  ) {
+    return null
+  }
+
+  return value as UIMessage['parts']
 }
 
 export function createContinuationUserMessage(input: {

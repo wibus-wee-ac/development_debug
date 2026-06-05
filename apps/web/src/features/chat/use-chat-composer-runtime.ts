@@ -17,11 +17,12 @@ import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
+  CRADLE_SIDE_CHAT_SLASH_COMMAND,
   projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
 } from './chat-slash-commands'
 import { modelSupportsAttachments } from './composer-attachment-state'
-import type { SendMessageOptions } from './use-chat-session'
+import type { SendMessageOptions, SendMessageResult } from './use-chat-session'
 
 interface ChatComposerSendOverrides {
   providerTargetId?: string
@@ -37,7 +38,7 @@ export interface ChatComposerRuntime {
     files: FileUIPart[],
     contextParts: ChatContextPart[],
     options?: { invertContinuationMode?: boolean },
-  ) => void
+  ) => SendMessageResult | Promise<SendMessageResult>
   stop: () => void
   slashCommands: ChatComposerSlashCommand[]
   uiSlots: ChatRuntimeUiSlot[]
@@ -59,7 +60,7 @@ interface UseChatComposerRuntimeOptions {
   composerModel?: ModelDescriptor | null
   permissionMode?: SendMessageOptions['permissionMode']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
-  sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[], contextParts?: ChatContextPart[]) => void | Promise<void>
+  sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[], contextParts?: ChatContextPart[]) => SendMessageResult | Promise<SendMessageResult>
   stop: () => void
 }
 
@@ -179,7 +180,7 @@ export function useChatComposerRuntime({
       return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
     })()
 
-    return [appshotCommand]
+    return [CRADLE_SIDE_CHAT_SLASH_COMMAND, appshotCommand]
   }, [supportsAttachments])
   const mapRuntimeUiSlotCommand = useCallback((command: ChatComposerSlashCommand) => {
     if (command.id === 'codex:review') {
@@ -230,7 +231,7 @@ export function useChatComposerRuntime({
       const continuationMode = options?.invertContinuationMode
         ? invertContinuationMode(defaultContinuationMode)
         : defaultContinuationMode
-      void sendMessage(text, { ...overrides, permissionMode, continuationMode }, files, contextParts)
+      return sendMessage(text, { ...overrides, permissionMode, continuationMode }, files, contextParts)
     },
     [chatPreferences?.continuationBehavior, isReady, permissionMode, sendMessage, sendOverridesRef],
   )

@@ -10,7 +10,7 @@ export interface QueryRefreshPolicyOverrides {
 export interface QueryRefreshPolicyOptions {
   staleTime: number
   refetchInterval: number | false
-  refetchIntervalInBackground: false
+  refetchIntervalInBackground: true
   refetchOnWindowFocus: boolean | 'always'
   refetchOnReconnect: boolean | 'always'
 }
@@ -52,7 +52,7 @@ export function queryRefreshPolicy(
     ...defaults,
     staleTime: overrides.staleTime ?? defaults.staleTime,
     refetchInterval: overrides.refetchInterval ?? defaults.refetchInterval,
-    refetchIntervalInBackground: false,
+    refetchIntervalInBackground: true,
   }
 }
 

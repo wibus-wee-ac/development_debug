@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import type { ChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
+  CODEX_REVIEW_SLASH_ACTION_ID,
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,

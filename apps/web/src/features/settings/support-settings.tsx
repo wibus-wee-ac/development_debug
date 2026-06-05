@@ -70,6 +70,25 @@ const ObservabilityIncidentSchema = z.object({
   attrs: z.record(z.string(), z.unknown()).optional(),
 })
 
+const ObservabilityErrorPatternSchema = z.object({
+  patternId: z.string(),
+  source: z.string(),
+  code: z.string(),
+  category: z.string(),
+  severity: z.string(),
+  runtimeKind: z.string().optional(),
+  providerTargetId: z.string().optional(),
+  modelId: z.string().optional(),
+  messageFingerprint: z.string(),
+  messagePreview: z.string(),
+  count: z.number(),
+  firstSeenAt: z.number(),
+  lastSeenAt: z.number(),
+  sampleRunIds: z.array(z.string()),
+  sampleTraceIds: z.array(z.string()),
+  sampleMessages: z.array(z.string()),
+})
+
 const ObservabilityExportBundleSchema = z.object({
   schema: z.string(),
   exportedAt: z.number(),
@@ -77,6 +96,7 @@ const ObservabilityExportBundleSchema = z.object({
   redaction: z.record(z.string(), z.unknown()),
   events: z.array(ObservabilityEventSchema),
   incidents: z.array(ObservabilityIncidentSchema),
+  errorPatterns: z.array(ObservabilityErrorPatternSchema),
   timeline: z.array(z.record(z.string(), z.unknown())),
   logs: z.record(z.string(), z.unknown()),
 })

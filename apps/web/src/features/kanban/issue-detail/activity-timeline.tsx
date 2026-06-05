@@ -1,32 +1,34 @@
 import { StaticRender } from '@cradle/streamdown'
-import { GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
+import type { TFunction } from 'i18next'
+import { CirclePlusIcon, GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
+import type { ElementType, ReactNode } from 'react'
 import { memo, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
-import type { KanbanIssueCommentView, KanbanIssueFieldChangeView } from '~/lib/types'
+import type { IssueActivityAction, IssueActivityField, IssueActivityValue, IssueActivityValueToken, IssueCommentAuthor, KanbanIssueActivityItem } from '~/lib/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
-import { useAddComment, useComments, useDeleteComment, useFieldChanges } from '../use-kanban'
+import { useAddComment, useDeleteComment, useIssueActivity } from '../use-kanban'
 
 interface ActivityTimelineProps {
   issueId: string
 }
 
+type KanbanTranslation = TFunction<'kanban'>
+type KanbanKey = keyof typeof import('~/locales/default').default.kanban
+
 export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
-  const { data: comments = [] } = useComments(issueId)
-  const { data: fieldChanges = [] } = useFieldChanges(issueId)
+  const { data: activity = [] } = useIssueActivity(issueId)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
   const [commentText, setCommentText] = useState('')
-  const timelineItems = useMemo(() => {
-    return [
-      ...comments.map(comment => ({ type: 'comment' as const, id: comment.id, createdAt: comment.createdAt, comment })),
-      ...fieldChanges.map(change => ({ type: 'field-change' as const, id: change.id, createdAt: change.createdAt, change })),
-    ].sort((left, right) => left.createdAt - right.createdAt)
-  }, [comments, fieldChanges])
+  const timelineItems = useMemo(
+    () => activity.toSorted((left, right) => left.createdAt - right.createdAt),
+    [activity],
+  )
 
   const handleSubmit = useCallback(() => {
     const trimmed = commentText.trim()
@@ -47,19 +49,14 @@ export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
 
       <div className="mt-3 flex flex-col gap-3">
         {timelineItems.map(item => (
-          item.type === 'comment'
-            ? (
-                <CommentItem
-                  key={item.id}
-                  comment={item.comment}
-                  onDeleteComment={item.comment.author.kind === 'user' ? handleDeleteComment : undefined}
-                />
-              )
-            : <FieldChangeItem key={item.id} change={item.change} />
+          <ActivityItem
+            key={item.id}
+            item={item}
+            onDeleteComment={item.kind === 'comment' && item.actor.kind === 'user' ? handleDeleteComment : undefined}
+          />
         ))}
       </div>
 
-      {/* Comment input */}
       <div className="mt-4 rounded-lg border border-border bg-card shadow-xs">
         <textarea
           value={commentText}
@@ -93,112 +90,152 @@ export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
   )
 })
 
-const systemEventConfig: Record<string, { icon: React.ElementType }> = {
-  'system.delegated': { icon: UserRoundCheckIcon },
-  'system.undelegated': { icon: UserRoundMinusIcon },
-  'system': { icon: GitBranchIcon },
+const systemEventConfig = {
+  delegated: { icon: UserRoundCheckIcon },
+  system: { icon: GitBranchIcon },
+  undelegated: { icon: UserRoundMinusIcon },
+} satisfies Record<string, { icon: ElementType }>
+
+const actionLabelKeys: Record<IssueActivityAction, KanbanKey> = {
+  'added-description': 'issue.activity.action.addedDescription',
+  'changed-field': 'issue.activity.action.changedField',
+  'cleared-description': 'issue.activity.action.clearedDescription',
+  'renamed-issue': 'issue.activity.action.renamedIssue',
+  'updated-description': 'issue.activity.action.updatedDescription',
 }
 
-function formatFieldName(field: string): string {
-  return field
-    .replace(/Id$/, '')
-    .replace(/([A-Z])/g, ' $1')
-    .trim()
-    .toLowerCase()
+const fieldLabelKeys: Record<IssueActivityField, KanbanKey> = {
+  'assignee': 'property.assignee',
+  'description': 'issue.activity.field.description',
+  'due-date': 'display.dueDate',
+  'labels': 'property.labels',
+  'metadata': 'issue.activity.field.metadata',
+  'milestone': 'property.milestone',
+  'parent': 'issue.activity.field.parent',
+  'priority': 'property.priority',
+  'status': 'property.status',
+  'title': 'table.title',
 }
 
-function formatFieldValue(value: string | null): string {
-  if (value == null || value === '') {
-    return 'empty'
-  }
-
-  if (value.startsWith('[') || value.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(value) as unknown
-      if (Array.isArray(parsed)) {
-        return parsed.length > 0 ? parsed.join(', ') : 'empty'
-      }
-    }
-    catch {
-      return value
-    }
-  }
-
-  return value
+const valueTokenLabelKeys: Record<IssueActivityValueToken, KanbanKey> = {
+  'changed': 'issue.activity.value.changed',
+  'current-user': 'assignee.currentUser',
+  'empty': 'issue.activity.value.empty',
+  'no-due-date': 'issue.activity.value.noDueDate',
+  'no-labels': 'issue.activity.value.noLabels',
+  'no-milestone': 'issue.label.noMilestone',
+  'no-parent': 'issue.activity.value.noParent',
+  'no-status': 'issue.activity.value.noStatus',
+  'priority-high': 'priority.high',
+  'priority-low': 'priority.low',
+  'priority-medium': 'priority.medium',
+  'priority-none': 'priority.none',
+  'priority-urgent': 'priority.urgent',
+  'unassigned': 'assignee.unassigned',
+  'unknown-issue': 'issue.activity.value.unknownIssue',
+  'unknown-milestone': 'issue.activity.value.unknownMilestone',
+  'unknown-status': 'issue.activity.value.unknownStatus',
+  'unknown-user': 'assignee.unknownUser',
 }
 
-function formatActor(change: KanbanIssueFieldChangeView): string {
-  if (change.actorKind === 'system') {
-    return change.actorId ? `System (${change.actorId})` : 'System'
+const ActivityItem = memo(({
+  item,
+  onDeleteComment,
+}: {
+  item: KanbanIssueActivityItem
+  onDeleteComment?: (commentId: string) => void
+}) => {
+  if (item.kind === 'created') {
+    return <CreatedItem item={item} />
   }
-  if (change.actorKind === 'agent') {
-    return change.actorId ? `Agent ${change.actorId}` : 'Agent'
+  if (item.kind === 'field-change') {
+    return <FieldChangeItem item={item} />
   }
-  return change.actorId === '__self__' || !change.actorId ? 'You' : change.actorId
-}
+  return <CommentItem item={item} onDeleteComment={onDeleteComment} />
+})
 
-const FieldChangeItem = memo(({ change }: { change: KanbanIssueFieldChangeView }) => {
+const CreatedItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
+  const { t } = useTranslation('kanban')
   return (
-    <div className="group flex gap-2.5" data-testid={`field-change-${change.id}`}>
-      <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
-        <GitBranchIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
-      </div>
-      <div className="flex-1 min-w-0 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px]">
-        <span className="font-medium text-foreground">{formatActor(change)}</span>
-        <span className="text-text-dim">
-changed
-{formatFieldName(change.field)}
-        </span>
-        <span className="rounded bg-fill px-1 py-0.5 font-mono text-[11px] text-text-tertiary">{formatFieldValue(change.fromValue)}</span>
-        <span className="text-text-dim">to</span>
-        <span className="rounded bg-fill px-1 py-0.5 font-mono text-[11px] text-text-tertiary">{formatFieldValue(change.toValue)}</span>
-        <span className="text-text-dim">{formatRelativeTime(change.createdAt)}</span>
-      </div>
-    </div>
+    <TimelineLine
+      icon={<CirclePlusIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />}
+      testId={`activity-created-${item.id}`}
+    >
+      <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
+      <span className="text-text-dim">{t('issue.activity.action.createdIssue')}</span>
+      <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
+    </TimelineLine>
+  )
+})
+
+const FieldChangeItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
+  const { t } = useTranslation('kanban')
+  const fieldChange = item.fieldChange
+  if (!fieldChange) {
+    return null
+  }
+
+  return (
+    <TimelineLine
+      icon={<GitBranchIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />}
+      testId={`field-change-${item.id}`}
+    >
+      <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
+      <span className="text-text-dim">{formatAction(fieldChange.action, fieldChange.field, t)}</span>
+      {fieldChange.fromValue && fieldChange.toValue && (
+        <>
+          <ActivityValue>{formatActivityValue(fieldChange.fromValue, t)}</ActivityValue>
+          <span className="text-text-dim">{t('issue.activity.action.to')}</span>
+          <ActivityValue>{formatActivityValue(fieldChange.toValue, t)}</ActivityValue>
+        </>
+      )}
+      <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
+    </TimelineLine>
   )
 })
 
 const CommentItem = memo(({
-  comment,
+  item,
   onDeleteComment,
 }: {
-  comment: KanbanIssueCommentView
+  item: KanbanIssueActivityItem
   onDeleteComment?: (commentId: string) => void
 }) => {
-  const kind = comment.author.kind
-  const isSystem = kind.startsWith('system')
+  const { t } = useTranslation('kanban')
+  const comment = item.comment
   const handleDelete = useCallback(() => {
-    onDeleteComment?.(comment.id)
-  }, [comment.id, onDeleteComment])
+    onDeleteComment?.(item.id)
+  }, [item.id, onDeleteComment])
 
-  if (isSystem) {
-    const cfg = systemEventConfig[kind] ?? systemEventConfig.system
+  if (!comment) {
+    return null
+  }
+
+  if (comment.systemKind) {
+    const cfg = systemEventConfig[comment.systemKind] ?? systemEventConfig.system
     const Icon = cfg.icon
     return (
-      <div className="group flex gap-2.5" data-testid={`comment-${comment.id}`}>
-        <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
-          <Icon className="size-3.5 text-text-tertiary" aria-hidden="true" />
-        </div>
-        <div className="flex-1 min-w-0 flex items-center gap-2 text-[12px]">
-          <span className="font-medium text-foreground">{comment.author.displayName}</span>
-          <span className="text-text-dim">{comment.content}</span>
-          <span className="text-text-dim">{formatRelativeTime(comment.createdAt)}</span>
-        </div>
-      </div>
+      <TimelineLine
+        icon={<Icon className="size-3.5 text-text-tertiary" aria-hidden="true" />}
+        testId={`comment-${item.id}`}
+      >
+        <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
+        <span className="text-text-dim">{comment.content}</span>
+        <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
+      </TimelineLine>
     )
   }
 
-  const isAgent = kind === 'agent'
-  const author = comment.author
+  const isAiAuthored = item.actor.kind === 'agent' || item.actor.kind === 'provider-target'
 
   return (
-    <div className="group flex gap-2.5" data-testid={`comment-${comment.id}`}>
-      {isAgent
-        ? author.avatarUrl
+    <div className="group flex gap-2.5" data-testid={`comment-${item.id}`}>
+      {isAiAuthored
+        ? item.actor.avatarUrl
           ? (
             <img
-              src={author.avatarUrl}
-              alt={author.displayName}
+              src={item.actor.avatarUrl}
+              alt={item.actor.displayName}
               className="size-5.5 shrink-0 rounded-full mt-0.5 object-cover"
             />
           )
@@ -208,7 +245,7 @@ const CommentItem = memo(({
             </div>
           )
         : (
-          <AssigneeAvatar name={author.displayName} size={22} className="mt-0.5 shrink-0" />
+          <AssigneeAvatar name={formatActorName(item.actor, t)} size={22} className="mt-0.5 shrink-0" />
         )}
       <div
         className={cn(
@@ -217,22 +254,20 @@ const CommentItem = memo(({
       >
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-medium text-foreground">
-            {author.displayName}
+            {formatActorName(item.actor, t)}
           </span>
-          {author.label && (
+          {formatActorLabel(item.actor, t) && (
             <span className="text-[10px] px-1 py-0.5 rounded bg-fill text-text-tertiary font-medium leading-none">
-              {author.label}
+              {formatActorLabel(item.actor, t)}
             </span>
           )}
-          <span className="text-[11px] text-text-dim">
-            {formatRelativeTime(comment.createdAt)}
-          </span>
+          <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
           {onDeleteComment && (
             <button
               type="button"
               onClick={handleDelete}
               className="ml-auto -mr-1 flex size-5 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-100 hover:bg-fill text-text-tertiary hover:text-foreground"
-              aria-label="Delete comment"
+              aria-label={t('issue.comment.deleteAria')}
             >
               <Trash2Icon className="size-3" />
             </button>
@@ -255,22 +290,103 @@ const CommentItem = memo(({
   )
 })
 
-function formatRelativeTime(ts: number | null | undefined): string {
+function TimelineLine({
+  children,
+  icon,
+  testId,
+}: {
+  children: ReactNode
+  icon: ReactNode
+  testId: string
+}) {
+  return (
+    <div className="group flex gap-2.5" data-testid={testId}>
+      <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
+        {icon}
+      </div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] leading-5">
+        {children}
+      </div>
+    </div>
+  )
+}
+
+function ActivityValue({ children }: { children: string }) {
+  return (
+    <span className="max-w-full truncate rounded-md bg-fill px-1.5 py-0.5 text-[11px] text-text-tertiary">
+      {children}
+    </span>
+  )
+}
+
+function ActivityTime({ children }: { children: string }) {
+  if (!children) {
+    return null
+  }
+
+  return (
+    <span className="whitespace-nowrap text-[11px] text-text-dim tabular-nums">
+      {children}
+    </span>
+  )
+}
+
+function formatActorName(actor: IssueCommentAuthor, t: KanbanTranslation): string {
+  if (actor.kind === 'user' && (actor.id === '__self__' || !actor.id)) {
+    return t('issue.activity.actor.you')
+  }
+  if (actor.kind === 'system') {
+    return t('issue.activity.actor.system')
+  }
+  return actor.displayName
+}
+
+function formatActorLabel(actor: IssueCommentAuthor, t: KanbanTranslation): string | null {
+  if (actor.kind === 'provider-target') {
+    return t('issue.activity.actor.provider')
+  }
+  if (actor.kind === 'agent' && actor.label === 'Agent') {
+    return t('issue.activity.actor.agent')
+  }
+  return actor.label
+}
+
+function formatAction(action: IssueActivityAction, field: IssueActivityField | null, t: KanbanTranslation): string {
+  if (action === 'changed-field') {
+    const fieldLabel = field ? t(fieldLabelKeys[field]) : t('issue.activity.field.metadata')
+    return t(actionLabelKeys[action], { field: fieldLabel })
+  }
+  return t(actionLabelKeys[action])
+}
+
+function formatActivityValue(value: IssueActivityValue, t: KanbanTranslation): string {
+  if (value.kind === 'text') {
+    return value.text
+  }
+  if (value.kind === 'token') {
+    return t(valueTokenLabelKeys[value.token])
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+  }).format(new Date(value.timestamp * 1000))
+}
+
+function formatRelativeTime(ts: number | null | undefined, t: KanbanTranslation): string {
   if (!ts) {
     return ''
   }
   const diff = Date.now() - ts * 1000
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) {
-    return 'just now'
+    return t('issue.activity.time.justNow')
   }
   if (minutes < 60) {
-    return `${minutes}m ago`
+    return t('issue.activity.time.minutesAgo', { count: minutes })
   }
   const hours = Math.floor(minutes / 60)
   if (hours < 24) {
-    return `${hours}h ago`
+    return t('issue.activity.time.hoursAgo', { count: hours })
   }
   const days = Math.floor(hours / 24)
-  return `${days}d ago`
+  return t('issue.activity.time.daysAgo', { count: days })
 }

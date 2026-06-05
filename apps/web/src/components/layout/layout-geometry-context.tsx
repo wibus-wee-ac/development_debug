@@ -18,19 +18,44 @@ interface LayoutGeometryContextValue {
 
 const LayoutGeometryContext = React.createContext<LayoutGeometryContextValue | null>(null)
 
+function readTransformOffset(element: Element): { x: number, y: number } {
+  if (typeof window === 'undefined') {
+    return { x: 0, y: 0 }
+  }
+
+  const transform = window.getComputedStyle(element).transform
+  if (!transform || transform === 'none' || typeof DOMMatrixReadOnly === 'undefined') {
+    return { x: 0, y: 0 }
+  }
+
+  try {
+    const matrix = new DOMMatrixReadOnly(transform)
+    return { x: matrix.m41, y: matrix.m42 }
+  }
+  catch {
+    return { x: 0, y: 0 }
+  }
+}
+
 function toLayoutRect(element: Element | null): LayoutRect | null {
   if (!element) {
     return null
   }
 
   const rect = element.getBoundingClientRect()
+  const width = element instanceof HTMLElement ? element.offsetWidth : rect.width
+  const height = element instanceof HTMLElement ? element.offsetHeight : rect.height
+  const transformOffset = readTransformOffset(element)
+  const left = rect.left - (width - rect.width) / 2 - transformOffset.x
+  const top = rect.top - (height - rect.height) / 2 - transformOffset.y
+
   return {
-    top: rect.top,
-    left: rect.left,
-    right: rect.right,
-    bottom: rect.bottom,
-    width: rect.width,
-    height: rect.height,
+    top,
+    left,
+    right: left + width,
+    bottom: top + height,
+    width,
+    height,
   }
 }
 

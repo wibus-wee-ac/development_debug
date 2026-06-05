@@ -1,8 +1,9 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { use, useEffect, useMemo } from 'react'
+import { use, useMemo } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { LayoutSlotsContext, LayoutSlotsProvider } from './layout-slots-context'
+import { useRegisterLayoutSlots } from './use-layout-slots'
 
 function SlotProbe() {
   const { slots } = use(LayoutSlotsContext)
@@ -18,16 +19,13 @@ function SlotProbe() {
 }
 
 function RegisterWithEffect({ id, label }: { id: string, label: string }) {
-  const { register } = use(LayoutSlotsContext)
   const slots = useMemo(() => ({
     hasBrowserPanel: true,
     hasPanel: true,
     panel: <span>{label}</span>,
   }), [label])
 
-  useEffect(() => {
-    register(id, slots)
-  }, [id, register, slots])
+  useRegisterLayoutSlots(id, slots)
 
   return null
 }

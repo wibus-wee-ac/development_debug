@@ -26,13 +26,16 @@ import {
   CreateWorkspaceFileDialog,
   createWorkspaceFileEntry,
   getWorkspaceFileDefaultView,
-  isCopyPathChordStart,
-  isCopyPathShortcut,
-  isCopyRelativePathShortcut,
   joinWorkspacePath,
   renameWorkspaceFilePath,
   WorkspaceFileContextMenu,
 } from './workspace-file-menu'
+import {
+  isCopyPathChordStart,
+  isCopyPathShortcut,
+  isCopyRelativePathShortcut,
+  WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE,
+} from './workspace-file-shortcuts'
 
 // ── Git status mapper ─────────────────────────────────────────────────────────
 
@@ -709,6 +712,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
       className="flex flex-1 flex-col overflow-hidden pt-2"
       data-testid="right-aside-file-tree"
       data-right-aside-files-ready={ready ? 'true' : 'false'}
+      {...{ [WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE]: 'true' }}
     >
       <div className="shrink-0 px-2 pb-2">
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring/15">

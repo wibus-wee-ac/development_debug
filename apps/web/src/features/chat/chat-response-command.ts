@@ -45,6 +45,17 @@ export interface ChatQueueListResponse {
   items: ChatQueueItem[]
 }
 
+export type SideContextSource = 'provider-native' | 'cradle-context'
+
+export interface SideChatResult {
+  sessionId: string
+  parentSessionId: string
+  runtimeKind: string
+  providerTargetId: string | null
+  providerSessionId: string | null
+  sideContextSource: SideContextSource
+}
+
 export interface BangCommandResult {
   command: string
   stdout: string
@@ -120,6 +131,30 @@ export async function executeBangCommand(args: {
   }
 
   return await res.json() as BangCommandResult
+}
+
+export async function createSideChat(args: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+  signal?: AbortSignal
+}): Promise<SideChatResult> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/side-chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      providerTargetId: args.providerTargetId,
+      modelId: args.modelId,
+    }),
+    signal: args.signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to create side chat: ${res.status} ${body}`)
+  }
+
+  return await res.json() as SideChatResult
 }
 
 export async function listChatSessionQueue(sessionId: string): Promise<ChatQueueListResponse> {

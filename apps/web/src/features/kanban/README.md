@@ -33,5 +33,5 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-toolbar.test.tsx**: Regression tests for toolbar action accessible names, decorative icons, pressed layout state, and key callbacks.
 - **shared/**: Kanban 内部复用的视觉与元数据 helper，包括 priority label、彩色 label metadata、父 issue affordance、图标和头像。
 - **status-manager.tsx**: Status management UI with accessible inline rename, delete, and reorder controls.
-- **use-kanban.ts**: Kanban board 与 Issue-owned status、milestone、relation、comment、field-change history、bulk update、label patching、delegation 操作的 TanStack Query hooks；高影响 workspace 读取使用共享 query refresh policy，使外部 CLI、agent 和多窗口变更无需整页刷新即可可见。
+- **use-kanban.ts**: Kanban board 与 Issue-owned status、milestone、relation、comment、Activity projection、raw field-change history、bulk update、label patching、delegation 操作的 TanStack Query hooks；高影响 workspace 读取使用共享 query refresh policy，使外部 CLI、agent 和多窗口变更无需整页刷新即可可见。
 - **use-view-config.ts**: Local view configuration state for board/list/table display options.

@@ -1,9 +1,7 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react'
 
 import {
   getSessionsByIdOptions,
@@ -11,6 +9,7 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
+import { isElectron, nativeIpc } from '~/lib/electron'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 function loadTerminalPanelView() {
@@ -81,6 +80,23 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
+  useEffect(() => {
+    if (typeof session?.archivedAt !== 'number') {
+      return
+    }
+
+    const { tabs, closeTab } = store.getState()
+    for (const tab of tabs) {
+      if (tab.type === 'chat' && tab.params.sessionId === sessionId) {
+        closeTab(tab.id)
+      }
+    }
+
+    if (isElectron) {
+      void nativeIpc?.window.closeSession(sessionId).catch(() => {})
+    }
+  }, [session?.archivedAt, sessionId, store])
+
   // Replace legacy session-id labels before metadata finishes loading.
   useEffect(() => {
     const tabs = store.getState().tabs.filter(
@@ -121,6 +137,9 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   })
 
   const workspacePath = workspace?.path ?? null
+  const openSideChat = useCallback((sideSessionId: string) => {
+    store.getState().openTab('chat', { sessionId: sideSessionId })
+  }, [store])
 
   useEffect(() => {
     if (!session) {
@@ -168,6 +187,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
         runtimeKind={session?.runtimeKind}
         workspaceId={workspaceId}
         agentId={agentId}
+        onSideChatCreated={openSideChat}
       />
     </>
   )

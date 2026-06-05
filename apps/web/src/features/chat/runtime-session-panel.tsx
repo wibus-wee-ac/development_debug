@@ -1,20 +1,21 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import { ActivityIcon, BotIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
-import { useMemo } from 'react'
-import { useSyncExternalStore } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 
 import { cn } from '~/lib/cn'
 import { formatElapsedRangeMs, formatPercentFromRatio } from '~/lib/number-format'
 import type { RuntimeKind } from '~/lib/types'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useLayoutStore } from '~/store/layout'
 
 import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
 import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from './chat-context'
+import { readRenderableToolPart } from './chat-render-plan'
 import type { ChatTodoItem, SessionTodoSnapshot } from './chat-todo-projection'
 import { toolNameFromPart } from './chat-tool-entities'
-import { readRenderableToolPart } from './chat-render-plan'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
 import type { RenderableToolPart, ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
@@ -101,14 +102,14 @@ export function RuntimeSessionPanel({
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
       <ProgressPanel items={progressItems} loading={runtimeUiSlotStatesLoading} />
-      <SubagentsPanel crewState={crewState} loading={runtimeUiSlotStatesLoading} />
+      <SubagentsPanel sessionId={sessionId} crewState={crewState} loading={runtimeUiSlotStatesLoading} />
 
       {
         import.meta.env.DEV && (
           <>
             <div className="border-t" />
 
-            <div className='mx-auto bg-muted text-[10px] px-2 py-0.5 rounded-full border border-border -mb-1'>
+            <div className="mx-auto bg-muted text-[10px] px-2 py-0.5 rounded-full border border-border -mb-1">
               Dev Sections
             </div>
 
@@ -222,7 +223,9 @@ function ProgressPanel({
   items: ProgressTaskItem[]
   loading: boolean
 }) {
-  if (items.length === 0) return null
+  if (items.length === 0) {
+    return null
+  }
   return (
     <section className="space-y-2">
       <PanelHeading icon={ListChecksIcon} label="Progress" />
@@ -273,18 +276,35 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
 }
 
 function SubagentsPanel({
+  sessionId,
   crewState,
   loading,
 }: {
+  sessionId: string
   crewState: ChatRuntimeCrewUiSlotState | null
   loading: boolean
 }) {
+  const openSubagentTab = useBrowserPanelStore(state => state.openSubagentTab)
+  const browserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const agents = crewState ? readCrewAgents(crewState) : []
   const calls = readCrewCalls(crewState)
   const recentCalls = calls.slice(0, 4)
   const hasCrewState = agents.length > 0 || calls.length > 0 || (crewState?.collaborationModeCount ?? 0) > 0
+  const openAgent = (agent: ChatRuntimeCrewAgentItem) => {
+    openSubagentTab({
+      sessionId,
+      threadId: agent.threadId,
+      agentName: readCrewAgentLabel(agent),
+      agentRole: agent.agentRole,
+      ownerId: browserPanelOwnerId,
+    })
+    setBrowserPanelOpen(true, browserPanelOwnerId)
+  }
 
-  if (agents.length === 0) return null
+  if (agents.length === 0) {
+    return null
+  }
 
   return (
     <section className="space-y-2">
@@ -301,7 +321,7 @@ function SubagentsPanel({
         {agents.length > 0 && (
           <div className="space-y-1">
             {agents.slice(0, 6).map((agent, index) => (
-              <SubagentRow key={agent.threadId} agent={agent} index={index} />
+              <SubagentRow key={agent.threadId} agent={agent} index={index} onOpen={openAgent} />
             ))}
           </div>
         )}
@@ -354,16 +374,23 @@ function CompactMetric({
 function SubagentRow({
   agent,
   index,
+  onOpen,
 }: {
   agent: ChatRuntimeCrewAgentItem
   index: number
+  onOpen: (agent: ChatRuntimeCrewAgentItem) => void
 }) {
   const status = agent.status ? formatStatusLike(agent.status) : 'Unknown'
   const label = readCrewAgentLabel(agent)
   const details = readCrewAgentDetails(agent)
   const description = agent.message ?? agent.preview
   return (
-    <div className="min-w-0 rounded bg-background/45 px-2 py-1.5">
+    <button
+      type="button"
+      className="min-w-0 w-full rounded bg-background/45 px-2 py-1.5 text-left transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      onClick={() => onOpen(agent)}
+      aria-label={`Open ${label} output`}
+    >
       <div className="flex min-w-0 items-center gap-2">
         <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px]', readCrewSwatchClassName(index))}>
           <span className="size-2 rounded-[3px] bg-current opacity-80" />
@@ -374,6 +401,7 @@ function SubagentRow({
         <span className={cn('shrink-0 text-[10px] tabular-nums', readCrewStatusTextClassName(agent.status))}>
           {status}
         </span>
+        <EyeIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden="true" />
       </div>
       {details && (
         <p className="mt-0.5 truncate pl-6 text-[9px] text-muted-foreground">
@@ -385,7 +413,7 @@ function SubagentRow({
           {description}
         </p>
       )}
-    </div>
+    </button>
   )
 }
 

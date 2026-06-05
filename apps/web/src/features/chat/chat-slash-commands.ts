@@ -101,6 +101,17 @@ export const CRADLE_APPSHOT_SLASH_COMMAND: ChatComposerSlashCommand = {
   iconKey: 'appshot',
 }
 
+export const CRADLE_SIDE_CHAT_SLASH_COMMAND: ChatComposerSlashCommand = {
+  id: 'cradle:side-chat',
+  name: 'side',
+  description: 'Start a side conversation from this chat',
+  argumentHint: '[message]',
+  aliases: ['branch-chat'],
+  source: 'cradle',
+  action: { kind: 'insertText', text: '/side ' },
+  iconKey: 'side-chat',
+}
+
 export interface MergeChatSlashCommandsInput {
   runtimeCommands: ChatSlashCommand[]
   runtimeUiSlotCommands?: ChatComposerSlashCommand[]

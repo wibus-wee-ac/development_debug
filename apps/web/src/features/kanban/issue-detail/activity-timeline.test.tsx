@@ -1,29 +1,25 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanIssueCommentView, KanbanIssueFieldChangeView } from '~/lib/types'
+import type { KanbanIssueActivityItem } from '~/lib/types'
 
 import { ActivityTimeline } from './activity-timeline'
 
 const mocks = vi.hoisted(() => ({
   addCommentMutate: vi.fn(),
-  comments: [] as KanbanIssueCommentView[],
+  activity: [] as KanbanIssueActivityItem[],
   deleteCommentMutate: vi.fn(),
-  fieldChanges: [] as KanbanIssueFieldChangeView[],
 }))
 
 vi.mock('../use-kanban', () => ({
   useAddComment: () => ({
     mutate: mocks.addCommentMutate,
   }),
-  useComments: () => ({
-    data: mocks.comments,
-  }),
   useDeleteComment: () => ({
     mutate: mocks.deleteCommentMutate,
   }),
-  useFieldChanges: () => ({
-    data: mocks.fieldChanges,
+  useIssueActivity: () => ({
+    data: mocks.activity,
   }),
 }))
 
@@ -31,22 +27,25 @@ afterEach(() => {
   cleanup()
 })
 
-function comment(content: string): KanbanIssueCommentView {
+function comment(content: string): KanbanIssueActivityItem {
   return {
     id: 'comment-1',
     issueId: 'issue-1',
-    content,
-    authorKind: 'agent',
-    authorId: 'agent-1',
-    agentActivityId: null,
-    createdAt: 1_700_000_000,
-    author: {
+    kind: 'comment',
+    actor: {
       kind: 'agent',
       id: 'agent-1',
       displayName: 'Jarvis',
       avatarUrl: null,
       label: 'AI',
     },
+    comment: {
+      content,
+      systemKind: null,
+    },
+    fieldChange: null,
+    sourceChatSessionId: 'chat-session-1',
+    createdAt: 1_700_000_000,
   }
 }
 
@@ -54,12 +53,11 @@ describe('activity timeline', () => {
   beforeEach(() => {
     mocks.addCommentMutate.mockReset()
     mocks.deleteCommentMutate.mockReset()
-    mocks.comments = []
-    mocks.fieldChanges = []
+    mocks.activity = []
   })
 
   it('renders agent comments as static markdown', () => {
-    mocks.comments = [
+    mocks.activity = [
       comment('**Root cause:** blocked navigation\n\n- First finding'),
     ]
 

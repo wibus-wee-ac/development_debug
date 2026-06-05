@@ -354,6 +354,7 @@ export function useChatScrollRuntime({
 
     let lastScrollHeight = viewport.scrollHeight
     let observedTranscriptContent: HTMLElement | null = null
+    let transcriptMutationFrameId = 0
 
     const onWheel = (event: WheelEvent) => {
       if (event.deltaY < 0) {
@@ -416,9 +417,17 @@ export function useChatScrollRuntime({
       }
     }
 
-    const onTranscriptMutation = () => {
+    const flushTranscriptMutation = () => {
+      transcriptMutationFrameId = 0
       observeTranscriptContent()
       handleTranscriptLayoutChange()
+    }
+
+    const onTranscriptMutation = () => {
+      if (transcriptMutationFrameId !== 0) {
+        return
+      }
+      transcriptMutationFrameId = requestAnimationFrame(flushTranscriptMutation)
     }
 
     viewport.addEventListener('wheel', onWheel, { capture: true, passive: true })
@@ -433,7 +442,6 @@ export function useChatScrollRuntime({
     mutationObserver.observe(viewport, {
       childList: true,
       subtree: true,
-      characterData: true,
     })
 
     syncCurrentMetrics()
@@ -446,6 +454,10 @@ export function useChatScrollRuntime({
       viewport.removeEventListener('scroll', onScroll)
       resizeObserver.disconnect()
       mutationObserver.disconnect()
+      if (transcriptMutationFrameId !== 0) {
+        cancelAnimationFrame(transcriptMutationFrameId)
+        transcriptMutationFrameId = 0
+      }
       if (minimapRafIdRef.current !== 0) {
         cancelAnimationFrame(minimapRafIdRef.current)
         minimapRafIdRef.current = 0

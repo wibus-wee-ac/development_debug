@@ -60,6 +60,10 @@ interface UIMessageChunkValidator {
   validate?: (value: unknown) => UIMessageChunkValidationResult | PromiseLike<UIMessageChunkValidationResult>
 }
 
+const PENDING_DESKTOP_STREAM_LIMIT = 32
+const PENDING_DESKTOP_EVENTS_PER_STREAM = 64
+const CLOSED_DESKTOP_STREAM_LIMIT = 512
+
 let desktopSubscriptions: Array<() => void> | null = null
 const desktopStreams = new Map<string, DesktopStreamState>()
 const pendingDesktopEvents = new Map<string, BufferedDesktopEvent[]>()
@@ -211,9 +215,7 @@ function routeDesktopEvent(event: BufferedDesktopEvent): void {
   }
   const state = desktopStreams.get(streamId)
   if (!state) {
-    const pending = pendingDesktopEvents.get(streamId) ?? []
-    pending.push(event)
-    pendingDesktopEvents.set(streamId, pending)
+    bufferPendingDesktopEvent(streamId, event)
     return
   }
 
@@ -251,7 +253,7 @@ function routeDesktopEvent(event: BufferedDesktopEvent): void {
     if (event.kind === 'closed') {
       state.closed = true
       desktopStreams.delete(streamId)
-      closedDesktopStreamIds.add(streamId)
+      recordClosedDesktopStream(streamId)
       pendingDesktopEvents.delete(streamId)
       state.controller.close()
       return
@@ -266,7 +268,7 @@ function abortDesktopStream(state: DesktopStreamState): void {
   }
   state.closed = true
   desktopStreams.delete(state.streamId)
-  closedDesktopStreamIds.add(state.streamId)
+  recordClosedDesktopStream(state.streamId)
   pendingDesktopEvents.delete(state.streamId)
   void state.bridge.abort({ streamId: state.streamId })
   state.controller.error(createAbortError())
@@ -278,9 +280,42 @@ function closeDesktopStreamWithError(state: DesktopStreamState, error: unknown):
   }
   state.closed = true
   desktopStreams.delete(state.streamId)
-  closedDesktopStreamIds.add(state.streamId)
+  recordClosedDesktopStream(state.streamId)
   pendingDesktopEvents.delete(state.streamId)
   state.controller.error(error instanceof Error ? error : new Error('Desktop chat stream failed'))
+}
+
+function bufferPendingDesktopEvent(streamId: string, event: BufferedDesktopEvent): void {
+  const pending = pendingDesktopEvents.get(streamId) ?? []
+  pending.push(event)
+  if (pending.length > PENDING_DESKTOP_EVENTS_PER_STREAM) {
+    pending.splice(0, pending.length - PENDING_DESKTOP_EVENTS_PER_STREAM)
+  }
+  pendingDesktopEvents.delete(streamId)
+  pendingDesktopEvents.set(streamId, pending)
+  trimPendingDesktopStreams()
+}
+
+function trimPendingDesktopStreams(): void {
+  while (pendingDesktopEvents.size > PENDING_DESKTOP_STREAM_LIMIT) {
+    const oldestStreamId = pendingDesktopEvents.keys().next().value
+    if (typeof oldestStreamId !== 'string') {
+      return
+    }
+    pendingDesktopEvents.delete(oldestStreamId)
+  }
+}
+
+function recordClosedDesktopStream(streamId: string): void {
+  closedDesktopStreamIds.delete(streamId)
+  closedDesktopStreamIds.add(streamId)
+  while (closedDesktopStreamIds.size > CLOSED_DESKTOP_STREAM_LIMIT) {
+    const oldestStreamId = closedDesktopStreamIds.values().next().value
+    if (typeof oldestStreamId !== 'string') {
+      return
+    }
+    closedDesktopStreamIds.delete(oldestStreamId)
+  }
 }
 
 function readDesktopEventStreamId(event: BufferedDesktopEvent): string {

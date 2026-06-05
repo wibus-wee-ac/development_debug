@@ -2,7 +2,7 @@ import { CheckIcon } from 'lucide-react'
 import { startTransition, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { useI18n } from '~/i18n/client'
+import { useI18n } from '~/i18n/i18n-context'
 import type { SupportedLocale } from '~/i18n/locales'
 import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import { cn } from '~/lib/cn'

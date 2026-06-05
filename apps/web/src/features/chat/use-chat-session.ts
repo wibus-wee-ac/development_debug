@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   getChatSessionsBySessionIdMessagesOptions,
   getChatSessionsBySessionIdMessagesQueryKey,
+  getSessionsByIdOptions,
   getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { isSessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
@@ -24,10 +25,12 @@ import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
+  createSideChat,
   executeBangCommand,
   enqueueChatSessionQueueItem,
   listChatSessionQueue,
   reorderChatSessionQueue,
+  startChatResponse,
   switchChatPermissionMode,
 } from './chat-response-command'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
@@ -57,6 +60,11 @@ export interface SendMessageOptions {
   thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null | undefined
   permissionMode?: ChatPermissionMode
   continuationMode?: ChatContinuationMode
+}
+
+export type SendMessageResult = void | {
+  kind: 'side-chat'
+  sessionId: string
 }
 
 export interface ToolApprovalResponseInput {
@@ -128,6 +136,18 @@ function readCodexGoalCommandObjective(text: string): string | null {
   }
   const objective = normalized.slice('/goal'.length).trim()
   return objective.length > 0 ? objective : null
+}
+
+function readSideChatCommand(text: string): string | null {
+  const normalized = text.trimStart()
+  if (!normalized.startsWith('/side')) {
+    return null
+  }
+  const nextChar = normalized.charAt('/side'.length)
+  if (nextChar && nextChar !== ' ' && nextChar !== '\t') {
+    return null
+  }
+  return normalized.slice('/side'.length).trim()
 }
 
 function annotateCodexGoalMessage(message: UIMessage, objective: string): UIMessage {
@@ -213,6 +233,11 @@ export function useChatSession(chatSessionId: string | null) {
     queryFn: generatedSnapshotRowsOptions.queryFn,
     enabled: !!chatSessionId,
     select: data => data as ChatSessionMessageRow[],
+  })
+  const sessionBindingQuery = useQuery({
+    ...getSessionsByIdOptions({ path: { id: chatSessionId ?? '' } }),
+    enabled: !!chatSessionId,
+    staleTime: 60_000,
   })
 
   const queueQuery = useQuery({
@@ -423,10 +448,51 @@ export function useChatSession(chatSessionId: string | null) {
       return
     }
     const bangCommand = files.length === 0 && contextParts.length === 0 ? readBangCommand(text) : null
+    const sideChatMessage = readSideChatCommand(trimmedText)
     const goalObjective = runtimeKind === 'codex' ? readCodexGoalCommandObjective(trimmedText) : null
     const optimisticText = goalObjective ?? trimmedText
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
+
+    if (sideChatMessage !== null) {
+      const result = await createSideChat({
+        sessionId: chatSessionId,
+        providerTargetId: opts?.providerTargetId ?? undefined,
+        modelId: opts?.modelId ?? undefined,
+      })
+      refreshSessionLists()
+      updateSessionInSessionLists(queryClient, {
+        id: result.sessionId,
+        workspaceId: sessionBindingQuery.data?.workspaceId ?? null,
+        providerTargetId: result.providerTargetId,
+        modelId: opts?.modelId ?? sessionBindingQuery.data?.modelId ?? null,
+        runtimeKind: result.runtimeKind,
+      }, { promote: true })
+
+      if (sideChatMessage || files.length > 0 || contextParts.length > 0) {
+        const response = await startChatResponse({
+          sessionId: result.sessionId,
+          body: {
+            text: sideChatMessage,
+            files,
+            contextParts,
+            providerTargetId: opts?.providerTargetId ?? undefined,
+            modelId: opts?.modelId ?? undefined,
+            thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+            permissionMode: opts?.permissionMode,
+          },
+        })
+        if (!response.ok) {
+          const body = await response.text().catch(() => '')
+          throw new Error(`Failed to start side chat response: ${response.status} ${body}`)
+        }
+        await response.body?.cancel()
+      }
+
+      void queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: result.sessionId } }) })
+      void queryClient.invalidateQueries({ queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: result.sessionId } }) })
+      return { kind: 'side-chat' as const, sessionId: result.sessionId }
+    }
 
     if (bangCommand) {
       const controller = new AbortController()
@@ -535,7 +601,7 @@ export function useChatSession(chatSessionId: string | null) {
           permissionMode: opts?.permissionMode,
         },
       })
-      if (queueItem.mode === 'steer') {
+      if (queueItem.mode === 'steer' && queueItem.status !== 'pending') {
         useChatStore.getState().insertLiveSteerMessage(chatSessionId, createContinuationUserMessage({
           queueItem,
           fallbackText: trimmedText,
@@ -627,7 +693,7 @@ export function useChatSession(chatSessionId: string | null) {
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQuery.data?.modelId, sessionBindingQuery.data?.workspaceId, sessionBindingQueryKey, visibleStatus])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
     if (!chatSessionId) {

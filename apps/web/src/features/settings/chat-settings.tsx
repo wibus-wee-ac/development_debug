@@ -1,21 +1,25 @@
 // Chat settings for default continuation behavior and archived session recovery.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArchiveRestoreIcon, MessageSquareIcon } from 'lucide-react'
+import { ArchiveRestoreIcon, MessageSquareIcon, SearchIcon } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { postSessionsByIdArchive } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
+import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
 
-import { sessionsQueryKey, type WorkspaceSession, useAllSessions } from '../workspace/use-session'
-
+import type { WorkspaceSession } from '../workspace/use-session'
+import { sessionsQueryKey, useAllSessions } from '../workspace/use-session'
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
 import type { ContinuationBehavior } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
+import { useCodexPreferences } from './use-codex-preferences'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
 
@@ -88,7 +92,7 @@ function ArchivedSessionRow({
         size="xs"
         disabled={restoring}
         onClick={() => onRestore(session)}
-        aria-label={`${t('chat.archive.restore' as SettingsKey)} ${title}`}
+        aria-label={t('chat.archive.restoreAria', { title })}
       >
         {restoring
           ? <Spinner className="size-3" />
@@ -103,7 +107,28 @@ function ArchivedSessionList() {
   const { t } = useTranslation('settings')
   const queryClient = useQueryClient()
   const { sessions, loading } = useAllSessions(true)
-  const sortedSessions = sessions.toSorted((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt))
+  const [query, setQuery] = useState('')
+  const sortedSessions = useMemo(
+    () => sessions.toSorted((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt)),
+    [sessions],
+  )
+  const trimmedQuery = query.trim().toLocaleLowerCase()
+  const filteredSessions = useMemo(() => {
+    if (!trimmedQuery) {
+      return sortedSessions
+    }
+
+    return sortedSessions.filter((session) => {
+      const title = session.title?.trim() || t('chat.archive.untitled' as SettingsKey)
+      return [
+        title,
+        session.id,
+        session.workspaceId ?? '',
+        session.providerTargetId ?? '',
+        session.modelId ?? '',
+      ].some(value => value.toLocaleLowerCase().includes(trimmedQuery))
+    })
+  }, [sortedSessions, t, trimmedQuery])
   const restoreSession = useMutation({
     mutationFn: async (sessionId: string) => {
       const { data } = await postSessionsByIdArchive({
@@ -140,8 +165,21 @@ function ArchivedSessionList() {
           <p className="mt-0.5 text-[12px] text-muted-foreground">{t('chat.archive.description' as SettingsKey)}</p>
         </div>
         <div className="shrink-0 rounded-full bg-muted/50 px-2 py-0.5 text-[10.5px] tabular-nums text-muted-foreground">
-          {sortedSessions.length}
+          {trimmedQuery ? `${filteredSessions.length}/${sortedSessions.length}` : sortedSessions.length}
         </div>
+      </div>
+
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
+        <Input
+          type="search"
+          value={query}
+          onChange={event => setQuery(event.target.value)}
+          placeholder={t('chat.archive.searchPlaceholder' as SettingsKey)}
+          aria-label={t('chat.archive.searchPlaceholder' as SettingsKey)}
+          className="h-8 pl-8 pr-2 text-[12.5px]"
+          data-testid="chat-archived-sessions-search"
+        />
       </div>
 
       {loading
@@ -158,20 +196,27 @@ function ArchivedSessionList() {
               <span className="text-[11px] text-muted-foreground/70">{t('chat.archive.empty' as SettingsKey)}</span>
             </div>
           )
-          : (
-            <div className={cn('flex flex-col gap-1.5', sortedSessions.length > 6 && 'max-h-80 overflow-y-auto pr-1')}>
-              {sortedSessions.map(session => (
-                <ArchivedSessionRow
-                  key={session.id}
-                  session={session}
-                  restoring={restoreSession.isPending && restoreSession.variables === session.id}
-                  onRestore={(target) => {
-                    restoreSession.mutate(target.id)
-                  }}
-                />
-              ))}
-            </div>
-          )}
+          : filteredSessions.length === 0
+            ? (
+              <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-4 py-5 text-center">
+                <SearchIcon className="size-4 text-muted-foreground/40" aria-hidden="true" />
+                <span className="text-[11px] text-muted-foreground/70">{t('chat.archive.searchEmpty' as SettingsKey)}</span>
+              </div>
+            )
+            : (
+              <div className={cn('flex flex-col gap-1.5', filteredSessions.length > 6 && 'max-h-80 overflow-y-auto pr-1')}>
+                {filteredSessions.map(session => (
+                  <ArchivedSessionRow
+                    key={session.id}
+                    session={session}
+                    restoring={restoreSession.isPending && restoreSession.variables === session.id}
+                    onRestore={(target) => {
+                      restoreSession.mutate(target.id)
+                    }}
+                  />
+                ))}
+              </div>
+            )}
     </div>
   )
 }
@@ -179,6 +224,7 @@ function ArchivedSessionList() {
 export function ChatSettings() {
   const { t } = useTranslation('settings')
   const { prefs, isSaving, savePrefs } = useChatPreferences()
+  const { prefs: codexPrefs, isSaving: isSavingCodexPrefs, savePrefs: saveCodexPrefs } = useCodexPreferences()
 
   if (!prefs) {
     return null
@@ -191,6 +237,10 @@ export function ChatSettings() {
     void savePrefs({ continuationBehavior: value as ContinuationBehavior })
   }
 
+  const handleCradleUserAgentChange = (useCradleUserAgent: boolean) => {
+    void saveCodexPrefs({ useCradleUserAgent })
+  }
+
   return (
     <div className="flex flex-col gap-0" data-testid="chat-settings">
       <SettingsSectionHeader
@@ -198,7 +248,20 @@ export function ChatSettings() {
         description={t('chat.page.description')}
       />
       <SettingsDivider />
-      <ArchivedSessionList />
+
+      <SettingsRow
+        label={t('chat.codexUserAgent.label' as SettingsKey)}
+        description={t('chat.codexUserAgent.description' as SettingsKey)}
+      >
+        <Switch
+          checked={codexPrefs?.useCradleUserAgent ?? true}
+          onCheckedChange={handleCradleUserAgentChange}
+          disabled={!codexPrefs || isSavingCodexPrefs}
+          aria-label={t('chat.codexUserAgent.label' as SettingsKey)}
+          data-testid="chat-codex-user-agent"
+        />
+      </SettingsRow>
+
       <SettingsDivider />
 
       <SettingsRow
@@ -223,6 +286,9 @@ export function ChatSettings() {
           </ToggleGroupItem>
         </ToggleGroup>
       </SettingsRow>
+      <SettingsDivider />
+
+      <ArchivedSessionList />
     </div>
   )
 }

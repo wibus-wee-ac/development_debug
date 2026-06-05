@@ -18,6 +18,8 @@ import {
   FolderPlusIcon,
   GitBranchIcon,
   LoaderCircleIcon,
+  MailIcon,
+  MailOpenIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
   PackageIcon,
@@ -347,7 +349,7 @@ const SessionItem = memo(({
 }) => {
   const { t } = useTranslation('workspace')
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
-  const { openNewTab, openTab } = useCradleNavigation()
+  const { openNewTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
   const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id))
@@ -411,15 +413,24 @@ const SessionItem = memo(({
 
   const handleArchive = useCallback(async () => {
     await postSessionsByIdArchive({ path: { id: session.id }, body: { archived: true } })
+
+    const { tabs, closeTab } = useCradleTabStore.getState()
+    for (const tab of tabs) {
+      if (tab.type === 'chat' && tab.params.sessionId === session.id) {
+        closeTab(tab.id)
+      }
+    }
+
+    if (isElectron) {
+      void nativeIpc?.window.closeSession(session.id).catch(() => {})
+    }
+
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
       queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
     ])
-    if (isActive) {
-      openTab('home')
-    }
-  }, [session.id, workspaceId, queryClient, isActive, openTab])
+  }, [session.id, workspaceId, queryClient])
 
   const handleTogglePin = useCallback(async () => {
     await patchSessionsById({ path: { id: session.id }, body: { pinned: !session.pinned } })
@@ -457,6 +468,15 @@ const SessionItem = memo(({
     }
   }, [session.id])
 
+  function handleToggleReadState() {
+    const { markRead, markUnread } = useSessionActivityStore.getState()
+    if (isUnread) {
+      markRead(session.id)
+      return
+    }
+    markUnread(session.id)
+  }
+
   const handleOpenInNewTab = useCallback(() => {
     recordSessionLayout()
     openNewTab('chat', { sessionId: session.id })
@@ -467,6 +487,7 @@ const SessionItem = memo(({
       return
     }
 
+    prepareSessionOpen()
     const screenX = window.screenX + Math.round(window.outerWidth / 2)
     const screenY = window.screenY + Math.round(window.outerHeight / 2)
     if (!reserveTearoffSession(session.id)) {
@@ -482,7 +503,13 @@ const SessionItem = memo(({
       .catch(() => {
         releaseTearoffSession(session.id)
       })
-  }, [session.id])
+  }, [prepareSessionOpen, session.id])
+
+  function handleSessionDoubleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    e.preventDefault()
+    e.stopPropagation()
+    handleOpenInNewWindow()
+  }
 
   const checkSessionTearOff = useCallback(() => {
     if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
@@ -581,6 +608,13 @@ const SessionItem = memo(({
       invoke: handleStartRename,
     },
     {
+      key: 'toggle-read-state',
+      label: isUnread ? t('session.action.markRead') : t('session.action.markUnread'),
+      icon: isUnread ? <MailOpenIcon /> : <MailIcon />,
+      testId: `session-menu-toggle-read-state-${session.id}`,
+      invoke: handleToggleReadState,
+    },
+    {
       key: 'toggle-pin',
       label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
       icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
@@ -647,6 +681,7 @@ const SessionItem = memo(({
               to="chat"
               params={{ sessionId: session.id }}
               onClick={prepareSessionOpen}
+              onDoubleClick={isElectron ? handleSessionDoubleClick : undefined}
               onFocus={prefetchSession}
               onPointerDown={prepareSessionOpen}
               onPointerEnter={prefetchSession}

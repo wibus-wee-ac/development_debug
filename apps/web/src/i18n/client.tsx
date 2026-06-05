@@ -2,27 +2,21 @@ import type { i18n as I18nInstance } from 'i18next'
 import { createInstance } from 'i18next'
 import resourcesToBackend from 'i18next-resources-to-backend'
 import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 
 import enUS, { allNamespaces } from '~/locales/default'
 
 import { applyDocumentLocale, writeLocaleCookie } from './browser-locale'
+import { I18nContext, type I18nContextValue } from './i18n-context'
 import type { SupportedLocale } from './locales'
 import { DEFAULT_LOCALE, normalizeLocale } from './locales'
 import { getI18nSettings } from './settings'
-
-interface I18nContextValue {
-  i18n: I18nInstance
-  switchLang: (locale: string) => Promise<void>
-}
 
 interface I18nRuntime {
   i18n: I18nInstance
   readyPromise: Promise<void>
 }
-
-const I18nContext = createContext<I18nContextValue | null>(null)
 
 function createI18nInstance(initialLocale: SupportedLocale): I18nRuntime {
   const instance = createInstance()
@@ -113,12 +107,4 @@ export function I18nProvider({
       <I18nextProvider i18n={i18n}>{children}</I18nextProvider>
     </I18nContext.Provider>
   )
-}
-
-export function useI18n(): I18nContextValue {
-  const value = useContext(I18nContext)
-  if (!value) {
-    throw new Error('useI18n must be used within I18nProvider')
-  }
-  return value
 }

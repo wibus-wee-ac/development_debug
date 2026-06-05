@@ -15,7 +15,7 @@ Store naming convention: `use<Domain>Store`.
 - **layout-slots.ts**: Layout slot registry — pages inject content into aside/panel regions
 - **theme.ts**: Theme preference state — light/dark/system mode
 - **sidebar-nav.ts**: Sidebar drill-in navigation state — controls which view the sidebar shows (main / settings)
-- **session-activity.ts**: Session activity owner — tracks the currently visible chat session plus unread background activity, so sidebar session items stay display-only while the app shell owns unread reconciliation
+- **session-activity.ts**: Session activity owner — tracks the currently visible chat session plus unread background activity and explicit mark-read / mark-unread actions, so sidebar session items delegate unread semantics to the app shell
 - **session-activity.test.ts**: Regression tests for unread ownership, background activity marking, and visible-session clearing semantics
 - **session-layout.ts**: Session/workspace layout metadata cache — keeps session title, runtime kind, and workspace identity available synchronously to the app shell while tab content Activity effects and queries are still settling
 - **session-layout.test.ts**: Regression tests for partial session/workspace layout cache merges and explicit null identity updates

@@ -239,6 +239,59 @@ describe('chat store messages', () => {
     })
   })
 
+  it('hydrates persisted live steer splits from continuation metadata', () => {
+    useChatStore.getState().setMessages('session-1', [
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Before steer. After steer.' }],
+      },
+      {
+        id: 'continuation-steer-canonical',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Please adjust.' }],
+        metadata: {
+          cradle: {
+            continuation: {
+              mode: 'steer',
+              queueItemId: 'steer-1',
+              sourceMessageId: 'assistant-1',
+              splitParts: [{ type: 'text', text: 'Before steer.' }],
+            },
+          },
+        },
+      } as UIMessage,
+    ])
+
+    expect(useChatStore.getState().messagesMap.get('session-1')).toEqual([
+      {
+        id: 'assistant-1',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Before steer.' }],
+      },
+      {
+        id: 'continuation-steer-canonical',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Please adjust.' }],
+        metadata: {
+          cradle: {
+            continuation: {
+              mode: 'steer',
+              queueItemId: 'steer-1',
+              sourceMessageId: 'assistant-1',
+              splitParts: [{ type: 'text', text: 'Before steer.' }],
+            },
+          },
+        },
+      },
+      {
+        id: 'assistant-1:steer-tail',
+        role: 'assistant',
+        parts: [{ type: 'text', text: ' After steer.' }],
+      },
+    ])
+  })
+
   it('keeps live steer anchored after the assistant id changes to the server snapshot id', () => {
     useChatStore.getState().setMessages('session-1', [{
       id: 'assistant-temp',

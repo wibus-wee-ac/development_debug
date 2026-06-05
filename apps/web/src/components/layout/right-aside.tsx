@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
-import { LayoutGroup, m } from 'motion/react'
-import { useCallback, useState } from 'react'
+import { animate, AnimatePresence, LayoutGroup, m, useMotionValue } from 'motion/react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -21,12 +21,12 @@ import { useLayoutStore } from '~/store/layout'
 interface Tab {
   id: string
   labelKey:
-  | 'rightAside.tab.files'
-  | 'rightAside.tab.changes'
-  | 'rightAside.tab.git'
-  | 'rightAside.tab.issue'
-  | 'rightAside.tab.await'
-  | 'rightAside.tab.runtime'
+    | 'rightAside.tab.files'
+    | 'rightAside.tab.changes'
+    | 'rightAside.tab.git'
+    | 'rightAside.tab.issue'
+    | 'rightAside.tab.await'
+    | 'rightAside.tab.runtime'
   icon: typeof FolderTreeIcon
 }
 
@@ -40,6 +40,16 @@ const TABS: Tab[] = [
 ]
 
 const TAB_GAP = 2
+const HORIZONTAL_SWIPE_AXIS_RATIO = 1.25
+const HORIZONTAL_SWIPE_SETTLE_IDLE_MS = 96
+const HORIZONTAL_SWIPE_LOCK_IDLE_MS = 220
+const HORIZONTAL_SWIPE_COMMIT_RATIO = 0.24
+const HORIZONTAL_SWIPE_DELTA_SCALE = 0.88
+const HORIZONTAL_SWIPE_MAX_DELTA = 64
+const HORIZONTAL_SWIPE_MIN_COMMIT_DISTANCE = 52
+const HORIZONTAL_SWIPE_MAX_COMMIT_DISTANCE = 112
+const HORIZONTAL_SCROLL_EPSILON = 1
+const EDITABLE_WHEEL_TARGET_SELECTOR = 'input, textarea, select, [contenteditable], [role="textbox"]'
 
 const TAB_SPRING = {
   type: 'spring',
@@ -80,11 +90,249 @@ const TAB_LABEL_TRANSITION = {
   },
 } as const
 
+const PANEL_SLIDE_TRANSITION = {
+  type: 'spring',
+  stiffness: 660,
+  damping: 56,
+  mass: 0.82,
+} as const
+
+const TAB_PILL_TRANSITION = {
+  type: 'spring',
+  stiffness: 760,
+  damping: 54,
+  mass: 0.72,
+} as const
+
+const PANEL_SLIDE_VARIANTS = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? '100%' : '-100%',
+    opacity: 0.96,
+  }),
+  center: {
+    x: '0%',
+    opacity: 1,
+  },
+  exit: (direction: number) => ({
+    x: direction > 0 ? '-100%' : '100%',
+    opacity: 0.96,
+  }),
+} as const
+
+type HorizontalSwipePreview = {
+  direction: -1 | 1
+  targetTabId: string
+}
+
+type TabPillRect = {
+  x: number
+  width: number
+}
+
+function normalizeWheelDelta(delta: number, deltaMode: number, pageSize: number): number {
+  if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    return delta * 16
+  }
+  if (deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    return delta * pageSize
+  }
+  return delta
+}
+
+function canScrollHorizontally(element: HTMLElement, deltaX: number): boolean {
+  const overflowX = window.getComputedStyle(element).overflowX
+  if (overflowX !== 'auto' && overflowX !== 'scroll' && overflowX !== 'overlay') {
+    return false
+  }
+  if (element.scrollWidth <= element.clientWidth + HORIZONTAL_SCROLL_EPSILON) {
+    return false
+  }
+
+  const maxScrollLeft = element.scrollWidth - element.clientWidth
+  return deltaX > 0
+    ? element.scrollLeft < maxScrollLeft - HORIZONTAL_SCROLL_EPSILON
+    : element.scrollLeft > HORIZONTAL_SCROLL_EPSILON
+}
+
+function shouldKeepHorizontalWheelForContent(
+  target: EventTarget | null,
+  root: HTMLElement,
+  deltaX: number,
+): boolean {
+  if (!(target instanceof Element)) {
+    return false
+  }
+  if (target.closest(EDITABLE_WHEEL_TARGET_SELECTOR)) {
+    return true
+  }
+
+  let element: HTMLElement | null = target instanceof HTMLElement
+    ? target
+    : target.parentElement
+
+  while (element && element !== root) {
+    if (canScrollHorizontally(element, deltaX)) {
+      return true
+    }
+    element = element.parentElement
+  }
+
+  return false
+}
+
+function getAdjacentTabId(activeTab: string, direction: -1 | 1): string | null {
+  const activeIndex = TABS.findIndex(tab => tab.id === activeTab)
+  if (activeIndex === -1) {
+    return TABS[0]?.id ?? null
+  }
+
+  return TABS[activeIndex + direction]?.id ?? null
+}
+
+function clampHorizontalSwipeOffset(offset: number, direction: -1 | 1, width: number): number {
+  return direction > 0
+    ? Math.max(-width, Math.min(0, offset))
+    : Math.max(0, Math.min(width, offset))
+}
+
+function getHorizontalSwipeCommitDistance(width: number): number {
+  return Math.min(
+    HORIZONTAL_SWIPE_MAX_COMMIT_DISTANCE,
+    Math.max(HORIZONTAL_SWIPE_MIN_COMMIT_DISTANCE, width * HORIZONTAL_SWIPE_COMMIT_RATIO),
+  )
+}
+
+function getHorizontalSwipeTargetOffset(direction: -1 | 1, width: number): number {
+  return -direction * width
+}
+
+function lerp(start: number, end: number, progress: number): number {
+  return start + (end - start) * progress
+}
+
+function clampProgress(value: number): number {
+  return Math.max(0, Math.min(1, value))
+}
+
+function normalizeHorizontalSwipeDelta(deltaX: number): number {
+  return Math.sign(deltaX) * Math.min(Math.abs(deltaX) * HORIZONTAL_SWIPE_DELTA_SCALE, HORIZONTAL_SWIPE_MAX_DELTA)
+}
+
 interface RightAsideProps {
   sessionId?: string | null
   workspaceId?: string | null
   workspaceName?: string | null
   workspacePath?: string | null
+}
+
+interface RightAsidePanelContentProps {
+  tabId: string
+  sessionId: string | null
+  workspaceId: string | null
+  workspacePath: string | null
+  issueEmptyLabel: string
+  runtimeKind: RuntimeKind | null
+  providerTargetId: string | null
+  onPackRequested: (paths: string[]) => void
+}
+
+function RightAsidePanelContent({
+  tabId,
+  sessionId,
+  workspaceId,
+  workspacePath,
+  issueEmptyLabel,
+  runtimeKind,
+  providerTargetId,
+  onPackRequested,
+}: RightAsidePanelContentProps) {
+  if (tabId === 'files') {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-files"
+      >
+        <FileTree
+          workspaceId={workspaceId}
+          workspacePath={workspacePath}
+          onPackRequested={workspaceId ? onPackRequested : undefined}
+        />
+      </div>
+    )
+  }
+
+  if (tabId === 'git') {
+    return (
+      <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-git">
+        <GitPanel workspaceId={workspaceId} />
+      </div>
+    )
+  }
+
+  if (tabId === 'changes') {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-changes"
+      >
+        <ChangesPanel
+          workspaceId={workspaceId}
+          workspacePath={workspacePath}
+          onPackRequested={workspaceId ? onPackRequested : undefined}
+        />
+      </div>
+    )
+  }
+
+  if (tabId === 'issue' && sessionId) {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-issue"
+      >
+        <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
+      </div>
+    )
+  }
+
+  if (tabId === 'issue') {
+    return (
+      <div
+        className="flex flex-1 items-center justify-center"
+        data-testid="right-aside-panel-issue-empty"
+      >
+        <p className="text-[11px] text-muted-foreground">{issueEmptyLabel}</p>
+      </div>
+    )
+  }
+
+  if (tabId === 'await') {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-await"
+      >
+        <AwaitPanel sessionId={sessionId ?? null} workspaceId={workspaceId} />
+      </div>
+    )
+  }
+
+  if (tabId === 'runtime') {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-runtime"
+      >
+        <RuntimeSessionPanel
+          sessionId={sessionId ?? null}
+          runtimeKind={runtimeKind}
+          providerTargetId={providerTargetId}
+        />
+      </div>
+    )
+  }
+
+  return null
 }
 
 export function RightAside({
@@ -96,6 +344,24 @@ export function RightAside({
   const { t } = useTranslation('chrome')
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const tabListRef = useRef<HTMLDivElement | null>(null)
+  const tabButtonRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const currentPanelX = useMotionValue(0)
+  const adjacentPanelX = useMotionValue(0)
+  const tabPillX = useMotionValue(0)
+  const tabPillWidth = useMotionValue(0)
+  const tabPillOpacity = useMotionValue(0)
+  const swipePreviewRef = useRef<HorizontalSwipePreview | null>(null)
+  const swipeIdleTimerRef = useRef<number | null>(null)
+  const swipeLockedUntilIdleRef = useRef(false)
+  const swipeSettlingRef = useRef(false)
+  const swipeAnimationsRef = useRef<Array<{ stop: () => void }>>([])
+  const tabPillAnimationsRef = useRef<Array<{ stop: () => void }>>([])
+  const tabPillMeasureFrameRef = useRef(0)
+  const [swipePreview, setSwipePreviewState] = useState<HorizontalSwipePreview | null>(null)
+  const [tabPillReady, setTabPillReady] = useState(false)
+  const [panelDirection, setPanelDirection] = useState(1)
   const [packOpen, setPackOpen] = useState(false)
   const [packInitialPaths, setPackInitialPaths] = useState<string[]>([])
 
@@ -134,8 +400,356 @@ export function RightAside({
     setPackOpen(true)
   }, [])
 
+  const clearSwipeIdleTimer = useCallback(() => {
+    if (swipeIdleTimerRef.current === null) {
+      return
+    }
+    window.clearTimeout(swipeIdleTimerRef.current)
+    swipeIdleTimerRef.current = null
+  }, [])
+
+  const stopSwipeAnimations = useCallback(() => {
+    for (const animation of swipeAnimationsRef.current) {
+      animation.stop()
+    }
+    swipeAnimationsRef.current = []
+  }, [])
+
+  const stopTabPillAnimations = useCallback(() => {
+    for (const animation of tabPillAnimationsRef.current) {
+      animation.stop()
+    }
+    tabPillAnimationsRef.current = []
+  }, [])
+
+  const measureTabPillRect = useCallback((tabId: string): TabPillRect | null => {
+    const tabList = tabListRef.current
+    const button = tabButtonRefs.current[tabId]
+    if (!tabList || !button) {
+      return null
+    }
+
+    const listRect = tabList.getBoundingClientRect()
+    const buttonRect = button.getBoundingClientRect()
+    return {
+      x: buttonRect.left - listRect.left,
+      width: buttonRect.width,
+    }
+  }, [])
+
+  const applyTabPillRect = useCallback((rect: TabPillRect) => {
+    stopTabPillAnimations()
+    tabPillX.set(rect.x)
+    tabPillWidth.set(rect.width)
+    tabPillOpacity.set(1)
+    setTabPillReady(true)
+  }, [stopTabPillAnimations, tabPillOpacity, tabPillWidth, tabPillX])
+
+  const animateTabPillToRect = useCallback((rect: TabPillRect) => {
+    stopTabPillAnimations()
+    tabPillOpacity.set(1)
+    setTabPillReady(true)
+    const xAnimation = animate(tabPillX, rect.x, TAB_PILL_TRANSITION)
+    const widthAnimation = animate(tabPillWidth, rect.width, TAB_PILL_TRANSITION)
+    tabPillAnimationsRef.current = [xAnimation, widthAnimation]
+  }, [stopTabPillAnimations, tabPillOpacity, tabPillWidth, tabPillX])
+
+  const updateTabPillForSwipe = useCallback((
+    preview: HorizontalSwipePreview,
+    currentX: number,
+    width: number,
+  ) => {
+    const activeRect = measureTabPillRect(activeTab)
+    const targetRect = measureTabPillRect(preview.targetTabId)
+    if (!activeRect || !targetRect) {
+      return
+    }
+
+    const progress = clampProgress(Math.abs(currentX) / width)
+    stopTabPillAnimations()
+    tabPillX.set(lerp(activeRect.x, targetRect.x, progress))
+    tabPillWidth.set(lerp(activeRect.width, targetRect.width, progress))
+    tabPillOpacity.set(1)
+    setTabPillReady(true)
+  }, [
+    activeTab,
+    measureTabPillRect,
+    stopTabPillAnimations,
+    tabPillOpacity,
+    tabPillWidth,
+    tabPillX,
+  ])
+
+  const scheduleActiveTabPillMeasurement = useCallback(() => {
+    if (tabPillMeasureFrameRef.current !== 0) {
+      cancelAnimationFrame(tabPillMeasureFrameRef.current)
+    }
+
+    tabPillMeasureFrameRef.current = requestAnimationFrame(() => {
+      tabPillMeasureFrameRef.current = 0
+      const rect = measureTabPillRect(activeTab)
+      if (!rect) {
+        return
+      }
+
+      if (tabPillReady) {
+        animateTabPillToRect(rect)
+        return
+      }
+      applyTabPillRect(rect)
+    })
+  }, [activeTab, animateTabPillToRect, applyTabPillRect, measureTabPillRect, tabPillReady])
+
+  const setSwipePreview = useCallback((preview: HorizontalSwipePreview | null) => {
+    swipePreviewRef.current = preview
+    setSwipePreviewState(preview)
+  }, [])
+
+  const unlockSwipeAfterIdle = useCallback(() => {
+    clearSwipeIdleTimer()
+    swipeIdleTimerRef.current = window.setTimeout(() => {
+      swipeLockedUntilIdleRef.current = false
+      swipeIdleTimerRef.current = null
+    }, HORIZONTAL_SWIPE_LOCK_IDLE_MS)
+  }, [clearSwipeIdleTimer])
+
+  const resetHorizontalSwipe = useCallback((measureActiveTab = true) => {
+    clearSwipeIdleTimer()
+    stopSwipeAnimations()
+    swipeLockedUntilIdleRef.current = false
+    swipeSettlingRef.current = false
+    setSwipePreview(null)
+    currentPanelX.set(0)
+    adjacentPanelX.set(0)
+    if (measureActiveTab) {
+      scheduleActiveTabPillMeasurement()
+    }
+  }, [
+    adjacentPanelX,
+    clearSwipeIdleTimer,
+    currentPanelX,
+    scheduleActiveTabPillMeasurement,
+    setSwipePreview,
+    stopSwipeAnimations,
+  ])
+
+  const settleHorizontalSwipe = useCallback((commit: boolean) => {
+    const root = rootRef.current
+    const preview = swipePreviewRef.current
+    if (!root || !preview || swipeSettlingRef.current) {
+      return
+    }
+
+    clearSwipeIdleTimer()
+    stopSwipeAnimations()
+    swipeSettlingRef.current = true
+
+    const width = Math.max(root.clientWidth, 1)
+    const currentTargetX = commit ? getHorizontalSwipeTargetOffset(preview.direction, width) : 0
+    const adjacentTargetX = commit ? 0 : preview.direction * width
+    const pillTargetRect = measureTabPillRect(commit ? preview.targetTabId : activeTab)
+    let completed = false
+
+    if (pillTargetRect) {
+      animateTabPillToRect(pillTargetRect)
+    }
+
+    const complete = () => {
+      if (completed) {
+        return
+      }
+      completed = true
+      swipeSettlingRef.current = false
+
+      if (commit) {
+        setPanelDirection(preview.direction)
+        setActiveTab(preview.targetTabId)
+        swipeLockedUntilIdleRef.current = true
+        unlockSwipeAfterIdle()
+      }
+
+      setSwipePreview(null)
+      currentPanelX.set(0)
+      adjacentPanelX.set(0)
+      swipeAnimationsRef.current = []
+      if (!commit) {
+        scheduleActiveTabPillMeasurement()
+      }
+    }
+
+    const currentAnimation = animate(currentPanelX, currentTargetX, PANEL_SLIDE_TRANSITION)
+    const adjacentAnimation = animate(adjacentPanelX, adjacentTargetX, {
+      ...PANEL_SLIDE_TRANSITION,
+      onComplete: complete,
+    })
+    swipeAnimationsRef.current = [currentAnimation, adjacentAnimation]
+  }, [
+    adjacentPanelX,
+    clearSwipeIdleTimer,
+    currentPanelX,
+    activeTab,
+    animateTabPillToRect,
+    measureTabPillRect,
+    scheduleActiveTabPillMeasurement,
+    setActiveTab,
+    setSwipePreview,
+    stopSwipeAnimations,
+    unlockSwipeAfterIdle,
+  ])
+
+  const scheduleHorizontalSwipeSettle = useCallback(() => {
+    clearSwipeIdleTimer()
+    swipeIdleTimerRef.current = window.setTimeout(() => {
+      swipeIdleTimerRef.current = null
+      const root = rootRef.current
+      const preview = swipePreviewRef.current
+      if (!root || !preview) {
+        return
+      }
+
+      const width = Math.max(root.clientWidth, 1)
+      const distance = Math.abs(currentPanelX.get())
+      settleHorizontalSwipe(distance >= getHorizontalSwipeCommitDistance(width))
+    }, HORIZONTAL_SWIPE_SETTLE_IDLE_MS)
+  }, [clearSwipeIdleTimer, currentPanelX, settleHorizontalSwipe])
+
+  const activateTab = useCallback((tabId: string) => {
+    if (tabId === activeTab) {
+      resetHorizontalSwipe()
+      return false
+    }
+
+    resetHorizontalSwipe(false)
+    const activeIndex = TABS.findIndex(tab => tab.id === activeTab)
+    const nextIndex = TABS.findIndex(tab => tab.id === tabId)
+    setPanelDirection(nextIndex >= activeIndex ? 1 : -1)
+    setActiveTab(tabId)
+    return true
+  }, [activeTab, resetHorizontalSwipe, setActiveTab])
+
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) {
+      return
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (
+        event.defaultPrevented
+        || event.altKey
+        || event.ctrlKey
+        || event.metaKey
+        || event.shiftKey
+      ) {
+        return
+      }
+
+      const deltaX = normalizeWheelDelta(event.deltaX, event.deltaMode, root.clientWidth)
+      const deltaY = normalizeWheelDelta(event.deltaY, event.deltaMode, root.clientHeight)
+      const absDeltaX = Math.abs(deltaX)
+      const absDeltaY = Math.abs(deltaY)
+
+      if (absDeltaX < 1 || absDeltaX < absDeltaY * HORIZONTAL_SWIPE_AXIS_RATIO) {
+        return
+      }
+
+      if (swipeSettlingRef.current || swipeLockedUntilIdleRef.current) {
+        event.preventDefault()
+        unlockSwipeAfterIdle()
+        return
+      }
+
+      let preview = swipePreviewRef.current
+      if (!preview) {
+        if (shouldKeepHorizontalWheelForContent(event.target, root, deltaX)) {
+          return
+        }
+
+        const direction = deltaX > 0 ? 1 : -1
+        const targetTabId = getAdjacentTabId(activeTab, direction)
+        if (!targetTabId) {
+          return
+        }
+
+        const width = Math.max(root.clientWidth, 1)
+        preview = { direction, targetTabId }
+        stopSwipeAnimations()
+        setPanelDirection(direction)
+        setSwipePreview(preview)
+        currentPanelX.set(0)
+        adjacentPanelX.set(direction * width)
+      }
+
+      const width = Math.max(root.clientWidth, 1)
+      const horizontalDelta = normalizeHorizontalSwipeDelta(deltaX)
+      const nextCurrentX = clampHorizontalSwipeOffset(
+        currentPanelX.get() - horizontalDelta,
+        preview.direction,
+        width,
+      )
+      currentPanelX.set(nextCurrentX)
+      adjacentPanelX.set(preview.direction * width + nextCurrentX)
+      updateTabPillForSwipe(preview, nextCurrentX, width)
+      scheduleHorizontalSwipeSettle()
+      event.preventDefault()
+    }
+
+    root.addEventListener('wheel', handleWheel, { capture: true, passive: false })
+
+    return () => {
+      root.removeEventListener('wheel', handleWheel, { capture: true })
+    }
+  }, [
+    activeTab,
+    adjacentPanelX,
+    currentPanelX,
+    scheduleHorizontalSwipeSettle,
+    setSwipePreview,
+    stopSwipeAnimations,
+    updateTabPillForSwipe,
+    unlockSwipeAfterIdle,
+  ])
+
+  useEffect(() => {
+    return () => {
+      clearSwipeIdleTimer()
+      stopSwipeAnimations()
+      stopTabPillAnimations()
+      if (tabPillMeasureFrameRef.current !== 0) {
+        cancelAnimationFrame(tabPillMeasureFrameRef.current)
+        tabPillMeasureFrameRef.current = 0
+      }
+    }
+  }, [clearSwipeIdleTimer, stopSwipeAnimations, stopTabPillAnimations])
+
+  useLayoutEffect(() => {
+    if (swipePreview) {
+      return
+    }
+    scheduleActiveTabPillMeasurement()
+  }, [activeTab, scheduleActiveTabPillMeasurement, swipePreview])
+
+  useEffect(() => {
+    const tabList = tabListRef.current
+    if (!tabList) {
+      return
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      if (!swipePreviewRef.current) {
+        scheduleActiveTabPillMeasurement()
+      }
+    })
+    resizeObserver.observe(tabList)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [scheduleActiveTabPillMeasurement])
+
   return (
     <div
+      ref={rootRef}
       className="flex flex-1 flex-col overflow-hidden"
       data-testid="right-aside"
       data-active-tab={activeTab}
@@ -143,17 +757,34 @@ export function RightAside({
       {/* ── Tab bar ─────────────────────────────────────── */}
       <div className="flex shrink-0 justify-center border-b border-border px-2 py-1.5">
         <LayoutGroup id="right-aside-tabs">
-          <div className="relative flex items-center justify-center" style={{ gap: TAB_GAP }}>
+          <div
+            ref={tabListRef}
+            className="relative flex items-center justify-center"
+            style={{ gap: TAB_GAP }}
+          >
+            <m.span
+              aria-hidden="true"
+              className="absolute inset-y-0 left-0 z-0 rounded-md bg-accent will-change-transform"
+              style={{
+                opacity: tabPillOpacity,
+                width: tabPillWidth,
+                x: tabPillX,
+              }}
+            />
             {TABS.map(({ id, labelKey, icon: Icon }) => {
               const isActive = activeTab === id
+              const isPreviewTarget = swipePreview?.targetTabId === id
               const showBadge = id === 'await' && hasPendingAwaits && !isActive
               const label = t(labelKey)
 
               const button = (
                 <m.button
+                  ref={(node) => {
+                    tabButtonRefs.current[id] = node
+                  }}
                   type="button"
                   layout
-                  onClick={() => setActiveTab(id)}
+                  onClick={() => activateTab(id)}
                   aria-label={label}
                   data-testid={`right-aside-tab-${id}`}
                   data-active={isActive ? 'true' : 'false'}
@@ -162,16 +793,13 @@ export function RightAside({
                   className={cn(
                     'relative z-10 grid h-7 place-items-center overflow-hidden rounded-md px-2 text-xs select-none',
                     'transition-[color] duration-150 ease-out',
-                    isActive ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
+                    {
+                      'text-foreground': isActive,
+                      'text-foreground/80': !isActive && isPreviewTarget,
+                      'text-muted-foreground hover:text-foreground': !isActive && !isPreviewTarget,
+                    },
                   )}
                 >
-                  {isActive && (
-                    <m.span
-                      layoutId="right-aside-tab-pill"
-                      className="absolute inset-0 rounded-md bg-accent"
-                      transition={TAB_SPRING}
-                    />
-                  )}
                   <span className="relative flex min-w-0 items-center justify-center">
                     <Icon className="relative size-3.5 shrink-0" aria-hidden="true" />
                     <m.span
@@ -228,71 +856,66 @@ export function RightAside({
       </div>
 
       {/* ── Tab content ─────────────────────────────────── */}
-      <div className="flex flex-1 flex-col overflow-hidden">
-        {activeTab === 'files' && (
-          <div
-            className="flex flex-1 flex-col overflow-hidden"
-            data-testid="right-aside-panel-files"
-          >
-            <FileTree
-              workspaceId={workspaceId}
-              workspacePath={workspacePath}
-              onPackRequested={workspaceId ? handlePackRequested : undefined}
-            />
-          </div>
-        )}
-        {activeTab === 'git' && (
-          <div className="flex flex-1 flex-col overflow-hidden" data-testid="right-aside-panel-git">
-            <GitPanel workspaceId={workspaceId} />
-          </div>
-        )}
-        {activeTab === 'changes' && (
-          <div
-            className="flex flex-1 flex-col overflow-hidden"
-            data-testid="right-aside-panel-changes"
-          >
-            <ChangesPanel
-              workspaceId={workspaceId}
-              workspacePath={workspacePath}
-              onPackRequested={workspaceId ? handlePackRequested : undefined}
-            />
-          </div>
-        )}
-        {activeTab === 'issue' && sessionId && (
-          <div
-            className="flex flex-1 flex-col overflow-hidden"
-            data-testid="right-aside-panel-issue"
-          >
-            <IssueAsidePanel sessionId={sessionId} workspaceId={workspaceId} />
-          </div>
-        )}
-        {activeTab === 'issue' && !sessionId && (
-          <div
-            className="flex flex-1 items-center justify-center"
-            data-testid="right-aside-panel-issue-empty"
-          >
-            <p className="text-[11px] text-muted-foreground">{t('rightAside.issue.empty')}</p>
-          </div>
-        )}
-        {activeTab === 'await' && (
-          <div
-            className="flex flex-1 flex-col overflow-hidden"
-            data-testid="right-aside-panel-await"
-          >
-            <AwaitPanel sessionId={sessionId ?? null} workspaceId={workspaceId} />
-          </div>
-        )}
-        {activeTab === 'runtime' && (
-          <div
-            className="flex flex-1 flex-col overflow-hidden"
-            data-testid="right-aside-panel-runtime"
-          >
-            <RuntimeSessionPanel
-              sessionId={sessionId ?? null}
-              runtimeKind={sessionMeta?.runtimeKind ?? null}
-              providerTargetId={sessionMeta?.providerTargetId ?? null}
-            />
-          </div>
+      <div className="relative flex flex-1 flex-col overflow-hidden">
+        {swipePreview
+? (
+          <>
+            <m.div
+              className="absolute inset-0 flex flex-col overflow-hidden will-change-transform"
+              style={{ x: currentPanelX }}
+            >
+              <RightAsidePanelContent
+                tabId={activeTab}
+                sessionId={sessionId}
+                workspaceId={workspaceId}
+                workspacePath={workspacePath}
+                issueEmptyLabel={t('rightAside.issue.empty')}
+                runtimeKind={sessionMeta?.runtimeKind ?? null}
+                providerTargetId={sessionMeta?.providerTargetId ?? null}
+                onPackRequested={handlePackRequested}
+              />
+            </m.div>
+            <m.div
+              className="absolute inset-0 flex flex-col overflow-hidden will-change-transform"
+              style={{ x: adjacentPanelX }}
+            >
+              <RightAsidePanelContent
+                tabId={swipePreview.targetTabId}
+                sessionId={sessionId}
+                workspaceId={workspaceId}
+                workspacePath={workspacePath}
+                issueEmptyLabel={t('rightAside.issue.empty')}
+                runtimeKind={sessionMeta?.runtimeKind ?? null}
+                providerTargetId={sessionMeta?.providerTargetId ?? null}
+                onPackRequested={handlePackRequested}
+              />
+            </m.div>
+          </>
+        )
+: (
+          <AnimatePresence initial={false} custom={panelDirection}>
+            <m.div
+              key={activeTab}
+              custom={panelDirection}
+              variants={PANEL_SLIDE_VARIANTS}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={PANEL_SLIDE_TRANSITION}
+              className="absolute inset-0 flex flex-col overflow-hidden"
+            >
+              <RightAsidePanelContent
+                tabId={activeTab}
+                sessionId={sessionId}
+                workspaceId={workspaceId}
+                workspacePath={workspacePath}
+                issueEmptyLabel={t('rightAside.issue.empty')}
+                runtimeKind={sessionMeta?.runtimeKind ?? null}
+                providerTargetId={sessionMeta?.providerTargetId ?? null}
+                onPackRequested={handlePackRequested}
+              />
+            </m.div>
+          </AnimatePresence>
         )}
       </div>
 

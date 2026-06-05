@@ -11,6 +11,7 @@ import {
   LayoutGeometryProvider,
   useLayoutGeometry
 } from '~/components/layout/layout-geometry-context'
+import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
@@ -408,7 +409,9 @@ function AppLayoutContent({
           data-slot="app-center-column"
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-[var(--shadow-sm)] z-10 m-1 mr-2"
           animate={
-            jarvisExpanded ? { scale: 0.98, y: -7, opacity: 0.6 } : { scale: 1, y: 0, opacity: 1 }
+            jarvisExpanded
+              ? { scale: CENTER_COLUMN_EXPANDED_SCALE, y: CENTER_COLUMN_EXPANDED_Y, opacity: 0.6 }
+              : { scale: 1, y: 0, opacity: 1 }
           }
           transition={SPRING}
         >
