@@ -23,12 +23,17 @@ export function useTabNavigation() {
     const state = store.getState()
     const activeTabId = state.activeTabId
     const nextParams = params ?? {}
+    const existingTab = state.tabs.find(tab => tab.type === type && paramsMatch(tab.params, nextParams))
+    if (existingTab) {
+      state.setActiveTab(existingTab.id)
+      return existingTab.id
+    }
     if (!activeTabId) {
-      return state.openTab(type, nextParams, options)
+      return state.openTab(type, nextParams, { label: options?.label, dedupe: true })
     }
     const activeTab = state.tabs.find(tab => tab.id === activeTabId)
     if (activeTab?.pinned) {
-      return state.openTab(type, nextParams, options)
+      return state.openTab(type, nextParams, { label: options?.label, dedupe: true })
     }
     if (activeTab?.type === type && paramsMatch(activeTab.params, nextParams)) {
       return activeTabId

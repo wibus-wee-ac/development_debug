@@ -15,7 +15,7 @@ export function useCradleNavigation() {
     }
   }, [queryClient])
 
-  /** Navigate in the current tab; pinned tabs fall back to opening or activating another tab. */
+  /** Navigate in the current tab unless the target already exists in the app tab list. */
   const openTab = useCallback((type: string, params?: Record<string, string | undefined>) => {
     prefetchTarget(type, params)
     return navigateInTab(type, params)

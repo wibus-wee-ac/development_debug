@@ -15,7 +15,7 @@
 - Route-owned `preload(params)` hooks 允许 tab 定义在 open、activate、navigate 提交前预热延迟 route code，同时不把页面数据所有权移动到 tab runtime。
 - Route loaders are isolated behind a reducer-managed boundary so async loader transitions stay tied to the route params that triggered them.
 - `<TabBar>` exposes a single `TabBarCustomization` surface for chrome slots: close icon, new-tab icon, per-tab icon, per-tab badge, and optional tooltip wrapper. Meta-key number hints own the leading slot while visible, then badge, then the normal route icon.
-- `<Link>` preserves anchor semantics while routing primary activation through the active tab and modifier or middle-click activation through a new tab.
+- `<Link>` preserves anchor semantics while ordinary activation navigates in the active tab unless a matching tab already exists, and modifier or middle-click activation opens a fresh tab.
 - `defineTab()` is kept as a migration helper. Long term, route owners should provide route metadata/capabilities directly.
 
 ## Ownership
@@ -42,8 +42,8 @@ The package does not own business data, route semantics, or domain state. Those 
 - **src/url-sync.ts**: Hash-mode browser history projection and `popstate` restore coordination.
 - **src/context.ts**: React context and `useTabsContext()`.
 - **src/provider.tsx**: Provider component for store and registry injection.
-- **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation.
-- **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params and new-tab activation gestures.
+- **src/hooks/use-tab-navigation.ts**: Programmatic navigation helper for open-or-activate, explicit new-tab, and current-tab navigation with existing-tab activation.
+- **src/components/tab-link.tsx**: Anchor-like navigation helper for routes registered with tabs-next, including stable default params, ordinary existing-tab activation, and new-tab activation gestures.
 - **src/components/tab-renderer.tsx**: Overlaid retained-frame renderer with optional `useTabFrameActive()` state, React Activity support for discardable routes, and reducer-managed loader state.
 - **src/components/tab-bar.tsx**: DnD tab bar with close, activate, reorder, release-only tear-off hooks, per-tab presentation, shared chrome customization slots, app-provided badge slots, and delayed Meta-key number hints for tab switching.
 - **src/components/screen-coordinates.ts**: Tear-off coordinate helpers.
@@ -67,8 +67,9 @@ The prototype intentionally ships with a compatibility layer:
 - `createTab(type, params)` opens a fresh context and bypasses dedupe.
 - `updateTabParams()` replaces the current tab location without changing the tab identity.
 - `navigateTab()` pushes a new location into the tab-local history.
-- `useTabNavigation().navigateInTab()` pushes into the active tab history by default, while pinned active tabs fall back to `openTab()`.
-- `<Link>` keeps a browser-readable `href` for registered routes, prevents primary clicks for tab-local navigation, and opens a new tab for modifier clicks, middle clicks, or `newTab`.
+- `useTabNavigation().navigateTo()` delegates to `openTab()`.
+- `useTabNavigation().navigateInTab()` activates an existing matching tab before pushing into the active tab history; missing or pinned active tabs fall back to open-or-activate with dedupe.
+- `<Link>` keeps a browser-readable `href` for registered routes, prevents ordinary clicks for app-tab navigation, activates an existing matching tab instead of replacing the current tab, and opens a new tab for modifier clicks, middle clicks, or `newTab`.
 - `goBack()` and `goForward()` move within the tab-local history.
 - Browser `popstate` restoration updates both tab content location and tab label through the store-owned history restore path.
 - Persisted contexts are repaired during store hydration: unknown routes are pruned from tab-local history, indices are clamped to the remaining history, and missing contexts are rebuilt from valid tabs.
