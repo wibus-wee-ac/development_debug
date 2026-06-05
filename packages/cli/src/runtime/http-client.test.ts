@@ -63,6 +63,25 @@ describe('requestJson', () => {
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 
+  it('rejects issue mutations from agent-scoped Cradle runtime when chat session context is missing', async () => {
+    process.env.CRADLE_AGENT_ID = 'agent-1'
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}', {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
+
+    await expect(requestJson({
+      method: 'post',
+      path: {},
+      query: {},
+      serverUrl: 'http://localhost:21423',
+      template: '/issues/issue-1/comments',
+      body: { content: 'Hello' },
+    })).rejects.toThrow('CRADLE_CHAT_SESSION_ID')
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
   it('allows issue mutations without chat session outside Cradle runtime', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"ok":true}', {
       status: 200,

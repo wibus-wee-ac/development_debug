@@ -6,6 +6,7 @@ Renderer data hooks for Agent Runtime provider targets, manual provider profiles
 This feature exposes provider-target query ownership plus legacy manual profile mutations and Agent entity CRUD to launchers and settings.
 Provider execution and credentials remain in the Electron main process.
 Model visibility semantics are owned here: missing or empty `enabledModels` means all provider models are visible, the sentinel disables all models, and a non-empty list is an explicit allow-list.
+Manual Codex profile config also carries `titleModel`; an empty value means the runtime should use the active chat model for session title generation.
 Runtime catalog reads are exposed here as renderer data hooks, but runtime lifecycle and compatibility semantics remain server-owned by Chat Runtime.
 
 ## Files

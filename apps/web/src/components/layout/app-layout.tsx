@@ -408,6 +408,9 @@ function AppLayoutContent({
           ref={registerCenterColumn}
           data-slot="app-center-column"
           className="flex flex-col flex-1 overflow-hidden min-w-0 bg-background rounded-xl shadow-[var(--shadow-sm)] z-10 m-1 mr-2"
+          style={{
+            backgroundImage: "url(https://veil.ortlinde.com/v1/random?orientation=landscape)"
+          }}
           animate={
             jarvisExpanded
               ? { scale: CENTER_COLUMN_EXPANDED_SCALE, y: CENTER_COLUMN_EXPANDED_Y, opacity: 0.6 }
