@@ -84,6 +84,9 @@ describe('elysia migration skeleton', () => {
     expect(document.paths['/preferences/chat']?.get).toBeTruthy()
     expect(document.paths['/preferences/chat']?.put).toBeTruthy()
     expect((document.paths['/preferences/chat']?.put as Record<string, unknown>)?.requestBody).toBeTruthy()
+    expect(document.paths['/preferences/codex']?.get).toBeTruthy()
+    expect(document.paths['/preferences/codex']?.put).toBeTruthy()
+    expect((document.paths['/preferences/codex']?.put as Record<string, unknown>)?.requestBody).toBeTruthy()
     expect(document.paths['/workspaces']?.get).toBeTruthy()
     expect(document.paths['/workspaces']?.post).toBeTruthy()
     expect(document.paths['/workspaces/from-directory']?.post).toBeTruthy()
@@ -163,6 +166,53 @@ describe('elysia migration skeleton', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+      })
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('reads and writes /preferences/codex on the Elysia path', async () => {
+    const dataDir = makeTempDir('cradle-elysia-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      const app = await createServerApp()
+      const filePath = join(dataDir, 'preferences', 'codex.json')
+
+      const initialResponse = await app.handle(new Request('http://localhost/preferences/codex'))
+      expect(initialResponse.status).toBe(200)
+      expect(await initialResponse.json()).toEqual({
+        useCradleUserAgent: true,
+      })
+      expect(existsSync(filePath)).toBe(false)
+
+      const saveResponse = await app.handle(new Request('http://localhost/preferences/codex', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          useCradleUserAgent: false,
+        }),
+      }))
+
+      expect(saveResponse.status).toBe(200)
+      expect(await saveResponse.json()).toEqual({ ok: true })
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        useCradleUserAgent: false,
+      })
+
+      const finalResponse = await app.handle(new Request('http://localhost/preferences/codex'))
+      expect(finalResponse.status).toBe(200)
+      expect(await finalResponse.json()).toEqual({
+        useCradleUserAgent: false,
       })
     }
     finally {

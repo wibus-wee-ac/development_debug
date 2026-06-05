@@ -12,9 +12,11 @@ import { addHostMcpServer, removeHostMcpServer } from '../src/plugins/mcp-regist
 
 const sdkMocks = vi.hoisted(() => ({
   claudeQuery: vi.fn(),
+  getSessionInfo: vi.fn(),
 }))
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
+  getSessionInfo: sdkMocks.getSessionInfo,
   query: sdkMocks.claudeQuery,
 }))
 
@@ -162,6 +164,8 @@ async function createProfileAndSession(app: ElysiaApp, input: {
 describe('sdk-backed providers in unified chat runtime', () => {
   beforeEach(() => {
     sdkMocks.claudeQuery.mockReset()
+    sdkMocks.getSessionInfo.mockReset()
+    sdkMocks.getSessionInfo.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -876,18 +880,9 @@ describe('sdk-backed providers in unified chat runtime', () => {
 
 describe('claude-agent mapper: input_json_delta streaming', () => {
   it('keeps subagent text projection isolated from the parent assistant stream', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/event-to-chunk-mapper')
 
-    const state: MapperState = {
-      textItemId: 'parent-text-1',
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map(),
-      subagentStreams: new Map(),
-    }
+    const state = createClaudeAgentChunkMapperState('parent-text-1')
 
     const subagentResult = await mapClaudeAgentMessageToChunks({
       type: 'assistant',
@@ -937,18 +932,9 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('maps content_block_delta with input_json_delta to tool-input-delta chunks', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/event-to-chunk-mapper')
 
-    const state: MapperState = {
-      textItemId: 'text-1',
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map(),
-      subagentStreams: new Map(),
-    }
+    const state = createClaudeAgentChunkMapperState('text-1')
 
     // 1. content_block_start for tool_use — should record the tool block ID
     const startResult = await mapClaudeAgentMessageToChunks({
@@ -1002,18 +988,10 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('ignores input_json_delta with empty partial_json', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/event-to-chunk-mapper')
 
-    const state: MapperState = {
-      textItemId: 'text-1',
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map([[0, 'toolu_empty']]),
-      subagentStreams: new Map(),
-    }
+    const state = createClaudeAgentChunkMapperState('text-1')
+    state.activeToolBlockIds.set(0, 'toolu_empty')
 
     const result = await mapClaudeAgentMessageToChunks({
       type: 'stream_event',
@@ -1029,18 +1007,9 @@ describe('claude-agent mapper: input_json_delta streaming', () => {
   })
 
   it('ignores input_json_delta for unknown block index', async () => {
-    const { mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/mapper')
-    type MapperState = import('../src/modules/chat-runtime-providers/claude-agent/mapper').ClaudeAgentChunkMapperState
+    const { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } = await import('../src/modules/chat-runtime-providers/claude-agent/event-to-chunk-mapper')
 
-    const state: MapperState = {
-      textItemId: 'text-1',
-      assistantStarted: false,
-      hadToolCallSinceLastText: false,
-      emittedTextByTextItemId: new Map(),
-      emittedToolStateByToolCallId: new Map(),
-      activeToolBlockIds: new Map(),
-      subagentStreams: new Map(),
-    }
+    const state = createClaudeAgentChunkMapperState('text-1')
 
     const result = await mapClaudeAgentMessageToChunks({
       type: 'stream_event',

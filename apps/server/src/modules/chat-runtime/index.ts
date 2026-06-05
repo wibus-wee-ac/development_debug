@@ -87,6 +87,21 @@ export const chatRuntime = new Elysia({
     body: ChatRuntimeModel.bangCommandBody,
     response: { 200: ChatRuntimeModel.bangCommandResponse },
   })
+  // POST /chat/sessions/:sessionId/side-chat -> create a Cradle-owned side session from the current chat session
+  .post('/sessions/:sessionId/side-chat', async ({ params, body }) => {
+    return await ChatRuntime.createSideChat({
+      parentSessionId: params.sessionId,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
+      modelId: body.modelId?.trim() || undefined,
+    })
+  }, {
+    detail: {
+      summary: 'Create a side chat session from the current session',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.sideChatBody,
+    response: { 200: ChatRuntimeModel.sideChatResponse },
+  })
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
   .get('/sessions/:sessionId/stream', ({ params }) => {
     const stream = ChatRuntime.openSessionRunStream(params.sessionId)

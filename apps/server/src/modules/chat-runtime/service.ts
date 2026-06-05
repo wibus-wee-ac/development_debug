@@ -35,6 +35,7 @@ import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compa
 import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
+import * as SessionService from '../session/service'
 import { estimateCost } from '../usage/pricing'
 import { getRuntimeRegistry, listRuntimeCatalog, listRuntimeHealth, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
 import {
@@ -94,6 +95,8 @@ const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
 const DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS = 1_000
+const DEFAULT_SIDE_CONTEXT_MAX_MESSAGES = 20
+const DEFAULT_SIDE_CONTEXT_MAX_CHARS = 48_000
 const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
 
@@ -368,6 +371,23 @@ export interface CodexAppServerStreamInput extends CodexAppServerInvokeInput {
   closeOnMethods?: string[]
 }
 
+export type SideContextSource = 'provider-native' | 'cradle-context'
+
+export interface CreateSideChatInput {
+  parentSessionId: string
+  providerTargetId?: string
+  modelId?: string
+}
+
+export interface SideChatSessionDto {
+  sessionId: string
+  parentSessionId: string
+  runtimeKind: RuntimeKind
+  providerTargetId: string | null
+  providerSessionId: string | null
+  sideContextSource: SideContextSource
+}
+
 // ── in-memory run state ──
 
 interface PendingRunState {
@@ -631,9 +651,18 @@ function parsePartialToolInputText(text: string): unknown {
   }
 }
 
+function cloneUiMessageParts(parts: UIMessage['parts']): UIMessage['parts'] {
+  return JSON.parse(JSON.stringify(parts)) as UIMessage['parts']
+}
+
 function annotateContinuationMessage(
   message: UIMessage,
-  continuation: { mode: ChatSessionQueueMode, queueItemId?: string } | null,
+  continuation: {
+    mode: ChatSessionQueueMode
+    queueItemId?: string
+    sourceMessageId?: string
+    splitParts?: UIMessage['parts']
+  } | null,
 ): UIMessage {
   if (!continuation) {
     return message
@@ -651,6 +680,8 @@ function annotateContinuationMessage(
         continuation: {
           mode: continuation.mode,
           ...(continuation.queueItemId ? { queueItemId: continuation.queueItemId } : {}),
+          ...(continuation.sourceMessageId ? { sourceMessageId: continuation.sourceMessageId } : {}),
+          ...(continuation.splitParts !== undefined ? { splitParts: continuation.splitParts } : {}),
         },
       },
     },
@@ -850,14 +881,14 @@ function startAssistantContinuation(input: {
   }
 }
 
-function insertCompletedUserMessage(input: { sessionId: string, message: UIMessage }): void {
+function insertCompletedUserMessage(input: { sessionId: string, message: UIMessage, parentMessageId?: string | null }): void {
   const now = currentUnixSeconds()
   db().transaction((tx) => {
     tx.insert(messages)
       .values({
         id: input.message.id,
         sessionId: input.sessionId,
-        parentMessageId: null,
+        parentMessageId: input.parentMessageId ?? null,
         parentToolCallId: null,
         taskId: null,
         depth: 0,
@@ -1486,6 +1517,197 @@ async function resolveRuntimeSessionForBangCommand(input: {
   return { runtimeSession, requestedModelId }
 }
 
+async function resolveParentRuntimeSessionForSide(input: {
+  parentSessionId: string
+  context: SessionRunContext
+  runtimeKind: RuntimeKind
+  runtime: ChatRuntime
+  modelId?: string
+}): Promise<{
+  runtimeSession: RuntimeSession | null
+  requestedModelId: string | null
+  reusableBinding: BackendSessionBinding | undefined
+}> {
+  const binding = getBinding(input.parentSessionId)
+  const reusableBinding
+    = binding?.providerTargetId === input.context.providerTarget.id
+      && binding.runtimeKind === input.runtimeKind
+      ? binding
+      : undefined
+
+  if (!reusableBinding) {
+    return {
+      runtimeSession: null,
+      reusableBinding: undefined,
+      requestedModelId: input.modelId ?? null,
+    }
+  }
+
+  const requestedModelId = input.modelId
+    ?? reusableBinding.requestedModelId
+    ?? readProviderStateSnapshot(reusableBinding.backendStateSnapshot).models.currentModelId
+    ?? null
+
+  let runtimeSession: RuntimeSession
+  try {
+    runtimeSession = await input.runtime.resumeChatSession({
+      runtimeSession: {
+        id: input.parentSessionId,
+        chatSessionId: input.parentSessionId,
+        providerTargetId: input.context.providerTarget.id,
+        runtimeKind: input.runtimeKind,
+        providerSessionId: reusableBinding.backendSessionId,
+        providerStateSnapshot: reusableBinding.backendStateSnapshot,
+      },
+      profile: input.context.profile,
+      workspacePath: input.context.workspacePath,
+      agentId: input.context.session.agentId,
+      modelId: requestedModelId ?? undefined,
+    })
+  }
+  catch (error) {
+    chatLogger.warn('parent runtime resume failed for side chat; falling back to Cradle side context', {
+      error,
+      parentSessionId: input.parentSessionId,
+      runtimeKind: input.runtimeKind,
+    })
+    return {
+      runtimeSession: null,
+      reusableBinding,
+      requestedModelId,
+    }
+  }
+
+  return {
+    runtimeSession,
+    reusableBinding,
+    requestedModelId:
+      requestedModelId
+      ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
+  }
+}
+
+function createSideSessionTitle(parentTitle: string): string {
+  const title = normalizeRuntimeSessionTitle(parentTitle) ?? 'Untitled'
+  return `Side from ${title}`
+}
+
+function toSideChatSessionDto(input: {
+  sessionId: string
+  parentSessionId: string
+  runtimeKind: RuntimeKind
+  providerTargetId: string | null
+  providerSessionId: string | null
+  sideContextSource: SideContextSource
+}): SideChatSessionDto {
+  return input
+}
+
+export async function createSideChat(input: CreateSideChatInput): Promise<SideChatSessionDto> {
+  const parentSession = assertStoredSession(input.parentSessionId)
+  const context = assertRuntimeCompatibleTarget(assertRunnableSession(input.parentSessionId), input.providerTargetId)
+  if (!context.profile.enabled) {
+    throw new AppError({
+      code: 'chat_provider_target_not_available',
+      status: 409,
+      message: 'Provider target is disabled',
+      details: {
+        providerTargetId: context.providerTarget.id,
+      },
+    })
+  }
+
+  const runtimeKind = context.session.runtimeKind ?? 'standard'
+  const runtime = getRuntimeRegistry().get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: `Runtime is not available: ${runtimeKind}`,
+    })
+  }
+
+  const parentRuntime = await resolveParentRuntimeSessionForSide({
+    parentSessionId: input.parentSessionId,
+    context,
+    runtimeKind,
+    runtime,
+    modelId: input.modelId,
+  })
+  const childSessionId = randomUUID()
+  const childAgentId = context.session.agentId && context.session.providerTargetId === context.providerTarget.id
+    ? context.session.agentId
+    : null
+  let sideContextSource: SideContextSource = 'cradle-context'
+  let childRuntimeSession: RuntimeSession | null = null
+
+  if (runtime.forkRuntimeSession && parentRuntime.runtimeSession?.providerSessionId) {
+    try {
+      childRuntimeSession = await runtime.forkRuntimeSession({
+        sourceRuntimeSession: parentRuntime.runtimeSession,
+        childChatSessionId: childSessionId,
+        profile: context.profile,
+        workspaceId: context.session.workspaceId,
+        workspacePath: context.workspacePath,
+        agentId: childAgentId,
+        modelId: parentRuntime.requestedModelId ?? undefined,
+        systemPrompt: resolveSessionSystemPrompt(context.session),
+      })
+      sideContextSource = 'provider-native'
+    }
+    catch (error) {
+      chatLogger.warn('provider-native side fork failed; falling back to Cradle side context', {
+        error,
+        parentSessionId: input.parentSessionId,
+        runtimeKind,
+      })
+    }
+  }
+
+  if (!childRuntimeSession) {
+    childRuntimeSession = await runtime.startChatSession({
+      chatSessionId: childSessionId,
+      profile: context.profile,
+      workspacePath: context.workspacePath,
+      agentId: childAgentId,
+      modelId: parentRuntime.requestedModelId ?? undefined,
+      previousProviderStateSnapshot: null,
+    })
+  }
+
+  SessionService.create({
+    id: childSessionId,
+    parentSessionId: input.parentSessionId,
+    sideContextSource,
+    workspaceId: context.session.workspaceId ?? null,
+    title: createSideSessionTitle(parentSession.title),
+    providerTargetId: context.providerTarget.id,
+    runtimeKind,
+    agentId: childAgentId,
+    linkedIssueId: context.session.linkedIssueId,
+    configJson: context.session.configJson,
+  })
+
+  attachBinding({
+    sessionId: childSessionId,
+    providerTargetId: context.providerTarget.id,
+    runtimeKind: childRuntimeSession.runtimeKind,
+    runtimeSession: childRuntimeSession,
+    requestedModelId:
+      parentRuntime.requestedModelId
+      ?? readProviderStateSnapshot(childRuntimeSession.providerStateSnapshot).models.currentModelId,
+  })
+
+  return toSideChatSessionDto({
+    sessionId: childSessionId,
+    parentSessionId: input.parentSessionId,
+    runtimeKind: childRuntimeSession.runtimeKind,
+    providerTargetId: context.providerTarget.id,
+    providerSessionId: childRuntimeSession.providerSessionId,
+    sideContextSource,
+  })
+}
+
 export async function executeBangCommand(input: {
   sessionId: string
   command: string
@@ -1662,6 +1884,10 @@ function resolveTurnContext(input: {
   if (chronicleContext) {
     systemPrompt = systemPrompt ? `${systemPrompt}\n\n---\n\n${chronicleContext}` : chronicleContext
   }
+  const sideContext = resolveCradleSideTurnContext(session)
+  if (sideContext) {
+    systemPrompt = systemPrompt ? `${systemPrompt}\n\n---\n\n${sideContext}` : sideContext
+  }
 
   const transcript = resolveBoundedTurnHistory({
     sessionId: input.sessionId,
@@ -1687,6 +1913,53 @@ function resolveBoundedTurnHistory(input: {
     maxMessages,
     maxChars,
   })
+}
+
+function resolveCradleSideTurnContext(session: Session | null | undefined): string | null {
+  if (!session?.parentSessionId || session.sideContextSource !== 'cradle-context') {
+    return null
+  }
+
+  const parent = db().select().from(sessions).where(eq(sessions.id, session.parentSessionId)).get()
+  if (!parent) {
+    return null
+  }
+
+  const transcript = resolveCradleTurnTranscript({
+    sessionId: parent.id,
+    excludedMessageIds: new Set(),
+    maxMessages: readPositiveIntegerEnv('CRADLE_SIDE_CONTEXT_MAX_MESSAGES', DEFAULT_SIDE_CONTEXT_MAX_MESSAGES),
+    maxChars: readPositiveIntegerEnv('CRADLE_SIDE_CONTEXT_MAX_CHARS', DEFAULT_SIDE_CONTEXT_MAX_CHARS),
+  })
+  const transcriptText = transcript.history
+    .map(formatSideContextMessage)
+    .filter((line): line is string => Boolean(line))
+    .join('\n\n')
+  const omitted = transcript.omittedMessageCount > 0
+    ? `\n\n${transcript.omittedMessageCount} older parent messages were omitted by Cradle's side context budget.`
+    : ''
+  const truncated = transcript.truncated
+    ? '\n\nSome parent messages were truncated by Cradle before injection.'
+    : ''
+
+  return [
+    'Cradle side conversation boundary.',
+    '',
+    'Cradle owns this child session. It is a side conversation grown from the parent session below: use the parent context as background, keep this side transcript independent, and do not assume the parent transcript has seen anything said here unless the user explicitly carries it back.',
+    '',
+    `Parent session: ${parent.title}`,
+    transcriptText
+      ? `<parent-transcript>\n${transcriptText}\n</parent-transcript>${omitted}${truncated}`
+      : 'The parent session has no completed transcript messages available for side context.',
+  ].join('\n')
+}
+
+function formatSideContextMessage(message: UIMessage): string | null {
+  const text = extractMessageText(message).replace(/\s+/g, ' ').trim()
+  if (!text) {
+    return null
+  }
+  return `${message.role.toUpperCase()}: ${text}`
 }
 
 function resolveChronicleTurnContext(query: string): string | null {
@@ -3260,9 +3533,11 @@ async function tryApplyLiveSteer(input: {
     return current ? toQueueItemDto(current) : null
   }
 
+  const sourceMessageId = activeRun.messageId
+  const splitParts = cloneUiMessageParts(activeRun.finalMessage.parts)
   const steerMessage = annotateContinuationMessage(
     createUserMessage(`continuation-${input.queueItemId}`, input.text, input.files, input.contextParts),
-    { mode: 'steer', queueItemId: input.queueItemId },
+    { mode: 'steer', queueItemId: input.queueItemId, sourceMessageId, splitParts },
   )
   try {
     await activeRun.runtime.steerTurn({
@@ -3301,7 +3576,7 @@ async function tryApplyLiveSteer(input: {
 
   let historyErrorText: string | null = null
   try {
-    insertCompletedUserMessage({ sessionId: input.sessionId, message: steerMessage })
+    insertCompletedUserMessage({ sessionId: input.sessionId, message: steerMessage, parentMessageId: sourceMessageId })
   }
  catch (error) {
     historyErrorText = serializeChatError(error).text

@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { record as recordObservability } from '../observability/service'
+import * as Preferences from '../preferences/service'
 import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
 import * as Secrets from '../secrets/service'
@@ -269,7 +270,9 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     else {
       registry.register(createClaudeAgentProvider(ctx))
     }
-    registry.register(createCodexProvider(ctx))
+    registry.register(createCodexProvider(ctx, {
+      readCodexPreferences: () => Preferences.getCodexPreferencesSync(),
+    }))
     registry.register(createSystemAgentProvider(ctx))
   }
   return registry

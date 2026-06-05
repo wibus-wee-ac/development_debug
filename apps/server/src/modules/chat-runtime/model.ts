@@ -677,6 +677,10 @@ const runtimeStatusSchema = t.Union([
   t.Literal('streaming'),
   t.Literal('cancelling'),
 ])
+const sideContextSourceSchema = t.Union([
+  t.Literal('provider-native'),
+  t.Literal('cradle-context'),
+])
 
 const providerThreadSourceKindSchema = t.Union([
   t.Literal('cli'),
@@ -802,6 +806,20 @@ export const ChatRuntimeModel = {
 
   bangCommandBody: t.Object({
     command: t.String({ minLength: 1 }),
+  }),
+
+  sideChatBody: t.Object({
+    providerTargetId: t.Optional(t.String()),
+    modelId: t.Optional(t.String()),
+  }),
+
+  sideChatResponse: t.Object({
+    sessionId: t.String(),
+    parentSessionId: t.String(),
+    runtimeKind: t.String(),
+    providerTargetId: t.Union([t.String(), t.Null()]),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    sideContextSource: sideContextSourceSchema,
   }),
 
   bangCommandResponse: t.Object({

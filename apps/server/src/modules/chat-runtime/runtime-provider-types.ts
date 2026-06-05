@@ -596,6 +596,17 @@ export interface ResumeChatSessionInput {
   modelId?: string
 }
 
+export interface ForkRuntimeSessionInput {
+  sourceRuntimeSession: RuntimeSession
+  childChatSessionId: string
+  profile: RuntimeProviderTargetProfile
+  workspaceId?: string | null
+  workspacePath: string
+  agentId?: string | null
+  modelId?: string
+  systemPrompt?: string
+}
+
 export interface StreamTurnInput {
   runId: string
   runtimeSession: RuntimeSession
@@ -776,6 +787,7 @@ export interface ChatRuntime {
   readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
+  forkRuntimeSession?: (input: ForkRuntimeSessionInput) => Promise<RuntimeSession>
   getDraftPresentation?: () => Promise<RuntimePresentationCapabilities> | RuntimePresentationCapabilities
   getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
   getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>

@@ -11,7 +11,7 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
 
 interface ChatMessageRow {
   messageId: string
@@ -19,6 +19,7 @@ interface ChatMessageRow {
   status: 'streaming' | 'complete' | 'aborted' | 'failed'
   errorText?: string
   content: string
+  parentMessageId: string | null
   parentToolCallId?: string | null
   message: { parts: Array<{ type: string, text?: string, [key: string]: unknown }>, metadata?: Record<string, unknown> }
 }
