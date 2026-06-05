@@ -1,12 +1,12 @@
 # Desktop Main Process
 
-这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service、Velopack update runtime，以及 desktop plugin runtime。
+这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service、electron-updater runtime，以及 desktop plugin runtime。
 
 ## 文件清单
 
-- `index.ts`：main process 入口；负责最早运行 Velopack startup hook，再加载实际 Desktop app bootstrap。
+- `index.ts`：main process 入口；负责安装 main-process error capture，再加载实际 Desktop app bootstrap。
 - `main-app.ts`：负责激活 desktop plugins、启动 server、创建主窗口、接入 update manager、创建 desktop-owned chat stream broker、注册 desktop app badge IPC、注册 `cradle://` protocol，并把 native BrowserPanel `WebContentsView` runtime 事件投影给 plugin loader。
-- `browser-manager.ts`：拥有 native BrowserPanel runtime；按 BrowserPanel owner 管理 `WebContentsView` tab、owner-scoped Electron session partition、tab suspend/resume、截图、CDP 执行、popup 新 tab 路由和 panel bounds attachment。
+- `browser-manager.ts`：拥有 native BrowserPanel runtime；按 BrowserPanel owner 管理 retained `WebContentsView` tab、owner-scoped Electron session partition、显式 close/crash/dispose 销毁、截图、CDP 执行、popup 新 tab 路由和 panel bounds attachment。
 - `browser-ipc.ts`：注册 native BrowserPanel IPC contract；renderer 通过 preload 调用 open/close/hide/bounds/navigation/tab/screenshot/CDP 方法，main process 推送 browser state snapshots。
 - `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames；late subscriber 只接收有界 replay tail，避免 Desktop bridge 为长流缓存完整 chunk 历史。
 - `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、有界 replay tail、delta replay coalescing、per-WebContents subscriber lifecycle cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
@@ -27,7 +27,7 @@
 - `native-appshot-codex-assets.test.ts`：覆盖 Codex temp asset reader 的 root 边界、image 类型过滤、baseline inventory 过滤，以及 observer 对新产物的识别。
 - `native-appshot-target.ts`：拥有 desktop-owned Appshot research target synthesis，在没有 renderer composer frame 时生成 composer-like destination，避免 parity probe 退回到 source-equals-destination geometry。
 - `native-services.test.ts`：覆盖 Appshot parity target synthesis，确保 research probe 的默认 destination 不等于 frontmost window fallback。
-- `update-manager.ts`：拥有 Velopack update feed URL 解析、后台检查、下载进度、应用更新、macOS packaged `UpdateMac` handoff、restart argument handoff，以及 renderer 状态事件。
+- `update-manager.ts`：拥有 Electron Builder generic update feed URL 解析、`electron-updater` 后台检查、下载进度、应用更新，以及 renderer 状态事件。
 - `mac-bridge-manager.ts`：拥有 desktop-owned `cradle-mac-bridge` 子进程生命周期、NDJSON request/response 协议、hotkey event 投影、显式 parity-test synthetic hotkey helper、dev/packaged binary 路径解析，以及缺少 binary 时的非阻塞状态。
 - `mac-bridge-protocol.ts`：定义 Electron main 与 Swift Mac Bridge 共享的协议 schema，包括 `bridge.status`、权限状态、双 Command hotkey 配置、显式 synthetic both-Command parity helper、frontmost window capture、显式 `targetWindow` capture、Appshot capture/frontmost context、display/window recording 和 hotkey event。
 - `mac-screenshot-sinks.ts`：拥有 Mac Bridge screenshot 的 post-capture sink，包括保留文件、写剪贴板和可选 CleanShot URL scheme handoff。CleanShot 不是 hard dependency。
@@ -53,9 +53,9 @@
 
 ## Desktop update ownership
 
-`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check only reads the Velopack feed and updates status; it does not implicitly download.
+`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check only reads the Electron Builder generic feed and updates status; it does not implicitly download.
 
-On packaged macOS builds, Restart starts the bundled `Contents/MacOS/UpdateMac` executable directly with an explicit `--rootDir`, `--packageDir`, `--log`, `apply --waitPid <pid>`, target package path, and the current restart arguments. This keeps the app bundle location, package cache, log file, and validation-only launch arguments observable. Non-macOS or non-packaged runtimes continue to use Velopack's JavaScript `waitExitThenApplyUpdate` binding as the fallback handoff path.
+Updates are available only in packaged builds with `CRADLE_DESKTOP_UPDATE_URL` configured. Restart shuts down the desktop-owned server runtime first, then delegates installation and relaunch to `electron-updater`.
 
 ## Mac Bridge ownership
 
@@ -63,4 +63,4 @@ Mac Bridge is the desktop-owned boundary for macOS APIs that do not belong in th
 
 The bridge communicates with Electron main over newline-delimited JSON on stdio. Electron main owns product workflow and storage paths; Swift owns native facts and actions such as permission status, left/right Command key monitoring, frontmost window lookup, window screenshot capture, Appshot transition rendering, and the native top-center feedback indicator shown after legacy capture success or failure. Screenshot artifacts are written under Cradle-owned desktop storage such as `app.getPath('userData')/mac-captures`. CleanShot integration is implemented only as a post-capture sink using a URL scheme after Cradle has already produced its own PNG. Appshot capture is Cradle-native only: Electron main reads the frontmost context when needed, sends the renderer destination to Mac Bridge, and keeps returned renderer assets inside Cradle-owned IPC types. Codex temp assets may still be observed read-only for manual parity reports, but Electron main no longer exposes a Codex private capture adapter.
 
-The desktop build runs `scripts/build-mac-bridge.mjs` on macOS. The script compiles the Swift package in `native/macos/mac-bridge` and atomically replaces `.build/cradle-dist/cradle-mac-bridge`; it also copies Mac Bridge resources such as `Appshot.wav` into `.build/cradle-dist/resources`. `electron-builder.yml` then packages that directory into `Contents/Resources/mac-bridge`. Non-macOS hosts skip the Swift build so Linux and Windows CI can still typecheck/package non-macOS slices.
+The desktop build runs `scripts/build-mac-bridge.mjs` on macOS. The script compiles the Swift package in `native/macos/mac-bridge` and atomically replaces `.build/cradle-dist/cradle-mac-bridge`; it also copies Mac Bridge resources such as `Appshot.wav` into `.build/cradle-dist/resources`. `electron-builder.mjs` then packages that directory into `Contents/Resources/mac-bridge`. Non-macOS hosts skip the Swift build so Linux and Windows CI can still typecheck/package non-macOS slices.
