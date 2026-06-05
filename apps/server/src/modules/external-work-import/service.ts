@@ -5,11 +5,12 @@ import { basename, join } from 'node:path'
 
 import type { ExternalWorkImportItem } from '@cradle/db'
 import {
+  backendSessionBindings,
   externalWorkImportItems,
   messages,
   sessions,
 } from '@cradle/db'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
@@ -101,6 +102,7 @@ type PublicImportRecord = Omit<ExternalWorkImportItem, 'payloadJson'>
 const JsonLineSchema = z.record(z.string(), z.unknown())
 const DEFAULT_LIMIT_PER_SOURCE = 500
 const MAX_TEXT_BYTES = 8 * 1024 * 1024
+const CRADLE_SESSION_DUPLICATE_REASON = 'Already exists in Cradle'
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex')
@@ -266,6 +268,43 @@ function duplicateRecord(fingerprint: string): ExternalWorkImportItem | null {
     .get() ?? null
 }
 
+function runtimeKindForSourceApp(sourceApp: SourceApp): string | null {
+  if (sourceApp === 'claude') {
+    return 'claude-agent'
+  }
+  if (sourceApp === 'codex') {
+    return 'codex'
+  }
+  return null
+}
+
+function cradleSessionDuplicate(input: Pick<CandidateDraft, 'sourceApp' | 'sourceKind' | 'externalId'>): {
+  sessionId: string
+  workspaceId: string | null
+} | null {
+  if (input.sourceKind !== 'session') {
+    return null
+  }
+
+  const runtimeKind = runtimeKindForSourceApp(input.sourceApp)
+  if (!runtimeKind || input.externalId.startsWith('history:')) {
+    return null
+  }
+
+  return db()
+    .select({
+      sessionId: sessions.id,
+      workspaceId: sessions.workspaceId,
+    })
+    .from(backendSessionBindings)
+    .innerJoin(sessions, eq(backendSessionBindings.chatSessionId, sessions.id))
+    .where(and(
+      eq(backendSessionBindings.runtimeKind, runtimeKind),
+      eq(backendSessionBindings.backendSessionId, input.externalId),
+    ))
+    .get() ?? null
+}
+
 function applyDuplicates(drafts: CandidateDraft[]): PreviewItem[] {
   const items = drafts.map((draft) => {
     const fingerprint = createFingerprint({
@@ -274,7 +313,23 @@ function applyDuplicates(drafts: CandidateDraft[]): PreviewItem[] {
       externalId: draft.externalId,
       payload: draft.payload,
     })
-    return candidateFromDraft(draft, duplicateRecord(fingerprint))
+    const duplicate = duplicateRecord(fingerprint)
+    const item = candidateFromDraft(draft, duplicate)
+    if (duplicate) {
+      return item
+    }
+
+    if (cradleSessionDuplicate(draft)) {
+      return {
+        ...item,
+        duplicate: true,
+        duplicateImportId: null,
+        importable: false,
+        reason: CRADLE_SESSION_DUPLICATE_REASON,
+      }
+    }
+
+    return item
   })
 
   const byFingerprint = new Map<string, PreviewItem>()
@@ -789,6 +844,20 @@ export async function importItems(items: PreviewItem[]): Promise<ImportResult> {
         sessionId: duplicate.sessionId,
         workspaceId: duplicate.workspaceId,
         reason: 'Already imported',
+      })
+      continue
+    }
+
+    const existingCradleSession = cradleSessionDuplicate(item)
+    if (existingCradleSession) {
+      result.duplicates += 1
+      result.items.push({
+        fingerprint: item.fingerprint,
+        status: 'duplicate',
+        record: null,
+        sessionId: existingCradleSession.sessionId,
+        workspaceId: existingCradleSession.workspaceId,
+        reason: CRADLE_SESSION_DUPLICATE_REASON,
       })
       continue
     }

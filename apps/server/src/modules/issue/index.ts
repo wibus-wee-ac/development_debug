@@ -161,6 +161,14 @@ export const issue = new Elysia({
     body: IssueModel.updateIssueBody,
     response: { 200: IssueModel.issue },
   })
+  .get('/:id/activity', ({ params }) => Issue.listActivity(params.id), {
+    detail: {
+      'summary': 'List issue activity',
+      'x-cradle-cli': { command: ['issue', 'activity', 'list'] },
+    },
+    params: IssueModel.idParams,
+    response: { 200: t.Array(IssueModel.activityItem) },
+  })
   .get('/:id/field-changes', ({ params }) => Issue.listFieldChanges(params.id), {
     detail: {
       'summary': 'List issue field changes',
@@ -190,12 +198,12 @@ export const issue = new Elysia({
   })
   .post('/:id/comments', ({ params, body, request }) => {
     const actor = resolveActorContext(request)
-    const authorKind = actor.kind === 'provider-target' ? 'system' : actor.kind
     return Issue.addComment({
       issueId: params.id,
       content: body.content,
-      authorKind,
+      authorKind: actor.kind,
       authorId: actor.id,
+      sourceChatSessionId: actor.chatSessionId,
     })
   }, {
     detail: {

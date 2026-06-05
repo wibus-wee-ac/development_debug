@@ -1,10 +1,10 @@
 # Issue Module
 
-Workspace-scoped issue capability. Owns workflow statuses, milestones, issue CRUD, due dates, comments, field-change history, relations, context refs, session links, delegation markers, and issue search semantics. Kanban reads this data as board/list/table views but does not own issue semantics.
-Comment responses include a server-resolved author projection; clients should not infer AI identity from agent profiles.
+Workspace-scoped issue capability. Owns workflow statuses, milestones, issue CRUD, due dates, comments, raw field-change audit history, server-projected Activity, relations, context refs, session links, delegation markers, actor provenance, and issue search semantics. Kanban reads this data as board/list/table views but does not own issue semantics.
+Comment and Activity responses include server-resolved actor projections; clients should not infer AI identity from raw agent, provider target, or profile IDs. `provider-target` is a first-class Issue actor kind rather than being folded into system.
 
 ## Files
 
-- `index.ts`: Elysia `/issues` routes, OpenAPI metadata, generated CLI descriptors, field-change history reads, and the Agent-facing issue move route that accepts status name slugs.
-- `model.ts`: TypeBox schemas for issue requests and responses, including due dates, field-change rows, comment author projections, and `statusName` request aliases for Agent workflows.
-- `service.ts`: Issue workflow, key generation, default status assignment to Backlog, status name/slug resolution, actor provenance, field-change recording, unified assignee/delegation markers, comment author projection, search matching, relations, context refs, and session link semantics.
+- `index.ts`: Elysia `/issues` routes, OpenAPI metadata, generated CLI descriptors, Activity projection reads, raw field-change audit reads, and the Agent-facing issue move route that accepts status name slugs.
+- `model.ts`: TypeBox schemas for issue requests and responses, including due dates, Activity items, raw field-change rows, comment author projections, source chat session provenance, and `statusName` request aliases for Agent workflows.
+- `service.ts`: Issue workflow, key generation, default status assignment to Backlog, status name/slug resolution, actor provenance, source chat session persistence, raw field-change recording, server-owned Activity projection, unified assignee/delegation markers, comment author projection, search matching, relations, context refs, and session link semantics.

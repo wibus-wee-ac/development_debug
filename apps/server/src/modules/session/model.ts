@@ -9,10 +9,16 @@ const sessionStatusSchema = t.Union([
   t.Literal('streaming'),
   t.Literal('error'),
 ])
+const sideContextSourceSchema = t.Union([
+  t.Literal('provider-native'),
+  t.Literal('cradle-context'),
+])
 
 export const SessionModel = {
   session: t.Object({
     id: t.String(),
+    parentSessionId: nullableString,
+    sideContextSource: t.Nullable(sideContextSourceSchema),
     workspaceId: nullableString,
     title: nullableString,
     providerTargetId: nullableString,

@@ -28,6 +28,7 @@ export const CodexConfigSchema = BaseProviderConfig.extend({
   approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default(CODEX_DEFAULT_APPROVAL_POLICY),
   sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default(CODEX_DEFAULT_SANDBOX_MODE),
   reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
+  titleModel: z.string().trim().nullable().default(null),
 })
 
 const ClaudeAgentModelEnvValueSchema = z.string().trim()
@@ -152,6 +153,7 @@ export function readTrustedCodexConfig(raw: string): CodexConfig {
     approvalPolicy: config.approvalPolicy ?? CODEX_DEFAULT_APPROVAL_POLICY,
     sandboxMode: config.sandboxMode ?? CODEX_DEFAULT_SANDBOX_MODE,
     reasoningEffort: config.reasoningEffort ?? 'high',
+    titleModel: readOptionalString(config.titleModel),
   }
 }
 
@@ -209,4 +211,12 @@ const TRAILING_SLASH_RE = /\/+$/
 
 export function normalizeBaseUrl(url: string): string {
   return url.replace(TRAILING_SLASH_RE, '')
+}
+
+function readOptionalString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const normalized = value.trim()
+  return normalized.length > 0 ? normalized : null
 }

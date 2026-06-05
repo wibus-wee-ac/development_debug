@@ -26,6 +26,8 @@ const SessionCreateInputSchema = z.object({
   id: z.string().default(() => randomUUID()),
   workspaceId: z.string().nullable().optional(),
   title: z.string(),
+  parentSessionId: z.string().nullable().optional(),
+  sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable().optional(),
   providerTargetId: z.string().nullable().optional(),
   runtimeKind: z.string().trim().min(1).optional(),
   agentId: z.string().nullable().optional(),
@@ -244,6 +246,8 @@ export function create(input: {
   id?: string
   workspaceId?: string | null
   title: string
+  parentSessionId?: string | null
+  sideContextSource?: 'provider-native' | 'cradle-context' | null
   providerTargetId?: string | null
   runtimeKind?: RuntimeKind
   agentId?: string | null
@@ -262,6 +266,8 @@ export function create(input: {
     .insert(sessions)
     .values({
       id: parsed.id,
+      parentSessionId: parsed.parentSessionId ?? null,
+      sideContextSource: parsed.sideContextSource ?? null,
       workspaceId,
       title: parsed.title,
       providerTargetId: resolved.providerTargetId,

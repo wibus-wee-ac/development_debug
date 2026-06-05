@@ -9,6 +9,7 @@ import {
   issueRelations,
   issues,
   issueStatuses,
+  providerTargets,
   sessions,
   workspaces,
 } from '@cradle/db'
@@ -17,13 +18,15 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
-import type { MutationActor } from '../../http/actor-context'
+import type { MutationActor, MutationActorKind } from '../../http/actor-context'
 import { db } from '../../infra'
 
 type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
+type IssueActorKind = Extract<MutationActorKind, 'user' | 'agent' | 'provider-target' | 'system'>
+type IssueCommentAuthorKind = IssueActorKind | 'system.delegated' | 'system.undelegated'
 
 const StatusCategorySchema = z.enum(['triage', 'backlog', 'unstarted', 'started', 'completed', 'canceled'])
-const IssueCommentAuthorKindSchema = z.enum(['user', 'agent', 'system', 'system.delegated', 'system.undelegated'])
+const IssueCommentAuthorKindSchema = z.enum(['user', 'agent', 'provider-target', 'system', 'system.delegated', 'system.undelegated'])
 const IssueLabelsJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
   .pipe(z.array(z.string()))
@@ -63,14 +66,16 @@ const AddCommentBaseInputSchema = z.object({
   content: z.string(),
   authorKind: IssueCommentAuthorKindSchema.default('user'),
   authorId: z.string().nullable().optional(),
+  sourceChatSessionId: z.string().nullable().optional(),
 })
 
 const AddCommentInputSchema = AddCommentBaseInputSchema.transform(input => ({
   ...input,
   authorId: z.string().nullable().default(() => input.authorKind.startsWith('system') ? null : '__self__').parse(input.authorId),
+  sourceChatSessionId: input.sourceChatSessionId ?? null,
 }))
 
-type IssueMutationActor = { kind: 'user' | 'agent' | 'system', id: string | null }
+type IssueMutationActor = { kind: IssueActorKind, id: string | null, sourceChatSessionId?: string | null }
 
 export type IssueFieldChangeView = IssueFieldChange
 
@@ -94,7 +99,7 @@ export const IssuePromptContextRefsJsonSchema = z.string()
   ])))
 
 export interface IssueCommentAuthorView {
-  kind: 'user' | 'agent' | 'system'
+  kind: IssueActorKind
   id: string | null
   displayName: string
   avatarUrl: string | null
@@ -103,6 +108,73 @@ export interface IssueCommentAuthorView {
 
 export type IssueCommentView = IssueComment & { author: IssueCommentAuthorView }
 export type IssueView = Omit<Issue, 'labels'> & { labels: string[] }
+
+export type IssueActivityValueToken =
+  | 'changed'
+  | 'current-user'
+  | 'empty'
+  | 'no-due-date'
+  | 'no-labels'
+  | 'no-milestone'
+  | 'no-parent'
+  | 'no-status'
+  | 'priority-high'
+  | 'priority-low'
+  | 'priority-medium'
+  | 'priority-none'
+  | 'priority-urgent'
+  | 'unassigned'
+  | 'unknown-issue'
+  | 'unknown-milestone'
+  | 'unknown-status'
+  | 'unknown-user'
+
+export type IssueActivityValueView =
+  | { kind: 'date', timestamp: number }
+  | { kind: 'text', text: string }
+  | { kind: 'token', token: IssueActivityValueToken }
+
+export type IssueActivityField =
+  | 'assignee'
+  | 'description'
+  | 'due-date'
+  | 'labels'
+  | 'metadata'
+  | 'milestone'
+  | 'parent'
+  | 'priority'
+  | 'status'
+  | 'title'
+
+export type IssueActivityAction =
+  | 'added-description'
+  | 'changed-field'
+  | 'cleared-description'
+  | 'renamed-issue'
+  | 'updated-description'
+
+export interface IssueActivityFieldChangeView {
+  action: IssueActivityAction
+  field: IssueActivityField | null
+  fromValue: IssueActivityValueView | null
+  toValue: IssueActivityValueView | null
+}
+
+export interface IssueActivityCommentView {
+  content: string
+  systemKind: 'delegated' | 'system' | 'undelegated' | null
+}
+
+export interface IssueActivityItemView {
+  id: string
+  issueId: string
+  kind: 'comment' | 'created' | 'field-change'
+  actor: IssueCommentAuthorView
+  comment: IssueActivityCommentView | null
+  fieldChange: IssueActivityFieldChangeView | null
+  sourceChatSessionId: string | null
+  createdAt: number
+}
 
 const DEFAULT_STATUSES = [
   { name: 'Backlog', color: '#6b7280', category: 'backlog' as const },
@@ -433,7 +505,7 @@ export function createIssue(rawInput: {
   dueDate?: number | null
   assigneeKind?: string | null
   assigneeId?: string | null
-}, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user' }): IssueView {
+}, actor: MutationActor = { kind: 'user', id: '__self__', source: 'default-user', chatSessionId: null }): IssueView {
   const input = CreateIssueInputSchema.parse(rawInput)
   const workspace = requireWorkspace(input.workspaceId)
   const now = currentUnixSeconds()
@@ -441,7 +513,6 @@ export function createIssue(rawInput: {
   const maxOrderRow = db().select({ maxOrder: sql<number>`coalesce(max(${issues.order}), 0)` }).from(issues).where(eq(issues.workspaceId, input.workspaceId)).get()
   const order = (maxOrderRow?.maxOrder ?? 0) + 1024
   const statusId = resolveStatusId(input.workspaceId, input, { useDefaultWhenMissing: true })
-  const createdByKind = actor.kind === 'provider-target' ? 'system' : actor.kind
   const issue = db().insert(issues).values({
     id: identity.id,
     workspaceId: input.workspaceId,
@@ -456,8 +527,9 @@ export function createIssue(rawInput: {
     assigneeKind: input.assigneeKind,
     assigneeId: input.assigneeId,
     dueDate: input.dueDate,
-    createdByKind,
+    createdByKind: actor.kind,
     createdById: actor.id,
+    sourceChatSessionId: actor.chatSessionId,
     delegateAgentId: null,
     delegateAgentProfileId: null,
     contextRefs: '[]',
@@ -487,8 +559,9 @@ const TRACKED_FIELDS = [
 
 function normalizeIssueMutationActor(actor: MutationActor | IssueMutationActor): IssueMutationActor {
   return {
-    kind: actor.kind === 'provider-target' ? 'system' : actor.kind,
+    kind: actor.kind,
     id: actor.id ?? null,
+    sourceChatSessionId: 'chatSessionId' in actor ? actor.chatSessionId : actor.sourceChatSessionId ?? null,
   }
 }
 
@@ -515,6 +588,7 @@ function recordFieldChanges(issueId: string, before: Issue, updates: Record<stri
       toValue,
       actorKind: actor.kind,
       actorId: actor.id ?? null,
+      sourceChatSessionId: actor.sourceChatSessionId ?? null,
       createdAt: now,
     }).run()
   }
@@ -578,6 +652,352 @@ export function updateIssue(id: string, patch: Partial<{
 export function listFieldChanges(issueId: string): IssueFieldChangeView[] {
   getIssueRow(issueId)
   return db().select().from(issueFieldChanges).where(eq(issueFieldChanges.issueId, issueId)).orderBy(issueFieldChanges.createdAt).all()
+}
+
+const HIDDEN_ACTIVITY_FIELDS = new Set([
+  'assigneeKind',
+  'contextRefs',
+  'delegateAgentId',
+  'delegateAgentProfileId',
+  'order',
+])
+
+const ACTIVITY_FIELD_BY_RAW_FIELD: Record<string, IssueActivityField> = {
+  assigneeId: 'assignee',
+  description: 'description',
+  dueDate: 'due-date',
+  labels: 'labels',
+  milestoneId: 'milestone',
+  parentIssueId: 'parent',
+  priority: 'priority',
+  statusId: 'status',
+  title: 'title',
+}
+
+const PRIORITY_ACTIVITY_VALUE_TOKEN: Record<string, IssueActivityValueToken> = {
+  none: 'priority-none',
+  low: 'priority-low',
+  medium: 'priority-medium',
+  high: 'priority-high',
+  urgent: 'priority-urgent',
+}
+
+interface IssueActivityLookup {
+  issue: Issue
+  issueById: Map<string, Pick<Issue, 'id' | 'title'>>
+  milestoneById: Map<string, Pick<IssueMilestone, 'id' | 'title'>>
+  statusById: Map<string, Pick<IssueStatus, 'id' | 'name'>>
+}
+
+export function listActivity(issueId: string): IssueActivityItemView[] {
+  const issue = getIssueRow(issueId)
+  const lookup = buildActivityLookup(issue)
+  const commentItems = db()
+    .select()
+    .from(issueComments)
+    .where(eq(issueComments.issueId, issueId))
+    .orderBy(issueComments.createdAt)
+    .all()
+    .map(toCommentActivityItem)
+  const fieldChangeItems = db()
+    .select()
+    .from(issueFieldChanges)
+    .where(eq(issueFieldChanges.issueId, issueId))
+    .orderBy(issueFieldChanges.createdAt)
+    .all()
+    .map(change => toFieldChangeActivityItem(change, lookup))
+    .filter((item): item is IssueActivityItemView => item !== null)
+  const createdItem: IssueActivityItemView = {
+    id: `${issue.id}:created`,
+    issueId: issue.id,
+    kind: 'created',
+    actor: resolveIssueActor({ kind: issue.createdByKind, id: issue.createdById }),
+    comment: null,
+    fieldChange: null,
+    sourceChatSessionId: issue.sourceChatSessionId,
+    createdAt: issue.createdAt,
+  }
+
+  return [
+    createdItem,
+    ...fieldChangeItems,
+    ...commentItems,
+  ].toSorted((left, right) => {
+    const createdAtDelta = left.createdAt - right.createdAt
+    if (createdAtDelta !== 0) {
+      return createdAtDelta
+    }
+    return activityKindOrder(left.kind) - activityKindOrder(right.kind)
+  })
+}
+
+function buildActivityLookup(issue: Issue): IssueActivityLookup {
+  const workspaceIssues = db()
+    .select({
+      id: issues.id,
+      title: issues.title,
+    })
+    .from(issues)
+    .where(eq(issues.workspaceId, issue.workspaceId))
+    .all()
+  const workspaceMilestones = db()
+    .select({
+      id: issueMilestones.id,
+      title: issueMilestones.title,
+    })
+    .from(issueMilestones)
+    .where(eq(issueMilestones.workspaceId, issue.workspaceId))
+    .all()
+  const workspaceStatuses = db()
+    .select({
+      id: issueStatuses.id,
+      name: issueStatuses.name,
+    })
+    .from(issueStatuses)
+    .where(eq(issueStatuses.workspaceId, issue.workspaceId))
+    .all()
+
+  return {
+    issue,
+    issueById: new Map(workspaceIssues.map(row => [row.id, row])),
+    milestoneById: new Map(workspaceMilestones.map(row => [row.id, row])),
+    statusById: new Map(workspaceStatuses.map(row => [row.id, row])),
+  }
+}
+
+function activityKindOrder(kind: IssueActivityItemView['kind']): number {
+  if (kind === 'created') {
+    return 0
+  }
+  if (kind === 'field-change') {
+    return 1
+  }
+  return 2
+}
+
+function toCommentActivityItem(comment: IssueComment): IssueActivityItemView {
+  return {
+    id: comment.id,
+    issueId: comment.issueId,
+    kind: 'comment',
+    actor: resolveCommentAuthor(comment),
+    comment: {
+      content: comment.content,
+      systemKind: readSystemCommentKind(comment.authorKind),
+    },
+    fieldChange: null,
+    sourceChatSessionId: comment.sourceChatSessionId,
+    createdAt: comment.createdAt,
+  }
+}
+
+function readSystemCommentKind(authorKind: IssueComment['authorKind']): IssueActivityCommentView['systemKind'] {
+  if (authorKind === 'system.delegated') {
+    return 'delegated'
+  }
+  if (authorKind === 'system.undelegated') {
+    return 'undelegated'
+  }
+  if (authorKind === 'system') {
+    return 'system'
+  }
+  return null
+}
+
+function toFieldChangeActivityItem(change: IssueFieldChange, lookup: IssueActivityLookup): IssueActivityItemView | null {
+  if (HIDDEN_ACTIVITY_FIELDS.has(change.field)) {
+    return null
+  }
+
+  const field = ACTIVITY_FIELD_BY_RAW_FIELD[change.field] ?? 'metadata'
+  const fieldChange = formatActivityFieldChange(change, field, lookup)
+  if (!fieldChange) {
+    return null
+  }
+
+  return {
+    id: change.id,
+    issueId: change.issueId,
+    kind: 'field-change',
+    actor: resolveIssueActor({ kind: change.actorKind, id: change.actorId }),
+    comment: null,
+    fieldChange,
+    sourceChatSessionId: change.sourceChatSessionId,
+    createdAt: change.createdAt,
+  }
+}
+
+function formatActivityFieldChange(
+  change: IssueFieldChange,
+  field: IssueActivityField,
+  lookup: IssueActivityLookup,
+): IssueActivityFieldChangeView | null {
+  if (field === 'description') {
+    if (isEmptyActivityValue(change.fromValue) && !isEmptyActivityValue(change.toValue)) {
+      return { action: 'added-description', field, fromValue: null, toValue: null }
+    }
+    if (!isEmptyActivityValue(change.fromValue) && isEmptyActivityValue(change.toValue)) {
+      return { action: 'cleared-description', field, fromValue: null, toValue: null }
+    }
+    return { action: 'updated-description', field, fromValue: null, toValue: null }
+  }
+
+  if (field === 'title') {
+    return {
+      action: 'renamed-issue',
+      field,
+      fromValue: formatActivityFieldValue(field, change.fromValue, lookup),
+      toValue: formatActivityFieldValue(field, change.toValue, lookup),
+    }
+  }
+
+  return {
+    action: 'changed-field',
+    field,
+    fromValue: formatActivityFieldValue(field, change.fromValue, lookup),
+    toValue: formatActivityFieldValue(field, change.toValue, lookup),
+  }
+}
+
+function formatActivityFieldValue(
+  field: IssueActivityField,
+  value: string | null,
+  lookup: IssueActivityLookup,
+): IssueActivityValueView {
+  switch (field) {
+    case 'assignee':
+      if (isEmptyActivityValue(value)) {
+        return activityToken('unassigned')
+      }
+      if (value === '__self__') {
+        return activityToken('current-user')
+      }
+      return resolveAgentValue(value) ?? activityToken('unknown-user')
+
+    case 'due-date': {
+      if (isEmptyActivityValue(value)) {
+        return activityToken('no-due-date')
+      }
+      const timestamp = Number(value)
+      if (!Number.isFinite(timestamp)) {
+        return activityToken('changed')
+      }
+      return { kind: 'date', timestamp }
+    }
+
+    case 'labels': {
+      const labels = parseActivityStringArray(value)
+      if (!labels || labels.length === 0) {
+        return activityToken('no-labels')
+      }
+      return { kind: 'text', text: labels.join(', ') }
+    }
+
+    case 'milestone':
+      if (isEmptyActivityValue(value)) {
+        return activityToken('no-milestone')
+      }
+      return activityText(lookup.milestoneById.get(value)?.title ?? null) ?? activityToken('unknown-milestone')
+
+    case 'parent':
+      if (isEmptyActivityValue(value)) {
+        return activityToken('no-parent')
+      }
+      return formatActivityIssueReference(value, lookup)
+
+    case 'priority':
+      return activityToken(PRIORITY_ACTIVITY_VALUE_TOKEN[value ?? ''] ?? 'priority-none')
+
+    case 'status':
+      if (isEmptyActivityValue(value)) {
+        return activityToken('no-status')
+      }
+      return activityText(lookup.statusById.get(value)?.name ?? null) ?? activityToken('unknown-status')
+
+    case 'title':
+      return formatPlainActivityValue(value)
+
+    default:
+      return formatPlainActivityValue(value)
+  }
+}
+
+function resolveAgentValue(agentId: string | null): IssueActivityValueView | null {
+  if (!agentId) {
+    return null
+  }
+  const agent = db()
+    .select({ name: agents.name })
+    .from(agents)
+    .where(eq(agents.id, agentId))
+    .get()
+  return activityText(agent?.name ?? null)
+}
+
+function formatActivityIssueReference(value: string | null, lookup: IssueActivityLookup): IssueActivityValueView {
+  if (!value) {
+    return activityToken('no-parent')
+  }
+  const issue = lookup.issueById.get(value)
+  if (!issue) {
+    return activityToken('unknown-issue')
+  }
+  return { kind: 'text', text: `${issue.id} ${issue.title}` }
+}
+
+function formatPlainActivityValue(value: string | null): IssueActivityValueView {
+  if (isEmptyActivityValue(value)) {
+    return activityToken('empty')
+  }
+
+  const trimmed = value.trim()
+  if (trimmed.length > 96) {
+    return activityToken('changed')
+  }
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed)) {
+    return activityToken('changed')
+  }
+  if (/^(external_provider_target|provider_target|agent_session)_/.test(trimmed)) {
+    return activityToken('changed')
+  }
+  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+    return activityToken('changed')
+  }
+  return { kind: 'text', text: trimmed }
+}
+
+function parseActivityStringArray(value: string | null): string[] | null {
+  if (value == null || value === '') {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+    if (Array.isArray(parsed) && parsed.every(item => typeof item === 'string')) {
+      return parsed
+    }
+  }
+  catch {
+    return null
+  }
+
+  return null
+}
+
+function isEmptyActivityValue(value: string | null): value is null | '' | '[]' {
+  return value == null || value === '' || value === '[]'
+}
+
+function activityText(text: string | null): IssueActivityValueView | null {
+  const trimmed = text?.trim()
+  if (!trimmed) {
+    return null
+  }
+  return { kind: 'text', text: trimmed }
+}
+
+function activityToken(token: IssueActivityValueToken): IssueActivityValueView {
+  return { kind: 'token', token }
 }
 
 export function moveIssueToStatusName(id: string, statusName: string, actor?: MutationActor | IssueMutationActor): IssueView {
@@ -661,7 +1081,13 @@ export function listComments(issueId: string): IssueCommentView[] {
   return db().select().from(issueComments).where(eq(issueComments.issueId, issueId)).orderBy(issueComments.createdAt).all().map(toCommentView)
 }
 
-export function addComment(rawInput: { issueId: string, content: string, authorKind?: IssueComment['authorKind'], authorId?: string | null }): IssueCommentView {
+export function addComment(rawInput: {
+  issueId: string
+  content: string
+  authorKind?: IssueCommentAuthorKind
+  authorId?: string | null
+  sourceChatSessionId?: string | null
+}): IssueCommentView {
   const input = AddCommentInputSchema.parse(rawInput)
   getIssue(input.issueId)
   const comment = db().insert(issueComments).values({
@@ -670,6 +1096,7 @@ export function addComment(rawInput: { issueId: string, content: string, authorK
     content: input.content,
     authorKind: input.authorKind,
     authorId: input.authorId,
+    sourceChatSessionId: input.sourceChatSessionId,
     agentActivityId: null,
     createdAt: currentUnixSeconds(),
   }).returning().get()
@@ -684,7 +1111,21 @@ function toCommentView(comment: IssueComment): IssueCommentView {
 }
 
 function resolveCommentAuthor(comment: IssueComment): IssueCommentAuthorView {
-  if (comment.authorKind.startsWith('system')) {
+  return resolveIssueActor({
+    kind: normalizeCommentAuthorKind(comment.authorKind),
+    id: comment.authorId,
+  })
+}
+
+function normalizeCommentAuthorKind(authorKind: IssueComment['authorKind']): IssueActorKind {
+  if (authorKind === 'system' || authorKind === 'system.delegated' || authorKind === 'system.undelegated') {
+    return 'system'
+  }
+  return authorKind
+}
+
+function resolveIssueActor(actor: { kind: IssueActorKind, id: string | null }): IssueCommentAuthorView {
+  if (actor.kind === 'system') {
     return {
       kind: 'system',
       id: null,
@@ -694,8 +1135,8 @@ function resolveCommentAuthor(comment: IssueComment): IssueCommentAuthorView {
     }
   }
 
-  if (comment.authorKind === 'agent') {
-    const agent = comment.authorId
+  if (actor.kind === 'agent') {
+    const agent = actor.id
       ? db()
           .select({
             id: agents.id,
@@ -704,22 +1145,43 @@ function resolveCommentAuthor(comment: IssueComment): IssueCommentAuthorView {
             runtimeKind: agents.runtimeKind,
           })
           .from(agents)
-          .where(eq(agents.id, comment.authorId))
+          .where(eq(agents.id, actor.id))
           .get()
       : null
 
     return {
       kind: 'agent',
-      id: agent?.id ?? comment.authorId ?? null,
+      id: agent?.id ?? actor.id ?? null,
       displayName: agent?.name ?? 'Unknown agent',
       avatarUrl: agent?.avatarUrl ?? null,
       label: agent?.runtimeKind === 'jar-core' ? 'AI' : 'Agent',
     }
   }
 
+  if (actor.kind === 'provider-target') {
+    const target = actor.id
+      ? db()
+          .select({
+            id: providerTargets.id,
+            displayName: providerTargets.displayName,
+          })
+          .from(providerTargets)
+          .where(eq(providerTargets.id, actor.id))
+          .get()
+      : null
+
+    return {
+      kind: 'provider-target',
+      id: target?.id ?? actor.id ?? null,
+      displayName: target?.displayName ?? 'Unknown provider',
+      avatarUrl: null,
+      label: target ? 'Provider' : null,
+    }
+  }
+
   return {
     kind: 'user',
-    id: comment.authorId ?? '__self__',
+    id: actor.id ?? '__self__',
     displayName: 'You',
     avatarUrl: null,
     label: null,

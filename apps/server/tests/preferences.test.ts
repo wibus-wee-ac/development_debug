@@ -78,6 +78,55 @@ describe('preferences capability', () => {
     }
   })
 
+  it('returns defaults when missing and persists Codex preferences under the server data directory', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const initialRes = await app.handle(new Request('http://localhost/preferences/codex'))
+      expect(initialRes.status).toBe(200)
+      expect(await initialRes.json()).toEqual({
+        useCradleUserAgent: true,
+      })
+
+      const filePath = join(dataDir, 'preferences', 'codex.json')
+      expect(existsSync(filePath)).toBe(false)
+
+      const saveRes = await app.handle(new Request('http://localhost/preferences/codex', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          useCradleUserAgent: false,
+        }),
+      }))
+      expect(saveRes.status).toBe(200)
+      expect(await saveRes.json()).toEqual({ ok: true })
+
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        useCradleUserAgent: false,
+      })
+
+      const finalRes = await app.handle(new Request('http://localhost/preferences/codex'))
+      expect(finalRes.status).toBe(200)
+      expect(await finalRes.json()).toEqual({
+        useCradleUserAgent: false,
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('returns structured errors for invalid payloads', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -123,6 +172,16 @@ describe('preferences capability', () => {
       }))
       expect(invalidContinuationBehavior.status).toBe(400)
       expect((await invalidContinuationBehavior.json()).code).toBe('validation_error')
+
+      const invalidCodexPreferences = await app.handle(new Request('http://localhost/preferences/codex', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          useCradleUserAgent: 'false',
+        }),
+      }))
+      expect(invalidCodexPreferences.status).toBe(400)
+      expect((await invalidCodexPreferences.json()).code).toBe('validation_error')
     }
     finally {
       shutdownInfra()

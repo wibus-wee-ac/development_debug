@@ -17,6 +17,87 @@ const categoryEnum = t.Union([
   t.Literal('canceled'),
 ])
 
+const issueActorKindEnum = t.Union([
+  t.Literal('user'),
+  t.Literal('agent'),
+  t.Literal('provider-target'),
+  t.Literal('system'),
+])
+
+const issueCommentAuthorKindEnum = t.Union([
+  t.Literal('user'),
+  t.Literal('agent'),
+  t.Literal('provider-target'),
+  t.Literal('system'),
+  t.Literal('system.delegated'),
+  t.Literal('system.undelegated'),
+])
+
+const issueActivityValueTokenEnum = t.Union([
+  t.Literal('changed'),
+  t.Literal('current-user'),
+  t.Literal('empty'),
+  t.Literal('no-due-date'),
+  t.Literal('no-labels'),
+  t.Literal('no-milestone'),
+  t.Literal('no-parent'),
+  t.Literal('no-status'),
+  t.Literal('priority-high'),
+  t.Literal('priority-low'),
+  t.Literal('priority-medium'),
+  t.Literal('priority-none'),
+  t.Literal('priority-urgent'),
+  t.Literal('unassigned'),
+  t.Literal('unknown-issue'),
+  t.Literal('unknown-milestone'),
+  t.Literal('unknown-status'),
+  t.Literal('unknown-user'),
+])
+
+const issueActivityFieldEnum = t.Union([
+  t.Literal('assignee'),
+  t.Literal('description'),
+  t.Literal('due-date'),
+  t.Literal('labels'),
+  t.Literal('metadata'),
+  t.Literal('milestone'),
+  t.Literal('parent'),
+  t.Literal('priority'),
+  t.Literal('status'),
+  t.Literal('title'),
+])
+
+const issueActivityActionEnum = t.Union([
+  t.Literal('added-description'),
+  t.Literal('changed-field'),
+  t.Literal('cleared-description'),
+  t.Literal('renamed-issue'),
+  t.Literal('updated-description'),
+])
+
+const issueActivityActor = t.Object({
+  kind: issueActorKindEnum,
+  id: t.Nullable(t.String()),
+  displayName: t.String(),
+  avatarUrl: t.Nullable(t.String()),
+  label: t.Nullable(t.String()),
+})
+
+const issueActivityValue = t.Union([
+  t.Object({
+    kind: t.Literal('date'),
+    timestamp: t.Number(),
+  }),
+  t.Object({
+    kind: t.Literal('text'),
+    text: t.String(),
+  }),
+  t.Object({
+    kind: t.Literal('token'),
+    token: issueActivityValueTokenEnum,
+  }),
+])
+
 export const IssueModel = {
   status: t.Object({
     id: t.String(),
@@ -53,8 +134,9 @@ export const IssueModel = {
     assigneeKind: t.Nullable(t.String()),
     assigneeId: t.Nullable(t.String()),
     dueDate: t.Nullable(t.Number()),
-    createdByKind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
+    createdByKind: issueActorKindEnum,
     createdById: t.String(),
+    sourceChatSessionId: t.Nullable(t.String()),
     delegateAgentId: t.Nullable(t.String()),
     delegateAgentProfileId: t.Nullable(t.String()),
     contextRefs: t.String(),
@@ -64,7 +146,7 @@ export const IssueModel = {
   }),
 
   commentAuthor: t.Object({
-    kind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
+    kind: issueActorKindEnum,
     id: t.Nullable(t.String()),
     displayName: t.String(),
     avatarUrl: t.Nullable(t.String()),
@@ -75,22 +157,30 @@ export const IssueModel = {
     id: t.String(),
     issueId: t.String(),
     content: t.String(),
-    authorKind: t.Union([
-      t.Literal('user'),
-      t.Literal('agent'),
-      t.Literal('system'),
-      t.Literal('system.delegated'),
-      t.Literal('system.undelegated'),
-    ]),
+    authorKind: issueCommentAuthorKindEnum,
     authorId: t.Nullable(t.String()),
-    author: t.Object({
-      kind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
-      id: t.Nullable(t.String()),
-      displayName: t.String(),
-      avatarUrl: t.Nullable(t.String()),
-      label: t.Nullable(t.String()),
-    }),
+    author: issueActivityActor,
+    sourceChatSessionId: t.Nullable(t.String()),
     agentActivityId: t.Nullable(t.String()),
+    createdAt: t.Number(),
+  }),
+
+  activityItem: t.Object({
+    id: t.String(),
+    issueId: t.String(),
+    kind: t.Union([t.Literal('comment'), t.Literal('created'), t.Literal('field-change')]),
+    actor: issueActivityActor,
+    comment: t.Nullable(t.Object({
+      content: t.String(),
+      systemKind: t.Nullable(t.Union([t.Literal('delegated'), t.Literal('system'), t.Literal('undelegated')])),
+    })),
+    fieldChange: t.Nullable(t.Object({
+      action: issueActivityActionEnum,
+      field: t.Nullable(issueActivityFieldEnum),
+      fromValue: t.Nullable(issueActivityValue),
+      toValue: t.Nullable(issueActivityValue),
+    })),
+    sourceChatSessionId: t.Nullable(t.String()),
     createdAt: t.Number(),
   }),
 
@@ -108,8 +198,9 @@ export const IssueModel = {
     field: t.String(),
     fromValue: t.Nullable(t.String()),
     toValue: t.Nullable(t.String()),
-    actorKind: t.Union([t.Literal('user'), t.Literal('agent'), t.Literal('system')]),
+    actorKind: issueActorKindEnum,
     actorId: t.Nullable(t.String()),
+    sourceChatSessionId: t.Nullable(t.String()),
     createdAt: t.Number(),
   }),
 

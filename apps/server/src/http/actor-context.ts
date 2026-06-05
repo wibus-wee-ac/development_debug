@@ -12,12 +12,14 @@ export interface MutationActor {
   kind: MutationActorKind
   id: string
   source: 'default-user' | 'chat-session'
+  chatSessionId: string | null
 }
 
 const DEFAULT_USER_ACTOR: MutationActor = {
   kind: 'user',
   id: '__self__',
   source: 'default-user',
+  chatSessionId: null,
 }
 
 export function resolveActorContext(request: Request): MutationActor {
@@ -51,6 +53,7 @@ export function resolveActorContext(request: Request): MutationActor {
       kind: 'agent',
       id: session.agentId,
       source: 'chat-session',
+      chatSessionId,
     }
   }
 
@@ -59,6 +62,7 @@ export function resolveActorContext(request: Request): MutationActor {
       kind: 'system',
       id: 'jarvis',
       source: 'chat-session',
+      chatSessionId,
     }
   }
 
@@ -67,6 +71,7 @@ export function resolveActorContext(request: Request): MutationActor {
       kind: 'provider-target',
       id: session.providerTargetId,
       source: 'chat-session',
+      chatSessionId,
     }
   }
 
@@ -74,5 +79,6 @@ export function resolveActorContext(request: Request): MutationActor {
     kind: 'user',
     id: '__self__',
     source: 'chat-session',
+    chatSessionId,
   }
 }

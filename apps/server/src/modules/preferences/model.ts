@@ -22,6 +22,9 @@ export const PreferencesModel = {
       t.Literal('steer'),
     ], { default: 'queue' })),
   }, { additionalProperties: false }),
+  codexPreferences: t.Object({
+    useCradleUserAgent: t.Boolean({ default: true }),
+  }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     runtimeKind: t.Optional(runtimeKindRef),
     profileId: nullableProfileRef,
@@ -50,6 +53,15 @@ export const ChatPreferencesJsonSchema = z.union([
   modelId: null,
   configSelections: {},
   continuationBehavior: 'queue',
+}))
+
+export const CodexPreferencesJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.undefined(),
+]).pipe(z.object({
+  useCradleUserAgent: z.boolean().default(true),
+}).default({
+  useCradleUserAgent: true,
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([

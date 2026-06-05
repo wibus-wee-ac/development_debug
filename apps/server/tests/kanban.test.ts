@@ -2,8 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, agents, sessions, workspaces } from '@cradle/db'
-import { eq } from 'drizzle-orm'
+import { agentProfiles, agents, providerTargets, sessions, workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -29,8 +28,9 @@ interface Issue {
   workspaceId: string
   statusId: string | null
   priority: 'none' | 'low' | 'medium' | 'high' | 'urgent'
-  createdByKind: 'user' | 'agent' | 'system'
+  createdByKind: 'user' | 'agent' | 'provider-target' | 'system'
   createdById: string
+  sourceChatSessionId: string | null
 }
 
 function makeTempDir(prefix: string): string {
@@ -277,6 +277,7 @@ describe('kanban capability', () => {
       expect(issue).toEqual(expect.objectContaining({
         createdByKind: 'agent',
         createdById: 'agent-kanban',
+        sourceChatSessionId: 'chat-session-kanban-agent',
       }))
 
       const addComment = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`, {
@@ -291,6 +292,7 @@ describe('kanban capability', () => {
       expect(await addComment.json()).toEqual(expect.objectContaining({
         authorKind: 'agent',
         authorId: 'agent-kanban',
+        sourceChatSessionId: 'chat-session-kanban-agent',
         author: expect.objectContaining({
           kind: 'agent',
           id: 'agent-kanban',
@@ -299,6 +301,28 @@ describe('kanban capability', () => {
         }),
         content: 'Agent status update',
       }))
+
+      const activityRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/activity`))
+      expect(activityRes.status).toBe(200)
+      const activity = await activityRes.json() as Array<{
+        kind: string
+        actor: { kind: string, id: string | null, displayName: string }
+        sourceChatSessionId: string | null
+        comment: { content: string } | null
+      }>
+      expect(activity).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'created',
+          actor: expect.objectContaining({ kind: 'agent', id: 'agent-kanban', displayName: 'Kanban Agent' }),
+          sourceChatSessionId: 'chat-session-kanban-agent',
+        }),
+        expect.objectContaining({
+          kind: 'comment',
+          actor: expect.objectContaining({ kind: 'agent', id: 'agent-kanban', displayName: 'Kanban Agent' }),
+          comment: expect.objectContaining({ content: 'Agent status update' }),
+          sourceChatSessionId: 'chat-session-kanban-agent',
+        }),
+      ]))
     }
     finally {
       shutdownInfra()
@@ -313,7 +337,7 @@ describe('kanban capability', () => {
     }
   })
 
-  it('binds Jarvis comments to a stable jar-core agent identity from the chat session', async () => {
+  it('records Jarvis comments as system provenance from the jar-core chat session', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -328,10 +352,11 @@ describe('kanban capability', () => {
         identifier: 'JAR',
         path: workspaceRoot,
       }).run()
-      db().insert(agentProfiles).values({
-        id: 'profile-jarvis-runtime',
-        name: 'Jar Core Runtime',
+      db().insert(providerTargets).values({
+        id: 'provider-target-jarvis-runtime',
+        kind: 'manual',
         providerKind: 'openai-compatible',
+        displayName: 'Jar Core Runtime',
       }).run()
 
       const sessionRes = await app.handle(new Request('http://localhost/sessions', {
@@ -341,19 +366,11 @@ describe('kanban capability', () => {
           id: 'chat-session-jarvis-comment',
           workspaceId: 'workspace-jarvis-comment',
           title: 'Jarvis Runtime',
-          agentProfileId: 'profile-jarvis-runtime',
+          providerTargetId: 'provider-target-jarvis-runtime',
           runtimeKind: 'jar-core',
         }),
       }))
       expect(sessionRes.status).toBe(200)
-      const session = await sessionRes.json() as { agentId: string }
-      const jarvisAgent = db().select().from(agents).where(eq(agents.id, session.agentId)).get()
-      expect(jarvisAgent).toEqual(expect.objectContaining({
-        name: 'Jarvis',
-        agentProfileId: 'profile-jarvis-runtime',
-        runtimeKind: 'jar-core',
-        avatarSeed: 'jarvis',
-      }))
 
       const createIssue = await app.handle(new Request('http://localhost/issues', {
         method: 'POST',
@@ -376,13 +393,14 @@ describe('kanban capability', () => {
       }))
       expect(addComment.status).toBe(200)
       expect(await addComment.json()).toEqual(expect.objectContaining({
-        authorKind: 'agent',
-        authorId: session.agentId,
+        authorKind: 'system',
+        authorId: 'jarvis',
+        sourceChatSessionId: 'chat-session-jarvis-comment',
         author: expect.objectContaining({
-          kind: 'agent',
-          id: session.agentId,
-          displayName: 'Jarvis',
-          label: 'AI',
+          kind: 'system',
+          id: null,
+          displayName: 'Cradle',
+          label: 'System',
         }),
         content: 'Jarvis owns this comment',
       }))
@@ -400,7 +418,7 @@ describe('kanban capability', () => {
     }
   })
 
-  it('rejects profile-only runtime context instead of using profile id as an agent author', async () => {
+  it('records provider-target provenance from provider chat session context', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -415,29 +433,38 @@ describe('kanban capability', () => {
         identifier: 'KPO',
         path: workspaceRoot,
       }).run()
-      db().insert(agentProfiles).values({
-        id: 'profile-kanban-profile-only',
-        name: 'Profile Only',
+      db().insert(providerTargets).values({
+        id: 'provider-target-kanban-profile-only',
+        kind: 'manual',
         providerKind: 'openai-compatible',
+        displayName: 'Local Codex',
       }).run()
       db().insert(sessions).values({
         id: 'chat-session-profile-only',
         workspaceId: 'workspace-kanban-profile-only',
-        title: 'Legacy Profile Only Runtime',
-        agentProfileId: 'profile-kanban-profile-only',
+        title: 'Provider Runtime',
+        providerTargetId: 'provider-target-kanban-profile-only',
         agentId: null,
       }).run()
 
       const createIssue = await app.handle(new Request('http://localhost/issues', {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          'x-cradle-chat-session-id': 'chat-session-profile-only',
+        },
         body: JSON.stringify({
           workspaceId: 'workspace-kanban-profile-only',
-          title: 'Profile-only context issue',
+          title: 'Provider-target context issue',
         }),
       }))
       expect(createIssue.status).toBe(200)
       const issue = await createIssue.json() as Issue
+      expect(issue).toEqual(expect.objectContaining({
+        createdByKind: 'provider-target',
+        createdById: 'provider-target-kanban-profile-only',
+        sourceChatSessionId: 'chat-session-profile-only',
+      }))
 
       const addComment = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`, {
         method: 'POST',
@@ -445,13 +472,44 @@ describe('kanban capability', () => {
           'content-type': 'application/json',
           'x-cradle-chat-session-id': 'chat-session-profile-only',
         },
-        body: JSON.stringify({ content: 'Should not be profile-authored' }),
+        body: JSON.stringify({ content: 'Provider target authored update' }),
       }))
 
-      expect(addComment.status).toBe(409)
+      expect(addComment.status).toBe(200)
       expect(await addComment.json()).toEqual(expect.objectContaining({
-        code: 'runtime_agent_identity_missing',
+        authorKind: 'provider-target',
+        authorId: 'provider-target-kanban-profile-only',
+        sourceChatSessionId: 'chat-session-profile-only',
+        author: expect.objectContaining({
+          kind: 'provider-target',
+          id: 'provider-target-kanban-profile-only',
+          displayName: 'Local Codex',
+          label: 'Provider',
+        }),
+        content: 'Provider target authored update',
       }))
+
+      const activityRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/activity`))
+      expect(activityRes.status).toBe(200)
+      const activity = await activityRes.json() as Array<{
+        kind: string
+        actor: { kind: string, id: string | null, displayName: string }
+        sourceChatSessionId: string | null
+        comment: { content: string } | null
+      }>
+      expect(activity).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'created',
+          actor: expect.objectContaining({ kind: 'provider-target', id: 'provider-target-kanban-profile-only', displayName: 'Local Codex' }),
+          sourceChatSessionId: 'chat-session-profile-only',
+        }),
+        expect.objectContaining({
+          kind: 'comment',
+          actor: expect.objectContaining({ kind: 'provider-target', id: 'provider-target-kanban-profile-only', displayName: 'Local Codex' }),
+          comment: expect.objectContaining({ content: 'Provider target authored update' }),
+          sourceChatSessionId: 'chat-session-profile-only',
+        }),
+      ]))
     }
     finally {
       shutdownInfra()

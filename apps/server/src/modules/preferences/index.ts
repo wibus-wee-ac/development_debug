@@ -35,6 +35,34 @@ export const preferences = new Elysia({
       200: PreferencesModel.savedResponse,
     },
   })
+  .get('/codex', () => Preferences.getCodexPreferences(), {
+    detail: {
+      'summary': 'Get Codex preferences',
+      'description': 'Read Codex runtime preferences owned by Cradle.',
+      'x-cradle-cli': {
+        command: ['preferences', 'codex', 'get'],
+      },
+    },
+    response: {
+      200: PreferencesModel.codexPreferences,
+    },
+  })
+  .put('/codex', async ({ body }) => {
+    await Preferences.setCodexPreferences(body)
+    return { ok: true as const }
+  }, {
+    detail: {
+      'summary': 'Set Codex preferences',
+      'description': 'Persist Codex runtime preferences owned by Cradle.',
+      'x-cradle-cli': {
+        command: ['preferences', 'codex', 'set'],
+      },
+    },
+    body: PreferencesModel.codexPreferences,
+    response: {
+      200: PreferencesModel.savedResponse,
+    },
+  })
   .get('/jarvis', () => Preferences.getJarvisPreferences(), {
     detail: {
       'summary': 'Get Jarvis preferences',

@@ -6,7 +6,7 @@ import type { Static } from 'elysia'
 
 import { getServerConfig } from '../../infra'
 import type { PreferencesModel } from './model'
-import { ChatPreferencesJsonSchema, JarvisPreferencesJsonSchema } from './model'
+import { ChatPreferencesJsonSchema, CodexPreferencesJsonSchema, JarvisPreferencesJsonSchema } from './model'
 
 function getPath(name: string): string {
   const config = getServerConfig()
@@ -43,6 +43,39 @@ export function getChatPreferencesSync(): Static<typeof PreferencesModel['chatPr
 export async function setChatPreferences(preferences: Static<typeof PreferencesModel['chatPreferencesUpdate']>): Promise<void> {
   const filePath = getPath('chat')
   const normalized = ChatPreferencesJsonSchema.parse(JSON.stringify(preferences))
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
+}
+
+export async function getCodexPreferences(): Promise<Static<typeof PreferencesModel['codexPreferences']>> {
+  const filePath = getPath('codex')
+  try {
+    return CodexPreferencesJsonSchema.parse(await readFile(filePath, 'utf8'))
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return CodexPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
+  }
+}
+
+export function getCodexPreferencesSync(): Static<typeof PreferencesModel['codexPreferences']> {
+  const filePath = getPath('codex')
+  try {
+    return CodexPreferencesJsonSchema.parse(readFileSync(filePath, 'utf8'))
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return CodexPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
+  }
+}
+
+export async function setCodexPreferences(preferences: Static<typeof PreferencesModel['codexPreferences']>): Promise<void> {
+  const filePath = getPath('codex')
+  const normalized = CodexPreferencesJsonSchema.parse(JSON.stringify(preferences))
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }

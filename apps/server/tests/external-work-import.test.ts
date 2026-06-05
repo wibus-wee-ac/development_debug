@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { externalWorkImportItems, messages, sessions, workspaces } from '@cradle/db'
+import { backendSessionBindings, externalWorkImportItems, messages, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -180,6 +180,86 @@ describe('external work import', () => {
     expect(imported.duplicates).toBe(0)
     expect(db().select().from(sessions).all()).toHaveLength(1)
     expect(db().select().from(externalWorkImportItems).all()).toHaveLength(1)
+  })
+
+  it('deduplicates Claude sessions already persisted by Cradle runtime bindings', async () => {
+    const dataDir = makeDataDir()
+    tempDirs.push(dataDir)
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'external-work-import-test-secret'
+
+    const now = 1_777_777_777
+    const existingSessionId = 'cradle-claude-session'
+    db().insert(sessions).values({
+      id: existingSessionId,
+      workspaceId: null,
+      title: 'Existing Claude session',
+      runtimeKind: 'claude-agent',
+      configJson: '{}',
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+    db().insert(backendSessionBindings).values({
+      id: 'cradle-claude-binding',
+      chatSessionId: existingSessionId,
+      providerTargetId: null,
+      runtimeKind: 'claude-agent',
+      backendSessionId: 'claude-session-in-cradle',
+      backendStateSnapshot: '{}',
+      requestedModelId: null,
+      createdAt: now,
+      updatedAt: now,
+    }).run()
+
+    const content = [
+      JSON.stringify({
+        type: 'user',
+        message: { role: 'user', content: 'This already came through Cradle.' },
+        timestamp: '2026-05-01T10:00:00.000Z',
+        cwd: dataDir,
+        sessionId: 'claude-session-in-cradle',
+      }),
+      JSON.stringify({
+        type: 'assistant',
+        message: { role: 'assistant', content: 'Do not import it again.' },
+        timestamp: '2026-05-01T10:00:01.000Z',
+        cwd: dataDir,
+        sessionId: 'claude-session-in-cradle',
+      }),
+    ].join('\n')
+
+    const previewResponse = await postJson('/external-work-import/upload-preview', {
+      files: [{ sourceApp: 'claude', path: '/Users/test/.claude/projects/demo/session.jsonl', content }],
+    })
+    expect(previewResponse.status).toBe(200)
+    const preview = await previewResponse.json() as {
+      items: Array<Record<string, unknown>>
+    }
+    expect(preview.items).toHaveLength(1)
+    expect(preview.items[0]).toMatchObject({
+      sourceApp: 'claude',
+      sourceKind: 'session',
+      duplicate: true,
+      duplicateImportId: null,
+      importable: false,
+      reason: 'Already exists in Cradle',
+    })
+
+    const importResponse = await postJson('/external-work-import/import', {
+      items: preview.items,
+    })
+    expect(importResponse.status).toBe(200)
+    const imported = await importResponse.json() as {
+      imported: number
+      duplicates: number
+      items: Array<{ record: unknown, sessionId: string | null }>
+    }
+    expect(imported.imported).toBe(0)
+    expect(imported.duplicates).toBe(1)
+    expect(imported.items[0]?.record).toBeNull()
+    expect(imported.items[0]?.sessionId).toBe(existingSessionId)
+    expect(db().select().from(sessions).all()).toHaveLength(1)
+    expect(db().select().from(externalWorkImportItems).all()).toHaveLength(0)
   })
 
   it('only previews and imports session items', async () => {
