@@ -70,7 +70,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const isDev = !!process.env.ELECTRON_RENDERER_URL
   const serverEntry = isDev
     ? resolveDevServerEntry()
-    : join(process.resourcesPath, 'server/main.js')
+    : join(process.resourcesPath, 'server/dist/main.js')
 
   const execArgv = isDev ? ['--import', 'tsx'] : []
   const execPath = isDev ? resolveDevNodeExecPath() : undefined
@@ -92,6 +92,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       CRADLE_HOST: host,
       CRADLE_PORT: String(port),
       CRADLE_DATA_DIR: dataDir,
+      CRADLE_VERSION: app.getVersion(),
       CRADLE_CREDENTIAL_SECRET: credentialSecret,
       CRADLE_PLUGINS_DIR: pluginsDir,
       CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,

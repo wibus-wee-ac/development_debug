@@ -7,10 +7,17 @@
     ".": "./src/index.ts",
     "./app": "./src/app.ts"
   },
+  "files": [
+    "dist/**",
+    "!dist/node_modules/**",
+    "!dist/package.json",
+    "!dist/desktop-runtime/**"
+  ],
   "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon",
-    "build": "vite build && node scripts/install-runtime-deps.mjs",
+    "build": "vite build",
+    "build:desktop-runtime": "pnpm run build && node scripts/prepare-desktop-runtime.mjs && node scripts/rebuild-electron-runtime.mjs",
     "start": "node dist/main.js",
     "generate:codex-app-server-capabilities": "node scripts/generate-codex-app-server-capabilities.mjs",
     "typecheck": "tsc --noEmit",
@@ -24,6 +31,7 @@
     "@cradle/db": "workspace:*",
     "@cradle/plugin-sdk": "workspace:*",
     "@elysia/openapi": "^1.4.15",
+    "@elysiajs/cors": "^1.4.2",
     "@elysiajs/node": "^1.4.5",
     "@hijarvis/core": "^0.1.0",
     "@hono/node-server": "^1.19.9",
@@ -59,7 +67,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@elysiajs/cors": "^1.4.2",
+    "@electron/rebuild": "4.0.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.19.1",
     "nodemon": "^3.1.9",

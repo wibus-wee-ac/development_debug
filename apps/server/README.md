@@ -59,7 +59,8 @@ The server follows the repository convention of **technical primitives + busines
 - `pnpm dev`: start nodemon development server
 - `pnpm test`: run Vitest suite
 - `pnpm typecheck`: run TypeScript type-check
-- `pnpm build`: build the server bundle, write the minimal runtime manifest, and let pnpm install production runtime dependencies into `dist/node_modules` for desktop packaging
+- `pnpm build`: build the server bundle into `dist`.
+- `pnpm build:desktop-runtime`: build the server bundle, use `pnpm deploy --prod` to prepare `dist/desktop-runtime` from the server package dependency graph, and rebuild that artifact's native dependencies for Cradle desktop's Electron Node ABI.
 
 ## Elysia migration status
 

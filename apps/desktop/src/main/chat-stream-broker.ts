@@ -70,6 +70,10 @@ export interface DesktopChatStreamDiagnostics {
   }>
 }
 
+export const DESKTOP_CHAT_REPLAY_MAX_CHUNKS = 512
+export const DESKTOP_CHAT_REPLAY_MAX_BYTES = 4 * 1024 * 1024
+const DESKTOP_CHAT_REPLAY_DELTA_MERGE_MAX_CHARS = 8_192
+
 type ChatStreamFetch = typeof fetch
 
 interface ChatStreamBrokerOptions {
@@ -90,6 +94,20 @@ interface StreamSubscriber {
   replayCursor: number
 }
 
+interface ReplayBufferItem {
+  cursor: number
+  chunk: unknown
+  byteSize: number
+  coalesceKey: string | null
+}
+
+interface ReplayBuffer {
+  chunks: ReplayBufferItem[]
+  nextCursor: number
+  totalBytes: number
+  indexByCoalesceKey: Map<string, number>
+}
+
 interface WebContentsCleanupRegistration {
   webContents: WebContents
   streamIds: Set<string>
@@ -101,7 +119,7 @@ interface UpstreamEntry {
   mode: DesktopChatStreamMode
   controller: AbortController
   subscribers: Map<string, StreamSubscriber>
-  replayChunks: unknown[]
+  replayBuffer: ReplayBuffer
   handlePromise: Promise<UpstreamHandle>
   runId: string | null
   assistantMessageId?: string
@@ -127,7 +145,7 @@ export class ChatStreamBroker {
   private readonly serverUrl: string
   private readonly fetchFn: ChatStreamFetch
   private readonly entriesBySessionId = new Map<string, UpstreamEntry>()
-  private readonly cleanupByWebContents = new Map<WebContents, WebContentsCleanupRegistration>()
+  private readonly cleanupByWebContents = new WeakMap<WebContents, WebContentsCleanupRegistration>()
   private nextStreamIndex = 0
 
   constructor(options: ChatStreamBrokerOptions) {
@@ -186,7 +204,7 @@ export class ChatStreamBroker {
         assistantMessageId: entry.assistantMessageId,
         userMessageId: entry.userMessageId,
         subscriberCount: entry.subscribers.size,
-        replayChunkCount: entry.replayChunks.length,
+        replayChunkCount: entry.replayBuffer.chunks.length,
         keepAliveWithoutSubscribers: entry.keepAliveWithoutSubscribers,
         startedAtMs: entry.startedAtMs,
       })),
@@ -221,7 +239,7 @@ export class ChatStreamBroker {
       mode: request.mode,
       controller,
       subscribers: new Map(),
-      replayChunks: [],
+      replayBuffer: createReplayBuffer(),
       handlePromise: Promise.resolve({ sessionId: request.sessionId, runId: null }),
       runId: null,
       keepAliveWithoutSubscribers: request.keepAliveWithoutSubscribers,
@@ -382,15 +400,18 @@ export class ChatStreamBroker {
   }
 
   private forwardChunk(entry: UpstreamEntry, chunk: unknown): void {
-    entry.replayChunks.push(chunk)
+    bufferReplayChunk(entry.replayBuffer, chunk)
     for (const subscriber of [...entry.subscribers.values()]) {
       this.sendChunkToSubscriber(entry, subscriber, chunk)
     }
   }
 
   private replayChunksToSubscriber(entry: UpstreamEntry, subscriber: StreamSubscriber): void {
-    for (const chunk of entry.replayChunks.slice(subscriber.replayCursor)) {
-      this.sendChunkToSubscriber(entry, subscriber, chunk)
+    for (const item of entry.replayBuffer.chunks) {
+      if (item.cursor < subscriber.replayCursor) {
+        continue
+      }
+      this.sendChunkToSubscriber(entry, subscriber, item.chunk)
     }
   }
 
@@ -406,7 +427,7 @@ export class ChatStreamBroker {
       runId: entry.runId,
       chunk,
     } satisfies DesktopChatStreamChunkEvent)
-    subscriber.replayCursor = entry.replayChunks.length
+    subscriber.replayCursor = entry.replayBuffer.nextCursor
   }
 
   private closeEntry(entry: UpstreamEntry, reason: DesktopChatStreamClosedEvent['reason']): void {
@@ -506,6 +527,195 @@ function canReuseEntry(existing: UpstreamEntry, request: UpstreamRequest): boole
     return true
   }
   return existing.mode === 'response'
+}
+
+function createReplayBuffer(): ReplayBuffer {
+  return {
+    chunks: [],
+    nextCursor: 0,
+    totalBytes: 0,
+    indexByCoalesceKey: new Map(),
+  }
+}
+
+function bufferReplayChunk(buffer: ReplayBuffer, chunk: unknown): void {
+  if (coalesceReplayChunk(buffer, chunk)) {
+    trimReplayBuffer(buffer)
+    return
+  }
+
+  const coalesceKey = readReplayCoalesceKey(chunk)
+  const item: ReplayBufferItem = {
+    cursor: buffer.nextCursor,
+    chunk,
+    byteSize: estimateReplayChunkBytes(chunk),
+    coalesceKey,
+  }
+  buffer.nextCursor += 1
+  buffer.chunks.push(item)
+  buffer.totalBytes += item.byteSize
+  if (coalesceKey) {
+    buffer.indexByCoalesceKey.set(coalesceKey, buffer.chunks.length - 1)
+  }
+  trimReplayBuffer(buffer)
+}
+
+function coalesceReplayChunk(buffer: ReplayBuffer, chunk: unknown): boolean {
+  const key = readReplayCoalesceKey(chunk)
+  if (!key) {
+    return false
+  }
+
+  const existingIndex = buffer.indexByCoalesceKey.get(key)
+  if (existingIndex === undefined) {
+    return false
+  }
+
+  const existing = buffer.chunks[existingIndex]
+  if (!existing || existing.coalesceKey !== key) {
+    buffer.indexByCoalesceKey.delete(key)
+    return false
+  }
+
+  const merged = mergeReplayChunk(existing.chunk, chunk)
+  if (!merged) {
+    return false
+  }
+
+  buffer.totalBytes -= existing.byteSize
+  existing.chunk = merged
+  existing.byteSize = estimateReplayChunkBytes(merged)
+  buffer.totalBytes += existing.byteSize
+  return true
+}
+
+function trimReplayBuffer(buffer: ReplayBuffer): void {
+  let changed = false
+  while (
+    buffer.chunks.length > DESKTOP_CHAT_REPLAY_MAX_CHUNKS
+    || buffer.totalBytes > DESKTOP_CHAT_REPLAY_MAX_BYTES
+  ) {
+    const removed = buffer.chunks.shift()
+    if (!removed) {
+      break
+    }
+    buffer.totalBytes = Math.max(0, buffer.totalBytes - removed.byteSize)
+    changed = true
+  }
+  if (changed) {
+    rebuildReplayCoalesceIndex(buffer)
+  }
+}
+
+function rebuildReplayCoalesceIndex(buffer: ReplayBuffer): void {
+  buffer.indexByCoalesceKey.clear()
+  buffer.chunks.forEach((item, index) => {
+    if (item.coalesceKey) {
+      buffer.indexByCoalesceKey.set(item.coalesceKey, index)
+    }
+  })
+}
+
+function estimateReplayChunkBytes(chunk: unknown): number {
+  try {
+    const serialized = JSON.stringify(chunk)
+    if (typeof serialized === 'string') {
+      return new TextEncoder().encode(serialized).byteLength
+    }
+  }
+  catch {
+    return 1024
+  }
+  return 1024
+}
+
+function readReplayCoalesceKey(chunk: unknown): string | null {
+  const record = readRecord(chunk)
+  if (!record) {
+    return null
+  }
+
+  switch (record.type) {
+    case 'text-delta':
+      return typeof record.id === 'string' ? `text-delta:${record.id}` : null
+    case 'reasoning-delta':
+      return typeof record.id === 'string' ? `reasoning-delta:${record.id}` : null
+    case 'tool-input-delta':
+      return typeof record.toolCallId === 'string' ? `tool-input-delta:${record.toolCallId}` : null
+    case 'tool-output-available':
+      return typeof record.toolCallId === 'string' ? `tool-output-available:${record.toolCallId}` : null
+    default:
+      return null
+  }
+}
+
+function mergeReplayChunk(existing: unknown, next: unknown): unknown | null {
+  const existingRecord = readRecord(existing)
+  const nextRecord = readRecord(next)
+  if (!existingRecord || !nextRecord) {
+    return null
+  }
+
+  if (
+    existingRecord.type === 'text-delta'
+    && nextRecord.type === 'text-delta'
+    && existingRecord.id === nextRecord.id
+    && typeof existingRecord.delta === 'string'
+    && typeof nextRecord.delta === 'string'
+  ) {
+    if (existingRecord.delta.length + nextRecord.delta.length > DESKTOP_CHAT_REPLAY_DELTA_MERGE_MAX_CHARS) {
+      return null
+    }
+    return {
+      ...nextRecord,
+      delta: `${existingRecord.delta}${nextRecord.delta}`,
+      providerMetadata: nextRecord.providerMetadata ?? existingRecord.providerMetadata,
+    }
+  }
+
+  if (
+    existingRecord.type === 'reasoning-delta'
+    && nextRecord.type === 'reasoning-delta'
+    && existingRecord.id === nextRecord.id
+    && typeof existingRecord.delta === 'string'
+    && typeof nextRecord.delta === 'string'
+  ) {
+    if (existingRecord.delta.length + nextRecord.delta.length > DESKTOP_CHAT_REPLAY_DELTA_MERGE_MAX_CHARS) {
+      return null
+    }
+    return {
+      ...nextRecord,
+      delta: `${existingRecord.delta}${nextRecord.delta}`,
+      providerMetadata: nextRecord.providerMetadata ?? existingRecord.providerMetadata,
+    }
+  }
+
+  if (
+    existingRecord.type === 'tool-input-delta'
+    && nextRecord.type === 'tool-input-delta'
+    && existingRecord.toolCallId === nextRecord.toolCallId
+    && typeof existingRecord.inputTextDelta === 'string'
+    && typeof nextRecord.inputTextDelta === 'string'
+  ) {
+    if (
+      existingRecord.inputTextDelta.length + nextRecord.inputTextDelta.length
+      > DESKTOP_CHAT_REPLAY_DELTA_MERGE_MAX_CHARS
+    ) {
+      return null
+    }
+    return {
+      ...nextRecord,
+      inputTextDelta: `${existingRecord.inputTextDelta}${nextRecord.inputTextDelta}`,
+    }
+  }
+
+  return null
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 function splitCompleteSseFrames(buffer: string): { completeFrames: string[], remainder: string } {

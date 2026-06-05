@@ -8,12 +8,8 @@ files:
   - node_modules/velopack/**/*
   - node_modules/@neon-rs/load/**/*
 extraResources:
-  - from: ../server/dist
+  - from: ../server/dist/desktop-runtime
     to: server
-    filter:
-      - '**/*'
-  - from: ../server/dist/node_modules
-    to: server/node_modules
     filter:
       - '**/*'
   - from: ../../packages/db/drizzle

@@ -19,7 +19,7 @@
 - `window-state.ts`：拥有主窗口 bounds 恢复校正逻辑，以及 tear-off window 的 size-only 持久化 helper；主窗口在 `electron-window-state` 持久化基础上按当前 display workArea 修正大小和位置，tear-off 只保存宽高不保存位置。
 - `window-manager.ts`：拥有 Electron window lifecycle 和 renderer/server URL 连接；session tear-off window 从专用 renderer entry 初始化、按释放点选择目标 display，在释放点附近打开并限制在目标 workArea 内、只记忆宽高，同一 session 的重复 open 会聚合到已登记窗口，并在关闭时通知 main renderer 恢复对应 main-window chat tab。
 - `window-manager.test.ts`：覆盖 session tear-off window 并发 open 去重，以及 renderer load 失败时清理 pending session 窗口。
-- `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入，以及 desktop-owned credential secret 文件。
+- `server-process.ts`：拥有 server 子进程启动、停止、环境变量注入、Cradle app version 投影，以及 desktop-owned credential secret 文件；packaged runtime 只启动 `@cradle/server` 产出的 `dist/desktop-runtime` artifact。
 - `native-services.ts`：拥有 main-process native IPC service 注册，包括 native dialog/path launch IPC、desktop chat stream broker IPC、Claude / Codex 会话文件的只读本机采样、Mac Appshot Cradle-native capture orchestration、Cradle-native image asset projection、Appshot source-window target locking、Codex temp asset observe-only evidence collection, and Appshot parity probe orchestration.
 - `observability-reporter.ts`：拥有 Electron main process 的 private-preview error capture，把 main-process uncaught exception / unhandled rejection 缓存并投递到 server-owned observability API；只写 Cradle server namespace，不引入外部上传服务。
 - `native-editor-launcher.ts`：拥有 desktop native editor launch strategy，优先使用 macOS app launch，再回退到 common editor CLI commands。
