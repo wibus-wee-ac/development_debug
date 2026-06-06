@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest'
 import { queryRefreshPolicies, queryRefreshPolicy } from './query-refresh-policy'
 
 describe('queryRefreshPolicy', () => {
-  it('keeps workspace polling disabled while a window is in the background', () => {
+  it('keeps workspace polling enabled while a window is in the background', () => {
     expect(queryRefreshPolicy('active')).toEqual(expect.objectContaining({
-      refetchIntervalInBackground: false,
+      refetchIntervalInBackground: true,
       refetchInterval: 15_000,
     }))
   })
@@ -14,7 +14,7 @@ describe('queryRefreshPolicy', () => {
     expect(queryRefreshPolicies.interactive).toEqual({
       staleTime: 3_000,
       refetchInterval: 5_000,
-      refetchIntervalInBackground: false,
+      refetchIntervalInBackground: true,
       refetchOnWindowFocus: 'always',
       refetchOnReconnect: 'always',
     })
@@ -24,7 +24,7 @@ describe('queryRefreshPolicy', () => {
     expect(queryRefreshPolicy('interactive', { staleTime: 1_000, refetchInterval: 20_000 })).toEqual({
       staleTime: 1_000,
       refetchInterval: 20_000,
-      refetchIntervalInBackground: false,
+      refetchIntervalInBackground: true,
       refetchOnWindowFocus: 'always',
       refetchOnReconnect: 'always',
     })

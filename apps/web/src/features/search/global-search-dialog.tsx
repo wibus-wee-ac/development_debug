@@ -34,6 +34,7 @@ import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
+import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useBrowserPanelStore } from '~/store/browser-panel'
@@ -126,32 +127,6 @@ function parsePaletteInput(input: string): PaletteMode {
   const query = prefixedMode ? input.slice(mode.prefix.length).trimStart() : input.trim()
 
   return { ...mode, query }
-}
-
-function scoreFuzzyMatch(source: string, query: string): number | null {
-  const normalizedSource = source.toLowerCase()
-  const normalizedQuery = query.trim().toLowerCase()
-
-  if (!normalizedQuery) {
-    return 0
-  }
-
-  if (normalizedSource.includes(normalizedQuery)) {
-    return normalizedSource.indexOf(normalizedQuery)
-  }
-
-  let score = 0
-  let sourceIndex = 0
-  for (const char of normalizedQuery) {
-    const nextIndex = normalizedSource.indexOf(char, sourceIndex)
-    if (nextIndex === -1) {
-      return null
-    }
-    score += nextIndex - sourceIndex + 1
-    sourceIndex = nextIndex + 1
-  }
-
-  return score + normalizedSource.length
 }
 
 function readCommandHistory(): string[] {
@@ -365,7 +340,7 @@ function useCommands(close: () => void): CommandAction[] {
 function useFileSearch(query: string, enabled: boolean, workspaceId: string | null | undefined) {
   const { files: rawFiles, isPending: searchDebouncing } = useWorkspaceFiles(workspaceId ?? null, {
     query,
-    limit: 10,
+    limit: 30,
     enabled: enabled && !!query.trim(),
   })
   const files = GlobalSearchFileListSchema.parse(rawFiles) satisfies GlobalSearchFile[]
@@ -376,12 +351,14 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
     if (!enabled || !trimmed || files.length === 0) {
       return []
     }
-    return files
-      .filter(file => file.type === 'file')
-      .map(file => ({ file, matchScore: scoreFuzzyMatch(file.path, trimmed) ?? 0 }))
-      .sort((a, b) => a.matchScore - b.matchScore || a.file.path.localeCompare(b.file.path))
-      .map(result => result.file)
-      .slice(0, 10)
+    return rankFuzzyItems(files.filter(file => file.type === 'file'), trimmed, {
+      fields: file => [
+        { value: file.name, role: 'primary' },
+        { value: file.path, role: 'path' },
+      ],
+      searchText: file => file.path,
+      limit: 10,
+    }).map(result => result.item)
   }, [enabled, trimmed, files])
 
   return {
@@ -614,32 +591,26 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
       return []
     }
 
-    return commands
-      .map((command) => {
-        const searchTarget = `${command.label} ${command.keywords}`
-        const matchScore = scoreFuzzyMatch(searchTarget, trimmed)
-        if (matchScore === null) {
-          return null
-        }
+    if (!hasQuery) {
+      return [...commands].sort((a, b) => {
+        const leftHistoryIndex = commandHistory.indexOf(a.id)
+        const rightHistoryIndex = commandHistory.indexOf(b.id)
+        const leftRank = leftHistoryIndex === -1 ? Number.MAX_SAFE_INTEGER : leftHistoryIndex
+        const rightRank = rightHistoryIndex === -1 ? Number.MAX_SAFE_INTEGER : rightHistoryIndex
+        return leftRank - rightRank || a.label.localeCompare(b.label)
+      })
+    }
 
-        const historyIndex = commandHistory.indexOf(command.id)
-        return {
-          command,
-          matchScore,
-          historyIndex: historyIndex === -1 ? Number.MAX_SAFE_INTEGER : historyIndex,
-        }
-      })
-      .filter((result): result is NonNullable<typeof result> => result !== null)
-      .sort((a, b) => {
-        if (!hasQuery && a.historyIndex !== b.historyIndex) {
-          return a.historyIndex - b.historyIndex
-        }
-        if (a.matchScore !== b.matchScore) {
-          return a.matchScore - b.matchScore
-        }
-        return a.command.label.localeCompare(b.command.label)
-      })
-      .map(result => result.command)
+    return rankFuzzyItems(commands, trimmed, {
+      fields: command => [
+        { value: command.label, role: 'primary' },
+        { value: command.id, role: 'primary' },
+        { value: command.keywords, role: 'secondary' },
+        { value: command.description, role: 'secondary' },
+        { value: command.source, role: 'secondary' },
+      ],
+      searchText: command => `${command.label} ${command.id} ${command.keywords} ${command.description ?? ''} ${command.source}`,
+    }).map(result => result.item)
   }, [commandHistory, commands, hasQuery, isCommandMode, trimmed])
 
   const isPending = isQuickOpenMode && (filesPending || threadsPending || issuesPending)

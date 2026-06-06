@@ -210,6 +210,7 @@ export const PromptEditor = forwardRef((
 ) => {
   const mountRef = useRef<HTMLDivElement>(null)
   const viewRef = useRef<EditorView | null>(null)
+  const lastDocRef = useRef(createPromptDoc(''))
   const initialPlaceholderRef = useRef(placeholder)
   const propsRef = useRef({
     disabled,
@@ -344,7 +345,11 @@ export const PromptEditor = forwardRef((
     const getView = () => editorView
     editorView = new EditorView(mount, createEditorProps({
       getView,
-      placeholder: initialPlaceholderRef.current,
+      initialDoc: lastDocRef.current,
+      onStateUpdate: (nextState) => {
+        lastDocRef.current = nextState.doc
+      },
+      placeholder: propsRef.current.placeholder ?? initialPlaceholderRef.current,
       propsRef,
     }))
     detachDomAdapter = attachPromptEditorDomAdapter(editorView, propsRef)
@@ -352,6 +357,9 @@ export const PromptEditor = forwardRef((
     propsRef.current.onChange(readSnapshot(editorView.state, propsRef.current.slashCommands, propsRef.current.selectedSlashCommand))
 
     return () => {
+      if (editorView) {
+        lastDocRef.current = editorView.state.doc
+      }
       detachDomAdapter?.()
       editorView?.destroy()
       editorView = null
@@ -383,10 +391,14 @@ export const PromptEditor = forwardRef((
 
 function createEditorProps({
   getView,
+  initialDoc,
+  onStateUpdate,
   placeholder,
   propsRef,
 }: {
   getView: () => EditorView | null
+  initialDoc: ProseMirrorNode
+  onStateUpdate: (state: EditorState) => void
   placeholder: string
   propsRef: MutableRefObject<{
     disabled?: boolean
@@ -403,7 +415,7 @@ function createEditorProps({
   return {
     state: EditorState.create({
       schema: promptEditorSchema,
-      doc: createPromptDoc(''),
+      doc: initialDoc,
       plugins: [
         history(),
         keymap({
@@ -431,6 +443,7 @@ function createEditorProps({
       }
       const nextState = view.state.apply(transaction)
       view.updateState(nextState)
+      onStateUpdate(nextState)
       propsRef.current.onChange(readSnapshot(nextState, propsRef.current.slashCommands, propsRef.current.selectedSlashCommand))
     },
     handleDOMEvents: {

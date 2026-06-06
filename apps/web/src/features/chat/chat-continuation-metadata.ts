@@ -1,8 +1,6 @@
 import type { UIMessage } from 'ai'
 
-import type { ChatContextPart } from './chat-context-parts'
-import { toOrderedUserMessageParts } from './chat-context-parts'
-import type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
+import type { ChatContinuationMode } from './chat-response-command'
 
 export interface ChatContinuationMetadata {
   mode: ChatContinuationMode
@@ -50,31 +48,4 @@ function readMessageParts(value: unknown): UIMessage['parts'] | null {
   }
 
   return value as UIMessage['parts']
-}
-
-export function createContinuationUserMessage(input: {
-  queueItem: ChatQueueItem
-  fallbackText: string
-  fallbackContextParts: ChatContextPart[]
-  fallbackFiles: UIMessage['parts']
-}): UIMessage {
-  const text = input.queueItem.text || input.fallbackText
-  const contextParts = input.queueItem.contextParts.length > 0 ? input.queueItem.contextParts : input.fallbackContextParts
-  const files = input.queueItem.files.length > 0 ? input.queueItem.files : input.fallbackFiles
-  const parts = toOrderedUserMessageParts(text, contextParts) as UIMessage['parts']
-  parts.push(...files)
-
-  return {
-    id: `continuation-${input.queueItem.id}`,
-    role: 'user',
-    parts,
-    metadata: {
-      cradle: {
-        continuation: {
-          mode: input.queueItem.mode,
-          queueItemId: input.queueItem.id,
-        },
-      },
-    },
-  } as UIMessage
 }

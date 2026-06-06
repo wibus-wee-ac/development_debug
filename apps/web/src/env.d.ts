@@ -59,21 +59,27 @@ interface Window {
       setBounds: (input: {
         threadId: string
         surface?: 'native'
-        bounds: { x: number; y: number; width: number; height: number } | null
+        bounds: { x: number, y: number, width: number, height: number } | null
       }) => void
-      captureScreenshot: (input: { threadId: string; tabId?: string }) => Promise<{
+      captureScreenshot: (input: { threadId: string, tabId?: string }) => Promise<{
         name: string
         mimeType: 'image/png'
         sizeBytes: number
         bytes: Uint8Array
       }>
-      copyScreenshotToClipboard: (input: { threadId: string; tabId?: string }) => Promise<void>
+      copyScreenshotToClipboard: (input: { threadId: string, tabId?: string }) => Promise<void>
       executeCdp: (input: {
         threadId: string
         tabId?: string
         method: string
         params?: Record<string, unknown>
       }) => Promise<unknown>
+      discoverLocalServers: () => Promise<Array<{
+        port: number
+        url: string
+        title: string
+        statusCode: number | null
+      }>>
       navigate: (input: {
         threadId: string
         tabId?: string
@@ -104,9 +110,23 @@ interface Window {
         threadId: string
         tabId?: string
       }) => Promise<import('~/store/browser-panel').ThreadBrowserState>
-      openDevTools: (input: { threadId: string; tabId?: string }) => Promise<void>
+      openDevTools: (input: { threadId: string, tabId?: string }) => Promise<void>
       onState: (
-        handler: (state: import('~/store/browser-panel').ThreadBrowserState) => void
+        handler: (state: import('~/store/browser-panel').ThreadBrowserState) => void,
+      ) => () => void
+      onPromptRequested: (
+        handler: (request: {
+          threadId: string
+          tabId: string
+          text: string
+          attachments: Array<{
+            filename?: string
+            mediaType?: string
+            url: string
+          }>
+          sourceUrl: string | null
+          sourceTitle: string | null
+        }) => void,
       ) => () => void
     }
     // eslint-disable-next-line ts/no-explicit-any
@@ -166,7 +186,7 @@ interface Window {
             type?: string
             url?: string
           }
-      >
+      >,
     ) => Promise<void>
   }
   __cradleBrowserUseCreateTab?: (url?: string) => string | Promise<string>

@@ -97,8 +97,7 @@ describe('buildAgentProviderBatchPatches', () => {
           modelId: null,
           thinkingEffort: 'high',
         },
-      ),
-    ).toThrow('resolved model')
+      )).toThrow('resolved model')
   })
 
   it('writes external provider targets without fabricating a profile id', () => {

@@ -1,5 +1,5 @@
-import type { UIMessageChunk } from 'ai'
 import { act } from '@testing-library/react'
+import type { UIMessageChunk } from 'ai'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useChatStore } from '~/store/chat'
@@ -10,6 +10,7 @@ function resetChatStore(): void {
   useChatStore.setState(state => ({
     ...state,
     messagesMap: new Map(),
+    hydratedSessionIds: new Set(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),
@@ -30,7 +31,7 @@ function chunkStream(chunks: UIMessageChunk[]): ReadableStream<UIMessageChunk> {
   })
 }
 
-describe('ChatStreamingHandler', () => {
+describe('chatStreamingHandler', () => {
   beforeEach(() => {
     resetChatStore()
     vi.useRealTimers()
@@ -158,7 +159,7 @@ describe('ChatStreamingHandler', () => {
     const updates: string[] = []
     const unsubscribe = useChatStore.subscribe(
       state => state.messagesMap.get('session-1')?.[0]?.parts.find(part => part.type === 'text')?.text,
-      text => {
+      (text) => {
         if (text) {
           updates.push(text)
         }

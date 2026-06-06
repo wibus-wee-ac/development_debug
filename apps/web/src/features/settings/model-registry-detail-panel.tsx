@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { DatabaseIcon, PencilIcon, Trash2Icon } from 'lucide-react'
+import { DatabaseIcon, PencilIcon } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -33,7 +33,7 @@ export function ModelRegistryDetailPanel({ mapping, onDeleted }: ModelRegistryDe
     mutationFn: async (id: string) => {
       await deleteModelRegistryMappingsByModelId({
         path: { modelId: id },
-        throwOnError: true
+        throwOnError: true,
       })
     },
     onSuccess: () => {
@@ -45,9 +45,9 @@ export function ModelRegistryDetailPanel({ mapping, onDeleted }: ModelRegistryDe
       toastManager.add({
         type: 'error',
         title: t('registry.status.deleteFailed' as SettingsKey),
-        description: error instanceof Error ? error.message : String(error)
+        description: error instanceof Error ? error.message : String(error),
       })
-    }
+    },
   })
 
   return (
@@ -68,7 +68,7 @@ export function ModelRegistryDetailPanel({ mapping, onDeleted }: ModelRegistryDe
                 'h-4 px-1.5 text-[9px] font-normal',
                 mapping.matchType === 'manual'
                   ? 'border-blue-500/30 text-blue-600 dark:text-blue-400'
-                  : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                  : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
               )}
             >
               {t(`registry.match.${mapping.matchType}` as SettingsKey)}
@@ -126,16 +126,26 @@ export function ModelRegistryDetailPanel({ mapping, onDeleted }: ModelRegistryDe
           </SettingsRow>
         )}
 
-        {mapping.model?.cost &&
-          (mapping.model.cost.input != null || mapping.model.cost.output != null) && (
+        {mapping.model?.cost
+          && (mapping.model.cost.input != null || mapping.model.cost.output != null) && (
             <SettingsRow
               label={t('registry.detail.cost' as SettingsKey)}
               description={t('registry.detail.costDesc' as SettingsKey)}
             >
               <div className="flex flex-col gap-0.5 text-[12px] text-foreground">
-                {mapping.model.cost.input != null && <span>${mapping.model.cost.input}/1M in</span>}
+                {mapping.model.cost.input != null && (
+<span>
+$
+{mapping.model.cost.input}
+/1M in
+</span>
+)}
                 {mapping.model.cost.output != null && (
-                  <span>${mapping.model.cost.output}/1M out</span>
+                  <span>
+$
+{mapping.model.cost.output}
+/1M out
+                  </span>
                 )}
               </div>
             </SettingsRow>

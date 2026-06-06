@@ -20,11 +20,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 
+import type { ModelsDevModel } from '../model-registry/schemas'
 import {
   ModelRegistryMappingSchema,
   ModelsDevModelSchema,
 } from '../model-registry/schemas'
-import type { ModelsDevModel } from '../model-registry/schemas'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
 
@@ -120,7 +120,7 @@ export function ModelRegistryAddDialog({
   const busy = saveMapping.isPending
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) resetForm(); onOpenChange(v) }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) { resetForm() } onOpenChange(v) }}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{t('registry.add.label' as SettingsKey)}</DialogTitle>

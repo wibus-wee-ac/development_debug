@@ -11,8 +11,8 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import { postProvidersModelSearch } from '~/api-gen/sdk.gen'
 
-import { SearchResultListSchema } from './schemas'
 import type { SearchResultWithSource } from './schemas'
+import { SearchResultListSchema } from './schemas'
 
 // ── Debounce helper ──────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ function useDebouncedValue(value: string, delayMs: number): string {
 // ── Registry → SearchResult conversion ───────────────────────────────────────
 
 function capabilitiesFromModelsDevModel(model?: Record<string, unknown>) {
-  if (!model) return {}
+  if (!model) { return {} }
 
   return {
     contextWindow: typeof model.limit === 'object' && model.limit !== null
@@ -78,7 +78,7 @@ function capabilitiesFromModelsDevModel(model?: Record<string, unknown>) {
 
 export function useModelSearch(
   rawQuery: string,
-): { results: SearchResultWithSource[]; isPending: boolean } {
+): { results: SearchResultWithSource[], isPending: boolean } {
   const query = useDebouncedValue(rawQuery.trim(), 220)
   const enabled = query.length > 0
 
@@ -113,7 +113,7 @@ export function useModelSearch(
             || m.model?.name?.toLowerCase().includes(needle)
           )
         })
-        .map((m) => ({
+        .map(m => ({
           id: m.registryModelId,
           label: m.model?.name ?? m.registryModelId,
           capabilities: capabilitiesFromModelsDevModel(m.model as Record<string, unknown> | undefined),
@@ -142,7 +142,7 @@ export function useModelSearch(
   // Deduplicate by id within models.dev results (API sometimes returns dupes)
   const seen = new Set<string>()
   const results = merged.filter((r) => {
-    if (seen.has(r.id)) return false
+    if (seen.has(r.id)) { return false }
     seen.add(r.id)
     return true
   })

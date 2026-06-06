@@ -7,6 +7,8 @@ import {
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
+  CRADLE_BTW_SLASH_COMMAND,
+  CRADLE_SIDE_CHAT_SLASH_COMMAND,
   createRuntimeSlashCommand,
   createRuntimeUiSlotCommands,
   hasDuplicateSlashCommandName,
@@ -65,6 +67,31 @@ describe('chat slash commands', () => {
       source: 'cradle',
       action: { kind: 'uiAction', actionId: CRADLE_APPSHOT_SLASH_ACTION_ID },
       iconKey: 'appshot',
+    })
+  })
+
+  it('defines Side Chat as a Cradle-owned composer slash command', () => {
+    expect(CRADLE_SIDE_CHAT_SLASH_COMMAND).toEqual({
+      id: 'cradle:side-chat',
+      name: 'side',
+      description: 'Start a side conversation from this chat',
+      argumentHint: '[message]',
+      aliases: ['branch-chat'],
+      source: 'cradle',
+      action: { kind: 'insertText', text: '/side ' },
+      iconKey: 'side-chat',
+    })
+  })
+
+  it('defines BTW as a Cradle-owned quick question slash command', () => {
+    expect(CRADLE_BTW_SLASH_COMMAND).toEqual({
+      id: 'cradle:btw',
+      name: 'btw',
+      description: 'Ask a quick question without saving it to history',
+      argumentHint: '[question]',
+      source: 'cradle',
+      action: { kind: 'insertText', text: '/btw ' },
+      iconKey: 'quick-question',
     })
   })
 

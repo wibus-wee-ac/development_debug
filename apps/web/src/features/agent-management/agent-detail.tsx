@@ -490,7 +490,7 @@ function AgentProviderModelPicker({
       return
     }
     applyDefaultModel(models[0]!)
-  }, [applyDefaultModel, models, selectedModelId, selectedProviderTargetId])
+  }, [models, selectedModelId, selectedProviderTargetId])
 
   useEffect(() => {
     if (!pendingProviderTargetId) {

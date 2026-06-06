@@ -1,12 +1,13 @@
-import { cleanup, render, screen } from '@testing-library/react'
-import { use, useMemo } from 'react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { useMemo } from 'react'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { LayoutSlotsContext, LayoutSlotsProvider } from './layout-slots-context'
-import { useRegisterLayoutSlots } from './use-layout-slots'
+import { useLayoutSlotsStore } from './layout-slots-context'
+import { useLayoutSlotsCtx, useRegisterLayoutSlots, useSyncLayoutSlotScope } from './use-layout-slots'
 
 function SlotProbe() {
-  const { slots } = use(LayoutSlotsContext)
+  const { slots } = useLayoutSlotsCtx()
   return (
     <div
       data-testid="slot-probe"
@@ -30,42 +31,62 @@ function RegisterWithEffect({ id, label }: { id: string, label: string }) {
   return null
 }
 
-describe('layoutSlotsProvider', () => {
+function LayoutSlotRuntime({
+  activeSlotId,
+  validSlotIds,
+  children,
+}: {
+  activeSlotId: string | null
+  validSlotIds: readonly string[]
+  children: ReactNode
+}) {
+  useSyncLayoutSlotScope(activeSlotId, validSlotIds)
+  return children
+}
+
+describe('layout slots store', () => {
   afterEach(() => {
     cleanup()
+    useLayoutSlotsStore.getState().resetSlots()
   })
 
-  it('keeps the last known slots while the newly active slot has not registered yet', () => {
+  it('keeps the last known slots while the newly active slot has not registered yet', async () => {
     const { rerender } = render(
-      <LayoutSlotsProvider activeSlotId="session-a" validSlotIds={['session-a', 'session-b']}>
+      <LayoutSlotRuntime activeSlotId="session-a" validSlotIds={['session-a', 'session-b']}>
         <RegisterWithEffect id="session-a" label="Terminal A" />
         <SlotProbe />
-      </LayoutSlotsProvider>,
+      </LayoutSlotRuntime>,
     )
 
-    expect(screen.getByTestId('slot-probe').getAttribute('data-browser-panel')).toBe('true')
-    expect(screen.getByTestId('slot-probe').getAttribute('data-bottom-panel')).toBe('true')
-    expect(screen.getByText('Terminal A')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByTestId('slot-probe').getAttribute('data-browser-panel')).toBe('true')
+      expect(screen.getByTestId('slot-probe').getAttribute('data-bottom-panel')).toBe('true')
+      expect(screen.getByText('Terminal A')).not.toBeNull()
+    })
 
     rerender(
-      <LayoutSlotsProvider activeSlotId="session-b" validSlotIds={['session-a', 'session-b']}>
+      <LayoutSlotRuntime activeSlotId="session-b" validSlotIds={['session-a', 'session-b']}>
         <RegisterWithEffect id="session-a" label="Terminal A" />
         <SlotProbe />
-      </LayoutSlotsProvider>,
+      </LayoutSlotRuntime>,
     )
 
-    expect(screen.getByTestId('slot-probe').getAttribute('data-browser-panel')).toBe('true')
-    expect(screen.getByTestId('slot-probe').getAttribute('data-bottom-panel')).toBe('true')
-    expect(screen.getByText('Terminal A')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByTestId('slot-probe').getAttribute('data-browser-panel')).toBe('true')
+      expect(screen.getByTestId('slot-probe').getAttribute('data-bottom-panel')).toBe('true')
+      expect(screen.getByText('Terminal A')).not.toBeNull()
+    })
 
     rerender(
-      <LayoutSlotsProvider activeSlotId="session-b" validSlotIds={['session-a', 'session-b']}>
+      <LayoutSlotRuntime activeSlotId="session-b" validSlotIds={['session-a', 'session-b']}>
         <RegisterWithEffect id="session-a" label="Terminal A" />
         <RegisterWithEffect id="session-b" label="Terminal B" />
         <SlotProbe />
-      </LayoutSlotsProvider>,
+      </LayoutSlotRuntime>,
     )
 
-    expect(screen.getByText('Terminal B')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByText('Terminal B')).not.toBeNull()
+    })
   })
 })

@@ -1,9 +1,19 @@
 import { cn } from '~/lib/cn'
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 
 // ── Shared utilities ───────────────────────────────────────────────────────────
 
-function getDrawColor(): [number, number, number] {
+type DrawColor = [number, number, number]
+type CanvasSize = { W: number, H: number }
+type CanvasRuntime = {
+  size: CanvasSize
+  color: DrawColor
+  theme: 'dark' | 'light'
+  visible: boolean
+  cleanup: () => void
+}
+
+function readDrawColor(): DrawColor {
   const hasDark = document.documentElement.classList.contains('dark')
   const hasLight = document.documentElement.classList.contains('light')
   const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -11,16 +21,111 @@ function getDrawColor(): [number, number, number] {
   return isDark ? [210, 210, 210] : [60, 60, 60]
 }
 
-function syncCanvas(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): { W: number, H: number } {
+function readThemeMode(): 'dark' | 'light' {
+  const hasDark = document.documentElement.classList.contains('dark')
+  const hasLight = document.documentElement.classList.contains('light')
+  const sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+  return hasDark || (!hasLight && sysDark) ? 'dark' : 'light'
+}
+
+function syncCanvas(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+): CanvasSize {
   const dpr = window.devicePixelRatio || 1
-  const W = canvas.offsetWidth
-  const H = canvas.offsetHeight
+  const W = Math.max(0, width)
+  const H = Math.max(0, height)
   if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
     canvas.width = Math.round(W * dpr)
     canvas.height = Math.round(H * dpr)
   }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
   return { W, H }
+}
+
+function createCanvasRuntime(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): CanvasRuntime {
+  let isDocumentVisible = document.visibilityState === 'visible'
+  let isIntersecting = true
+  const runtime: CanvasRuntime = {
+    size: { W: 0, H: 0 },
+    color: readDrawColor(),
+    theme: readThemeMode(),
+    visible: isDocumentVisible && isIntersecting,
+    cleanup: () => {},
+  }
+
+  const refreshColor = () => {
+    runtime.color = readDrawColor()
+    runtime.theme = readThemeMode()
+  }
+  const refreshSize = (width: number, height: number) => {
+    runtime.size = syncCanvas(canvas, ctx, width, height)
+  }
+  const refreshVisibility = () => {
+    runtime.visible = isDocumentVisible && isIntersecting
+  }
+  const rect = canvas.getBoundingClientRect()
+  refreshSize(rect.width, rect.height)
+
+  const cleanupCallbacks: Array<() => void> = []
+  if (typeof ResizeObserver !== 'undefined') {
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      if (!entry) {
+        return
+      }
+      refreshSize(entry.contentRect.width, entry.contentRect.height)
+    })
+    resizeObserver.observe(canvas)
+    cleanupCallbacks.push(() => resizeObserver.disconnect())
+  }
+  else {
+    const handleResize = () => {
+      const nextRect = canvas.getBoundingClientRect()
+      refreshSize(nextRect.width, nextRect.height)
+    }
+    window.addEventListener('resize', handleResize)
+    cleanupCallbacks.push(() => window.removeEventListener('resize', handleResize))
+  }
+
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)')
+  mediaQuery.addEventListener('change', refreshColor)
+  cleanupCallbacks.push(() => mediaQuery.removeEventListener('change', refreshColor))
+
+  if (typeof MutationObserver !== 'undefined') {
+    const themeObserver = new MutationObserver(refreshColor)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+    cleanupCallbacks.push(() => themeObserver.disconnect())
+  }
+
+  const handleVisibilityChange = () => {
+    isDocumentVisible = document.visibilityState === 'visible'
+    refreshVisibility()
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  cleanupCallbacks.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange))
+
+  if (typeof IntersectionObserver !== 'undefined') {
+    const intersectionObserver = new IntersectionObserver(([entry]) => {
+      isIntersecting = Boolean(entry?.isIntersecting)
+      refreshVisibility()
+    })
+    intersectionObserver.observe(canvas)
+    cleanupCallbacks.push(() => intersectionObserver.disconnect())
+  }
+
+  runtime.cleanup = () => {
+    for (const cleanup of cleanupCallbacks) {
+      cleanup()
+    }
+  }
+
+  return runtime
+}
+
+function isCanvasDrawable(runtime: CanvasRuntime): boolean {
+  return runtime.visible && runtime.size.W > 0 && runtime.size.H > 0
 }
 
 // ── Shared mouse tracking hook ──────────────────────────────────────────────────
@@ -37,8 +142,7 @@ function useCanvasMouse(
     if (!canvas) return
 
     const onMove = (e: MouseEvent) => {
-      const rect = canvas.getBoundingClientRect()
-      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+      mouseRef.current = { x: e.offsetX, y: e.offsetY }
     }
     const onLeave = () => {
       mouseRef.current = { x: -9999, y: -9999 }
@@ -50,7 +154,7 @@ function useCanvasMouse(
       canvas.removeEventListener('mousemove', onMove)
       canvas.removeEventListener('mouseleave', onLeave)
     }
-  }, [active])
+  }, [active, canvasRef])
 
   return mouseRef
 }
@@ -75,14 +179,19 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
     if (!ctx) {
       return
     }
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     let animId: number
     let t = 0
 
     const draw = () => {
-      const { W, H } = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       const cols = Math.ceil(W / HALFTONE_GRID) + 1
       const rows = Math.ceil(H / HALFTONE_GRID) + 1
@@ -120,8 +229,11 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -149,6 +261,7 @@ export function FlowField({ className, interactive = false }: { className?: stri
     if (!ctx) {
       return
     }
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     type P = { x: number, y: number }
     let particles: P[] = []
@@ -167,14 +280,18 @@ export function FlowField({ className, interactive = false }: { className?: stri
     }
 
     const draw = () => {
-      const dims = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const dims = runtime.size
       ctx.clearRect(0, 0, dims.W, dims.H)
 
       if (W !== dims.W || H !== dims.H) {
         init(dims.W, dims.H)
       }
 
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       for (const p of particles) {
         // Two independent sine waves for x/y velocity — clean Lissajous-like flow
@@ -218,8 +335,11 @@ export function FlowField({ className, interactive = false }: { className?: stri
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -248,14 +368,19 @@ export function GridWave({ className, interactive = false }: { className?: strin
     if (!ctx) {
       return
     }
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     let animId: number
     let t = 0
 
     const draw = () => {
-      const { W, H } = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       const cols = Math.ceil(W / GRIDWAVE_SPACING) + 1
       const rows = Math.ceil(H / GRIDWAVE_SPACING) + 1
@@ -288,8 +413,11 @@ export function GridWave({ className, interactive = false }: { className?: strin
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -318,14 +446,19 @@ export function SineRipple({ className, interactive = false }: { className?: str
     if (!ctx) {
       return
     }
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     let animId: number
     let t = 0
 
     const draw = () => {
-      const { W, H } = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       // Mouse-driven origin with smooth fallback to center
       const mx = mouseRef.current.x
@@ -354,8 +487,11 @@ export function SineRipple({ className, interactive = false }: { className?: str
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -382,6 +518,7 @@ export function RainDots({ className }: { className?: string }) {
     if (!ctx) {
       return
     }
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     type Drop = { x: number, y: number, speed: number, alpha: number }
     let drops: Drop[] = []
@@ -402,13 +539,17 @@ export function RainDots({ className }: { className?: string }) {
     let initialized = false
 
     const draw = () => {
-      const { W, H: curH } = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const { W, H: curH } = runtime.size
       if (!initialized) {
         init(W, curH)
         initialized = true
       }
       ctx.clearRect(0, 0, W, curH)
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       for (const d of drops) {
         d.y += d.speed
@@ -436,8 +577,11 @@ export function RainDots({ className }: { className?: string }) {
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [canvasRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -463,6 +607,7 @@ export function ConnectionMesh({ className, interactive = true }: { className?: 
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     type Node = { x: number; y: number; vx: number; vy: number }
     let nodes: Node[] = []
@@ -481,11 +626,15 @@ export function ConnectionMesh({ className, interactive = true }: { className?: 
     }
 
     const draw = () => {
-      const dims = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const dims = runtime.size
       ctx.clearRect(0, 0, dims.W, dims.H)
       if (W !== dims.W || H !== dims.H) init(dims.W, dims.H)
 
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       for (const n of nodes) {
         n.vx += (Math.random() - 0.5) * 0.04
@@ -549,8 +698,11 @@ export function ConnectionMesh({ className, interactive = true }: { className?: 
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -572,13 +724,18 @@ export function SpotlightGradient({ className, interactive = true, radius = 300 
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     let animId: number
 
     const draw = () => {
-      const { W, H } = syncCanvas(canvas, ctx)
+      if (!isCanvasDrawable(runtime)) {
+        animId = requestAnimationFrame(draw)
+        return
+      }
+      const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
-      const [cr, cg, cb] = getDrawColor()
+      const [cr, cg, cb] = runtime.color
 
       const mx = mouseRef.current.x
       const my = mouseRef.current.y
@@ -595,8 +752,11 @@ export function SpotlightGradient({ className, interactive = true, radius = 300 
     }
 
     draw()
-    return () => cancelAnimationFrame(animId)
-  }, [interactive, radius])
+    return () => {
+      cancelAnimationFrame(animId)
+      runtime.cleanup()
+    }
+  }, [interactive, mouseRef, radius])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -664,16 +824,7 @@ export function DitheredGradientDecoration({
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1
-      const rect = canvas.getBoundingClientRect()
-      canvas.width = rect.width * dpr
-      canvas.height = rect.height * dpr
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-    }
-    resize()
-    window.addEventListener('resize', resize)
+    const runtime = createCanvasRuntime(canvas, ctx)
 
     let cleanupMouse: (() => void) | undefined
     if (trackGlobal) {
@@ -719,13 +870,15 @@ export function DitheredGradientDecoration({
     }
 
     function draw(time: number) {
-      const w = canvas!.getBoundingClientRect().width
-      const h = canvas!.getBoundingClientRect().height
+      if (!isCanvasDrawable(runtime)) {
+        rafRef.current = requestAnimationFrame(draw)
+        return
+      }
+
+      const { W: w, H: h } = runtime.size
       ctx!.clearRect(0, 0, w, h)
 
-      const isDark = document.documentElement.classList.contains('dark') ||
-        (!document.documentElement.classList.contains('light') &&
-          window.matchMedia('(prefers-color-scheme: dark)').matches)
+      const isDark = runtime.theme === 'dark'
       // Wider range per level → visible "alternating bright" contrast
       const baseLightness = isDark
         ? [0, 0.65, 0.50, 0.38, 0.25]
@@ -797,20 +950,20 @@ export function DitheredGradientDecoration({
 
     return () => {
       cancelAnimationFrame(rafRef.current)
-      window.removeEventListener('resize', resize)
+      runtime.cleanup()
       cleanupMouse?.()
     }
   }, [active, rows, cellSize, gap, radius, glowRadius, density, fadeBottom, step, trackGlobal])
 
-  const handleMouseMove = useCallback((e: { clientX: number, clientY: number }) => {
+  const handleMouseMove = (e: { clientX: number, clientY: number }) => {
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
     targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  }, [])
+  }
 
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = () => {
     targetMouseRef.current = { x: -9999, y: -9999 }
-  }, [])
+  }
 
   return (
     <canvas

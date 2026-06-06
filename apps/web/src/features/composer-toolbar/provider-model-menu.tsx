@@ -3,8 +3,8 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import { ProviderIcon } from '~/components/common/provider-icons'
+import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
 
@@ -76,7 +76,6 @@ function occurrenceKey(id: string, counts: Map<string, number>): string {
   return `${id}:${count}`
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function filterModelsBySearch(models: ModelDescriptor[], search: string): ModelDescriptor[] {
   const normalizedSearch = search.trim().toLowerCase()
   if (!normalizedSearch) {
@@ -114,11 +113,8 @@ export function CurrentProviderModelList<TThinking extends string | null>({
     return () => cancelAnimationFrame(id)
   }, [filteredModels.length])
 
-  useEffect(() => {
-    setRenderCount(INITIAL_BATCH)
-  }, [modelSearch])
-
-  const visibleModels = filteredModels.slice(0, renderCount)
+  const hasModelSearch = modelSearch.trim().length > 0
+  const visibleModels = hasModelSearch ? filteredModels : filteredModels.slice(0, renderCount)
   const modelKeyCounts = new Map<string, number>()
 
   return (
@@ -127,7 +123,10 @@ export function CurrentProviderModelList<TThinking extends string | null>({
         <div className="px-1 pt-1 pb-1.5">
           <input
             value={modelSearch}
-            onChange={event => setModelSearch(event.target.value)}
+            onChange={(event) => {
+              setModelSearch(event.target.value)
+              setRenderCount(INITIAL_BATCH)
+            }}
             placeholder={t('model.searchPlaceholder')}
             className="w-full rounded-md border border-border/50 bg-input/30 px-2 py-1 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-border"
             onClick={event => event.stopPropagation()}

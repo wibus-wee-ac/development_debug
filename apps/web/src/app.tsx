@@ -7,18 +7,18 @@ import { useShallow } from 'zustand/react/shallow'
 import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar } from '~/components/layout/app-sidebar'
-import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
+import { useSyncLayoutSlotScope } from '~/components/layout/use-layout-slots'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
-import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { SettingsContent } from '~/features/settings/settings-content'
+import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { isWorkspaceFileShortcutScopeEvent } from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
-import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { cradleRegistry, cradleTabStore, useCradleTabStore } from '~/tabs/registry'
 import { preloadCradleTabRoutes } from '~/tabs/route-preload'
 import { installTearoffSessionRestore } from '~/tabs/tearoff-tabs'
 
@@ -90,6 +90,7 @@ function MainAppRuntime() {
   const validSlotIds = useCradleTabStore(useShallow(s => (
     s.tabs.map(getActiveLayoutSlotId).filter((id): id is string => id !== null)
   )))
+  useSyncLayoutSlotScope(activeSlotId, validSlotIds)
   const settingsTabExists = useCradleTabStore(s => (
     settingsTabId !== null && s.tabs.some(tab => tab.id === settingsTabId)
   ))
@@ -161,49 +162,47 @@ function MainAppRuntime() {
   }, [])
 
   return (
-    <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
-      <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-        <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-          <AppSidebar />
-          <AppLayout>
-            <div className="relative h-full w-full overflow-hidden">
-              <div
-                className={cn(
-                  'h-full w-full overflow-hidden',
-                  isSettingsVisible && 'invisible pointer-events-none',
-                )}
-                aria-hidden={isSettingsVisible ? 'true' : undefined}
-              >
-                <TabRenderer
-                  fallback={null}
-                  className="h-full flex overflow-hidden w-full"
-                />
-              </div>
-              {isSettingsVisible && (
-                <div
-                  className="absolute inset-0 min-w-0 overflow-hidden bg-background z-10"
-                  data-testid="settings-tab-overlay"
-                  onKeyDownCapture={(event) => {
-                    if (
-                      event.key === 'Escape'
-                      && event.metaKey
-                      && !event.ctrlKey
-                      && !event.altKey
-                    ) {
-                      event.preventDefault()
-                      closeSettings()
-                    }
-                  }}
-                >
-                  <SettingsContent section={settingsSection} />
-                </div>
+    <TabsProvider store={cradleTabStore} registry={cradleRegistry}>
+      <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+        <AppSidebar />
+        <AppLayout>
+          <div className="relative h-full w-full overflow-hidden">
+            <div
+              className={cn(
+                'h-full w-full overflow-hidden',
+                isSettingsVisible && 'invisible pointer-events-none',
               )}
-              <GlobalCommandPaletteHost />
+              aria-hidden={isSettingsVisible ? 'true' : undefined}
+            >
+              <TabRenderer
+                fallback={null}
+                className="h-full flex overflow-hidden w-full"
+              />
             </div>
-          </AppLayout>
-        </div>
-      </TabsProvider>
-    </LayoutSlotsProvider>
+            {isSettingsVisible && (
+              <div
+                className="absolute inset-0 min-w-0 overflow-hidden bg-background z-10"
+                data-testid="settings-tab-overlay"
+                onKeyDownCapture={(event) => {
+                  if (
+                    event.key === 'Escape'
+                    && event.metaKey
+                    && !event.ctrlKey
+                    && !event.altKey
+                  ) {
+                    event.preventDefault()
+                    closeSettings()
+                  }
+                }}
+              >
+                <SettingsContent section={settingsSection} />
+              </div>
+            )}
+            <GlobalCommandPaletteHost />
+          </div>
+        </AppLayout>
+      </div>
+    </TabsProvider>
   )
 }
 

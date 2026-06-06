@@ -134,12 +134,9 @@ export function ChatQueueList({
                 <GripVerticalIcon className="size-3.5" aria-hidden="true" />
               </span>
               <span
-                className={cn(
-                  'shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium',
-                  item.mode === 'steer' ? 'bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground',
-                )}
+                className="shrink-0 rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground"
               >
-                {item.mode === 'steer' ? t('continuation.mode.steer') : t('continuation.mode.queue')}
+                {t('continuation.mode.queue')}
               </span>
               <span className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
                 {runtimeSettingsLabel}

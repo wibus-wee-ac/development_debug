@@ -3,6 +3,7 @@ import { convertFileListToFileUIParts } from 'ai'
 import type { ChangeEvent, ClipboardEvent, RefObject } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { isLocalMode } from '~/lib/electron'
 import type { ModelDescriptor } from '~/lib/types'
 
 export interface ComposerAttachmentController {
@@ -31,13 +32,33 @@ function readFileAsDataUrl(file: File): Promise<string> {
   })
 }
 
-async function convertFileArrayToFileUIParts(files: File[]): Promise<FileUIPart[]> {
-  return Promise.all(files.map(async file => ({
+/**
+ * Converts a File to a FileUIPart.
+ * In local mode (Electron + local server), uses file:// paths instead of data URLs.
+ */
+async function convertFileToFileUIPart(file: File): Promise<FileUIPart> {
+  // In local mode, if the file has a path property (from Electron drag), use it directly
+  if (isLocalMode() && 'path' in file && typeof (file as File & { path?: string }).path === 'string') {
+    const filePath = (file as File & { path?: string }).path!
+    return {
+      type: 'file' as const,
+      mediaType: file.type || 'application/octet-stream',
+      filename: file.name,
+      url: `file://${filePath}`,
+    }
+  }
+
+  // Otherwise, read file as data URL (default behavior)
+  return {
     type: 'file' as const,
     mediaType: file.type || 'application/octet-stream',
     filename: file.name,
     url: await readFileAsDataUrl(file),
-  })))
+  }
+}
+
+async function convertFileArrayToFileUIParts(files: File[]): Promise<FileUIPart[]> {
+  return Promise.all(files.map(file => convertFileToFileUIPart(file)))
 }
 
 function readClipboardFiles(data: DataTransfer): File[] {
@@ -85,8 +106,15 @@ export function useComposerAttachments({
     if (files.length === 0 || !supportsAttachments) {
       return
     }
-    const fileParts = await convertFileListToFileUIParts(files)
-    appendFileParts(fileParts)
+    // In local mode, use our custom converter that preserves file paths
+    if (isLocalMode()) {
+      const fileParts = await convertFileArrayToFileUIParts(Array.from(files))
+      appendFileParts(fileParts)
+    }
+    else {
+      const fileParts = await convertFileListToFileUIParts(files)
+      appendFileParts(fileParts)
+    }
   }, [appendFileParts, supportsAttachments])
 
   const appendPastedFiles = useCallback(async (files: File[]) => {

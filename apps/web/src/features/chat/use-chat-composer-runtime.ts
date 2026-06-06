@@ -17,6 +17,7 @@ import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
+  CRADLE_BTW_SLASH_COMMAND,
   CRADLE_SIDE_CHAT_SLASH_COMMAND,
   projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
@@ -180,7 +181,7 @@ export function useChatComposerRuntime({
       return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
     })()
 
-    return [CRADLE_SIDE_CHAT_SLASH_COMMAND, appshotCommand]
+    return [CRADLE_SIDE_CHAT_SLASH_COMMAND, CRADLE_BTW_SLASH_COMMAND, appshotCommand]
   }, [supportsAttachments])
   const mapRuntimeUiSlotCommand = useCallback((command: ChatComposerSlashCommand) => {
     if (command.id === 'codex:review') {

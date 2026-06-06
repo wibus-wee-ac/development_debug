@@ -126,6 +126,55 @@ function readOptimisticArchivedAt(value: unknown): number | null | undefined {
   return typeof value === 'number' || value === null ? value : undefined
 }
 
+function sessionListRowsEqual(
+  left: SessionListResponseRow,
+  right: SessionListResponseRow,
+): boolean {
+  if (left === right) {
+    return true
+  }
+
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)])
+  for (const key of keys) {
+    if (!Object.is(
+      left[key as keyof SessionListResponseRow],
+      right[key as keyof SessionListResponseRow],
+    )) {
+      return false
+    }
+  }
+  return true
+}
+
+function createSessionListRow(
+  existing: SessionListResponseRow | null,
+  patch: SessionListOptimisticPatch,
+  updatedAt: number,
+  latestUserMessageAt: number | null,
+): GetSessionsResponse[number] {
+  return {
+    workspaceId: null,
+    title: null,
+    providerTargetId: null,
+    agentId: null,
+    modelId: null,
+    linkedIssueId: null,
+    runtimeKind: 'standard',
+    pinned: 0,
+    archivedAt: null,
+    lastReadAt: null,
+    createdAt: updatedAt,
+    latestAssistantMessageAt: null,
+    unread: false,
+    ...existing,
+    ...patch,
+    id: patch.id,
+    updatedAt,
+    latestUserMessageAt,
+    status: patch.status ?? existing?.status ?? 'streaming',
+  } as GetSessionsResponse[number]
+}
+
 export function updateSessionInSessionLists(
   queryClient: QueryClient,
   patch: SessionListOptimisticPatch,
@@ -147,42 +196,33 @@ export function updateSessionInSessionLists(
       if (!sessions) {
         return sessions
       }
-      const next = sessions.slice()
-      const index = next.findIndex(session => session.id === patch.id)
-      const existing = index >= 0 ? next.splice(index, 1)[0] : null
+      const index = sessions.findIndex(session => session.id === patch.id)
+      const existing = index >= 0 ? sessions[index] as SessionListResponseRow : null
       if (!existing && patch.workspaceId === undefined) {
         return sessions
       }
       const updatedAt = patch.updatedAt ?? optimisticUpdatedAt ?? existing?.updatedAt ?? now
       const latestUserMessageAt
         = patch.latestUserMessageAt ?? optimisticLatestUserMessageAt ?? (existing as SessionListResponseRow | null)?.latestUserMessageAt ?? null
-      const row = {
-        workspaceId: null,
-        title: null,
-        providerTargetId: null,
-        agentId: null,
-        modelId: null,
-        linkedIssueId: null,
-        runtimeKind: 'standard',
-        pinned: 0,
-        archivedAt: null,
-        lastReadAt: null,
-        createdAt: updatedAt,
-        latestAssistantMessageAt: null,
-        unread: false,
-        ...existing,
-        ...patch,
-        id: patch.id,
-        updatedAt,
-        latestUserMessageAt,
-        status: patch.status ?? existing?.status ?? 'streaming',
-      } as GetSessionsResponse[number]
+      const row = createSessionListRow(existing, patch, updatedAt, latestUserMessageAt)
 
       if (existing && !options.promote) {
-        next.splice(index, 0, row)
+        if (sessionListRowsEqual(existing, row as SessionListResponseRow)) {
+          return sessions
+        }
+
+        const next = sessions.slice()
+        next[index] = row
         return next
       }
 
+      if (existing && index === 0 && sessionListRowsEqual(existing, row as SessionListResponseRow)) {
+        return sessions
+      }
+
+      const next = existing
+        ? sessions.filter(session => session.id !== patch.id)
+        : sessions.slice()
       next.unshift(row)
       return next
     },
@@ -230,6 +270,10 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
   }
 }
 
+function asWorkspaceSessions(sessions: GetSessionsResponse): WorkspaceSession[] {
+  return sessions.map(asWorkspaceSession)
+}
+
 function asSessionLayoutRecords(sessions: WorkspaceSession[]) {
   return sessions.map(session => ({
     sessionId: session.id,
@@ -245,11 +289,11 @@ function updateUnreadSessionIdsSnapshot(sessions: WorkspaceSession[]) {
 
 export function useAllSessions(archived?: boolean) {
   const queryOptions = sessionListOptions(null, archived)
-  const { data: rawSessions = [], isPending: loading } = useQuery({
+  const { data: sessions = [], isPending: loading } = useQuery({
     ...getSessionsOptions(queryOptions),
     ...queryRefreshPolicy('active', { refetchInterval: SESSION_LIST_REFRESH_INTERVAL_MS }),
+    select: asWorkspaceSessions,
   })
-  const sessions = useMemo(() => rawSessions.map(asWorkspaceSession), [rawSessions])
 
   useEffect(() => {
     useSessionLayoutStore.getState().upsertSessions(asSessionLayoutRecords(sessions))

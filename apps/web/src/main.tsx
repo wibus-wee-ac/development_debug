@@ -12,6 +12,7 @@ import { resolveInitialLocale } from './i18n/browser-locale'
 import { I18nProvider } from './i18n/client'
 import { initPerfMonitor } from './lib/perf-monitor'
 import { loadWebPlugins } from './lib/plugin-host'
+import { initializeReactDiagnostics } from './lib/react-diagnostics'
 
 type SharedModuleRegistry = Window & {
   [key: symbol]: Record<string, unknown>
@@ -64,3 +65,7 @@ async function startApp(): Promise<void> {
 }
 
 void startApp()
+
+queueMicrotask(() => {
+  initializeReactDiagnostics()
+})

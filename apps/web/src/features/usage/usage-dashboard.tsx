@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ScrollArea } from '~/components/ui/scroll-area'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
 import { boundedPercent, formatPercentFromRatio, formatTokenCount, formatUsd } from '~/lib/number-format'
@@ -8,8 +9,6 @@ import { boundedPercent, formatPercentFromRatio, formatTokenCount, formatUsd } f
 import { UsageHeatmap } from './usage-heatmap'
 import type { DailyCost, DailyUsage } from './use-usage-overview'
 import { useUsageOverview } from './use-usage-overview'
-
-const TOP_ITEM_LIMIT = 5
 
 /** Tiny SVG sparkline for the last 30 days */
 function Sparkline({ data }: { data: DailyUsage[] }) {
@@ -202,7 +201,7 @@ export function UsageDashboard() {
               {/* Models ranking */}
               {rankingMode === 'tokens' && summary!.byModel.length > 0 && (
                 <RankGroup title={t('topUsage.models')}>
-                  {summary!.byModel.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {summary!.byModel.map(item => (
                     <RankedUsageRow
                       key={item.modelId}
                       label={item.modelId}
@@ -216,7 +215,7 @@ export function UsageDashboard() {
               )}
               {rankingMode === 'cost' && costSummary && costSummary.byModel.length > 0 && (
                 <RankGroup title={t('topUsage.models')}>
-                  {costSummary.byModel.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {costSummary.byModel.map(item => (
                     <RankedCostRow
                       key={item.modelId}
                       label={item.modelId}
@@ -231,7 +230,7 @@ export function UsageDashboard() {
               {/* Agents ranking */}
               {rankingMode === 'tokens' && summary!.byAgent.length > 0 && (
                 <RankGroup title={t('topUsage.agents')}>
-                  {summary!.byAgent.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {summary!.byAgent.map(item => (
                     <RankedUsageRow
                       key={item.agentId}
                       label={item.agentName}
@@ -245,7 +244,7 @@ export function UsageDashboard() {
               )}
               {rankingMode === 'cost' && costSummary && costSummary.byAgent.length > 0 && (
                 <RankGroup title={t('topUsage.agents')}>
-                  {costSummary.byAgent.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {costSummary.byAgent.map(item => (
                     <RankedCostRow
                       key={item.agentId}
                       label={item.agentName}
@@ -260,7 +259,7 @@ export function UsageDashboard() {
               {/* Providers ranking */}
               {rankingMode === 'tokens' && summary!.byProviderTarget.length > 0 && (
                 <RankGroup title={t('topUsage.providers')}>
-                  {summary!.byProviderTarget.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {summary!.byProviderTarget.map(item => (
                     <RankedUsageRow
                       key={item.providerTargetId}
                       label={item.providerTargetName ?? item.providerTargetId}
@@ -274,7 +273,7 @@ export function UsageDashboard() {
               )}
               {rankingMode === 'cost' && costSummary && costSummary.byProviderTarget.length > 0 && (
                 <RankGroup title={t('topUsage.providers')}>
-                  {costSummary.byProviderTarget.slice(0, TOP_ITEM_LIMIT).map(item => (
+                  {costSummary.byProviderTarget.map(item => (
                     <RankedCostRow
                       key={item.providerTargetId}
                       label={item.providerTargetName ?? item.providerTargetId}
@@ -330,7 +329,13 @@ function RankGroup({ title, children }: { title: string, children: React.ReactNo
   return (
     <div className="min-w-0">
       <h3 className="mb-3 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">{title}</h3>
-      <div className="space-y-3">{children}</div>
+      <ScrollArea
+        className="max-h-80 pr-2"
+        viewportClassName="max-h-80"
+        contentClassName="space-y-3"
+      >
+        {children}
+      </ScrollArea>
     </div>
   )
 }

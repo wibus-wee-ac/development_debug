@@ -6,6 +6,19 @@ import { createIpcProxy } from '@cradle/ipc/client'
 export const isElectron = !!window.cradle?.env?.isElectron
 
 /**
+ * Whether we're in a local development environment where both
+ * Electron and Server are running locally. In this mode, we can
+ * use file:// paths directly instead of uploading file contents.
+ */
+export function isLocalMode(): boolean {
+  if (!isElectron) {
+    return false
+  }
+  const serverUrl = getServerUrl()
+  return serverUrl.startsWith('http://127.0.0.1') || serverUrl.startsWith('http://localhost')
+}
+
+/**
  * The server URL — from Electron preload or Vite env.
  * WARNING: Unless you need to bypass api-gen's react-query integration, do not use this client directly.
  */

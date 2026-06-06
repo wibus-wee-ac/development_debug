@@ -7,33 +7,35 @@ import { useShallow } from 'zustand/react/shallow'
 import {
   getChatSessionsBySessionIdMessagesOptions,
   getChatSessionsBySessionIdMessagesQueryKey,
-  getSessionsByIdOptions,
   getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { submitSideConversationMessage } from '~/features/browser/side-conversation-panel'
 import { isSessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
+import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
-import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readBangCommand } from './bang-command'
 import { annotateBangCommandMessage, annotateBangResultMessage } from './bang-command-metadata'
+import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import type { ChatContextPart } from './chat-context-parts'
-import { toOrderedUserMessageParts } from './chat-context-parts'
-import { createContinuationUserMessage } from './chat-continuation-metadata'
 import type { ChatContinuationMode, ChatQueueItem, ChatRuntimeSettingsPatch, ChatThinkingEffort } from './chat-response-command'
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
   createSideChat,
-  executeBangCommand,
   enqueueChatSessionQueueItem,
+  executeBangCommand,
   listChatSessionQueue,
   reorderChatSessionQueue,
-  startChatResponse,
+  steerChatSessionTurn,
+  submitRuntimeUserInput,
 } from './chat-response-command'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
 import { ChatStreamingHandler } from './chat-streaming-handler'
+import { buildOptimisticUserMessage } from './optimistic-chat-turn'
 import { runtimeSettingsQueryKey } from './runtime-settings-command'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
 
@@ -62,8 +64,9 @@ export interface SendMessageOptions {
 }
 
 export type SendMessageResult = void | {
-  kind: 'side-chat'
-  sessionId: string
+  kind: 'side-conversation'
+  sideConversationId: string
+  parentSessionId: string
 }
 
 export interface ToolApprovalResponseInput {
@@ -71,6 +74,12 @@ export interface ToolApprovalResponseInput {
   approvalId: string
   approved: boolean
   reason?: string
+}
+
+export interface RuntimeUserInputSubmitInput {
+  messageId: string
+  toolCallId: string
+  answers: Record<string, string[]>
 }
 
 export function projectMainMessagesFromSnapshotRows(rows: ChatSessionMessageRow[]): UIMessage[] {
@@ -117,25 +126,23 @@ function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: st
   return typeof approval?.id === 'string' && approval.id === approvalId
 }
 
+function isMatchingToolPart(part: UIMessage['parts'][number], toolCallId: string): boolean {
+  return (part.type === 'dynamic-tool' || part.type.startsWith('tool-'))
+    && (part as { toolCallId?: unknown }).toolCallId === toolCallId
+}
+
+function readRuntimeUserInputRequestId(toolCallId: string): string {
+  return toolCallId.startsWith('server-request-')
+    ? toolCallId.slice('server-request-'.length)
+    : toolCallId
+}
+
 // ── Hook ────────────────────────────────────────────────────
 
 const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 const BANG_COMMAND_DRIVER_PREFIX = 'bang-command'
-
-function readCodexGoalCommandObjective(text: string): string | null {
-  const normalized = text.trimStart()
-  if (!normalized.startsWith('/goal')) {
-    return null
-  }
-  const nextChar = normalized.charAt('/goal'.length)
-  if (nextChar && nextChar !== ' ' && nextChar !== '\t') {
-    return null
-  }
-  const objective = normalized.slice('/goal'.length).trim()
-  return objective.length > 0 ? objective : null
-}
 
 function readSideChatCommand(text: string): string | null {
   const normalized = text.trimStart()
@@ -149,56 +156,19 @@ function readSideChatCommand(text: string): string | null {
   return normalized.slice('/side'.length).trim()
 }
 
-function annotateCodexGoalMessage(message: UIMessage, objective: string): UIMessage {
-  const metadata = message.metadata && typeof message.metadata === 'object' && !Array.isArray(message.metadata)
-    ? message.metadata as Record<string, unknown>
-    : {}
-  const cradleMetadata = metadata.cradle && typeof metadata.cradle === 'object' && !Array.isArray(metadata.cradle)
-    ? metadata.cradle as Record<string, unknown>
-    : {}
-  return {
-    ...message,
-    metadata: {
-      ...metadata,
-      cradle: {
-        ...cradleMetadata,
-        goal: { objective },
-      },
-    },
-  } as UIMessage
+interface ChatSessionRuntimeControls {
+  queryClient: ReturnType<typeof useQueryClient>
+  snapshotRowsQueryKey: ReturnType<typeof getChatSessionsBySessionIdMessagesQueryKey> | null
+  sessionBindingQueryKey: ReturnType<typeof getSessionsByIdQueryKey> | null
+  queueQueryKey: readonly ['chat', 'session-queue', string]
+  scheduleSnapshotRefresh: (delay?: number) => void
+  refreshSessionLists: () => void
+  refreshQueue: (delay?: number) => void
 }
 
-export function useChatSession(chatSessionId: string | null) {
+function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessionRuntimeControls {
   const queryClient = useQueryClient()
-
-  // Active handler ref (for the currently streaming response)
-  const handlerRef = useRef<ChatStreamingHandler | null>(null)
-  const passiveStreamRef = useRef<{
-    sessionId: string
-    messageId: string
-    controller: AbortController
-    handler: ChatStreamingHandler
-  } | null>(null)
   const snapshotTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
-
-  // ── Selectors (fine-grained subscriptions) ──
-
-  const messageIds = useChatStore(
-    useShallow(chatSelectors.messageIds(chatSessionId ?? '')),
-  )
-  const visibleStatus = useChatStore(
-    chatSelectors.visibleStatus(chatSessionId ?? ''),
-  )
-  const isStreaming = useChatStore(
-    chatSelectors.isSessionStreaming(chatSessionId ?? ''),
-  )
-
-  const latestError = useChatStore(
-    chatSessionId ? chatSelectors.latestError(chatSessionId) : () => undefined,
-  )
-
-  // ── Hydration from server ──
 
   const snapshotRowsQueryKey = useMemo(
     () => chatSessionId
@@ -213,45 +183,9 @@ export function useChatSession(chatSessionId: string | null) {
     [chatSessionId],
   )
 
-  const generatedSnapshotRowsOptions = useMemo(
-    () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
-    [chatSessionId],
-  )
   const queueQueryKey = useMemo(
     () => ['chat', 'session-queue', chatSessionId ?? 'none'] as const,
     [chatSessionId],
-  )
-
-  const snapshotRowsQuery = useQuery<
-    unknown,
-    Error,
-    ChatSessionMessageRow[],
-    ReturnType<typeof getChatSessionsBySessionIdMessagesQueryKey>
-  >({
-    queryKey: generatedSnapshotRowsOptions.queryKey,
-    queryFn: generatedSnapshotRowsOptions.queryFn,
-    enabled: !!chatSessionId,
-    select: data => data as ChatSessionMessageRow[],
-  })
-  const sessionBindingQuery = useQuery({
-    ...getSessionsByIdOptions({ path: { id: chatSessionId ?? '' } }),
-    enabled: !!chatSessionId,
-    staleTime: 60_000,
-  })
-
-  const queueQuery = useQuery({
-    queryKey: queueQueryKey,
-    queryFn: () => listChatSessionQueue(chatSessionId!),
-    enabled: !!chatSessionId,
-    refetchInterval: query => visibleStatus === 'streaming'
-      || query.state.data?.items.some(item => item.status === 'pending' || item.status === 'running')
-      ? 1000
-      : false,
-  })
-  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
-
-  const runtimeKind = useSessionLayoutStore(
-    useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),
   )
 
   const scheduleSnapshotRefresh = useCallback((delay = SNAPSHOT_SYNC_DEBOUNCE_MS) => {
@@ -289,21 +223,74 @@ export function useChatSession(chatSessionId: string | null) {
     }, delay)
   }, [queryClient, queueQueryKey])
 
-  // ── Initial load ──
+  useEffect(() => {
+    return () => {
+      if (snapshotTimerRef.current) {
+        clearTimeout(snapshotTimerRef.current)
+        snapshotTimerRef.current = null
+      }
+    }
+  }, [chatSessionId])
+
+  return {
+    queryClient,
+    snapshotRowsQueryKey,
+    sessionBindingQueryKey,
+    queueQueryKey,
+    scheduleSnapshotRefresh,
+    refreshSessionLists,
+    refreshQueue,
+  }
+}
+
+export function useChatSessionDriver(chatSessionId: string | null): void {
+  const {
+    scheduleSnapshotRefresh,
+    refreshQueue,
+  } = useChatSessionRuntimeControls(chatSessionId)
+  const generatedSnapshotRowsOptions = useMemo(
+    () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
+    [chatSessionId],
+  )
+  const snapshotRowsQuery = useQuery<
+    unknown,
+    Error,
+    ChatSessionMessageRow[],
+    ReturnType<typeof getChatSessionsBySessionIdMessagesQueryKey>
+  >({
+    queryKey: generatedSnapshotRowsOptions.queryKey,
+    queryFn: generatedSnapshotRowsOptions.queryFn,
+    enabled: !!chatSessionId,
+    select: data => data as ChatSessionMessageRow[],
+  })
+  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
+  const snapshotRows = snapshotRowsQuery.data
+  const runtimeStatus = runtimeStatusQuery.data
+  const passiveStreamRef = useRef<{
+    sessionId: string
+    messageId: string
+    controller: AbortController
+    handler: ChatStreamingHandler
+  } | null>(null)
+  const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
 
   useLayoutEffect(() => {
-    if (!chatSessionId || !snapshotRowsQuery.data) {
+    if (!chatSessionId || !snapshotRows) {
       return
     }
     const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
     if (meta?.locallyDriving) {
       return
     }
+    if (passiveStreamRef.current?.sessionId === chatSessionId) {
+      return
+    }
 
-    const projected = projectMainMessagesFromSnapshotRows(snapshotRowsQuery.data)
-    const passiveStreamingMessageIds = projectStreamingMainAssistantMessageIds(snapshotRowsQuery.data)
-    const passiveStatus = derivePassiveStatus(snapshotRowsQuery.data)
+    const projected = projectMainMessagesFromSnapshotRows(snapshotRows)
+    const passiveStreamingMessageIds = projectStreamingMainAssistantMessageIds(snapshotRows)
+    const passiveStatus = derivePassiveStatus(snapshotRows)
     useChatStore.getState().setMessages(chatSessionId, projected)
+    useChatStore.getState().setSessionHydrated(chatSessionId, true)
     useChatStore.getState().setPassiveStreamingMessageIds(chatSessionId, passiveStreamingMessageIds)
     useChatStore.getState().clearSessionErrors(chatSessionId)
     useChatStore.getState().setSessionMeta(chatSessionId, {
@@ -311,18 +298,22 @@ export function useChatSession(chatSessionId: string | null) {
       passiveStatus,
     })
 
-    const failedRow = readLatestFailedMainAssistantRow(snapshotRowsQuery.data)
+    const failedRow = readLatestFailedMainAssistantRow(snapshotRows)
     if (failedRow?.errorText) {
       useChatStore.getState().failGeneration(failedRow.messageId, failedRow.errorText)
     }
-  }, [chatSessionId, snapshotRowsQuery.data])
+  }, [chatSessionId, snapshotRows])
+
+  useEffect(() => {
+    if (!chatSessionId || !snapshotRowsQuery.isError) {
+      return
+    }
+    useChatStore.getState().setSessionHydrated(chatSessionId, true)
+    useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
+  }, [chatSessionId, snapshotRowsQuery.isError])
 
   useEffect(() => {
     return () => {
-      if (snapshotTimerRef.current) {
-        clearTimeout(snapshotTimerRef.current)
-        snapshotTimerRef.current = null
-      }
       if (passiveStreamRef.current) {
         passiveStreamRef.current.controller.abort()
         passiveStreamRef.current.handler.dispose()
@@ -337,12 +328,12 @@ export function useChatSession(chatSessionId: string | null) {
       return
     }
 
-    const activeRunMessageId = runtimeStatusQuery.data?.activeRun?.messageId
+    const activeRunMessageId = runtimeStatus?.activeRun?.messageId
     if (!activeRunMessageId) {
       requestedRuntimeActiveRunMessageRef.current = null
       return
     }
-    const snapshotHasMessage = (snapshotRowsQuery.data ?? []).some(row => row.messageId === activeRunMessageId)
+    const snapshotHasMessage = (snapshotRows ?? []).some(row => row.messageId === activeRunMessageId)
     const storeHasMessage = (useChatStore.getState().messagesMap.get(chatSessionId) ?? []).some(message => message.id === activeRunMessageId)
     if (snapshotHasMessage || storeHasMessage) {
       requestedRuntimeActiveRunMessageRef.current = null
@@ -354,12 +345,10 @@ export function useChatSession(chatSessionId: string | null) {
 
     requestedRuntimeActiveRunMessageRef.current = activeRunMessageId
     scheduleSnapshotRefresh(0)
-  }, [chatSessionId, runtimeStatusQuery.data?.activeRun?.messageId, scheduleSnapshotRefresh, snapshotRowsQuery.data])
-
-  // ── Passive observer: join active run stream after snapshot hydration ──
+  }, [chatSessionId, runtimeStatus?.activeRun?.messageId, scheduleSnapshotRefresh, snapshotRows])
 
   useEffect(() => {
-    if (!chatSessionId || !snapshotRowsQuery.data) {
+    if (!chatSessionId || !snapshotRows) {
       return
     }
 
@@ -368,7 +357,7 @@ export function useChatSession(chatSessionId: string | null) {
       return
     }
 
-    const streamingMessageId = projectStreamingMainAssistantMessageIds(snapshotRowsQuery.data)[0]
+    const streamingMessageId = projectStreamingMainAssistantMessageIds(snapshotRows)[0]
     if (!streamingMessageId) {
       if (passiveStreamRef.current?.sessionId === chatSessionId) {
         passiveStreamRef.current.controller.abort()
@@ -432,7 +421,49 @@ export function useChatSession(chatSessionId: string | null) {
     })()
 
     return undefined
-  }, [chatSessionId, refreshQueue, scheduleSnapshotRefresh, snapshotRowsQuery.data])
+  }, [chatSessionId, refreshQueue, scheduleSnapshotRefresh, snapshotRows])
+}
+
+export function useChatSession(chatSessionId: string | null) {
+  const {
+    queryClient,
+    sessionBindingQueryKey,
+    queueQueryKey,
+    scheduleSnapshotRefresh,
+    refreshSessionLists,
+    refreshQueue,
+  } = useChatSessionRuntimeControls(chatSessionId)
+
+  const handlerRef = useRef<ChatStreamingHandler | null>(null)
+
+  const messageIds = useChatStore(
+    useShallow(chatSelectors.messageIds(chatSessionId ?? '')),
+  )
+  const visibleStatus = useChatStore(
+    chatSelectors.visibleStatus(chatSessionId ?? ''),
+  )
+  const isStreaming = useChatStore(
+    chatSelectors.isSessionStreaming(chatSessionId ?? ''),
+  )
+  const isHydrated = useChatStore(
+    chatSessionId ? chatSelectors.isSessionHydrated(chatSessionId) : () => true,
+  )
+
+  const latestError = useChatStore(
+    chatSessionId ? chatSelectors.latestError(chatSessionId) : () => undefined,
+  )
+  const queueQuery = useQuery({
+    queryKey: queueQueryKey,
+    queryFn: () => listChatSessionQueue(chatSessionId!),
+    enabled: !!chatSessionId,
+    refetchInterval: query => visibleStatus === 'streaming'
+      || query.state.data?.items.some(item => item.status === 'pending' || item.status === 'running')
+      ? 1000
+      : false,
+  })
+  const runtimeKind = useSessionLayoutStore(
+    useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),
+  )
 
   // ── Send message ──
 
@@ -448,49 +479,63 @@ export function useChatSession(chatSessionId: string | null) {
     }
     const bangCommand = files.length === 0 && contextParts.length === 0 ? readBangCommand(text) : null
     const sideChatMessage = readSideChatCommand(trimmedText)
-    const goalObjective = runtimeKind === 'codex' ? readCodexGoalCommandObjective(trimmedText) : null
-    const optimisticText = goalObjective ?? trimmedText
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
 
     if (sideChatMessage !== null) {
-      const result = await createSideChat({
-        sessionId: chatSessionId,
-        providerTargetId: opts?.providerTargetId ?? undefined,
-        modelId: opts?.modelId ?? undefined,
+      const controller = new AbortController()
+      const driverMessageId = `side-chat-${Date.now()}`
+      const store = useChatStore.getState()
+      store.appendMessage(chatSessionId, {
+        id: driverMessageId,
+        role: 'user',
+        parts: [{ type: 'text', text: trimmedText }],
       })
-      refreshSessionLists()
-      updateSessionInSessionLists(queryClient, {
-        id: result.sessionId,
-        workspaceId: sessionBindingQuery.data?.workspaceId ?? null,
-        providerTargetId: result.providerTargetId,
-        modelId: opts?.modelId ?? sessionBindingQuery.data?.modelId ?? null,
-        runtimeKind: result.runtimeKind,
-      }, { promote: true })
+      if (!isBusy) {
+        store.startGeneration(chatSessionId, driverMessageId, controller)
+      }
 
-      if (sideChatMessage || files.length > 0 || contextParts.length > 0) {
-        const response = await startChatResponse({
-          sessionId: result.sessionId,
-          body: {
+      try {
+        const result = await createSideChat({
+          sessionId: chatSessionId,
+          providerTargetId: opts?.providerTargetId ?? undefined,
+          modelId: opts?.modelId ?? undefined,
+          signal: controller.signal,
+        })
+        useChatStore.getState().removeMessage(chatSessionId, driverMessageId)
+
+        const ownerId = `chat:${chatSessionId}`
+        useBrowserPanelStore.getState().openSideConversationTab({
+          parentSessionId: chatSessionId,
+          sideConversationId: result.sideConversationId,
+          providerSessionId: result.providerSessionId,
+          title: result.title,
+          ownerId,
+        })
+        useLayoutStore.getState().setBrowserPanelOpen(true, ownerId)
+
+        if (sideChatMessage || files.length > 0 || contextParts.length > 0) {
+          await submitSideConversationMessage({
+            sideConversationId: result.sideConversationId,
             text: sideChatMessage,
             files,
             contextParts,
-            providerTargetId: opts?.providerTargetId ?? undefined,
             modelId: opts?.modelId ?? undefined,
-            thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+            thinkingEffort: opts?.thinkingEffort,
             runtimeSettings: opts?.runtimeSettings,
-          },
-        })
-        if (!response.ok) {
-          const body = await response.text().catch(() => '')
-          throw new Error(`Failed to start side chat response: ${response.status} ${body}`)
+          })
         }
-        await response.body?.cancel()
-      }
 
-      void queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: result.sessionId } }) })
-      void queryClient.invalidateQueries({ queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: result.sessionId } }) })
-      return { kind: 'side-chat' as const, sessionId: result.sessionId }
+        return {
+          kind: 'side-conversation' as const,
+          sideConversationId: result.sideConversationId,
+          parentSessionId: chatSessionId,
+        }
+      }
+      catch (error) {
+        useChatStore.getState().failGeneration(driverMessageId, error instanceof Error ? error.message : 'Failed to create side chat')
+        throw error
+      }
     }
 
     if (bangCommand) {
@@ -587,48 +632,43 @@ export function useChatSession(chatSessionId: string | null) {
 
     if (isBusy) {
       const continuationMode = opts?.continuationMode ?? 'queue'
-      const queueItem = await enqueueChatSessionQueueItem({
-        sessionId: chatSessionId,
-        body: {
-          mode: continuationMode,
-          text: trimmedText,
-          files,
-          contextParts,
-          providerTargetId: opts?.providerTargetId ?? undefined,
-          modelId: opts?.modelId ?? undefined,
-          thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
-          runtimeSettings: opts?.runtimeSettings,
-        },
-      })
-      if (queueItem.mode === 'steer' && queueItem.status !== 'pending') {
-        useChatStore.getState().insertLiveSteerMessage(chatSessionId, createContinuationUserMessage({
-          queueItem,
-          fallbackText: trimmedText,
-          fallbackContextParts: contextParts,
-          fallbackFiles: files,
-        }))
-        if (queueItem.status === 'completed') {
-          scheduleSnapshotRefresh(0)
-        }
+      const body = {
+        text: trimmedText,
+        files,
+        contextParts,
+        providerTargetId: opts?.providerTargetId ?? undefined,
+        modelId: opts?.modelId ?? undefined,
+        thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+        runtimeSettings: opts?.runtimeSettings,
       }
+      if (continuationMode === 'steer') {
+        const steer = await steerChatSessionTurn({
+          sessionId: chatSessionId,
+          body,
+        })
+        useChatStore.getState().insertLiveSteerMessage(chatSessionId, steer.message)
+        scheduleSnapshotRefresh(0)
+        return
+      }
+
+      await enqueueChatSessionQueueItem({
+        sessionId: chatSessionId,
+        body,
+      })
       refreshQueue()
       return
     }
 
     // 1. Optimistic user message
     const userMessageId = `user-${Date.now()}`
-    const userParts = toOrderedUserMessageParts(optimisticText, contextParts, text) as UIMessage['parts']
-    userParts.push(...files)
-    const userMessage: UIMessage = goalObjective ? annotateCodexGoalMessage({
-      id: userMessageId,
-      role: 'user',
-      parts: userParts,
-    }, goalObjective) : {
-      id: userMessageId,
-      role: 'user',
-      parts: userParts,
-    }
-    useChatStore.getState().appendMessage(chatSessionId, userMessage)
+    useChatStore.getState().appendMessage(chatSessionId, buildOptimisticUserMessage({
+      messageId: userMessageId,
+      text: trimmedText,
+      sourceText: text,
+      files,
+      contextParts,
+      runtimeKind,
+    }))
     updateSessionInSessionLists(queryClient, { id: chatSessionId }, { promote: true })
 
     // 2. Create handler for assistant response
@@ -693,7 +733,7 @@ export function useChatSession(chatSessionId: string | null) {
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQuery.data?.modelId, sessionBindingQuery.data?.workspaceId, sessionBindingQueryKey, visibleStatus])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
     if (!chatSessionId) {
@@ -775,6 +815,38 @@ export function useChatSession(chatSessionId: string | null) {
     }
   }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
+  const submitPendingUserInput = useCallback(async (response: RuntimeUserInputSubmitInput) => {
+    if (!chatSessionId) {
+      return
+    }
+
+    const requestId = readRuntimeUserInputRequestId(response.toolCallId)
+    const result = await submitRuntimeUserInput({
+      sessionId: chatSessionId,
+      requestId,
+      answers: response.answers,
+    })
+
+    useChatStore.getState().updateMessage(chatSessionId, response.messageId, message => ({
+      ...message,
+      parts: message.parts.map(part =>
+        isMatchingToolPart(part, response.toolCallId)
+          ? {
+              ...part,
+              state: 'output-available',
+              output: {
+                type: 'cradle.runtime-user-input.resolved.v1',
+                requestId: result.requestId,
+                answers: result.answers,
+                acceptedAt: Math.floor(Date.now() / 1000),
+              },
+            } as UIMessage['parts'][number]
+          : part),
+    }), { dirtyToolCallIds: new Set([response.toolCallId]) })
+
+    scheduleSnapshotRefresh(0)
+  }, [chatSessionId, scheduleSnapshotRefresh])
+
   const cancelQueueItem = useCallback(async (queueItemId: string) => {
     if (!chatSessionId) {
       return
@@ -823,7 +895,7 @@ export function useChatSession(chatSessionId: string | null) {
   // ── isReady (always true once hydrated) ──
 
   const messageCount = messageIds.length
-  const isReady = messageCount > 0 || snapshotRowsQuery.isFetched || chatSessionId === null
+  const isReady = messageCount > 0 || isHydrated || chatSessionId === null
 
   useEffect(() => {
     if (latestError) {
@@ -841,6 +913,7 @@ export function useChatSession(chatSessionId: string | null) {
     error: latestError?.message,
     sendMessage,
     respondToToolApproval,
+    submitPendingUserInput,
     stop,
     isReady,
     queueItems: queueQuery.data?.items ?? EMPTY_QUEUE_ITEMS,

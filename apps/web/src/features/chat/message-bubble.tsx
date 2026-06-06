@@ -2,6 +2,7 @@ import { Streamdown } from '@cradle/streamdown'
 import type { UIMessage } from 'ai'
 import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TargetIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
+import type { AnchorHTMLAttributes } from 'react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
@@ -29,6 +30,8 @@ import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
 import { groupMessagePartRefs, groupMessageParts, readRenderableToolPart, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
 import { readSubagentOutputMessage, toolNameFromPart } from './chat-tool-entities'
+import { ImageLightbox } from './image-lightbox'
+import { MarkdownFileLink } from './markdown-file-link'
 import { SkillMentionToken } from './skill-mention-token'
 import type { RenderableToolPart } from './tool-ui-classifier'
 import { describeToolCall } from './tool-ui-classifier'
@@ -57,6 +60,12 @@ function SteerMessageLabel() {
 function readRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
+    : {}
+}
+
+function readMarkdownAnchorProps(value: unknown): AnchorHTMLAttributes<HTMLAnchorElement> {
+  return value && typeof value === 'object'
+    ? value as AnchorHTMLAttributes<HTMLAnchorElement>
     : {}
 }
 
@@ -102,7 +111,7 @@ function isCodexGoalUserMessage(message: UIMessage): boolean {
       .join('\n')) !== null
 }
 
-function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
+function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick?: () => void }) {
   const label = part.filename ?? part.mediaType
   const isImage = part.mediaType.startsWith('image/')
   const appshotMetadata = readCradleAppshotMetadata(part)
@@ -113,8 +122,12 @@ function FileAttachmentBlock({ part }: { part: FileMessagePart }) {
 
   return (
     <div
-      className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60"
+      className={cn(
+        'my-1 overflow-hidden rounded-md border border-border/60 bg-background/60',
+        isImage && onClick && 'cursor-pointer transition-opacity hover:opacity-80',
+      )}
       data-testid="chat-file-attachment"
+      onClick={onClick}
     >
       {isImage && (
         <img
@@ -147,7 +160,7 @@ function SkillContextBlock({ part }: { part: ChatSkillContextMessagePart }) {
 }
 
 function RunDebugCaption({ messageId }: { messageId: string }) {
-  const meta = useChatStore(chatSelectors.runDisplayMeta(messageId))
+  const meta = useChatStore(chatSelectors.runDisplayMeta(messageId), (a, b) => a === b)
   if (!IS_DEV || !meta) {
     return null
   }
@@ -317,6 +330,7 @@ function renderSubagentItem(
   item: ChatRenderItem,
   isStreaming: boolean,
   streamdownSettings: { animationPreset: string, animateMode: 'char' | 'word', showCursor: boolean },
+  sessionId?: string,
 ) {
   switch (item.kind) {
     case 'text':
@@ -329,6 +343,9 @@ function renderSubagentItem(
           animateMode={streamdownSettings.animateMode}
           showCursor={streamdownSettings.showCursor}
           animated={item.text.length <= SUBAGENT_STREAMING_ANIMATION_MAX_CHARS}
+          components={{
+            a: props => <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />,
+          }}
         />
       )
     case 'reasoning':
@@ -363,12 +380,14 @@ function SubagentMessageContent({
   animationPreset,
   animateMode,
   showCursor,
+  sessionId,
 }: {
   message: UIMessage
   isStreaming: boolean
   animationPreset: string
   animateMode: 'char' | 'word'
   showCursor: boolean
+  sessionId?: string
 }) {
   const groupedParts = groupSubagentMessageParts(message.id, message.parts)
   const streamdownSettings = {
@@ -377,7 +396,7 @@ function SubagentMessageContent({
     showCursor,
   }
 
-  return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, streamdownSettings))
+  return groupedParts.map(groupedItem => renderSubagentItem(groupedItem, isStreaming, streamdownSettings, sessionId))
 }
 
 /* ─── Execution Phase Fold ──────────────────────────────────────── */
@@ -437,11 +456,17 @@ interface MessageBubbleProps {
   isStreaming: boolean
   executionDetailsDefaultOpen?: boolean
   presentation?: 'thread' | 'export'
+  sessionId?: string
   onToolApprovalResponse?: (response: {
     messageId: string
     approvalId: string
     approved: boolean
   }) => void
+  onRuntimeUserInputSubmit?: (response: {
+    messageId: string
+    toolCallId: string
+    answers: Record<string, string[]>
+  }) => Promise<void> | void
 }
 
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
@@ -693,6 +718,7 @@ function ToolCallBlockFromPart({
   messageId,
   part,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
   children,
   animated,
   sessionId,
@@ -700,6 +726,7 @@ function ToolCallBlockFromPart({
   messageId: string
   part: RenderableToolPart
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  onRuntimeUserInputSubmit?: MessageBubbleProps['onRuntimeUserInputSubmit']
   children?: React.ReactNode
   animated?: boolean
   sessionId?: string | null
@@ -735,6 +762,13 @@ function ToolCallBlockFromPart({
             approved: approval.approved,
           })
         : undefined}
+      onUserInputSubmit={onRuntimeUserInputSubmit
+        ? answers => onRuntimeUserInputSubmit({
+            messageId,
+            toolCallId: part.toolCallId,
+            answers,
+          })
+        : undefined}
     >
       {subagentMessage
         ? (
@@ -744,6 +778,7 @@ function ToolCallBlockFromPart({
               animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
               animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
               showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
+              sessionId={sessionId ?? undefined}
             />
           )
         : null}
@@ -757,11 +792,13 @@ function ToolCallBlockByPartIndex({
   messageId,
   partIndex,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  onRuntimeUserInputSubmit?: MessageBubbleProps['onRuntimeUserInputSubmit']
 }) {
   const part = useChatStore(
     state => readRenderableToolPartFromState(state, sessionId, messageId, partIndex),
@@ -776,6 +813,7 @@ function ToolCallBlockByPartIndex({
       part={part}
       sessionId={sessionId}
       onToolApprovalResponse={onToolApprovalResponse}
+      onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
     />
   )
 }
@@ -855,6 +893,9 @@ const MessageTextPartById = memo(({
       animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
       showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
       animated={animated}
+      components={{
+        a: props => <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />,
+      }}
     />
   )
 })
@@ -885,16 +926,18 @@ const MessageFilePartById = memo(({
   sessionId,
   messageId,
   partIndex,
+  onImageClick,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
+  onImageClick?: () => void
 }) => {
   const part = useChatStore(state => readFilePartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
-  return <FileAttachmentBlock part={part} />
+  return <FileAttachmentBlock part={part} onClick={onImageClick} />
 })
 MessageFilePartById.displayName = 'MessageFilePartById'
 
@@ -1013,12 +1056,16 @@ const MessageSegmentView = memo(({
   isUser,
   isActiveStreamingSegment,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
+  onImageClick,
 }: {
   segment: ChatRenderSegment
   sessionId: string
   isUser: boolean
   isActiveStreamingSegment: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  onRuntimeUserInputSubmit?: MessageBubbleProps['onRuntimeUserInputSubmit']
+  onImageClick?: () => void
 }) => {
   switch (segment.kind) {
     case 'text':
@@ -1049,6 +1096,7 @@ const MessageSegmentView = memo(({
           messageId={segment.messageId}
           partIndex={segment.partIndex}
           onToolApprovalResponse={onToolApprovalResponse}
+          onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
         />
       )
     case 'file-attachment':
@@ -1057,6 +1105,7 @@ const MessageSegmentView = memo(({
           sessionId={sessionId}
           messageId={segment.messageId}
           partIndex={segment.partIndex}
+          onImageClick={onImageClick}
         />
       )
     case 'skill-context':
@@ -1079,12 +1128,14 @@ const MessageBubbleSegmentsView = memo(({
   segments,
   isStreaming,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
 }: {
   sessionId: string
   frame: MessageFrame
   segments: ChatRenderSegment[]
   isStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  onRuntimeUserInputSubmit?: MessageBubbleProps['onRuntimeUserInputSubmit']
 }) => {
   const isUser = frame.role === 'user'
   const isAssistant = frame.role === 'assistant'
@@ -1095,7 +1146,39 @@ const MessageBubbleSegmentsView = memo(({
     [segments, isStreaming],
   )
 
-  function renderSegment(segment: ChatRenderSegment) {
+  const [lightboxOpen, setLightboxOpen] = useState(false)
+  const [lightboxIndex, setLightboxIndex] = useState(0)
+
+  const imageSegments = useMemo(() => {
+    return segments
+      .map((segment, index) => ({ segment, index }))
+      .filter(({ segment }) => {
+        if (segment.kind !== 'file-attachment') { return false }
+        const part = readFilePartFromState(useChatStore.getState(), sessionId, segment.messageId, segment.partIndex)
+        return part?.mediaType.startsWith('image/')
+      })
+  }, [segments, sessionId])
+
+  const lightboxImages = useMemo(() => {
+    return imageSegments.map(({ segment }) => {
+      if (segment.kind !== 'file-attachment') { return { url: '', alt: '' } }
+      const part = readFilePartFromState(useChatStore.getState(), sessionId, segment.messageId, segment.partIndex)
+      return {
+        url: part?.url ?? '',
+        alt: part?.filename ?? part?.mediaType ?? 'Image',
+      }
+    })
+  }, [imageSegments, sessionId])
+
+  const handleImageClick = useCallback((segmentIndex: number) => {
+    const imageIndex = imageSegments.findIndex(({ index }) => index === segmentIndex)
+    if (imageIndex !== -1) {
+      setLightboxIndex(imageIndex)
+      setLightboxOpen(true)
+    }
+  }, [imageSegments])
+
+  function renderSegment(segment: ChatRenderSegment, index: number) {
     return (
       <MessageSegmentView
         key={segment.key}
@@ -1104,8 +1187,56 @@ const MessageBubbleSegmentsView = memo(({
         isUser={isUser}
         isActiveStreamingSegment={segment.key === activeStreamingSegmentKey}
         onToolApprovalResponse={onToolApprovalResponse}
+        onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
+        onImageClick={segment.kind === 'file-attachment' ? () => handleImageClick(index) : undefined}
       />
     )
+  }
+
+  function renderSegmentsWithImageGrid(segs: ChatRenderSegment[]) {
+    const result: React.ReactNode[] = []
+    let imageBuffer: Array<{ segment: ChatRenderSegment, index: number }> = []
+
+    segs.forEach((segment, index) => {
+      const isImage = segment.kind === 'file-attachment' && (() => {
+        if (segment.kind !== 'file-attachment') { return false }
+        const part = readFilePartFromState(useChatStore.getState(), sessionId, segment.messageId, segment.partIndex)
+        return part?.mediaType.startsWith('image/')
+      })()
+
+      if (isImage) {
+        imageBuffer.push({ segment, index })
+      }
+ else {
+        if (imageBuffer.length > 0) {
+          result.push(
+            <div key={`image-grid-${imageBuffer[0].index}`} className="flex flex-wrap gap-2 my-1">
+              {imageBuffer.map(({ segment: imgSegment, index: imgIndex }) => (
+                <div key={imgSegment.key} className="w-[calc(50%-0.25rem)] min-w-[200px] max-w-[300px]">
+                  {renderSegment(imgSegment, imgIndex)}
+                </div>
+              ))}
+            </div>,
+          )
+          imageBuffer = []
+        }
+        result.push(renderSegment(segment, index))
+      }
+    })
+
+    if (imageBuffer.length > 0) {
+      result.push(
+        <div key={`image-grid-${imageBuffer[0].index}`} className="flex flex-wrap gap-2 my-1">
+          {imageBuffer.map(({ segment: imgSegment, index: imgIndex }) => (
+            <div key={imgSegment.key} className="w-[calc(50%-0.25rem)] min-w-[200px] max-w-[300px]">
+              {renderSegment(imgSegment, imgIndex)}
+            </div>
+          ))}
+        </div>,
+      )
+    }
+
+    return result
   }
 
   function renderContent() {
@@ -1118,79 +1249,86 @@ const MessageBubbleSegmentsView = memo(({
     }
 
     if (!executionPhaseSplit) {
-      return (
-        <>
-          {segments.map(renderSegment)}
-        </>
-      )
+      return renderSegmentsWithImageGrid(segments)
     }
 
     return (
       <>
         <ExecutionPhaseFold>
-          {executionPhaseSplit.executionItems.map(renderSegment)}
+          {executionPhaseSplit.executionItems.map((segment, index) => renderSegment(segment, index))}
         </ExecutionPhaseFold>
-        {executionPhaseSplit.finalItems.map(renderSegment)}
+        {renderSegmentsWithImageGrid(executionPhaseSplit.finalItems)}
       </>
     )
   }
 
   return (
-    <m.div
-      initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={BUBBLE_TRANSITION}
-      data-testid={`message-bubble-${frame.role}`}
-      data-message-id={frame.id}
-      data-message-role={frame.role}
-      data-message-streaming={isStreaming ? 'true' : 'false'}
-      className={cn(
-        'group flex w-full gap-3',
-        isUser && 'justify-end',
-      )}
-    >
-      <div
+    <>
+      <m.div
+        initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
+        animate={{ opacity: 1, y: 0 }}
+        transition={BUBBLE_TRANSITION}
+        data-testid={`message-bubble-${frame.role}`}
+        data-message-id={frame.id}
+        data-message-role={frame.role}
+        data-message-streaming={isStreaming ? 'true' : 'false'}
         className={cn(
-          'min-w-0',
-          isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'max-w-[70%]',
-          (frame.bangCommand || frame.bangResult) && 'max-w-[78%]',
-          frame.isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
-          !isUser && 'w-full',
+          'group flex w-full gap-3',
+          isUser && 'justify-end',
         )}
       >
-        {frame.isSteerMessage && <SteerMessageLabel />}
-        {frame.isGoalMessage && <GoalMessageLabel />}
         <div
           className={cn(
-            'rounded-lg text-sm leading-relaxed',
-            isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
-            (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
-            frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
-            isAssistant && 'text-foreground',
+            'min-w-0',
+            isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'max-w-[70%]',
+            (frame.bangCommand || frame.bangResult) && 'max-w-[78%]',
+            frame.isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
+            !isUser && 'w-full',
           )}
         >
-          {renderContent()}
-          <MessageThinkingPlaceholderById
-            sessionId={sessionId}
-            messageId={frame.id}
-            isAssistant={isAssistant}
-            isStreaming={isStreaming}
-            segmentCount={segments.length}
-            segments={segments}
-          />
+          {frame.isSteerMessage && <SteerMessageLabel />}
+          {frame.isGoalMessage && <GoalMessageLabel />}
+          <div
+            className={cn(
+              'rounded-lg text-sm leading-relaxed',
+              isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
+              (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
+              frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
+              isAssistant && 'text-foreground',
+            )}
+          >
+            {renderContent()}
+            <MessageThinkingPlaceholderById
+              sessionId={sessionId}
+              messageId={frame.id}
+              isAssistant={isAssistant}
+              isStreaming={isStreaming}
+              segmentCount={segments.length}
+              segments={segments}
+            />
+          </div>
+
+          {isAssistant && <RunDebugCaption messageId={frame.id} />}
+
+          {!isStreaming && (
+            <MessageCopyActionById
+              sessionId={sessionId}
+              messageId={frame.id}
+              isUser={isUser}
+            />
+          )}
         </div>
+      </m.div>
 
-        {isAssistant && <RunDebugCaption messageId={frame.id} />}
-
-        {!isStreaming && (
-          <MessageCopyActionById
-            sessionId={sessionId}
-            messageId={frame.id}
-            isUser={isUser}
-          />
-        )}
-      </div>
-    </m.div>
+      {lightboxImages.length > 0 && (
+        <ImageLightbox
+          images={lightboxImages}
+          initialIndex={lightboxIndex}
+          open={lightboxOpen}
+          onOpenChange={setLightboxOpen}
+        />
+      )}
+    </>
   )
 })
 MessageBubbleSegmentsView.displayName = 'MessageBubbleSegmentsView'
@@ -1199,10 +1337,12 @@ export const MessageBubbleById = memo(({
   sessionId,
   messageId,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
 }: {
   sessionId: string | null
   messageId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  onRuntimeUserInputSubmit?: MessageBubbleProps['onRuntimeUserInputSubmit']
 }) => {
   const storeSessionId = sessionId ?? ''
   const frame = useChatStore(
@@ -1213,7 +1353,10 @@ export const MessageBubbleById = memo(({
     state => readRenderSegmentsFromState(state, storeSessionId, messageId),
     areRenderSegmentsEqual,
   )
-  const isStreaming = useChatStore(chatSelectors.isVisibleStreamingMessage(storeSessionId, messageId))
+  const isStreaming = useChatStore(
+    chatSelectors.isVisibleStreamingMessage(storeSessionId, messageId),
+    (a, b) => a === b,
+  )
 
   if (!frame) {
     return null
@@ -1226,12 +1369,13 @@ export const MessageBubbleById = memo(({
       segments={segments}
       isStreaming={isStreaming}
       onToolApprovalResponse={onToolApprovalResponse}
+      onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
     />
   )
 })
 MessageBubbleById.displayName = 'MessageBubbleById'
 
-function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', onToolApprovalResponse }: MessageBubbleProps) {
+function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', sessionId, onToolApprovalResponse, onRuntimeUserInputSubmit }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
   const isExportPresentation = presentation === 'export'
@@ -1313,6 +1457,9 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
             showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
             animated={item.text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS}
+            components={{
+              a: props => <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />,
+            }}
           />
         )
 
@@ -1329,6 +1476,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
             messageId={message.id}
             part={item.part}
             onToolApprovalResponse={onToolApprovalResponse}
+            onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
           />
         )
 
@@ -1445,5 +1593,7 @@ export const MessageBubble = memo(
     && prevProps.isStreaming === nextProps.isStreaming
     && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
     && prevProps.presentation === nextProps.presentation
-    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse,
+    && prevProps.sessionId === nextProps.sessionId
+    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse
+    && prevProps.onRuntimeUserInputSubmit === nextProps.onRuntimeUserInputSubmit,
 )

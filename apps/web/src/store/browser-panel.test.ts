@@ -59,7 +59,6 @@ describe('browser panel shortcuts', () => {
       recentHistoryByOwnerId: {},
       annotationInteractionModeByOwnerId: {},
       annotationTrayCollapsedByOwnerId: {},
-      annotationCoachmarkDismissedByOwnerId: {},
     })
   })
 
@@ -382,18 +381,13 @@ describe('browser panel shortcuts', () => {
     ])
   })
 
-  it('keeps annotation interaction and coachmark state scoped by owner', () => {
+  it('keeps annotation interaction state scoped by owner', () => {
     useBrowserPanelStore.getState().setAnnotationInteractionMode('comment', 'app-tab-a')
-    useBrowserPanelStore.getState().dismissAnnotationCoachmark('app-tab-a')
 
     expect(useBrowserPanelStore.getState().annotationInteractionModeByOwnerId).toMatchObject({
       'app-tab-a': 'comment',
     })
-    expect(useBrowserPanelStore.getState().annotationCoachmarkDismissedByOwnerId).toMatchObject({
-      'app-tab-a': true,
-    })
     expect(useBrowserPanelStore.getState().annotationInteractionModeByOwnerId['app-tab-b']).toBeUndefined()
-    expect(useBrowserPanelStore.getState().annotationCoachmarkDismissedByOwnerId['app-tab-b']).toBeUndefined()
   })
 
   it('persists only lightweight annotation UI preferences', () => {
@@ -407,7 +401,6 @@ describe('browser panel shortcuts', () => {
       }],
     }))
     useBrowserPanelStore.getState().setAnnotationTrayCollapsed(true, 'app-tab-a')
-    useBrowserPanelStore.getState().dismissAnnotationCoachmark('app-tab-a')
 
     const partialize = useBrowserPanelStore.persist.getOptions().partialize
     expect(partialize).toBeTypeOf('function')
@@ -419,7 +412,6 @@ describe('browser panel shortcuts', () => {
     expect(persisted).toEqual({
       recentHistoryByOwnerId: {},
       annotationTrayCollapsedByOwnerId: { 'app-tab-a': true },
-      annotationCoachmarkDismissedByOwnerId: { 'app-tab-a': true },
     })
   })
 })

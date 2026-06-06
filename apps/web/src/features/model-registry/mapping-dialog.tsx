@@ -5,14 +5,14 @@
  * manual entry form. Used by both the agent-management models panel
  * and the settings model-registry page.
  */
-import { SlidersHorizontalIcon, SearchIcon } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import { SearchIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
-import { putModelRegistryMappingsByModelId } from '~/api-gen/sdk.gen'
 import { getModelRegistryMappingsQueryKey } from '~/api-gen/@tanstack/react-query.gen'
-import { useQueryClient } from '@tanstack/react-query'
+import { putModelRegistryMappingsByModelId } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import {
@@ -21,7 +21,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -29,8 +29,8 @@ import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelCapabilities } from '~/lib/types'
 
-import { SearchResultItem } from './search-result-item'
 import type { ModelsDevModel, SearchResult } from './schemas'
+import { SearchResultItem } from './search-result-item'
 import { useModelSearch } from './use-model-search'
 
 // ── Manual entry draft ───────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ interface ManualRegistryDraft {
 const OptionalNumberTextSchema = z
   .string()
   .trim()
-  .transform((value) => (value === '' ? undefined : Number(value)))
+  .transform(value => (value === '' ? undefined : Number(value)))
   .pipe(z.number().finite().optional())
 
 const ManualRegistryDraftProjectionSchema = z
@@ -78,21 +78,21 @@ const ManualRegistryDraftProjectionSchema = z
     family: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     knowledge: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     releaseDate: z
       .string()
       .trim()
-      .transform((value) => value || undefined),
+      .transform(value => value || undefined),
     costInput: OptionalNumberTextSchema,
     costOutput: OptionalNumberTextSchema,
     costCacheRead: OptionalNumberTextSchema,
-    costCacheWrite: OptionalNumberTextSchema
+    costCacheWrite: OptionalNumberTextSchema,
   })
-  .transform((draft) => ({
+  .transform(draft => ({
     id: draft.id.trim(),
     name: draft.name.trim() || draft.id.trim(),
     inputModalities: [...(draft.inputText ? ['text'] : []), ...(draft.inputImage ? ['image'] : [])],
@@ -110,21 +110,21 @@ const ManualRegistryDraftProjectionSchema = z
       input: draft.costInput,
       output: draft.costOutput,
       cache_read: draft.costCacheRead,
-      cache_write: draft.costCacheWrite
+      cache_write: draft.costCacheWrite,
     },
     capabilitiesCost: {
       input: draft.costInput,
       output: draft.costOutput,
       cacheRead: draft.costCacheRead,
-      cacheWrite: draft.costCacheWrite
-    }
+      cacheWrite: draft.costCacheWrite,
+    },
   }))
 
 export function createManualDraft(
   modelId: string,
   modelLabel: string,
   caps: ModelCapabilities,
-  query: string
+  query: string,
 ): ManualRegistryDraft {
   const id = query.trim() || caps.registryModelId || modelId || ''
   return {
@@ -145,7 +145,7 @@ export function createManualDraft(
     costInput: caps.cost?.input != null ? String(caps.cost.input) : '',
     costOutput: caps.cost?.output != null ? String(caps.cost.output) : '',
     costCacheRead: caps.cost?.cacheRead != null ? String(caps.cost.cacheRead) : '',
-    costCacheWrite: caps.cost?.cacheWrite != null ? String(caps.cost.cacheWrite) : ''
+    costCacheWrite: caps.cost?.cacheWrite != null ? String(caps.cost.cacheWrite) : '',
   }
 }
 
@@ -156,14 +156,14 @@ function createManualDraftFromModel(
     modelLabel?: string
     query?: string
     capabilities?: ModelCapabilities
-  }
+  },
 ): ManualRegistryDraft {
   if (!model) {
     return createManualDraft(
       fallback.modelId,
       fallback.modelLabel ?? '',
       fallback.capabilities ?? {},
-      fallback.query ?? ''
+      fallback.query ?? '',
     )
   }
 
@@ -186,7 +186,7 @@ function createManualDraftFromModel(
     costInput: model.cost?.input != null ? String(model.cost.input) : '',
     costOutput: model.cost?.output != null ? String(model.cost.output) : '',
     costCacheRead: model.cost?.cache_read != null ? String(model.cost.cache_read) : '',
-    costCacheWrite: model.cost?.cache_write != null ? String(model.cost.cache_write) : ''
+    costCacheWrite: model.cost?.cache_write != null ? String(model.cost.cache_write) : '',
   }
 }
 
@@ -204,7 +204,7 @@ function buildManualModelsDevModel(draft: ManualRegistryDraft) {
     cost: projected.modelsDevCost,
     family: projected.family,
     knowledge: projected.knowledgeCutoff,
-    release_date: projected.releaseDate
+    release_date: projected.releaseDate,
   }
 }
 
@@ -222,7 +222,7 @@ function capabilitiesFromManualDraft(draft: ManualRegistryDraft): ModelCapabilit
     cost: projected.capabilitiesCost,
     family: projected.family,
     knowledgeCutoff: projected.knowledgeCutoff,
-    releaseDate: projected.releaseDate
+    releaseDate: projected.releaseDate,
   }
 }
 
@@ -239,7 +239,7 @@ const LABEL_KEYS: Record<string, string> = {
   inputCost: 'models.manual.label.inputCost',
   outputCost: 'models.manual.label.outputCost',
   cacheReadCost: 'models.manual.label.cacheReadCost',
-  cacheWriteCost: 'models.manual.label.cacheWriteCost'
+  cacheWriteCost: 'models.manual.label.cacheWriteCost',
 }
 
 const FIELD_KEYS: Record<string, string> = {
@@ -253,7 +253,7 @@ const FIELD_KEYS: Record<string, string> = {
   inputCost: 'models.manual.field.inputCost',
   outputCost: 'models.manual.field.outputCost',
   cacheReadCost: 'models.manual.field.cacheReadCost',
-  cacheWriteCost: 'models.manual.field.cacheWriteCost'
+  cacheWriteCost: 'models.manual.field.cacheWriteCost',
 }
 
 // ── Manual entry form ────────────────────────────────────────────────────────
@@ -261,7 +261,7 @@ const FIELD_KEYS: Record<string, string> = {
 function ManualEntryForm({
   draft,
   onChange,
-  t
+  t,
 }: {
   draft: ManualRegistryDraft
   onChange: (next: ManualRegistryDraft) => void
@@ -290,71 +290,71 @@ function ManualEntryForm({
       key: 'context',
       label: LABEL_KEYS.contextWindow,
       placeholder: FIELD_KEYS.contextWindow,
-      mono: true
+      mono: true,
     },
     {
       key: 'output',
       label: LABEL_KEYS.maxOutputTokens,
       placeholder: FIELD_KEYS.maxOutputTokens,
-      mono: true
+      mono: true,
     },
     { key: 'family', label: LABEL_KEYS.family, placeholder: FIELD_KEYS.family, mono: true },
     {
       key: 'knowledge',
       label: LABEL_KEYS.knowledgeCutoff,
       placeholder: FIELD_KEYS.knowledgeCutoff,
-      mono: true
+      mono: true,
     },
     {
       key: 'releaseDate',
       label: LABEL_KEYS.releaseDate,
       placeholder: FIELD_KEYS.releaseDate,
-      mono: true
+      mono: true,
     },
     {
       key: 'costInput',
       label: LABEL_KEYS.inputCost,
       placeholder: FIELD_KEYS.inputCost,
-      mono: true
+      mono: true,
     },
     {
       key: 'costOutput',
       label: LABEL_KEYS.outputCost,
       placeholder: FIELD_KEYS.outputCost,
-      mono: true
+      mono: true,
     },
     {
       key: 'costCacheRead',
       label: LABEL_KEYS.cacheReadCost,
       placeholder: FIELD_KEYS.cacheReadCost,
-      mono: true
+      mono: true,
     },
     {
       key: 'costCacheWrite',
       label: LABEL_KEYS.cacheWriteCost,
       placeholder: FIELD_KEYS.cacheWriteCost,
-      mono: true
-    }
+      mono: true,
+    },
   ]
 
-  const capabilities: { key: keyof ManualRegistryDraft; label: string }[] = [
+  const capabilities: { key: keyof ManualRegistryDraft, label: string }[] = [
     { key: 'inputText', label: t('models.manual.capability.textInput') },
     { key: 'inputImage', label: t('models.manual.capability.imageInput') },
     { key: 'outputText', label: t('models.manual.capability.textOutput') },
     { key: 'reasoning', label: t('models.manual.capability.reasoning') },
     { key: 'toolCall', label: t('models.manual.capability.tools') },
     { key: 'temperature', label: t('models.manual.capability.temperature') },
-    { key: 'structuredOutput', label: t('models.manual.capability.structuredOutput') }
+    { key: 'structuredOutput', label: t('models.manual.capability.structuredOutput') },
   ]
 
   return (
     <div className="grid max-h-[min(70vh,34rem)] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2">
-      {fields.map((f) => (
+      {fields.map(f => (
         <div key={f.key} className="grid gap-1.5">
           <Label className="text-[13px] font-medium">{t(f.label)}</Label>
           <Input
             value={draft[f.key]}
-            onChange={(event) => onChange({ ...draft, [f.key]: event.target.value })}
+            onChange={event => onChange({ ...draft, [f.key]: event.target.value })}
             placeholder={t(f.placeholder)}
             className={`h-8 text-[12px] ${f.mono ? 'font-mono' : ''}`}
           />
@@ -363,14 +363,14 @@ function ManualEntryForm({
 
       <div className="grid gap-2 rounded-lg bg-muted/35 p-3 sm:col-span-2">
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {capabilities.map((c) => (
+          {capabilities.map(c => (
             <label
               key={c.key}
               className="flex items-center gap-2 text-[12px] text-muted-foreground"
             >
               <Checkbox
                 checked={draft[c.key] as boolean}
-                onCheckedChange={(checked) => onChange({ ...draft, [c.key]: !!checked })}
+                onCheckedChange={checked => onChange({ ...draft, [c.key]: !!checked })}
               />
               {c.label}
             </label>
@@ -404,7 +404,7 @@ export function ModelRegistryMappingDialog({
   initialMode = 'search',
   initialRegistryModel,
   modelIdEditable = false,
-  onSaved
+  onSaved,
 }: ModelRegistryMappingDialogProps) {
   const t = useTranslation('agentManagement').t
   const queryClient = useQueryClient()
@@ -416,13 +416,12 @@ export function ModelRegistryMappingDialog({
     createManualDraftFromModel(initialRegistryModel, {
       modelId: initialModelId,
       modelLabel,
-      query: initialSearchQuery
-    })
-  )
+      query: initialSearchQuery,
+    }))
   const [saving, setSaving] = useState(false)
 
   const { results: searchResults, isPending: searchPending } = useModelSearch(
-    open ? searchQuery : ''
+    open ? searchQuery : '',
   )
 
   const close = useCallback(() => {
@@ -434,8 +433,8 @@ export function ModelRegistryMappingDialog({
       createManualDraftFromModel(initialRegistryModel, {
         modelId: initialModelId,
         modelLabel,
-        query: initialSearchQuery
-      })
+        query: initialSearchQuery,
+      }),
     )
     setSaving(false)
   }, [
@@ -444,16 +443,16 @@ export function ModelRegistryMappingDialog({
     initialRegistryModel,
     initialSearchQuery,
     modelLabel,
-    onOpenChange
+    onOpenChange,
   ])
 
   const saveMapping = useCallback(
     async (
       result: SearchResult,
       matchType: 'alias' | 'manual',
-      model?: ReturnType<typeof buildManualModelsDevModel>
+      model?: ReturnType<typeof buildManualModelsDevModel>,
     ) => {
-      if (!modelId) return
+      if (!modelId) { return }
       setSaving(true)
       const body = model
         ? { modelId, registryModelId: result.id, model }
@@ -462,39 +461,40 @@ export function ModelRegistryMappingDialog({
         await putModelRegistryMappingsByModelId({
           path: { modelId },
           body: { ...body, matchType },
-          throwOnError: true
+          throwOnError: true,
         })
         void queryClient.invalidateQueries({ queryKey: getModelRegistryMappingsQueryKey() })
         onSaved?.(modelId, result, matchType)
         setSaving(false)
         close()
-      } catch (error) {
+      }
+ catch (error) {
         toastManager.add({
           type: 'error',
-          title: error instanceof Error ? error.message : String(error)
+          title: error instanceof Error ? error.message : String(error),
         })
         setSaving(false)
       }
     },
-    [modelId, queryClient, onSaved, close]
+    [modelId, queryClient, onSaved, close],
   )
 
   const handleSelectResult = useCallback(
     (result: SearchResult) => void saveMapping(result, 'alias'),
-    [saveMapping]
+    [saveMapping],
   )
 
   const handleSaveManual = useCallback(() => {
-    if (!manualDraft.id.trim()) return
+    if (!manualDraft.id.trim()) { return }
     const manualModel = buildManualModelsDevModel(manualDraft)
     void saveMapping(
       {
         id: manualModel.id,
         label: manualModel.name,
-        capabilities: capabilitiesFromManualDraft(manualDraft)
+        capabilities: capabilitiesFromManualDraft(manualDraft),
       },
       'manual',
-      manualModel
+      manualModel,
     )
   }, [manualDraft, saveMapping])
 
@@ -507,7 +507,7 @@ export function ModelRegistryMappingDialog({
 
   if (step === 'search') {
     return (
-      <Dialog open={open} onOpenChange={(v) => !v && close()}>
+      <Dialog open={open} onOpenChange={v => !v && close()}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{t('models.mapping.dialog.title')}</DialogTitle>
@@ -515,17 +515,20 @@ export function ModelRegistryMappingDialog({
           </DialogHeader>
 
           <div className="flex flex-col gap-3">
-            {modelIdEditable ? (
+            {modelIdEditable
+? (
               <div className="grid gap-1.5">
                 <Label className="text-[13px] font-medium">{t('models.manual.label.id')}</Label>
                 <Input
                   value={editableModelId}
-                  onChange={(event) => setEditableModelId(event.target.value)}
+                  onChange={event => setEditableModelId(event.target.value)}
                   placeholder={t('models.manual.field.id')}
                   className="h-8 font-mono text-[12px]"
                 />
               </div>
-            ) : modelLabel ? (
+            )
+: modelLabel
+? (
               <div className="rounded-lg bg-muted/40 px-3 py-2">
                 <div className="truncate text-[12.5px] font-medium text-foreground">
                   {modelLabel}
@@ -534,13 +537,14 @@ export function ModelRegistryMappingDialog({
                   {initialModelId}
                 </div>
               </div>
-            ) : null}
+            )
+: null}
 
             <div className="relative">
               <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
               <Input
                 value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
+                onChange={event => setSearchQuery(event.target.value)}
                 placeholder={t('models.mapping.search.placeholder')}
                 className="h-8 pl-8 font-mono text-[12px]"
               />
@@ -550,9 +554,10 @@ export function ModelRegistryMappingDialog({
             </div>
 
             <div className="max-h-72 overflow-y-auto rounded-lg ring-1 ring-foreground/6">
-              {searchResults.length > 0 ? (
+              {searchResults.length > 0
+? (
                 <ul className="divide-y divide-foreground/4">
-                  {searchResults.map((result) => (
+                  {searchResults.map(result => (
                     <li key={`${result.source}:${result.id}`}>
                       <SearchResultItem
                         result={result}
@@ -563,7 +568,8 @@ export function ModelRegistryMappingDialog({
                     </li>
                   ))}
                 </ul>
-              ) : (
+              )
+: (
                 <div className="px-4 py-8 text-center text-[12px] text-muted-foreground">
                   {searchPending ? t('models.mapping.searching') : t('models.mapping.emptyResults')}
                 </div>
@@ -588,7 +594,7 @@ export function ModelRegistryMappingDialog({
   // ── Manual entry step ────────────────────────────────────────────────────
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && close()}>
+    <Dialog open={open} onOpenChange={v => !v && close()}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>

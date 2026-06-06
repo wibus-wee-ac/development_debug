@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { defineTab } from '@cradle/tabs-next'
 import { HomeIcon } from 'lucide-react'
 import { lazy } from 'react'

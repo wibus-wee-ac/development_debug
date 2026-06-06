@@ -6,6 +6,7 @@ import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
+
 import { readSystemAgentContextItems } from './system-context-provider'
 
 describe('jarvis context registry', () => {

@@ -9,13 +9,14 @@ import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { RuntimeKind, SkillInventoryEntry } from '~/lib/types'
+
 import type { SendMessageOptions } from './use-chat-session'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
-type SessionProviderModelPatch =
-  | { providerTargetId: string, modelId: string }
-  | { modelId: string | null }
+type SessionProviderModelPatch
+  = | { providerTargetId: string, modelId: string }
+    | { modelId: string | null }
 
 interface SessionProviderModelSaveState {
   queue: Promise<void>
@@ -30,7 +31,6 @@ export function ChatRuntimeView({
   runtimeKind,
   workspaceId,
   agentId,
-  onSideChatCreated,
 }: {
   sessionId: string
   sessionProviderTargetId: string | null
@@ -38,7 +38,6 @@ export function ChatRuntimeView({
   runtimeKind: RuntimeKind | undefined
   workspaceId: string | null
   agentId: string | null
-  onSideChatCreated?: (sessionId: string) => void
 }) {
   const queryClient = useQueryClient()
   const composerResetKey = [
@@ -60,7 +59,7 @@ export function ChatRuntimeView({
   const composerSelectionPending = pendingProviderTargetId !== null
     && composerState.selection.profileId === pendingProviderTargetId
     && !composerState.selection.modelId
-  const providerModelSaveStateBySessionRef = useRef(new Map<string, SessionProviderModelSaveState>())
+  const providerModelSaveStateRef = useRef<SessionProviderModelSaveState | null>(null)
   const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!workspaceId) {
       return []
@@ -96,9 +95,9 @@ export function ChatRuntimeView({
     thinkingEffort: undefined as SendMessageOptions['thinkingEffort'],
   })
   useLayoutEffect(() => {
-      const hasPendingProviderSelection = pendingProviderTargetId !== null
-        && composerState.selection.profileId === pendingProviderTargetId
-        && !composerState.selection.modelId
+    const hasPendingProviderSelection = pendingProviderTargetId !== null
+      && composerState.selection.profileId === pendingProviderTargetId
+      && !composerState.selection.modelId
     sendOverridesRef.current = {
       providerTargetId: hasPendingProviderSelection ? undefined : composerState.selection.profileId ?? undefined,
       modelId: composerState.selection.modelId ?? undefined,
@@ -110,14 +109,14 @@ export function ChatRuntimeView({
     const targetSessionId = sessionId
     const previousSessionKey = getSessionsByIdQueryKey({ path: { id: targetSessionId } })
     const previousSession = queryClient.getQueryData(previousSessionKey)
-    let saveState = providerModelSaveStateBySessionRef.current.get(targetSessionId)
+    let saveState = providerModelSaveStateRef.current
     if (!saveState) {
       saveState = {
         queue: Promise.resolve(),
         revision: 0,
         confirmedSession: previousSession,
       }
-      providerModelSaveStateBySessionRef.current.set(targetSessionId, saveState)
+      providerModelSaveStateRef.current = saveState
     }
     const revision = saveState.revision + 1
     saveState.revision = revision
@@ -140,7 +139,7 @@ export function ChatRuntimeView({
             path: { id: targetSessionId },
             body,
           })
-          const currentSaveState = providerModelSaveStateBySessionRef.current.get(targetSessionId)
+          const currentSaveState = providerModelSaveStateRef.current
           if (data && currentSaveState) {
             currentSaveState.confirmedSession = data
           }
@@ -150,7 +149,7 @@ export function ChatRuntimeView({
           }
         }
         catch {
-          const currentSaveState = providerModelSaveStateBySessionRef.current.get(targetSessionId)
+          const currentSaveState = providerModelSaveStateRef.current
           if (currentSaveState?.revision === revision) {
             queryClient.setQueryData(previousSessionKey, currentSaveState.confirmedSession ?? previousSession)
             void queryClient.invalidateQueries({ queryKey: previousSessionKey })
@@ -165,10 +164,6 @@ export function ChatRuntimeView({
     saveState.queue = saveTask.catch(() => undefined)
     return saveTask
   }, [queryClient, sessionId])
-
-  useEffect(() => {
-    setPendingProviderTargetId(null)
-  }, [sessionId])
 
   useEffect(() => {
     if (!pendingProviderTargetId) {
@@ -232,7 +227,6 @@ export function ChatRuntimeView({
   return (
     <Suspense fallback={null}>
       <ChatView
-        key={sessionId}
         sessionId={sessionId}
         runtimeKind={runtimeKind}
         workspaceId={workspaceId}
@@ -242,7 +236,6 @@ export function ChatRuntimeView({
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}
         composerSelectionPending={composerSelectionPending}
-        onSideChatCreated={onSideChatCreated}
       />
     </Suspense>
   )

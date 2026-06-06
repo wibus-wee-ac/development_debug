@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { FolderOpenIcon } from 'lucide-react'

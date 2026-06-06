@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
-import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { Agent } from '~/features/agent-runtime/use-agents'
+import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
 import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { useNewChatStore } from '~/store/new-chat'
 
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'
-import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
 import type { RuntimeKindOption } from './constants'
+import { filterThinkingOptionsForModel, THINKING_EFFORTS } from './constants'
 import type { ThinkingOption } from './provider-model-menu'
 import type { ComposerContext, ComposerSelection, ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
 
@@ -85,14 +85,11 @@ export function resolveChatModelId(input: {
   const canUseBoundAgentModel = !manualProfileId || manualProfileId === boundAgentProviderTargetId
   const canUseBoundSessionModel = !manualProfileId || manualProfileId === boundProviderTargetId
 
-  if (canUseBoundAgentModel && boundAgentModelId && models.some(model => model.id === boundAgentModelId)) {
-    return boundAgentModelId
-  }
   if (canUseBoundSessionModel && boundModelId && models.some(model => model.id === boundModelId)) {
     return boundModelId
   }
-  if (canUseBoundSessionModel && boundModelId) {
-    return boundModelId
+  if (canUseBoundAgentModel && boundAgentModelId && models.some(model => model.id === boundAgentModelId)) {
+    return boundAgentModelId
   }
   return models[0]?.id ?? null
 }

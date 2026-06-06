@@ -39,10 +39,10 @@ interface SubscribeChatSessionStreamArgs {
   signal?: AbortSignal
 }
 
-type BufferedDesktopEvent =
-  | { kind: 'chunk', event: DesktopChatStreamChunkEvent }
-  | { kind: 'closed', event: DesktopChatStreamClosedEvent }
-  | { kind: 'error', event: DesktopChatStreamErrorEvent }
+type BufferedDesktopEvent
+  = | { kind: 'chunk', event: DesktopChatStreamChunkEvent }
+    | { kind: 'closed', event: DesktopChatStreamClosedEvent }
+    | { kind: 'error', event: DesktopChatStreamErrorEvent }
 
 interface DesktopStreamState {
   controller: ReadableStreamDefaultController<UIMessageChunk>
@@ -52,9 +52,9 @@ interface DesktopStreamState {
   closed: boolean
 }
 
-type UIMessageChunkValidationResult =
-  | { success: true, value: UIMessageChunk }
-  | { success: false, error: unknown }
+type UIMessageChunkValidationResult
+  = | { success: true, value: UIMessageChunk }
+    | { success: false, error: unknown }
 
 interface UIMessageChunkValidator {
   validate?: (value: unknown) => UIMessageChunkValidationResult | PromiseLike<UIMessageChunkValidationResult>

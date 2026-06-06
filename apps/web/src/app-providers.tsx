@@ -1,7 +1,7 @@
 import { domAnimation, LazyMotion } from 'motion/react'
 import { useEffect } from 'react'
 
-import { ToastProvider, toastManager } from '~/components/ui/toast'
+import { toastManager, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
 import { subscribeDesktopQuitGuardArmed } from '~/lib/electron'

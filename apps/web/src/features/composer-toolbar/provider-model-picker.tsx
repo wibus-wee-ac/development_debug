@@ -2,9 +2,9 @@ import { CpuIcon } from 'lucide-react'
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { ProviderIcon } from '~/components/common/provider-icons'
 import type { ModelDescriptor } from '~/lib/types'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
@@ -29,6 +29,7 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
   menuAlign?: 'start' | 'center' | 'end'
   triggerTestId?: string
   disabled?: boolean
+  showProviderLabel?: boolean
   leadingSelection?: {
     label: string
     description?: string
@@ -59,6 +60,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   menuAlign = 'start',
   triggerTestId = 'provider-model-selector',
   disabled = false,
+  showProviderLabel = false,
   leadingSelection,
   getThinkingOptionsForModel,
   onRequestProviderTargetModels,
@@ -85,18 +87,27 @@ export function ProviderModelPicker<TThinking extends string | null>({
   const thinkingLabel = hasAdjustableThinking
     ? triggerThinkingOptions.find(option => option.value === thinkingValue)?.label ?? null
     : null
+  const providerLabel = showProviderLabel ? selectedProviderTarget?.name ?? null : null
   const modelLabel = selectedModel?.label
     ?? selectedModelId
     ?? (isLoadingSelectedModels ? loadingLabel ?? t('status.loading') : emptySelectionLabel ?? t('model.emptySelection'))
 
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} />}>
+      <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} className="min-w-0 max-w-full shrink" />}>
         {selectedProviderTarget
           ? <ProviderIcon iconSlug={selectedProviderTarget.iconSlug} presetId={presetForProviderKind(selectedProviderTarget.providerKind).id} className="size-3.5 shrink-0" />
           : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
-        <span className="max-w-40 truncate">
-          {modelLabel}
+        <span className="flex min-w-0 max-w-64 items-center gap-1">
+          {providerLabel && (
+            <>
+              <span className="min-w-0 max-w-[7.5rem] truncate text-muted-foreground/80">{providerLabel}</span>
+              <span className="shrink-0 text-muted-foreground/40">/</span>
+            </>
+          )}
+          <span className="min-w-0 max-w-40 truncate">
+            {modelLabel}
+          </span>
         </span>
         {thinkingLabel && (
           <>

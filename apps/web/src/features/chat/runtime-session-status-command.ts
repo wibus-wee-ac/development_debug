@@ -1,5 +1,5 @@
-import type { RuntimeKind } from '~/lib/types'
 import { getServerUrl } from '~/lib/electron'
+import type { RuntimeKind } from '~/lib/types'
 
 import type { ChatRuntimeSettings } from './chat-response-command'
 

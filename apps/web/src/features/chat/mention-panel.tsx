@@ -48,6 +48,10 @@ export function MentionPanel({ items, query, searchItems, onSelect, onTabComplet
         visible={visible}
         maxResults={MAX_RESULTS}
         emptyLogLabel="workspace files"
+        rankFields={item => [
+          { value: item.name, role: 'primary' },
+          { value: item.path, role: 'path' },
+        ]}
         renderItem={({ item, positions }) => (
           <>
             {item.type === 'directory'

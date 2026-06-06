@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createContextRegistry } from '~/features/context/context-registry'
+
 import {
   addCurrentTextSelectionAttachment,
   addExplicitContextAttachment,

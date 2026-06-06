@@ -1,12 +1,12 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { ThreadBrowserState } from '~/store/browser-panel'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 
 import { BrowserPanel } from './browser-panel'
 
 const diffViewerRender = vi.hoisted(() => vi.fn())
-const submitChatPromptIngressMock = vi.hoisted(() => vi.fn())
 
 type TestWebviewPrototype = HTMLElement & {
   loadURL?: (url: string) => Promise<void>
@@ -39,6 +39,103 @@ function installTestWebviewPrototype() {
   return { loadURL }
 }
 
+class TestResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+function createTestThreadState(threadId: string, url = 'about:blank', version = 1): ThreadBrowserState {
+  return {
+    threadId,
+    version,
+    open: true,
+    activeTabId: 'native-tab-1',
+    tabs: [{
+      id: 'native-tab-1',
+      url,
+      title: url === 'about:blank' ? 'New tab' : 'example.com',
+      status: 'live',
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      faviconUrl: null,
+      lastCommittedUrl: url === 'about:blank' ? null : url,
+      lastError: null,
+    }],
+    lastError: null,
+  }
+}
+
+function createClosedThreadState(threadId: string): ThreadBrowserState {
+  return {
+    threadId,
+    version: 0,
+    open: false,
+    activeTabId: null,
+    tabs: [],
+    lastError: null,
+  }
+}
+
+function installTestBrowserBridge() {
+  const states = new Map<string, ThreadBrowserState>()
+  const listeners = new Set<(state: ThreadBrowserState) => void>()
+  const open = vi.fn(async (input: { threadId: string, initialUrl?: string }) => {
+    const state = createTestThreadState(input.threadId, input.initialUrl ?? 'about:blank')
+    states.set(input.threadId, state)
+    for (const listener of listeners) {
+      listener(state)
+    }
+    return state
+  })
+  const getState = vi.fn(async (input: { threadId: string }) =>
+    states.get(input.threadId) ?? createClosedThreadState(input.threadId))
+  const bridge = {
+    open,
+    close: vi.fn(async (input: { threadId: string }) => {
+      const state = createClosedThreadState(input.threadId)
+      states.set(input.threadId, state)
+      return state
+    }),
+    hide: vi.fn(async () => {}),
+    getState,
+    setBounds: vi.fn(),
+    captureScreenshot: vi.fn(),
+    copyScreenshotToClipboard: vi.fn(),
+    executeCdp: vi.fn(),
+    discoverLocalServers: vi.fn(async () => []),
+    navigate: vi.fn(async (input: { threadId: string, url: string }) => {
+      const state = createTestThreadState(input.threadId, input.url, 2)
+      states.set(input.threadId, state)
+      return state
+    }),
+    reload: vi.fn(async (input: { threadId: string }) => states.get(input.threadId) ?? createClosedThreadState(input.threadId)),
+    goBack: vi.fn(async (input: { threadId: string }) => states.get(input.threadId) ?? createClosedThreadState(input.threadId)),
+    goForward: vi.fn(async (input: { threadId: string }) => states.get(input.threadId) ?? createClosedThreadState(input.threadId)),
+    newTab: vi.fn(async (input: { threadId: string, url?: string }) => {
+      const state = createTestThreadState(input.threadId, input.url ?? 'about:blank', 2)
+      states.set(input.threadId, state)
+      return state
+    }),
+    closeTab: vi.fn(async (input: { threadId: string }) => states.get(input.threadId) ?? createClosedThreadState(input.threadId)),
+    selectTab: vi.fn(async (input: { threadId: string }) => states.get(input.threadId) ?? createClosedThreadState(input.threadId)),
+    openDevTools: vi.fn(async () => {}),
+    onState: vi.fn((handler: (state: ThreadBrowserState) => void) => {
+      listeners.add(handler)
+      return () => {
+        listeners.delete(handler)
+      }
+    }),
+  }
+
+  window.cradle = {
+    browser: bridge,
+  } as unknown as Window['cradle']
+
+  return bridge
+}
+
 vi.mock('./workspace-diff-viewer', () => ({
   WorkspaceDiffViewer: (props: { tabId: string, workspaceId: string, paths?: string[] }) => {
     diffViewerRender(props)
@@ -46,8 +143,9 @@ vi.mock('./workspace-diff-viewer', () => ({
   },
 }))
 
-vi.mock('~/features/chat/prompt-ingress', () => ({
-  submitChatPromptIngress: submitChatPromptIngressMock,
+vi.mock('~/lib/electron', async importOriginal => ({
+  ...(await importOriginal<typeof import('~/lib/electron')>()),
+  isElectron: true,
 }))
 
 vi.mock('~/features/workspace/workspace-file-editor', () => ({
@@ -59,11 +157,13 @@ vi.mock('~/features/workspace/workspace-file-preview', () => ({
 }))
 
 describe('browserPanel rendering', () => {
+  let browserBridge: ReturnType<typeof installTestBrowserBridge>
+
   beforeEach(() => {
     cleanup()
     diffViewerRender.mockClear()
-    submitChatPromptIngressMock.mockReset()
-    submitChatPromptIngressMock.mockReturnValue(true)
+    vi.stubGlobal('ResizeObserver', TestResizeObserver)
+    browserBridge = installTestBrowserBridge()
     installTestWebviewPrototype()
     useBrowserPanelStore.setState({
       activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
@@ -132,20 +232,24 @@ describe('browserPanel rendering', () => {
     expect(screen.queryByLabelText(/From /)).toBeNull()
   })
 
-  it('does not reload a browser webview after unrelated tab state updates', () => {
-    const webview = installTestWebviewPrototype()
-    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+  it('opens requested native browser tabs once after unrelated tab state updates', async () => {
+    useBrowserPanelStore.getState().requestTab('https://example.com')
 
     render(<BrowserPanel />)
 
-    expect(webview.loadURL).toHaveBeenCalledTimes(1)
-    expect(webview.loadURL).toHaveBeenCalledWith('https://example.com')
-
-    act(() => {
-      useBrowserPanelStore.getState().updateTab(tabId, { loading: true })
+    await waitFor(() => {
+      expect(browserBridge.open).toHaveBeenCalledTimes(1)
+    })
+    expect(browserBridge.open).toHaveBeenCalledWith({
+      threadId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+      initialUrl: 'https://example.com',
     })
 
-    expect(webview.loadURL).toHaveBeenCalledTimes(1)
+    act(() => {
+      useBrowserPanelStore.getState().updateTab('native-tab-1', { loading: true })
+    })
+
+    expect(browserBridge.open).toHaveBeenCalledTimes(1)
   })
 
   it('does not imperatively reload the initial about blank webview', () => {
@@ -168,58 +272,4 @@ describe('browserPanel rendering', () => {
     expect(webview.loadURL).not.toHaveBeenCalled()
   })
 
-  it('forwards window.codex.sendPrompt payloads to the tab source session', () => {
-    useBrowserPanelStore.getState().createTab('https://example.com', {
-      sessionId: 'session-a',
-      sessionTitle: 'Session A',
-    })
-
-    render(<BrowserPanel activeSessionId="session-b" activeSessionTitle="Session B" />)
-    const webview = document.querySelector('webview')
-    expect(webview).not.toBeNull()
-
-    const event = new Event('ipc-message') as Event & { args: unknown[], channel: string }
-    event.channel = 'cradle:send-prompt'
-    event.args = [{
-      text: 'Improve this design.',
-      attachments: [{
-        filename: 'screen.png',
-        mediaType: 'image/png',
-        url: 'data:image/png;base64,abc',
-      }],
-    }]
-    act(() => {
-      webview!.dispatchEvent(event)
-    })
-
-    expect(submitChatPromptIngressMock).toHaveBeenCalledWith('session-a', {
-      text: 'Improve this design.',
-      files: [{
-        type: 'file',
-        filename: 'screen.png',
-        mediaType: 'image/png',
-        url: 'data:image/png;base64,abc',
-      }],
-    })
-  })
-
-  it('falls back to the active chat session for window.codex.sendPrompt payloads', () => {
-    useBrowserPanelStore.getState().createTab('https://example.com')
-
-    render(<BrowserPanel activeSessionId="session-active" activeSessionTitle="Active" />)
-    const webview = document.querySelector('webview')
-    expect(webview).not.toBeNull()
-
-    const event = new Event('ipc-message') as Event & { args: unknown[], channel: string }
-    event.channel = 'cradle:send-prompt'
-    event.args = [{ text: 'Send from page.' }]
-    act(() => {
-      webview!.dispatchEvent(event)
-    })
-
-    expect(submitChatPromptIngressMock).toHaveBeenCalledWith('session-active', {
-      text: 'Send from page.',
-      files: [],
-    })
-  })
 })

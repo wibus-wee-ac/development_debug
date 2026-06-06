@@ -121,6 +121,7 @@ export function ComposerAttachmentList({
           {attachments.map((attachment, index) => {
             const label = attachment.filename ?? attachment.mediaType
             const isImage = attachment.mediaType.startsWith('image/')
+            const isFileUrl = attachment.url.startsWith('file://')
             const appshotMetadata = readCradleAppshotMetadata(attachment)
             if (appshotMetadata) {
               return (
@@ -138,13 +139,14 @@ export function ComposerAttachmentList({
                 key={`${attachment.url}-${attachment.filename ?? attachment.mediaType}`}
                 className="flex max-w-64 items-center gap-2 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground"
                 data-chat-attachment-chip
-                data-chat-image-attachment-chip={isImage ? true : undefined}
+                data-chat-image-attachment-chip={isImage && !isFileUrl ? true : undefined}
+                data-chat-file-path-chip={isFileUrl ? true : undefined}
                 data-testid="chat-attachment-chip"
                 initial={{ opacity: 0, scale: 0.98, y: 4 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
               >
-                {isImage
+                {isImage && !isFileUrl
                   ? (
                       <img
                         src={attachment.url}

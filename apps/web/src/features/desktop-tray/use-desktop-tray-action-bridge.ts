@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from 'react'
 
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { usePluginStore } from '~/lib/plugin-store'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 
 import type { TrayActionRequest } from './types'

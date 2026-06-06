@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { ModelDescriptor } from '~/lib/types'
@@ -55,16 +56,50 @@ export function ProviderModelSelector({
 }: ProviderModelSelectorProps) {
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
-  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map((option) => {
-    const key = option.value
-    return {
-      value: key,
-      label: t(thinkingLabelKeys[key]),
-      description: t(thinkingDescriptionKeys[key]),
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(
+    () => THINKING_EFFORTS.map((option) => {
+      const key = option.value
+      return {
+        value: key,
+        label: t(thinkingLabelKeys[key]),
+        description: t(thinkingDescriptionKeys[key]),
+      }
+    }),
+    [t],
+  )
+  const selectThinkingForModel = useCallback(
+    (model: ModelDescriptor | null): ThinkingEffort =>
+      selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high'),
+    [thinkingEffort, thinkingOptions],
+  )
+
+  // Track pending provider selection to auto-select first model after load
+  const pendingProviderSelectionRef = useRef<string | null>(null)
+
+  // Auto-select first model when a new provider's models finish loading
+  useEffect(() => {
+    const pendingProfileId = pendingProviderSelectionRef.current
+    if (!pendingProfileId) {
+      return
     }
-  })
-  const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
-    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
+
+    // Check if this provider's models have finished loading
+    const isLoading = loadingProfileIds.has(pendingProfileId)
+    if (isLoading) {
+      return
+    }
+
+    // Clear the pending selection
+    pendingProviderSelectionRef.current = null
+
+    // Auto-select the first model if available
+    const loadedModels = modelsByProfileId[pendingProfileId] ?? []
+    if (loadedModels.length > 0) {
+      const firstModel = loadedModels[0]
+      onSelectModel(firstModel.id, pendingProfileId)
+      onSelectThinkingEffort(selectThinkingForModel(firstModel))
+    }
+  }, [loadingProfileIds, modelsByProfileId, onSelectModel, onSelectThinkingEffort, selectThinkingForModel])
 
   return (
     <ProviderModelPicker
@@ -78,15 +113,14 @@ export function ProviderModelSelector({
       thinkingOptions={thinkingOptions}
       isLoadingSelectedModels={isLoadingModels}
       emptyProviderTargetsLabel={t('model.noProviderTargets')}
+      showProviderLabel
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
       onRequestProviderTargetModels={requestProfileModels}
       onSelectProviderTarget={(id) => {
         requestProfileModels(id)
         onSelectProfile(id)
-        const nextModels = modelsByProfileId[id] ?? []
-        if (nextModels.length > 0) {
-          onSelectThinkingEffort(selectThinkingForModel(nextModels[0] ?? null))
-        }
+        // Mark this provider as pending - will auto-select first model after load
+        pendingProviderSelectionRef.current = id
       }}
       onSelectModel={(id, profileId) => {
         if (id) {

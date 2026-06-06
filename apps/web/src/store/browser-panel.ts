@@ -21,7 +21,6 @@ const BROWSER_PANEL_TAB_SHORTCUT_KEYS = new Set(['0', '1', '2', '3', '4', '5', '
 interface BrowserPanelPersistedState {
   recentHistoryByOwnerId?: Record<string, BrowserHistoryEntry[]>
   annotationTrayCollapsedByOwnerId?: Record<string, boolean>
-  annotationCoachmarkDismissedByOwnerId?: Record<string, boolean>
 }
 
 export type BrowserPanelScriptRunAt = 'document-start' | 'document-end' | 'document-idle'
@@ -103,7 +102,23 @@ export interface BrowserSubagentTab {
   favicon: null
 }
 
-export type BrowserPanelTab = BrowserWebTab | BrowserWorkspaceFileTab | BrowserWorkspaceDiffTab | BrowserSubagentTab
+export interface BrowserSideConversationTab {
+  kind: 'side-conversation'
+  id: string
+  parentSessionId: string
+  sideConversationId: string
+  providerSessionId: string | null
+  title: string
+  loading: false
+  favicon: null
+}
+
+export type BrowserPanelTab
+  = | BrowserWebTab
+    | BrowserWorkspaceFileTab
+    | BrowserWorkspaceDiffTab
+    | BrowserSubagentTab
+    | BrowserSideConversationTab
 
 export interface BrowserHistoryEntry {
   url: string
@@ -245,6 +260,14 @@ export interface BrowserAnnotationRecord {
 
 export type BrowserAnnotationInteractionMode = 'browse' | 'comment'
 
+export interface BrowserAnnotationAdjustmentSession {
+  ownerId: string
+  tabId: string
+  annotationId: string | null
+  selectedElement: BrowserAnnotationElement | null
+  designChanges: BrowserAnnotationDesignChange
+}
+
 export interface BrowserPanelCloseTabResult {
   closed: boolean
   closedLastTab: boolean
@@ -282,7 +305,7 @@ interface BrowserPanelState {
   recentHistoryByOwnerId: Record<string, BrowserHistoryEntry[] | undefined>
   annotationInteractionModeByOwnerId: Record<string, BrowserAnnotationInteractionMode | undefined>
   annotationTrayCollapsedByOwnerId: Record<string, boolean | undefined>
-  annotationCoachmarkDismissedByOwnerId: Record<string, boolean | undefined>
+  annotationAdjustmentSession: BrowserAnnotationAdjustmentSession | null
   setActiveOwner: (ownerId: string | null | undefined) => void
   upsertOwnerState: (state: ThreadBrowserState) => void
   removeOwnerState: (ownerId: string) => void
@@ -318,6 +341,13 @@ interface BrowserPanelState {
     agentRole?: string | null
     ownerId?: string | null
   }) => string
+  openSideConversationTab: (input: {
+    parentSessionId: string
+    sideConversationId: string
+    providerSessionId?: string | null
+    title: string
+    ownerId?: string | null
+  }) => string
   requestScrollToFilePath: (input: { path: string, tabId: string }) => void
   clearScrollToFilePath: (ownerId?: string | null) => void
   saveAnnotation: (
@@ -338,7 +368,8 @@ interface BrowserPanelState {
     collapsed: boolean,
     ownerId?: string | null,
   ) => void
-  dismissAnnotationCoachmark: (ownerId?: string | null) => void
+  setAnnotationAdjustmentSession: (session: BrowserAnnotationAdjustmentSession | null) => void
+  updateAnnotationAdjustmentDesignChanges: (changes: Partial<BrowserAnnotationDesignChange>) => void
 }
 
 let localTabCounter = 0
@@ -557,7 +588,7 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
       recentHistoryByOwnerId: {},
       annotationInteractionModeByOwnerId: {},
       annotationTrayCollapsedByOwnerId: {},
-      annotationCoachmarkDismissedByOwnerId: {},
+      annotationAdjustmentSession: null,
 
       setActiveOwner: (ownerIdInput) => {
         const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput)
@@ -830,6 +861,43 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         return tab.id
       },
 
+      openSideConversationTab: ({
+        parentSessionId,
+        sideConversationId,
+        providerSessionId,
+        title,
+        ownerId: ownerIdInput,
+      }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const ownerState = getOwnerState(get(), ownerId)
+        const existing = ownerState.tabs.find(
+          tab => tab.kind === 'side-conversation' && tab.sideConversationId === sideConversationId,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserSideConversationTab = {
+          kind: 'side-conversation',
+          id: `side:${sideConversationId}`,
+          parentSessionId,
+          sideConversationId,
+          providerSessionId: providerSessionId ?? null,
+          title,
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
       requestScrollToFilePath: ({ path, tabId }) => {
         set((state) => {
           const ownerEntry = Object.entries(state.owners).find(([, ownerState]) =>
@@ -932,14 +1000,24 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           },
         }))
       },
-      dismissAnnotationCoachmark: (ownerIdInput) => {
-        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
-        set(state => ({
-          annotationCoachmarkDismissedByOwnerId: {
-            ...state.annotationCoachmarkDismissedByOwnerId,
-            [ownerId]: true,
-          },
-        }))
+      setAnnotationAdjustmentSession: (session) => {
+        set({ annotationAdjustmentSession: session })
+      },
+      updateAnnotationAdjustmentDesignChanges: (changes) => {
+        set((state) => {
+          if (!state.annotationAdjustmentSession) {
+            return state
+          }
+          return {
+            annotationAdjustmentSession: {
+              ...state.annotationAdjustmentSession,
+              designChanges: {
+                ...state.annotationAdjustmentSession.designChanges,
+                ...changes,
+              },
+            },
+          }
+        })
       },
     }),
     {
@@ -948,7 +1026,6 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
       partialize: state => ({
         recentHistoryByOwnerId: state.recentHistoryByOwnerId,
         annotationTrayCollapsedByOwnerId: state.annotationTrayCollapsedByOwnerId,
-        annotationCoachmarkDismissedByOwnerId: state.annotationCoachmarkDismissedByOwnerId,
       }),
       merge: (persisted, current) => ({
         ...current,
@@ -956,8 +1033,6 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           ?.recentHistoryByOwnerId ?? {},
         annotationTrayCollapsedByOwnerId: (persisted as BrowserPanelPersistedState | undefined)
           ?.annotationTrayCollapsedByOwnerId ?? {},
-        annotationCoachmarkDismissedByOwnerId: (persisted as BrowserPanelPersistedState | undefined)
-          ?.annotationCoachmarkDismissedByOwnerId ?? {},
       }),
     },
   ),

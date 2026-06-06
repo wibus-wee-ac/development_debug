@@ -31,13 +31,13 @@ import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
-import type { GitRemote, GitStatus } from '~/lib/types'
 import { cn } from '~/lib/cn'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
+import type { GitRemote, GitStatus } from '~/lib/types'
 
 import {
-  describeGitHubAwaitTargetInputIssue,
   derivePullRequestNumberFromStatus,
+  describeGitHubAwaitTargetInputIssue,
   parseGitHubAwaitTargetInput,
   parseGitHubRepositoryInput,
   selectGitHubRepository,

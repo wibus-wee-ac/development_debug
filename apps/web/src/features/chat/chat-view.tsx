@@ -33,7 +33,7 @@ import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
-import type { ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
+import type { ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
@@ -52,6 +52,7 @@ import type { ChatQueueItem, SendMessageOptions } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
+import { useQuickQuestion } from './use-quick-question'
 import { useRuntimeSettings } from './use-runtime-settings'
 import { useSessionAwaitSummary } from './use-session-await'
 
@@ -81,7 +82,6 @@ interface ChatViewProps {
   placeholder?: string
   runtimeKind?: RuntimeKind
   workspaceId?: string | null
-  onSideChatCreated?: (sessionId: string) => void
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -93,8 +93,17 @@ const ChatMessageListPane = memo(({
   status,
   error,
   isReady,
-  scrollRuntime,
+  scrollContainerRef,
+  viewportRef,
+  virtualizerRef,
+  minimapRef,
+  keepMountedIndices,
+  scrollMetrics,
+  onVirtualScroll,
+  onScrollToMessageIndex,
+  onScrollToOffset,
   onToolApprovalResponse,
+  onRuntimeUserInputSubmit,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -102,18 +111,27 @@ const ChatMessageListPane = memo(({
   status: ReturnType<typeof useChatSession>['status']
   error: ReturnType<typeof useChatSession>['error']
   isReady: boolean
-  scrollRuntime: ChatScrollRuntime
+  scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
+  viewportRef: ChatScrollRuntime['viewportRef']
+  virtualizerRef: ChatScrollRuntime['virtualizerRef']
+  minimapRef: ChatScrollRuntime['minimapRef']
+  keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
+  scrollMetrics: ChatScrollRuntime['metrics']
+  onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
+  onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
+  onScrollToOffset: ChatScrollRuntime['scrollToOffset']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  onRuntimeUserInputSubmit: ReturnType<typeof useChatSession>['submitPendingUserInput']
 }) => {
   const { t } = useTranslation('chat')
 
   return (
-    <div ref={scrollRuntime.scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
+    <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
       <ScrollArea
-        viewportRef={scrollRuntime.viewportRef}
+        viewportRef={viewportRef}
         className="h-full **:data-[slot=scroll-area-scrollbar]:flex **:data-[slot=scroll-area-scrollbar]:opacity-100 **:data-[slot=scroll-area-thumb]:bg-foreground/25"
       >
-        <div className="mx-auto max-w-208 px-4 pr-12 pt-4">
+        <div className="mx-auto max-w-[90%] px-4 pr-12 pt-4">
           {messageCount === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
               <p className="select-none text-sm text-muted-foreground">
@@ -123,11 +141,11 @@ const ChatMessageListPane = memo(({
           )}
 
           <Virtualizer
-            ref={scrollRuntime.virtualizerRef}
-            scrollRef={scrollRuntime.viewportRef}
+            ref={virtualizerRef}
+            scrollRef={viewportRef}
             startMargin={24}
-            keepMounted={scrollRuntime.keepMountedIndices}
-            onScroll={scrollRuntime.handleVirtualScroll}
+            keepMounted={keepMountedIndices}
+            onScroll={onVirtualScroll}
           >
             {messageIds.map(messageId => (
               <MessageBubbleById
@@ -135,6 +153,7 @@ const ChatMessageListPane = memo(({
                 sessionId={sessionId}
                 messageId={messageId}
                 onToolApprovalResponse={onToolApprovalResponse}
+                onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
               />
             ))}
           </Virtualizer>
@@ -160,13 +179,13 @@ const ChatMessageListPane = memo(({
       </ScrollArea>
 
       <ChatMinimap
-        ref={scrollRuntime.minimapRef}
+        ref={minimapRef}
         sessionId={sessionId}
         messageIds={messageIds}
-        scrollHeight={scrollRuntime.metrics.scrollHeight}
-        viewportHeight={scrollRuntime.metrics.viewportHeight}
-        onScrollToIndex={scrollRuntime.scrollToMessageIndex}
-        onScrollTo={scrollRuntime.scrollToOffset}
+        scrollHeight={scrollMetrics.scrollHeight}
+        viewportHeight={scrollMetrics.viewportHeight}
+        onScrollToIndex={onScrollToMessageIndex}
+        onScrollTo={onScrollToOffset}
       />
     </div>
   )
@@ -218,8 +237,10 @@ function ChatComposerSection({
   contextBar,
   droppedPath,
   goalActions,
+  quickQuestionSlot,
   reviewSlot,
   usageSlot,
+  onQuickQuestion,
   onComposerFocusChange,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
@@ -243,13 +264,15 @@ function ChatComposerSection({
     onResume: (state: ChatRuntimeGoalUiSlotState) => void
     onClear: (state: ChatRuntimeGoalUiSlotState) => void
   }
+  quickQuestionSlot?: ComposerQuickQuestionSlotActions
   reviewSlot: ComposerReviewSlotActions
   usageSlot: ComposerUsageSlotActions
+  onQuickQuestion?: (question: string) => void
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
-    <div className="shrink-0 bg-tra px-4 pb-3">
-      <div className="mx-auto max-w-208">
+    <div className="shrink-0 bg-transparent px-4 pb-3">
+      <div className="mx-auto max-w-208 bg-transparent">
         <ChatAwaitBanner awaitSummary={awaitSummary} />
         <ChatQueueList
           items={queueItems}
@@ -261,6 +284,7 @@ function ChatComposerSection({
           slots={composerRuntime.uiSlots}
           states={composerRuntime.slotStates}
           actions={goalActions}
+          quickQuestion={quickQuestionSlot}
           review={reviewSlot}
           usage={usageSlot}
         />
@@ -270,6 +294,7 @@ function ChatComposerSection({
             stop: composerRuntime.stop,
             isStreaming: composerRuntime.isStreaming,
             disabled: composerRuntime.disabled,
+            onQuickQuestion,
           }}
           commands={{
             commands: composerRuntime.slashCommands,
@@ -295,6 +320,7 @@ function ChatComposerSection({
             availableFiles,
             searchFiles,
             searchSkills,
+            textareaRows: 1,
             onFocusChange: onComposerFocusChange,
             sessionTokens: composerRuntime.tokenUsage.tokens,
             sessionContextWindow: composerRuntime.tokenUsage.contextWindow,
@@ -318,7 +344,6 @@ export function ChatView({
   placeholder,
   runtimeKind: _runtimeKind,
   workspaceId,
-  onSideChatCreated,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const {
@@ -329,6 +354,7 @@ export function ChatView({
     error,
     sendMessage,
     respondToToolApproval,
+    submitPendingUserInput,
     stop,
     isReady,
     queueItems,
@@ -362,20 +388,21 @@ export function ChatView({
     active: tabFrameActive,
     supportsAttachments: composerRuntime.supportsAttachments,
   })
-  const originalComposerSend = composerRuntime.send
-  const composerSend = useCallback(async (
-    ...args: Parameters<ChatComposerRuntime['send']>
-  ) => {
-    const result = await originalComposerSend(...args)
-    if (result?.kind === 'side-chat') {
-      onSideChatCreated?.(result.sessionId)
-    }
-    return result
-  }, [onSideChatCreated, originalComposerSend])
+  const quickQuestion = useQuickQuestion({
+    sessionId: sessionId ?? '',
+    apiBaseUrl: getServerUrl(),
+  })
+  const quickQuestionSlot = useMemo<ComposerQuickQuestionSlotActions>(() => ({
+    open: Boolean(sessionId) && quickQuestion.open,
+    question: quickQuestion.question,
+    sessionId: sessionId ?? '',
+    apiBaseUrl: quickQuestion.apiBaseUrl,
+    onDismiss: quickQuestion.closeQuickQuestion,
+  }), [quickQuestion.apiBaseUrl, quickQuestion.closeQuickQuestion, quickQuestion.open, quickQuestion.question, sessionId])
+  const composerSend = composerRuntime.send
   const navigableComposerRuntime = useMemo<ChatComposerRuntime>(() => ({
     ...composerRuntime,
-    send: composerSend,
-  }), [composerRuntime, composerSend])
+  }), [composerRuntime])
 
   useEffect(() => {
     if (!sessionId) {
@@ -641,8 +668,17 @@ export function ChatView({
         status={status}
         error={error}
         isReady={isReady}
-        scrollRuntime={scrollRuntime}
+        scrollContainerRef={scrollRuntime.scrollContainerRef}
+        viewportRef={scrollRuntime.viewportRef}
+        virtualizerRef={scrollRuntime.virtualizerRef}
+        minimapRef={scrollRuntime.minimapRef}
+        keepMountedIndices={scrollRuntime.keepMountedIndices}
+        scrollMetrics={scrollRuntime.metrics}
+        onVirtualScroll={scrollRuntime.handleVirtualScroll}
+        onScrollToMessageIndex={scrollRuntime.scrollToMessageIndex}
+        onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
+        onRuntimeUserInputSubmit={submitPendingUserInput}
       />
 
       <ChatComposerSection
@@ -661,8 +697,10 @@ export function ChatView({
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         goalActions={goalActions}
+        quickQuestionSlot={quickQuestionSlot}
         reviewSlot={reviewSlot}
         usageSlot={usageSlot}
+        onQuickQuestion={sessionId ? quickQuestion.openQuickQuestion : undefined}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
 

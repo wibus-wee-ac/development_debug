@@ -83,8 +83,7 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
   }, [measure])
 
   React.useEffect(() => {
-    measure()
-
+    scheduleMeasure()
     const observer = new ResizeObserver(scheduleMeasure)
     if (centerColumnElement) {
       observer.observe(centerColumnElement)
@@ -103,7 +102,7 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
         rafIdRef.current = 0
       }
     }
-  }, [centerColumnElement, footerElement, measure, scheduleMeasure])
+  }, [centerColumnElement, footerElement, scheduleMeasure])
 
   const value = React.useMemo<LayoutGeometryContextValue>(
     () => ({
@@ -118,7 +117,6 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
   return <LayoutGeometryContext.Provider value={value}>{children}</LayoutGeometryContext.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useLayoutGeometry(): LayoutGeometryContextValue {
   const value = React.useContext(LayoutGeometryContext)
   if (!value) {

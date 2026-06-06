@@ -44,6 +44,11 @@ export function SkillMentionPanel({ items, query, searchItems, onSelect, onClose
       visible={visible}
       maxResults={MAX_RESULTS}
       emptyLogLabel="skills"
+      rankFields={item => [
+        { value: item.name, role: 'primary' },
+        { value: item.description, role: 'secondary' },
+        { value: item.skillDir, role: 'secondary' },
+      ]}
       renderItem={({ item, positions }) => (
         <>
           <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />

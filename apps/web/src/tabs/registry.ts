@@ -35,9 +35,10 @@ export const useCradleTabStore = createTabStore(
   cradleRegistry,
   tabPersistKey ? { persistKey: tabPersistKey } : undefined,
 )
+export const cradleTabStore = useCradleTabStore
 
 if (import.meta.env.DEV) {
-  window.__CRADLE_TAB_STORE__ = useCradleTabStore
+  window.__CRADLE_TAB_STORE__ = cradleTabStore
 }
 
-installTerminalPanelTabLifecycle(useCradleTabStore)
+installTerminalPanelTabLifecycle(cradleTabStore)

@@ -7,12 +7,12 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { client } from '~/lib/client.config'
 import { cn } from '~/lib/cn'
 import type { Workspace } from '~/lib/types'
 
 import { SettingsDivider, SettingsSectionHeader } from './settings-row'
-import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 // ── Types ──
 
@@ -47,7 +47,7 @@ function globMatch(name: string, pattern: string): boolean {
 
 function parseRepoFullName(fullName: string): { owner: string, repo: string } | null {
   const parts = fullName.split('/')
-  if (parts.length !== 2 || !parts[0] || !parts[1]) return null
+  if (parts.length !== 2 || !parts[0] || !parts[1]) { return null }
   return { owner: parts[0], repo: parts[1] }
 }
 
@@ -127,7 +127,8 @@ function CheckRow({ name, required, isBypassed, onToggle, isPending }: {
     <div className={cn(
       'group flex items-center gap-2.5 rounded-md border px-3 py-1.5 transition-colors',
       isBypassed ? 'border-border bg-background' : 'border-border/50 bg-muted/20',
-    )}>
+    )}
+    >
       <Switch
         checked={isBypassed}
         onCheckedChange={onToggle}
@@ -142,7 +143,8 @@ function CheckRow({ name, required, isBypassed, onToggle, isPending }: {
         required
           ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400'
           : 'bg-muted/40 text-muted-foreground/50',
-      )}>
+      )}
+      >
         {required ? 'req' : 'opt'}
       </span>
       {isPending && <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground/50" />}
@@ -230,7 +232,7 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
             <span className="text-[11px] text-muted-foreground/50 py-2 px-3">No CI checks found.</span>
           )}
 
-          {checks.map(check => {
+          {checks.map((check) => {
             const matchingRule = findMatchingRule(check.name)
             return (
               <CheckRow
@@ -274,7 +276,8 @@ function ManualRuleCard({ rule, onToggle, onDelete }: { rule: BypassRule, onTogg
     <div className={cn(
       'group flex items-center gap-2.5 rounded-md border px-3 py-2 transition-colors',
       rule.enabled === 1 ? 'border-border bg-background' : 'border-border/50 bg-muted/30 opacity-60',
-    )}>
+    )}
+    >
       <Switch
         checked={rule.enabled === 1}
         onCheckedChange={onToggle}
@@ -311,7 +314,7 @@ function AddRuleForm({ onSubmit, onCancel, isPending }: {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!repo.trim() || !pattern.trim()) return
+    if (!repo.trim() || !pattern.trim()) { return }
     onSubmit(repo.trim(), pattern.trim())
   }
 
@@ -343,7 +346,7 @@ function AddRuleForm({ onSubmit, onCancel, isPending }: {
 
 // ── Per-workspace section ──
 
-const WorkspaceBypassSection = memo(function WorkspaceBypassSection({ workspace }: { workspace: Workspace }) {
+const WorkspaceBypassSection = memo(({ workspace }: { workspace: Workspace }) => {
   const { t } = useTranslation('settings')
   const { data: rules = [], isPending: rulesPending } = useQuery({
     queryKey: ['bypass-rules', workspace.id],
@@ -431,7 +434,7 @@ const WorkspaceBypassSection = memo(function WorkspaceBypassSection({ workspace 
             <ManualRuleCard
               key={rule.id}
               rule={rule}
-              onToggle={(enabled) => toggle.mutate({ ruleId: rule.id, enabled })}
+              onToggle={enabled => toggle.mutate({ ruleId: rule.id, enabled })}
               onDelete={() => remove.mutate(rule.id)}
             />
           ))}
@@ -462,7 +465,7 @@ export function AwaitSettings() {
   const { t } = useTranslation('settings')
   const { workspaces, ready } = useWorkspaces()
 
-  if (!ready) return null
+  if (!ready) { return null }
 
   return (
     <div className="flex flex-col gap-0" data-testid="await-settings">

@@ -1,4 +1,5 @@
 import { memo, useMemo } from 'react'
+
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 
 interface DailyUsage {
@@ -58,7 +59,7 @@ function buildGrid(data: DailyUsage[]): {
       const dateStr = getDateString(cellDate)
       const usage = lookup.get(dateStr) ?? null
       const tokens = usage?.totalTokens ?? 0
-      if (tokens > maxTokens) maxTokens = tokens
+      if (tokens > maxTokens) { maxTokens = tokens }
 
       week.push({ date: dateStr, tokens, usage })
 
@@ -78,7 +79,7 @@ function buildGrid(data: DailyUsage[]): {
 }
 
 function cellColor(intensity: number): string {
-  if (intensity === 0) return 'var(--color-muted-foreground)'
+  if (intensity === 0) { return 'var(--color-muted-foreground)' }
   const l = 0.75 - intensity * 0.25
   const c = 0.05 + intensity * 0.15
   return `oklch(${l} ${c} 160)`
@@ -148,7 +149,7 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
                           className="transition-opacity duration-150 hover:ring-1 hover:ring-foreground hover:opacity-100 cursor-default"
                         />
                       </TooltipTrigger>
-                      <TooltipContent side="bottom" className='flex-col gap-0'>
+                      <TooltipContent side="bottom" className="flex-col gap-0">
                         <p className="font-medium" data-testid="usage-heatmap-tooltip-date">{cell.date}</p>
                         <p className="text-background/70 mt-0.5" data-testid="usage-heatmap-tooltip-metrics">
                           {cell.tokens > 0

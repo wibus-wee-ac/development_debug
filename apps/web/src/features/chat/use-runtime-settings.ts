@@ -2,12 +2,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from './chat-response-command'
+import type { ChatRuntimeSettingsResponse } from './runtime-settings-command'
 import {
   DEFAULT_CHAT_RUNTIME_SETTINGS,
   getSessionRuntimeSettings,
   runtimeSettingsQueryKey,
   updateSessionRuntimeSettings,
-  type ChatRuntimeSettingsResponse,
 } from './runtime-settings-command'
 
 export interface ChatRuntimeSettingsState {

@@ -1,14 +1,14 @@
 import { defineTab, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
-import { lazy, Suspense, useCallback, useEffect, useMemo } from 'react'
+import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 import {
   getSessionsByIdOptions,
   getWorkspacesByIdOptions,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
+import { ChatSessionFrameHost } from '~/features/chat/chat-session-frame-host'
 import { isElectron, nativeIpc } from '~/lib/electron'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
@@ -128,6 +128,14 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
 
   const workspaceId = session?.workspaceId ?? null
   const agentId = session?.agentId ?? null
+  const activeSession = useMemo(() => ({
+    sessionId,
+    sessionProviderTargetId,
+    sessionModelId,
+    runtimeKind: session?.runtimeKind,
+    workspaceId,
+    agentId,
+  }), [agentId, session?.runtimeKind, sessionId, sessionModelId, sessionProviderTargetId, workspaceId])
 
   // Fetch workspace details — derive path/name from query data (not side-effects)
   const { data: workspace } = useQuery({
@@ -137,10 +145,6 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   })
 
   const workspacePath = workspace?.path ?? null
-  const openSideChat = useCallback((sideSessionId: string) => {
-    store.getState().openTab('chat', { sessionId: sideSessionId })
-  }, [store])
-
   useEffect(() => {
     if (!session) {
       return
@@ -180,15 +184,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   return (
     <>
       <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
-      <ChatRuntimeView
-        sessionId={sessionId}
-        sessionProviderTargetId={sessionProviderTargetId}
-        sessionModelId={sessionModelId}
-        runtimeKind={session?.runtimeKind}
-        workspaceId={workspaceId}
-        agentId={agentId}
-        onSideChatCreated={openSideChat}
-      />
+      <ChatSessionFrameHost activeSession={activeSession} />
     </>
   )
 }

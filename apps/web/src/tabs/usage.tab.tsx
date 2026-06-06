@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { defineTab } from '@cradle/tabs-next'
 import { BarChart2Icon } from 'lucide-react'
 import { lazy } from 'react'

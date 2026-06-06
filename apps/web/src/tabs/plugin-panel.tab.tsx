@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import type { TabParams } from '@cradle/tabs-next'
 import { defineTab, useTabFrameActive } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'

@@ -10,6 +10,7 @@ import {
   GaugeIcon,
   HammerIcon,
   MessageCircleIcon,
+  MessageCircleQuestionIcon,
   MousePointer2Icon,
   PackageIcon,
   PaperclipIcon,
@@ -24,7 +25,7 @@ import {
   UsersIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { clampPercentValue } from '~/lib/number-format'
@@ -145,6 +146,8 @@ function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
     case 'plan':
     case 'side-chat':
       return <CircleDotIcon className={className} aria-hidden="true" />
+    case 'quick-question':
+      return <MessageCircleQuestionIcon className={className} aria-hidden="true" />
     case 'plugin':
       return <PuzzleIcon className={className} aria-hidden="true" />
     case 'reasoning':
@@ -231,18 +234,17 @@ function CompactUsageIcon({
 }
 
 export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [selection, setSelection] = useState({ activeIndex: 0, query })
   const listRef = useRef<HTMLDivElement>(null)
-  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
-  const previousQueryRef = useRef(query)
 
   const results = useMemo(() => {
     return getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item }))
   }, [commands, query])
 
-  const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
-
-  previousQueryRef.current = query
+  const effectiveActiveIndex
+    = results.length === 0
+      ? 0
+      : Math.min(selection.query === query ? selection.activeIndex : 0, results.length - 1)
 
   useEffect(() => {
     const list = listRef.current
@@ -255,18 +257,24 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
     }
   }, [effectiveActiveIndex])
 
-  keyHandlerRef.current = (e: KeyboardEvent) => {
+  const handleDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (!visible) {
       return
     }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActiveIndex(prev => (prev + 1) % Math.max(results.length, 1))
+      setSelection({
+        activeIndex: (effectiveActiveIndex + 1) % Math.max(results.length, 1),
+        query,
+      })
     }
     else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
+      setSelection({
+        activeIndex: (effectiveActiveIndex - 1 + results.length) % Math.max(results.length, 1),
+        query,
+      })
     }
     else if ((e.key === 'Enter' || e.key === 'Tab') && results[effectiveActiveIndex] && isSlashCommandAvailable(results[effectiveActiveIndex].item)) {
       e.preventDefault()
@@ -276,15 +284,11 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
       e.preventDefault()
       onClose()
     }
-  }
+  })
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      keyHandlerRef.current(e)
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
+    document.addEventListener('keydown', handleDocumentKeyDown)
+    return () => document.removeEventListener('keydown', handleDocumentKeyDown)
   }, [])
 
   const handleOptionClick = useCallback((command: ChatComposerSlashCommand) => {
@@ -334,8 +338,8 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
                     : 'text-foreground/80 hover:bg-accent/40'
                   : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
               )}
-              onMouseEnter={() => setActiveIndex(idx)}
-              onFocus={() => setActiveIndex(idx)}
+              onMouseEnter={() => setSelection({ activeIndex: idx, query })}
+              onFocus={() => setSelection({ activeIndex: idx, query })}
               onClick={() => handleOptionClick(item)}
             >
               <SlashCommandIcon command={item} />

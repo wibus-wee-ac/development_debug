@@ -18,7 +18,6 @@ interface DirectoryPickerContextValue {
 
 const DirectoryPickerContext = createContext<DirectoryPickerContextValue | null>(null)
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useDirectoryPicker() {
   const ctx = use(DirectoryPickerContext)
   if (!ctx) {

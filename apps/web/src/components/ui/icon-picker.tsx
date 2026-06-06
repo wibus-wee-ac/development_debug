@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SearchIcon, XIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import { getLobeIconUrl, iconCatalog, searchIcons } from '~/lib/lobe-icons'
 import type { IconCatalogEntry } from '~/lib/lobe-icons'
+import { getLobeIconUrl, iconCatalog, searchIcons } from '~/lib/lobe-icons'
 import { useResolvedThemeMode } from '~/store/theme'
 
 import { Popover, PopoverContent, PopoverTrigger } from './popover'
@@ -12,20 +12,21 @@ import { Popover, PopoverContent, PopoverTrigger } from './popover'
 
 function IconImage({ slug, className }: { slug: string, className?: string }) {
   const theme = useResolvedThemeMode()
-  const [url, setUrl] = useState<string | null>(null)
+  const iconKey = `${slug}:${theme}`
+  const [loadedIcon, setLoadedIcon] = useState<{ key: string, url: string } | null>(null)
+  const url = loadedIcon?.key === iconKey ? loadedIcon.url : null
 
   useEffect(() => {
     let cancelled = false
-    setUrl(null)
     getLobeIconUrl(slug, theme).then((u) => {
-      if (!cancelled) {
-        setUrl(u)
+      if (!cancelled && u) {
+        setLoadedIcon({ key: iconKey, url: u })
       }
     })
     return () => {
       cancelled = true
     }
-  }, [slug, theme])
+  }, [iconKey, slug, theme])
 
   if (!url) {
     return <div className={cn('animate-pulse rounded bg-muted', className)} />
@@ -35,10 +36,7 @@ function IconImage({ slug, className }: { slug: string, className?: string }) {
     <img
       src={url}
       alt={slug}
-      className={cn(
-        'object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.16)] dark:drop-shadow-[0_1px_1px_rgba(255,255,255,0.14)]',
-        className,
-      )}
+      className={cn('object-contain', className)}
     />
   )
 }
@@ -50,9 +48,10 @@ export interface IconPickerProps {
   onChange: (slug: string | null) => void
   children: React.ReactNode
   disabled?: boolean
+  renderIcon?: (entry: IconCatalogEntry, className: string) => React.ReactNode
 }
 
-export function IconPicker({ value, onChange, children, disabled }: IconPickerProps) {
+export function IconPicker({ value, onChange, children, disabled, renderIcon }: IconPickerProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
@@ -77,8 +76,13 @@ export function IconPicker({ value, onChange, children, disabled }: IconPickerPr
   }, [onChange])
 
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 50)
+    if (!open) {
+      return
+    }
+
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 50)
+    return () => {
+      window.clearTimeout(focusTimer)
     }
   }, [open])
 
@@ -138,7 +142,9 @@ export function IconPicker({ value, onChange, children, disabled }: IconPickerPr
                 value === entry.slug && 'bg-fill ring-1 ring-foreground/10',
               )}
             >
-              <IconImage slug={entry.slug} className="size-6" />
+              {renderIcon
+                ? renderIcon(entry, 'size-6')
+                : <IconImage slug={entry.slug} className="size-6" />}
               <span className="w-full truncate text-center text-[9px] leading-tight text-muted-foreground/70">
                 {entry.title}
               </span>

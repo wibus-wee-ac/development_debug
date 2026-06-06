@@ -12,6 +12,7 @@ import packageJson from './package.json' with { type: 'json' }
 
 const ASSET_MODULE_RE = /\.(?:avif|gif|ico|jpe?g|png|svg|webp)(?:\?|$)/
 const PRECACHE_ASSET_RE = /\.(?:css|js|woff2)$/
+const enableViteDevtools = process.env.CRADLE_VITE_DEVTOOLS === '1'
 
 function getVendorChunk(id: string): string | undefined {
   if (id.includes('?url') || ASSET_MODULE_RE.test(id)) {
@@ -90,7 +91,7 @@ export default defineConfig({
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
   },
   devtools: {
-    enabled: true,
+    enabled: enableViteDevtools,
   },
   plugins: [
     tailwindcss(),

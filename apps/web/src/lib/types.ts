@@ -1,110 +1,26 @@
-import type { Issue as DbIssue, KanbanIssueComment as DbKanbanIssueComment, KanbanIssueFieldChange as DbKanbanIssueFieldChange } from '@cradle/db'
+import type {
+  GetAgentsResponse,
+  GetChatRuntimesResponse,
+  GetProfilesResponse,
+  GetProviderTargetsResponse,
+  GetProvidersTargetsByProviderTargetIdModelsCacheResponse,
+  GetSearchChronicleResponse,
+  GetSearchThreadsResponse,
+  GetSkillsResponse,
+  GetWorkspacesByIdGitBranchesResponse,
+  GetWorkspacesByIdGitGraphResponse,
+  GetWorkspacesByIdGitRemotesResponse,
+  GetWorkspacesByIdGitStatusResponse,
+  GetWorkspacesResponse,
+} from '~/api-gen/types.gen'
 
-// ── DB entity types (from @cradle/db — import type only, erased by bundler) ──
+// ── Server API entity types ─────────────────────────────────────────────────
 
-export type {
-  Agent,
-  AgentActivity,
-  AgentProfile,
-  AgentSession,
-  Issue,
-  IssueComment,
-  IssueMilestone,
-  IssueRelation,
-  IssueStatus,
-  KanbanBoard,
-  KanbanIssueComment,
-  KanbanIssueFieldChange,
-  KanbanIssueRelation,
-  KanbanMilestone,
-  KanbanStatus,
-  Session,
-  Workspace,
-} from '@cradle/db'
-
-export type KanbanIssue = Omit<DbIssue, 'labels' | 'sourceChatSessionId'> & {
-  labels: string[]
-  sourceChatSessionId?: string | null
-}
-export type KanbanIssueFieldChangeView = Omit<DbKanbanIssueFieldChange, 'sourceChatSessionId'> & {
-  sourceChatSessionId?: string | null
-}
-
-export interface IssueCommentAuthor {
-  kind: 'user' | 'agent' | 'provider-target' | 'system'
-  id: string | null
-  displayName: string
-  avatarUrl: string | null
-  label: string | null
-}
-
-export type KanbanIssueCommentView = Omit<DbKanbanIssueComment, 'sourceChatSessionId'> & {
-  author: IssueCommentAuthor
-  sourceChatSessionId?: string | null
-}
-
-export type IssueActivityValueToken
-  = | 'changed'
-    | 'current-user'
-    | 'empty'
-    | 'no-due-date'
-    | 'no-labels'
-    | 'no-milestone'
-    | 'no-parent'
-    | 'no-status'
-    | 'priority-high'
-    | 'priority-low'
-    | 'priority-medium'
-    | 'priority-none'
-    | 'priority-urgent'
-    | 'unassigned'
-    | 'unknown-issue'
-    | 'unknown-milestone'
-    | 'unknown-status'
-    | 'unknown-user'
-
-export type IssueActivityValue
-  = | { kind: 'date', timestamp: number }
-    | { kind: 'text', text: string }
-    | { kind: 'token', token: IssueActivityValueToken }
-
-export type IssueActivityField
-  = | 'assignee'
-    | 'description'
-    | 'due-date'
-    | 'labels'
-    | 'metadata'
-    | 'milestone'
-    | 'parent'
-    | 'priority'
-    | 'status'
-    | 'title'
-
-export type IssueActivityAction
-  = | 'added-description'
-    | 'changed-field'
-    | 'cleared-description'
-    | 'renamed-issue'
-    | 'updated-description'
-
-export interface KanbanIssueActivityItem {
-  id: string
-  issueId: string
-  kind: 'comment' | 'created' | 'field-change'
-  actor: IssueCommentAuthor
-  comment: {
-    content: string
-    systemKind: 'delegated' | 'system' | 'undelegated' | null
-  } | null
-  fieldChange: {
-    action: IssueActivityAction
-    field: IssueActivityField | null
-    fromValue: IssueActivityValue | null
-    toValue: IssueActivityValue | null
-  } | null
-  sourceChatSessionId: string | null
-  createdAt: number
-}
+export type Workspace = GetWorkspacesResponse[number]
+export type Agent = GetAgentsResponse[number]
+export type AgentProfile = GetProfilesResponse[number]
+export type ProviderTargetRecord = GetProviderTargetsResponse[number]
+export type ChatRuntimeCatalogItem = GetChatRuntimesResponse['items'][number]
 
 // ── Provider / Runtime types ───────────────────────────────────────────────
 
@@ -140,6 +56,7 @@ export interface ModelCapabilities {
   inputModalities?: string[]
   outputModalities?: string[]
   reasoning?: boolean
+  reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
   toolCall?: boolean
   temperature?: boolean
   structuredOutput?: boolean

@@ -24,8 +24,10 @@ import { Activity, cloneElement, useEffect, useMemo, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
 import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
+import { Textarea } from '~/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { boundedPercent } from '~/lib/number-format'
@@ -58,6 +60,7 @@ interface ToolCallBlockProps {
   errorText?: string
   workspaceDiffTarget?: { workspaceId: string, ownerId?: string | null }
   onApprovalResponse?: (approval: { id: string, approved: boolean }) => void
+  onUserInputSubmit?: (answers: Record<string, string[]>) => Promise<void> | void
   children?: ReactNode
 }
 
@@ -92,6 +95,7 @@ const STATUS_LABELS: Record<ToolState, string> = {
 
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
+const OTHER_OPTION_VALUE = '__cradle_runtime_other__'
 
 function isRunning(state: ToolState): boolean {
   return state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
@@ -129,10 +133,28 @@ function hasRenderableChildren(children: ReactNode): boolean {
   return true
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
 interface EditDiffPreview {
   filePath: string
   oldContent: string
   newContent: string
+}
+
+interface RuntimeQuestionOption {
+  label: string
+  description: string
+}
+
+interface RuntimeQuestion {
+  id: string
+  header: string
+  question: string
+  isOther: boolean
+  isSecret: boolean
+  options: RuntimeQuestionOption[] | null
 }
 
 export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): EditDiffPreview | null {
@@ -674,6 +696,155 @@ function QuestionSummary({ output }: { output: ToolPayload }) {
   )
 }
 
+function readRuntimeQuestions(value: unknown[]): RuntimeQuestion[] {
+  return value.flatMap((item, index) => {
+    const record = isRecord(item) ? item : {}
+    const id = typeof record.id === 'string' && record.id ? record.id : `question-${index + 1}`
+    const options = Array.isArray(record.options)
+      ? record.options.flatMap((option) => {
+          const optionRecord = isRecord(option) ? option : {}
+          const label = typeof optionRecord.label === 'string' ? optionRecord.label : ''
+          if (!label) {
+            return []
+          }
+          return [{
+            label,
+            description: typeof optionRecord.description === 'string' ? optionRecord.description : '',
+          }]
+        })
+      : null
+    return [{
+      id,
+      header: typeof record.header === 'string' ? record.header : '',
+      question: typeof record.question === 'string' ? record.question : '',
+      isOther: record.isOther === true,
+      isSecret: record.isSecret === true,
+      options,
+    }]
+  })
+}
+
+function RuntimeUserInputForm({
+  questions,
+  disabled,
+  onSubmit,
+}: {
+  questions: RuntimeQuestion[]
+  disabled: boolean
+  onSubmit: (answers: Record<string, string[]>) => Promise<void> | void
+}) {
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [otherDrafts, setOtherDrafts] = useState<Record<string, string>>({})
+  const [submitting, setSubmitting] = useState(false)
+
+  const updateDraft = (questionId: string, value: string) => {
+    setDrafts(current => ({ ...current, [questionId]: value }))
+  }
+
+  const updateOtherDraft = (questionId: string, value: string) => {
+    setOtherDrafts(current => ({ ...current, [questionId]: value }))
+  }
+
+  const submit = async () => {
+    const answers = Object.fromEntries(
+      questions.map((question) => {
+        const selected = drafts[question.id]?.trim() ?? ''
+        const other = otherDrafts[question.id]?.trim() ?? ''
+        return [question.id, [selected === OTHER_OPTION_VALUE ? other : selected].filter(Boolean)]
+      }),
+    )
+    setSubmitting(true)
+    try {
+      await onSubmit(answers)
+    }
+    finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-3 border-t border-border/60 px-3 py-3" data-testid="runtime-user-input-card">
+      {questions.map(question => (
+        <div key={question.id} className="grid gap-2">
+          <div className="grid gap-0.5">
+            {question.header && <div className="text-[11px] font-medium text-muted-foreground">{question.header}</div>}
+            <div className="text-xs text-foreground/85">{question.question}</div>
+          </div>
+          {question.options && question.options.length > 0
+            ? (
+                <div className="grid gap-2">
+                  <div className="flex flex-wrap gap-1.5">
+                    {question.options.map(option => (
+                      <Button
+                        key={option.label}
+                        type="button"
+                        variant={drafts[question.id] === option.label ? 'secondary' : 'outline'}
+                        size="xs"
+                        disabled={disabled || submitting}
+                        title={option.description}
+                        onClick={() => updateDraft(question.id, option.label)}
+                      >
+                        {option.label}
+                      </Button>
+                    ))}
+                    {question.isOther && (
+                      <Button
+                        type="button"
+                        variant={drafts[question.id] === OTHER_OPTION_VALUE ? 'secondary' : 'outline'}
+                        size="xs"
+                        disabled={disabled || submitting}
+                        onClick={() => updateDraft(question.id, OTHER_OPTION_VALUE)}
+                      >
+                        Other
+                      </Button>
+                    )}
+                  </div>
+                  {question.isOther && drafts[question.id] === OTHER_OPTION_VALUE && (
+                    <Input
+                      value={otherDrafts[question.id] ?? ''}
+                      disabled={disabled || submitting}
+                      className="h-8 text-xs"
+                      placeholder="Other"
+                      onChange={event => updateOtherDraft(question.id, event.target.value)}
+                    />
+                  )}
+                </div>
+              )
+            : question.isSecret
+              ? (
+                  <Input
+                    type="password"
+                    value={drafts[question.id] ?? ''}
+                    disabled={disabled || submitting}
+                    className="h-8 text-xs"
+                    onChange={event => updateDraft(question.id, event.target.value)}
+                  />
+                )
+              : (
+                  <Textarea
+                    value={drafts[question.id] ?? ''}
+                    disabled={disabled || submitting}
+                    rows={3}
+                    className="min-h-9 resize-none text-xs"
+                    onChange={event => updateDraft(question.id, event.target.value)}
+                  />
+                )}
+        </div>
+      ))}
+      <div className="flex justify-end">
+        <Button
+          type="button"
+          size="xs"
+          disabled={disabled || submitting}
+          onClick={() => void submit()}
+        >
+          Submit
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 function _ToolDetails({ descriptor, input, output, errorText, children }: {
   descriptor: ToolUiDescriptor
   input: ToolPayload
@@ -890,7 +1061,7 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, workspaceDiffTarget, onApprovalResponse, children }: ToolCallBlockProps) {
+export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, workspaceDiffTarget, onApprovalResponse, onUserInputSubmit, children }: ToolCallBlockProps) {
   const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
   const outputPayload = useMemo(() => readToolPayload(output), [output])
   const descriptor = useMemo(() => {
@@ -931,6 +1102,9 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
   const running = isRunning(state)
   const errored = isError(state)
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
+  const pendingQuestions = descriptor.kind === 'question' && state === 'input-available'
+    ? readRuntimeQuestions(inputPayload.questions)
+    : []
 
   useEffect(() => {
     if (errored && (hasTerminalPanel || hasDiffPanel)) {
@@ -1138,6 +1312,14 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
               Approve
             </Button>
           </div>
+        )}
+
+        {pendingQuestions.length > 0 && onUserInputSubmit && (
+          <RuntimeUserInputForm
+            questions={pendingQuestions}
+            disabled={state !== 'input-available'}
+            onSubmit={onUserInputSubmit}
+          />
         )}
       </div>
 

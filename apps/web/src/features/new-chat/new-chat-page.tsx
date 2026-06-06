@@ -18,9 +18,9 @@ import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import type { ChatContextPart } from '~/features/chat/chat-context-parts'
-import { startChatResponse } from '~/features/chat/chat-response-command'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/draft-chat-composer'
 import { DraftChatComposer } from '~/features/chat/draft-chat-composer'
+import { startOptimisticChatResponse } from '~/features/chat/optimistic-chat-turn'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
@@ -202,8 +202,10 @@ function useNewChatPageOwner(active: boolean) {
         modelId: options.modelId ?? null,
         runtimeKind: options.runtimeKind,
       }, { promote: true })
-      void startChatResponse({
+      startOptimisticChatResponse({
         sessionId: session.id,
+        runtimeKind: options.runtimeKind,
+        queryClient,
         body: {
           text: trimmedText,
           files,
@@ -211,18 +213,15 @@ function useNewChatPageOwner(active: boolean) {
           modelId: options.modelId,
           thinkingEffort: options.thinkingEffort,
         },
-      }).then(async (response) => {
-        if (!response.ok) {
-          const body = await response.text().catch(() => '')
-          throw new Error(`Failed to start chat response: ${response.status} ${body}`)
-        }
-        await response.body?.cancel()
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
-          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-        ])
-      }).catch((err) => {
-        console.error('[NewChatPage] start response failed:', err)
+        onAccepted: () => {
+          void Promise.all([
+            queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),
+            queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+          ])
+        },
+        onError: (err) => {
+          console.error('[NewChatPage] start response failed:', err)
+        },
       })
       void Promise.all([
         queryClient.invalidateQueries({ queryKey: sessionsQueryKey(session.workspaceId ?? selectedProjectWorkspaceId) }),

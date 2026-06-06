@@ -8,6 +8,7 @@ import type { ChatContextPart } from './chat-context-parts'
 const SERVER_BASE = getServerUrl()
 
 export type ChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
+export type ChatContinuationMode = 'queue' | 'steer'
 
 export interface ChatResponseRequestBody {
   text: string
@@ -20,7 +21,7 @@ export interface ChatResponseRequestBody {
   runtimeSettings?: ChatRuntimeSettingsPatch
 }
 
-export type ChatContinuationMode = 'queue' | 'steer'
+export type ChatQueueMode = 'queue'
 export type ChatQueueItemStatus = 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
 export type ChatRuntimeAccessMode = 'approval-required' | 'full-access'
 export type ChatRuntimeInteractionMode = 'default' | 'plan'
@@ -35,7 +36,7 @@ export type ChatRuntimeSettingsPatch = Partial<ChatRuntimeSettings>
 export interface ChatQueueItem {
   id: string
   sessionId: string
-  mode: ChatContinuationMode
+  mode: ChatQueueMode
   status: ChatQueueItemStatus
   text: string
   files: FileUIPart[]
@@ -56,15 +57,22 @@ export interface ChatQueueListResponse {
   items: ChatQueueItem[]
 }
 
-export type SideContextSource = 'provider-native' | 'cradle-context'
+export interface ChatSteerTurnResponse {
+  ok: true
+  sessionId: string
+  runId: string
+  sourceMessageId: string
+  message: UIMessage
+}
 
 export interface SideChatResult {
-  sessionId: string
+  sideConversationId: string
   parentSessionId: string
   runtimeKind: string
   providerTargetId: string | null
   providerSessionId: string | null
-  sideContextSource: SideContextSource
+  title: string
+  expiresAt: number
 }
 
 export interface BangCommandResult {
@@ -81,9 +89,8 @@ export interface BangCommandResult {
   resultMessage: UIMessage
 }
 
-export interface ChatQueueEnqueueBody extends ChatResponseRequestBody {
-  mode: ChatContinuationMode
-}
+export type ChatQueueEnqueueBody = ChatResponseRequestBody
+export type ChatSteerBody = ChatResponseRequestBody
 
 const ChatThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
 const ChatRuntimeSettingsSchema = z.object({
@@ -93,7 +100,7 @@ const ChatRuntimeSettingsSchema = z.object({
 const ChatQueueItemSchema = z.object({
   id: z.string(),
   sessionId: z.string(),
-  mode: z.enum(['queue', 'steer']),
+  mode: z.literal('queue'),
   status: z.enum(['pending', 'running', 'cancelled', 'completed', 'failed']),
   text: z.string(),
   files: z.array(z.unknown()).default([]),
@@ -116,6 +123,16 @@ const ChatQueueItemSchema = z.object({
 const ChatQueueListResponseSchema = z.object({
   items: z.array(ChatQueueItemSchema),
 })
+const ChatSteerTurnResponseSchema = z.object({
+  ok: z.literal(true),
+  sessionId: z.string(),
+  runId: z.string(),
+  sourceMessageId: z.string(),
+  message: z.unknown(),
+}).transform(item => ({
+  ...item,
+  message: item.message as UIMessage,
+}))
 
 function parseChatQueueItem(value: unknown): ChatQueueItem {
   return ChatQueueItemSchema.parse(value) satisfies ChatQueueItem
@@ -123,6 +140,10 @@ function parseChatQueueItem(value: unknown): ChatQueueItem {
 
 function parseChatQueueListResponse(value: unknown): ChatQueueListResponse {
   return ChatQueueListResponseSchema.parse(value) satisfies ChatQueueListResponse
+}
+
+function parseChatSteerTurnResponse(value: unknown): ChatSteerTurnResponse {
+  return ChatSteerTurnResponseSchema.parse(value) satisfies ChatSteerTurnResponse
 }
 
 export function buildChatResponseRequestBody(
@@ -208,6 +229,32 @@ export async function createSideChat(args: {
   return await res.json() as SideChatResult
 }
 
+export async function startSideConversationResponse(args: {
+  sideConversationId: string
+  body: Omit<ChatResponseRequestBody, 'providerTargetId' | 'messages'>
+  signal?: AbortSignal
+}): Promise<Response> {
+  return fetch(`${SERVER_BASE}/chat/side-conversations/${args.sideConversationId}/response`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildChatResponseRequestBody({
+      text: args.body.text,
+      files: args.body.files,
+      contextParts: args.body.contextParts,
+      modelId: args.body.modelId,
+      thinkingEffort: args.body.thinkingEffort,
+      runtimeSettings: args.body.runtimeSettings,
+    })),
+    signal: args.signal,
+  })
+}
+
+export async function releaseSideConversation(sideConversationId: string): Promise<void> {
+  await fetch(`${SERVER_BASE}/chat/side-conversations/${sideConversationId}`, {
+    method: 'DELETE',
+  }).catch(() => undefined)
+}
+
 export async function listChatSessionQueue(sessionId: string): Promise<ChatQueueListResponse> {
   const res = await fetch(`${SERVER_BASE}/chat/sessions/${sessionId}/queue`)
 
@@ -235,6 +282,24 @@ export async function enqueueChatSessionQueueItem(args: {
   }
 
   return parseChatQueueItem(await res.json())
+}
+
+export async function steerChatSessionTurn(args: {
+  sessionId: string
+  body: ChatSteerBody
+}): Promise<ChatSteerTurnResponse> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/steer`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(buildChatResponseRequestBody(args.body)),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to steer chat turn: ${res.status} ${body}`)
+  }
+
+  return parseChatSteerTurnResponse(await res.json())
 }
 
 export async function cancelChatSessionQueueItem(args: {
@@ -280,4 +345,25 @@ export async function cancelChatResponse(sessionId: string): Promise<void> {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to cancel chat response: ${res.status} ${body}`)
   }
+}
+
+export async function submitRuntimeUserInput(args: {
+  sessionId: string
+  requestId: string
+  answers: Record<string, string[]>
+  signal?: AbortSignal
+}): Promise<{ requestId: string, answers: Record<string, string[]> }> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/user-input/${args.requestId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ answers: args.answers }),
+    signal: args.signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to submit runtime user input: ${res.status} ${body}`)
+  }
+
+  return await res.json() as { requestId: string, answers: Record<string, string[]> }
 }

@@ -1,14 +1,14 @@
 import { ChevronDownIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
+import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { cn } from '~/lib/cn'
 import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
 
-import { RUNTIME_KIND_OPTIONS } from './constants'
 import type { RuntimeKindOption } from './constants'
+import { RUNTIME_KIND_OPTIONS } from './constants'
 
 type CommonKey = keyof typeof import('~/locales/default').default.common
 type RuntimeOptionKind = BuiltinRuntimeKind

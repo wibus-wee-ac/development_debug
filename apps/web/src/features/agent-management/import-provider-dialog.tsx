@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
+import { CircleAlertIcon, DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -45,6 +45,21 @@ const KIND_OPTIONS: { value: ApiProviderKind, label: string }[] = [
 function hostnameFromUrl(url: string): string {
   try { return new URL(url).hostname }
  catch { return url }
+}
+
+function baseUrlIncludesV1(baseUrl: string): boolean {
+  try {
+    const path = new URL(baseUrl).pathname
+    return path.split('/').some(segment => segment.toLowerCase() === 'v1')
+  }
+ catch {
+    return /(^|\/)v1(\/|$)/i.test(baseUrl)
+  }
+}
+
+function shouldShowV1Reminder(baseUrl: string): boolean {
+  const trimmed = baseUrl.trim()
+  return trimmed.length > 0 && !baseUrlIncludesV1(trimmed)
 }
 
 function fingerprintProvider(provider: ParsedProvider): string {
@@ -206,6 +221,7 @@ export function ImportProviderDialog({
     ? parseResult!.providers.filter((_, i) => enabledSet.has(i)).length
     : (token && manualUrl.trim() ? 1 : 0)
   const canImport = !!token && providerCount > 0
+  const showManualV1Reminder = showManualEntry && shouldShowV1Reminder(manualUrl)
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) { handleClose() } }}>
@@ -297,37 +313,40 @@ export function ImportProviderDialog({
 
               {/* Manual endpoint entry */}
               {showManualEntry && (
-                <div className="flex items-center gap-2">
-                  <Select value={manualKind} onValueChange={v => setManualKind(v as ApiProviderKind)}>
-                    <SelectTrigger
-                      className={cn(
-                        'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
-                        {
-                          'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400': manualKind === 'openai-compatible',
-                          'bg-orange-500/10 text-orange-600 dark:text-orange-400': manualKind === 'anthropic',
-                          'bg-violet-500/10 text-violet-600 dark:text-violet-400': manualKind === 'universal',
-                        },
-                      )}
-                    >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {KIND_OPTIONS.map(o => (
-                        <SelectItem key={o.value} value={o.value}>
-                          {o.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <div className="flex-1 flex items-center gap-1.5">
-                    <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                    <Input
-                      value={manualUrl}
-                      onChange={e => setManualUrl(e.target.value)}
-                      placeholder="https://api.example.com/v1"
-                      className="h-8 flex-1 font-mono text-[12px]"
-                    />
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <Select value={manualKind} onValueChange={v => setManualKind(v as ApiProviderKind)}>
+                      <SelectTrigger
+                        className={cn(
+                          'h-7 w-auto gap-1 rounded border-0 px-1.5 text-[10px] font-medium shrink-0',
+                          {
+                            'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400': manualKind === 'openai-compatible',
+                            'bg-orange-500/10 text-orange-600 dark:text-orange-400': manualKind === 'anthropic',
+                            'bg-violet-500/10 text-violet-600 dark:text-violet-400': manualKind === 'universal',
+                          },
+                        )}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {KIND_OPTIONS.map(o => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <div className="flex-1 flex items-center gap-1.5">
+                      <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <Input
+                        value={manualUrl}
+                        onChange={e => setManualUrl(e.target.value)}
+                        placeholder="https://api.example.com/v1"
+                        className="h-8 flex-1 font-mono text-[12px]"
+                      />
+                    </div>
                   </div>
+                  {showManualV1Reminder && <BaseUrlV1Reminder />}
                 </div>
               )}
             </>
@@ -423,8 +442,18 @@ function ProviderCard({
               </span>
             </div>
           )}
+          {shouldShowV1Reminder(provider.baseUrl) && <BaseUrlV1Reminder />}
         </div>
       </div>
     </label>
+  )
+}
+
+function BaseUrlV1Reminder() {
+  return (
+    <div className="flex items-center gap-1.5 rounded-md bg-amber-500/8 px-2 py-1 text-[11px] leading-snug text-amber-700 dark:text-amber-300">
+      <CircleAlertIcon className="size-3 shrink-0" />
+      <span>This Base URL does not include /v1. Did you forget to add it?</span>
+    </div>
   )
 }

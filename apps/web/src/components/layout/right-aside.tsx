@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon } from 'lucide-react'
+import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import { BrowserAnnotationAdjustmentPanel } from '~/features/browser/browser-annotation-adjustment-panel'
 import { RuntimeSessionPanel } from '~/features/chat/runtime-session-panel'
 import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
@@ -15,6 +16,7 @@ import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
 import { cn } from '~/lib/cn'
 import type { RuntimeKind, Workspace } from '~/lib/types'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
 interface Tab {
@@ -26,6 +28,7 @@ interface Tab {
     | 'rightAside.tab.issue'
     | 'rightAside.tab.await'
     | 'rightAside.tab.runtime'
+    | 'rightAside.tab.adjustment'
   icon: typeof FolderTreeIcon
 }
 
@@ -36,6 +39,7 @@ const TABS: Tab[] = [
   { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon },
   { id: 'runtime', labelKey: 'rightAside.tab.runtime', icon: ActivityIcon },
   { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon },
+  { id: 'adjustment', labelKey: 'rightAside.tab.adjustment', icon: SlidersHorizontalIcon },
 ]
 
 const TAB_GAP = 2
@@ -200,6 +204,17 @@ function RightAsidePanelContent({
     )
   }
 
+  if (tabId === 'adjustment') {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside-panel-adjustment"
+      >
+        <BrowserAnnotationAdjustmentPanel />
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -243,6 +258,10 @@ export function RightAside({
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const hasPendingAwaits = awaitSummary?.awaiting ?? false
 
+  // Badge: active adjustment session
+  const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
+  const hasActiveAdjustment = adjustmentSession !== null
+
   const activateTab = useCallback((tabId: string) => {
     if (tabId === activeTab) {
       return
@@ -270,7 +289,8 @@ export function RightAside({
           <div className="relative flex items-center justify-center" style={{ gap: TAB_GAP }}>
             {TABS.map(({ id, labelKey, icon: Icon }) => {
               const isActive = activeTab === id
-              const showBadge = id === 'await' && hasPendingAwaits && !isActive
+              const showBadge = (id === 'await' && hasPendingAwaits && !isActive)
+                || (id === 'adjustment' && hasActiveAdjustment && !isActive)
               const label = t(labelKey)
 
               const button = (

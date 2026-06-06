@@ -277,7 +277,7 @@ describe('chat stream transport', () => {
 
   it('caps Electron events buffered before the renderer stream attaches', async () => {
     const { bridge, chunkHandlers, closedHandlers } = createBridge()
-    vi.mocked(bridge.startResponse).mockImplementation(async request => {
+    vi.mocked(bridge.startResponse).mockImplementation(async (request) => {
       for (let index = 0; index < 70; index += 1) {
         chunkHandlers.forEach(handler => handler({
           streamId: 'stream-1',

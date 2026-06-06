@@ -44,6 +44,7 @@ export type ChatSlashCommandIconKey
     | 'personality'
     | 'plugin'
     | 'plan'
+    | 'quick-question'
     | 'reasoning'
     | 'search'
     | 'side-chat'
@@ -110,6 +111,16 @@ export const CRADLE_SIDE_CHAT_SLASH_COMMAND: ChatComposerSlashCommand = {
   source: 'cradle',
   action: { kind: 'insertText', text: '/side ' },
   iconKey: 'side-chat',
+}
+
+export const CRADLE_BTW_SLASH_COMMAND: ChatComposerSlashCommand = {
+  id: 'cradle:btw',
+  name: 'btw',
+  description: 'Ask a quick question without saving it to history',
+  argumentHint: '[question]',
+  source: 'cradle',
+  action: { kind: 'insertText', text: '/btw ' },
+  iconKey: 'quick-question',
 }
 
 export interface MergeChatSlashCommandsInput {

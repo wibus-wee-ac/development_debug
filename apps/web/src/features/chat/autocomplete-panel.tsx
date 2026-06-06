@@ -1,8 +1,9 @@
-import { Fzf } from 'fzf'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
+import type { FuzzyRankField } from '~/lib/fuzzy-rank'
+import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 
 export interface AutocompletePanelItem {
   id: string
@@ -19,6 +20,7 @@ interface AutocompletePanelProps<TItem extends AutocompletePanelItem> {
   visible: boolean
   maxResults?: number
   emptyLogLabel: string
+  rankFields?: (item: TItem) => FuzzyRankField[]
   renderItem: (input: {
     item: TItem
     positions: Set<number>
@@ -68,36 +70,32 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
   visible,
   maxResults = 30,
   emptyLogLabel,
+  rankFields,
   renderItem,
 }: AutocompletePanelProps<TItem>) {
-  const [activeIndex, setActiveIndex] = useState(0)
+  const [selection, setSelection] = useState({ activeIndex: 0, query, visible })
   const [remoteItems, setRemoteItems] = useState<TItem[]>([])
   const [remoteLoading, setRemoteLoading] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
-  const keyHandlerRef = useRef<(e: KeyboardEvent) => void>(() => {})
-  const previousQueryRef = useRef(query)
   const requestSeqRef = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const effectiveItems = searchItems ? remoteItems : items
-
-  const fzfIndex = useMemo(
-    () => new Fzf(effectiveItems as AutocompletePanelItem[], { selector: item => item.searchText, limit: maxResults }),
-    [effectiveItems, maxResults],
-  )
 
   const results = useMemo(() => {
     if (!query) {
       return effectiveItems.slice(0, maxResults).map(item => ({ item, positions: new Set<number>() }))
     }
-    return fzfIndex.find(query).map(result => ({ ...result, item: result.item as TItem }))
-  }, [effectiveItems, fzfIndex, maxResults, query])
+    return rankFuzzyItems(effectiveItems, query, {
+      fields: item => rankFields?.(item) ?? [{ value: item.searchText, role: 'primary' }],
+      searchText: item => item.searchText,
+      limit: maxResults,
+    })
+  }, [effectiveItems, maxResults, query, rankFields])
 
-  const effectiveActiveIndex = previousQueryRef.current === query ? activeIndex : 0
-  previousQueryRef.current = query
-
-  useEffect(() => {
-    setActiveIndex(0)
-  }, [items, query, visible])
+  const effectiveActiveIndex
+    = results.length === 0
+      ? 0
+      : Math.min(selection.query === query && selection.visible === visible ? selection.activeIndex : 0, results.length - 1)
 
   useEffect(() => {
     if (!visible || !searchItems) {
@@ -151,22 +149,30 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
     active?.scrollIntoView({ block: 'nearest' })
   }, [effectiveActiveIndex])
 
-  keyHandlerRef.current = (e: KeyboardEvent) => {
+  const handleDocumentKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (!visible) {
       return
     }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault()
-      setActiveIndex(prev => (prev + 1) % Math.max(results.length, 1))
+      setSelection({
+        activeIndex: (effectiveActiveIndex + 1) % Math.max(results.length, 1),
+        query,
+        visible,
+      })
     }
     else if (e.key === 'ArrowUp') {
       e.preventDefault()
-      setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
+      setSelection({
+        activeIndex: (effectiveActiveIndex - 1 + results.length) % Math.max(results.length, 1),
+        query,
+        visible,
+      })
     }
     else if (e.key === 'Tab' && results[effectiveActiveIndex]) {
       e.preventDefault()
-      setActiveIndex(0)
+      setSelection({ activeIndex: 0, query, visible })
       if (onTabComplete) {
         onTabComplete(results[effectiveActiveIndex].item)
       }
@@ -176,22 +182,18 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
     }
     else if (e.key === 'Enter' && results[effectiveActiveIndex]) {
       e.preventDefault()
-      setActiveIndex(0)
+      setSelection({ activeIndex: 0, query, visible })
       onSelect(results[effectiveActiveIndex].item)
     }
     else if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
     }
-  }
+  })
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      keyHandlerRef.current(e)
-    }
-
-    document.addEventListener('keydown', handleKeyDown, true)
-    return () => document.removeEventListener('keydown', handleKeyDown, true)
+    document.addEventListener('keydown', handleDocumentKeyDown, true)
+    return () => document.removeEventListener('keydown', handleDocumentKeyDown, true)
   }, [])
 
   const handleOptionClick = useCallback((item: TItem) => {
@@ -226,7 +228,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
                 ? 'bg-accent text-accent-foreground'
                 : 'text-foreground/80 hover:bg-accent/40',
             )}
-            onMouseEnter={() => setActiveIndex(idx)}
+            onMouseEnter={() => setSelection({ activeIndex: idx, query, visible })}
             onMouseDown={event => event.preventDefault()}
             onClick={() => handleOptionClick(item)}
           >

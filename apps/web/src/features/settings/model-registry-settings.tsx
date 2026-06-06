@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 
 import {
   getModelRegistryMappingsOptions,
-  getModelRegistryMappingsQueryKey
+  getModelRegistryMappingsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { deleteModelRegistryMappingsByModelId } from '~/api-gen/sdk.gen'
 import { Badge } from '~/components/ui/badge'
@@ -16,7 +16,7 @@ import {
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
-  EmptyTitle
+  EmptyTitle,
 } from '~/components/ui/empty'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
@@ -45,23 +45,23 @@ export function ModelRegistrySettings() {
       return mappings
     }
     return mappings.filter(
-      (mapping) =>
-        mapping.modelId.toLowerCase().includes(needle) ||
-        mapping.registryModelId.toLowerCase().includes(needle) ||
-        mapping.model?.name?.toLowerCase().includes(needle)
+      mapping =>
+        mapping.modelId.toLowerCase().includes(needle)
+        || mapping.registryModelId.toLowerCase().includes(needle)
+        || mapping.model?.name?.toLowerCase().includes(needle),
     )
   }, [mappings, query])
 
   const selectedMapping = useMemo(
-    () => mappings.find((m) => m.modelId === selectedMappingId) ?? null,
-    [mappings, selectedMappingId]
+    () => mappings.find(m => m.modelId === selectedMappingId) ?? null,
+    [mappings, selectedMappingId],
   )
 
   const deleteMapping = useMutation({
     mutationFn: async (id: string) => {
       await deleteModelRegistryMappingsByModelId({
         path: { modelId: id },
-        throwOnError: true
+        throwOnError: true,
       })
     },
     onSuccess: () => {
@@ -72,9 +72,9 @@ export function ModelRegistrySettings() {
       toastManager.add({
         type: 'error',
         title: t('registry.status.deleteFailed' as SettingsKey),
-        description: error instanceof Error ? error.message : String(error)
+        description: error instanceof Error ? error.message : String(error),
       })
-    }
+    },
   })
 
   return (
@@ -89,7 +89,8 @@ export function ModelRegistrySettings() {
             {t('registry.page.title' as SettingsKey)}
           </h3>
           <p className="max-w-full break-words text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
-            {t('registry.page.description' as SettingsKey)}{' '}
+            {t('registry.page.description' as SettingsKey)}
+{' '}
             {t('registry.alert.description' as SettingsKey)}
           </p>
         </div>
@@ -113,7 +114,7 @@ export function ModelRegistrySettings() {
             <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={e => setQuery(e.target.value)}
               placeholder={t('registry.search.placeholder' as SettingsKey)}
               className="h-8 pl-8 pr-2 text-[12.5px]"
             />
@@ -148,7 +149,7 @@ export function ModelRegistrySettings() {
                         // 'focus-within:ring-2 focus-within:ring-ring/50',
                         active
                           ? 'bg-accent text-accent-foreground'
-                          : 'hover:bg-foreground/[0.035] active:bg-foreground/6'
+                          : 'hover:bg-foreground/[0.035] active:bg-foreground/6',
                       )}
                     >
                       <button
@@ -162,7 +163,7 @@ export function ModelRegistrySettings() {
                             <span
                               className={cn(
                                 'block truncate font-mono text-[12.5px] leading-tight',
-                                active ? 'font-medium text-foreground' : 'text-foreground/90'
+                                active ? 'font-medium text-foreground' : 'text-foreground/90',
                               )}
                             >
                               {mapping.modelId}
@@ -173,7 +174,7 @@ export function ModelRegistrySettings() {
                                 'h-4 shrink-0 px-1.5 text-[9px] font-normal',
                                 mapping.matchType === 'manual'
                                   ? 'border-blue-500/30 text-blue-600 dark:text-blue-400'
-                                  : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                                  : 'border-emerald-500/30 text-emerald-600 dark:text-emerald-400',
                               )}
                             >
                               {t(`registry.match.${mapping.matchType}` as SettingsKey)}
@@ -188,7 +189,7 @@ export function ModelRegistrySettings() {
                             'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform] duration-150',
                             active
                               ? 'opacity-100 translate-x-0'
-                              : 'opacity-0 -translate-x-1 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0'
+                              : 'opacity-0 -translate-x-1 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
                           )}
                         />
                       </button>
@@ -218,11 +219,13 @@ export function ModelRegistrySettings() {
           {/* Footer summary */}
           {mappings.length > 0 && (
             <div className="shrink-0 px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
-              {mappings.length} {mappings.length === 1 ? 'mapping' : 'mappings'}
+              {mappings.length}
+{' '}
+{mappings.length === 1 ? 'mapping' : 'mappings'}
               {' · '}
-              {mappings.filter((m) => m.matchType === 'alias').length}
+              {mappings.filter(m => m.matchType === 'alias').length}
               {' alias · '}
-              {mappings.filter((m) => m.matchType === 'manual').length}
+              {mappings.filter(m => m.matchType === 'manual').length}
               {' manual'}
             </div>
           )}
@@ -230,14 +233,16 @@ export function ModelRegistrySettings() {
 
         {/* Right Panel */}
         <section className="flex flex-col overflow-y-auto py-4 pl-6 pr-2">
-          {selectedMapping ? (
+          {selectedMapping
+? (
             <div key={`${selectedMapping.modelId}:${selectedMapping.updatedAt}`} className="flex-1">
               <ModelRegistryDetailPanel
                 mapping={selectedMapping}
                 onDeleted={() => setSelectedMappingId(null)}
               />
             </div>
-          ) : (
+          )
+: (
             <div className="flex flex-1 items-center justify-center">
               <Empty className="border-none">
                 <EmptyHeader>

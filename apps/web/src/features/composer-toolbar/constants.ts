@@ -1,4 +1,4 @@
-import type { BuiltinRuntimeKind, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'
@@ -34,7 +34,15 @@ export const JARVIS_RUNTIME_KIND_OPTIONS: RuntimeKindOption[] = [
 
 export type ThinkingCapabilityTier = 'none' | 'standard' | 'extended'
 
-const EXTENDED_REASONING_MODEL_RE = /(?:^|[\s/:_-])(?:gpt-5(?:\.\d+)?|o1|o3|o4|claude-(?:opus|sonnet)-4|gemini-2\.5-pro|grok-4|deepseek-r1)(?:$|[\s:._-])/
+const EXTENDED_REASONING_MODEL_RE = /(?:^|[\s/:_-])(?:gpt-5(?:\.\d+)?|o1|o3|o4|gpt-oss|codex|claude-(?:3[.-]7|opus-4|sonnet-4)|gemini-2\.5-pro|grok-4|deepseek-r1)(?:$|[\s:._-])/
+
+function readModelReasoningEfforts(model: ModelDescriptor | null | undefined): Set<string> | null {
+  if (model?.capabilities.reasoning === false) {
+    return null
+  }
+  const efforts = model?.capabilities.reasoningEfforts
+  return efforts?.length ? new Set(efforts) : null
+}
 
 export function getThinkingCapabilityTier(model: ModelDescriptor | null | undefined): ThinkingCapabilityTier {
   if (model?.capabilities.reasoning !== true) {
@@ -53,10 +61,15 @@ export function filterThinkingOptionsForModel<TThinking extends string | null>(
   model: ModelDescriptor | null | undefined,
   options: Array<ThinkingOption<TThinking>>,
 ): Array<ThinkingOption<TThinking>> {
+  const reasoningEfforts = readModelReasoningEfforts(model)
+  if (reasoningEfforts) {
+    return options.filter(option => option.value === null || reasoningEfforts.has(option.value))
+  }
+
   const tier = getThinkingCapabilityTier(model)
 
   return options.filter((option) => {
-    if (option.value === null || option.value === 'auto') {
+    if (option.value === null) {
       return true
     }
     if (tier === 'none') {

@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import { defineTab } from '@cradle/tabs-next'
 import { SparklesIcon } from 'lucide-react'
 import { lazy } from 'react'
@@ -7,8 +5,7 @@ import { lazy } from 'react'
 const OnboardingPage = lazy(() =>
   import('~/features/onboarding/onboarding-page').then(m => ({
     default: m.OnboardingPage,
-  })),
-)
+  })))
 
 function OnboardingTabContent() {
   return <OnboardingPage />

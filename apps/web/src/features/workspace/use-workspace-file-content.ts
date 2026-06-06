@@ -10,8 +10,8 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { Options } from '~/api-gen/sdk.gen'
 import type {
-  PutWorkspacesByIdFilesContentData,
   GetWorkspacesByIdFilesInfoResponse,
+  PutWorkspacesByIdFilesContentData,
 } from '~/api-gen/types.gen'
 import { getServerUrl } from '~/lib/electron'
 

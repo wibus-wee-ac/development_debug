@@ -5,7 +5,7 @@
 Agent Management 负责 Provider 与 Agent Identity 的统一设置界面。
 Provider 配置决定模型与运行时来源，Agent Identity 决定 persona、system prompt 与专属 Skills 工作区。
 Agent 专属 Skills 基于文件系统表达，存储在 `~/.cradle/agents/{agentId}/skills/`。
-Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负责，默认英文源位于 `src/locales/default/agent-management.ts`。Provider-backed Agent 的 thinking effort 支持 `auto`、`low`、`medium`、`high`、`xhigh`。
+Agent Management 的用户可见文案由 `agentManagement` i18n namespace 负责，默认英文源位于 `src/locales/default/agent-management.ts`。Provider-backed Agent 的 thinking effort 支持 `low`、`medium`、`high`、`xhigh`。
 Session title generation is no longer configured from provider details. Chat settings own the provider/model/thinking-effort preference; provider detail panels only edit provider connection and model inventory state.
 
 ## Files

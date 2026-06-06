@@ -106,8 +106,8 @@ export function getRuntimeIconKey(runtimeKind: RuntimeKind): keyof typeof PROVID
 // ── Unified provider icon component ──
 
 /**
- * Renders the provider icon with URL sources first, reserved preset slugs next,
- * and Lobe icon slugs as the provider-specific fallback.
+ * Renders explicit icon sources first and falls back to the provider preset
+ * only when no custom icon slug is selected.
  */
 export function ProviderIcon({
   iconSlug,
@@ -127,10 +127,6 @@ export function ProviderIcon({
     if (iconSlug.startsWith('url:')) {
       return <img src={decodeURIComponent(iconSlug.slice(4))} alt="" className={cn('object-contain', className)} />
     }
-    const presetIcon = presetId ? renderPresetIcon(iconSlug, className) : null
-    if (presetIcon) {
-      return presetIcon
-    }
     return <LobeIconImage slug={iconSlug} className={className} />
   }
   return renderPresetIcon(presetId, className) ?? <CustomIcon className={className} />
@@ -138,20 +134,21 @@ export function ProviderIcon({
 
 function LobeIconImage({ slug, className }: { slug: string, className?: string }) {
   const theme = useResolvedThemeMode()
-  const [url, setUrl] = useState<string | null>(null)
+  const iconKey = `${slug}:${theme}`
+  const [loadedIcon, setLoadedIcon] = useState<{ key: string, url: string } | null>(null)
+  const url = loadedIcon?.key === iconKey ? loadedIcon.url : null
 
   useEffect(() => {
     let cancelled = false
-    setUrl(null)
     getLobeIconUrl(slug, theme).then((u) => {
-      if (!cancelled) {
-        setUrl(u)
+      if (!cancelled && u) {
+        setLoadedIcon({ key: iconKey, url: u })
       }
     })
     return () => {
       cancelled = true
     }
-  }, [slug, theme])
+  }, [iconKey, slug, theme])
 
   if (!url) {
     return <div className={cn('animate-pulse rounded bg-muted', className)} />
@@ -161,10 +158,7 @@ function LobeIconImage({ slug, className }: { slug: string, className?: string }
     <img
       src={url}
       alt={slug}
-      className={cn(
-        'object-contain drop-shadow-[0_1px_1px_rgba(0,0,0,0.16)] dark:drop-shadow-[0_1px_1px_rgba(255,255,255,0.14)]',
-        className,
-      )}
+      className={cn('object-contain', className)}
     />
   )
 }

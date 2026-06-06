@@ -5,7 +5,7 @@ import {
   createCodexReviewBranchLines,
 } from './codex-review-mode'
 
-describe('Codex review mode', () => {
+describe('codex review mode', () => {
   it('builds the native uncommitted review prompt instead of raw slash text', () => {
     const prompt = buildCodexReviewPrompt({
       mode: 'uncommitted',

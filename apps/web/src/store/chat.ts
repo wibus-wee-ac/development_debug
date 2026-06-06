@@ -63,6 +63,7 @@ interface AssistantDisplaySplit {
 interface ChatState {
   // --- Message Data ---
   messagesMap: Map<string, UIMessage[]>
+  hydratedSessionIds: Set<string>
 
   // --- Streaming State ---
   generatingMessageIds: Set<string>
@@ -103,6 +104,7 @@ interface ChatState {
   // --- Actions: Session Meta ---
   setSessionMeta: (sessionId: string, meta: Partial<SessionMeta>) => void
   setPassiveStatus: (sessionId: string, status: PublicStatus) => void
+  setSessionHydrated: (sessionId: string, hydrated: boolean) => void
   setActiveGoal: (sessionId: string, input: {
     objective: string
     sourceMessageId?: string | null
@@ -134,6 +136,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
   subscribeWithSelector(
     (set, get) => ({
       messagesMap: new Map(),
+      hydratedSessionIds: new Set(),
       generatingMessageIds: new Set(),
       passiveStreamingMessageIds: new Set(),
       activeAbortControllers: new Map(),
@@ -564,6 +567,22 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         })
       },
 
+      setSessionHydrated: (sessionId, hydrated) => {
+        set((state) => {
+          if (state.hydratedSessionIds.has(sessionId) === hydrated) {
+            return state
+          }
+          return produce(state, (draft) => {
+            if (hydrated) {
+              draft.hydratedSessionIds.add(sessionId)
+            }
+            else {
+              draft.hydratedSessionIds.delete(sessionId)
+            }
+          })
+        })
+      },
+
       setActiveGoal: (sessionId, input) => {
         const objective = input.objective.trim()
         if (!objective) {
@@ -611,6 +630,7 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
           const removedMessageIds = new Set(removedMessages.map(m => m.id))
           return produce(state, (draft) => {
             draft.messagesMap.delete(sessionId)
+            draft.hydratedSessionIds.delete(sessionId)
             draft.sessionMetaMap.delete(sessionId)
             draft.activeGoalMap.delete(sessionId)
             for (const message of removedMessages) {
@@ -750,6 +770,9 @@ export const chatSelectors = {
 
   activeGoal: (sessionId: string) => (s: ChatState) =>
     s.activeGoalMap.get(sessionId) ?? null,
+
+  isSessionHydrated: (sessionId: string) => (s: ChatState) =>
+    s.hydratedSessionIds.has(sessionId),
 
   /** Resolved visible status combining local + passive */
   visibleStatus: (sessionId: string) => (s: ChatState): PublicStatus => {

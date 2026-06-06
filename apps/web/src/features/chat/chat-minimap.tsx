@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
+import { clamp } from 'es-toolkit'
 import type { Ref } from 'react'
 import { memo, useCallback, useImperativeHandle, useReducer, useRef } from 'react'
-import { clamp } from 'es-toolkit'
 
 import { cn } from '~/lib/cn'
 import { clampRatio } from '~/lib/number-format'

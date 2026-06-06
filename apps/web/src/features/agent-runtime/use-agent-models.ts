@@ -40,7 +40,7 @@ const EMPTY_INITIAL_PROFILE_IDS: ReadonlyArray<string | null> = []
 const AgentProfileSchema = z.object({
   id: z.string(),
   name: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  providerKind: z.enum(['openai-compatible', 'anthropic', 'universal']),
   enabled: z.boolean(),
   configJson: z.string(),
   credentialRef: z.string().nullable(),
@@ -52,7 +52,7 @@ const AgentProfileSchema = z.object({
 const ModelDescriptorSchema = z.object({
   id: z.string(),
   label: z.string(),
-  providerKind: z.enum(['openai-compatible', 'anthropic']),
+  providerKind: z.enum(['openai-compatible', 'anthropic', 'universal']),
   capabilities: z
     .object({
       contextWindow: z.number().optional(),
@@ -60,6 +60,7 @@ const ModelDescriptorSchema = z.object({
       inputModalities: z.array(z.string()).optional(),
       outputModalities: z.array(z.string()).optional(),
       reasoning: z.boolean().optional(),
+      reasoningEfforts: z.array(z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])).optional(),
       toolCall: z.boolean().optional(),
       temperature: z.boolean().optional(),
       structuredOutput: z.boolean().optional(),

@@ -9,12 +9,12 @@ import * as ReactDOMClient from 'react-dom/client'
 import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
 import { AppErrorBoundary } from '~/components/common/app-error-boundary'
 import { AppLayout } from '~/components/layout/app-layout'
-import { LayoutSlotsProvider } from '~/components/layout/layout-slots-context'
+import { useSyncLayoutSlotScope } from '~/components/layout/use-layout-slots'
 import { resolveInitialLocale } from '~/i18n/browser-locale'
 import { I18nProvider } from '~/i18n/client'
 import { tearoffSessionId } from '~/lib/electron'
 import { CHAT_TAB_FALLBACK_LABEL } from '~/tabs/chat.tab'
-import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
+import { cradleRegistry, cradleTabStore, useCradleTabStore } from '~/tabs/registry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -45,6 +45,8 @@ function TearoffRuntime() {
 function TearoffSession({ sessionId }: { sessionId: string }) {
   'use no memo'
 
+  useSyncLayoutSlotScope(sessionId, [sessionId])
+
   useEffect(() => {
     useCradleTabStore.getState().restoreTabs({
       tabs: [{
@@ -60,18 +62,16 @@ function TearoffSession({ sessionId }: { sessionId: string }) {
 
   return (
     <AppEnvironmentProviders>
-      <LayoutSlotsProvider activeSlotId={sessionId} validSlotIds={[sessionId]}>
-        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-            <AppLayout sessionScoped showFooter={false}>
-              <TabRenderer
-                fallback={null}
-                className="h-full flex overflow-hidden w-full"
-              />
-            </AppLayout>
-          </div>
-        </TabsProvider>
-      </LayoutSlotsProvider>
+      <TabsProvider store={cradleTabStore} registry={cradleRegistry}>
+        <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+          <AppLayout sessionScoped showFooter={false}>
+            <TabRenderer
+              fallback={null}
+              className="h-full flex overflow-hidden w-full"
+            />
+          </AppLayout>
+        </div>
+      </TabsProvider>
     </AppEnvironmentProviders>
   )
 }

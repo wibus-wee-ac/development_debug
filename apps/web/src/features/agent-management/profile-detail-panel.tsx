@@ -15,13 +15,17 @@ import {
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
-import { getProvidersTargetsByProviderTargetIdModelsCacheOptions } from '~/api-gen/@tanstack/react-query.gen'
+import {
+  getProvidersTargetsByProviderTargetIdModelsCacheOptions,
+  getProviderTargetsQueryKey,
+} from '~/api-gen/@tanstack/react-query.gen'
 import {
   patchProfilesByIdIcon,
   postProvidersModels,
   postSecrets,
   putProfilesById,
 } from '~/api-gen/sdk.gen'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,7 +61,6 @@ import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
-import { ProviderIcon } from '~/components/common/provider-icons'
 import {
   ALL_DISABLED_SENTINEL,
   presetForProfile,
@@ -270,8 +273,6 @@ export function ProfileDetailPanel({
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
 
   const createProviderRequestBody = useCallback(() => buildProviderRequestBody(profile), [profile])
-  const createProviderRequestBodyRef = useRef(createProviderRequestBody)
-  createProviderRequestBodyRef.current = createProviderRequestBody
 
   const setTextField = useCallback(
     (field: ProfileTextField, value: string) => {
@@ -313,7 +314,7 @@ export function ProfileDetailPanel({
 
   const fetchModelsFromProvider = useCallback(
     (requestId: number) => {
-      postProvidersModels({ body: createProviderRequestBodyRef.current() })
+      postProvidersModels({ body: createProviderRequestBody() })
         .then(({ data }) => {
           if (requestId !== modelsRequestRef.current) {
             return
@@ -332,7 +333,7 @@ export function ProfileDetailPanel({
           dispatch({ type: 'models/failed' })
         })
     },
-    [queryClient],
+    [createProviderRequestBody, queryClient],
   )
 
   // Reset state when switching profile
@@ -512,11 +513,12 @@ export function ProfileDetailPanel({
         body: { iconSlug: slug },
       })
         .then(() => {
+          void queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
           onSaved()
         })
         .catch(() => {})
     },
-    [profile.id, onSaved],
+    [profile.id, queryClient, onSaved],
   )
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
@@ -527,7 +529,13 @@ export function ProfileDetailPanel({
         profile={profile}
         kindLabel={kindLabel}
         icon={(
-          <IconPicker value={profile.iconSlug ?? null} onChange={handleIconChange}>
+          <IconPicker
+            value={profile.iconSlug ?? null}
+            onChange={handleIconChange}
+            renderIcon={(entry, className) => (
+              <ProviderIcon iconSlug={entry.slug} presetId={preset.id} className={className} />
+            )}
+          >
             <button
               type="button"
               className="mt-1 shrink-0 cursor-pointer rounded-md p-0.5 transition-colors hover:bg-fill"
@@ -552,7 +560,6 @@ export function ProfileDetailPanel({
         />
 
         {supportsModels && (
-          // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileModelsSection
             loading={modelsLoading}
             models={availableModels}
@@ -565,7 +572,6 @@ export function ProfileDetailPanel({
         )}
 
         {supportsModels && (
-          // eslint-disable-next-line ts/no-use-before-define
           <MemoizedProfileCustomModelsSection
             providerTarget={providerTarget}
             customModelsJson={profile.customModels}

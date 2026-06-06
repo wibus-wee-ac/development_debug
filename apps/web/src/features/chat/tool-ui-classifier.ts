@@ -293,7 +293,6 @@ function readTodos(value: unknown): ToolTodo[] {
   })
 }
 
-
 function readWebResults(value: unknown): ToolWebResult[] {
   if (!Array.isArray(value)) {
     return []

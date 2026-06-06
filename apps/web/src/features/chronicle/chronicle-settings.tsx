@@ -34,11 +34,11 @@ import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
-import type { ChronicleFocusTarget } from '~/store/settings-overlay'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import { formatPercentFromRatio, formatShortDurationMs } from '~/lib/number-format'
+import type { ChronicleFocusTarget } from '~/store/settings-overlay'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 
 import type {
   ChronicleAccessibilityEvent,

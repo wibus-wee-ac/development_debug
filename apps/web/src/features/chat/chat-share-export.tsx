@@ -142,7 +142,7 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
   const [selectedMessageIds, setSelectedMessageIds] = useState<Set<string>>(() => new Set())
   const [busyAction, setBusyAction] = useState<'download' | 'copy' | null>(null)
   const exportSurfaceRef = useRef<HTMLDivElement>(null)
-  const messageCount = useChatStore(chatSelectors.messageCount(sessionId ?? ''))
+  const messageCount = useChatStore(chatSelectors.messageCount(sessionId ?? ''), (a, b) => a === b)
   const messages = useChatStore(open ? chatSelectors.messages(sessionId ?? '') : () => EMPTY_MESSAGES)
 
   const exportMessages = useMemo(() => {

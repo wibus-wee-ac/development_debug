@@ -50,17 +50,46 @@ function mergeWorkspaceLayoutRecord(
   }
 }
 
+function areSessionLayoutRecordsEqual(
+  left: SessionLayoutRecord | undefined,
+  right: SessionLayoutRecord,
+): boolean {
+  return !!left
+    && left.sessionId === right.sessionId
+    && left.sessionTitle === right.sessionTitle
+    && left.workspaceId === right.workspaceId
+    && left.workspacePath === right.workspacePath
+    && left.runtimeKind === right.runtimeKind
+}
+
+function areWorkspaceLayoutRecordsEqual(
+  left: WorkspaceLayoutRecord | undefined,
+  right: WorkspaceLayoutRecord,
+): boolean {
+  return !!left
+    && left.workspaceId === right.workspaceId
+    && left.workspaceName === right.workspaceName
+    && left.workspacePath === right.workspacePath
+}
+
 export const useSessionLayoutStore = createWithEqualityFn<SessionLayoutState>()(set => ({
   sessions: {},
   workspaces: {},
 
   upsertSession: (record) => {
-    set(state => ({
-      sessions: {
-        ...state.sessions,
-        [record.sessionId]: mergeSessionLayoutRecord(state.sessions[record.sessionId], record),
-      },
-    }))
+    set((state) => {
+      const nextRecord = mergeSessionLayoutRecord(state.sessions[record.sessionId], record)
+      if (areSessionLayoutRecordsEqual(state.sessions[record.sessionId], nextRecord)) {
+        return state
+      }
+
+      return {
+        sessions: {
+          ...state.sessions,
+          [record.sessionId]: nextRecord,
+        },
+      }
+    })
   },
 
   upsertSessions: (records) => {
@@ -69,21 +98,33 @@ export const useSessionLayoutStore = createWithEqualityFn<SessionLayoutState>()(
     }
 
     set((state) => {
+      let changed = false
       const sessions = { ...state.sessions }
       for (const record of records) {
-        sessions[record.sessionId] = mergeSessionLayoutRecord(sessions[record.sessionId], record)
+        const nextRecord = mergeSessionLayoutRecord(sessions[record.sessionId], record)
+        if (!areSessionLayoutRecordsEqual(sessions[record.sessionId], nextRecord)) {
+          sessions[record.sessionId] = nextRecord
+          changed = true
+        }
       }
-      return { sessions }
+      return changed ? { sessions } : state
     })
   },
 
   upsertWorkspace: (record) => {
-    set(state => ({
-      workspaces: {
-        ...state.workspaces,
-        [record.workspaceId]: mergeWorkspaceLayoutRecord(state.workspaces[record.workspaceId], record),
-      },
-    }))
+    set((state) => {
+      const nextRecord = mergeWorkspaceLayoutRecord(state.workspaces[record.workspaceId], record)
+      if (areWorkspaceLayoutRecordsEqual(state.workspaces[record.workspaceId], nextRecord)) {
+        return state
+      }
+
+      return {
+        workspaces: {
+          ...state.workspaces,
+          [record.workspaceId]: nextRecord,
+        },
+      }
+    })
   },
 
   upsertWorkspaces: (records) => {
@@ -92,11 +133,16 @@ export const useSessionLayoutStore = createWithEqualityFn<SessionLayoutState>()(
     }
 
     set((state) => {
+      let changed = false
       const workspaces = { ...state.workspaces }
       for (const record of records) {
-        workspaces[record.workspaceId] = mergeWorkspaceLayoutRecord(workspaces[record.workspaceId], record)
+        const nextRecord = mergeWorkspaceLayoutRecord(workspaces[record.workspaceId], record)
+        if (!areWorkspaceLayoutRecordsEqual(workspaces[record.workspaceId], nextRecord)) {
+          workspaces[record.workspaceId] = nextRecord
+          changed = true
+        }
       }
-      return { workspaces }
+      return changed ? { workspaces } : state
     })
   },
 }), shallow)

@@ -1,4 +1,5 @@
-import { Fzf } from 'fzf'
+import type { FuzzyRankField } from '~/lib/fuzzy-rank'
+import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { getSlashCommandSourceLabel } from './chat-slash-commands'
@@ -69,21 +70,34 @@ export function getVisibleSlashCommands(commands: ChatComposerSlashCommand[], ha
 export function formatSlashCommandSearchText(command: ChatComposerSlashCommand): string {
   return [
     command.name,
+    command.label,
+    ...(command.aliases ?? []),
     command.description,
     command.argumentHint,
-    ...(command.aliases ?? []),
     getSlashCommandSourceLabel(command),
   ].join(' ')
+}
+
+function getSlashCommandRankFields(command: ChatComposerSlashCommand): FuzzyRankField[] {
+  return [
+    { value: command.name, role: 'primary' },
+    { value: command.label, role: 'primary' },
+    ...(command.aliases ?? []).map(alias => ({ value: alias, role: 'primary' as const })),
+    { value: command.description, role: 'secondary' },
+    { value: command.argumentHint, role: 'secondary' },
+    { value: getSlashCommandSourceLabel(command), role: 'secondary' },
+  ]
 }
 
 export function getSlashCommandPanelItems(commands: ChatComposerSlashCommand[], query: string): ChatComposerSlashCommand[] {
   if (!query) {
     return commands.slice(0, MAX_SLASH_COMMAND_RESULTS)
   }
-  return new Fzf(commands, {
-    selector: formatSlashCommandSearchText,
+  return rankFuzzyItems(commands, query, {
+    fields: getSlashCommandRankFields,
+    searchText: formatSlashCommandSearchText,
     limit: MAX_SLASH_COMMAND_RESULTS,
-  }).find(query).map(result => result.item)
+  }).map(result => result.item)
 }
 
 export function readSlashTriggerState(inputValue: string, cursor: number, commands: ChatComposerSlashCommand[], selectedCommand: ChatComposerSlashCommand | null): SlashTriggerState | null {

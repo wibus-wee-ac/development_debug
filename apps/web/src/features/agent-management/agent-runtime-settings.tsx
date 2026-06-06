@@ -20,8 +20,10 @@ import {
   getExternalProviderSourcesOptions,
   getExternalProviderSourcesRecordsOptions,
   getProviderTargetsQueryKey,
+  patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation,
   postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -38,7 +40,9 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
+import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
 import type { AgentProfile } from '~/lib/types'
 
@@ -46,7 +50,6 @@ import { DraftSetupPanel } from './draft-setup-panel'
 import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
 import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
-import { ProviderIcon } from '~/components/common/provider-icons'
 import { collectProviderListGroups } from './provider-list-groups'
 import type {
   DraftProvider,
@@ -55,8 +58,8 @@ import type {
   ProviderListEntry,
 } from './provider-settings-utils'
 import {
-  presetForProviderKind,
   presetForProfile,
+  presetForProviderKind,
   PROVIDER_KIND_LABELS,
   providerListEntryId,
 } from './provider-settings-utils'
@@ -81,6 +84,10 @@ function parseProfileConfigForUpdate(configJson: string): Record<string, unknown
 
 function defaultGroupOpen(groupKind: 'external-plugin' | 'external-source' | 'manual'): boolean {
   return groupKind === 'manual' || groupKind === 'external-plugin'
+}
+
+function externalRecordCanToggle(record: ExternalProviderRecordView): boolean {
+  return !!record.providerTargetId && record.status !== 'missing' && record.status !== 'unsupported'
 }
 
 const ProviderRow = memo(
@@ -257,7 +264,7 @@ export function AgentRuntimeSettings() {
         toastManager.add({
           type: 'error',
           title: t('runtime.toast.syncFailed', { sourceCount: errors.length }),
-          description: errors.map((e: { message?: string; sourceKey: string }) => e.message ?? e.sourceKey).join(', ') || undefined,
+          description: errors.map((e: { message?: string, sourceKey: string }) => e.message ?? e.sourceKey).join(', ') || undefined,
         })
       }
       if (ok.length > 0) {
@@ -276,6 +283,9 @@ export function AgentRuntimeSettings() {
       })
     },
   })
+  const updateExternalRuntimeTarget = useMutation(
+    patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation(),
+  )
 
   const providerGroups = useMemo(
     () => collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources),
@@ -327,9 +337,17 @@ export function AgentRuntimeSettings() {
     () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
     [selectedEntries],
   )
+  const selectedExternalRecords = useMemo(
+    () => selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : [])),
+    [selectedEntries],
+  )
   const toggleableSelectedProfiles = selectedProfiles
+  const toggleableSelectedExternalRecords = useMemo(
+    () => selectedExternalRecords.filter(externalRecordCanToggle),
+    [selectedExternalRecords],
+  )
   const removableSelectedProfiles = selectedProfiles
-  const toggleableSelectedCount = toggleableSelectedProfiles.length
+  const toggleableSelectedCount = toggleableSelectedProfiles.length + toggleableSelectedExternalRecords.length
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleEntries, selectedIds)
   const hasFilter = deferredFilter.trim().length > 0
@@ -422,6 +440,19 @@ export function AgentRuntimeSettings() {
     ])
   }, [refetchExternalRecords, refetchExternalSources])
 
+  const handleToggleExternalRecord = useCallback(
+    async (record: ExternalProviderRecordView, enabled: boolean) => {
+      await updateExternalRuntimeTarget.mutateAsync({
+        path: {
+          sourceKey: record.sourceKey,
+          externalRecordId: record.externalId,
+        },
+        body: { enabled },
+      })
+    },
+    [updateExternalRuntimeTarget],
+  )
+
   const toggleVisibleSelected = useCallback(() => {
     setSelectedIds(prev =>
       allVisibleSelected
@@ -493,7 +524,16 @@ export function AgentRuntimeSettings() {
       try {
         await Promise.all([
           ...toggleableSelectedProfiles.map(profile => handleToggleProfile(profile, enabled)),
+          ...toggleableSelectedExternalRecords.map(record => handleToggleExternalRecord(record, enabled)),
         ])
+        if (toggleableSelectedExternalRecords.length > 0) {
+          await Promise.all([
+            refetchExternalRecords(),
+            queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY }),
+            queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() }),
+            queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }),
+          ])
+        }
         setSelectedIds(new Set())
         selectionAnchorIdRef.current = null
       }
@@ -503,8 +543,12 @@ export function AgentRuntimeSettings() {
     },
     [
       toggleableSelectedProfiles,
+      toggleableSelectedExternalRecords,
       toggleableSelectedCount,
       handleToggleProfile,
+      handleToggleExternalRecord,
+      queryClient,
+      refetchExternalRecords,
     ],
   )
 

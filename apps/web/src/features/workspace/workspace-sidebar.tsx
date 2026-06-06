@@ -27,6 +27,7 @@ import {
   PinIcon,
   PinOffIcon,
   PlusIcon,
+  RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
   Trash2Icon,
@@ -39,6 +40,7 @@ import { shallow } from 'zustand/shallow'
 import {
   getSessionsByIdExportMarkdown,
   patchSessionsById,
+  postChatSessionsBySessionIdTitleRegenerate,
   postSessionsByIdArchive,
   postSessionsByIdRead,
   postSessionsByIdUnread,
@@ -92,7 +94,7 @@ import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
-import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
+import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, updateSessionReadState, useAllSessions } from './use-session'
@@ -353,33 +355,83 @@ function WorkspaceTextInputDialog({
   )
 }
 
+const SessionActiveBackground = memo(({ active }: { active: boolean }) => {
+  return (
+    <div
+      className={cn(
+        'pointer-events-none absolute inset-0 rounded-lg transition-colors',
+        active ? 'bg-accent/80' : 'bg-transparent',
+      )}
+      aria-hidden="true"
+      data-session-active={active ? 'true' : 'false'}
+    />
+  )
+})
+SessionActiveBackground.displayName = 'SessionActiveBackground'
+
+const SessionUnreadIndicator = memo(({
+  show,
+  active,
+  label,
+}: {
+  show: boolean
+  active: boolean
+  label: string
+}) => {
+  if (!show || active) {
+    return null
+  }
+
+  return <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={label} />
+})
+SessionUnreadIndicator.displayName = 'SessionUnreadIndicator'
+
+function usePopupContentMounted(open: boolean): boolean {
+  const [mounted, setMounted] = useState(open)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      return
+    }
+
+    const frame = window.requestAnimationFrame(() => setMounted(false))
+    return () => window.cancelAnimationFrame(frame)
+  }, [open])
+
+  return open || mounted
+}
+
 // ── Session item ──────────────────────────────────────────────────────────────
 
 const SessionItem = memo(({
   session,
   workspaceId,
   workspacePath,
+  active,
   onOpenSession,
 }: {
   session: WorkspaceSession
   workspaceId: string
   workspacePath: string
+  active: boolean
   onOpenSession?: (sessionId: string) => void
 }) => {
   const { t } = useTranslation('workspace')
-  const isActive = useIsActiveTab('chat', { sessionId: session.id })
   const { openNewTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const isUnread = session.unread
-  const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id))
+  const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id), (a, b) => a === b)
   const isStreaming = session.status === 'streaming' || hasLocalStreamingState
-  const latestLocalError = useChatStore(chatSelectors.latestError(session.id))
+  const latestLocalError = useChatStore(chatSelectors.latestError(session.id), (a, b) => a === b)
   const hasError = !isStreaming && (session.status === 'error' || Boolean(latestLocalError))
   const [isRenaming, setIsRenaming] = useState(false)
   const dragPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
   const dragWasTornOffRef = useRef(false)
   const sessionTitle = session.title ?? t('session.fallbackTitle')
+  const [buttonMenuOpen, setButtonMenuOpen] = useState(false)
+  const buttonMenuMounted = usePopupContentMounted(buttonMenuOpen)
 
   const recordSessionLayout = useCallback(() => {
     useSessionLayoutStore.getState().upsertSession({
@@ -478,6 +530,23 @@ const SessionItem = memo(({
   const handleStartRename = useCallback(() => {
     setIsRenaming(true)
   }, [])
+
+  const handleRegenerateTitle = useCallback(async () => {
+    try {
+      const { error } = await postChatSessionsBySessionIdTitleRegenerate({ path: { sessionId: session.id } })
+      if (error) {
+        throw error
+      }
+      await invalidateSessionQueries()
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('session.toast.regenerateTitleFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [invalidateSessionQueries, session.id, t])
 
   const handleExport = useCallback(async () => {
     const { data } = await getSessionsByIdExportMarkdown({ path: { id: session.id } })
@@ -627,6 +696,13 @@ const SessionItem = memo(({
       invoke: handleStartRename,
     },
     {
+      key: 'regenerate-title',
+      label: t('session.action.regenerateTitle'),
+      icon: <RefreshCwIcon />,
+      testId: `session-menu-regenerate-title-${session.id}`,
+      invoke: handleRegenerateTitle,
+    },
+    {
       key: 'toggle-read-state',
       label: isUnread ? t('session.action.markRead') : t('session.action.markUnread'),
       icon: isUnread ? <MailOpenIcon /> : <MailIcon />,
@@ -675,13 +751,13 @@ const SessionItem = memo(({
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
       className={cn(
-        'group flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50',
+        'group relative isolate flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50',
         !isRenaming && 'cursor-grab active:cursor-grabbing',
-        isActive && 'bg-accent/80 text-sidebar-foreground',
       )}
       data-testid={`session-item-${session.id}`}
       data-session-pinned={session.pinned ? 'true' : 'false'}
     >
+      <SessionActiveBackground active={active} />
       {isRenaming
         ? (
           <SessionRenameInput
@@ -705,7 +781,7 @@ const SessionItem = memo(({
               onPointerDown={prepareSessionOpen}
               onPointerEnter={prefetchSession}
               data-testid={`session-open-${session.id}`}
-              className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
+              className="relative z-10 flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
               {hasError
                 ? (
@@ -724,9 +800,11 @@ const SessionItem = memo(({
                 )
                 : null}
               <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
-              {isUnread && !isActive && !isStreaming && (
-                <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={t('session.aria.newReply')} />
-              )}
+              <SessionUnreadIndicator
+                show={isUnread && !isStreaming}
+                active={active}
+                label={t('session.aria.newReply')}
+              />
               {isStreaming
                 ? (
                   <LoaderCircleIcon
@@ -741,12 +819,12 @@ const SessionItem = memo(({
                   </span>
                 )}
             </Link>
-            <Menu>
+            <Menu open={buttonMenuOpen} onOpenChange={setButtonMenuOpen}>
               <MenuTrigger
                 render={(
                   <button
                     type="button"
-                    className="mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+                    className="relative z-10 mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
                     onClick={e => e.stopPropagation()}
                     aria-label={t('session.aria.menu')}
                   />
@@ -755,9 +833,11 @@ const SessionItem = memo(({
               >
                 <MoreHorizontalIcon className="size-3" aria-hidden="true" />
               </MenuTrigger>
-              <MenuPopup align="start" side="bottom" sideOffset={4}>
-                <SessionMenuActionItems actions={sessionActions} surface="button" />
-              </MenuPopup>
+              {buttonMenuMounted && (
+                <MenuPopup align="start" side="bottom" sideOffset={4}>
+                  <SessionMenuActionItems actions={sessionActions} surface="button" />
+                </MenuPopup>
+              )}
             </Menu>
           </>
         )}
@@ -812,6 +892,18 @@ const WorkspaceGroup = memo(({
   } | null>(null)
   const workspacePinned = Boolean(workspace.pinned)
   const workspaceSessionIds = useMemo(() => sessions.map(session => session.id), [sessions])
+  const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessionIds), [workspaceSessionIds])
+  const activeSessionId = useCradleTabStore(
+    useCallback((state) => {
+      const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
+      if (activeTab?.type !== 'chat') {
+        return null
+      }
+
+      const sessionId = activeTab.params.sessionId
+      return sessionId && workspaceSessionIdSet.has(sessionId) ? sessionId : null
+    }, [workspaceSessionIdSet]),
+  )
   const locallyStreamingSessionIds = useChatStore(
     useCallback(
       state => new Set(workspaceSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state))),
@@ -1218,6 +1310,7 @@ const WorkspaceGroup = memo(({
                   session={session}
                   workspaceId={workspace.id}
                   workspacePath={workspace.path}
+                  active={session.id === activeSessionId}
                   onOpenSession={handleOpenSession}
                 />
               ))}

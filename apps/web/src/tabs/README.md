@@ -16,7 +16,7 @@ The registry exports the store instance consumed by the rest of the app.
 - **reconcile-persisted-tabs.ts**: 启动时清理 dangling chat/workspace tabs 的纯函数，防止 localStorage 里的旧 session/workspace 引用继续污染 UI
 - **reconcile-persisted-tabs.test.ts**: 验证无效 chat/workspace tabs 会被剔除并修复 active tab
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)
-- **chat.tab.tsx**: Chat session tab（params: `sessionId`），使用通用 fallback label，在会话标题加载后替换为真实标题；读到 session-owned `archivedAt` 后自动关闭对应 chat tab / Electron tear-off session；Chat Runtime side session 创建完成后打开子 chat tab 而不覆盖父 tab；workspace-backed chat（包含 CLI-TUI）注册 bottom terminal panel、browser panel capability、right aside capability，具体 shell owner 由 session/workspace route identity 区分
+- **chat.tab.tsx**: Chat session tab（params: `sessionId`），使用通用 fallback label，在会话标题加载后替换为真实标题；读到 session-owned `archivedAt` 后自动关闭对应 chat tab / Electron tear-off session；workspace-backed chat（包含 CLI-TUI）注册 bottom terminal panel、browser panel capability、right aside capability，具体 shell owner 由 session/workspace route identity 区分
 - **chat.tab.test.tsx**: 覆盖 chat tab 标题 fallback 清理与 session title 同步的回归测试
 - **new-chat.tab.tsx**: New chat creation tab (no params); page-owned workspace selection drives browser panel and right aside capability while the tab route remains parameterless.
 - **awaits.tab.tsx**: Pending external-await overview tab opened by Desktop tray actions.

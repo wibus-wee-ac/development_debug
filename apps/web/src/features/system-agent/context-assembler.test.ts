@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
-import { assembleContextForPrompt } from './context-assembler'
 import type { ContextEnvelope, ContextItem } from '~/features/context/context-items'
+
+import { assembleContextForPrompt } from './context-assembler'
 
 const NOW = 1779781200000
 

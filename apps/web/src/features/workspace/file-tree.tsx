@@ -424,7 +424,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   const refreshWorkspaceFiles = useCallback(async () => {
     await onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
   }, [onRefreshDirectory])
-  const commitRename = useEffectEvent(async (sourcePath: string, destinationPath: string) => {
+  const commitRename = useCallback(async (sourcePath: string, destinationPath: string) => {
     await renameWorkspaceFilePath({
       workspaceId,
       sourcePath,
@@ -432,15 +432,15 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
     await onRefreshDirectory(getParentDirectoryPath(destinationPath), true)
-  })
-  const handleRenameError = useEffectEvent((error: unknown) => {
+  }, [onRefreshDirectory, t, workspaceId])
+  const handleRenameError = useCallback((error: unknown) => {
     toastManager.add({
       type: 'error',
       title: t('fileTree.toast.renameFailed'),
       description: error instanceof Error ? error.message : String(error),
     })
     void onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
-  })
+  }, [onRefreshDirectory, t])
 
   const { model } = useFileTree({
     preparedInput,
@@ -532,13 +532,13 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
     )
     event.dataTransfer.effectAllowed = 'copy'
   })
-  const openWorkspaceFileFromTree = useEffectEvent((path: string) => {
+  const openWorkspaceFileFromTree = useCallback((path: string) => {
     openWorkspaceFile(path, getWorkspaceFileDefaultView(path))
-  })
-  const openPeekFromTree = useEffectEvent((path: string) => {
+  }, [openWorkspaceFile])
+  const openPeekFromTree = useCallback((path: string) => {
     openWorkspaceFile(path, 'preview')
-  })
-  const revealWorkspacePath = useEffectEvent(async (path: string) => {
+  }, [openWorkspaceFile])
+  const revealWorkspacePath = useCallback(async (path: string) => {
     if (!workspacePath || !isElectron || !nativeIpc) {
       return
     }
@@ -553,7 +553,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  })
+  }, [t, workspacePath])
 
   useEffect(() => {
     resetFileTreePaths(model, paths, preparedInput)
@@ -702,7 +702,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
       container.removeEventListener('dblclick', handleDoubleClick)
       container.removeEventListener('keydown', handleKeyDown)
     }
-  }, [copyAbsolutePath, copyRelativePath, model])
+  }, [copyAbsolutePath, copyRelativePath, model, openPeekFromTree, openWorkspaceFileFromTree])
 
   return (
     <div

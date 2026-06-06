@@ -1,10 +1,12 @@
 import type { FileUIPart } from 'ai'
 import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon, SquareTerminalIcon } from 'lucide-react'
+import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { isLocalMode } from '~/lib/electron'
 import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
@@ -62,6 +64,7 @@ export interface ComposerSendController {
   disabled?: boolean
   sendDisabled?: boolean
   allowEmptySend?: boolean
+  onQuickQuestion?: (question: string) => void
 }
 
 export interface ComposerCommandController {
@@ -145,6 +148,13 @@ const EMPTY_FILES: MentionItem[] = []
 const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
+const textareaRowsClasses: Record<number, string> = {
+  1: 'min-h-11 max-h-40',
+  2: 'min-h-14 max-h-48',
+  3: 'min-h-16 max-h-60',
+  4: 'min-h-24 max-h-72',
+  5: 'min-h-30 max-h-80',
+}
 
 function isComposerSendPromise(
   result: ComposerSendResult | Promise<ComposerSendResult>,
@@ -502,6 +512,7 @@ export function Composer({
     disabled,
     sendDisabled,
     allowEmptySend,
+    onQuickQuestion,
   } = send
   const slashCommands = commands?.commands ?? EMPTY_SLASH_COMMANDS
   const onSlashCommandAction = commands?.runAction
@@ -525,6 +536,7 @@ export function Composer({
     className,
     cardClassName,
     textareaClassName,
+    textareaRows,
     attachmentListClassName,
     actionBarClassName,
     toolbarClassName,
@@ -593,6 +605,9 @@ export function Composer({
   const isBangMode = bangCommandPreview !== null
   const sendBlocked = (isBangMode && bangCommand === null) || slashAwaitingRequiredArgument
   const effectiveDisabled = disabled || isSending
+  const textareaRowsClassName = textareaRows === undefined
+    ? undefined
+    : textareaRowsClasses[textareaRows] ?? textareaRowsClasses[3]
 
   const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
     const selectedSlashCommand = snapshot.trigger?.kind === 'slash'
@@ -719,6 +734,17 @@ export function Composer({
       return
     }
 
+    if (onQuickQuestion) {
+      const btwMatch = text.match(/^\/btw\s+(.+)$/i)
+      if (btwMatch?.[1]) {
+        const question = btwMatch[1].trim()
+        onQuickQuestion(question)
+        dispatch({ type: 'input/cleared' })
+        promptEditorRef.current?.setText('')
+        return
+      }
+    }
+
     submitAndClearDraft({
       clearAttachments: clearComposerAttachments,
       contextParts: state.contextParts,
@@ -729,7 +755,7 @@ export function Composer({
       submit: submitHandler,
       text,
     })
-  }, [allowEmptySend, clearComposerAttachments, composerAttachments, disabled, isSending, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
+  }, [allowEmptySend, clearComposerAttachments, composerAttachments, disabled, isSending, onQuickQuestion, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
 
   const handlePaste = useCallback((event: ClipboardEvent) => {
     attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)
@@ -804,15 +830,27 @@ export function Composer({
   }, [onFocusChange])
 
   const handleEditorDrop = useCallback((event: DragEvent) => {
+    // First, check if this is a workspace file drag (internal drag from file tree)
     const path = event.dataTransfer ? readWorkspaceFileDragText(event.dataTransfer) : ''
-    if (!path) {
-      return false
+    if (path) {
+      event.preventDefault()
+      event.stopPropagation()
+      promptEditorRef.current?.appendText(path)
+      return true
     }
-    event.preventDefault()
-    event.stopPropagation()
-    promptEditorRef.current?.appendText(path)
-    return true
-  }, [])
+
+    // In local mode, handle external file drops as attachments
+    if (isLocalMode() && event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      void attachmentController.handleFilesSelected({
+        target: { files: event.dataTransfer.files, value: '' },
+      } as ChangeEvent<HTMLInputElement>)
+      return true
+    }
+
+    return false
+  }, [attachmentController])
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -865,7 +903,10 @@ export function Composer({
           {slashArgumentHint && (
             <div
               aria-hidden="true"
-              className="pointer-events-none absolute inset-0 min-h-16 max-h-60 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-2 text-sm text-transparent"
+              className={cn(
+                'pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-2 text-sm text-transparent',
+                textareaRowsClassName ?? 'min-h-16 max-h-60',
+              )}
               data-testid="slash-argument-hint"
             >
               <span>{state.inputValue}</span>
@@ -886,7 +927,7 @@ export function Composer({
             ariaExpanded={state.slashActive}
             ariaActiveDescendant={slashPanelHasResults ? activeSlashOptionId : undefined}
             testId={textareaTestId}
-            className={textareaClassName}
+            className={cn(textareaRowsClassName, textareaClassName)}
             selectedSlashCommand={state.selectedSlashCommand}
             slashCommands={visibleSlashCommands}
           />

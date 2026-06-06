@@ -22,6 +22,7 @@ afterEach(() => {
   useChatStore.setState(state => ({
     ...state,
     messagesMap: new Map(),
+    hydratedSessionIds: new Set(),
     generatingMessageIds: new Set(),
     passiveStreamingMessageIds: new Set(),
     activeAbortControllers: new Map(),

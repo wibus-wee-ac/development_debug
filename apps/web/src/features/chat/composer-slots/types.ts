@@ -26,3 +26,11 @@ export interface ComposerUsageSlotActions {
   open: boolean
   onDismiss: () => void
 }
+
+export interface ComposerQuickQuestionSlotActions {
+  open: boolean
+  question: string
+  sessionId: string
+  apiBaseUrl?: string
+  onDismiss: () => void
+}

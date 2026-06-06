@@ -1,5 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import type { Editor, Range } from '@tiptap/core'
 import { mergeAttributes, Node } from '@tiptap/core'
 import { PluginKey } from '@tiptap/pm/state'

@@ -10,6 +10,7 @@ import {
   patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation,
   postProvidersModelsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { Badge } from '~/components/ui/badge'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
@@ -22,7 +23,6 @@ import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/lib/types
 import { SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
-import { ProviderIcon } from '~/components/common/provider-icons'
 import type {
   ExternalProviderRecordView,
   ExternalProviderRuntimeTargetView,
@@ -42,8 +42,6 @@ const ExternalRecordMetadataSchema = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiFormat: z.string().optional(),
-  iconUrl: z.string().optional(),
-  avatarUrl: z.string().optional(),
 })
 
 function sourceStatusTone(status: ExternalProviderSourceView['lastSyncStatus']) {
@@ -380,7 +378,6 @@ export function ExternalProviderRecordDetailPanel({
         <div className="mt-1 shrink-0 rounded-md p-0.5 text-muted-foreground">
           <ProviderIcon
             iconSlug={runtimeTarget?.iconSlug ?? null}
-            iconUrl={metadata.avatarUrl ?? metadata.iconUrl ?? null}
             presetId={preset.id}
             className="size-6"
           />
@@ -423,13 +420,12 @@ export function ExternalProviderRecordDetailPanel({
           import.meta.env.DEV && (
             <>
               <SettingsRow label="ID" description="">
-                <div className='text-[12px] font-mono hover:bg-muted p-1 px-3 rounded-xl transition-colors duration-200 cursor-copy'
-                  onClick={() => {
-                    navigator.clipboard.writeText(source?.id || "");
+                <div className="text-[12px] font-mono hover:bg-muted p-1 px-3 rounded-xl transition-colors duration-200 cursor-copy" onClick={() => {
+                    navigator.clipboard.writeText(source?.id || '')
                     toastManager.add({
-                      type: "success",
-                      title: "Copied Source ID",
-                      description: "You can use it to track with Provider",
+                      type: 'success',
+                      title: 'Copied Source ID',
+                      description: 'You can use it to track with Provider',
                       timeout: 3000,
                     })
                   }}

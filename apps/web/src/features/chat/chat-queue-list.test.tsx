@@ -13,7 +13,6 @@ vi.mock('react-i18next', () => ({
     t: (key: string, values?: Record<string, unknown>) => {
       const translations: Record<string, string> = {
         'continuation.mode.queue': 'Queue',
-        'continuation.mode.steer': 'Steer',
         'continuation.queue.cancel': 'Cancel queue item: {{label}}',
         'continuation.queue.emptyLabel': 'Empty continuation',
         'continuation.queue.moveDown': 'Move queue item down: {{label}}',
@@ -49,7 +48,7 @@ const queueItems: ChatQueueItem[] = [
   {
     id: 'queue-2',
     sessionId: 'session-1',
-    mode: 'steer',
+    mode: 'queue',
     status: 'pending',
     text: 'Second',
     files: [],
@@ -72,9 +71,9 @@ const queueItemsWithRunning: ChatQueueItem[] = [
   {
     id: 'queue-running',
     sessionId: 'session-1',
-    mode: 'steer',
+    mode: 'queue',
     status: 'running',
-    text: 'Live steer',
+    text: 'Running queue item',
     files: [],
     contextParts: [],
     providerTargetId: null,
@@ -125,14 +124,14 @@ describe('chatQueueList', () => {
     expect(onReorder).toHaveBeenCalledWith(['queue-2', 'queue-1'])
   })
 
-  it('shows running steer items without treating them as pending reorder or cancel targets', () => {
+  it('shows running queue items without treating them as pending reorder or cancel targets', () => {
     const onCancel = vi.fn()
     const onReorder = vi.fn()
     render(<ChatQueueList items={queueItemsWithRunning} onCancel={onCancel} onReorder={onReorder} />)
 
-    expect(screen.getByText('Live steer')).toBeTruthy()
+    expect(screen.getByText('Running queue item')).toBeTruthy()
     expect(screen.getByText('Running')).toBeTruthy()
-    expect(screen.queryByLabelText('Cancel queue item: Live steer')).toBeNull()
+    expect(screen.queryByLabelText('Cancel queue item: Running queue item')).toBeNull()
 
     fireEvent.click(screen.getByLabelText('Move queue item up: Second'))
 

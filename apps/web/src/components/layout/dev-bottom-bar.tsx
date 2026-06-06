@@ -1,12 +1,21 @@
 import { buildHash } from '@cradle/tabs-next'
 import { MonitorIcon, RefreshCwIcon } from 'lucide-react'
+import { useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { Switch } from '~/components/ui/switch'
 import { isElectron } from '~/lib/electron'
+import { getReactDiagnosticsApi } from '~/lib/react-diagnostics'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
 export function DevBottomBar() {
   const { t } = useTranslation('chrome')
+  const reactDiagnostics = getReactDiagnosticsApi()
+  const reactDiagnosticsEnabled = useSyncExternalStore(
+    reactDiagnostics.subscribe,
+    reactDiagnostics.readEnabled,
+    reactDiagnostics.readEnabled,
+  )
   const activeRouteHash = useCradleTabStore((state) => {
     const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
     return activeTab ? buildHash(cradleRegistry, activeTab.type, activeTab.params) : '/'
@@ -22,6 +31,20 @@ export function DevBottomBar() {
       </span>
 
       <div className="flex items-center gap-0.5">
+        <label
+          className="flex h-6 items-center gap-1.5 rounded px-2 text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+          title={reactDiagnosticsEnabled
+            ? t('dev.action.reactDiagnostics.disableTitle')
+            : t('dev.action.reactDiagnostics.enableTitle')}
+        >
+          <span className="whitespace-nowrap">{t('dev.action.reactDiagnostics')}</span>
+          <Switch
+            size="sm"
+            checked={reactDiagnosticsEnabled}
+            onCheckedChange={reactDiagnostics.setEnabled}
+            aria-label={t('dev.action.reactDiagnostics')}
+          />
+        </label>
         <button
           type="button"
           title={t('dev.action.openDevtools.title')}

@@ -1,7 +1,6 @@
-/* eslint-disable react-refresh/only-export-components */
-
 import type { ReactNode } from 'react'
-import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { shallow } from 'zustand/shallow'
+import { createWithEqualityFn } from 'zustand/traditional'
 
 export interface LayoutSlots {
   aside?: ReactNode
@@ -14,153 +13,130 @@ export interface LayoutSlots {
   headerActions?: ReactNode
 }
 
-interface RegistrationState {
+interface LayoutSlotsState {
+  activeSlotId: string | null | undefined
   map: Record<string, LayoutSlots>
-  activeId: string | null
+  previousSlots: LayoutSlots
+  registerSlot: (id: string, slots: LayoutSlots) => void
+  unregisterSlot: (id: string) => void
+  setSlotScope: (activeSlotId: string | null | undefined, validSlotIds?: readonly string[]) => void
+  resetSlots: () => void
 }
 
-export interface LayoutSlotsContextValue {
-  slots: LayoutSlots
+const EMPTY_LAYOUT_SLOTS: LayoutSlots = {}
+
+function areLayoutSlotsEqual(left: LayoutSlots | undefined, right: LayoutSlots): boolean {
+  if (left === right) {
+    return true
+  }
+  if (!left) {
+    return false
+  }
+
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  return leftKeys.length === rightKeys.length
+    && rightKeys.every(key => Object.is(
+      left[key as keyof LayoutSlots],
+      right[key as keyof LayoutSlots],
+    ))
 }
 
-export interface LayoutSlotRegistrationContextValue {
-  register: (id: string, slots: LayoutSlots) => void
-  unregister: (id: string) => void
-  activate: (id: string) => void
+function selectActiveSlots(state: LayoutSlotsState): LayoutSlots {
+  if (state.activeSlotId === undefined) {
+    return state.previousSlots
+  }
+  if (state.activeSlotId === null) {
+    return EMPTY_LAYOUT_SLOTS
+  }
+  return state.map[state.activeSlotId] ?? state.previousSlots
 }
 
-export const LayoutSlotsContext = createContext<LayoutSlotsContextValue>({
-  slots: {},
-})
+export const useLayoutSlotsStore = createWithEqualityFn<LayoutSlotsState>()(set => ({
+  activeSlotId: undefined,
+  map: {},
+  previousSlots: EMPTY_LAYOUT_SLOTS,
 
-export const LayoutSlotRegistrationContext = createContext<LayoutSlotRegistrationContextValue>({
-  register: () => { },
-  unregister: () => { },
-  activate: () => { },
-})
-
-export function LayoutSlotsProvider({
-  children,
-  activeSlotId,
-  validSlotIds,
-}: {
-  children: ReactNode
-  activeSlotId?: string | null
-  validSlotIds?: readonly string[]
-}) {
-  const [state, setState] = useState<RegistrationState>({ map: {}, activeId: null })
-  const previousSlotsRef = useRef<LayoutSlots>({})
-  const validSlotKey = validSlotIds?.join('\n') ?? null
-
-  const register = useCallback((id: string, newSlots: LayoutSlots) => {
-    setState((prev) => {
-      const existing = prev.map[id]
-      const merged = existing ? { ...existing, ...newSlots } : newSlots
-      // Shallow equality: skip update if both objects have the same keys and values
-      if (existing) {
-        const existingKeys = Object.keys(existing)
-        const mergedKeys = Object.keys(merged)
-        if (
-          existingKeys.length === mergedKeys.length
-          && mergedKeys.every(k => merged[k as keyof LayoutSlots] === existing[k as keyof LayoutSlots])
-        ) {
-          return prev
-        }
+  registerSlot: (id, slots) => {
+    set((state) => {
+      const existing = state.map[id]
+      const merged = existing ? { ...existing, ...slots } : slots
+      if (areLayoutSlotsEqual(existing, merged)) {
+        return state
       }
-      // Only set activeId on first registration (new id not yet in map)
-      const isNew = !(id in prev.map)
+
+      const nextPreviousSlots = id === state.activeSlotId ? merged : state.previousSlots
       return {
-        map: { ...prev.map, [id]: merged },
-        activeId: isNew ? id : prev.activeId,
+        map: { ...state.map, [id]: merged },
+        previousSlots: nextPreviousSlots,
       }
     })
-  }, [])
+  },
 
-  const unregister = useCallback((id: string) => {
-    setState((prev) => {
-      if (!(id in prev.map)) {
-        return prev
-      }
-      const { [id]: _removed, ...rest } = prev.map
-      const nextActiveId
-        = prev.activeId === id ? (Object.keys(rest).at(-1) ?? null) : prev.activeId
-      return { map: rest, activeId: nextActiveId }
-    })
-  }, [])
-
-  const activate = useCallback((id: string) => {
-    setState((prev) => {
-      if (prev.activeId === id) {
-        return prev
-      }
-      // Only activate if the id is registered
-      if (!(id in prev.map)) {
-        return prev
-      }
-      return { ...prev, activeId: id }
-    })
-  }, [])
-
-  useEffect(() => {
-    if (validSlotKey === null) {
-      return
-    }
-    const validSlotSet = new Set(validSlotKey.split('\n').filter(Boolean))
-
-    setState((prev) => {
-      let changed = false
-      const nextMap: Record<string, LayoutSlots> = {}
-      for (const [id, slots] of Object.entries(prev.map)) {
-        if (validSlotSet.has(id)) {
-          nextMap[id] = slots
-        }
- else {
-          changed = true
-        }
+  unregisterSlot: (id) => {
+    set((state) => {
+      if (!(id in state.map)) {
+        return state
       }
 
-      const nextActiveId = prev.activeId && validSlotSet.has(prev.activeId) ? prev.activeId : null
-      if (!changed && nextActiveId === prev.activeId) {
-        return prev
-      }
-
+      const { [id]: _removed, ...nextMap } = state.map
+      const nextPreviousSlots = id === state.activeSlotId ? EMPTY_LAYOUT_SLOTS : state.previousSlots
       return {
         map: nextMap,
-        activeId: nextActiveId,
+        previousSlots: nextPreviousSlots,
       }
     })
-  }, [validSlotKey])
+  },
 
-  const slots = useMemo(() => {
-    if (activeSlotId === undefined) {
-      return (state.activeId && state.map[state.activeId]) || {}
-    }
+  setSlotScope: (activeSlotId, validSlotIds) => {
+    set((state) => {
+      const validSlotSet = validSlotIds ? new Set(validSlotIds) : null
+      let mapChanged = false
+      let nextMap = state.map
 
-    if (activeSlotId === null) {
-      return {}
-    }
+      if (validSlotSet) {
+        nextMap = {}
+        for (const [id, slots] of Object.entries(state.map)) {
+          if (validSlotSet.has(id)) {
+            nextMap[id] = slots
+          }
+          else {
+            mapChanged = true
+          }
+        }
+      }
 
-    return state.map[activeSlotId] ?? previousSlotsRef.current
-  }, [activeSlotId, state.activeId, state.map])
+      const activeSlots = activeSlotId ? nextMap[activeSlotId] : undefined
+      const nextPreviousSlots = activeSlots ?? (activeSlotId === null ? EMPTY_LAYOUT_SLOTS : state.previousSlots)
+      if (
+        !mapChanged
+        && state.activeSlotId === activeSlotId
+        && state.previousSlots === nextPreviousSlots
+      ) {
+        return state
+      }
 
-  useEffect(() => {
-    if (slots !== previousSlotsRef.current) {
-      previousSlotsRef.current = slots
-    }
-  }, [slots])
+      return {
+        activeSlotId,
+        map: nextMap,
+        previousSlots: nextPreviousSlots,
+      }
+    })
+  },
 
-  const slotsContextValue = useMemo(() => ({ slots }), [slots])
-  const registrationContextValue = useMemo(() => ({
-    register,
-    unregister,
-    activate,
-  }), [activate, register, unregister])
+  resetSlots: () => {
+    set({
+      activeSlotId: undefined,
+      map: {},
+      previousSlots: EMPTY_LAYOUT_SLOTS,
+    })
+  },
+}), shallow)
 
-  return (
-    <LayoutSlotRegistrationContext.Provider value={registrationContextValue}>
-      <LayoutSlotsContext.Provider value={slotsContextValue}>
-        {children}
-      </LayoutSlotsContext.Provider>
-    </LayoutSlotRegistrationContext.Provider>
-  )
+export function readActiveLayoutSlots(): LayoutSlots {
+  return selectActiveSlots(useLayoutSlotsStore.getState())
+}
+
+export function useActiveLayoutSlots(): LayoutSlots {
+  return useLayoutSlotsStore(selectActiveSlots, shallow)
 }
