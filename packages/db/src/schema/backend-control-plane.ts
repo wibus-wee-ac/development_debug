@@ -36,8 +36,7 @@ export const backendRuns = sqliteTable(
   {
     id: textPk(),
     bindingId: text('binding_id')
-      .notNull()
-      .references(() => backendSessionBindings.id, { onDelete: 'cascade' }),
+      .references(() => backendSessionBindings.id, { onDelete: 'set null' }),
     chatSessionId: text('chat_session_id')
       .notNull()
       .references(() => sessions.id, { onDelete: 'cascade' }),

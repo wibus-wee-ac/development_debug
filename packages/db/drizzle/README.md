@@ -38,4 +38,9 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0056_mean_gravity.sql**: Drizzle Kit 生成的 Issue migration，为 `kanban_issues` 增加 `due_date`，并新增 `kanban_issue_field_changes` 字段变更历史表
 - **0057_backend_run_snapshots.sql**: Drizzle Kit 生成的 Chat Runtime harness snapshot migration，新增 `backend_run_snapshots` 与 `backend_run_snapshot_events`，用于持久化 runtime-neutral run envelope 与 ordered event stream
 - **0059_session_side_chat.sql**: Session side chat migration，为 `sessions` 增加 `parent_session_id`、`side_context_source` 与 parent 查询索引，支持 Chat Runtime-owned side session 关系
+- **0061_chat_runtime_settings.sql**: Chat Runtime queue migration，为 `chat_session_queue_items` 增加 `runtime_access_mode` 与 `runtime_interaction_mode`，保留排队 continuation 的 runtime settings 快照
+- **0062_session_read_state.sql**: Session read-state migration，为 `sessions` 增加 `last_read_at`，支持会话读取状态持久化
+- **0063_agent_thinking_effort_concrete.sql**: Agent identity migration，把旧 `thinking_effort='auto'` 归一到 `high`，并将 `agents.thinking_effort` 默认值改为具体 effort
+- **0064_backend_run_nullable_binding.sql**: Provider Runtime migration，让 `backend_runs.binding_id` 可空并在删除 durable binding 时置空，支持 live-only side conversation run 不写 durable provider binding
+- **0065_agent_thinking_effort_chat_contract.sql**: Agent identity migration，把旧 provider-native effort 值归一到 chat-run 的 `low`/`medium`/`high`/`xhigh` 契约
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

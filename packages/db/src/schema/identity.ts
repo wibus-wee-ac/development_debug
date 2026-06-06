@@ -36,8 +36,8 @@ export const agents = sqliteTable('agents', {
     .references(() => providerTargets.id, { onDelete: 'restrict' }),
   modelId: text('model_id'),
   thinkingEffort: text('thinking_effort', {
-    enum: ['low', 'medium', 'high', 'xhigh', 'auto'],
-  }).notNull().default('auto'),
+    enum: ['low', 'medium', 'high', 'xhigh'],
+  }).notNull().default('high'),
   runtimeKind: text('runtime_kind').notNull().default('standard'),
   configJson: text('config_json').notNull().default('{}'),
   enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),

@@ -25,6 +25,7 @@ export const sessions = sqliteTable('sessions', {
     .references(() => issues.id, { onDelete: 'set null' }),
   pinned: int('pinned').notNull().default(0),
   archivedAt: int('archived_at'),
+  lastReadAt: int('last_read_at'),
   ptyStartedAt: int('pty_started_at'),
   ...timestamps(),
 }, table => ({
@@ -117,6 +118,12 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   }),
   permissionMode: text('permission_mode', {
     enum: ['bypassPermissions', 'plan'],
+  }),
+  runtimeAccessMode: text('runtime_access_mode', {
+    enum: ['approval-required', 'full-access'],
+  }),
+  runtimeInteractionMode: text('runtime_interaction_mode', {
+    enum: ['default', 'plan'],
   }),
   position: int('position').notNull(),
   sourceRunId: text('source_run_id'),
