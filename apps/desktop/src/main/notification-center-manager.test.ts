@@ -56,7 +56,8 @@ describe('notificationCenterManager', () => {
         sessionId: 'session-1',
         sessionTitle: 'Fix the build',
         messageId: 'message-1',
-        messagePreview: 'The build has been fixed successfully',
+        responseBody: 'The build has been fixed successfully, including the detailed final response.',
+        messagePreview: 'Old preview text',
         startedAt: 100,
         finishedAt: 105,
       }],
@@ -80,7 +81,7 @@ describe('notificationCenterManager', () => {
     expect(notifications).toHaveLength(1)
     expect(notifications[0]?.options).toMatchObject({
       title: 'Fix the build',
-      body: 'The build has been fixed successfully',
+      body: 'The build has been fixed successfully, including the detailed final response.',
       hasReply: true,
       replyPlaceholder: '回复并继续对话',
     })
@@ -101,6 +102,7 @@ describe('notificationCenterManager', () => {
           sessionId: 'session-2',
           sessionTitle: 'Review PR',
           messageId: 'message-2',
+          responseBody: 'PR reviewed and approved',
           messagePreview: 'PR reviewed and approved',
           startedAt: 100,
           finishedAt: 105,
@@ -147,6 +149,7 @@ describe('notificationCenterManager', () => {
           sessionId: 'session-3',
           sessionTitle: 'Long task',
           messageId: 'message-3',
+          responseBody: 'Task completed after long processing',
           messagePreview: 'Task completed after long processing',
           startedAt: 100,
           finishedAt: 105,

@@ -252,149 +252,56 @@ describe('trayManager', () => {
     electronMocks.nativeImage.createEmpty.mockClear()
     electronMocks.nativeImage.createFromBuffer.mockClear()
     electronMocks.Menu.buildFromTemplate.mockClear()
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
-      metrics: [
-        { label: 'Running', value: '1', tone: 'active' },
-        { label: 'Resident', value: '1', tone: 'active' },
-        { label: 'Awaits', value: '3', tone: 'warning' },
-        { label: 'Automations', value: '1 active', tone: 'active' },
-        { label: 'Chronicle', value: 'Running', tone: 'active' },
-      ],
-      running: [
-        {
-          sessionId: 'running-session',
-          title: 'Active run',
-          workspaceName: 'Cradle',
-          runtimeKind: 'codex',
-          modelId: 'gpt-5.5',
-          detail: 'Running codex',
+    vi.stubGlobal('fetch', vi.fn(async (input: URL | string) => {
+      const pathname = input instanceof URL ? input.pathname : new URL(input).pathname
+      const responses: Record<string, unknown> = {
+        '/desktop/summary': {
+          generatedAt: 1_780_753_882,
+          running: 1,
+          recentSessions: 2,
+          pinnedSessions: 1,
+          pendingAwaits: 3,
+          enabledAutomations: 1,
+          runningAutomations: 1,
+          workspaces: 4,
+          enabledProviders: 1,
+          totalProviders: 2,
         },
-      ],
-      resident: [
-        {
-          sessionId: 'resident-session',
-          title: 'Resident chat',
-          workspaceName: 'Cradle',
-          runtimeKind: 'claude',
-          modelId: null,
-          detail: 'Resident claude',
-        },
-      ],
-      quickActions: [
-        {
-          id: 'open-app',
-          label: 'Open Cradle',
-          description: 'Bring the main desktop window forward.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'new-chat',
-          label: 'New Chat',
-          description: 'Start a fresh agent conversation.',
-          accelerator: '⌘N',
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'global-search',
-          label: 'Search Threads',
-          description: 'Open the command palette for threads, files, and issues.',
-          accelerator: '⌘K',
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-resident',
-          label: 'Resident Chats',
-          description: 'Jump to pinned sessions kept close at hand.',
-          accelerator: null,
-          badge: '1',
-          enabled: true,
-        },
-        {
-          id: 'open-running',
-          label: 'Running Agents',
-          description: 'Focus the most recent active agent run.',
-          accelerator: null,
-          badge: '1',
-          enabled: true,
-        },
-        {
-          id: 'open-awaits',
-          label: 'Awaits',
-          description: 'Check sessions waiting on external signals.',
-          accelerator: null,
-          badge: '3',
-          enabled: true,
-        },
-        {
-          id: 'open-automation',
-          label: 'Automations',
-          description: 'Inspect scheduled agent work and recent runs.',
-          accelerator: null,
-          badge: '1',
-          enabled: true,
-        },
-        {
-          id: 'open-workspaces',
-          label: 'Workspaces',
-          description: 'Open the workspace hub.',
-          accelerator: null,
-          badge: '4',
-          enabled: true,
-        },
-        {
-          id: 'open-agents',
-          label: 'Agents',
-          description: 'Manage resident agent profiles and runtime defaults.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-providers',
-          label: 'Providers',
-          description: 'Review model providers and connection settings.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-chronicle',
-          label: 'Chronicle',
-          description: 'View local activity memory and capture status.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-usage',
-          label: 'Usage',
-          description: 'Review token and cost analytics.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-plugins',
-          label: 'Plugins',
-          description: 'Inspect plugin capability surfaces.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-        {
-          id: 'open-desktop-settings',
-          label: 'Desktop Updates',
-          description: 'Check update status and desktop settings.',
-          accelerator: null,
-          badge: null,
-          enabled: true,
-        },
-      ],
-    }), { status: 200 })))
+        '/desktop/recent-sessions': [
+          {
+            sessionId: 'running-session',
+            title: 'Active run',
+            workspaceName: 'Cradle',
+            runtimeKind: 'codex',
+            modelId: 'gpt-5.5',
+            updatedAt: 1_780_753_882,
+            state: 'running',
+            detail: 'Running codex',
+          },
+          {
+            sessionId: 'pinned-session',
+            title: 'Pinned chat',
+            workspaceName: 'Cradle',
+            runtimeKind: 'claude',
+            modelId: null,
+            updatedAt: 1_780_753_800,
+            state: 'pinned',
+            detail: 'Pinned claude',
+          },
+        ],
+        '/desktop/health': [
+          { id: 'server', label: 'Server', value: 'Online', status: 'ok', detail: null },
+          { id: 'chat-runtime', label: 'Chat Runtime', value: '1 running', status: 'active', detail: null },
+          { id: 'awaits', label: 'Awaits', value: '3 pending', status: 'warning', detail: 'Sessions are waiting.' },
+          { id: 'providers', label: 'Providers', value: '1 enabled', status: 'ok', detail: null },
+          { id: 'chronicle', label: 'Chronicle', value: 'Running', status: 'active', detail: null },
+        ],
+      }
+      if (!(pathname in responses)) {
+        return new Response(null, { status: 404 })
+      }
+      return new Response(JSON.stringify(responses[pathname]), { status: 200 })
+    }))
   })
 
   afterEach(() => {
@@ -413,6 +320,7 @@ describe('trayManager', () => {
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => null,
       createMainWindow: vi.fn(),
+      requestQuit: vi.fn(),
     })
 
     manager.initialize()
@@ -422,7 +330,7 @@ describe('trayManager', () => {
       expect(electronMocks.Tray.instances[0]?.popupMenu).toBeTruthy()
     })
 
-    expect(electronMocks.Tray.instances[0]?.tooltip).toBe('Cradle - 1 running, 1 resident')
+    expect(electronMocks.Tray.instances[0]?.tooltip).toBe('Cradle - 1 issue: 1 running, 3 awaits')
     expect(electronMocks.Tray.instances[0]?.ignoreDoubleClickEvents).toBe(true)
     expect(electronMocks.Tray.instances[0]?.image).toBeTruthy()
     expect(electronMocks.Tray.instances[0]?.pressedImage).toBeTruthy()
@@ -433,10 +341,16 @@ describe('trayManager', () => {
     })
     expect(electronMocks.nativeImage.createFromPath).not.toHaveBeenCalled()
     expect(electronMocks.nativeImage.createEmpty).not.toHaveBeenCalled()
-    expect(globalThis.fetch).toHaveBeenCalledWith(new URL('/desktop/tray', 'http://127.0.0.1:21423'))
+    expect(globalThis.fetch).toHaveBeenCalledWith(new URL('/desktop/summary', 'http://127.0.0.1:21423'))
+    expect(globalThis.fetch).toHaveBeenCalledWith(new URL('/desktop/recent-sessions', 'http://127.0.0.1:21423'))
+    expect(globalThis.fetch).toHaveBeenCalledWith(new URL('/desktop/health', 'http://127.0.0.1:21423'))
     const template = lastMenuTemplate()
     expect(template).toEqual(expect.arrayContaining([
-      expect.objectContaining({ label: 'Cradle - 1 running, 1 resident', enabled: false }),
+      expect.objectContaining({
+        label: 'Cradle - 1 issue',
+        sublabel: '1 running | 2 recent | 3 awaits',
+        enabled: false,
+      }),
       expect.objectContaining({ label: 'Open Cradle' }),
       expect.objectContaining({
         label: 'New Chat',
@@ -445,15 +359,14 @@ describe('trayManager', () => {
         visible: true,
       }),
       expect.objectContaining({
-        label: 'Search Threads',
+        label: 'Search',
         accelerator: 'CommandOrControl+K',
         registerAccelerator: true,
         visible: true,
       }),
-      expect.objectContaining({ label: 'Status' }),
-      expect.objectContaining({ label: 'Running Agents (1)' }),
-      expect.objectContaining({ label: 'Resident Chats (1)' }),
-      expect.objectContaining({ label: 'Actions' }),
+      expect.objectContaining({ label: 'Recent Sessions' }),
+      expect.objectContaining({ label: 'Health (1 issue)' }),
+      expect.objectContaining({ label: 'Quick' }),
       expect.objectContaining({
         label: 'Quit Cradle',
         accelerator: 'CommandOrControl+Q',
@@ -461,38 +374,22 @@ describe('trayManager', () => {
         click: expect.any(Function),
       }),
     ]))
-    expect(findMenuItem(template, 'Running: 1')).toEqual(expect.objectContaining({
-      type: 'checkbox',
-      checked: true,
-      enabled: false,
-      toolTip: 'Running is 1',
-    }))
+    expect(submenuItems(template, 'Health (1 issue)')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'Server: Online', enabled: false }),
+      expect.objectContaining({ label: 'Awaits: 3 pending', enabled: false }),
+    ]))
     expect(findMenuItem(template, 'Active run')).toEqual(expect.objectContaining({
-      sublabel: 'Cradle',
+      sublabel: 'Running - Cradle - gpt-5.5',
       toolTip: 'Running codex',
     }))
-    expect(findMenuItem(template, 'Resident chat')).toEqual(expect.objectContaining({
-      sublabel: 'Cradle',
-      toolTip: 'Resident claude',
+    expect(findMenuItem(template, 'Pinned chat')).toEqual(expect.objectContaining({
+      sublabel: 'Pinned - Cradle',
+      toolTip: 'Pinned claude',
     }))
-    const actions = submenuItems(template, 'Actions')
-    expect(findMenuItem(actions, 'Resident Chats (1)')).toEqual(expect.objectContaining({
-      sublabel: 'Jump to pinned sessions kept close at hand.',
-    }))
-    expect(findMenuItem(actions, 'Running Agents (1)')).toEqual(expect.objectContaining({
-      sublabel: 'Focus the most recent active agent run.',
-    }))
-    expect(findMenuItem(actions, 'Awaits (3)')).toEqual(expect.objectContaining({
-      sublabel: 'Check sessions waiting on external signals.',
-    }))
-    expect(findMenuItem(actions, 'Automations (1)')).toBeTruthy()
-    expect(findMenuItem(actions, 'Workspaces (4)')).toBeTruthy()
-    expect(findMenuItem(actions, 'Agents')).toBeTruthy()
-    expect(findMenuItem(actions, 'Providers')).toBeTruthy()
-    expect(findMenuItem(actions, 'Chronicle')).toBeTruthy()
-    expect(findMenuItem(actions, 'Usage')).toBeTruthy()
-    expect(findMenuItem(actions, 'Plugins')).toBeTruthy()
-    expect(findMenuItem(actions, 'Desktop Updates')).toBeTruthy()
+    expect(findMenuItem(template, 'Awaits (3)')).toBeTruthy()
+    expect(findMenuItem(template, 'Automations (1)')).toBeTruthy()
+    expect(findMenuItem(template, 'Workspaces (4)')).toBeTruthy()
+    expect(findMenuItem(template, 'Settings')).toBeTruthy()
 
     manager.destroy()
     expect(electronMocks.Tray.instances[0]?.contextMenuClosed).toBe(true)
@@ -505,26 +402,28 @@ describe('trayManager', () => {
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => null,
       createMainWindow: vi.fn(),
+      requestQuit: vi.fn(),
     })
 
     manager.initialize()
     await manager.openNativeMenu()
 
     expect(electronMocks.Menu.buildFromTemplate).toHaveBeenLastCalledWith(expect.arrayContaining([
-      expect.objectContaining({ label: 'Tray data unavailable', enabled: false }),
+      expect.objectContaining({ label: 'Desktop data unavailable', enabled: false }),
       expect.objectContaining({ label: 'Quit Cradle' }),
     ]))
 
     manager.destroy()
   })
 
-  it('forwards native menu item clicks with the same payloads as the former tray surface', async () => {
+  it('forwards native menu item clicks through desktop-owned actions', async () => {
     const { TrayManager } = await import('./tray-manager')
     const mainWindow = new electronMocks.BrowserWindow({})
     const manager = new TrayManager({
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => mainWindow as never,
       createMainWindow: vi.fn(),
+      requestQuit: vi.fn(),
     })
 
     manager.initialize()
@@ -532,20 +431,13 @@ describe('trayManager', () => {
 
     const template = lastMenuTemplate()
     const runningSession = findMenuItem(template, 'Active run')
-    const actions = submenuItems(template, 'Actions')
-    const runningAction = findMenuItem(actions, 'Running Agents (1)')
-    const awaitsAction = findMenuItem(actions, 'Awaits (3)')
+    const awaitsAction = findMenuItem(template, 'Awaits (3)')
 
     await (runningSession?.click as () => Promise<void> | void)?.()
-    await (runningAction?.click as () => Promise<void> | void)?.()
     await (awaitsAction?.click as () => Promise<void> | void)?.()
 
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('desktop-tray:action-requested', {
       actionId: 'open-chat',
-      payload: { sessionId: 'running-session' },
-    })
-    expect(mainWindow.webContents.send).toHaveBeenCalledWith('desktop-tray:action-requested', {
-      actionId: 'open-running',
       payload: { sessionId: 'running-session' },
     })
     expect(mainWindow.webContents.send).toHaveBeenCalledWith('desktop-tray:action-requested', {
@@ -563,6 +455,7 @@ describe('trayManager', () => {
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => mainWindow as never,
       createMainWindow: vi.fn(),
+      requestQuit: vi.fn(),
     })
 
     manager.initialize()
@@ -587,6 +480,7 @@ describe('trayManager', () => {
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => loadingWindow as never,
       createMainWindow,
+      requestQuit: vi.fn(),
     })
 
     manager.initialize()
@@ -602,16 +496,18 @@ describe('trayManager', () => {
   it('quits without forwarding a quit action to the renderer', async () => {
     const { TrayManager } = await import('./tray-manager')
     const mainWindow = new electronMocks.BrowserWindow({})
+    const requestQuit = vi.fn()
     const manager = new TrayManager({
       serverUrl: 'http://127.0.0.1:21423',
       getMainWindow: () => mainWindow as never,
       createMainWindow: vi.fn(),
+      requestQuit,
     })
 
     manager.initialize()
     await manager.performAction('quit')
 
-    expect(electronMocks.app.quit).toHaveBeenCalled()
+    expect(requestQuit).toHaveBeenCalledTimes(1)
     expect(mainWindow.webContents.send).not.toHaveBeenCalled()
 
     manager.destroy()

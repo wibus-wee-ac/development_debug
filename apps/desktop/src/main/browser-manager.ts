@@ -171,12 +171,34 @@ export interface BrowserAnnotationDesignChange {
   columnGap?: string
 }
 
-export interface BrowserAnnotationElementInput extends BrowserTabInput {
+export interface BrowserAnnotationDesignInput extends BrowserTabInput {
   selector: string
+  designChange: BrowserAnnotationDesignChange
 }
 
-export interface BrowserAnnotationDesignInput extends BrowserAnnotationElementInput {
-  designChange: BrowserAnnotationDesignChange
+export interface BrowserAnnotationRuntimeInput extends BrowserTabInput {}
+
+export type BrowserAnnotationAnchor =
+  | { kind: 'point', x: number, y: number }
+  | { kind: 'region', x: number, y: number, width: number, height: number }
+  | { kind: 'element', element: BrowserAnnotationElement }
+
+export interface BrowserAnnotationRuntimeEvent {
+  threadId: ThreadId
+  tabId: string
+  type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+  anchor?: BrowserAnnotationAnchor
+  selectedElement?: BrowserAnnotationElement | null
+  body?: string
+  attachedImages?: BrowserPromptAttachmentInput[]
+  designChange?: BrowserAnnotationDesignChange | null
+  elements?: BrowserAnnotationElement[]
+  surfaceSize?: {
+    width: number
+    height: number
+  }
+  sourceUrl: string | null
+  sourceTitle: string | null
 }
 
 export interface BrowserPromptAttachmentInput {
@@ -231,10 +253,342 @@ const LOCAL_SERVER_CANDIDATE_PORTS = [
   21423,
   21424,
 ] as const
+const BROWSER_ANNOTATION_RUNTIME_GLOBAL = '__CRADLE_BROWSER_ANNOTATION_RUNTIME__'
+const BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL = 'desktop:browser-annotation-runtime-command'
+const BROWSER_ANNOTATION_RUNTIME_INSTALL_EXPRESSION = `(() => {
+  const runtimeKey = ${JSON.stringify(BROWSER_ANNOTATION_RUNTIME_GLOBAL)};
+  if (window[runtimeKey]) {
+    return true;
+  }
+
+  const MAX_ELEMENTS = 250;
+  const MIN_AREA = 16;
+  const DESIGN_GROUP_ATTRIBUTE = 'data-cradle-browser-design-group';
+  const DESIGN_GROUP_NAME = 'active';
+  const DRAFT_STYLE_ID = 'cradle-browser-design-draft-style';
+  const interactiveTags = new Set(['A', 'BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'SUMMARY']);
+  let selectedElement = null;
+
+  function cssPath(element) {
+    const parts = [];
+    let current = element;
+    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
+      const tag = current.tagName.toLowerCase();
+      if (current.id) {
+        parts.unshift(tag + '#' + CSS.escape(current.id));
+        break;
+      }
+      const classes = Array.from(current.classList || [])
+        .slice(0, 2)
+        .map((name) => '.' + CSS.escape(name))
+        .join('');
+      let index = 1;
+      let sibling = current.previousElementSibling;
+      while (sibling) {
+        if (sibling.tagName === current.tagName) {
+          index += 1;
+        }
+        sibling = sibling.previousElementSibling;
+      }
+      parts.unshift(tag + classes + ':nth-of-type(' + index + ')');
+      current = current.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  function labelFor(element) {
+    const aria = element.getAttribute('aria-label')
+      || element.getAttribute('alt')
+      || element.getAttribute('title')
+      || element.getAttribute('placeholder')
+      || '';
+    const value = typeof element.value === 'string' ? element.value : '';
+    const text = aria || value || element.innerText || element.textContent || '';
+    return text.replace(/\\s+/g, ' ').trim().slice(0, 140);
+  }
+
+  function nearbyTextFor(element) {
+    const text = element.innerText || element.textContent || '';
+    return text.replace(/\\s+/g, ' ').trim().slice(0, 400);
+  }
+
+  function implicitRole(element) {
+    const explicit = element.getAttribute('role');
+    if (explicit) {
+      return explicit;
+    }
+    switch (element.tagName) {
+      case 'A':
+        return element.hasAttribute('href') ? 'link' : '';
+      case 'BUTTON':
+        return 'button';
+      case 'IMG':
+        return 'img';
+      case 'INPUT': {
+        const type = (element.getAttribute('type') || 'text').toLowerCase();
+        if (type === 'checkbox') return 'checkbox';
+        if (type === 'radio') return 'radio';
+        if (type === 'range') return 'slider';
+        if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
+        return 'textbox';
+      }
+      case 'TEXTAREA':
+        return 'textbox';
+      case 'SELECT':
+        return 'combobox';
+      case 'H1':
+      case 'H2':
+      case 'H3':
+      case 'H4':
+      case 'H5':
+      case 'H6':
+        return 'heading';
+      case 'NAV':
+        return 'navigation';
+      case 'MAIN':
+        return 'main';
+      case 'FORM':
+        return 'form';
+      case 'TABLE':
+        return 'table';
+      case 'VIDEO':
+        return 'video';
+      default:
+        return '';
+    }
+  }
+
+  function attributesFor(element) {
+    const href = element instanceof HTMLAnchorElement ? element.href : element.getAttribute('href');
+    const value = typeof element.value === 'string' ? element.value : '';
+    return {
+      id: element.id || undefined,
+      className: element.className && typeof element.className === 'string'
+        ? element.className.slice(0, 160)
+        : undefined,
+      ariaLabel: element.getAttribute('aria-label') || undefined,
+      title: element.getAttribute('title') || undefined,
+      alt: element.getAttribute('alt') || undefined,
+      href: href || undefined,
+      type: element.getAttribute('type') || undefined,
+      name: element.getAttribute('name') || undefined,
+      placeholder: element.getAttribute('placeholder') || undefined,
+      value: value ? value.slice(0, 120) : undefined,
+      testId: element.getAttribute('data-testid') || element.getAttribute('data-test-id') || undefined,
+    };
+  }
+
+  function descriptionFor(attributes) {
+    const parts = [];
+    if (attributes.href) parts.push('href=' + attributes.href);
+    if (attributes.placeholder) parts.push('placeholder=' + attributes.placeholder);
+    if (attributes.name) parts.push('name=' + attributes.name);
+    if (attributes.type) parts.push('type=' + attributes.type);
+    if (attributes.testId) parts.push('testid=' + attributes.testId);
+    return parts.join(' · ').slice(0, 220);
+  }
+
+  function semanticScore(element, label, role) {
+    let score = 0;
+    if (interactiveTags.has(element.tagName)) score += 80;
+    if (role) score += 40;
+    if (label) score += 30;
+    if (element.getAttribute('data-testid') || element.getAttribute('data-test-id')) score += 20;
+    if (['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) score += 18;
+    if (['IMG', 'SVG', 'VIDEO', 'CANVAS'].includes(element.tagName)) score += 14;
+    return score;
+  }
+
+  function isCandidate(element, rect, style, label, role, viewportWidth, viewportHeight) {
+    if (rect.width <= 0 || rect.height <= 0 || rect.width * rect.height < MIN_AREA) {
+      return false;
+    }
+    if (rect.right < 0 || rect.bottom < 0 || rect.left > viewportWidth || rect.top > viewportHeight) {
+      return false;
+    }
+    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) {
+      return false;
+    }
+    if (element.closest('[aria-hidden="true"], script, style, meta, link, noscript')) {
+      return false;
+    }
+    const hasSemanticSignal = label
+      || interactiveTags.has(element.tagName)
+      || role
+      || ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'IMG', 'SVG', 'VIDEO', 'CANVAS'].includes(element.tagName);
+    return Boolean(hasSemanticSignal);
+  }
+
+  function readElement(element, index) {
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    const label = labelFor(element);
+    const role = implicitRole(element);
+    if (!isCandidate(element, rect, style, label, role, viewportWidth, viewportHeight)) {
+      return null;
+    }
+    const attributes = attributesFor(element);
+    return {
+      id: 'element-' + index,
+      tagName: element.tagName,
+      label,
+      description: descriptionFor(attributes),
+      role,
+      selector: cssPath(element),
+      attributes,
+      pageUrl: window.location.href,
+      nearbyText: nearbyTextFor(element),
+      score: semanticScore(element, label, role),
+      area: Math.max(1, rect.width * rect.height),
+      rect: {
+        x: Math.max(0, Math.min(viewportWidth, rect.left)),
+        y: Math.max(0, Math.min(viewportHeight, rect.top)),
+        width: Math.max(1, Math.min(viewportWidth, rect.right) - Math.max(0, rect.left)),
+        height: Math.max(1, Math.min(viewportHeight, rect.bottom) - Math.max(0, rect.top)),
+      },
+      styles: {
+        color: style.color,
+        backgroundColor: style.backgroundColor,
+        opacity: style.opacity,
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
+        lineHeight: style.lineHeight,
+        borderRadius: style.borderRadius,
+        borderColor: style.borderColor,
+        borderWidth: style.borderWidth,
+        display: style.display,
+        alignItems: style.alignItems,
+        justifyContent: style.justifyContent,
+        flexDirection: style.flexDirection,
+        width: style.width,
+        height: style.height,
+        marginTop: style.marginTop,
+        marginRight: style.marginRight,
+        marginBottom: style.marginBottom,
+        marginLeft: style.marginLeft,
+        paddingTop: style.paddingTop,
+        paddingRight: style.paddingRight,
+        paddingBottom: style.paddingBottom,
+        paddingLeft: style.paddingLeft,
+        rowGap: style.rowGap,
+        columnGap: style.columnGap,
+      },
+    };
+  }
+
+  function scanElements() {
+    return Array.from(document.querySelectorAll('body *'))
+      .map(readElement)
+      .filter(Boolean)
+      .sort((a, b) => (b.score - a.score) || (b.area - a.area))
+      .map(({ score, area, ...element }) => element)
+      .slice(0, MAX_ELEMENTS);
+  }
+
+  function clearSelection() {
+    if (selectedElement) {
+      selectedElement.removeAttribute(DESIGN_GROUP_ATTRIBUTE);
+      selectedElement = null;
+    }
+  }
+
+  function selectElement(selector) {
+    clearSelection();
+    const element = typeof selector === 'string' ? document.querySelector(selector) : null;
+    if (!element) {
+      return null;
+    }
+    selectedElement = element;
+    element.setAttribute(DESIGN_GROUP_ATTRIBUTE, DESIGN_GROUP_NAME);
+    const rect = element.getBoundingClientRect();
+    if (rect.top < 0 || rect.bottom > window.innerHeight) {
+      element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    }
+    return readElement(element, 0);
+  }
+
+  function draftStyleElement() {
+    let style = document.getElementById(DRAFT_STYLE_ID);
+    if (!style) {
+      style = document.createElement('style');
+      style.id = DRAFT_STYLE_ID;
+      style.setAttribute('data-cradle-browser-runtime', 'annotation-design');
+      document.head.appendChild(style);
+    }
+    return style;
+  }
+
+  function cssDeclaration(property, value) {
+    if (typeof value !== 'string' || !value.trim()) {
+      return null;
+    }
+    return property + ': ' + value.trim().replace(/[;{}]/g, '') + ' !important;';
+  }
+
+  function applyDesign(selector, designChange) {
+    const element = selectElement(selector);
+    if (!element) {
+      clearDesign();
+      return null;
+    }
+    const rows = [
+      cssDeclaration('color', designChange && designChange.color),
+      cssDeclaration('background-color', designChange && designChange.backgroundColor),
+      cssDeclaration('opacity', designChange && designChange.opacity),
+      cssDeclaration('font-family', designChange && designChange.fontFamily),
+      cssDeclaration('font-size', designChange && designChange.fontSize),
+      cssDeclaration('font-weight', designChange && designChange.fontWeight),
+      cssDeclaration('border-radius', designChange && designChange.borderRadius),
+      cssDeclaration('border-color', designChange && designChange.borderColor),
+      cssDeclaration('border-width', designChange && designChange.borderWidth),
+      cssDeclaration('display', designChange && designChange.display),
+      cssDeclaration('align-items', designChange && designChange.alignItems),
+      cssDeclaration('justify-content', designChange && designChange.justifyContent),
+      cssDeclaration('flex-direction', designChange && designChange.flexDirection),
+      cssDeclaration('width', designChange && designChange.width),
+      cssDeclaration('height', designChange && designChange.height),
+      cssDeclaration('margin-top', designChange && designChange.marginTop),
+      cssDeclaration('margin-right', designChange && designChange.marginRight),
+      cssDeclaration('margin-bottom', designChange && designChange.marginBottom),
+      cssDeclaration('margin-left', designChange && designChange.marginLeft),
+      cssDeclaration('padding-top', designChange && designChange.paddingTop),
+      cssDeclaration('padding-right', designChange && designChange.paddingRight),
+      cssDeclaration('padding-bottom', designChange && designChange.paddingBottom),
+      cssDeclaration('padding-left', designChange && designChange.paddingLeft),
+      cssDeclaration('row-gap', designChange && designChange.rowGap),
+      cssDeclaration('column-gap', designChange && designChange.columnGap),
+    ].filter(Boolean);
+    draftStyleElement().textContent = rows.length > 0
+      ? '[' + DESIGN_GROUP_ATTRIBUTE + '="' + DESIGN_GROUP_NAME + '"] { ' + rows.join(' ') + ' }'
+      : '';
+    return readElement(selectedElement, 0);
+  }
+
+  function clearDesign() {
+    clearSelection();
+    const style = document.getElementById(DRAFT_STYLE_ID);
+    if (style) {
+      style.remove();
+    }
+    return true;
+  }
+
+  window[runtimeKey] = {
+    scanElements,
+    selectElement,
+    applyDesign,
+    clearDesign,
+  };
+  return true;
+})()`
 
 type BrowserStateListener = (state: ThreadBrowserState) => void
 type BrowserWebContentsListener = (webContents: WebContents, tabId: string) => void
 type BrowserPromptRequestListener = (request: BrowserPromptRequest) => void
+type BrowserAnnotationRuntimeEventListener = (event: BrowserAnnotationRuntimeEvent) => void
 
 interface LiveTabRuntime {
   key: string
@@ -611,6 +965,7 @@ export class DesktopBrowserManager {
   private readonly listeners = new Set<BrowserStateListener>()
   private readonly webContentsListeners = new Set<BrowserWebContentsListener>()
   private readonly promptRequestListeners = new Set<BrowserPromptRequestListener>()
+  private readonly annotationRuntimeEventListeners = new Set<BrowserAnnotationRuntimeEventListener>()
   private runtimeSyncFlushScheduled = false
   private readonly perfCounters = {
     setPanelBoundsCalls: 0,
@@ -660,6 +1015,13 @@ export class DesktopBrowserManager {
     }
   }
 
+  subscribeToAnnotationRuntimeEvents(listener: BrowserAnnotationRuntimeEventListener): () => void {
+    this.annotationRuntimeEventListeners.add(listener)
+    return () => {
+      this.annotationRuntimeEventListeners.delete(listener)
+    }
+  }
+
   dispose(): void {
     this.detachAttachedRuntime()
     this.destroyAllRuntimes()
@@ -667,6 +1029,7 @@ export class DesktopBrowserManager {
     this.listeners.clear()
     this.webContentsListeners.clear()
     this.promptRequestListeners.clear()
+    this.annotationRuntimeEventListeners.clear()
     this.states.clear()
     this.threadVersionById.clear()
     this.snapshotCacheByThreadId.clear()
@@ -1022,6 +1385,53 @@ export class DesktopBrowserManager {
     return request
   }
 
+  handleAnnotationRuntimeEvent(
+    sender: WebContents,
+    payload: unknown,
+  ): BrowserAnnotationRuntimeEvent | null {
+    const runtime = this.findRuntimeByWebContents(sender)
+    if (!runtime || !payload || typeof payload !== 'object') {
+      return null
+    }
+
+    const candidate = payload as Partial<BrowserAnnotationRuntimeEvent>
+    if (
+      candidate.type !== 'ready'
+      && candidate.type !== 'selected-element'
+      && candidate.type !== 'save'
+      && candidate.type !== 'submit'
+      && candidate.type !== 'cancel'
+      && candidate.type !== 'closed'
+      && candidate.type !== 'toggle'
+    ) {
+      return null
+    }
+
+    const event: BrowserAnnotationRuntimeEvent = {
+      ...candidate,
+      threadId: runtime.threadId,
+      tabId: runtime.tabId,
+      type: candidate.type,
+      sourceUrl: readWebContentsUrl(runtime.webContents),
+      sourceTitle: readWebContentsTitle(runtime.webContents),
+    }
+
+    for (const listener of this.annotationRuntimeEventListeners) {
+      listener(event)
+    }
+    return event
+  }
+
+  async startAnnotationRuntime(input: BrowserAnnotationRuntimeInput): Promise<void> {
+    const runtime = await this.resolveLiveRuntimeForCommand(input)
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, { type: 'start' })
+  }
+
+  async stopAnnotationRuntime(input: BrowserAnnotationRuntimeInput): Promise<void> {
+    const runtime = await this.resolveLiveRuntimeForCommand(input)
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, { type: 'stop' })
+  }
+
   // Ensures the requested tab is active/live, then returns a fresh PNG capture
   // from the native browser surface for whichever destination needs it next.
   private async captureScreenshotPng(input: BrowserTabInput): Promise<{
@@ -1133,6 +1543,23 @@ export class DesktopBrowserManager {
     }
   }
 
+  async applyAnnotationDesign(
+    input: BrowserAnnotationDesignInput,
+  ): Promise<BrowserAnnotationElement | null> {
+    const runtime = await this.resolveLiveRuntimeForCommand(input)
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, {
+      type: 'apply-design',
+      selector: input.selector,
+      designChange: input.designChange,
+    })
+    return null
+  }
+
+  async clearAnnotationDesign(input: BrowserTabInput): Promise<void> {
+    const runtime = await this.resolveLiveRuntimeForCommand(input)
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, { type: 'clear-design' })
+  }
+
   async attachBrowserUseTab(input: BrowserTabInput): Promise<void> {
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
@@ -1192,6 +1619,34 @@ export class DesktopBrowserManager {
     this.activeBoundsThreadId = threadId
     this.resumeThread(threadId)
     this.attachActiveTab(threadId, bounds)
+  }
+
+  private async resolveLiveRuntimeForCommand(input: BrowserTabInput): Promise<LiveTabRuntime> {
+    const state = this.ensureWorkspace(input.threadId)
+    const tab = this.resolveTab(state, input.tabId)
+    if (state.activeTabId !== tab.id) {
+      state.activeTabId = tab.id
+      syncThreadLastError(state)
+      this.markThreadStateChanged(input.threadId)
+      this.emitState(input.threadId)
+    }
+
+    this.resumeThread(input.threadId)
+    const wasSuspended = tab.status === SUSPENDED_TAB_STATUS
+    const runtime = this.ensureLiveRuntime(input.threadId, tab.id)
+    const bounds = this.getVisibleBoundsForThread(input.threadId)
+    if (bounds) {
+      this.attachActiveTab(input.threadId, bounds)
+    }
+
+    if (wasSuspended) {
+      await this.loadTab(input.threadId, tab.id, { force: true, runtime })
+    }
+ else {
+      this.queueRuntimeStateSync(input.threadId, tab.id)
+    }
+
+    return runtime
   }
 
   private setActiveBounds(threadId: ThreadId, bounds: BrowserPanelBounds | null): void {

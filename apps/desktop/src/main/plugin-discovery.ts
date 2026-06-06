@@ -80,6 +80,7 @@ function createDescriptor(
     version: manifest.version,
     displayName: cradle.displayName ?? manifest.name,
     description: cradle.description,
+    icon: cradle.icon,
     deployments: cradle.deployments,
     source: createSourceDescriptor(source, manifest.packageDir, provenance),
     layers: {

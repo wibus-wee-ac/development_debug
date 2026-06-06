@@ -3,7 +3,12 @@ import { join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
-import { registerBrowserIpcHandlers, sendBrowserPromptRequest, sendBrowserState } from './browser-ipc'
+import {
+  registerBrowserIpcHandlers,
+  sendBrowserAnnotationRuntimeEvent,
+  sendBrowserPromptRequest,
+  sendBrowserState,
+} from './browser-ipc'
 import { DesktopBrowserManager } from './browser-manager'
 import { ChatStreamBroker } from './chat-stream-broker'
 import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
@@ -381,6 +386,13 @@ export async function startDesktopApp(): Promise<void> {
       }
     }
   })
+  browserManager.subscribeToAnnotationRuntimeEvents((event) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        sendBrowserAnnotationRuntimeEvent(window.webContents, event)
+      }
+    }
+  })
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
     app.quit()
@@ -463,6 +475,14 @@ export async function startDesktopApp(): Promise<void> {
         const win = await createMainWindow(serverUrl)
         setMainWindow(win)
         return win
+      },
+      requestQuit: () => {
+        quitGuard.allowNextQuit()
+        requestDesktopExit({
+          reason: 'tray quit',
+          exitCode: 0,
+          stopServerRuntime: true,
+        })
       },
     })
     trayManager.initialize()

@@ -8,6 +8,7 @@ interface CompletedRun {
   sessionId: string
   sessionTitle: string
   messageId: string | null
+  responseBody: string | null
   messagePreview: string | null
   startedAt: number
   finishedAt: number
@@ -118,7 +119,7 @@ export class NotificationCenterManager {
   }
 
   private showCompletionNotification(run: CompletedRun): void {
-    const body = run.messagePreview || '已完成'
+    const body = run.responseBody || run.messagePreview || '已完成'
     const notification = this.createNotification({
       title: run.sessionTitle || 'Cradle session',
       body,

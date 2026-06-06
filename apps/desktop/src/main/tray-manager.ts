@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { app, ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { ipcMain, Menu, nativeImage, Tray } from 'electron'
 
 export type TrayActionId
   = | 'open-app'
@@ -21,13 +21,14 @@ interface TrayManagerOptions {
   serverUrl: string
   getMainWindow: () => BrowserWindow | null
   createMainWindow: () => Promise<BrowserWindow>
+  requestQuit: () => void
 }
 
 const TRAY_ACTION_CHANNEL = 'desktop-tray:perform-action'
 const TRAY_PENDING_ACTIONS_CHANNEL = 'desktop-tray:consume-pending-actions'
-const TRAY_COUNTS_PATH = '/desktop/tray/counts'
-const TRAY_RECENT_SESSIONS_PATH = '/desktop/tray/recent-sessions'
-const TRAY_HEALTH_PATH = '/desktop/tray/health'
+const DESKTOP_SUMMARY_PATH = '/desktop/summary'
+const DESKTOP_RECENT_SESSIONS_PATH = '/desktop/recent-sessions'
+const DESKTOP_HEALTH_PATH = '/desktop/health'
 const TRAY_REFRESH_INTERVAL_MS = 30 * 1000
 
 interface TrayActionRequest {
@@ -35,7 +36,7 @@ interface TrayActionRequest {
   payload?: unknown
 }
 
-interface TraySessionItem {
+interface DesktopSessionItem {
   sessionId: string
   title: string
   workspaceName: string
@@ -46,7 +47,7 @@ interface TraySessionItem {
   detail: string
 }
 
-interface TrayHealthItem {
+interface DesktopHealthItem {
   id: string
   label: string
   value: string
@@ -54,7 +55,8 @@ interface TrayHealthItem {
   detail: string | null
 }
 
-interface TrayCounts {
+interface DesktopSummary {
+  generatedAt: number
   running: number
   recentSessions: number
   pinnedSessions: number
@@ -62,12 +64,14 @@ interface TrayCounts {
   enabledAutomations: number
   runningAutomations: number
   workspaces: number
+  enabledProviders: number
+  totalProviders: number
 }
 
 interface TrayData {
-  counts: TrayCounts
-  recentSessions: TraySessionItem[]
-  health: TrayHealthItem[]
+  summary: DesktopSummary
+  recentSessions: DesktopSessionItem[]
+  health: DesktopHealthItem[]
 }
 
 const TRAY_ICON_SIZE = 18
@@ -108,7 +112,7 @@ function createMenuDotIcon(red: number, green: number, blue: number): Electron.N
   return createCircleImage(MENU_ICON_SIZE, red, green, blue)
 }
 
-function createStatusIcon(status: TrayHealthItem['status'] | TraySessionItem['state']): Electron.NativeImage {
+function createStatusIcon(status: DesktopHealthItem['status'] | DesktopSessionItem['state']): Electron.NativeImage {
   if (status === 'active' || status === 'running') {
     return createMenuDotIcon(16, 185, 129)
   }
@@ -124,12 +128,16 @@ function createStatusIcon(status: TrayHealthItem['status'] | TraySessionItem['st
   return createMenuDotIcon(115, 115, 115)
 }
 
-function isAttentionItem(item: TrayHealthItem): boolean {
+function isAttentionItem(item: DesktopHealthItem): boolean {
   return item.status === 'warning' || item.status === 'danger'
 }
 
 function pluralize(value: number, singular: string, plural = `${singular}s`): string {
   return `${value} ${value === 1 ? singular : plural}`
+}
+
+function countLabel(value: number, label: string): string {
+  return `${value} ${label}`
 }
 
 function truncateLabel(label: string): string {
@@ -192,7 +200,7 @@ export class TrayManager {
 
   async performAction(actionId: TrayActionId, payload?: unknown): Promise<void> {
     if (actionId === 'quit') {
-      app.quit()
+      this.options.requestQuit()
       return
     }
 
@@ -272,22 +280,22 @@ export class TrayManager {
 
   private async readTrayData(): Promise<TrayData | null> {
     try {
-      const [counts, recentSessions, health] = await Promise.all([
-        this.readTrayJson<TrayCounts>(TRAY_COUNTS_PATH),
-        this.readTrayJson<TraySessionItem[]>(TRAY_RECENT_SESSIONS_PATH),
-        this.readTrayJson<TrayHealthItem[]>(TRAY_HEALTH_PATH),
+      const [summary, recentSessions, health] = await Promise.all([
+        this.readDesktopJson<DesktopSummary>(DESKTOP_SUMMARY_PATH),
+        this.readDesktopJson<DesktopSessionItem[]>(DESKTOP_RECENT_SESSIONS_PATH),
+        this.readDesktopJson<DesktopHealthItem[]>(DESKTOP_HEALTH_PATH),
       ])
-      return { counts, recentSessions, health }
+      return { summary, recentSessions, health }
     }
     catch {
       return null
     }
   }
 
-  private async readTrayJson<T>(path: string): Promise<T> {
+  private async readDesktopJson<T>(path: string): Promise<T> {
     const response = await fetch(new URL(path, this.options.serverUrl))
     if (!response.ok) {
-      throw new Error(`Tray data request failed: ${response.status}`)
+      throw new Error(`Desktop projection request failed: ${response.status}`)
     }
     return await response.json() as T
   }
@@ -336,14 +344,14 @@ export class TrayManager {
         enabled: false,
         visible: true,
       },
-      this.buildActionMenuItem('open-awaits', this.buildBadgeLabel('Awaits', snapshot?.counts.pendingAwaits ?? 0)),
-      this.buildActionMenuItem('open-automation', this.buildAutomationLabel(snapshot?.counts)),
-      this.buildActionMenuItem('open-workspaces', this.buildBadgeLabel('Workspaces', snapshot?.counts.workspaces ?? 0)),
+      this.buildActionMenuItem('open-awaits', this.buildBadgeLabel('Awaits', snapshot?.summary.pendingAwaits ?? 0)),
+      this.buildActionMenuItem('open-automation', this.buildAutomationLabel(snapshot?.summary)),
+      this.buildActionMenuItem('open-workspaces', this.buildBadgeLabel('Workspaces', snapshot?.summary.workspaces ?? 0)),
       this.buildActionMenuItem('open-desktop-settings', 'Settings'),
       ...(snapshot
         ? []
         : [{
-            label: 'Tray data unavailable',
+            label: 'Desktop data unavailable',
             enabled: false,
           }]),
       { type: 'separator' },
@@ -384,7 +392,7 @@ export class TrayManager {
     }
   }
 
-  private buildRecentSessionMenuItems(items: TraySessionItem[]): Electron.MenuItemConstructorOptions[] {
+  private buildRecentSessionMenuItems(items: DesktopSessionItem[]): Electron.MenuItemConstructorOptions[] {
     if (items.length === 0) {
       return [{ label: 'No recent sessions', enabled: false }]
     }
@@ -404,7 +412,7 @@ export class TrayManager {
     }))
   }
 
-  private buildHealthMenuItems(items: TrayHealthItem[]): Electron.MenuItemConstructorOptions[] {
+  private buildHealthMenuItems(items: DesktopHealthItem[]): Electron.MenuItemConstructorOptions[] {
     if (items.length === 0) {
       return [{ label: 'Health unavailable', enabled: false }]
     }
@@ -420,7 +428,7 @@ export class TrayManager {
     }))
   }
 
-  private buildSessionSublabel(item: TraySessionItem): string {
+  private buildSessionSublabel(item: DesktopSessionItem): string {
     const stateLabel = this.readSessionStateLabel(item)
     if (item.modelId) {
       return `${stateLabel} - ${item.workspaceName} - ${item.modelId}`
@@ -428,7 +436,7 @@ export class TrayManager {
     return `${stateLabel} - ${item.workspaceName}`
   }
 
-  private readSessionStateLabel(item: TraySessionItem): string {
+  private readSessionStateLabel(item: DesktopSessionItem): string {
     if (item.state === 'running') {
       return 'Running'
     }
@@ -445,14 +453,14 @@ export class TrayManager {
     return count > 0 ? `${label} (${count})` : label
   }
 
-  private buildAutomationLabel(counts: TrayCounts | undefined): string {
-    if (!counts) {
+  private buildAutomationLabel(summary: DesktopSummary | undefined): string {
+    if (!summary) {
       return 'Automations'
     }
-    if (counts.runningAutomations > 0) {
-      return this.buildBadgeLabel('Automations', counts.runningAutomations)
+    if (summary.runningAutomations > 0) {
+      return this.buildBadgeLabel('Automations', summary.runningAutomations)
     }
-    return this.buildBadgeLabel('Automations', counts.enabledAutomations)
+    return this.buildBadgeLabel('Automations', summary.enabledAutomations)
   }
 
   private buildHeaderLabel(snapshot: TrayData | null): string {
@@ -464,9 +472,9 @@ export class TrayManager {
 
   private buildHeaderSublabel(snapshot: TrayData): string {
     return [
-      pluralize(snapshot.counts.running, 'running'),
-      pluralize(snapshot.counts.recentSessions, 'recent'),
-      pluralize(snapshot.counts.pendingAwaits, 'await'),
+      countLabel(snapshot.summary.running, 'running'),
+      countLabel(snapshot.summary.recentSessions, 'recent'),
+      pluralize(snapshot.summary.pendingAwaits, 'await'),
     ].join(' | ')
   }
 
@@ -481,7 +489,7 @@ export class TrayManager {
     }
 
     this.tray.setToolTip(snapshot
-      ? `Cradle - ${this.buildHealthLabel(snapshot)}: ${snapshot.counts.running} running, ${snapshot.counts.pendingAwaits} awaits`
+      ? `Cradle - ${this.buildHealthLabel(snapshot)}: ${snapshot.summary.running} running, ${snapshot.summary.pendingAwaits} awaits`
       : 'Cradle')
 
     if (process.platform === 'darwin') {
@@ -493,13 +501,13 @@ export class TrayManager {
     if (!snapshot) {
       return ''
     }
-    if (snapshot.counts.pendingAwaits > 0) {
-      return String(snapshot.counts.pendingAwaits)
+    if (snapshot.summary.pendingAwaits > 0) {
+      return String(snapshot.summary.pendingAwaits)
     }
     if (snapshot.health.some(isAttentionItem)) {
       return '!'
     }
-    return snapshot.counts.running > 0 ? String(snapshot.counts.running) : ''
+    return snapshot.summary.running > 0 ? String(snapshot.summary.running) : ''
   }
 
   private updatePlatformNotification(snapshot: TrayData | null): void {
@@ -510,7 +518,7 @@ export class TrayManager {
     if (!snapshot) {
       this.tray.displayBalloon({
         title: 'Cradle',
-        content: 'Tray data is unavailable.',
+        content: 'Desktop status data is unavailable.',
       })
       return
     }

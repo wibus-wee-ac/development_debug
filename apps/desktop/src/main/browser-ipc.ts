@@ -6,6 +6,10 @@
 import type { IpcMain, WebContents } from 'electron'
 
 import type {
+  BrowserAnnotationDesignInput,
+  BrowserAnnotationElement,
+  BrowserAnnotationRuntimeEvent,
+  BrowserAnnotationRuntimeInput,
   BrowserCaptureScreenshotResult,
   BrowserExecuteCdpInput,
   BrowserLocalServer,
@@ -16,7 +20,7 @@ import type {
   BrowserSetPanelBoundsInput,
   BrowserTabInput,
   BrowserThreadInput,
-DesktopBrowserManager,
+  DesktopBrowserManager,
   ThreadBrowserState,
 } from './browser-manager'
 
@@ -30,6 +34,12 @@ export const BROWSER_IPC_CHANNELS = {
   requestOpenPanel: 'desktop:browser-use-request-open-panel',
   copyScreenshotToClipboard: 'desktop:browser-copy-screenshot-to-clipboard',
   captureScreenshot: 'desktop:browser-capture-screenshot',
+  applyAnnotationDesign: 'desktop:browser-apply-annotation-design',
+  clearAnnotationDesign: 'desktop:browser-clear-annotation-design',
+  startAnnotationRuntime: 'desktop:browser-start-annotation-runtime',
+  stopAnnotationRuntime: 'desktop:browser-stop-annotation-runtime',
+  annotationRuntimeEvent: 'desktop:browser-annotation-runtime-event',
+  annotationRuntimeEvented: 'desktop:browser-annotation-runtime-evented',
   executeCdp: 'desktop:browser-execute-cdp',
   discoverLocalServers: 'desktop:browser-discover-local-servers',
   navigate: 'desktop:browser-navigate',
@@ -59,6 +69,13 @@ export function sendBrowserPromptRequest(
   webContents?.send(BROWSER_IPC_CHANNELS.promptRequested, request)
 }
 
+export function sendBrowserAnnotationRuntimeEvent(
+  webContents: WebContents | null | undefined,
+  event: BrowserAnnotationRuntimeEvent,
+): void {
+  webContents?.send(BROWSER_IPC_CHANNELS.annotationRuntimeEvented, event)
+}
+
 // Registers the desktop browser bridge in one place so main.ts stays focused on app boot.
 export function registerBrowserIpcHandlers(
   ipcMain: IpcMain,
@@ -67,6 +84,10 @@ export function registerBrowserIpcHandlers(
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.sendPrompt)
   ipcMain.handle(BROWSER_IPC_CHANNELS.sendPrompt, async (event, payload: unknown) =>
     browserManager.handlePromptRequest(event.sender, payload) !== null)
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.annotationRuntimeEvent)
+  ipcMain.handle(BROWSER_IPC_CHANNELS.annotationRuntimeEvent, async (event, payload: unknown) =>
+    browserManager.handleAnnotationRuntimeEvent(event.sender, payload) !== null)
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.open)
   ipcMain.handle(BROWSER_IPC_CHANNELS.open, async (_event, input: BrowserOpenInput) =>
@@ -103,6 +124,37 @@ export function registerBrowserIpcHandlers(
     BROWSER_IPC_CHANNELS.copyScreenshotToClipboard,
     async (_event, input: BrowserTabInput) => {
       await browserManager.copyScreenshotToClipboard(input)
+    },
+  )
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.applyAnnotationDesign)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.applyAnnotationDesign,
+    async (_event, input: BrowserAnnotationDesignInput): Promise<BrowserAnnotationElement | null> =>
+      browserManager.applyAnnotationDesign(input),
+  )
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.clearAnnotationDesign)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.clearAnnotationDesign,
+    async (_event, input: BrowserTabInput) => {
+      await browserManager.clearAnnotationDesign(input)
+    },
+  )
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.startAnnotationRuntime)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.startAnnotationRuntime,
+    async (_event, input: BrowserAnnotationRuntimeInput) => {
+      await browserManager.startAnnotationRuntime(input)
+    },
+  )
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.stopAnnotationRuntime)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.stopAnnotationRuntime,
+    async (_event, input: BrowserAnnotationRuntimeInput) => {
+      await browserManager.stopAnnotationRuntime(input)
     },
   )
 

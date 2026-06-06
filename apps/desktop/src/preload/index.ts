@@ -17,6 +17,7 @@ const CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
 const CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
 const BROWSER_STATE_CHANNEL = 'desktop:browser-state'
 const BROWSER_PROMPT_REQUESTED_CHANNEL = 'desktop:browser-prompt-requested'
+const BROWSER_ANNOTATION_RUNTIME_EVENTED_CHANNEL = 'desktop:browser-annotation-runtime-evented'
 
 function subscribeIpc<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_event: Electron.IpcRendererEvent, payload: T) => handler(payload)
@@ -116,6 +117,14 @@ const cradleElectron = {
       ipcRenderer.invoke('desktop:browser-capture-screenshot', input),
     copyScreenshotToClipboard: (input: unknown) =>
       ipcRenderer.invoke('desktop:browser-copy-screenshot-to-clipboard', input),
+    applyAnnotationDesign: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-apply-annotation-design', input),
+    clearAnnotationDesign: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-clear-annotation-design', input),
+    startAnnotationRuntime: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-start-annotation-runtime', input),
+    stopAnnotationRuntime: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-stop-annotation-runtime', input),
     executeCdp: (input: unknown) => ipcRenderer.invoke('desktop:browser-execute-cdp', input),
     discoverLocalServers: () => ipcRenderer.invoke('desktop:browser-discover-local-servers'),
     navigate: (input: unknown) => ipcRenderer.invoke('desktop:browser-navigate', input),
@@ -129,6 +138,8 @@ const cradleElectron = {
     onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler),
     onPromptRequested: (handler: (request: unknown) => void) =>
       subscribeIpc(BROWSER_PROMPT_REQUESTED_CHANNEL, handler),
+    onAnnotationRuntimeEvent: (handler: (event: unknown) => void) =>
+      subscribeIpc(BROWSER_ANNOTATION_RUNTIME_EVENTED_CHANNEL, handler),
   },
 
   /** Desktop tray action bridge */
