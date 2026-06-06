@@ -15,6 +15,7 @@ export class WindowManager {
   private mainWindow: BrowserWindow | null = null
   private sessionWindows = new Map<string, BrowserWindow>()
   private devtoolWindow: BrowserWindow | null = null
+  private lastFocusedAppshotWindow: BrowserWindow | null = null
   private serverUrl: string
 
   constructor(serverUrl: string) {
@@ -23,10 +24,21 @@ export class WindowManager {
 
   setMainWindow(win: BrowserWindow): void {
     this.mainWindow = win
+    this.trackAppshotCaptureWindow(win)
   }
 
   getMainWindow(): BrowserWindow | null {
     return this.mainWindow
+  }
+
+  getLastFocusedAppshotWindow(): BrowserWindow | null {
+    if (this.lastFocusedAppshotWindow && !this.lastFocusedAppshotWindow.isDestroyed()) {
+      return this.lastFocusedAppshotWindow
+    }
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      return this.mainWindow
+    }
+    return null
   }
 
   /**
@@ -76,6 +88,7 @@ export class WindowManager {
     })
 
     this.sessionWindows.set(sessionId, win)
+    this.trackAppshotCaptureWindow(win)
 
     let lastTearoffWindowSize = { width: targetBounds.width, height: targetBounds.height }
     const writeTearoffWindowSize = (): void => {
@@ -131,6 +144,25 @@ export class WindowManager {
     }
 
     return win
+  }
+
+  private trackAppshotCaptureWindow(win: BrowserWindow): void {
+    if (win.isDestroyed()) {
+      return
+    }
+    if (win.isFocused()) {
+      this.lastFocusedAppshotWindow = win
+    }
+    win.on('focus', () => {
+      if (!win.isDestroyed()) {
+        this.lastFocusedAppshotWindow = win
+      }
+    })
+    win.on('closed', () => {
+      if (this.lastFocusedAppshotWindow === win) {
+        this.lastFocusedAppshotWindow = null
+      }
+    })
   }
 
   /**

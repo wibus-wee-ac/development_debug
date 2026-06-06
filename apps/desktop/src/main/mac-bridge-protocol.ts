@@ -145,6 +145,7 @@ export const MacCapturedWindowSchema = z.object({
   appName: z.string().nullable(),
   bundleId: z.string().nullable(),
   appIconDataUrl: z.string().nullable().optional(),
+  axTree: z.string().nullable().optional(),
   processId: z.number().int().nonnegative(),
   title: z.string().nullable(),
   bounds: z.object({

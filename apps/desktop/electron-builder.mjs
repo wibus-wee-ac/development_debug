@@ -103,7 +103,9 @@ const config = {
   },
 
   files: [
-    'dist/**/*',
+    'dist/main/**/*',
+    'dist/preload/**/*',
+    'dist/renderer/**/*',
     '!node_modules',
   ],
 
@@ -119,6 +121,16 @@ const config = {
     {
       from: '../server/dist/desktop-runtime/node_modules',
       to: 'server/node_modules',
+      filter: ['**/*'],
+    },
+    {
+      from: '../../packages/cli/dist',
+      to: 'cli',
+      filter: ['**/*'],
+    },
+    {
+      from: 'resources/bin',
+      to: 'bin',
       filter: ['**/*'],
     },
     {

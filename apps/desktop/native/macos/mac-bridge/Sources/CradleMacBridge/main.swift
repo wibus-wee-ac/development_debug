@@ -81,6 +81,7 @@ struct WindowCandidate {
     let processId: Int
     let title: String?
     let bounds: [String: Double]?
+    let axTree: String?
     let frameEvidence: WindowFrameEvidence?
 }
 
@@ -93,6 +94,7 @@ struct WindowTarget {
 struct AccessibilityWindowSnapshot {
     let title: String?
     let frame: CGRect?
+    let axTree: String?
 }
 
 struct WindowFrameEvidence {
@@ -1299,6 +1301,7 @@ func windowCandidateWithAccessibilityFrame(_ candidate: WindowCandidate, accessi
         processId: candidate.processId,
         title: candidate.title,
         bounds: serialize(rect: accessibilityFrame),
+        axTree: accessibilityWindow?.axTree ?? candidate.axTree,
         frameEvidence: WindowFrameEvidence(
             coreGraphicsBounds: candidate.bounds,
             accessibilityFrame: accessibilityFrame
@@ -1321,7 +1324,8 @@ func readAccessibilityWindowSnapshot(application: NSRunningApplication) -> Acces
     }
     return AccessibilityWindowSnapshot(
         title: readAXString(windowElement, attribute: kAXTitleAttribute),
-        frame: readAXFrame(windowElement)
+        frame: readAXFrame(windowElement),
+        axTree: readAXTreeText(windowElement)
     )
 }
 
@@ -1341,6 +1345,69 @@ func readAXString(_ element: AXUIElement, attribute: String) -> String? {
         return nil
     }
     return value as? String
+}
+
+func readAXTreeText(_ root: AXUIElement) -> String? {
+    var lines: [String] = []
+    var visited = Set<UInt>()
+    appendAXTreeText(root, depth: 0, lines: &lines, visited: &visited)
+    let text = lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : text
+}
+
+func appendAXTreeText(_ element: AXUIElement, depth: Int, lines: inout [String], visited: inout Set<UInt>) {
+    let maxDepth = 5
+    let maxLines = 180
+    guard depth <= maxDepth, lines.count < maxLines else {
+        return
+    }
+
+    let elementId = UInt(bitPattern: Unmanaged.passUnretained(element).toOpaque())
+    if visited.contains(elementId) {
+        return
+    }
+    visited.insert(elementId)
+
+    let parts = [
+        readAXString(element, attribute: kAXRoleAttribute),
+        readAXString(element, attribute: kAXSubroleAttribute),
+        readAXString(element, attribute: kAXTitleAttribute),
+        readAXString(element, attribute: kAXDescriptionAttribute),
+        readAXString(element, attribute: kAXValueAttribute),
+    ].compactMap { value -> String? in
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    if !parts.isEmpty {
+        lines.append("\(String(repeating: "  ", count: depth))\(parts.joined(separator: " | "))")
+    }
+
+    guard let children = readAXChildren(element) else {
+        return
+    }
+    for child in children.prefix(80) {
+        appendAXTreeText(child, depth: depth + 1, lines: &lines, visited: &visited)
+        if lines.count >= maxLines {
+            break
+        }
+    }
+}
+
+func readAXChildren(_ element: AXUIElement) -> [AXUIElement]? {
+    var value: CFTypeRef?
+    let result = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &value)
+    guard result == .success,
+          let value,
+          CFGetTypeID(value) == CFArrayGetTypeID() else {
+        return nil
+    }
+    return (value as! [Any]).compactMap { child in
+        guard CFGetTypeID(child as CFTypeRef) == AXUIElementGetTypeID() else {
+            return nil
+        }
+        return (child as! AXUIElement)
+    }
 }
 
 func readAXFrame(_ element: AXUIElement) -> CGRect? {
@@ -1451,6 +1518,7 @@ func readWindowCandidate(
         processId: ownerPid,
         title: raw[kCGWindowName as String] as? String,
         bounds: bounds,
+        axTree: accessibilityWindow?.axTree,
         frameEvidence: WindowFrameEvidence(
             coreGraphicsBounds: bounds,
             accessibilityFrame: nil
@@ -1543,6 +1611,7 @@ func serialize(window: WindowCandidate) -> [String: Any] {
         "processId": window.processId,
         "title": window.title ?? NSNull(),
         "bounds": window.bounds ?? NSNull(),
+        "axTree": window.axTree ?? NSNull(),
     ]
     if let frameEvidence = window.frameEvidence {
         payload["frameEvidence"] = serialize(frameEvidence: frameEvidence)

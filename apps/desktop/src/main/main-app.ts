@@ -10,6 +10,7 @@ import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
+import { NotificationCenterManager } from './notification-center-manager'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
@@ -24,7 +25,8 @@ import {
 } from './plugin-loader'
 import { bindDesktopObservabilityServerUrl } from './observability-reporter'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
-import { startServer, stopServer } from './server-process'
+import { QuitGuard } from './quit-guard'
+import { detachServer, startServer, stopServer } from './server-process'
 import { TrayManager } from './tray-manager'
 import { DesktopUpdateManager } from './update-manager'
 import { WindowManager } from './window-manager'
@@ -37,7 +39,9 @@ let trayManager: TrayManager | null = null
 let desktopAppBadgeManager: DesktopAppBadgeManager | null = null
 let macBridgeManager: MacBridgeManager | null = null
 let chatStreamBroker: ChatStreamBroker | null = null
+let notificationCenterManager: NotificationCenterManager | null = null
 let isQuitting = false
+const quitGuard = new QuitGuard()
 
 const MAIN_WINDOW_DEFAULT_WIDTH = 1280
 const MAIN_WINDOW_DEFAULT_HEIGHT = 820
@@ -230,6 +234,7 @@ async function showPluginInstallSuccess(result: PluginInstallResult): Promise<vo
     cancelId: 1
   })
   if (response === 0) {
+    quitGuard.allowNextQuit()
     app.relaunch()
     app.exit(0)
   }
@@ -286,9 +291,15 @@ function processPendingPluginInstallUrls(): void {
   handlePluginInstallUrls(urls)
 }
 
-async function shutdownDesktopRuntime(): Promise<void> {
+async function shutdownDesktopRuntime(options: { stopServerRuntime: boolean }): Promise<void> {
+  if (!options.stopServerRuntime) {
+    detachServer()
+  }
+
   browserManager.dispose()
   updateManager?.stopBackgroundChecks()
+  notificationCenterManager?.stop()
+  notificationCenterManager = null
   chatStreamBroker?.stop()
   chatStreamBroker = null
   trayManager?.destroy()
@@ -298,7 +309,22 @@ async function shutdownDesktopRuntime(): Promise<void> {
   await macBridgeManager?.stop()
   macBridgeManager = null
   await deactivateDesktopPlugins()
-  await stopServer()
+  if (options.stopServerRuntime) {
+    await stopServer()
+  }
+}
+
+async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void> {
+  try {
+    const response = await fetch(new URL('/preferences/desktop', serverUrl))
+    if (!response.ok) {
+      return
+    }
+    quitGuard.updatePreferences(await response.json())
+  }
+  catch (error) {
+    console.warn('[preferences] failed to read desktop preferences:', error)
+  }
 }
 
 export async function startDesktopApp(): Promise<void> {
@@ -321,7 +347,10 @@ export async function startDesktopApp(): Promise<void> {
   }
 
   updateManager = new DesktopUpdateManager({
-    beforeApplyUpdate: shutdownDesktopRuntime
+    beforeApplyUpdate: async () => {
+      quitGuard.allowNextQuit()
+      await shutdownDesktopRuntime({ stopServerRuntime: true })
+    }
   })
   const appBadgeManager = new DesktopAppBadgeManager()
   desktopAppBadgeManager = appBadgeManager
@@ -330,17 +359,20 @@ export async function startDesktopApp(): Promise<void> {
   })
   macBridgeManager.on('hotkeyTriggered', (event) => {
     console.log('[mac-bridge] forwarding Appshot hotkey to renderer:', event)
-    if (!mainWindow || mainWindow.isDestroyed()) {
-      console.warn('[mac-bridge] Appshot hotkey ignored because the main window is not available.')
+    const targetWindow = windowManager?.getLastFocusedAppshotWindow()
+      ?? (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null)
+    if (!targetWindow || targetWindow.isDestroyed()) {
+      console.warn('[mac-bridge] Appshot hotkey ignored because no Appshot renderer window is available.')
       return
     }
-    mainWindow.webContents.send('capture:appshot-hotkey', event)
+    targetWindow.webContents.send('capture:appshot-hotkey', event)
   })
   createNativeServices({
     getWindowManager: () => windowManager,
     getUpdateManager: () => updateManager,
     getMacBridgeManager: () => macBridgeManager,
-    getChatStreamBroker: () => chatStreamBroker
+    getChatStreamBroker: () => chatStreamBroker,
+    getQuitGuard: () => quitGuard,
   })
   updateManager.on('statusChanged', broadcastUpdateStatus)
 
@@ -367,7 +399,13 @@ export async function startDesktopApp(): Promise<void> {
 
     const serverUrl = await startServer()
     bindDesktopObservabilityServerUrl(serverUrl)
+    await syncDesktopPreferencesFromServer(serverUrl)
     chatStreamBroker = new ChatStreamBroker({ serverUrl })
+    notificationCenterManager = new NotificationCenterManager({
+      serverUrl,
+      chatStreamBroker,
+    })
+    notificationCenterManager.start()
 
     windowManager = new WindowManager(serverUrl)
     appBadgeManager.initialize()
@@ -405,9 +443,12 @@ export async function startDesktopApp(): Promise<void> {
     }
   })
 
-  app.on('before-quit', async () => {
+  app.on('before-quit', async (event) => {
+    if (!quitGuard.handleBeforeQuit(event)) {
+      return
+    }
     isQuitting = true
-    await shutdownDesktopRuntime()
+    await shutdownDesktopRuntime({ stopServerRuntime: false })
   })
 
   app.on('second-instance', (_event, argv) => {

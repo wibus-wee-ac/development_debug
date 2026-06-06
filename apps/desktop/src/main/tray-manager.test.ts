@@ -456,9 +456,9 @@ describe('trayManager', () => {
       expect.objectContaining({ label: 'Actions' }),
       expect.objectContaining({
         label: 'Quit Cradle',
-        role: 'quit',
         accelerator: 'CommandOrControl+Q',
         registerAccelerator: true,
+        click: expect.any(Function),
       }),
     ]))
     expect(findMenuItem(template, 'Running: 1')).toEqual(expect.objectContaining({

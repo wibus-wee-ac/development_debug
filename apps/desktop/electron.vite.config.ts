@@ -18,10 +18,14 @@ const nodeRuntimeExternals = [
 
 export default defineConfig({
   main: {
+    ssr: {
+      noExternal: true
+    },
     define: {
       __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl)
     },
     build: {
+      externalizeDeps: false,
       outDir: resolve(__dirname, 'dist/main'),
       rollupOptions: {
         external: nodeRuntimeExternals,
@@ -33,6 +37,7 @@ export default defineConfig({
   },
   preload: {
     build: {
+      externalizeDeps: false,
       outDir: resolve(__dirname, 'dist/preload'),
       rollupOptions: {
         external: nodeRuntimeExternals,

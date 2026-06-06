@@ -320,10 +320,12 @@ export class TrayManager {
       {
         id: 'quit',
         label: 'Quit Cradle',
-        role: 'quit',
         accelerator: 'CommandOrControl+Q',
         registerAccelerator: true,
         visible: true,
+        click: () => {
+          void this.performAction('quit')
+        },
       },
     ])
   }

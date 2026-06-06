@@ -419,4 +419,46 @@ describe('chat stream broker', () => {
       expect(broker.diagnostics().streams).toHaveLength(0)
     })
   })
+
+  it('starts and drains a detached response stream without a renderer subscriber', async () => {
+    const controlled = createControlledSseResponse({ 'x-cradle-run-id': 'run-detached' })
+    const fetchFn = vi.fn(async () => controlled.response)
+    const broker = new ChatStreamBroker({
+      serverUrl: 'http://127.0.0.1:21423',
+      fetchFn: fetchFn as typeof fetch,
+    })
+
+    const handle = await broker.startResponseDetached({
+      sessionId: 'session-detached',
+      body: { text: 'reply from notification' },
+    })
+
+    expect(handle).toMatchObject({
+      sessionId: 'session-detached',
+      runId: 'run-detached',
+    })
+    expect(fetchFn).toHaveBeenCalledWith(
+      new URL('http://127.0.0.1:21423/chat/sessions/session-detached/response'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ text: 'reply from notification' }),
+      }),
+    )
+    expect(broker.diagnostics().streams).toMatchObject([
+      {
+        sessionId: 'session-detached',
+        mode: 'response',
+        runId: 'run-detached',
+        subscriberCount: 1,
+        keepAliveWithoutSubscribers: true,
+      },
+    ])
+
+    controlled.controller.enqueue(encodeSse({ type: 'text-delta', id: 'text-detached', delta: 'ok' }))
+    controlled.controller.enqueue(encodeSse('[DONE]'))
+
+    await vi.waitFor(() => {
+      expect(broker.diagnostics().streams).toHaveLength(0)
+    })
+  })
 })

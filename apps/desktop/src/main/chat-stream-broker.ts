@@ -5,6 +5,9 @@ export const DESKTOP_CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
 export const DESKTOP_CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
 
 export type DesktopChatStreamMode = 'response' | 'session'
+type DesktopChatRuntimeAccessMode = 'approval-required' | 'full-access'
+type DesktopChatRuntimeInteractionMode = 'default' | 'plan'
+type DesktopChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
 export interface DesktopChatStartResponseRequest {
   sessionId: string
@@ -14,8 +17,11 @@ export interface DesktopChatStartResponseRequest {
     messages?: unknown[]
     providerTargetId?: string
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high'
-    permissionMode?: 'bypassPermissions' | 'plan'
+    thinkingEffort?: DesktopChatThinkingEffort
+    runtimeSettings?: {
+      accessMode?: DesktopChatRuntimeAccessMode
+      interactionMode?: DesktopChatRuntimeInteractionMode
+    }
   }
 }
 
@@ -90,8 +96,16 @@ interface UpstreamHandle {
 
 interface StreamSubscriber {
   streamId: string
-  webContents: WebContents
+  sink: ChatStreamSink
+  webContents: WebContents | null
   replayCursor: number
+}
+
+interface ChatStreamSink {
+  isDestroyed: () => boolean
+  send: (channel: string, payload: unknown) => void
+  once?: (eventName: 'destroyed', listener: () => void) => void
+  removeListener?: (eventName: 'destroyed', listener: () => void) => void
 }
 
 interface ReplayBufferItem {
@@ -157,6 +171,20 @@ export class ChatStreamBroker {
     webContents: WebContents,
     request: DesktopChatStartResponseRequest,
   ): Promise<DesktopChatStreamHandle> {
+    return await this.startResponseForSink(webContents, webContents, request)
+  }
+
+  async startResponseDetached(
+    request: DesktopChatStartResponseRequest,
+  ): Promise<DesktopChatStreamHandle> {
+    return await this.startResponseForSink(createDetachedChatStreamSink(), null, request)
+  }
+
+  private async startResponseForSink(
+    sink: ChatStreamSink,
+    webContents: WebContents | null,
+    request: DesktopChatStartResponseRequest,
+  ): Promise<DesktopChatStreamHandle> {
     const entry = this.readOrCreateEntry({
       sessionId: request.sessionId,
       mode: 'response',
@@ -168,7 +196,7 @@ export class ChatStreamBroker {
         body: JSON.stringify(request.body),
       },
     })
-    return await this.attachSubscriber(entry, webContents)
+    return await this.attachSubscriber(entry, sink, webContents)
   }
 
   async subscribeSession(
@@ -182,7 +210,7 @@ export class ChatStreamBroker {
       keepAliveWithoutSubscribers: false,
       request: { method: 'GET' },
     })
-    return await this.attachSubscriber(entry, webContents)
+    return await this.attachSubscriber(entry, webContents, webContents)
   }
 
   abortStream(webContents: WebContents, request: DesktopChatAbortRequest): void {
@@ -253,10 +281,16 @@ export class ChatStreamBroker {
 
   private async attachSubscriber(
     entry: UpstreamEntry,
-    webContents: WebContents,
+    sink: ChatStreamSink,
+    webContents: WebContents | null,
   ): Promise<DesktopChatStreamHandle> {
     const streamId = this.createStreamId(entry.sessionId)
-    const subscriber: StreamSubscriber = { streamId, webContents, replayCursor: 0 }
+    const subscriber: StreamSubscriber = {
+      streamId,
+      sink,
+      webContents,
+      replayCursor: 0,
+    }
     entry.subscribers.set(streamId, subscriber)
     this.attachWebContentsCleanup(entry, subscriber)
 
@@ -278,9 +312,12 @@ export class ChatStreamBroker {
   }
 
   private attachWebContentsCleanup(entry: UpstreamEntry, subscriber: StreamSubscriber): void {
-    let registration = this.cleanupByWebContents.get(subscriber.webContents)
+    const webContents = subscriber.webContents
+    if (!webContents) {
+      return
+    }
+    let registration = this.cleanupByWebContents.get(webContents)
     if (!registration) {
-      const webContents = subscriber.webContents
       registration = {
         webContents,
         streamIds: new Set(),
@@ -421,12 +458,12 @@ export class ChatStreamBroker {
     chunk: unknown,
     cursorAfter = entry.replayBuffer.nextCursor,
   ): void {
-    if (subscriber.webContents.isDestroyed()) {
+    if (subscriber.sink.isDestroyed()) {
       this.removeSubscriber(entry, subscriber.streamId)
       this.abortEntryIfUnobserved(entry)
       return
     }
-    subscriber.webContents.send(DESKTOP_CHAT_STREAM_CHUNK_CHANNEL, {
+    subscriber.sink.send(DESKTOP_CHAT_STREAM_CHUNK_CHANNEL, {
       streamId: subscriber.streamId,
       sessionId: entry.sessionId,
       runId: entry.runId,
@@ -452,11 +489,11 @@ export class ChatStreamBroker {
     subscriber: StreamSubscriber,
     reason: DesktopChatStreamClosedEvent['reason'],
   ): void {
-    if (subscriber.webContents.isDestroyed()) {
+    if (subscriber.sink.isDestroyed()) {
       this.removeSubscriber(entry, subscriber.streamId)
       return
     }
-    subscriber.webContents.send(DESKTOP_CHAT_STREAM_CLOSED_CHANNEL, {
+    subscriber.sink.send(DESKTOP_CHAT_STREAM_CLOSED_CHANNEL, {
       streamId: subscriber.streamId,
       sessionId: entry.sessionId,
       runId: entry.runId,
@@ -466,11 +503,11 @@ export class ChatStreamBroker {
 
   private errorSubscribers(entry: UpstreamEntry, message: string): void {
     for (const subscriber of [...entry.subscribers.values()]) {
-      if (subscriber.webContents.isDestroyed()) {
+      if (subscriber.sink.isDestroyed()) {
         this.removeSubscriber(entry, subscriber.streamId)
         continue
       }
-      subscriber.webContents.send(DESKTOP_CHAT_STREAM_ERROR_CHANNEL, {
+      subscriber.sink.send(DESKTOP_CHAT_STREAM_ERROR_CHANNEL, {
         streamId: subscriber.streamId,
         sessionId: entry.sessionId,
         runId: entry.runId,
@@ -490,7 +527,11 @@ export class ChatStreamBroker {
   }
 
   private detachWebContentsCleanup(subscriber: StreamSubscriber): void {
-    const registration = this.cleanupByWebContents.get(subscriber.webContents)
+    const webContents = subscriber.webContents
+    if (!webContents) {
+      return
+    }
+    const registration = this.cleanupByWebContents.get(webContents)
     if (!registration) {
       return
     }
@@ -532,6 +573,15 @@ function canReuseEntry(existing: UpstreamEntry, request: UpstreamRequest): boole
     return true
   }
   return existing.mode === 'response'
+}
+
+function createDetachedChatStreamSink(): ChatStreamSink {
+  return {
+    isDestroyed: () => false,
+    send: () => {
+      // Detached notification replies only need the broker to drain the server stream.
+    },
+  }
 }
 
 function createReplayBuffer(): ReplayBuffer {

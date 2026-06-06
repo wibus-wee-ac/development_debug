@@ -1,8 +1,8 @@
 import type { ChildProcess } from 'node:child_process'
 import { fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
-import { delimiter, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { delimiter, dirname, join, resolve } from 'node:path'
 
 import { app, dialog } from 'electron'
 import getPort from 'get-port'
@@ -15,13 +15,21 @@ import { resolveDesktopPrimaryPluginsDir, resolveDesktopPrimaryPluginsSourceKind
 let serverProcess: ChildProcess | null = null
 let restartCount = 0
 let isServerShutdownRequested = false
+let locatedServerPid: number | null = null
 const MAX_RESTARTS = 3
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
+const CLI_SERVER_LOCATOR_FILE = 'cli/server.json'
 const ExternalPluginsDirsSchema = z.array(z.string().optional())
   .transform(values => values.flatMap(value => value?.trim() ? [value.trim()] : []))
+const ServerLocatorSchema = z.object({
+  serverUrl: z.string().url(),
+  pid: z.number().int().positive().nullable().optional(),
+  version: z.string().optional(),
+  updatedAt: z.string().optional(),
+})
 let currentServerUrl = ''
 
 function resolveDevServerEntry(): string {
@@ -46,20 +54,76 @@ export async function startServer(): Promise<string> {
   isServerShutdownRequested = false
   restartCount = 0
 
+  const dataDir = join(app.getPath('userData'), 'data')
+  const credentialSecret = resolveDesktopCredentialSecret(dataDir)
+  const existingServer = await readHealthyLocatedServerUrl(app.getPath('userData'))
+  if (existingServer) {
+    currentServerUrl = existingServer.serverUrl
+    locatedServerPid = existingServer.pid
+    console.warn(`[desktop] Reusing existing server on ${currentServerUrl}`)
+    return currentServerUrl
+  }
+
   const port = await getPort({ port: [21423, 21424, 21425, 21426] })
   const host = '127.0.0.1'
   currentServerUrl = `http://${host}:${port}`
-
-  const dataDir = join(app.getPath('userData'), 'data')
-  const credentialSecret = resolveDesktopCredentialSecret(dataDir)
 
   await spawnServer({ host, port, dataDir, credentialSecret })
 
   // Wait for server to be ready
   await waitForServer(currentServerUrl, 15_000)
+  writeCliServerLocator({
+    dataDir: app.getPath('userData'),
+    serverUrl: currentServerUrl,
+  })
 
   console.warn(`[desktop] Server started on ${currentServerUrl}`)
   return currentServerUrl
+}
+
+async function readHealthyLocatedServerUrl(dataDir: string): Promise<{ serverUrl: string, pid: number | null } | null> {
+  const locatorPath = join(dataDir, CLI_SERVER_LOCATOR_FILE)
+  if (!existsSync(locatorPath)) {
+    return null
+  }
+
+  try {
+    const locator = ServerLocatorSchema.parse(JSON.parse(readFileSync(locatorPath, 'utf8')))
+    await waitForServer(locator.serverUrl, 1_000)
+    return { serverUrl: locator.serverUrl, pid: locator.pid ?? null }
+  }
+  catch {
+    removeCliServerLocator()
+    return null
+  }
+}
+
+function writeCliServerLocator(input: { dataDir: string, serverUrl: string }): void {
+  const locatorPath = join(input.dataDir, CLI_SERVER_LOCATOR_FILE)
+  mkdirSync(dirname(locatorPath), { recursive: true })
+  writeFileSync(
+    locatorPath,
+    `${JSON.stringify(
+      {
+        serverUrl: input.serverUrl,
+        pid: serverProcess?.pid ?? null,
+        version: app.getVersion(),
+        updatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    )}\n`,
+    { encoding: 'utf8', mode: 0o600 },
+  )
+}
+
+function removeCliServerLocator(): void {
+  try {
+    rmSync(join(app.getPath('userData'), CLI_SERVER_LOCATOR_FILE), { force: true })
+  }
+  catch {
+    // Shutdown should not fail because the optional CLI locator cannot be cleared.
+  }
 }
 
 async function spawnServer(opts: { host: string, port: number, dataDir: string, credentialSecret: string }): Promise<void> {
@@ -106,16 +170,10 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     env: serverEnv,
     execPath,
     execArgv,
-    stdio: 'pipe',
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
   })
-
-  serverProcess.stdout?.on('data', (data: Buffer) => {
-    process.stdout.write(data)
-  })
-
-  serverProcess.stderr?.on('data', (data: Buffer) => {
-    process.stderr.write(data)
-  })
+  locatedServerPid = serverProcess.pid ?? null
 
   serverProcess.on('exit', (code, signal) => {
     if (isServerShutdownRequested || signal === 'SIGTERM' || signal === 'SIGKILL') {
@@ -124,19 +182,51 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     }
 
     console.error(`[desktop] Server process exited unexpectedly (code=${code}, signal=${signal})`)
+    removeCliServerLocator()
 
     if (restartCount < MAX_RESTARTS) {
       restartCount++
       console.warn(`[desktop] Restarting server (attempt ${restartCount}/${MAX_RESTARTS})...`)
-      spawnServer(opts).then(() => waitForServer(currentServerUrl, 10_000)).catch((err) => {
-        console.error('[desktop] Server restart failed:', err)
-        showServerCrashDialog(code)
-      })
+      spawnServer(opts)
+        .then(() => waitForServer(currentServerUrl, 10_000))
+        .then(() => {
+          writeCliServerLocator({
+            dataDir: app.getPath('userData'),
+            serverUrl: currentServerUrl,
+          })
+        })
+        .catch((err) => {
+          console.error('[desktop] Server restart failed:', err)
+          showServerCrashDialog(code)
+        })
     }
     else {
       showServerCrashDialog(code)
     }
   })
+}
+
+/**
+ * Detach the desktop-owned reference to the server without stopping it.
+ *
+ * A normal app quit is only an observer disappearing; Chat Runtime still owns
+ * active run lifecycle. The CLI locator is intentionally left in place so the
+ * next desktop process can reattach to the same server.
+ */
+export function detachServer(): void {
+  const child = serverProcess
+  if (!child) {
+    return
+  }
+
+  isServerShutdownRequested = true
+  child.removeAllListeners('exit')
+  child.removeAllListeners('error')
+  if (child.connected) {
+    child.disconnect()
+  }
+  child.unref()
+  serverProcess = null
 }
 
 function resolveDevNodeExecPath(): string {
@@ -214,11 +304,14 @@ function showServerCrashDialog(exitCode: number | null): void {
 export async function stopServer(timeoutMs = 5_000): Promise<void> {
   const child = serverProcess
   if (!child) {
+    await stopLocatedServer(timeoutMs)
     return
   }
 
   isServerShutdownRequested = true
   serverProcess = null
+  locatedServerPid = null
+  removeCliServerLocator()
 
   await new Promise<void>((resolveStop) => {
     let resolved = false
@@ -251,6 +344,44 @@ export async function stopServer(timeoutMs = 5_000): Promise<void> {
       finish()
     }, timeoutMs)
   })
+}
+
+async function stopLocatedServer(timeoutMs: number): Promise<void> {
+  const pid = locatedServerPid
+  locatedServerPid = null
+  if (!pid) {
+    removeCliServerLocator()
+    return
+  }
+
+  try {
+    process.kill(pid, 'SIGTERM')
+  }
+  catch {
+    // The located server may have already exited.
+    removeCliServerLocator()
+    return
+  }
+
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0)
+    }
+    catch {
+      removeCliServerLocator()
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 100))
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL')
+  }
+  catch {
+    // The located server may have exited after the timeout check.
+  }
+  removeCliServerLocator()
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {

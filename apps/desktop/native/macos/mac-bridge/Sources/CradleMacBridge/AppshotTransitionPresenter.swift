@@ -41,11 +41,7 @@ struct AppshotTransitionCalibration {
     ) -> AppshotTransitionCalibration {
         let animationDuration = readPositiveDouble(params["animationDuration"]) ?? AppshotTransitionTiming.animationDuration
         let transitionSnapshotHeight = readPositiveDouble(params["transitionSnapshotHeight"]).map { $0 / Double(target.transitionSnapshotScale) }
-            ?? AppshotTransitionCalibration.defaultTransitionSnapshotHeight(
-                scale: target.transitionSnapshotScale,
-                windowTitle: windowTitle,
-                appName: appName
-            )
+            ?? AppshotLayerMetrics.transitionSnapshotBaseHeight
         let springResponse = readPositiveDouble(params["transitionSpringResponse"]) ?? AppshotTransitionTiming.placeholderSpringResponse
         let springDampingFraction = readPositiveDouble(params["transitionSpringDampingFraction"]) ?? AppshotTransitionTiming.placeholderSpringDampingFraction
         return AppshotTransitionCalibration(
@@ -55,20 +51,6 @@ struct AppshotTransitionCalibration {
             springDampingFraction: springDampingFraction
         )
     }
-
-    private static func defaultTransitionSnapshotHeight(
-        scale: CGFloat,
-        windowTitle: String?,
-        appName: String?
-    ) -> Double {
-        let title = windowTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let name = appName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !title.isEmpty || !name.isEmpty else {
-            return AppshotLayerMetrics.transitionSnapshotBaseHeight
-        }
-        let resolvedScale = max(Double(scale), 1)
-        return 144 + ceil(AppshotLayerMetrics.transitionSnapshotTitleHeight * resolvedScale) / resolvedScale
-    }
 }
 
 enum AppshotLayerMetrics {
@@ -77,7 +59,6 @@ enum AppshotLayerMetrics {
     static let overlayPadding: CGFloat = 96
     static let transitionSnapshotBaseWidth: CGFloat = 232
     static let transitionSnapshotBaseHeight: Double = 140
-    static let transitionSnapshotTitleHeight: Double = 16.021484375
     static let shadowOpacity: Float = 0.3
     static let shadowCornerRadius: CGFloat = 12
     static let screenshotCornerRadius: CGFloat = 12

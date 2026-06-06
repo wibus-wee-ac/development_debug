@@ -14,6 +14,12 @@ import type {
   DesktopChatStreamHandle,
   DesktopChatSubscribeSessionRequest,
 } from './chat-stream-broker'
+import type { DesktopCliStatus } from './desktop-cli-manager'
+import {
+  installDesktopCliCommand,
+  readDesktopCliStatus,
+  removeDesktopCliCommand,
+} from './desktop-cli-manager'
 import type { MacBridgeManager } from './mac-bridge-manager'
 import type {
   MacAppshotAnimationTarget,
@@ -37,6 +43,7 @@ import {
   readScreenPointAppshotDestinationFrame,
 } from './native-appshot-target'
 import { launchPathInEditor } from './native-editor-launcher'
+import type { DesktopPreferences, QuitGuard } from './quit-guard'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
 
@@ -233,6 +240,30 @@ class NativeService extends IpcService {
   }
 
   @IpcMethod()
+  async getDesktopCliStatus(): Promise<DesktopCliStatus> {
+    return readDesktopCliStatus()
+  }
+
+  @IpcMethod()
+  async installDesktopCliCommand(): Promise<DesktopCliStatus> {
+    return installDesktopCliCommand()
+  }
+
+  @IpcMethod()
+  async removeDesktopCliCommand(): Promise<DesktopCliStatus> {
+    return removeDesktopCliCommand()
+  }
+
+  @IpcMethod()
+  async setDesktopPreferences(preferences: DesktopPreferences): Promise<DesktopPreferences> {
+    const guard = getQuitGuard()
+    if (!guard) {
+      throw new Error('Quit guard is not initialized')
+    }
+    return guard.updatePreferences(preferences)
+  }
+
+  @IpcMethod()
   async scanExternalWorkImportFiles(options: {
     limitPerSource?: number
   } = {}): Promise<{ files: ExternalWorkImportFile[], warnings: string[] }> {
@@ -279,6 +310,7 @@ interface NativeServicesContext {
   getUpdateManager: () => DesktopUpdateManager | null
   getMacBridgeManager: () => MacBridgeManager | null
   getChatStreamBroker: () => ChatStreamBroker | null
+  getQuitGuard: () => QuitGuard
 }
 
 let nativeServicesContext: NativeServicesContext | null = null
@@ -297,6 +329,10 @@ function getMacBridgeManager(): MacBridgeManager | null {
 
 function getChatStreamBroker(): ChatStreamBroker | null {
   return nativeServicesContext?.getChatStreamBroker() ?? null
+}
+
+function getQuitGuard(): QuitGuard | null {
+  return nativeServicesContext?.getQuitGuard() ?? null
 }
 
 function readIpcSenderWindow(): BrowserWindow | null {

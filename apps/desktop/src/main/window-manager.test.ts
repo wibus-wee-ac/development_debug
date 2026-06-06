@@ -67,8 +67,13 @@ const electronMocks = vi.hoisted(() => {
       return this.destroyed
     }
 
+    isFocused(): boolean {
+      return this.focused
+    }
+
     focus(): void {
       this.focused = true
+      this.emit('focus')
     }
 
     show(): void {
@@ -125,6 +130,33 @@ afterEach(() => {
 })
 
 describe('WindowManager tear-off windows', () => {
+  it('uses the last focused main or tear-off window for AppShot capture routing', async () => {
+    const userDataPath = mkdtempSync(join(tmpdir(), 'cradle-window-manager-'))
+    tempRoots.push(userDataPath)
+    electronMocks.app.__setUserDataPath(userDataPath)
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5174'
+
+    const { WindowManager } = await import('./window-manager')
+    const manager = new WindowManager('http://localhost:3010')
+    const mainWindow = new electronMocks.BrowserWindow({})
+
+    manager.setMainWindow(mainWindow as never)
+    expect(manager.getLastFocusedAppshotWindow()).toBe(mainWindow)
+
+    const tearoffWindow = await manager.openSessionWindow('session-1', 1200, 40)
+    expect(manager.getLastFocusedAppshotWindow()).toBe(mainWindow)
+
+    tearoffWindow.focus()
+    expect(manager.getLastFocusedAppshotWindow()).toBe(tearoffWindow)
+
+    mainWindow.focus()
+    expect(manager.getLastFocusedAppshotWindow()).toBe(mainWindow)
+
+    tearoffWindow.focus()
+    tearoffWindow.destroy()
+    expect(manager.getLastFocusedAppshotWindow()).toBe(mainWindow)
+  })
+
   it('deduplicates concurrent opens for the same session before the renderer finishes loading', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'cradle-window-manager-'))
     tempRoots.push(userDataPath)
