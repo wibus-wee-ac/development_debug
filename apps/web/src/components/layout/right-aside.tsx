@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
-import { useCallback, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -261,34 +261,47 @@ export function RightAside({
   // Badge: active adjustment session
   const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
   const hasActiveAdjustment = adjustmentSession !== null
+  const activeBrowserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
+  const hasActiveBrowserTab = useBrowserPanelStore((state) => {
+    const ownerState = state.owners[activeBrowserPanelOwnerId]
+    const activePanelTab = ownerState?.tabs.find(tab => tab.id === ownerState.activeTabId)
+    return activePanelTab?.kind === 'browser'
+  })
+  const visibleTabs = useMemo(
+    () => TABS.filter(tab => tab.id !== 'adjustment' || hasActiveBrowserTab),
+    [hasActiveBrowserTab],
+  )
+  const resolvedActiveTab = visibleTabs.some(tab => tab.id === activeTab)
+    ? activeTab
+    : 'files'
 
   const activateTab = useCallback((tabId: string) => {
-    if (tabId === activeTab) {
+    if (tabId === resolvedActiveTab) {
       return
     }
 
-    const activeIndex = TABS.findIndex(tab => tab.id === activeTab)
-    const nextIndex = TABS.findIndex(tab => tab.id === tabId)
+    const activeIndex = visibleTabs.findIndex(tab => tab.id === resolvedActiveTab)
+    const nextIndex = visibleTabs.findIndex(tab => tab.id === tabId)
     if (nextIndex === -1) {
       return
     }
 
     setPanelDirection(nextIndex >= activeIndex ? 1 : -1)
     setActiveTab(tabId)
-  }, [activeTab, setActiveTab])
+  }, [resolvedActiveTab, setActiveTab, visibleTabs])
 
   return (
     <div
       className="flex flex-1 flex-col overflow-hidden"
       data-testid="right-aside"
-      data-active-tab={activeTab}
+      data-active-tab={resolvedActiveTab}
     >
       {/* ── Tab bar ─────────────────────────────────────── */}
       <div className="flex shrink-0 justify-center border-b border-border px-2 py-1.5">
         <LayoutGroup id="right-aside-tabs">
           <div className="relative flex items-center justify-center" style={{ gap: TAB_GAP }}>
-            {TABS.map(({ id, labelKey, icon: Icon }) => {
-              const isActive = activeTab === id
+            {visibleTabs.map(({ id, labelKey, icon: Icon }) => {
+              const isActive = resolvedActiveTab === id
               const showBadge = (id === 'await' && hasPendingAwaits && !isActive)
                 || (id === 'adjustment' && hasActiveAdjustment && !isActive)
               const label = t(labelKey)
@@ -378,7 +391,7 @@ export function RightAside({
       <div className="relative flex flex-1 flex-col overflow-hidden">
         <AnimatePresence initial={false} custom={panelDirection}>
           <m.div
-            key={activeTab}
+            key={resolvedActiveTab}
             custom={panelDirection}
             variants={PANEL_SLIDE_VARIANTS}
             initial="enter"
@@ -388,7 +401,7 @@ export function RightAside({
             className="absolute inset-0 flex flex-col overflow-hidden will-change-transform"
           >
             <RightAsidePanelContent
-              tabId={activeTab}
+              tabId={resolvedActiveTab}
               sessionId={sessionId}
               workspaceId={workspaceId}
               workspacePath={workspacePath}
