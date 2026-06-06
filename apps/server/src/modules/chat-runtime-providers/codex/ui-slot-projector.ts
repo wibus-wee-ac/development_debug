@@ -213,6 +213,17 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     anyNotifications: ['fuzzyFileSearch/sessionUpdated', 'fuzzyFileSearch/sessionCompleted'],
   },
   {
+    id: 'codex:quick-question',
+    name: 'btw',
+    label: 'Quick question',
+    description: 'Ask a quick question without saving it to history.',
+    argumentHint: '[question]',
+    aliases: ['quick-question'],
+    iconKey: 'quick-question',
+    commandText: '/btw ',
+    surfaces: ['slashCommand', 'composerState'],
+  },
+  {
     id: 'codex:crew',
     name: 'crew',
     label: 'Crew',

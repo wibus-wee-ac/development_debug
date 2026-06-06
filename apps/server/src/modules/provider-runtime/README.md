@@ -23,7 +23,7 @@ Durable chat sessions use `ProviderRuntimeDirectory`:
 
 Ephemeral side conversations use `SideConversationRegistry`:
 
-- Side conversations are registered as live-only records.
+- Side conversations are registered as live-only records only after their owner has pre-reserved a pinned side host lease.
 - Side messages use the registered runtime session while the process is alive.
 - Side records hold pinned `ProviderRuntimeLease` instances and refresh them on use.
 - TTL expiry or explicit release releases the pinned host lease and lets `ProviderRuntimeHostManager` dispose the live host resource when no leases remain.

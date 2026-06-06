@@ -1,6 +1,10 @@
 import { t } from 'elysia'
 
 import { SessionModel } from '../session/model'
+import {
+  runtimeSettingsPatchSchema,
+  runtimeSettingsSchema,
+} from './runtime-settings-model'
 
 const runtimeKindSchema = t.String({ minLength: 1 })
 
@@ -93,6 +97,7 @@ const runtimeUiSlotSchema = t.Object({
     t.Literal('personality'),
     t.Literal('plugin'),
     t.Literal('plan'),
+    t.Literal('quick-question'),
     t.Literal('reasoning'),
     t.Literal('search'),
     t.Literal('side-chat'),
@@ -498,6 +503,40 @@ const runtimeConfigUiSlotStateSchema = t.Object({
   updatedAt: t.Number(),
 })
 
+const runtimeContextUsageItemSchema = t.Object({
+  kind: t.String(),
+  label: t.String(),
+  tokenCount: t.Number(),
+  metadata: t.Optional(t.Record(t.String(), t.Any())),
+  raw: t.Optional(t.Any()),
+})
+
+const runtimeContextUsageSectionSchema = t.Object({
+  kind: t.String(),
+  label: t.String(),
+  tokenCount: t.Number(),
+  color: t.Union([t.String(), t.Null()]),
+  isDeferred: t.Boolean(),
+  items: t.Array(runtimeContextUsageItemSchema),
+  raw: t.Optional(t.Any()),
+})
+
+const runtimeContextUsageSchema = t.Object({
+  runtimeKind: t.String(),
+  providerSessionId: t.Union([t.String(), t.Null()]),
+  source: t.String(),
+  model: t.Union([t.String(), t.Null()]),
+  totalTokens: t.Number(),
+  maxTokens: t.Union([t.Number(), t.Null()]),
+  rawMaxTokens: t.Union([t.Number(), t.Null()]),
+  percentage: t.Union([t.Number(), t.Null()]),
+  sections: t.Array(runtimeContextUsageSectionSchema),
+  messageBreakdown: t.Union([t.Record(t.String(), t.Any()), t.Null()]),
+  apiUsage: t.Union([t.Record(t.String(), t.Any()), t.Null()]),
+  raw: t.Any(),
+  updatedAt: t.Number(),
+})
+
 const runtimeUiSlotStateSchema = t.Union([
   runtimeGoalUiSlotStateSchema,
   runtimeCompactUiSlotStateSchema,
@@ -544,25 +583,40 @@ const contextPartSchema = t.Union([
     description: t.Union([t.String(), t.Null()]),
     position: t.Optional(t.Number({ minimum: 0 })),
   }, { additionalProperties: false }),
+  t.Object({
+    type: t.Literal('data-cradle-plugin'),
+    provider: t.Optional(t.Union([
+      t.Literal('cradle'),
+      t.Literal('codex'),
+    ])),
+    pluginName: t.String({ minLength: 1 }),
+    displayName: t.String({ minLength: 1 }),
+    description: t.Union([t.String(), t.Null()]),
+    iconUrl: t.Optional(t.Union([t.String({ minLength: 1 }), t.Null()])),
+    routeSegment: t.String({ minLength: 1 }),
+    capabilities: t.Array(t.Object({
+      id: t.String({ minLength: 1 }),
+      type: t.String({ minLength: 1 }),
+      layer: t.Union([
+        t.Literal('server'),
+        t.Literal('web'),
+        t.Literal('desktop'),
+      ]),
+      label: t.Union([t.String(), t.Null()]),
+    }, { additionalProperties: false })),
+    mcpServers: t.Array(t.String({ minLength: 1 })),
+    nativeMention: t.Optional(t.Union([
+      t.Object({
+        name: t.String({ minLength: 1 }),
+        path: t.String({ minLength: 1 }),
+      }, { additionalProperties: false }),
+      t.Null(),
+    ])),
+    position: t.Optional(t.Number({ minimum: 0 })),
+  }, { additionalProperties: false }),
 ])
 
 const queueModeSchema = t.Literal('queue')
-const runtimeAccessModeSchema = t.Union([
-  t.Literal('approval-required'),
-  t.Literal('full-access'),
-])
-const runtimeInteractionModeSchema = t.Union([
-  t.Literal('default'),
-  t.Literal('plan'),
-])
-const runtimeSettingsSchema = t.Object({
-  accessMode: runtimeAccessModeSchema,
-  interactionMode: runtimeInteractionModeSchema,
-})
-const runtimeSettingsPatchSchema = t.Object({
-  accessMode: t.Optional(runtimeAccessModeSchema),
-  interactionMode: t.Optional(runtimeInteractionModeSchema),
-})
 const queueStatusSchema = t.Union([
   t.Literal('pending'),
   t.Literal('running'),
@@ -693,6 +747,7 @@ const completedRunSchema = t.Object({
   sessionId: t.String(),
   sessionTitle: t.String(),
   messageId: t.Union([t.String(), t.Null()]),
+  responseBody: t.Union([t.String(), t.Null()]),
   messagePreview: t.Union([t.String(), t.Null()]),
   startedAt: t.Number(),
   finishedAt: t.Number(),
@@ -946,6 +1001,13 @@ export const ChatRuntimeModel = {
     states: t.Array(runtimeUiSlotStateSchema),
   }),
 
+  contextUsageResponse: t.Object({
+    sessionId: t.String(),
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    usage: t.Union([runtimeContextUsageSchema, t.Null()]),
+  }),
+
   runtimeStatus: t.Object({
     sessionId: t.String(),
     status: runtimeStatusSchema,
@@ -1031,9 +1093,6 @@ export const ChatRuntimeModel = {
     files: t.Optional(t.Array(filePartSchema)),
     contextParts: t.Optional(t.Array(contextPartSchema)),
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String()),
-    thinkingEffort: t.Optional(thinkingEffortSchema),
-    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
   }),
 
   steerResponse: t.Object({

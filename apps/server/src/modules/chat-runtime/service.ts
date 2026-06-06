@@ -42,6 +42,7 @@ import {
   registerSideConversation,
   releaseSideConversation,
   releaseSideConversationsByParentSessionId,
+  reserveSideConversationHostLease,
 } from '../provider-runtime/side-conversation-registry'
 import { getProviderTarget, resolveProviderTarget } from '../provider-targets/service'
 import * as SessionService from '../session/service'
@@ -80,8 +81,6 @@ import {
 } from './run-snapshot'
 import type {
   ChatRuntime,
-  ChatRuntimeAccessMode,
-  ChatRuntimeInteractionMode,
   ChatRuntimeSettings,
   ChatRuntimeSettingsPatch,
   ChatThinkingEffort,
@@ -102,6 +101,16 @@ import type {
   TokenUsage,
 } from './runtime-provider-types'
 import { ProviderRuntimeError } from './runtime-provider-types'
+import {
+  areRuntimeSettingsEqual,
+  DEFAULT_RUNTIME_SETTINGS,
+  mergeRuntimeSettings,
+  normalizeRuntimeAccessMode,
+  normalizeRuntimeInteractionMode,
+  normalizeRuntimeSettingsPatch,
+  readSessionRuntimeSettings,
+  writeSessionRuntimeSettingsConfigJson,
+} from './runtime-settings'
 import type { ChatStreamTraceRecord } from './stream-trace'
 import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
 import type { CradleTurnTranscript } from './transcript'
@@ -182,7 +191,7 @@ function readCodexBaselineSkillParts(existingSkillNames: Set<string>): ChatConte
 }
 
 function withCodexBaselineSkillContextParts(contextParts: ChatContextPart[]): ChatContextPart[] {
-  const existingSkillNames = new Set(contextParts.map(part => part.name))
+  const existingSkillNames = new Set(contextParts.flatMap(part => part.type === 'data-cradle-skill' ? [part.name] : []))
   const baselineParts = readCodexBaselineSkillParts(existingSkillNames)
   return baselineParts.length > 0 ? [...contextParts, ...baselineParts] : contextParts
 }
@@ -222,61 +231,6 @@ function replaceLastRequestMessage(messagesInput: UIMessage[] | undefined, messa
     ...messagesInput.slice(0, -1),
     message,
   ]
-}
-
-const DEFAULT_RUNTIME_SETTINGS: ChatRuntimeSettings = {
-  accessMode: 'full-access',
-  interactionMode: 'default',
-}
-
-function normalizeRuntimeAccessMode(value: unknown): ChatRuntimeAccessMode | null {
-  return value === 'approval-required' || value === 'full-access' ? value : null
-}
-
-function normalizeRuntimeInteractionMode(value: unknown): ChatRuntimeInteractionMode | null {
-  return value === 'default' || value === 'plan' ? value : null
-}
-
-function readRuntimeSettingsRecord(value: unknown): ChatRuntimeSettingsPatch {
-  const record = readUnknownRecord(value)
-  return {
-    ...(normalizeRuntimeAccessMode(record.accessMode) ? { accessMode: normalizeRuntimeAccessMode(record.accessMode)! } : {}),
-    ...(normalizeRuntimeInteractionMode(record.interactionMode) ? { interactionMode: normalizeRuntimeInteractionMode(record.interactionMode)! } : {}),
-  }
-}
-
-function normalizeRuntimeSettingsPatch(value: unknown): ChatRuntimeSettingsPatch {
-  return readRuntimeSettingsRecord(value)
-}
-
-function mergeRuntimeSettings(
-  base: ChatRuntimeSettings,
-  patch?: ChatRuntimeSettingsPatch | null,
-): ChatRuntimeSettings {
-  return {
-    accessMode: patch?.accessMode ?? base.accessMode,
-    interactionMode: patch?.interactionMode ?? base.interactionMode,
-  }
-}
-
-function areRuntimeSettingsEqual(left: ChatRuntimeSettings, right: ChatRuntimeSettings): boolean {
-  return left.accessMode === right.accessMode && left.interactionMode === right.interactionMode
-}
-
-function readSessionRuntimeSettings(configJson: string | null | undefined): ChatRuntimeSettings {
-  const config = parseTrustedJsonObject(configJson ?? '{}')
-  return mergeRuntimeSettings(DEFAULT_RUNTIME_SETTINGS, readRuntimeSettingsRecord(config.runtimeSettings))
-}
-
-function writeSessionRuntimeSettingsConfigJson(
-  configJson: string | null | undefined,
-  settings: ChatRuntimeSettings,
-): string {
-  const config = parseTrustedJsonObject(configJson ?? '{}')
-  return JSON.stringify({
-    ...config,
-    runtimeSettings: settings,
-  })
 }
 
 function readRuntimeSettingsApplied(sessionId: string, runtimeSettings: ChatRuntimeSettings): boolean {
@@ -331,6 +285,7 @@ interface ActiveRun {
   chunkBufferIndexByKey: Map<string, number>
   pendingDeltaChunk: UIMessageChunk | null
   pendingDeltaFlushTimer: StreamFlushTimer | null
+  streamedToolInputStartIds: Set<string>
   snapshotTimer: ReturnType<typeof setInterval> | null
   finalMessage: UIMessage
   finalProjection: FinalMessageProjectionState
@@ -446,6 +401,7 @@ export interface CompletedChatRunDto {
   sessionId: string
   sessionTitle: string
   messageId: string | null
+  responseBody: string | null
   messagePreview: string | null
   startedAt: number
   finishedAt: number
@@ -561,9 +517,6 @@ export interface SubmitSessionSteerTurnInput {
   files?: FileUIPart[]
   contextParts?: ChatContextPart[]
   providerTargetId?: string
-  modelId?: string
-  thinkingEffort?: PersistedThinkingEffort
-  runtimeSettings?: ChatRuntimeSettingsPatch
 }
 
 export interface SessionSteerTurnDto {
@@ -885,7 +838,7 @@ function validateResolvedRuntimeSessionContext(input: {
   }
 }
 
-function reportRuntimeSessionTitle(input: {
+export function reportRuntimeSessionTitle(input: {
   sessionId: string
   title: string
   overwriteUserTitle?: boolean
@@ -911,6 +864,9 @@ function reportRuntimeSessionTitle(input: {
   if (session.titleSource === 'user' && !input.overwriteUserTitle) {
     return
   }
+  if (!input.overwriteUserTitle && isTrivialContinuationTitle(title)) {
+    return
+  }
 
   db()
     .update(sessions)
@@ -928,8 +884,17 @@ function normalizeRuntimeSessionTitle(title: string): string | null {
   return normalized.length > 0 ? normalized : null
 }
 
+function isTrivialContinuationTitle(title: string): boolean {
+  const normalized = title.toLocaleLowerCase().replace(/[.!?。！？]+$/g, '').trim()
+  return normalized === 'continue'
+    || normalized === '继续'
+    || normalized === '接着'
+    || normalized === '继续执行'
+    || normalized === '继续吧'
+}
+
 function readFirstUserPromptText(sessionId: string): string | null {
-  const row = db()
+  const rows = db()
     .select({
       messageJson: messages.messageJson,
       content: messages.content,
@@ -938,27 +903,43 @@ function readFirstUserPromptText(sessionId: string): string | null {
     .where(and(
       eq(messages.sessionId, sessionId),
       eq(messages.role, 'user'),
-      eq(messages.status, 'complete'),
+      or(eq(messages.status, 'complete'), eq(messages.status, 'aborted'), eq(messages.status, 'failed')),
       isNull(messages.parentMessageId),
     ))
     .orderBy(messages.createdAt, messageInsertOrder)
-    .get()
-  if (!row) {
-    return null
-  }
+    .all()
 
-  try {
-    const text = extractMessageText(parseTrustedStoredMessageSnapshot(row.messageJson)).trim()
-    if (text) {
-      return text
+  for (const row of rows) {
+    try {
+      const text = extractMessageText(parseTrustedStoredMessageSnapshot(row.messageJson)).trim()
+      if (text && !isTrivialContinuationTitle(text)) {
+        return text
+      }
+    }
+    catch {
+      // Fall back to the denormalized content column for old or malformed snapshots.
+    }
+
+    const fallback = row.content.trim()
+    if (fallback && !isTrivialContinuationTitle(fallback)) {
+      return fallback
     }
   }
-  catch {
-    // Fall back to the denormalized content column for old or malformed snapshots.
-  }
 
-  const fallback = row.content.trim()
-  return fallback.length > 0 ? fallback : null
+  return null
+}
+
+function readSessionRequestedModelId(input: {
+  session: Session
+  requestedProviderTargetId?: string
+}): string | undefined {
+  if (
+    input.requestedProviderTargetId
+    && input.requestedProviderTargetId !== input.session.providerTargetId
+  ) {
+    return undefined
+  }
+  return SessionService.readSessionModelPreference(input.session.configJson) ?? undefined
 }
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -1415,6 +1396,7 @@ export function listCompletedRuns(input: { since?: number | null, limit?: number
         sessionId: row.sessionId,
         sessionTitle: row.sessionTitle,
         messageId: row.messageId,
+        responseBody: row.messageContent || null,
         messagePreview: row.messageContent ? row.messageContent.slice(0, 200) : null,
         startedAt: row.startedAt,
         finishedAt: row.finishedAt ?? row.startedAt,
@@ -1836,21 +1818,8 @@ function readPersistedThinkingEffort(effort: unknown): PersistedThinkingEffort |
 function canApplyLiveSteerWithRequest(input: {
   activeRun: ActiveRun
   providerTargetId: string | null
-  modelId: string | null
-  thinkingEffort: PersistedThinkingEffort | null | undefined
-  runtimeSettings: ChatRuntimeSettings
 }): boolean {
-  if (input.providerTargetId && input.providerTargetId !== input.activeRun.providerTargetId) {
-    return false
-  }
-  if (input.modelId && input.modelId !== input.activeRun.modelId) {
-    return false
-  }
-  if (readPersistedThinkingEffort(input.thinkingEffort)) {
-    return false
-  }
-  return input.runtimeSettings.accessMode === input.activeRun.runtimeSettings.accessMode
-    && input.runtimeSettings.interactionMode === input.activeRun.runtimeSettings.interactionMode
+  return !input.providerTargetId || input.providerTargetId === input.activeRun.providerTargetId
 }
 
 function toQueueItemDto(
@@ -2110,47 +2079,61 @@ export async function createSideChat(input: CreateSideChatInput): Promise<SideCh
     : null
   const transcript = await readSessionTranscript(input.parentSessionId)
   const requestedModelId = parentRuntime.requestedModelId ?? input.modelId ?? undefined
-  const childRuntimeSession = runtime.forkRuntimeSession && parentRuntime.runtimeSession?.providerSessionId
-    ? await runtime.forkRuntimeSession({
-        sourceRuntimeSession: parentRuntime.runtimeSession,
-        childChatSessionId: sideConversationId,
-        profile: context.profile,
-        workspaceId: context.session.workspaceId,
-        workspacePath: context.workspacePath,
-        agentId: childAgentId,
-        modelId: requestedModelId,
-        systemPrompt: resolveSessionSystemPrompt(context.session),
-      })
-    : await runtime.startChatSession({
-        chatSessionId: sideConversationId,
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        agentId: childAgentId,
-        modelId: requestedModelId,
-      })
-
-  const record = registerSideConversation({
+  const sideHostLease = reserveSideConversationHostLease({
     sideConversationId,
-    parentSessionId: input.parentSessionId,
-    runtimeKind: childRuntimeSession.runtimeKind,
+    runtimeKind,
     providerTargetId: context.providerTarget.id,
-    runtimeSession: childRuntimeSession,
-    requestedModelId:
-      parentRuntime.requestedModelId
-      ?? input.modelId
-      ?? readProviderStateSnapshot(childRuntimeSession.providerStateSnapshot).models.currentModelId,
-    history: transcript,
-    pinned: true,
   })
+  let sideRegistered = false
+  try {
+    const childRuntimeSession = runtime.forkRuntimeSession && parentRuntime.runtimeSession?.providerSessionId
+      ? await runtime.forkRuntimeSession({
+          sourceRuntimeSession: parentRuntime.runtimeSession,
+          childChatSessionId: sideConversationId,
+          profile: context.profile,
+          workspaceId: context.session.workspaceId,
+          workspacePath: context.workspacePath,
+          agentId: childAgentId,
+          modelId: requestedModelId,
+          systemPrompt: resolveSessionSystemPrompt(context.session),
+        })
+      : await runtime.startChatSession({
+          chatSessionId: sideConversationId,
+          profile: context.profile,
+          workspacePath: context.workspacePath,
+          agentId: childAgentId,
+          modelId: requestedModelId,
+        })
 
-  return {
-    sideConversationId,
-    parentSessionId: input.parentSessionId,
-    runtimeKind: childRuntimeSession.runtimeKind,
-    providerTargetId: context.providerTarget.id,
-    providerSessionId: childRuntimeSession.providerSessionId,
-    title: createSideSessionTitle(parentSession.title),
-    expiresAt: record.expiresAt,
+    const record = registerSideConversation({
+      sideConversationId,
+      parentSessionId: input.parentSessionId,
+      runtimeKind: childRuntimeSession.runtimeKind,
+      providerTargetId: context.providerTarget.id,
+      runtimeSession: childRuntimeSession,
+      requestedModelId:
+        parentRuntime.requestedModelId
+        ?? input.modelId
+        ?? readProviderStateSnapshot(childRuntimeSession.providerStateSnapshot).models.currentModelId,
+      history: transcript,
+      hostLease: sideHostLease,
+    })
+    sideRegistered = true
+
+    return {
+      sideConversationId,
+      parentSessionId: input.parentSessionId,
+      runtimeKind: childRuntimeSession.runtimeKind,
+      providerTargetId: context.providerTarget.id,
+      providerSessionId: childRuntimeSession.providerSessionId,
+      title: createSideSessionTitle(parentSession.title),
+      expiresAt: record.expiresAt,
+    }
+  }
+  finally {
+    if (!sideRegistered) {
+      sideHostLease.lease.release()
+    }
   }
 }
 
@@ -2643,8 +2626,7 @@ export async function regenerateSessionTitle(sessionId: string): Promise<Session
       message: `Runtime is not available: ${runtimeKind}`,
     })
   }
-  const generateSessionTitle = runtime.generateSessionTitle
-  if (!generateSessionTitle) {
+  if (!runtime.generateSessionTitle) {
     throw new AppError({
       code: 'chat_runtime_title_generation_not_supported',
       status: 501,
@@ -2687,7 +2669,7 @@ export async function regenerateSessionTitle(sessionId: string): Promise<Session
     }
   }
 
-  const title = await generateSessionTitle({
+  const title = await runtime.generateSessionTitle({
     ...buildRuntimeProviderInput(resolved),
     promptText,
   } satisfies GenerateSessionTitleInput)
@@ -3070,8 +3052,10 @@ async function resolveCodexProviderNativeAppServerContext(input: {
   }
 
   const requestedModelId = input.modelId
-    ?? SessionService.readSessionModelPreference(context.session.configJson)
-    ?? undefined
+    ?? readSessionRequestedModelId({
+      session: context.session,
+      requestedProviderTargetId: input.providerTargetId,
+    })
   const { runtimeSession, requestedModelId: resolvedModelId } = await resolveRuntimeSessionForContext({
     sessionId: input.sessionId,
     context,
@@ -3211,8 +3195,10 @@ export async function createRun(input: {
       normalizeRuntimeSettingsPatch(input.runtimeSettings),
     )
     const requestedModelId = input.modelId
-      ?? SessionService.readSessionModelPreference(context.session.configJson)
-      ?? undefined
+      ?? readSessionRequestedModelId({
+        session: context.session,
+        requestedProviderTargetId,
+      })
     const runtimeResolution = await resolveRuntimeSessionForContext({
       sessionId: input.sessionId,
       context,
@@ -3318,6 +3304,7 @@ export async function createRun(input: {
       chunkBufferIndexByKey: new Map(),
       pendingDeltaChunk: null,
       pendingDeltaFlushTimer: null,
+      streamedToolInputStartIds: new Set(),
       snapshotTimer: null,
       finalMessage: lastRequestMessage?.role === 'assistant'
         ? lastRequestMessage
@@ -3597,10 +3584,13 @@ export async function streamQuickQuestion(input: QuickQuestionInput): Promise<Re
 
   return new ReadableStream({
     async start(controller) {
+      const encoder = new TextEncoder()
       try {
         for await (const chunk of chunkStream) {
-          const encoded = new TextEncoder().encode(`${JSON.stringify(chunk)}\n`)
-          controller.enqueue(encoded)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+          if (isTerminalUIMessageChunk(chunk)) {
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+          }
         }
         controller.close()
       }
@@ -4335,17 +4325,9 @@ export async function submitSessionSteerTurn(
   }
   assertRuntimeCompatibleTarget(context, input.providerTargetId)
 
-  const baseRuntimeSettings = readSessionRuntimeSettings(context.session.configJson)
-  const steerSettings = mergeRuntimeSettings(
-    baseRuntimeSettings,
-    normalizeRuntimeSettingsPatch(input.runtimeSettings),
-  )
   if (!canApplyLiveSteerWithRequest({
     activeRun,
     providerTargetId: input.providerTargetId?.trim() || null,
-    modelId: input.modelId?.trim() || null,
-    thinkingEffort: input.thinkingEffort,
-    runtimeSettings: steerSettings,
   })) {
     throw new AppError({
       code: 'chat_steer_context_mismatch',
@@ -5293,7 +5275,52 @@ function readDeltaChunkTextLength(chunk: UIMessageChunk): number {
   }
 }
 
+function normalizeToolInputStreamChunk(
+  activeRun: ActiveRun,
+  chunk: UIMessageChunk,
+  terminal: boolean,
+): UIMessageChunk | null {
+  if (terminal) {
+    return chunk
+  }
+
+  if (chunk.type === 'tool-input-start') {
+    if (activeRun.streamedToolInputStartIds.has(chunk.toolCallId)) {
+      return null
+    }
+    activeRun.streamedToolInputStartIds.add(chunk.toolCallId)
+    return chunk
+  }
+
+  if (chunk.type !== 'tool-input-delta') {
+    return chunk
+  }
+
+  if (activeRun.streamedToolInputStartIds.has(chunk.toolCallId)) {
+    return chunk
+  }
+
+  // Providers occasionally surface progress deltas before the matching
+  // tool-input-start reaches the runtime, especially during reconnects or
+  // live stream replay. AI SDK treats that ordering as a hard protocol error,
+  // so synthesize the minimal start chunk here to keep the stream renderable.
+  // Provider mappers should still emit the real tool metadata when they have
+  // it; this is the runtime-level last line of defense against a broken UI.
+  publishUIMessageChunk(activeRun, {
+    type: 'tool-input-start',
+    toolCallId: chunk.toolCallId,
+    toolName: 'unknown_tool',
+  }, false)
+  return chunk
+}
+
 function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, terminal: boolean): void {
+  const normalizedChunk = normalizeToolInputStreamChunk(activeRun, chunk, terminal)
+  if (!normalizedChunk) {
+    return
+  }
+  chunk = normalizedChunk
+
   if (chunk.type === 'start') {
     activeRun.startChunkPublished = true
   }
@@ -6246,6 +6273,7 @@ function releaseActiveRun(activeRun: ActiveRun): void {
   activeRun.pendingDeltaChunk = null
   activeRun.chunkBuffer = []
   activeRun.chunkBufferIndexByKey.clear()
+  activeRun.streamedToolInputStartIds.clear()
   activeRun.finalMessage.parts = []
   activeRun.finalProjection.activeTextParts.clear()
   activeRun.finalProjection.activeReasoningParts.clear()

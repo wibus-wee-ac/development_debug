@@ -8,7 +8,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 
 import { getRegisteredMcpServers } from '../../../plugins'
-import { isChatSkillContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
+import { isChatSkillContextPart, readChatPluginContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import type {
   ChatRuntimeSettings,
   GetCapabilitiesInput,
@@ -66,11 +66,16 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
     if (isChatSkillContextPart(part)) {
       continue
     }
+    const pluginPart = readChatPluginContextPart(part)
+    if (pluginPart) {
+      blocks.push({ type: 'text', text: describePluginMentionForText(pluginPart) })
+      continue
+    }
     unsupportedParts.push(part.type)
   }
 
   if (unsupportedParts.length > 0) {
-    throw claudeAgentRequestError('projectInput', `${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw claudeAgentRequestError('projectInput', `${runtimeLabel} only supports text, image, skill, and plugin mention input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (blocks.length === 0) {
     throw claudeAgentRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
@@ -79,6 +84,13 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
     return blocks[0].text
   }
   return blocks
+}
+
+function describePluginMentionForText(plugin: NonNullable<ReturnType<typeof readChatPluginContextPart>>): string {
+  const capabilities = plugin.capabilities.map(capability => `${capability.type}:${capability.layer}`).join(', ')
+  const mcpServers = plugin.mcpServers.length > 0 ? ` MCP servers: ${plugin.mcpServers.join(', ')}.` : ''
+  const description = plugin.description ? ` ${plugin.description}` : ''
+  return `Selected Cradle plugin @${plugin.displayName}.${description}${capabilities ? ` Capabilities: ${capabilities}.` : ''}${mcpServers}`
 }
 
 export function buildClaudeAgentTurnContent(input: {

@@ -5,6 +5,7 @@ import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } 
 import { convertToModelMessages, stepCountIs, streamText } from 'ai'
 
 import { langfuseEnabled } from '../../langfuse'
+import { readChatPluginContextPart, readChatSkillContextPart } from '../chat-runtime/context-parts'
 import type { ChatThinkingEffort } from '../chat-runtime/runtime-provider-types'
 import type { BudgetConfig } from '../usage/budget'
 import { checkDailyBudget, checkTurnBudget } from '../usage/budget'
@@ -301,5 +302,32 @@ export async function buildModelMessages(
   }
 
   result.push(message)
-  return convertToModelMessages(result)
+  return convertToModelMessages(result.map(normalizeCustomContextPartsForModel))
+}
+
+function normalizeCustomContextPartsForModel(message: UIMessage): UIMessage {
+  if (message.role !== 'user') {
+    return message
+  }
+  const parts = message.parts.flatMap((part): UIMessage['parts'] => {
+    const skillPart = readChatSkillContextPart(part)
+    if (skillPart) {
+      return [{
+        type: 'text',
+        text: `Selected Cradle skill $${skillPart.name}. ${skillPart.description ?? ''}`.trim(),
+      } as UIMessage['parts'][number]]
+    }
+    const pluginPart = readChatPluginContextPart(part)
+    if (pluginPart) {
+      const capabilities = pluginPart.capabilities.map(capability => `${capability.type}:${capability.layer}`).join(', ')
+      const mcpServers = pluginPart.mcpServers.length > 0 ? ` MCP servers: ${pluginPart.mcpServers.join(', ')}.` : ''
+      const description = pluginPart.description ? ` ${pluginPart.description}` : ''
+      return [{
+        type: 'text',
+        text: `Selected Cradle plugin @${pluginPart.displayName}.${description}${capabilities ? ` Capabilities: ${capabilities}.` : ''}${mcpServers}`,
+      } as UIMessage['parts'][number]]
+    }
+    return [part]
+  })
+  return { ...message, parts }
 }

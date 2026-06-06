@@ -11,6 +11,7 @@ import type {
   ChatRuntimeMetadata,
   RuntimePresentationCapabilities,
   RuntimeSlashCommand,
+  RuntimeUiSlot,
 } from '../../chat-runtime/runtime-provider-types'
 import type { RuntimeKind } from '../../provider-contracts/types'
 
@@ -34,11 +35,23 @@ export const CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
   sessionModelSwitch: 'restart-session',
 } satisfies ChatRuntimeCapabilities
 
+const CLAUDE_AGENT_QUICK_QUESTION_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:quick-question',
+  name: 'btw',
+  label: 'Quick question',
+  description: 'Ask a quick question without saving it to history.',
+  argumentHint: '[question]',
+  aliases: ['quick-question'],
+  iconKey: 'quick-question',
+  commandText: '/btw ',
+  surfaces: ['slashCommand', 'composerState'],
+}
+
 export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): RuntimePresentationCapabilities {
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
     slashCommands: slashCommands.map(toRuntimeSlashCommand),
-    uiSlots: [],
+    uiSlots: [CLAUDE_AGENT_QUICK_QUESTION_SLOT],
     skills: [],
   }
 }

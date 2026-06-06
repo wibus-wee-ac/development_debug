@@ -54,6 +54,7 @@ export type RuntimeUiSlotIconKey
     | 'personality'
     | 'plugin'
     | 'plan'
+    | 'quick-question'
     | 'reasoning'
     | 'search'
     | 'side-chat'

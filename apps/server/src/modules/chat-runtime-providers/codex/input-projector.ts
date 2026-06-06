@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 import type { UIMessage } from 'ai'
 
-import { readChatSkillContextPart } from '../../chat-runtime/context-parts'
+import { readChatPluginContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { readGoalMessageObjective } from '../../chat-runtime/message-snapshots'
 import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
@@ -21,6 +21,7 @@ export type CodexUserInput = { type: 'text', text: string, text_elements: [] }
   | { type: 'image', detail?: 'high' | 'original', url: string }
   | { type: 'localImage', detail?: 'high' | 'original', path: string }
   | { type: 'skill', name: string, path: string }
+  | { type: 'mention', name: string, path: string }
 
 export function readCodexGoalCommandObjective(message: CodexRuntimeMessageInput): string | null {
   if (typeof message !== 'string') {
@@ -79,11 +80,25 @@ export function projectCodexUserInput(message: CodexRuntimeMessageInput, runtime
       input.push({ type: 'skill', name: skillPart.name, path: skillPart.path })
       continue
     }
+    const pluginPart = readChatPluginContextPart(part)
+    if (pluginPart) {
+      if (pluginPart.provider === 'codex' && pluginPart.nativeMention) {
+        input.push({
+          type: 'mention',
+          name: pluginPart.nativeMention.name,
+          path: pluginPart.nativeMention.path,
+        })
+      }
+      else {
+        input.push(toTextUserInput(describeCradlePluginContext(pluginPart)))
+      }
+      continue
+    }
     unsupportedParts.push(part.type)
   }
 
   if (unsupportedParts.length > 0) {
-    throw codexRequestError('projectInput', `${runtimeLabel} only supports text, image, and skill input; unsupported parts: ${unsupportedParts.join(', ')}`)
+    throw codexRequestError('projectInput', `${runtimeLabel} only supports text, image, skill, and mention input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
   if (input.length === 0) {
     throw codexRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
@@ -94,12 +109,14 @@ export function projectCodexUserInput(message: CodexRuntimeMessageInput, runtime
 export function describeCodexUserInput(input: CodexUserInput[], text: string): string {
   const imageCount = input.filter(item => item.type === 'image' || item.type === 'localImage').length
   const skillCount = input.filter(item => item.type === 'skill').length
-  if (imageCount === 0 && skillCount === 0) {
+  const mentionCount = input.filter(item => item.type === 'mention').length
+  if (imageCount === 0 && skillCount === 0 && mentionCount === 0) {
     return text
   }
   const suffixParts = [
     imageCount > 0 ? `${imageCount} image${imageCount === 1 ? '' : 's'}` : '',
     skillCount > 0 ? `${skillCount} skill${skillCount === 1 ? '' : 's'}` : '',
+    mentionCount > 0 ? `${mentionCount} mention${mentionCount === 1 ? '' : 's'}` : '',
   ].filter(Boolean)
   const suffix = `[${suffixParts.join(', ')}]`
   return text ? `${text}\n${suffix}` : suffix
@@ -107,6 +124,17 @@ export function describeCodexUserInput(input: CodexUserInput[], text: string): s
 
 function toTextUserInput(text: string): CodexUserInput {
   return { type: 'text', text, text_elements: [] }
+}
+
+function describeCradlePluginContext(part: NonNullable<ReturnType<typeof readChatPluginContextPart>>): string {
+  const labels = [
+    `@${part.displayName || part.pluginName}`,
+    `Cradle plugin: ${part.pluginName}`,
+    part.routeSegment ? `route: ${part.routeSegment}` : '',
+    part.mcpServers.length > 0 ? `MCP servers: ${part.mcpServers.join(', ')}` : '',
+    part.capabilities.length > 0 ? `capabilities: ${part.capabilities.map(capability => capability.type).join(', ')}` : '',
+  ].filter(Boolean)
+  return labels.join('\n')
 }
 
 function toCodexImageInput(part: Extract<MessagePart, { type: 'file' }>): CodexUserInput {

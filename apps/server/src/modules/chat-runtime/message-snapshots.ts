@@ -1,14 +1,14 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
 import type { ChatContextPart } from './context-parts'
-import { isChatSkillContextPart, readChatSkillContextPart, toOrderedUserMessageParts } from './context-parts'
+import { isChatContextPart, readChatContextPart, toOrderedUserMessageParts } from './context-parts'
 
 export function parseStoredMessageSnapshot(raw: string): UIMessage {
   return normalizeMessageSnapshot(JSON.parse(raw) as UIMessage)
 }
 
 export function normalizeMessageSnapshot(message: UIMessage): UIMessage {
-  if (message.role !== 'user' || !message.parts.some(part => isChatSkillContextPart(part) && typeof readChatSkillContextPart(part)?.position === 'number')) {
+  if (message.role !== 'user' || !message.parts.some(part => isChatContextPart(part) && typeof readChatContextPart(part)?.position === 'number')) {
     return message
   }
 
@@ -16,11 +16,11 @@ export function normalizeMessageSnapshot(message: UIMessage): UIMessage {
     .flatMap(part => part.type === 'text' ? [part.text] : [])
     .join('')
   const contextParts = message.parts.flatMap((part) => {
-    const contextPart = readChatSkillContextPart(part)
+    const contextPart = readChatContextPart(part)
     return contextPart ? [contextPart] : []
   })
   const orderedParts = toOrderedUserMessageParts(text, contextParts) as UIMessage['parts']
-  orderedParts.push(...message.parts.filter(part => part.type !== 'text' && !isChatSkillContextPart(part)))
+  orderedParts.push(...message.parts.filter(part => part.type !== 'text' && !isChatContextPart(part)))
 
   return {
     ...message,

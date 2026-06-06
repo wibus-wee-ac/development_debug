@@ -628,6 +628,7 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:mcp', name: 'mcp', iconKey: 'mcp', surfaces: ['runtimePanel'] }),
         expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
+        expect.objectContaining({ id: 'codex:quick-question', name: 'btw', iconKey: 'quick-question', surfaces: ['slashCommand', 'composerState'] }),
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model', surfaces: ['toolbarPicker', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:reasoning', name: 'reasoning', iconKey: 'reasoning', surfaces: ['toolbarPicker', 'runtimePanel'] }),
@@ -715,6 +716,7 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
+        expect.objectContaining({ id: 'codex:quick-question', name: 'btw', iconKey: 'quick-question', surfaces: ['slashCommand', 'composerState'] }),
       ]),
     })
     expect(client.initialize).not.toHaveBeenCalled()
@@ -3972,7 +3974,7 @@ describe('codexProvider app-server integration', () => {
       })) {
         // Drain stream to force input projection.
       }
-    }).rejects.toThrow('Codex provider only supports text, image, and skill input; unsupported parts: file (brief.pdf) (application/pdf)')
+    }).rejects.toThrow('Codex provider only supports text, image, skill, and mention input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(client.requests).toEqual([])
   })
@@ -4670,6 +4672,63 @@ describe('codexProvider app-server integration', () => {
 
     expect(chunks).toEqual([
       { type: 'tool-input-start', toolCallId: 'plan-1', toolName: 'plan' },
+      { type: 'tool-input-available', toolCallId: 'plan-1', toolName: 'plan', input: codexInput('plan', { text: '1. Inspect\n2. Patch' }) },
+      { type: 'tool-output-available', toolCallId: 'plan-1', output: codexOutput('plan', { text: '1. Inspect\n2. Patch' }, { plan: '1. Inspect\n2. Patch' }) },
+    ])
+  })
+
+  it('keeps Codex progress deltas renderable when they arrive before item start', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const stream = provider.streamTurn({
+      runId: 'run-codex-out-of-order-progress',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Plan the task'),
+      workspaceId: 'workspace-1',
+    })
+
+    client.pushNotification({
+      method: 'item/plan/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'plan-1',
+        delta: 'Planning...',
+      },
+    })
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'plan-1', type: 'plan', text: '1. Inspect\n2. Patch' },
+      },
+    })
+    client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        item: { id: 'plan-1', type: 'plan', text: '1. Inspect\n2. Patch' },
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'plan-1', toolName: 'plan' },
+      { type: 'tool-input-delta', toolCallId: 'plan-1', inputTextDelta: 'Planning...' },
       { type: 'tool-input-available', toolCallId: 'plan-1', toolName: 'plan', input: codexInput('plan', { text: '1. Inspect\n2. Patch' }) },
       { type: 'tool-output-available', toolCallId: 'plan-1', output: codexOutput('plan', { text: '1. Inspect\n2. Patch' }, { plan: '1. Inspect\n2. Patch' }) },
     ])

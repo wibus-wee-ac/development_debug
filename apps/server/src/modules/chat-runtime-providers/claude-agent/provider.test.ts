@@ -564,7 +564,19 @@ describe('claudeAgentProvider MCP integration', () => {
         { name: 'compact', description: 'Compact the conversation', argumentHint: '' },
         { name: 'review', description: 'Review a target file', argumentHint: '<file>', aliases: ['code-review'] },
       ],
-      uiSlots: [],
+      uiSlots: [
+        {
+          id: 'claude-agent:quick-question',
+          name: 'btw',
+          label: 'Quick question',
+          description: 'Ask a quick question without saving it to history.',
+          argumentHint: '[question]',
+          aliases: ['quick-question'],
+          iconKey: 'quick-question',
+          commandText: '/btw ',
+          surfaces: ['slashCommand', 'composerState'],
+        },
+      ],
       skills: [],
     })
 
@@ -1238,7 +1250,7 @@ describe('claudeAgentProvider MCP integration', () => {
       })) {
         // Drain stream to force prompt projection.
       }
-    }).rejects.toThrow('Claude Agent provider only supports text, image, and skill input; unsupported parts: file (brief.pdf) (application/pdf)')
+    }).rejects.toThrow('Claude Agent provider only supports text, image, skill, and plugin mention input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(sdkMocks.query).not.toHaveBeenCalled()
   })

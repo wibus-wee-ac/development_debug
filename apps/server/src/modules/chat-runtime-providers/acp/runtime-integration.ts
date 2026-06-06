@@ -1,5 +1,4 @@
 import * as ChatRuntime from '../../chat-runtime/service'
-import * as Session from '../../session/service'
 import type { AcpConnectionManager } from './connection-manager'
 
 export function wireAcpIntegration(runtime: AcpConnectionManager): void {
@@ -29,6 +28,6 @@ async function handlePermission(request: {
 
 function handleSessionTitle(acpSessionId: string, title: string): void {
   for (const chatSessionId of ChatRuntime.listChatSessionIdsByBackendSessionId(acpSessionId)) {
-    Session.updateTitle({ id: chatSessionId, title })
+    ChatRuntime.reportRuntimeSessionTitle({ sessionId: chatSessionId, title })
   }
 }

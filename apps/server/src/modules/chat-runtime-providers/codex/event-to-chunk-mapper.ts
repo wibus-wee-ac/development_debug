@@ -25,6 +25,7 @@ export interface CodexAppServerMapperState {
   commandOutputById: Map<string, BoundedTextCollector>
   commandById: Map<string, string>
   toolArgsById: Map<string, unknown>
+  startedToolItemIds: Set<string>
   startedAgentMessageIds: Set<string>
   pendingServerRequestIds: Set<number>
 }
@@ -65,6 +66,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
     commandOutputById: new Map(),
     commandById: new Map(),
     toolArgsById: new Map(),
+    startedToolItemIds: new Set(),
     startedAgentMessageIds: new Set(),
     pendingServerRequestIds: new Set(),
   }
@@ -88,9 +90,11 @@ export function mapCodexAppServerNotificationToChunks(
     case 'item/commandExecution/outputDelta':
       return mapCommandOutputDelta(notification.params, state)
     case 'item/fileChange/outputDelta':
+      return mapToolProgressDelta(notification.params, state, 'fileChange')
     case 'item/plan/delta':
+      return mapToolProgressDelta(notification.params, state, 'plan')
     case 'item/mcpToolCall/progress':
-      return mapToolProgressDelta(notification.params)
+      return mapToolProgressDelta(notification.params, state, 'mcpToolCall')
     case 'item/fileChange/patchUpdated':
       return mapFileChangePatchUpdated(notification.params)
     case 'serverRequest/pending':
@@ -150,6 +154,13 @@ function mapStartedToolItem(item: CodexAppServerItem, state: CodexAppServerMappe
     state.commandById.set(item.id, item.command ?? '')
   }
   state.toolArgsById.set(item.id, input.args)
+  if (state.startedToolItemIds.has(item.id)) {
+    return [
+      ...closeOpenAgentMessageSegments(state),
+      { type: 'tool-input-available', toolCallId: item.id, toolName, input },
+    ]
+  }
+  state.startedToolItemIds.add(item.id)
   return [
     ...closeOpenAgentMessageSegments(state),
     { type: 'tool-input-start', toolCallId: item.id, toolName },
@@ -244,13 +255,50 @@ function mapCommandOutputDelta(rawParams: unknown, state: CodexAppServerMapperSt
   return []
 }
 
-function mapToolProgressDelta(rawParams: unknown): UIMessageChunk[] {
+function mapToolProgressDelta(
+  rawParams: unknown,
+  state: CodexAppServerMapperState,
+  itemType: 'fileChange' | 'mcpToolCall' | 'plan',
+): UIMessageChunk[] {
   const params = rawParams as { itemId?: string, delta?: string, message?: string }
   const delta = params.delta ?? params.message
   if (!params.itemId || !delta) {
     return []
   }
-  return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: delta }]
+  return [
+    ...startToolItemForOutOfOrderDelta(state, {
+      id: params.itemId,
+      type: itemType,
+    }),
+    { type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: delta },
+  ]
+}
+
+function startToolItemForOutOfOrderDelta(
+  state: CodexAppServerMapperState,
+  item: CodexAppServerItem,
+): UIMessageChunk[] {
+  if (state.startedToolItemIds.has(item.id)) {
+    return []
+  }
+
+  const toolName = toSafeToolName(readCodexToolName(item))
+  const input = buildCodexToolInput(item)
+  state.startedToolItemIds.add(item.id)
+  state.toolArgsById.set(item.id, input.args)
+  if (item.type === 'commandExecution') {
+    state.commandById.set(item.id, item.command ?? '')
+  }
+
+  // Codex app-server progress/output notifications can arrive before the
+  // matching item/started notification during reconnects or live event
+  // fan-out. AI SDK rejects tool-input-delta without a prior tool-input-start,
+  // so emit the smallest valid placeholder and let item/started publish the
+  // authoritative input later via tool-input-available.
+  return [
+    ...closeOpenAgentMessageSegments(state),
+    { type: 'tool-input-start', toolCallId: item.id, toolName },
+  ]
 }
 
 function mapFileChangePatchUpdated(rawParams: unknown): UIMessageChunk[] {

@@ -306,9 +306,6 @@ export const chatRuntime = new Elysia({
       files: body.files,
       contextParts: body.contextParts,
       providerTargetId: body.providerTargetId?.trim() || undefined,
-      modelId: body.modelId?.trim() || undefined,
-      thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
-      runtimeSettings: body.runtimeSettings,
     })
   }, {
     detail: {
@@ -374,6 +371,16 @@ export const chatRuntime = new Elysia({
     },
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.uiSlotStates },
+  })
+  // GET /chat/sessions/:sessionId/context-usage -> provider-owned context window usage breakdown
+  .get('/sessions/:sessionId/context-usage', async ({ params }) => {
+    return (await loadChatRuntime()).readContextUsage(params.sessionId)
+  }, {
+    detail: {
+      summary: 'Get chat runtime context window usage',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.contextUsageResponse },
   })
   // GET /chat/sessions/:sessionId/provider-threads -> provider-native subagent/thread list
   .get('/sessions/:sessionId/provider-threads', async ({ params, query }) => {
