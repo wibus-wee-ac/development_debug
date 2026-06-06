@@ -49,6 +49,7 @@ export interface PromptEditorController {
   insertFileMention: (item: MentionItem, range: PromptEditorTriggerRange) => void
   insertSkillMention: (item: SkillMentionItem, range: PromptEditorTriggerRange) => void
   insertText: (text: string) => void
+  replaceFileTriggerWithText: (item: MentionItem, range: PromptEditorTriggerRange) => void
   replaceRangeWithText: (range: PromptEditorTriggerRange, text: string) => void
   setPlaceholder: (placeholder: string) => void
   setText: (text: string) => void
@@ -299,15 +300,20 @@ export const PromptEditor = forwardRef((
       view.dispatch(tr)
       view.focus()
     },
+    replaceFileTriggerWithText(item, range) {
+      const view = viewRef.current
+      if (!view) {
+        return
+      }
+      const path = item.type === 'directory' && !item.path.endsWith('/') ? `${item.path}/` : item.path
+      replaceRangeWithPlainText(view, range, `@${path}`)
+    },
     replaceRangeWithText(range, text) {
       const view = viewRef.current
       if (!view) {
         return
       }
-      const tr = view.state.tr.insertText(text, range.from, range.to)
-      tr.setSelection(TextSelection.create(tr.doc, range.from + text.length))
-      view.dispatch(tr)
-      view.focus()
+      replaceRangeWithPlainText(view, range, text)
     },
     setPlaceholder(nextPlaceholder) {
       const view = viewRef.current
@@ -782,6 +788,9 @@ function readActiveTrigger(
   const atIndex = triggerText.lastIndexOf('@')
   if (atIndex >= 0) {
     const afterAt = triggerText.slice(atIndex + 1)
+    if (/^\s/.test(afterAt)) {
+      return null
+    }
     return {
       kind: 'file',
       query: afterAt,
@@ -793,6 +802,13 @@ function readActiveTrigger(
   }
 
   return null
+}
+
+function replaceRangeWithPlainText(view: EditorView, range: PromptEditorTriggerRange, text: string) {
+  const tr = view.state.tr.insertText(text, range.from, range.to)
+  tr.setSelection(TextSelection.create(tr.doc, range.from + text.length))
+  view.dispatch(tr)
+  view.focus()
 }
 
 const insertHardBreak: Command = (state, dispatch) => {

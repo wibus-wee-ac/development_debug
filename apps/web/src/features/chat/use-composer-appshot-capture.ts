@@ -22,12 +22,12 @@ export interface ComposerAppshotRuntime {
 }
 
 interface UseComposerAppshotCaptureOptions {
+  active: boolean
   supportsAttachments: boolean
 }
 
 interface ComposerAppshotCaptureOptions {
   bundleIdentifier?: string
-  sourceWindow?: MacAppshotHotkeyEvent['sourceWindow']
   targetWindow?: MacAppshotHotkeyEvent['targetWindow']
   tools?: ComposerSlashCommandActionTools
 }
@@ -35,8 +35,6 @@ interface ComposerAppshotCaptureOptions {
 const APPSHOT_CAPTURE_ANIMATION_DURATION = 0.88
 const APPSHOT_NATIVE_HANDOFF_DELAY = 0
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
-const APPSHOT_ATTACHMENT_TITLED_BASE_HEIGHT = 144
-const APPSHOT_ATTACHMENT_TITLE_HEIGHT = 16.021484375
 const PATH_SEGMENT_RE = /[\\/]/
 
 function readAppshotCaptureAsset(response: MacAppshotCaptureResponse) {
@@ -79,16 +77,6 @@ function serializeDomRect(rect: DOMRect | null | undefined) {
 
 function readPositiveMetric(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null
-}
-
-function readAppshotTransitionSnapshotLayoutHeight(sourceWindow: MacAppshotHotkeyEvent['sourceWindow'] | undefined): number {
-  const title = sourceWindow?.title?.trim() ?? ''
-  const appName = sourceWindow?.appName?.trim() ?? ''
-  if (!title && !appName) {
-    return APPSHOT_ATTACHMENT_SLOT_HEIGHT
-  }
-  const scale = Math.max(window.devicePixelRatio || 1, 1)
-  return APPSHOT_ATTACHMENT_TITLED_BASE_HEIGHT + Math.ceil(APPSHOT_ATTACHMENT_TITLE_HEIGHT * scale) / scale
 }
 
 function readAppshotTransitionMetrics(
@@ -135,14 +123,20 @@ async function decodeImageDataUrl(dataUrl: string | null | undefined): Promise<v
 }
 
 export function useComposerAppshotCapture({
+  active,
   supportsAttachments,
 }: UseComposerAppshotCaptureOptions): ComposerAppshotRuntime {
   const [externalFileParts, setExternalFileParts] = useState<FileUIPart[]>([])
   const [externalFilePartsKey, setExternalFilePartsKey] = useState(0)
   const [pendingAppshots, setPendingAppshots] = useState<PendingAppshotAttachment[]>([])
   const actionTargetRef = useRef<HTMLDivElement | null>(null)
+  const activeRef = useRef(active)
   const supportsAttachmentsRef = useRef(supportsAttachments)
   const captureRef = useRef<ComposerAppshotRuntime['capture'] | null>(null)
+
+  useEffect(() => {
+    activeRef.current = active
+  }, [active])
 
   useEffect(() => {
     supportsAttachmentsRef.current = supportsAttachments
@@ -164,7 +158,6 @@ export function useComposerAppshotCapture({
 
   const capture = useCallback(async ({
     bundleIdentifier,
-    sourceWindow,
     targetWindow,
     tools,
   }: ComposerAppshotCaptureOptions = {}) => {
@@ -179,12 +172,10 @@ export function useComposerAppshotCapture({
     })
 
     const transitionSnapshotHeight = APPSHOT_ATTACHMENT_SLOT_HEIGHT
-    const transitionSnapshotLayoutHeight = readAppshotTransitionSnapshotLayoutHeight(sourceWindow)
     const contextOptions = {
       attachmentTrayGrowthDirection: 'up' as const,
       pendingAppshotRequestId: requestId,
       transitionSnapshotHeight,
-      transitionSnapshotLayoutHeight,
     }
     try {
       const context = tools?.readActionContext(contextOptions)
@@ -208,7 +199,6 @@ export function useComposerAppshotCapture({
           attachmentsRowRect: serializeDomRect(attachmentsRow?.getBoundingClientRect()),
           attachmentsRowScrollLeft: attachmentsRow?.scrollLeft ?? null,
           pendingTargetRect: serializeDomRect(pendingTarget?.getBoundingClientRect()),
-          transitionSnapshotLayoutHeight,
           animationTarget: context.animationTarget,
           devicePixelRatio: window.devicePixelRatio,
           innerSize: {
@@ -233,6 +223,7 @@ export function useComposerAppshotCapture({
         requestId,
         animationTarget: context.animationTarget,
         targetWindow,
+        transitionSnapshotHeight: transitionSnapshotHeight * (context.animationTarget.transitionSnapshotScale ?? 1),
       })
       if (import.meta.env.DEV) {
         console.debug('[appshot] native transition geometry:', {
@@ -288,6 +279,7 @@ export function useComposerAppshotCapture({
           windowTitle: captureWindow?.title ?? null,
           bundleIdentifier: captureWindow?.bundleId ?? bundleIdentifier ?? null,
           appIconDataUrl,
+          axTree: captureWindow?.axTree ?? '',
         })])
         setExternalFilePartsKey(key => key + 1)
       })
@@ -304,8 +296,12 @@ export function useComposerAppshotCapture({
 
   useEffect(() => {
     return window.cradle?.ipc.on('capture:appshot-hotkey', (payload) => {
+      if (!activeRef.current) {
+        return
+      }
       if (!nativeIpc || !supportsAttachmentsRef.current) {
         console.warn('[appshot] hotkey capture skipped:', {
+          active: activeRef.current,
           hasNativeIpc: Boolean(nativeIpc),
           supportsAttachments: supportsAttachmentsRef.current,
         })
@@ -316,7 +312,6 @@ export function useComposerAppshotCapture({
         try {
           await captureRef.current?.({
             targetWindow: event?.targetWindow,
-            sourceWindow: event?.sourceWindow ?? event?.context?.window,
             bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
           })
         }

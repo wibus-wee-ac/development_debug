@@ -19,7 +19,6 @@ const APPSHOT_CARD_WIDTH = 232
 const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256
 const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12
 const APPSHOT_FALLBACK_HEIGHT = 140
-const APPSHOT_COMPOSER_VERTICAL_PADDING = 8
 
 export function AppshotAttachmentCard({
   variant,
@@ -32,10 +31,6 @@ export function AppshotAttachmentCard({
   const composerImageDataUrl = metadata.transitionSnapshotDataUrl
   const [threadImageSize, setThreadImageSize] = useState<{ height: number, width: number } | null>(null)
   const threadImageHeight = readThreadImageHeight(threadImageSize)
-  const renderedComposerHeight = Math.max(
-    APPSHOT_COMPOSER_VERTICAL_PADDING,
-    snapshotHeight + APPSHOT_COMPOSER_VERTICAL_PADDING,
-  )
   const hasAccessibilityText = accessibilityText.length > 0
   const [previewOpen, setPreviewOpen] = useState(false)
   const [previewMode, setPreviewMode] = useState<'visual' | 'text'>('visual')
@@ -60,12 +55,12 @@ export function AppshotAttachmentCard({
       <m.div
         layout
         className={cn(
-          'group/appshot relative flex w-[232px] shrink-0 flex-col items-center overflow-visible rounded-2xl pb-2 transition-colors duration-200',
+          'group/appshot relative flex w-[232px] shrink-0 flex-col items-center overflow-visible transition-colors duration-200',
           'cursor-pointer focus:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset',
           onRemove ? 'hover:bg-muted/45' : 'hover:bg-muted/25',
-          variant === 'thread' && 'pt-[10px]',
+          variant === 'thread' && 'rounded-2xl pb-2 pt-[10px]',
         )}
-        style={{ height: variant === 'composer' ? renderedComposerHeight : undefined }}
+        style={{ height: variant === 'composer' ? snapshotHeight : undefined }}
         role="button"
         tabIndex={0}
         aria-label={title}
@@ -85,14 +80,16 @@ export function AppshotAttachmentCard({
           imageHeight={APPSHOT_FALLBACK_HEIGHT}
           renderedImageHeight={variant === 'thread' ? threadImageHeight : snapshotHeight}
           slotWidth={APPSHOT_CARD_WIDTH}
-          visualWidth={APPSHOT_THREAD_IMAGE_CANVAS_WIDTH}
+          visualWidth={variant === 'thread' ? APPSHOT_THREAD_IMAGE_CANVAS_WIDTH : APPSHOT_CARD_WIDTH}
           imageInlinePadding={variant === 'thread' ? APPSHOT_THREAD_IMAGE_INLINE_PADDING : 0}
           usesThreadTreatment={variant === 'thread'}
           onImageSize={setThreadImageSize}
         />
-        <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
+        {variant === 'thread' && (
+          <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
             {title}
-        </div>
+          </div>
+        )}
         {onRemove && (
           <Button
             type="button"

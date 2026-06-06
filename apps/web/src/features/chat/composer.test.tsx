@@ -461,7 +461,7 @@ describe('composer attachments', () => {
 
     const pendingSlot = container.querySelector<HTMLElement>('[data-pending-appshot-capture-request-id="request-title"]')
     expect(pendingSlot).toBeTruthy()
-    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('168.5')
+    expect(pendingSlot?.dataset.pendingAppshotCaptureHeight).toBe('160.5')
   })
 })
 
@@ -708,7 +708,7 @@ describe('composer slash commands', () => {
     const context = measuredContexts[0]
     expect(context.animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 100,
+      y: 102,
       width: 232,
       height: 140,
     })
@@ -812,7 +812,7 @@ describe('composer slash commands', () => {
     expect(measuredContexts).toHaveLength(1)
     expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
       x: 321,
-      y: 100,
+      y: 81.5,
       width: 232,
       height: 140,
     })
@@ -958,7 +958,7 @@ describe('composer slash commands', () => {
     expect(measuredContexts).toHaveLength(1)
     expect(measuredContexts[0].animationTarget?.destinationFrame).toEqual({
       x: 584,
-      y: 114,
+      y: 122,
       width: 232,
       height: 140,
     })

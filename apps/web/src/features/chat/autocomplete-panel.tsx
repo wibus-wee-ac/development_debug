@@ -14,6 +14,7 @@ interface AutocompletePanelProps<TItem extends AutocompletePanelItem> {
   query: string
   searchItems?: (query: string, signal?: AbortSignal) => Promise<TItem[]>
   onSelect: (item: TItem) => void
+  onTabComplete?: (item: TItem) => void
   onClose: () => void
   visible: boolean
   maxResults?: number
@@ -62,6 +63,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
   query,
   searchItems,
   onSelect,
+  onTabComplete,
   onClose,
   visible,
   maxResults = 30,
@@ -162,7 +164,17 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
       e.preventDefault()
       setActiveIndex(prev => (prev - 1 + results.length) % Math.max(results.length, 1))
     }
-    else if ((e.key === 'Enter' || e.key === 'Tab') && results[effectiveActiveIndex]) {
+    else if (e.key === 'Tab' && results[effectiveActiveIndex]) {
+      e.preventDefault()
+      setActiveIndex(0)
+      if (onTabComplete) {
+        onTabComplete(results[effectiveActiveIndex].item)
+      }
+      else {
+        onSelect(results[effectiveActiveIndex].item)
+      }
+    }
+    else if (e.key === 'Enter' && results[effectiveActiveIndex]) {
       e.preventDefault()
       setActiveIndex(0)
       onSelect(results[effectiveActiveIndex].item)

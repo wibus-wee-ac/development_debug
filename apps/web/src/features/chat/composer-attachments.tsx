@@ -11,7 +11,6 @@ import { AppshotAttachmentCard } from './appshot-attachment'
 import { readCradleAppshotMetadata } from './appshot-attachment-model'
 
 const APPSHOT_FALLBACK_HEIGHT = 140
-const APPSHOT_COMPOSER_VERTICAL_PADDING = 8
 
 interface ComposerAttachmentInputProps {
   fileInputRef: RefObject<HTMLInputElement | null>
@@ -178,10 +177,7 @@ export function ComposerAttachmentList({
 
 function PendingAppshotSlot({ pending }: { pending: PendingAppshotAttachment }) {
   const height = pending.transitionSnapshotHeightResolved
-      ? Math.max(
-          APPSHOT_COMPOSER_VERTICAL_PADDING,
-          (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT) + APPSHOT_COMPOSER_VERTICAL_PADDING,
-        )
+      ? (pending.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT)
       : 0
   const transition = {
     type: 'spring' as const,

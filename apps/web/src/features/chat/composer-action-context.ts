@@ -41,7 +41,6 @@ export interface ComposerActionContextOptions {
   pendingAppshotRequestId?: string | null
   attachmentTrayGrowthDirection?: 'up' | 'down'
   transitionSnapshotHeight?: number | null
-  transitionSnapshotLayoutHeight?: number | null
 }
 
 const HEX_COLOR_RE = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i
@@ -52,7 +51,6 @@ const APPSHOT_IMAGE_ATTACHMENT_STEP = 88
 const APPSHOT_ATTACHMENT_SLOT_WIDTH = 232
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
 const APPSHOT_ANIMATION_TARGET_CORNER_RADIUS = 0
-const APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING = 8
 const APPSHOT_ATTACHMENT_SLOT_STEP = 240
 
 function readFiniteNumber(value: unknown): number | null {
@@ -156,15 +154,17 @@ function readAppshotDestinationFrame(
   const left = pendingRect?.left ?? fallbackLeft
   const rowTop = containerRect.top + paddingTop
   const targetHeight = APPSHOT_ATTACHMENT_SLOT_HEIGHT
-  const transitionSnapshotLayoutHeight = readPositiveNumber(options.transitionSnapshotLayoutHeight)
-    ?? readPositiveNumber(options.transitionSnapshotHeight)
+  const transitionSnapshotHeight = readPositiveNumber(options.transitionSnapshotHeight)
     ?? targetHeight
   const targetWidth = APPSHOT_ATTACHMENT_SLOT_WIDTH
-  const renderedCardHeight = transitionSnapshotLayoutHeight + APPSHOT_ATTACHMENT_CARD_VERTICAL_PADDING
+  const renderedCardHeight = transitionSnapshotHeight
   const fallbackTop = rowRect
     ? rowRect.bottom - renderedCardHeight
     : rowTop
-  const targetTop = pendingRect?.top ?? fallbackTop
+  const pendingTop = pendingRect
+    ? (pendingRect.height > 0 ? pendingRect.bottom - renderedCardHeight : fallbackTop)
+    : null
+  const targetTop = pendingTop ?? fallbackTop
 
   return {
     x: left * scaleFactor,

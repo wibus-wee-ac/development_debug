@@ -2,7 +2,7 @@ import { SquareTerminalIcon } from 'lucide-react'
 
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import type { Agent } from '~/lib/types'
+import type { Agent } from '~/features/agent-runtime/use-agents'
 
 interface CliTuiAgentSelectorProps {
   agents: Agent[]

@@ -1,3 +1,4 @@
+import { useTabFrameActive } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
@@ -41,16 +42,17 @@ import {
   registerChatPromptIngressHandler,
 } from './prompt-ingress'
 import { RuntimeDiagnosticsPopover } from './runtime-diagnostics-popover'
-import { RuntimeToolbarOptions } from './runtime-toolbar-options'
+import { RuntimeSettingsControl } from './runtime-settings-control'
 import type { SkillMentionItem } from './skill-mention-panel'
 import type { ChatComposerRuntime } from './use-chat-composer-runtime'
 import { useChatComposerRuntime } from './use-chat-composer-runtime'
 import type { ChatScrollRuntime } from './use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './use-chat-scroll-runtime'
-import type { ChatQueueItem } from './use-chat-session'
+import type { ChatQueueItem, SendMessageOptions } from './use-chat-session'
 import { useChatSession } from './use-chat-session'
 import type { ComposerAppshotRuntime } from './use-composer-appshot-capture'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
+import { useRuntimeSettings } from './use-runtime-settings'
 import { useSessionAwaitSummary } from './use-session-await'
 
 interface ChatViewProps {
@@ -67,10 +69,12 @@ interface ChatViewProps {
   sendOverridesRef?: React.MutableRefObject<{
     providerTargetId?: string
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null
+    thinkingEffort?: SendMessageOptions['thinkingEffort']
   }>
   /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
   composerModel?: ModelDescriptor | null
+  /** True while the selected provider is waiting for a concrete model before it can be persisted. */
+  composerSelectionPending?: boolean
   /** Custom context bar rendered before the send button */
   composerContextBar?: React.ReactNode
   /** Placeholder text for composer */
@@ -310,6 +314,7 @@ export function ChatView({
   composerContextBar,
   sendOverridesRef,
   composerModel,
+  composerSelectionPending = false,
   placeholder,
   runtimeKind: _runtimeKind,
   workspaceId,
@@ -337,20 +342,24 @@ export function ChatView({
   const [goalActionBusy, setGoalActionBusy] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const [usageSlotSessionId, setUsageSlotSessionId] = useState<string | null>(null)
+  const tabFrameActive = useTabFrameActive()
+  const runtimeSettings = useRuntimeSettings(sessionId)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
     status,
     isStreaming,
     messageCount,
-    isReady,
+    isReady: isReady && !composerSelectionPending,
     workspaceId,
     composerModel,
+    runtimeSettings: runtimeSettings.loaded ? runtimeSettings.settings : undefined,
     sendOverridesRef,
     sendMessage,
     stop,
   })
   const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
+    active: tabFrameActive,
     supportsAttachments: composerRuntime.supportsAttachments,
   })
   const originalComposerSend = composerRuntime.send
@@ -568,12 +577,33 @@ export function ChatView({
     onDismiss: () => setUsageSlotSessionId(null),
   }), [sessionId, usageSlotSessionId])
 
-  const runtimeToolbar = useMemo(() => (
-    <>
-      {composerToolbar}
-      <RuntimeToolbarOptions slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
-    </>
-  ), [composerRuntime.slotStates, composerRuntime.uiSlots, composerToolbar])
+  const updateRuntimeSettings = useCallback((patch: Parameters<typeof runtimeSettings.update>[0]) => {
+    void runtimeSettings.update(patch).catch((error) => {
+      toastManager.add({
+        type: 'error',
+        title: 'Runtime settings update failed',
+        description: error instanceof Error ? error.message : 'Unknown runtime settings error.',
+      })
+    })
+  }, [runtimeSettings])
+
+  const runtimeSettingsToolbar = useMemo(() => {
+    if (!sessionId) {
+      return composerToolbar
+    }
+    return (
+      <div className="flex min-w-0 items-center gap-1">
+        <RuntimeSettingsControl
+          settings={runtimeSettings.settings}
+          applied={runtimeSettings.applied}
+          disabled={!isReady || !runtimeSettings.loaded || runtimeSettings.loading}
+          saving={runtimeSettings.saving}
+          onChange={updateRuntimeSettings}
+        />
+        {composerToolbar}
+      </div>
+    )
+  }, [composerToolbar, isReady, runtimeSettings.applied, runtimeSettings.loaded, runtimeSettings.loading, runtimeSettings.saving, runtimeSettings.settings, sessionId, updateRuntimeSettings])
 
   const headerActions = useMemo(() => (
     <div className="flex items-center gap-0.5">
@@ -627,7 +657,7 @@ export function ChatView({
         availableFiles={availableFiles}
         searchFiles={searchFiles}
         searchSkills={searchSkills}
-        toolbar={runtimeToolbar}
+        toolbar={runtimeSettingsToolbar}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         goalActions={goalActions}

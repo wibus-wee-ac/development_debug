@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { MenuItem, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
+import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/lib/types'
@@ -30,6 +30,12 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   emptyProviderTargetsLabel?: string
   isProviderTargetSelectionDisabled?: boolean
+  leadingSelection?: {
+    label: string
+    description?: string
+    active: boolean
+    onSelect: () => void
+  }
   onRequestProviderTargetModels?: (id: string) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
@@ -235,7 +241,7 @@ function ModelSubmenu<TThinking extends string | null>({
       ? `${Math.round(caps.contextWindow / 1000000)}M`
       : `${Math.round(caps.contextWindow / 1000)}K`
     : null
-  const hasAdjustableThinking = thinkingOptions.some(option => option.value !== null && option.value !== 'auto')
+  const hasAdjustableThinking = thinkingOptions.some(option => option.value !== null)
   const content = (
     <>
       <CheckIcon className={cn('size-3.5 shrink-0 self-start mt-0.5', isModelSelected ? 'text-primary' : 'text-transparent')} />
@@ -291,7 +297,7 @@ function ModelSubmenu<TThinking extends string | null>({
       <MenuSubPopup>
         {thinkingOptions.map(option => (
           <MenuItem
-            key={option.value ?? 'auto'}
+            key={option.value ?? 'none'}
             onClick={() => onSelectThinking(option.value)}
             className={cn('flex-col items-start', thinkingValue === option.value && 'text-primary font-medium')}
           >
@@ -318,6 +324,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
   getThinkingOptionsForModel,
   emptyProviderTargetsLabel,
   isProviderTargetSelectionDisabled = false,
+  leadingSelection,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
   onSelectModel,
@@ -328,6 +335,23 @@ export function ProviderModelMenu<TThinking extends string | null>({
 
   return (
     <>
+      {leadingSelection && (
+        <>
+          <MenuItem
+            onClick={leadingSelection.onSelect}
+            className={cn('items-start', leadingSelection.active && 'text-primary font-medium')}
+          >
+            <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', leadingSelection.active ? 'text-primary' : 'text-transparent')} />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="truncate font-medium">{leadingSelection.label}</span>
+              {leadingSelection.description && (
+                <span className="text-[11px] text-muted-foreground/60">{leadingSelection.description}</span>
+              )}
+            </div>
+          </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
       {providerTargets.map(providerTarget => (
         <ProviderTargetGroup
           key={providerTarget.id}

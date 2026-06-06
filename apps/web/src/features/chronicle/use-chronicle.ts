@@ -986,6 +986,7 @@ export function useChronicleConfig() {
     Error,
     Partial<ChronicleConfig>
   >({
+    scope: { id: 'chronicle-config' },
     mutationFn: async (updates) => {
       const current = queryClient.getQueryData<ChronicleConfig>(CHRONICLE_CONFIG_QUERY_KEY)
       if (!current) {

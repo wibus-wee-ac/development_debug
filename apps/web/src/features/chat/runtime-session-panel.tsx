@@ -17,6 +17,7 @@ import { readRenderableToolPart } from './chat-render-plan'
 import type { ChatTodoItem, SessionTodoSnapshot } from './chat-todo-projection'
 import { toolNameFromPart } from './chat-tool-entities'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
+import { SubagentIdenticon } from './subagent-identicon'
 import type { RenderableToolPart, ToolState } from './tool-ui-classifier'
 import { describeToolCall, formatToolName } from './tool-ui-classifier'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
@@ -102,7 +103,7 @@ export function RuntimeSessionPanel({
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
       <ProgressPanel items={progressItems} loading={runtimeUiSlotStatesLoading} />
-      <SubagentsPanel sessionId={sessionId} crewState={crewState} loading={runtimeUiSlotStatesLoading} />
+      <SubagentsPanel sessionId={sessionId} crewState={crewState} />
 
       {
         import.meta.env.DEV && (
@@ -139,7 +140,7 @@ export function RuntimeSessionPanel({
                 <Metric label="Runtime status" value={formatStatus(status)} tone={status} />
                 <Metric label="UI status" value={formatStatus(visibleStatus)} tone={visibleStatus} />
                 <Metric label="Runtime" value={runtimeStatus?.runtimeKind ?? runtimeKind ?? 'unknown'} />
-                <Metric label="Mode" value={formatMode(runtimeStatus?.permissionMode)} />
+                <Metric label="Mode" value={formatRuntimeSettings(runtimeStatus?.runtimeSettings)} />
                 <Metric label="Provider" value={runtimeStatus?.providerTargetId ?? providerTargetId ?? 'default'} className="col-span-2" />
               </div>
             </section>
@@ -278,19 +279,14 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
 function SubagentsPanel({
   sessionId,
   crewState,
-  loading,
 }: {
   sessionId: string
   crewState: ChatRuntimeCrewUiSlotState | null
-  loading: boolean
 }) {
   const openSubagentTab = useBrowserPanelStore(state => state.openSubagentTab)
   const browserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const agents = crewState ? readCrewAgents(crewState) : []
-  const calls = readCrewCalls(crewState)
-  const recentCalls = calls.slice(0, 4)
-  const hasCrewState = agents.length > 0 || calls.length > 0 || (crewState?.collaborationModeCount ?? 0) > 0
   const openAgent = (agent: ChatRuntimeCrewAgentItem) => {
     openSubagentTab({
       sessionId,
@@ -310,138 +306,43 @@ function SubagentsPanel({
     <section className="space-y-2">
       <PanelHeading icon={BotIcon} label="Subagents" />
       <div className="space-y-2 rounded-md bg-muted/35 p-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-        {crewState && (
-          <div className="grid grid-cols-3 gap-1.5">
-            <CompactMetric label="Active" value={String(crewState.activeCount)} tone={crewState.activeCount > 0 ? 'streaming' : 'idle'} />
-            <CompactMetric label="Done" value={String(crewState.completedCount)} tone="idle" />
-            <CompactMetric label="Failed" value={String(crewState.failedCount)} tone={crewState.failedCount > 0 ? 'error' : 'idle'} />
-          </div>
-        )}
-
-        {agents.length > 0 && (
-          <div className="space-y-1">
-            {agents.slice(0, 6).map((agent, index) => (
-              <SubagentRow key={agent.threadId} agent={agent} index={index} onOpen={openAgent} />
-            ))}
-          </div>
-        )}
-
-        {recentCalls.length > 0 && (
-          <div className="space-y-1 border-t border-border/60 pt-2">
-            {recentCalls.map(call => (
-              <SubagentCallRow key={call.id} call={call} />
-            ))}
-          </div>
-        )}
-
-        {!hasCrewState && (
-          <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
-            {loading ? 'Loading subagent state...' : 'No subagent activity for this session'}
-          </p>
-        )}
+        <div className="space-y-1">
+          {agents.slice(0, 6).map(agent => (
+            <SubagentRow key={agent.threadId} agent={agent} onOpen={openAgent} />
+          ))}
+        </div>
       </div>
     </section>
   )
 }
 
-function CompactMetric({
-  label,
-  value,
-  tone = 'idle',
-}: {
-  label: string
-  value: string
-  tone?: RuntimeSessionStatusKind | 'error'
-}) {
-  return (
-    <div className="min-w-0 rounded bg-background/45 px-2 py-1">
-      <p className="text-[9px] text-muted-foreground">{label}</p>
-      <p className={cn(
-        'mt-0.5 truncate text-[11px] font-medium tabular-nums',
-        tone === 'streaming' && 'text-primary',
-        tone === 'pending' && 'text-primary',
-        tone === 'cancelling' && 'text-amber-600 dark:text-amber-400',
-        tone === 'error' && 'text-destructive',
-        tone === 'idle' && 'text-foreground',
-      )}
-      >
-        {value}
-      </p>
-    </div>
-  )
-}
-
 function SubagentRow({
   agent,
-  index,
   onOpen,
 }: {
   agent: ChatRuntimeCrewAgentItem
-  index: number
   onOpen: (agent: ChatRuntimeCrewAgentItem) => void
 }) {
-  const status = agent.status ? formatStatusLike(agent.status) : 'Unknown'
   const label = readCrewAgentLabel(agent)
-  const details = readCrewAgentDetails(agent)
-  const description = agent.message ?? agent.preview
+  const isActive = isActiveCrewAgentStatus(agent.status)
+
   return (
     <button
       type="button"
-      className="min-w-0 w-full rounded bg-background/45 px-2 py-1.5 text-left transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex h-10 min-w-0 w-full items-center gap-2 rounded bg-background/45 px-2 text-left transition-colors hover:bg-background/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       onClick={() => onOpen(agent)}
       aria-label={`Open ${label} output`}
     >
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={cn('grid size-4 shrink-0 place-items-center rounded-[4px]', readCrewSwatchClassName(index))}>
-          <span className="size-2 rounded-[3px] bg-current opacity-80" />
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
-          {label}
-        </span>
-        <span className={cn('shrink-0 text-[10px] tabular-nums', readCrewStatusTextClassName(agent.status))}>
-          {status}
-        </span>
-        <EyeIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden="true" />
-      </div>
-      {details && (
-        <p className="mt-0.5 truncate pl-6 text-[9px] text-muted-foreground">
-          {details}
-        </p>
-      )}
-      {description && (
-        <p className="mt-1 line-clamp-2 pl-6 text-[10px] leading-4 text-muted-foreground">
-          {description}
-        </p>
-      )}
+      <SubagentIdenticon
+        active={isActive}
+        seed={agent.threadId}
+        className="size-5 pointer-events-none"
+        aria-hidden="true"
+      />
+      <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+        {label}
+      </span>
     </button>
-  )
-}
-
-function SubagentCallRow({ call }: { call: ChatRuntimeCrewCallItem }) {
-  const receiverThreadIds = readCrewCallReceiverThreadIds(call)
-  const targetLabel = receiverThreadIds.length > 0
-    ? `${receiverThreadIds.length} target${receiverThreadIds.length === 1 ? '' : 's'}`
-    : 'No target'
-
-  return (
-    <div className="min-w-0 rounded bg-background/35 px-2 py-1.5">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className={cn('shrink-0 text-[10px] tabular-nums', readToolActivityTextClassName(call.status))}>
-          {formatStatusLike(call.status)}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[10px] text-foreground">
-          {call.tool}
-        </span>
-        <span className="max-w-[42%] shrink-0 truncate text-[10px] text-muted-foreground">
-          {targetLabel}
-        </span>
-      </div>
-      {call.prompt && (
-        <p className="mt-0.5 line-clamp-2 text-[9px] leading-3.5 text-muted-foreground">
-          {call.prompt}
-        </p>
-      )}
-    </div>
   )
 }
 
@@ -600,62 +501,8 @@ function readCrewAgentLabel(agent: ChatRuntimeCrewAgentItem): string {
   return agent.agentNickname ?? agent.name ?? agent.agentRole ?? formatThreadId(agent.threadId)
 }
 
-function readCrewAgentDetails(agent: ChatRuntimeCrewAgentItem): string | null {
-  return [
-    agent.agentRole,
-    agent.name && agent.name !== agent.agentNickname ? agent.name : null,
-    agent.modelProvider,
-  ].filter(Boolean).join(' · ') || null
-}
-
-function readCrewSwatchClassName(index: number): string {
-  const classes = [
-    'bg-amber-400/15 text-amber-400',
-    'bg-sky-400/15 text-sky-400',
-    'bg-violet-400/15 text-violet-400',
-    'bg-rose-400/15 text-rose-400',
-    'bg-orange-400/15 text-orange-400',
-    'bg-emerald-400/15 text-emerald-400',
-  ]
-  return classes[index % classes.length] ?? classes[0]
-}
-
-function readCrewStatusTextClassName(status: string | null): string {
-  switch (status) {
-    case 'running':
-    case 'pendingInit':
-      return 'text-primary'
-    case 'completed':
-    case 'shutdown':
-      return 'text-emerald-600 dark:text-emerald-400'
-    case 'errored':
-    case 'notFound':
-      return 'text-destructive'
-    case 'interrupted':
-      return 'text-amber-600 dark:text-amber-400'
-    default:
-      return 'text-muted-foreground'
-  }
-}
-
-function readToolActivityTextClassName(status: ToolState | ChatRuntimeCrewCallItem['status']): string {
-  switch (status) {
-    case 'failed':
-    case 'output-error':
-    case 'output-denied':
-      return 'text-destructive'
-    case 'running':
-    case 'input-streaming':
-    case 'input-available':
-    case 'approval-requested':
-      return 'text-primary'
-    case 'completed':
-    case 'output-available':
-    case 'approval-responded':
-      return 'text-emerald-600 dark:text-emerald-400'
-    default:
-      return 'text-muted-foreground'
-  }
+function isActiveCrewAgentStatus(status: string | null): boolean {
+  return status === 'pendingInit' || status === 'running'
 }
 
 function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {
@@ -687,18 +534,11 @@ function formatStatus(status: RuntimeSessionStatusKind | 'error'): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-function formatMode(mode: string | null | undefined): string {
-  if (!mode) {
-    return 'bypassPermissions'
+function formatRuntimeSettings(settings: { accessMode: string, interactionMode: string } | null | undefined): string {
+  if (!settings) {
+    return 'full-access / default'
   }
-  return mode
-}
-
-function formatStatusLike(value: string): string {
-  return value
-    .replace(/([a-z])([A-Z])/g, '$1 $2')
-    .replace(/[-_]/g, ' ')
-    .replace(/\b\w/g, char => char.toUpperCase())
+  return `${settings.accessMode} / ${settings.interactionMode}`
 }
 
 function formatThreadId(threadId: string): string {

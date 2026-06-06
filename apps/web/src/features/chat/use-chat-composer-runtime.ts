@@ -27,7 +27,7 @@ import type { SendMessageOptions, SendMessageResult } from './use-chat-session'
 interface ChatComposerSendOverrides {
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null
+  thinkingEffort?: SendMessageOptions['thinkingEffort']
 }
 
 export interface ChatComposerRuntime {
@@ -58,7 +58,7 @@ interface UseChatComposerRuntimeOptions {
   isReady: boolean
   workspaceId?: string | null
   composerModel?: ModelDescriptor | null
-  permissionMode?: SendMessageOptions['permissionMode']
+  runtimeSettings?: SendMessageOptions['runtimeSettings']
   sendOverridesRef?: React.MutableRefObject<ChatComposerSendOverrides>
   sendMessage: (text: string, opts?: SendMessageOptions, files?: FileUIPart[], contextParts?: ChatContextPart[]) => SendMessageResult | Promise<SendMessageResult>
   stop: () => void
@@ -112,7 +112,7 @@ export function useChatComposerRuntime({
   isReady,
   workspaceId,
   composerModel,
-  permissionMode,
+  runtimeSettings,
   sendOverridesRef,
   sendMessage,
   stop,
@@ -231,9 +231,9 @@ export function useChatComposerRuntime({
       const continuationMode = options?.invertContinuationMode
         ? invertContinuationMode(defaultContinuationMode)
         : defaultContinuationMode
-      return sendMessage(text, { ...overrides, permissionMode, continuationMode }, files, contextParts)
+      return sendMessage(text, { ...overrides, runtimeSettings, continuationMode }, files, contextParts)
     },
-    [chatPreferences?.continuationBehavior, isReady, permissionMode, sendMessage, sendOverridesRef],
+    [chatPreferences?.continuationBehavior, isReady, runtimeSettings, sendMessage, sendOverridesRef],
   )
 
   return {

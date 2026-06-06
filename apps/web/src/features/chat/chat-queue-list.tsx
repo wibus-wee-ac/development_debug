@@ -84,6 +84,16 @@ export function ChatQueueList({
               ? t('continuation.queue.attachmentLabel', { count: item.files.length })
               : t('continuation.queue.emptyLabel')
           )
+          const runtimeAccessLabel = item.runtimeSettings.accessMode === 'full-access'
+            ? t('runtimeSettings.access.fullAccess')
+            : t('runtimeSettings.access.approvalRequired')
+          const runtimeInteractionLabel = item.runtimeSettings.interactionMode === 'plan'
+            ? t('runtimeSettings.interaction.plan')
+            : t('runtimeSettings.interaction.default')
+          const runtimeSettingsLabel = t('runtimeSettings.summary.short', {
+            access: runtimeAccessLabel,
+            interaction: runtimeInteractionLabel,
+          })
           return (
             <div
               key={item.id}
@@ -130,6 +140,9 @@ export function ChatQueueList({
                 )}
               >
                 {item.mode === 'steer' ? t('continuation.mode.steer') : t('continuation.mode.queue')}
+              </span>
+              <span className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
+                {runtimeSettingsLabel}
               </span>
               <span className="min-w-0 flex-1 truncate text-foreground/85">
                 {itemLabel}

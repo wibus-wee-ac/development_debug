@@ -55,6 +55,7 @@ export type ComposerSendHandler = (
 
 export interface ComposerSendController {
   submit: ComposerSendHandler
+  submitInNewWindow?: ComposerSendHandler
   stop?: () => void
   isStreaming?: boolean
   isSending?: boolean
@@ -495,6 +496,7 @@ export function Composer({
 }: ComposerProps) {
   const {
     submit,
+    submitInNewWindow,
     isStreaming,
     isSending,
     disabled,
@@ -627,6 +629,14 @@ export function Composer({
     dispatch({ type: 'mention/selected' })
   }, [])
 
+  const handleMentionTabComplete = useCallback((item: MentionItem) => {
+    const range = mentionRangeRef.current
+    if (!range) {
+      return
+    }
+    promptEditorRef.current?.replaceFileTriggerWithText(item, range)
+  }, [])
+
   const handleSkillSelect = useCallback((item: SkillMentionItem) => {
     const range = skillRangeRef.current
     if (!range) {
@@ -697,7 +707,10 @@ export function Composer({
     promptEditorRef.current?.replaceRangeWithText(range, insertText)
   }, [appendComposerFileParts, clearComposerAttachments, composerAttachments.length, disabled, isSending, onSlashCommandAction, sendDisabled, state.contextParts.length, state.inputValue, submit])
 
-  const handleSend = useCallback((options?: { invertContinuationMode?: boolean }) => {
+  const handleSend = useCallback((
+    options?: { invertContinuationMode?: boolean },
+    submitHandler: ComposerSendHandler = submit,
+  ) => {
     const text = state.inputValue.trim()
     if (disabled || isSending || sendDisabled || sendBlocked) {
       return
@@ -713,7 +726,7 @@ export function Composer({
       files: composerAttachments,
       options,
       promptEditor: promptEditorRef.current,
-      submit,
+      submit: submitHandler,
       text,
     })
   }, [allowEmptySend, clearComposerAttachments, composerAttachments, disabled, isSending, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
@@ -737,6 +750,10 @@ export function Composer({
 
     if (e.key === 'Enter' && e.shiftKey && (e.metaKey || e.ctrlKey)) {
       e.preventDefault()
+      if (submitInNewWindow) {
+        handleSend(undefined, submitInNewWindow)
+        return
+      }
       handleSend({ invertContinuationMode: true })
       return
     }
@@ -745,7 +762,7 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive])
+  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive, submitInNewWindow])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
@@ -805,6 +822,7 @@ export function Composer({
         query={state.mentionQuery}
         searchItems={searchFiles}
         onSelect={handleMentionSelect}
+        onTabComplete={handleMentionTabComplete}
         onClose={() => dispatch({ type: 'mention/closed' })}
         visible={state.mentionActive}
       />

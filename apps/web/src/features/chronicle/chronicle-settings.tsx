@@ -301,7 +301,7 @@ export function ChronicleSettings() {
     [config?.profileId, profiles],
   )
   const initialModelProfileIds = useMemo(() => [config?.profileId ?? null], [config?.profileId])
-  const { modelsByProfileId, loadingProfileIds, requestProfileModels } = useAgentModelMap(
+  const { modelsByProfileId, loadingProfileIds, successfulProfileIds, requestProfileModels } = useAgentModelMap(
     profiles,
     initialModelProfileIds,
   )
@@ -458,6 +458,7 @@ export function ChronicleSettings() {
           selectedModel={selectedModel}
           modelsByProfileId={modelsByProfileId}
           loadingProfileIds={loadingProfileIds}
+          successfulProfileIds={successfulProfileIds}
           requestProfileModels={requestProfileModels}
           onUpdateConfig={updateConfig}
         />
@@ -835,6 +836,7 @@ function ChronicleControlPanel({
   selectedModel,
   modelsByProfileId,
   loadingProfileIds,
+  successfulProfileIds,
   requestProfileModels,
   onUpdateConfig,
 }: {
@@ -851,10 +853,18 @@ function ChronicleControlPanel({
   selectedModel: Parameters<typeof ProviderModelPicker>[0]['selectedModel']
   modelsByProfileId: ReturnType<typeof useAgentModelMap>['modelsByProfileId']
   loadingProfileIds: ReturnType<typeof useAgentModelMap>['loadingProfileIds']
+  successfulProfileIds: ReturnType<typeof useAgentModelMap>['successfulProfileIds']
   requestProfileModels: ReturnType<typeof useAgentModelMap>['requestProfileModels']
   onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
 }) {
   const { t } = useTranslation('chronicle')
+  const [pendingProfileId, setPendingProfileId] = useState<string | null>(null)
+  const displayProfileId = pendingProfileId ?? selectedProfileId
+  const displayModelId = pendingProfileId ? null : selectedModelId
+  const displaySelectedModel = pendingProfileId
+    ? null
+    : selectedModel
+  const isLoadingDisplayModels = displayProfileId ? loadingProfileIds.has(displayProfileId) : false
   const localizedCaptureStatus = !canEnable
     ? t('control.status.waitingForModel')
     : config?.enabled
@@ -877,7 +887,29 @@ function ChronicleControlPanel({
     : config?.audioCaptureEnabled
       ? t('common.status.enabled')
       : t('common.status.notEnabled')
-  const modelStatus = selectedModelId ? t('control.status.selected') : t('control.status.notSelected')
+  const modelStatus = displayModelId ? t('control.status.selected') : t('control.status.notSelected')
+
+  useEffect(() => {
+    if (!pendingProfileId) {
+      return
+    }
+    if (saving) {
+      return
+    }
+    if (!profiles.some(profile => profile.id === pendingProfileId)) {
+      setPendingProfileId(null)
+      return
+    }
+    const nextModel = (modelsByProfileId[pendingProfileId] ?? [])[0] ?? null
+    if (!nextModel) {
+      if (successfulProfileIds.has(pendingProfileId)) {
+        setPendingProfileId(null)
+      }
+      return
+    }
+    void onUpdateConfig({ profileId: pendingProfileId, modelId: nextModel.id })
+    setPendingProfileId(null)
+  }, [modelsByProfileId, onUpdateConfig, pendingProfileId, profiles, saving, successfulProfileIds])
 
   return (
     <UserSection title={t('control.title')} description={t('control.description')}>
@@ -959,18 +991,19 @@ function ChronicleControlPanel({
           title={t('control.model.title')}
           description={t('control.model.description')}
           status={modelStatus}
-          statusTone={selectedModelId ? 'enabled' : 'warning'}
+          statusTone={displayModelId ? 'enabled' : 'warning'}
           reason={saving ? t('common.status.savingSettings') : null}
         >
           <ProviderModelPicker
             providerTargets={profiles}
-            selectedProviderTargetId={selectedProfileId}
-            selectedModelId={selectedModelId}
-            selectedModel={selectedModel}
+            selectedProviderTargetId={displayProfileId}
+            selectedModelId={displayModelId}
+            selectedModel={displaySelectedModel}
             modelsByProviderTargetId={modelsByProfileId}
             loadingProviderTargetIds={loadingProfileIds}
             thinkingValue={null}
             thinkingOptions={[]}
+            isLoadingSelectedModels={isLoadingDisplayModels}
             emptyProviderTargetsLabel={t('control.model.emptyProfiles')}
             emptySelectionLabel={t('control.model.emptySelection')}
             menuSide="bottom"
@@ -982,15 +1015,17 @@ function ChronicleControlPanel({
               requestProfileModels(profileId)
               const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
               if (!nextModel) {
-                void onUpdateConfig({ profileId, modelId: '' })
+                setPendingProfileId(profileId)
                 return
               }
+              setPendingProfileId(null)
               void onUpdateConfig({ profileId, modelId: nextModel.id })
             }}
             onSelectModel={(model, profileId) => {
               if (!model) {
                 return
               }
+              setPendingProfileId(null)
               void onUpdateConfig({ profileId, modelId: model })
             }}
             onSelectThinking={() => {}}

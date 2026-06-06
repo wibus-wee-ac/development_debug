@@ -1,5 +1,5 @@
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
-import type { Agent } from '~/lib/types'
+import type { Agent } from '~/features/agent-runtime/use-agents'
 
 interface ChatAgentIdentityProps {
   agent: Agent

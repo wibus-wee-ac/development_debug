@@ -8,10 +8,9 @@ import { ProviderModelPicker } from './provider-model-picker'
 import type { ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
 
 type CommonKey = keyof typeof import('~/locales/default').default.common
-type ThinkingOptionKey = NonNullable<ThinkingEffort> | 'auto'
+type ThinkingOptionKey = NonNullable<ThinkingEffort>
 
 const thinkingLabelKeys = {
-  auto: 'thinking.auto.label',
   low: 'thinking.low.label',
   medium: 'thinking.medium.label',
   high: 'thinking.high.label',
@@ -19,7 +18,6 @@ const thinkingLabelKeys = {
 } satisfies Record<ThinkingOptionKey, CommonKey>
 
 const thinkingDescriptionKeys = {
-  auto: 'thinking.auto.description',
   low: 'thinking.low.description',
   medium: 'thinking.medium.description',
   high: 'thinking.high.description',
@@ -58,15 +56,15 @@ export function ProviderModelSelector({
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
   const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map((option) => {
-    const key = option.value ?? 'auto'
+    const key = option.value
     return {
-      value: option.value,
+      value: key,
       label: t(thinkingLabelKeys[key]),
       description: t(thinkingDescriptionKeys[key]),
     }
   })
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
-    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, null)
+    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
 
   return (
     <ProviderModelPicker
@@ -86,7 +84,9 @@ export function ProviderModelSelector({
         requestProfileModels(id)
         onSelectProfile(id)
         const nextModels = modelsByProfileId[id] ?? []
-        onSelectThinkingEffort(selectThinkingForModel(nextModels[0] ?? null))
+        if (nextModels.length > 0) {
+          onSelectThinkingEffort(selectThinkingForModel(nextModels[0] ?? null))
+        }
       }}
       onSelectModel={(id, profileId) => {
         if (id) {

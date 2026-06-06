@@ -29,6 +29,12 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
   menuAlign?: 'start' | 'center' | 'end'
   triggerTestId?: string
   disabled?: boolean
+  leadingSelection?: {
+    label: string
+    description?: string
+    active: boolean
+    onSelect: () => void
+  }
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   onRequestProviderTargetModels?: (id: string) => void
   onSelectProviderTarget: (id: string) => void
@@ -53,6 +59,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   menuAlign = 'start',
   triggerTestId = 'provider-model-selector',
   disabled = false,
+  leadingSelection,
   getThinkingOptionsForModel,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
@@ -74,7 +81,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   const triggerThinkingOptions = getThinkingOptionsForModel
     ? getThinkingOptionsForModel(selectedModel)
     : thinkingOptions
-  const hasAdjustableThinking = triggerThinkingOptions.some(option => option.value !== null && option.value !== 'auto')
+  const hasAdjustableThinking = triggerThinkingOptions.some(option => option.value !== null)
   const thinkingLabel = hasAdjustableThinking
     ? triggerThinkingOptions.find(option => option.value === thinkingValue)?.label ?? null
     : null
@@ -109,6 +116,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
           thinkingOptions={thinkingOptions}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
           emptyProviderTargetsLabel={emptyProviderTargetsLabel}
+          leadingSelection={leadingSelection}
           onRequestProviderTargetModels={onRequestProviderTargetModels}
           onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}

@@ -22,13 +22,14 @@ interface MentionPanelProps {
   query: string
   searchItems?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
   onSelect: (item: MentionItem) => void
+  onTabComplete?: (item: MentionItem) => void
   onClose: () => void
   visible: boolean
 }
 
 const MAX_RESULTS = 30
 
-export function MentionPanel({ items, query, searchItems, onSelect, onClose, visible }: MentionPanelProps) {
+export function MentionPanel({ items, query, searchItems, onSelect, onTabComplete, onClose, visible }: MentionPanelProps) {
   const panelItems = useMemo(() => items.map(toMentionPanelItem), [items])
   const searchPanelItems = useCallback(async (searchQuery: string, signal?: AbortSignal) => {
     return searchItems ? (await searchItems(searchQuery, signal)).map(toMentionPanelItem) : []
@@ -41,7 +42,8 @@ export function MentionPanel({ items, query, searchItems, onSelect, onClose, vis
         items={panelItems}
         query={query}
         searchItems={searchItems ? searchPanelItems : undefined}
-        onSelect={item => onSelect(item)}
+        onSelect={item => onSelect(toMentionItem(item))}
+        onTabComplete={onTabComplete ? item => onTabComplete(toMentionItem(item)) : undefined}
         onClose={onClose}
         visible={visible}
         maxResults={MAX_RESULTS}
@@ -66,5 +68,13 @@ function toMentionPanelItem(item: MentionItem): MentionPanelItem {
     ...item,
     id: item.path,
     searchText: item.path,
+  }
+}
+
+function toMentionItem(item: MentionPanelItem): MentionItem {
+  return {
+    type: item.type,
+    name: item.name,
+    path: item.path,
   }
 }

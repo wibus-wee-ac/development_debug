@@ -21,7 +21,7 @@ import { annotateBangCommandMessage, annotateBangResultMessage } from './bang-co
 import type { ChatContextPart } from './chat-context-parts'
 import { toOrderedUserMessageParts } from './chat-context-parts'
 import { createContinuationUserMessage } from './chat-continuation-metadata'
-import type { ChatContinuationMode, ChatPermissionMode, ChatQueueItem } from './chat-response-command'
+import type { ChatContinuationMode, ChatQueueItem, ChatRuntimeSettingsPatch, ChatThinkingEffort } from './chat-response-command'
 import {
   cancelChatResponse,
   cancelChatSessionQueueItem,
@@ -31,10 +31,10 @@ import {
   listChatSessionQueue,
   reorderChatSessionQueue,
   startChatResponse,
-  switchChatPermissionMode,
 } from './chat-response-command'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
 import { ChatStreamingHandler } from './chat-streaming-handler'
+import { runtimeSettingsQueryKey } from './runtime-settings-command'
 import { useRuntimeSessionStatus } from './use-runtime-session-status'
 
 // ── Message Snapshot Types ──────────────────────────────────
@@ -52,13 +52,12 @@ export interface ChatSessionMessageRow {
   depth: number
 }
 export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
-export type { ChatPermissionMode } from './chat-response-command'
 
 export interface SendMessageOptions {
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto' | null | undefined
-  permissionMode?: ChatPermissionMode
+  thinkingEffort?: ChatThinkingEffort | null | undefined
+  runtimeSettings?: ChatRuntimeSettingsPatch
   continuationMode?: ChatContinuationMode
 }
 
@@ -478,8 +477,8 @@ export function useChatSession(chatSessionId: string | null) {
             contextParts,
             providerTargetId: opts?.providerTargetId ?? undefined,
             modelId: opts?.modelId ?? undefined,
-            thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
-            permissionMode: opts?.permissionMode,
+            thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+            runtimeSettings: opts?.runtimeSettings,
           },
         })
         if (!response.ok) {
@@ -597,8 +596,8 @@ export function useChatSession(chatSessionId: string | null) {
           contextParts,
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
-          thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
-          permissionMode: opts?.permissionMode,
+          thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+          runtimeSettings: opts?.runtimeSettings,
         },
       })
       if (queueItem.mode === 'steer' && queueItem.status !== 'pending') {
@@ -650,8 +649,8 @@ export function useChatSession(chatSessionId: string | null) {
           contextParts,
           providerTargetId: opts?.providerTargetId ?? undefined,
           modelId: opts?.modelId ?? undefined,
-          thinkingEffort: opts?.thinkingEffort === 'auto' || opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
-          permissionMode: opts?.permissionMode,
+          thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+          runtimeSettings: opts?.runtimeSettings,
         },
         signal: controller.signal,
       })
@@ -690,6 +689,7 @@ export function useChatSession(chatSessionId: string | null) {
         // Sync from server to get canonical message IDs
         scheduleSnapshotRefresh(0)
         void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+        void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
@@ -769,6 +769,7 @@ export function useChatSession(chatSessionId: string | null) {
       if (!controller.signal.aborted) {
         scheduleSnapshotRefresh(0)
         void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+        void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
@@ -789,13 +790,6 @@ export function useChatSession(chatSessionId: string | null) {
     await reorderChatSessionQueue({ sessionId: chatSessionId, queueItemIds })
     refreshQueue()
   }, [chatSessionId, refreshQueue])
-
-  const setPermissionMode = useCallback(async (mode: ChatPermissionMode) => {
-    if (!chatSessionId) {
-      return false
-    }
-    return await switchChatPermissionMode({ sessionId: chatSessionId, mode })
-  }, [chatSessionId])
 
   // ── Stop ──
 
@@ -852,6 +846,5 @@ export function useChatSession(chatSessionId: string | null) {
     queueItems: queueQuery.data?.items ?? EMPTY_QUEUE_ITEMS,
     cancelQueueItem,
     reorderQueueItems,
-    setPermissionMode,
   }
 }

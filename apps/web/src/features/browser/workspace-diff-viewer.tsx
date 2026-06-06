@@ -13,7 +13,7 @@ import {
 } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
 import { Columns2Icon, FileDiffIcon, Loader2Icon, Rows3Icon } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
@@ -35,6 +35,8 @@ interface WorkspaceDiffData {
   pathToItemId: Map<string, string>
 }
 
+const DIFF_LINE_HEIGHT = 18
+
 const WORKER_POOL_OPTIONS = {
   workerFactory: () => new Worker(WorkerUrl, { type: 'module' }),
   poolSize: 3,
@@ -47,7 +49,11 @@ const WORKER_HIGHLIGHTER_OPTIONS = {
 } satisfies WorkerInitializationRenderOptions
 
 function buildItemsFromPatch(patch: string): WorkspaceDiffData {
-  const parsed = parsePatchFiles(patch, 'workspace-diff')
+  const patchVersion = hashPatchVersion(patch)
+  const parsed = parsePatchFiles(
+    patch,
+    `workspace-diff-${patch.length.toString(36)}-${patchVersion.toString(36)}`,
+  )
   const items: CodeViewItem[] = []
   const pathToItemId = new Map<string, string>()
   const itemIds = new Set<string>()
@@ -56,7 +62,7 @@ function buildItemsFromPatch(patch: string): WorkspaceDiffData {
     for (const fileDiff of p.files) {
       const itemId = createItemId(fileDiff.name, itemIds, nextCollisionSuffixByBase)
       itemIds.add(itemId)
-      items.push({ id: itemId, type: 'diff', fileDiff, version: 0 })
+      items.push({ id: itemId, type: 'diff', fileDiff, version: patchVersion })
       pathToItemId.set(fileDiff.name, itemId)
       if (fileDiff.prevName) {
         pathToItemId.set(fileDiff.prevName, itemId)
@@ -64,6 +70,15 @@ function buildItemsFromPatch(patch: string): WorkspaceDiffData {
     }
   }
   return { items, pathToItemId }
+}
+
+function hashPatchVersion(patch: string): number {
+  let hash = 2166136261
+  for (let index = 0; index < patch.length; index++) {
+    hash ^= patch.charCodeAt(index)
+    hash = Math.imul(hash, 16777619)
+  }
+  return hash >>> 0
 }
 
 function createItemId(
@@ -98,16 +113,18 @@ export function WorkspaceDiffViewer(props: WorkspaceDiffViewerProps) {
 
 function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: WorkspaceDiffViewerProps) {
   const { data: patch, isLoading, isError } = useGitDiff(workspaceId, paths)
+  const deferredPatch = useDeferredValue(patch)
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
+  const [isDiffStylePending, startDiffStyleTransition] = useTransition()
   const viewerRef = useRef<CodeViewHandle<undefined>>(null)
   const pendingScrollRef = useRef<string | null>(null)
 
   const diffData = useMemo<WorkspaceDiffData>(() => {
-    if (!patch || patch.trim().length === 0) {
+    if (!deferredPatch || deferredPatch.trim().length === 0) {
       return { items: [], pathToItemId: new Map() }
     }
-    return buildItemsFromPatch(patch)
-  }, [patch])
+    return buildItemsFromPatch(deferredPatch)
+  }, [deferredPatch])
   const { items, pathToItemId } = diffData
 
   // Listen for scroll-to-file requests from the Changes Panel
@@ -127,11 +144,13 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
     }
     const item = viewer.getItem(itemId)
     if (item != null && item.collapsed === true) {
-      item.collapsed = false
-      item.version = typeof item.version === 'number' ? item.version + 1 : 1
-      viewer.updateItem(item)
+      viewer.updateItem({
+        ...item,
+        collapsed: false,
+        version: typeof item.version === 'number' ? item.version + 1 : 1,
+      })
     }
-    viewer.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth' })
+    viewer.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth-auto' })
   })
 
   // Handle scroll requests from the Changes Panel
@@ -164,13 +183,21 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
       hunkSeparators: 'line-info-basic',
       enableLineSelection: true,
       stickyHeaders: true,
+      pointerEventsOnScroll: false,
+      itemMetrics: {
+        hunkLineCount: 1,
+        lineHeight: DIFF_LINE_HEIGHT,
+      },
     }),
     [diffStyle],
   )
 
   if (isLoading) {
     return (
-      <div className="flex flex-1 items-center justify-center" data-testid="workspace-diff-loading">
+      <div
+        className="flex h-full w-full items-center justify-center"
+        data-testid="workspace-diff-loading"
+      >
         <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
       </div>
     )
@@ -179,7 +206,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
   if (isError) {
     return (
       <div
-        className="flex flex-1 items-center justify-center p-4 text-center"
+        className="flex h-full w-full items-center justify-center p-4 text-center"
         data-testid="workspace-diff-error"
       >
         <div className="flex flex-col items-center gap-2">
@@ -193,7 +220,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
   if (items.length === 0) {
     return (
       <div
-        className="flex flex-1 items-center justify-center p-4 text-center"
+        className="flex h-full w-full items-center justify-center p-4 text-center"
         data-testid="workspace-diff-empty"
       >
         <div className="flex flex-col items-center gap-2">
@@ -206,7 +233,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+      className="flex h-full w-full min-h-0 flex-col overflow-hidden"
       data-testid="workspace-diff-viewer"
     >
       <div className="flex items-center gap-2 border-b border-border/30 bg-card px-2 py-1">
@@ -222,13 +249,16 @@ file
           value={diffStyle}
           onValueChange={(v) => {
             if (v === 'split' || v === 'unified') {
-              setDiffStyle(v)
+              startDiffStyleTransition(() => {
+                setDiffStyle(v)
+              })
             }
           }}
           variant="outline"
           size="sm"
           className="h-5 shrink-0 gap-px"
           aria-label="Diff layout"
+          disabled={isDiffStylePending}
         >
           <ToggleGroupItem
             value="split"
@@ -250,10 +280,10 @@ file
       </div>
       <CodeView
         ref={viewerRef}
-        initialItems={items}
+        items={items}
         options={options}
         className={cn(
-          'min-h-0 flex-1 overflow-auto',
+          'min-h-0 flex-1 overflow-auto overscroll-contain [overflow-anchor:none]',
           '[--diffs-font-size:11px] [--diffs-line-height:18px]',
         )}
       />

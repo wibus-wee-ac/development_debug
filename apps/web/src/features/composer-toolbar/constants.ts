@@ -3,8 +3,9 @@ import type { BuiltinRuntimeKind, ModelDescriptor, RuntimeKind } from '~/lib/typ
 import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'
 
-export const THINKING_EFFORTS: { value: ThinkingEffort, label: string, description: string }[] = [
-  { value: null, label: '', description: '' },
+type ConcreteThinkingEffort = NonNullable<ThinkingEffort>
+
+export const THINKING_EFFORTS: { value: ConcreteThinkingEffort, label: string, description: string }[] = [
   { value: 'low', label: '', description: '' },
   { value: 'medium', label: '', description: '' },
   { value: 'high', label: '', description: '' },
@@ -61,7 +62,7 @@ export function filterThinkingOptionsForModel<TThinking extends string | null>(
     if (tier === 'none') {
       return false
     }
-    if (option.value === 'minimal' || option.value === 'xhigh') {
+    if (option.value === 'minimal' || option.value === 'xhigh' || option.value === 'max') {
       return tier === 'extended'
     }
     return true

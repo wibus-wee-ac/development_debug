@@ -1,6 +1,6 @@
 import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } from '~/lib/types'
 
-export type ComposerContext = 'new-chat' | 'capsule' | 'chat'
+export type ComposerContext = 'new-chat' | 'chat'
 
 export type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | null
 

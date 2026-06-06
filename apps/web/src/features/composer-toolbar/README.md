@@ -17,7 +17,7 @@ Shared composer controls for selecting runtime, provider target, provider-owned 
 - **provider-model-picker.tsx**: Unified trigger plus `ProviderModelMenu` composition reused by composer surfaces and Jarvis settings.
 - **provider-model-selector.tsx**: Composer toolbar state adapter for `ProviderModelPicker`; direct model selection forwards the owning provider target id.
 - **provider-model-selector.test.tsx**: Regression coverage for provider-owned model lists in the menu.
-- **runtime-selector.tsx**: Runtime kind selector for new chat and capsule composers, plus a read-only runtime chip for bound chat sessions; supports plugin runtime labels, descriptions, and icon keys from the runtime catalog.
+- **runtime-selector.tsx**: Runtime kind selector for draft chat composers, plus a read-only runtime chip for bound chat sessions; supports plugin runtime labels, descriptions, and icon keys from the runtime catalog.
 - **types.ts**: Toolbar selection and model-map type definitions.
 - **use-composer-state.ts**: Unified composer state hook that resolves runtime catalog options, provider targets, the currently selected target's cached model map, selected model, bound chat agent identity, CLI TUI agent, thinking effort, and persisted composer choices.
 - **use-composer-state.test.tsx**: Regression coverage for persisted composer choices and direct model-to-profile selection.

@@ -1,10 +1,11 @@
 import type { RuntimeKind } from '~/lib/types'
 import { getServerUrl } from '~/lib/electron'
 
+import type { ChatRuntimeSettings } from './chat-response-command'
+
 const SERVER_BASE = getServerUrl()
 
 export type RuntimeSessionStatusKind = 'idle' | 'pending' | 'streaming' | 'cancelling'
-export type RuntimePermissionMode = 'bypassPermissions' | 'plan'
 export type RuntimeRunStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 
 export interface RuntimeSessionRunStatus {
@@ -16,7 +17,7 @@ export interface RuntimeSessionRunStatus {
   modelId: string | null
   providerSessionId: string | null
   queueItemId: string | null
-  permissionMode: RuntimePermissionMode | null
+  runtimeSettings: ChatRuntimeSettings
 }
 
 export interface RuntimeSessionStatus {
@@ -26,7 +27,7 @@ export interface RuntimeSessionStatus {
   providerTargetId: string | null
   providerSessionId: string | null
   modelId: string | null
-  permissionMode: RuntimePermissionMode | null
+  runtimeSettings: ChatRuntimeSettings
   pendingQueueItemId: string | null
   hasActiveGoal: boolean
   activeRun: RuntimeSessionRunStatus | null

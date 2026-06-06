@@ -1204,11 +1204,9 @@ function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
 function GitHubAwaitComposer({
   sessionId,
   workspaceId,
-  compact = false,
 }: {
   sessionId: string | null
   workspaceId: string | null
-  compact?: boolean
 }) {
   const { data: remotes, isLoading: remotesLoading, isError: remotesError } = useGitRemotes(workspaceId)
   const { data: status } = useGitStatus(workspaceId)
@@ -1316,10 +1314,7 @@ function GitHubAwaitComposer({
   return (
     <form
       onSubmit={handleSubmit}
-      className={cn(
-        'rounded-lg border border-border/70 bg-muted/35 p-2.5',
-        compact ? 'space-y-2' : 'w-full max-w-[22rem] space-y-3',
-      )}
+      className="w-full max-w-[22rem] space-y-3 rounded-lg border border-border/70 bg-muted/35 p-2.5"
       data-testid="github-await-composer"
     >
       <div className="flex items-start gap-2">
@@ -1497,7 +1492,6 @@ export function AwaitPanel({ sessionId, workspaceId }: AwaitPanelProps) {
       data-testid="right-aside-await-panel"
       data-right-aside-await-ready={ready ? 'true' : 'false'}
     >
-      <GitHubAwaitComposer sessionId={sessionId} workspaceId={workspaceId} compact />
       {activeAwaits.length > 0 && (
         <div className="space-y-2">
           <span className="text-[10px] text-muted-foreground/50">Active</span>
