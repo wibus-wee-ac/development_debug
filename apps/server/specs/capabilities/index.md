@@ -57,6 +57,6 @@ Each capability is documented in its own file following the per-capability recon
 | # | Capability | Status | Description |
 |---|-----------|--------|-------------|
 | 17 | acp | ✅ | ACP registry, install lifecycle, installed-agent inventory, and audit queries |
-| 18 | pack-codebase | ✅ | Repomix codebase packing over HTTP |
-| 19 | observability | ✅ | Telemetry recording, incident rules |
-| 20 | preferences | ✅ | User preferences store |
+| 18 | observability | ✅ | Telemetry recording, incident rules |
+| 19 | preferences | ✅ | User preferences store |
+| 20 | cursor-agent | 📝 | Cursor Agent runtime, checkpoints, queue/immediate messaging, tools, MCP, CLI/headless, and background-agent feature model |

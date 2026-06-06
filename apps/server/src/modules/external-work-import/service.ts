@@ -5,15 +5,16 @@ import { basename, join } from 'node:path'
 
 import type { ExternalWorkImportItem } from '@cradle/db'
 import {
-  backendSessionBindings,
   externalWorkImportItems,
   messages,
   sessions,
 } from '@cradle/db'
-import { and, desc, eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
+import type { RuntimeKind } from '../provider-contracts/types'
+import { listDurableProviderRuntimeBindingsByProviderSession } from '../provider-runtime/service'
 import * as Workspace from '../workspace/service'
 
 type SourceApp = 'claude' | 'codex' | 'cursor' | 'windsurf' | 'gemini' | 'unknown'
@@ -268,7 +269,7 @@ function duplicateRecord(fingerprint: string): ExternalWorkImportItem | null {
     .get() ?? null
 }
 
-function runtimeKindForSourceApp(sourceApp: SourceApp): string | null {
+function runtimeKindForSourceApp(sourceApp: SourceApp): RuntimeKind | null {
   if (sourceApp === 'claude') {
     return 'claude-agent'
   }
@@ -291,18 +292,26 @@ function cradleSessionDuplicate(input: Pick<CandidateDraft, 'sourceApp' | 'sourc
     return null
   }
 
-  return db()
-    .select({
-      sessionId: sessions.id,
-      workspaceId: sessions.workspaceId,
-    })
-    .from(backendSessionBindings)
-    .innerJoin(sessions, eq(backendSessionBindings.chatSessionId, sessions.id))
-    .where(and(
-      eq(backendSessionBindings.runtimeKind, runtimeKind),
-      eq(backendSessionBindings.backendSessionId, input.externalId),
-    ))
-    .get() ?? null
+  const bindings = listDurableProviderRuntimeBindingsByProviderSession({
+    providerSessionId: input.externalId,
+    runtimeKind,
+  })
+
+  for (const binding of bindings) {
+    const session = db()
+      .select({
+        sessionId: sessions.id,
+        workspaceId: sessions.workspaceId,
+      })
+      .from(sessions)
+      .where(eq(sessions.id, binding.chatSessionId))
+      .get()
+    if (session) {
+      return session
+    }
+  }
+
+  return null
 }
 
 function applyDuplicates(drafts: CandidateDraft[]): PreviewItem[] {

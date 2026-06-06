@@ -202,6 +202,20 @@ function recordFingerprint(record: ParsedExternalProviderRecord): string {
   return hashText(stringify(payload))
 }
 
+function metadataString(metadata: Record<string, unknown>, key: string): string | null {
+  const value = metadata[key]
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
+}
+
+function iconSlugFromMetadata(metadata: Record<string, unknown>): string | null {
+  const iconSlug = metadataString(metadata, 'iconSlug')
+  if (iconSlug) {
+    return iconSlug
+  }
+  const iconUrl = metadataString(metadata, 'avatarUrl') ?? metadataString(metadata, 'iconUrl')
+  return iconUrl ? `url:${encodeURIComponent(iconUrl)}` : null
+}
+
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {
   return warnings.some(warning => warning.severity === 'error')
     ? 'error'
@@ -437,7 +451,7 @@ function syncRuntimeTarget(
       credentialRef,
       enabledModelsJson: existing?.enabledModelsJson ?? '[]',
       customModelsJson: existing?.customModelsJson ?? '[]',
-      iconSlug: existing?.iconSlug ?? null,
+      iconSlug: existing?.iconSlug ?? iconSlugFromMetadata(record.metadata),
       sourceFingerprint: recordFingerprint(record),
       createdAt: now,
       updatedAt: now,
@@ -449,6 +463,7 @@ function syncRuntimeTarget(
         displayName: record.name,
         connectionConfigJson: JSON.stringify(record.config),
         credentialRef,
+        iconSlug: existing?.iconSlug ?? iconSlugFromMetadata(record.metadata),
         sourceFingerprint: recordFingerprint(record),
         updatedAt: now,
       },

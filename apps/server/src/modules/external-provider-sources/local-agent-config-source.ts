@@ -1,8 +1,7 @@
-import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 import type {
   ExternalProviderRecord,
@@ -63,14 +62,30 @@ const CodexTomlSchema = z.object({
 
 const GeminiSettingsSchema = z.object({
   apiKey: OptionalStringSchema,
+  api_key: OptionalStringSchema,
   model: OptionalStringSchema,
+  endpoint: OptionalStringSchema,
+  baseUrl: OptionalStringSchema,
+  base_url: OptionalStringSchema,
   theme: OptionalStringSchema,
 }).catchall(z.unknown())
 
 const PiSettingsSchema = z.object({
   apiKey: OptionalStringSchema,
+  api_key: OptionalStringSchema,
   model: OptionalStringSchema,
   endpoint: OptionalStringSchema,
+  baseUrl: OptionalStringSchema,
+  base_url: OptionalStringSchema,
+}).catchall(z.unknown())
+
+const KimiSettingsSchema = z.object({
+  apiKey: OptionalStringSchema,
+  api_key: OptionalStringSchema,
+  model: OptionalStringSchema,
+  endpoint: OptionalStringSchema,
+  baseUrl: OptionalStringSchema,
+  base_url: OptionalStringSchema,
 }).catchall(z.unknown())
 
 const ReasoningEffortSchema = z.enum(['minimal', 'low', 'medium', 'high', 'xhigh'])
@@ -257,11 +272,16 @@ function readCodexConfig(config: LocalAgentConfigSourceConfig): CodexConfigReadR
 
 interface CliToolConfig {
   command: string
-  settingsDir: string
-  settingsFile: string
+  aliases?: string[]
+  app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi'
+  displayName: string
+  settingsDirName: string
+  settingsFileName: string
+  settingsSchema: z.ZodType<JsonObject>
   envKeyVars: string[]
   envBaseUrlVars: string[]
   envModelVars: string[]
+  iconSlug?: string
 }
 
 interface DetectedCliTool {
@@ -274,47 +294,117 @@ interface DetectedCliTool {
 
 const CLI_TOOLS: CliToolConfig[] = [
   {
+    command: 'claude',
+    app: 'claude',
+    displayName: 'Claude CLI',
+    settingsDirName: '.claude',
+    settingsFileName: 'settings.json',
+    settingsSchema: ClaudeSettingsSchema.transform(value => value.env),
+    envKeyVars: ['ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_API_KEY'],
+    envBaseUrlVars: ['ANTHROPIC_BASE_URL'],
+    envModelVars: ['ANTHROPIC_MODEL'],
+    iconSlug: 'claudecode',
+  },
+  {
+    command: 'codex',
+    app: 'codex',
+    displayName: 'Codex CLI',
+    settingsDirName: '.codex',
+    settingsFileName: 'auth.json',
+    settingsSchema: CodexAuthSchema,
+    envKeyVars: ['OPENAI_API_KEY'],
+    envBaseUrlVars: ['OPENAI_BASE_URL'],
+    envModelVars: ['OPENAI_MODEL'],
+    iconSlug: 'codex',
+  },
+  {
     command: 'gemini',
-    settingsDir: join(homedir(), '.gemini'),
-    settingsFile: join(homedir(), '.gemini', 'settings.json'),
+    app: 'gemini',
+    displayName: 'Gemini',
+    settingsDirName: '.gemini',
+    settingsFileName: 'settings.json',
+    settingsSchema: GeminiSettingsSchema,
     envKeyVars: ['GEMINI_API_KEY', 'GOOGLE_API_KEY'],
     envBaseUrlVars: ['GEMINI_BASE_URL', 'GOOGLE_BASE_URL'],
     envModelVars: ['GEMINI_MODEL'],
+    iconSlug: 'geminicli',
   },
   {
     command: 'pi',
-    settingsDir: join(homedir(), '.pi'),
-    settingsFile: join(homedir(), '.pi', 'config.json'),
+    app: 'pi',
+    displayName: 'Pi',
+    settingsDirName: '.pi',
+    settingsFileName: 'config.json',
+    settingsSchema: PiSettingsSchema,
     envKeyVars: ['PI_API_KEY'],
     envBaseUrlVars: ['PI_BASE_URL'],
     envModelVars: ['PI_MODEL'],
   },
+  {
+    command: 'kimi',
+    aliases: ['kimi-cli', 'kimi-ci'],
+    app: 'kimi',
+    displayName: 'Kimi',
+    settingsDirName: '.kimi',
+    settingsFileName: 'config.json',
+    settingsSchema: KimiSettingsSchema,
+    envKeyVars: ['KIMI_API_KEY', 'MOONSHOT_API_KEY'],
+    envBaseUrlVars: ['KIMI_BASE_URL', 'MOONSHOT_BASE_URL'],
+    envModelVars: ['KIMI_MODEL', 'MOONSHOT_MODEL'],
+    iconSlug: 'kimi',
+  },
 ]
 
-function detectCliExecutable(command: string): string | null {
-  try {
-    return execSync(`which ${command}`, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim() || null
+function cliToolSettingsFile(tool: CliToolConfig, config: LocalAgentConfigSourceConfig): string {
+  if (tool.app === 'claude') {
+    return config.claudeSettingsPath
   }
- catch {
-    return null
+  if (tool.app === 'codex') {
+    return config.codexAuthPath
   }
+  return join(dirname(config.claudeDir), tool.settingsDirName, tool.settingsFileName)
 }
 
-function detectCliTools(): DetectedCliTool[] {
+function detectCliExecutable(command: string): string | null {
+  const pathEntries = process.env.PATH?.split(':').filter(Boolean) ?? []
+  for (const pathEntry of pathEntries) {
+    const candidate = join(pathEntry, command)
+    try {
+      accessSync(candidate, constants.X_OK)
+      return candidate
+    }
+    catch {
+      continue
+    }
+  }
+  return null
+}
+
+function detectFirstCliExecutable(commands: string[]): { command: string, executablePath: string } | null {
+  for (const command of commands) {
+    const executablePath = detectCliExecutable(command)
+    if (executablePath) {
+      return { command, executablePath }
+    }
+  }
+  return null
+}
+
+function detectCliTools(config: LocalAgentConfigSourceConfig): DetectedCliTool[] {
   const results: DetectedCliTool[] = []
   for (const tool of CLI_TOOLS) {
-    const executablePath = detectCliExecutable(tool.command)
-    if (!executablePath) {
+    const detected = detectFirstCliExecutable([tool.command, ...(tool.aliases ?? [])])
+    if (!detected) {
       continue
     }
 
-    const settingsResult = readJsonFile(tool.settingsFile, GeminiSettingsSchema, `local-${tool.command}-settings-invalid`, `${tool.command} settings`)
+    const settingsResult = readJsonFile(cliToolSettingsFile(tool, config), tool.settingsSchema, `local-${tool.command}-settings-invalid`, `${tool.command} settings`)
     const settings = settingsResult.found ? (settingsResult.value as JsonObject ?? {}) : {}
     const warnings = settingsResult.warning ? [settingsResult.warning] : []
 
     results.push({
       tool,
-      executablePath,
+      executablePath: detected.executablePath,
       settings: settingsResult.found ? settings : null,
       settingsFound: settingsResult.found,
       warnings,
@@ -323,57 +413,64 @@ function detectCliTools(): DetectedCliTool[] {
   return results
 }
 
-function cliToolRecord(detected: DetectedCliTool): ExternalProviderRecord | null {
-  const envApiKey = detected.tool.envKeyVars
+function firstEnvValue(keys: string[], includeProcessEnv: boolean): string | undefined {
+  if (!includeProcessEnv) {
+    return undefined
+  }
+  return keys
     .map(key => process.env[key])
     .find(val => val && val.trim().length > 0)
+}
+
+function cliToolRecord(detected: DetectedCliTool, includeProcessEnv: boolean): ExternalProviderRecord | null {
+  const envApiKey = firstEnvValue(detected.tool.envKeyVars, includeProcessEnv)
 
   const settingsApiKey = detected.settings
-    ? (detected.settings.apiKey as string | undefined)
+    ? ((detected.settings.apiKey as string | undefined) ?? (detected.settings.api_key as string | undefined))
     : undefined
   const apiKey = settingsApiKey ?? envApiKey
 
-  const envBaseUrl = detected.tool.envBaseUrlVars
-    .map(key => process.env[key])
-    .find(val => val && val.trim().length > 0)
+  const envBaseUrl = firstEnvValue(detected.tool.envBaseUrlVars, includeProcessEnv)
 
   const settingsModel = detected.settings
     ? (detected.settings.model as string | undefined)
     : undefined
-  const envModel = detected.tool.envModelVars
-    .map(key => process.env[key])
-    .find(val => val && val.trim().length > 0)
+  const envModel = firstEnvValue(detected.tool.envModelVars, includeProcessEnv)
   const model = settingsModel ?? envModel
 
   const settingsEndpoint = detected.settings
-    ? (detected.settings.endpoint as string | undefined)
+    ? (
+        (detected.settings.endpoint as string | undefined)
+        ?? (detected.settings.baseUrl as string | undefined)
+        ?? (detected.settings.base_url as string | undefined)
+      )
     : undefined
   const baseUrl = settingsEndpoint ?? envBaseUrl
 
-  const hasSignal = detected.settingsFound || Boolean(apiKey) || Boolean(baseUrl) || Boolean(model)
+  const hasSignal = detected.settingsFound || Boolean(apiKey) || Boolean(baseUrl) || Boolean(model) || Boolean(detected.executablePath)
   if (!hasSignal) {
     return null
   }
 
-  const app = detected.tool.command as 'gemini' | 'pi'
-
   return {
-    externalId: `${detected.tool.command}:local-current`,
-    app,
-    name: `Local ${detected.tool.command.charAt(0).toUpperCase()}${detected.tool.command.slice(1)}`,
+    externalId: `${detected.tool.command}:local-command`,
+    app: detected.tool.app,
+    name: `Local ${detected.tool.displayName}`,
     providerKind: 'cli-tool',
     config: compactRecord({
       executable: detected.executablePath,
       baseUrl,
       model,
     }),
-    credential: apiKey ? { kind: 'api-key', value: apiKey, label: `Local ${detected.tool.command}` } : undefined,
+    credential: apiKey ? { kind: 'api-key', value: apiKey, label: `Local ${detected.tool.displayName}` } : undefined,
     current: true,
     metadata: compactRecord({
       executable: detected.executablePath,
       baseUrl,
       model,
       apiFormat: 'cli-tool',
+      iconSlug: detected.tool.iconSlug,
+      runtimeKind: 'cli-tui',
       rawFingerprintHint: hashText({
         executable: detected.executablePath,
         settingsFound: detected.settingsFound,
@@ -436,6 +533,7 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
       baseUrl: input.env.ANTHROPIC_BASE_URL,
       model: input.env.ANTHROPIC_MODEL,
       apiFormat: 'anthropic',
+      iconSlug: 'claude',
       rawFingerprintHint: hashText({
         settingsFound: input.settingsFound,
         localSettingsFound: input.localSettingsFound,
@@ -495,6 +593,7 @@ function codexRecord(input: CodexConfigReadResult): ExternalProviderRecord | nul
       baseUrl,
       model: input.config.model,
       apiFormat: wireApi ? `openai_${wireApi}` : 'openai',
+      iconSlug: 'codex',
       rawFingerprintHint: hashText({
         configFound: input.configFound,
         authFound: input.authFound,
@@ -523,12 +622,18 @@ export function readLocalAgentConfigExternalProviderSnapshot(
 ): ExternalProviderSourceSnapshot {
   const claude = readClaudeConfig(config)
   const codex = readCodexConfig(config)
-  const cliTools = detectCliTools()
+  const cliTools = detectCliTools(config)
   const cliRecords = cliTools
-    .map(detected => cliToolRecord(detected))
+    .map(detected => cliToolRecord(detected, config.includeProcessEnv))
     .filter((record): record is ExternalProviderRecord => Boolean(record))
 
-  const providers = [claudeRecord(claude), codexRecord(codex), ...cliRecords]
+  const providers = [
+    claudeRecord(claude),
+    codexRecord(codex),
+    ...cliRecords.filter(record =>
+      (record.app !== 'claude' && record.app !== 'codex')
+      || !providersHaveAppConfig(record.app, claude, codex)),
+  ]
     .filter((record): record is ExternalProviderRecord => Boolean(record))
   const warnings = [
     ...claude.warnings,
@@ -552,6 +657,20 @@ export function readLocalAgentConfigExternalProviderSnapshot(
     inventory: {},
     warnings,
   }
+}
+
+function providersHaveAppConfig(
+  app: string,
+  claude: ClaudeConfigReadResult,
+  codex: CodexConfigReadResult,
+): boolean {
+  if (app === 'claude') {
+    return Boolean(claudeRecord(claude))
+  }
+  if (app === 'codex') {
+    return Boolean(codexRecord(codex))
+  }
+  return false
 }
 
 export async function readLocalAgentConfigExternalProviderSnapshotFromContext(

@@ -32,6 +32,9 @@ const recordMetadataSchema = t.Object({
   baseUrl: t.Optional(t.String()),
   model: t.Optional(t.String()),
   apiFormat: t.Optional(t.String()),
+  iconSlug: t.Optional(t.String()),
+  iconUrl: t.Optional(t.String()),
+  avatarUrl: t.Optional(t.String()),
   sourceUpdatedAt: t.Optional(t.String()),
   rawFingerprintHint: t.Optional(t.String()),
 })

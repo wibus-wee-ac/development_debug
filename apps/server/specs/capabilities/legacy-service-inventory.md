@@ -8,7 +8,7 @@ Evidence catalog of the old service layer for migration reference.
 |----------|---------|
 | 🟢 Pure Logic | `events/`, `agent-runtime/` (core), `kanban/`, `workspace/`, `skills/`, `workflow-rules/`, `observability/`, `backend-control-plane/`, `issue-agent/`, `pty/`, `acp-feature/`, `chat/` (core) |
 | 🟡 Adapter Needed | `db/` (path resolution), `chat/` (broadcast), `signal/` (consumers) |
-| 🔴 Electron-Coupled | `signal/` (impl), `socket/`, `acp/`, `pack-codebase/`, `storage/`, `window/`, `devtools/` |
+| 🔴 Electron-Coupled | `signal/` (impl), `socket/`, `acp/`, `storage/`, `window/`, `devtools/` |
 
 ## IPC Service Map (20 services, ~130 methods)
 
@@ -27,7 +27,6 @@ Evidence catalog of the old service layer for migration reference.
 | WorkflowRulesService | rules CRUD | 🟢 | workflow-rules |
 | PtyService | terminal mgmt | 🟢 | pty-manager |
 | GitService | git operations | 🟢 | simple-git |
-| PackCodebaseService | repomix pack | 🔴 | pack-codebase |
 | AcpService | ACP agents lifecycle | 🔴 | acp/* |
 | PreferencesService | user prefs | 🟡 | electron-store |
 | DevService | dev utilities | 🔴 | Electron APIs |
@@ -51,5 +50,4 @@ Evidence catalog of the old service layer for migration reference.
 | `app.getPath('userData')` | socket, acp | env var / config |
 | `BrowserWindow` | window, devtools | N/A (no windows in server) |
 | `WebContents.send()` | signal/broadcaster | WebSocket push |
-| `app.isPackaged` | pack-codebase | env var |
 | `is.dev` | db/index.ts | env var |

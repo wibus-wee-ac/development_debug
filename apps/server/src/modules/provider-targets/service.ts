@@ -5,7 +5,6 @@ import {
   agents,
   agentSessions,
   backendCapabilitySnapshots,
-  backendSessionBindings,
   chatSessionQueueItems,
   externalProviderRecords,
   providerModelCache,
@@ -22,6 +21,10 @@ import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
+import {
+  releaseLiveProviderRuntimeSessionsForProviderTarget,
+  unlinkProviderTargetFromDurableProviderRuntimeBindings,
+} from '../provider-runtime/service'
 
 const ProviderTargetRefSchema = z.object({
   id: z.string().trim().min(1),
@@ -309,10 +312,10 @@ export function removeProviderTarget(providerTargetId: string): void {
       .set({ providerTargetId: null, updatedAt: now })
       .where(eq(sessions.providerTargetId, target.id))
       .run()
-    tx.update(backendSessionBindings)
-      .set({ providerTargetId: null, updatedAt: now })
-      .where(eq(backendSessionBindings.providerTargetId, target.id))
-      .run()
+    unlinkProviderTargetFromDurableProviderRuntimeBindings({
+      providerTargetId: target.id,
+      writer: tx,
+    })
     tx.update(backendCapabilitySnapshots)
       .set({ providerTargetId: null })
       .where(eq(backendCapabilitySnapshots.providerTargetId, target.id))
@@ -344,6 +347,7 @@ export function removeProviderTarget(providerTargetId: string): void {
     }
     tx.delete(providerTargets).where(eq(providerTargets.id, target.id)).run()
   })
+  releaseLiveProviderRuntimeSessionsForProviderTarget(target.id)
 }
 
 export function assertProviderTargetCompatibleWithRuntime(
