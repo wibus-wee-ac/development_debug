@@ -5,7 +5,7 @@ import {
   getChatSessionsBySessionIdMessagesQueryKey,
   getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { useChatStore } from '~/store/chat'
 
 import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'

@@ -63,10 +63,9 @@ export function ChatQueueList({
   }
 
   return (
-    <div
-      className={cn('rounded-md border border-border/50 bg-background/90 px-2 py-2', className)}
+    <ul
+      className={cn('m-0 list-none rounded-md border border-border/50 bg-background/90 px-2 py-2', className)}
       data-testid="chat-queue-list"
-      role="list"
       aria-live="polite"
     >
       <div className="mb-1.5 flex items-center justify-between px-1">
@@ -95,7 +94,7 @@ export function ChatQueueList({
             interaction: runtimeInteractionLabel,
           })
           return (
-            <div
+            <li
               key={item.id}
               className={cn(
                 'flex items-center gap-2 rounded-md bg-muted/35 px-2 py-1.5 text-xs transition-colors',
@@ -103,7 +102,6 @@ export function ChatQueueList({
                 draggedItemId === item.id && 'bg-muted/70 opacity-70',
               )}
               data-testid="chat-queue-item"
-              role="listitem"
               draggable={isPending}
               onDragStart={(event) => {
                 if (!isPending) {
@@ -183,10 +181,10 @@ export function ChatQueueList({
                       </Button>
                     </>
                   )}
-            </div>
+            </li>
           )
         })}
       </div>
-    </div>
+    </ul>
   )
 }

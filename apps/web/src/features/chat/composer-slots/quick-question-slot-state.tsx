@@ -108,7 +108,7 @@ export function QuickQuestionSlotState({
         : (
             <div
               ref={contentRef}
-              className="max-h-56 overflow-y-auto rounded-md border border-border/60 bg-background/55 px-2.5 py-2"
+              className="max-h-56 overflow-y-auto rounded-md"
             >
               {content
                 ? (

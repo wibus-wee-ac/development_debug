@@ -235,7 +235,7 @@ function CompactUsageIcon({
 
 export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
   const [selection, setSelection] = useState({ activeIndex: 0, query })
-  const listRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLMenuElement>(null)
 
   const results = useMemo(() => {
     return getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item }))
@@ -311,24 +311,22 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
 
   return (
     <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl backdrop-blur-md">
-      <div
+      <menu
         ref={listRef}
-        className="max-h-72 overflow-y-auto p-1"
+        className="m-0 max-h-72 list-none overflow-y-auto p-1"
         id={listboxId}
-        role="listbox"
       >
         {results.map(({ item }, idx) => {
           const subtitle = formatCommandRowSubtitle(commands, item)
           const badge = getCommandBadge(commands, item)
           const isAvailable = isSlashCommandAvailable(item)
           return (
-            <button
-              key={formatCommandKey(item, idx)}
+            <li key={formatCommandKey(item, idx)}>
+              <button
               type="button"
               id={formatSlashCommandOptionId(item, idx)}
-              role="option"
               aria-label={`${readCommandTitle(item)} ${getSlashCommandSourceLabel(item)}`}
-              aria-selected={formatSlashCommandOptionId(item, idx) === activeOptionId}
+              data-active={formatSlashCommandOptionId(item, idx) === activeOptionId}
               disabled={!isAvailable}
               className={cn(
                 'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1 text-left',
@@ -370,10 +368,11 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
                   </span>
                 )}
               </span>
-            </button>
+              </button>
+            </li>
           )
         })}
-      </div>
+      </menu>
     </div>
   )
 }

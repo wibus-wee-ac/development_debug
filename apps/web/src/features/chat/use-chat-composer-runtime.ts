@@ -3,12 +3,11 @@ import type { FileUIPart } from 'ai'
 import { useCallback, useMemo } from 'react'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getUsageSessionsBySessionId } from '~/api-gen/sdk.gen'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
 import { useGitStatus } from '~/features/git/use-git'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { isElectron, platform } from '~/lib/electron'
-import type { ModelDescriptor } from '~/lib/types'
 
 import type { ChatRuntimeCompactUiSlotState, ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
 import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
@@ -17,7 +16,6 @@ import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
-  CRADLE_BTW_SLASH_COMMAND,
   CRADLE_SIDE_CHAT_SLASH_COMMAND,
   projectRuntimeComposerSlashCommands,
   withSlashCommandAvailability,
@@ -45,17 +43,15 @@ export interface ChatComposerRuntime {
   uiSlots: ChatRuntimeUiSlot[]
   slotStates: ChatRuntimeUiSlotState[]
   supportsAttachments: boolean
-  tokenUsage: {
+  tokenUsage: null | {
     tokens: number
-    contextWindow: number | null
+    contextWindow: number
   }
 }
 
 interface UseChatComposerRuntimeOptions {
   sessionId: string | null
-  status: string
   isStreaming: boolean
-  messageCount: number
   isReady: boolean
   workspaceId?: string | null
   composerModel?: ModelDescriptor | null
@@ -107,9 +103,7 @@ function readCodexReviewAvailability({
 
 export function useChatComposerRuntime({
   sessionId,
-  status,
   isStreaming,
-  messageCount,
   isReady,
   workspaceId,
   composerModel,
@@ -157,10 +151,6 @@ export function useChatComposerRuntime({
     }
     return sessionModels.find(candidate => candidate.id === sessionBinding.modelId) ?? null
   }, [composerModel, sessionBinding?.modelId, sessionModels])
-  const sessionContextWindow = useMemo(() => {
-    const contextWindow = currentSessionModel?.capabilities.contextWindow
-    return contextWindow != null && contextWindow > 0 ? contextWindow : null
-  }, [currentSessionModel])
   const supportsAttachments = useMemo(() => {
     return modelSupportsAttachments(currentSessionModel)
   }, [currentSessionModel])
@@ -181,7 +171,7 @@ export function useChatComposerRuntime({
       return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
     })()
 
-    return [CRADLE_SIDE_CHAT_SLASH_COMMAND, CRADLE_BTW_SLASH_COMMAND, appshotCommand]
+    return [CRADLE_SIDE_CHAT_SLASH_COMMAND, appshotCommand]
   }, [supportsAttachments])
   const mapRuntimeUiSlotCommand = useCallback((command: ChatComposerSlashCommand) => {
     if (command.id === 'codex:review') {
@@ -207,19 +197,18 @@ export function useChatComposerRuntime({
     mapRuntimeUiSlotCommand,
   }), [cradleSlashCommands, mapRuntimeUiSlotCommand, runtimeCapabilities, runtimeUiSlotStates?.states])
 
-  const { data: sessionTokens = 0 } = useQuery({
-    queryKey: ['chat', 'session-usage', sessionId ?? 'no-session', messageCount] as const,
-    queryFn: async () => {
-      const res = await getUsageSessionsBySessionId({ path: { sessionId: sessionId! } })
-      return res.data?.totalTokens ?? 0
-    },
-    enabled: !!sessionId && status !== 'streaming',
-    staleTime: 10_000,
-    retry: false,
-  })
   const compactSlotState = useMemo(() => {
     return (runtimeUiSlotStates?.states ?? []).find((state): state is ChatRuntimeCompactUiSlotState => state.kind === 'compact') ?? null
   }, [runtimeUiSlotStates?.states])
+  const tokenUsage = useMemo<ChatComposerRuntime['tokenUsage']>(() => {
+    if (!compactSlotState?.modelContextWindow) {
+      return null
+    }
+    return {
+      tokens: compactSlotState.total.totalTokens,
+      contextWindow: compactSlotState.modelContextWindow,
+    }
+  }, [compactSlotState])
 
   const send = useCallback(
     (text: string, files: FileUIPart[], contextParts: ChatContextPart[], options?: { invertContinuationMode?: boolean }) => {
@@ -246,10 +235,7 @@ export function useChatComposerRuntime({
     uiSlots: runtimeCapabilities?.uiSlots ?? [],
     slotStates: runtimeUiSlotStates?.states ?? [],
     supportsAttachments,
-    tokenUsage: {
-      tokens: compactSlotState?.total.totalTokens ?? sessionTokens,
-      contextWindow: compactSlotState?.modelContextWindow ?? sessionContextWindow,
-    },
+    tokenUsage,
   }
 }
 

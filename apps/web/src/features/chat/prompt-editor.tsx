@@ -12,9 +12,9 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 
 import { cn } from '~/lib/cn'
 
-import type { ChatContextPart, ChatSkillContextPart } from './chat-context-parts'
+import type { ChatContextPart, ChatPluginContextPart, ChatSkillContextPart } from './chat-context-parts'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import type { MentionItem } from './mention-panel'
+import type { MentionItem, PluginMentionItem } from './mention-panel'
 import type { SkillMentionItem } from './skill-mention-panel'
 import { formatSkillMentionTokenLabel, SKILL_MENTION_TOKEN_CLASS } from './skill-mention-token'
 import { getActiveSlashCommand } from './slash-command-input'
@@ -47,6 +47,7 @@ export interface PromptEditorController {
   getContextParts: () => ChatContextPart[]
   getText: () => string
   insertFileMention: (item: MentionItem, range: PromptEditorTriggerRange) => void
+  insertPluginMention: (item: PluginMentionItem, range: PromptEditorTriggerRange) => void
   insertSkillMention: (item: SkillMentionItem, range: PromptEditorTriggerRange) => void
   insertText: (text: string) => void
   replaceFileTriggerWithText: (item: MentionItem, range: PromptEditorTriggerRange) => void
@@ -170,6 +171,56 @@ const skillMentionSpec: NodeSpec = {
   }],
 }
 
+const pluginMentionSpec: NodeSpec = {
+  attrs: {
+    provider: { default: 'cradle' },
+    pluginName: { default: '' },
+    displayName: { default: '' },
+    description: { default: null },
+    iconUrl: { default: null },
+    routeSegment: { default: '' },
+    capabilities: { default: [] },
+    mcpServers: { default: [] },
+    nativeMention: { default: null },
+  },
+  atom: true,
+  inline: true,
+  group: 'inline',
+  draggable: false,
+  selectable: false,
+  toDOM(node) {
+    const text = node.attrs.displayName || node.attrs.pluginName
+    return [
+      'span',
+      {
+        ...pluginMentionDomAttrs(node),
+        contenteditable: 'false',
+      },
+      `@${text}`,
+    ]
+  },
+  parseDOM: [{
+    tag: 'span[data-plugin-mention-name]',
+    getAttrs(element) {
+      if (!(element instanceof HTMLElement)) {
+        return false
+      }
+      const pluginName = element.getAttribute('data-plugin-mention-name') ?? ''
+      return {
+        provider: element.getAttribute('data-plugin-mention-provider') === 'codex' ? 'codex' : 'cradle',
+        pluginName,
+        displayName: element.getAttribute('data-plugin-mention-display-name') ?? pluginName,
+        description: element.getAttribute('data-plugin-mention-description') || null,
+        iconUrl: element.getAttribute('data-plugin-mention-icon-url') || null,
+        routeSegment: element.getAttribute('data-plugin-mention-route-segment') ?? '',
+        capabilities: readJsonAttribute(element, 'data-plugin-mention-capabilities', []),
+        mcpServers: readJsonAttribute(element, 'data-plugin-mention-mcp-servers', []),
+        nativeMention: readJsonAttribute(element, 'data-plugin-mention-native-mention', null),
+      }
+    },
+  }],
+}
+
 export const promptEditorSchema = new Schema({
   nodes: {
     doc: { content: 'paragraph+' },
@@ -183,6 +234,7 @@ export const promptEditorSchema = new Schema({
     text: { group: 'inline' },
     fileMention: fileMentionSpec,
     skillMention: skillMentionSpec,
+    pluginMention: pluginMentionSpec,
   },
   marks: {},
 })
@@ -273,6 +325,24 @@ export const PromptEditor = forwardRef((
         label,
         path,
         type: item.type,
+      })
+      replaceRangeWithInlineNode(view, range, node)
+    },
+    insertPluginMention(item, range) {
+      const view = viewRef.current
+      if (!view) {
+        return
+      }
+      const node = promptEditorSchema.nodes.pluginMention.create({
+        provider: item.provider ?? 'cradle',
+        pluginName: item.pluginName,
+        displayName: item.displayName,
+        description: item.description,
+        iconUrl: item.iconUrl,
+        routeSegment: item.routeSegment,
+        capabilities: item.capabilities,
+        mcpServers: item.mcpServers,
+        nativeMention: item.nativeMention ?? null,
       })
       replaceRangeWithInlineNode(view, range, node)
     },
@@ -470,6 +540,7 @@ function createEditorProps({
     nodeViews: {
       fileMention: createMentionNodeView,
       skillMention: createMentionNodeView,
+      pluginMention: createMentionNodeView,
     },
   }
 }
@@ -638,13 +709,30 @@ function replaceRangeWithInlineNode(view: EditorView, range: PromptEditorTrigger
 
 function createMentionNodeView(node: ProseMirrorNode): NodeView {
   const dom = document.createElement('span')
-  const attrs = node.type.name === 'skillMention' ? skillMentionDomAttrs(node) : fileMentionDomAttrs(node)
+  const attrs = node.type.name === 'skillMention'
+    ? skillMentionDomAttrs(node)
+    : node.type.name === 'pluginMention'
+      ? pluginMentionDomAttrs(node)
+      : fileMentionDomAttrs(node)
   for (const [name, value] of Object.entries(attrs)) {
     dom.setAttribute(name, value)
   }
-  dom.textContent = node.type.name === 'skillMention'
-    ? formatSkillMentionTokenLabel(String(node.attrs.displayName || node.attrs.name))
-    : String(node.attrs.label)
+  if (node.type.name === 'pluginMention' && typeof node.attrs.iconUrl === 'string' && node.attrs.iconUrl.length > 0) {
+    const image = document.createElement('img')
+    image.src = node.attrs.iconUrl
+    image.alt = ''
+    image.setAttribute('aria-hidden', 'true')
+    image.className = 'size-3 shrink-0 rounded-sm object-cover ring-1 ring-black/10 dark:ring-white/10'
+    dom.appendChild(image)
+    dom.appendChild(document.createTextNode(`@${String(node.attrs.displayName || node.attrs.pluginName)}`))
+  }
+  else {
+    dom.textContent = node.type.name === 'skillMention'
+      ? formatSkillMentionTokenLabel(String(node.attrs.displayName || node.attrs.name))
+      : node.type.name === 'pluginMention'
+        ? `@${String(node.attrs.displayName || node.attrs.pluginName)}`
+        : String(node.attrs.label)
+  }
   dom.contentEditable = 'false'
 
   return {
@@ -675,6 +763,35 @@ function skillMentionDomAttrs(node: ProseMirrorNode): Record<string, string> {
   }
 }
 
+function pluginMentionDomAttrs(node: ProseMirrorNode): Record<string, string> {
+  const text = String(node.attrs.displayName || node.attrs.pluginName)
+  return {
+    'class': 'inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline text-[0.8125em] font-medium leading-none text-primary ring-1 ring-primary/15',
+    'data-plugin-mention-provider': String(node.attrs.provider === 'codex' ? 'codex' : 'cradle'),
+    'data-plugin-mention-name': String(node.attrs.pluginName),
+    'data-plugin-mention-display-name': text,
+    'data-plugin-mention-description': typeof node.attrs.description === 'string' ? node.attrs.description : '',
+    'data-plugin-mention-icon-url': typeof node.attrs.iconUrl === 'string' ? node.attrs.iconUrl : '',
+    'data-plugin-mention-route-segment': String(node.attrs.routeSegment),
+    'data-plugin-mention-capabilities': JSON.stringify(node.attrs.capabilities ?? []),
+    'data-plugin-mention-mcp-servers': JSON.stringify(node.attrs.mcpServers ?? []),
+    'data-plugin-mention-native-mention': JSON.stringify(node.attrs.nativeMention ?? null),
+  }
+}
+
+function readJsonAttribute<T>(element: HTMLElement, name: string, fallback: T): T {
+  const raw = element.getAttribute(name)
+  if (!raw) {
+    return fallback
+  }
+  try {
+    return JSON.parse(raw) as T
+  }
+  catch {
+    return fallback
+  }
+}
+
 function readSnapshot(
   state: EditorState,
   slashCommands: ChatComposerSlashCommand[],
@@ -700,6 +817,9 @@ export function serializePromptDoc(doc: ProseMirrorNode): string {
         text += `@${node.attrs.path}`
       }
       else if (node.type.name === 'skillMention') {
+        text += ''
+      }
+      else if (node.type.name === 'pluginMention') {
         text += ''
       }
       else if (node.type.name === 'hardBreak') {
@@ -733,6 +853,23 @@ export function readContextParts(doc: ProseMirrorNode): ChatContextPart[] {
         textOffset += 1
         return
       }
+      if (node.type.name === 'pluginMention') {
+        const part: ChatPluginContextPart = {
+          type: 'data-cradle-plugin',
+          provider: node.attrs.provider === 'codex' ? 'codex' : 'cradle',
+          pluginName: String(node.attrs.pluginName),
+          displayName: String(node.attrs.displayName || node.attrs.pluginName),
+          description: typeof node.attrs.description === 'string' ? node.attrs.description : null,
+          iconUrl: typeof node.attrs.iconUrl === 'string' ? node.attrs.iconUrl : null,
+          routeSegment: String(node.attrs.routeSegment),
+          capabilities: Array.isArray(node.attrs.capabilities) ? node.attrs.capabilities : [],
+          mcpServers: Array.isArray(node.attrs.mcpServers) ? node.attrs.mcpServers : [],
+          nativeMention: isPluginNativeMention(node.attrs.nativeMention) ? node.attrs.nativeMention : null,
+          position: textOffset,
+        }
+        parts.push(part)
+        return
+      }
       if (node.type.name !== 'skillMention') {
         return
       }
@@ -748,6 +885,15 @@ export function readContextParts(doc: ProseMirrorNode): ChatContextPart[] {
     })
   })
   return parts
+}
+
+function isPluginNativeMention(value: unknown): value is { name: string, path: string } {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && typeof (value as { name?: unknown }).name === 'string'
+    && typeof (value as { path?: unknown }).path === 'string',
+  )
 }
 
 function readActiveTrigger(

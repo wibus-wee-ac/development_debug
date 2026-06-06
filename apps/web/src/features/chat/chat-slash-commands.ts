@@ -113,16 +113,6 @@ export const CRADLE_SIDE_CHAT_SLASH_COMMAND: ChatComposerSlashCommand = {
   iconKey: 'side-chat',
 }
 
-export const CRADLE_BTW_SLASH_COMMAND: ChatComposerSlashCommand = {
-  id: 'cradle:btw',
-  name: 'btw',
-  description: 'Ask a quick question without saving it to history',
-  argumentHint: '[question]',
-  source: 'cradle',
-  action: { kind: 'insertText', text: '/btw ' },
-  iconKey: 'quick-question',
-}
-
 export interface MergeChatSlashCommandsInput {
   runtimeCommands: ChatSlashCommand[]
   runtimeUiSlotCommands?: ChatComposerSlashCommand[]
@@ -143,6 +133,9 @@ function normalizeCommandName(name: string): string {
 
 function isRuntimeUiSlotSlashCommand(slot: ChatRuntimeUiSlot, mode: RuntimeComposerSlashCommandMode): boolean {
   if (mode === 'draft' && slot.id === 'codex:usage') {
+    return false
+  }
+  if (mode === 'draft' && slot.iconKey === 'quick-question') {
     return false
   }
   return slot.surfaces.includes('slashCommand') || slot.id === 'codex:usage'

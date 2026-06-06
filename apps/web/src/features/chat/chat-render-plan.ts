@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 
-import type { ChatSkillContextMessagePart } from './chat-context-parts'
-import { isChatSkillContextPart } from './chat-context-parts'
+import type { ChatPluginContextMessagePart, ChatSkillContextMessagePart } from './chat-context-parts'
+import { isChatPluginContextPart, isChatSkillContextPart } from './chat-context-parts'
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
 
 export type MessagePart = UIMessage['parts'][number]
@@ -30,6 +30,7 @@ export type ChatRenderSegment
     | ({ kind: 'tool-call' } & ToolCallRenderItem)
     | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
     | (MessagePartRefBase & { kind: 'skill-context' })
+    | (MessagePartRefBase & { kind: 'plugin-context' })
     | (MessagePartRefBase & { kind: 'file-attachment' })
 
 export type ChatRenderItem
@@ -38,6 +39,7 @@ export type ChatRenderItem
     | ({ kind: 'tool-call' } & ToolCallRenderItem)
     | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
     | { kind: 'skill-context', part: ChatSkillContextMessagePart, key: string }
+    | { kind: 'plugin-context', part: ChatPluginContextMessagePart, key: string }
     | { kind: 'file-attachment', part: FileMessagePart, key: string }
 
 export interface ExecutionPhaseSplit {
@@ -112,6 +114,14 @@ export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderS
         partIndex: i,
       })
     }
+    else if (isChatPluginContextPart(part)) {
+      items.push({
+        kind: 'plugin-context',
+        key,
+        messageId: input.messageId,
+        partIndex: i,
+      })
+    }
     else {
       const toolPart = readRenderableToolPart(part)
       if (!toolPart) {
@@ -150,6 +160,9 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
     }
     else if (isChatSkillContextPart(part)) {
       items.push({ kind: 'skill-context', part: part as ChatSkillContextMessagePart, key })
+    }
+    else if (isChatPluginContextPart(part)) {
+      items.push({ kind: 'plugin-context', part: part as ChatPluginContextMessagePart, key })
     }
     else {
       const toolPart = readRenderableToolPart(part)

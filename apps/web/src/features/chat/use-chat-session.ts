@@ -9,6 +9,8 @@ import {
   getChatSessionsBySessionIdMessagesQueryKey,
   getSessionsByIdQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
+import { postChatSessionsBySessionIdCodexAppServerInvoke } from '~/api-gen/sdk.gen'
+import { toastManager } from '~/components/ui/toast'
 import { submitSideConversationMessage } from '~/features/browser/side-conversation-panel'
 import { isSessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { useBrowserPanelStore } from '~/store/browser-panel'
@@ -29,15 +31,17 @@ import {
   enqueueChatSessionQueueItem,
   executeBangCommand,
   listChatSessionQueue,
+  readChatCommandErrorCode,
   reorderChatSessionQueue,
   steerChatSessionTurn,
   submitRuntimeUserInput,
 } from './chat-response-command'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
 import { ChatStreamingHandler } from './chat-streaming-handler'
-import { buildOptimisticUserMessage } from './optimistic-chat-turn'
+import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
+import { getRuntimeSessionStatus } from './runtime-session-status-command'
 import { runtimeSettingsQueryKey } from './runtime-settings-command'
-import { useRuntimeSessionStatus } from './use-runtime-session-status'
+import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from './use-runtime-session-status'
 
 // ── Message Snapshot Types ──────────────────────────────────
 
@@ -479,6 +483,9 @@ export function useChatSession(chatSessionId: string | null) {
     }
     const bangCommand = files.length === 0 && contextParts.length === 0 ? readBangCommand(text) : null
     const sideChatMessage = readSideChatCommand(trimmedText)
+    const codexGoalObjective = files.length === 0 && contextParts.length === 0
+      ? readCodexGoalCommandObjective(text)
+      : null
     const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
     const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
 
@@ -504,7 +511,7 @@ export function useChatSession(chatSessionId: string | null) {
         })
         useChatStore.getState().removeMessage(chatSessionId, driverMessageId)
 
-        const ownerId = `chat:${chatSessionId}`
+        const ownerId = useLayoutStore.getState().activeBrowserPanelOwnerId
         useBrowserPanelStore.getState().openSideConversationTab({
           parentSessionId: chatSessionId,
           sideConversationId: result.sideConversationId,
@@ -631,6 +638,40 @@ export function useChatSession(chatSessionId: string | null) {
     }
 
     if (isBusy) {
+      if (codexGoalObjective) {
+        const runtimeStatus = await queryClient.fetchQuery({
+          queryKey: runtimeSessionStatusQueryKey(chatSessionId),
+          queryFn: () => getRuntimeSessionStatus(chatSessionId),
+          staleTime: 0,
+        })
+        if (runtimeStatus.runtimeKind === 'codex') {
+          const threadId = runtimeStatus.providerSessionId
+          if (!threadId) {
+            throw new Error('Cannot update Codex goal before the provider thread is available.')
+          }
+
+          await postChatSessionsBySessionIdCodexAppServerInvoke({
+            path: { sessionId: chatSessionId },
+            body: {
+              method: 'thread/goal/set',
+              params: {
+                threadId,
+                objective: codexGoalObjective,
+                status: 'active',
+              },
+              providerTargetId: opts?.providerTargetId ?? undefined,
+              modelId: opts?.modelId ?? undefined,
+            },
+            throwOnError: true,
+          })
+          scheduleSnapshotRefresh(0)
+          void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(chatSessionId) })
+          void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+          refreshSessionLists()
+          return
+        }
+      }
+
       const continuationMode = opts?.continuationMode ?? 'queue'
       const body = {
         text: trimmedText,
@@ -642,12 +683,36 @@ export function useChatSession(chatSessionId: string | null) {
         runtimeSettings: opts?.runtimeSettings,
       }
       if (continuationMode === 'steer') {
-        const steer = await steerChatSessionTurn({
-          sessionId: chatSessionId,
-          body,
-        })
-        useChatStore.getState().insertLiveSteerMessage(chatSessionId, steer.message)
-        scheduleSnapshotRefresh(0)
+        const steerBody = {
+          text: body.text,
+          files: body.files,
+          contextParts: body.contextParts,
+          providerTargetId: body.providerTargetId,
+        }
+        try {
+          const steer = await steerChatSessionTurn({
+            sessionId: chatSessionId,
+            body: steerBody,
+          })
+          useChatStore.getState().insertLiveSteerMessage(chatSessionId, steer.message)
+          scheduleSnapshotRefresh(0)
+        }
+        catch (error) {
+          if (readChatCommandErrorCode(error) !== 'chat_steer_context_mismatch') {
+            throw error
+          }
+
+          await enqueueChatSessionQueueItem({
+            sessionId: chatSessionId,
+            body,
+          })
+          refreshQueue()
+          toastManager.add({
+            type: 'info',
+            title: 'Added to queue',
+            description: 'Live guidance did not match the active provider turn, so it was queued instead.',
+          })
+        }
         return
       }
 

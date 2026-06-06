@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 
 import { draftRuntimeCapabilitiesQueryKey, getDraftChatRuntimeCapabilities } from './chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'

@@ -17,10 +17,10 @@ export function ComposerSlotShell({ stateName, testId, className, children }: Co
   return (
     <div
       className={cn(
-        'pointer-events-auto relative z-0 mx-2 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none px-3 py-1.5 text-xs text-muted-foreground',
-        'border border-border border-b-0 shadow-[0_-8px_24px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.45)] backdrop-blur',
+        'pointer-events-auto relative z-0 mx-2 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-background/70 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-xl',
+        'border border-border border-b-0 shadow-[0_-8px_24px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.45)]',
         'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-150',
-        'dark:shadow-[0_-8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]',
+        'dark:bg-background/80 dark:shadow-[0_-8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]',
         className,
       )}
       data-chat-runtime-slot-state={stateName}

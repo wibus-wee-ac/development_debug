@@ -90,7 +90,12 @@ export interface BangCommandResult {
 }
 
 export type ChatQueueEnqueueBody = ChatResponseRequestBody
-export type ChatSteerBody = ChatResponseRequestBody
+export interface ChatSteerBody {
+  text: string
+  files?: FileUIPart[]
+  contextParts?: ChatContextPart[]
+  providerTargetId?: string
+}
 
 const ChatThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
 const ChatRuntimeSettingsSchema = z.object({
@@ -144,6 +149,24 @@ function parseChatQueueListResponse(value: unknown): ChatQueueListResponse {
 
 function parseChatSteerTurnResponse(value: unknown): ChatSteerTurnResponse {
   return ChatSteerTurnResponseSchema.parse(value) satisfies ChatSteerTurnResponse
+}
+
+function readResponseErrorCode(bodyText: string): string | null {
+  try {
+    const body = JSON.parse(bodyText) as { code?: unknown }
+    return typeof body.code === 'string' ? body.code : null
+  }
+  catch {
+    return null
+  }
+}
+
+export function readChatCommandErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object') {
+    return null
+  }
+  const code = (error as { code?: unknown }).code
+  return typeof code === 'string' ? code : null
 }
 
 export function buildChatResponseRequestBody(
@@ -291,12 +314,24 @@ export async function steerChatSessionTurn(args: {
   const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/steer`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildChatResponseRequestBody(args.body)),
+    body: JSON.stringify({
+      text: args.body.text,
+      files: args.body.files,
+      contextParts: args.body.contextParts,
+      providerTargetId: args.body.providerTargetId ?? undefined,
+    }),
   })
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Failed to steer chat turn: ${res.status} ${body}`)
+    const bodyText = await res.text().catch(() => '')
+    throw Object.assign(
+      new Error(`Failed to steer chat turn: ${res.status} ${bodyText}`),
+      {
+        bodyText,
+        code: readResponseErrorCode(bodyText),
+        status: res.status,
+      },
+    )
   }
 
   return parseChatSteerTurnResponse(await res.json())

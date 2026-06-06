@@ -24,14 +24,15 @@ import { BangCommandBlock, BangCommandPromptBlock } from './blocks/bang-command-
 import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
 import { ReasoningBlock } from './blocks/reasoning-block'
 import { ToolCallBlock } from './blocks/tool-call-block'
-import type { ChatSkillContextMessagePart } from './chat-context-parts'
-import { isChatSkillContextPart, readSkillContextLabel, readSkillContextPart } from './chat-context-parts'
+import type { ChatPluginContextMessagePart, ChatSkillContextMessagePart } from './chat-context-parts'
+import { isChatPluginContextPart, isChatSkillContextPart, readPluginContextLabel, readPluginContextPart, readSkillContextLabel, readSkillContextPart } from './chat-context-parts'
 import { readChatContinuationMetadata } from './chat-continuation-metadata'
 import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
 import { groupMessagePartRefs, groupMessageParts, readRenderableToolPart, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
 import { readSubagentOutputMessage, toolNameFromPart } from './chat-tool-entities'
 import { ImageLightbox } from './image-lightbox'
 import { MarkdownFileLink } from './markdown-file-link'
+import { PluginMentionIcon } from './plugin-mention-icon'
 import { SkillMentionToken } from './skill-mention-token'
 import type { RenderableToolPart } from './tool-ui-classifier'
 import { describeToolCall } from './tool-ui-classifier'
@@ -120,15 +121,8 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
     return <AppshotAttachmentCard variant="thread" metadata={appshotMetadata} />
   }
 
-  return (
-    <div
-      className={cn(
-        'my-1 overflow-hidden rounded-md border border-border/60 bg-background/60',
-        isImage && onClick && 'cursor-pointer transition-opacity hover:opacity-80',
-      )}
-      data-testid="chat-file-attachment"
-      onClick={onClick}
-    >
+  const content = (
+    <>
       {isImage && (
         <img
           src={part.url}
@@ -147,6 +141,29 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
           <div className="truncate text-[11px] text-muted-foreground">{part.mediaType}</div>
         </div>
       </div>
+    </>
+  )
+
+  if (isImage && onClick) {
+    return (
+      <button
+        type="button"
+        className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60 text-left transition-opacity hover:opacity-80"
+        data-testid="chat-file-attachment"
+        onClick={onClick}
+        aria-label={`Preview ${label}`}
+      >
+        {content}
+      </button>
+    )
+  }
+
+  return (
+    <div
+      className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60"
+      data-testid="chat-file-attachment"
+    >
+      {content}
     </div>
   )
 }
@@ -157,6 +174,20 @@ function SkillContextBlock({ part }: { part: ChatSkillContextMessagePart }) {
     return null
   }
   return <SkillMentionToken name={readSkillContextLabel(skill)} className="mx-1" />
+}
+
+function PluginContextBlock({ part }: { part: ChatPluginContextMessagePart }) {
+  const plugin = readPluginContextPart(part)
+  if (!plugin) {
+    return null
+  }
+  return (
+    <span className="mx-1 inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline text-[0.8125em] font-medium leading-none text-primary ring-1 ring-primary/15">
+      <PluginMentionIcon iconUrl={plugin.iconUrl} className="size-3" />
+      @
+      {readPluginContextLabel(plugin)}
+    </span>
+  )
 }
 
 function RunDebugCaption({ messageId }: { messageId: string }) {
@@ -361,6 +392,8 @@ function renderSubagentItem(
       return <FileAttachmentBlock key={item.key} part={item.part} />
     case 'skill-context':
       return <SkillContextBlock key={item.key} part={item.part} />
+    case 'plugin-context':
+      return <PluginContextBlock key={item.key} part={item.part} />
     default:
       return null
   }
@@ -559,7 +592,8 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
     case 'reasoning':
     case 'file-attachment':
     case 'skill-context':
-      return (right.kind === 'reasoning' || right.kind === 'file-attachment' || right.kind === 'skill-context')
+    case 'plugin-context':
+      return (right.kind === 'reasoning' || right.kind === 'file-attachment' || right.kind === 'skill-context' || right.kind === 'plugin-context')
         && left.kind === right.kind
         && left.messageId === right.messageId
         && left.partIndex === right.partIndex
@@ -635,6 +669,16 @@ function readSkillContextPartFromState(
 ): ChatSkillContextMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return isChatSkillContextPart(part) ? part : null
+}
+
+function readPluginContextPartFromState(
+  state: ChatStoreSnapshot,
+  sessionId: string,
+  messageId: string,
+  partIndex: number,
+): ChatPluginContextMessagePart | null {
+  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  return isChatPluginContextPart(part) ? part : null
 }
 
 function readRenderableToolPartFromState(
@@ -958,6 +1002,23 @@ const MessageSkillContextPartById = memo(({
 })
 MessageSkillContextPartById.displayName = 'MessageSkillContextPartById'
 
+const MessagePluginContextPartById = memo(({
+  sessionId,
+  messageId,
+  partIndex,
+}: {
+  sessionId: string
+  messageId: string
+  partIndex: number
+}) => {
+  const part = useChatStore(state => readPluginContextPartFromState(state, sessionId, messageId, partIndex))
+  if (!part) {
+    return null
+  }
+  return <PluginContextBlock part={part} />
+})
+MessagePluginContextPartById.displayName = 'MessagePluginContextPartById'
+
 const MessageThinkingPlaceholderById = memo(({
   sessionId,
   messageId,
@@ -1111,6 +1172,14 @@ const MessageSegmentView = memo(({
     case 'skill-context':
       return (
         <MessageSkillContextPartById
+          sessionId={sessionId}
+          messageId={segment.messageId}
+          partIndex={segment.partIndex}
+        />
+      )
+    case 'plugin-context':
+      return (
+        <MessagePluginContextPartById
           sessionId={sessionId}
           messageId={segment.messageId}
           partIndex={segment.partIndex}
@@ -1485,6 +1554,8 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
       case 'skill-context':
         return <SkillContextBlock key={item.key} part={item.part} />
+      case 'plugin-context':
+        return <PluginContextBlock key={item.key} part={item.part} />
 
       default:
         return null

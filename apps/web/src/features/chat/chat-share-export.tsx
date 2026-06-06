@@ -325,17 +325,8 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
                   {messages.map((message, index) => {
                     const checked = selectedMessageIds.has(message.id)
                     return (
-                      <div
+                      <label
                         key={message.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => toggleMessage(message.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            toggleMessage(message.id)
-                          }
-                        }}
                         className={cn(
                           'flex min-h-12 cursor-pointer items-start gap-2 rounded-lg px-2 py-2 text-left transition-[background-color,color]',
                           checked ? 'bg-background text-foreground shadow-xs' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground',
@@ -343,7 +334,6 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
                       >
                         <Checkbox
                           checked={checked}
-                          onClick={event => event.stopPropagation()}
                           onCheckedChange={() => toggleMessage(message.id)}
                           aria-label={`Select message ${index + 1}`}
                           className="mt-0.5"
@@ -356,7 +346,7 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
                             {readMessagePreview(message)}
                           </span>
                         </span>
-                      </div>
+                      </label>
                     )
                   })}
                 </div>

@@ -5,17 +5,18 @@ import { useMemo, useSyncExternalStore } from 'react'
 
 import { cn } from '~/lib/cn'
 import { formatElapsedRangeMs, formatPercentFromRatio } from '~/lib/number-format'
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
-import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
+import type { ChatRuntimeCompactUiSlotState, ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from './chat-capabilities'
 import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
 import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from './chat-context'
 import { readRenderableToolPart } from './chat-render-plan'
 import type { ChatTodoItem, SessionTodoSnapshot } from './chat-todo-projection'
 import { toolNameFromPart } from './chat-tool-entities'
+import { ContextWindowViewer } from './context-window-viewer'
 import type { RuntimeSessionStatusKind } from './runtime-session-status-command'
 import { SubagentIdenticon } from './subagent-identicon'
 import type { RenderableToolPart, ToolState } from './tool-ui-classifier'
@@ -90,6 +91,7 @@ export function RuntimeSessionPanel({
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
   const planState = runtimeUiSlotStates?.states.find(isRuntimePlanState) ?? null
   const crewState = runtimeUiSlotStates?.states.find(isRuntimeCrewState) ?? null
+  const compactState = runtimeUiSlotStates?.states.find((state): state is ChatRuntimeCompactUiSlotState => state.kind === 'compact') ?? null
   const progressItems = buildProgressItems(planState, todoSnapshot)
 
   if (!sessionId) {
@@ -103,6 +105,7 @@ export function RuntimeSessionPanel({
   return (
     <div className="flex flex-1 flex-col gap-3 overflow-auto p-3">
       <ProgressPanel items={progressItems} loading={runtimeUiSlotStatesLoading} />
+      <ContextWindowViewer sessionId={sessionId} compactState={compactState} />
       <SubagentsPanel sessionId={sessionId} crewState={crewState} />
 
       {

@@ -1,7 +1,7 @@
 import { PackageIcon } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
 
-import type { SkillScope } from '~/lib/types'
+import type { SkillScope } from '~/features/skills/types'
 
 import { AutocompletePanel, HighlightedAutocompleteText } from './autocomplete-panel'
 

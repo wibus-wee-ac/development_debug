@@ -20,8 +20,8 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { getServerUrl } from '~/lib/electron'
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
 
@@ -31,11 +31,12 @@ import { ChatMinimap } from './chat-minimap'
 import { ChatQueueList } from './chat-queue-list'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './chat-slash-commands'
+import type { ComposerRuntimeSettingsController } from './composer'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import type { ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
 import { ComposerSlotStates } from './composer-slot-states'
-import type { MentionItem } from './mention-panel'
+import type { MentionItem, PluginMentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
 import {
   registerChatComposerFileIngressHandler,
@@ -62,6 +63,8 @@ interface ChatViewProps {
   availableFiles?: MentionItem[]
   /** Lazy workspace file search for @ mention */
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  /** Lazy plugin search for @ mention */
+  searchPlugins?: (query: string, signal?: AbortSignal) => Promise<PluginMentionItem[]>
   /** Lazy skill search for $ mention */
   searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   /** Custom toolbar rendered in the composer left slot */
@@ -74,8 +77,6 @@ interface ChatViewProps {
   }>
   /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
   composerModel?: ModelDescriptor | null
-  /** True while the selected provider is waiting for a concrete model before it can be persisted. */
-  composerSelectionPending?: boolean
   /** Custom context bar rendered before the send button */
   composerContextBar?: React.ReactNode
   /** Placeholder text for composer */
@@ -174,7 +175,7 @@ const ChatMessageListPane = memo(({
             </m.div>
           )}
 
-          <div className="h-6" aria-hidden="true" />
+          <div className="h-36" aria-hidden="true" />
         </div>
       </ScrollArea>
 
@@ -232,8 +233,10 @@ function ChatComposerSection({
   placeholder,
   availableFiles,
   searchFiles,
+  searchPlugins,
   searchSkills,
   toolbar,
+  runtimeSettings,
   contextBar,
   droppedPath,
   goalActions,
@@ -253,8 +256,10 @@ function ChatComposerSection({
   placeholder?: string
   availableFiles: MentionItem[]
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  searchPlugins?: (query: string, signal?: AbortSignal) => Promise<PluginMentionItem[]>
   searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   toolbar?: React.ReactNode
+  runtimeSettings?: ComposerRuntimeSettingsController
   contextBar?: React.ReactNode
   droppedPath: { text: string, ts: number } | null
   goalActions: {
@@ -271,8 +276,8 @@ function ChatComposerSection({
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   return (
-    <div className="shrink-0 bg-transparent px-4 pb-3">
-      <div className="mx-auto max-w-208 bg-transparent">
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
+      <div className="pointer-events-auto mx-auto w-full max-w-208 bg-transparent">
         <ChatAwaitBanner awaitSummary={awaitSummary} />
         <ChatQueueList
           items={queueItems}
@@ -307,6 +312,7 @@ function ChatComposerSection({
             pendingAppshots: appshotRuntime.pendingAppshots,
             onActionTargetElementChange: appshotRuntime.setActionTargetElement,
           }}
+          runtimeSettings={runtimeSettings}
           slots={{
             toolbar,
             contextBar,
@@ -319,11 +325,12 @@ function ChatComposerSection({
             placeholder,
             availableFiles,
             searchFiles,
+            searchPlugins,
             searchSkills,
             textareaRows: 1,
             onFocusChange: onComposerFocusChange,
-            sessionTokens: composerRuntime.tokenUsage.tokens,
-            sessionContextWindow: composerRuntime.tokenUsage.contextWindow,
+            sessionTokens: composerRuntime.tokenUsage?.tokens,
+            sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
           }}
         />
       </div>
@@ -335,12 +342,12 @@ export function ChatView({
   sessionId,
   availableFiles = EMPTY_FILES,
   searchFiles,
+  searchPlugins,
   searchSkills,
   composerToolbar,
   composerContextBar,
   sendOverridesRef,
   composerModel,
-  composerSelectionPending = false,
   placeholder,
   runtimeKind: _runtimeKind,
   workspaceId,
@@ -372,10 +379,8 @@ export function ChatView({
   const runtimeSettings = useRuntimeSettings(sessionId)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
-    status,
     isStreaming,
-    messageCount,
-    isReady: isReady && !composerSelectionPending,
+    isReady,
     workspaceId,
     composerModel,
     runtimeSettings: runtimeSettings.loaded ? runtimeSettings.settings : undefined,
@@ -392,13 +397,16 @@ export function ChatView({
     sessionId: sessionId ?? '',
     apiBaseUrl: getServerUrl(),
   })
+  const hasQuickQuestionSlot = useMemo(() => {
+    return composerRuntime.uiSlots.some(slot => slot.iconKey === 'quick-question' && slot.surfaces.includes('composerState'))
+  }, [composerRuntime.uiSlots])
   const quickQuestionSlot = useMemo<ComposerQuickQuestionSlotActions>(() => ({
-    open: Boolean(sessionId) && quickQuestion.open,
+    open: Boolean(sessionId) && hasQuickQuestionSlot && quickQuestion.open,
     question: quickQuestion.question,
     sessionId: sessionId ?? '',
     apiBaseUrl: quickQuestion.apiBaseUrl,
     onDismiss: quickQuestion.closeQuickQuestion,
-  }), [quickQuestion.apiBaseUrl, quickQuestion.closeQuickQuestion, quickQuestion.open, quickQuestion.question, sessionId])
+  }), [hasQuickQuestionSlot, quickQuestion.apiBaseUrl, quickQuestion.closeQuickQuestion, quickQuestion.open, quickQuestion.question, sessionId])
   const composerSend = composerRuntime.send
   const navigableComposerRuntime = useMemo<ChatComposerRuntime>(() => ({
     ...composerRuntime,
@@ -692,15 +700,21 @@ export function ChatView({
         placeholder={placeholder}
         availableFiles={availableFiles}
         searchFiles={searchFiles}
+        searchPlugins={searchPlugins}
         searchSkills={searchSkills}
         toolbar={runtimeSettingsToolbar}
+        runtimeSettings={{
+          settings: runtimeSettings.settings,
+          disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
+          onChange: updateRuntimeSettings,
+        }}
         contextBar={composerContextBar}
         droppedPath={droppedPath}
         goalActions={goalActions}
         quickQuestionSlot={quickQuestionSlot}
         reviewSlot={reviewSlot}
         usageSlot={usageSlot}
-        onQuickQuestion={sessionId ? quickQuestion.openQuickQuestion : undefined}
+        onQuickQuestion={sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined}
         onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
       />
 

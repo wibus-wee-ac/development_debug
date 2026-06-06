@@ -7,15 +7,18 @@ import { useTranslation } from 'react-i18next'
 
 import { getSkills } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
+import type { SkillInventoryEntry } from '~/features/skills/types'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
-import type { RuntimeKind, SkillInventoryEntry } from '~/lib/types'
+import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 
 import type { ChatContextPart } from './chat-context-parts'
+import type { ChatRuntimeSettings } from './chat-response-command'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID } from './chat-slash-commands'
 import { Composer } from './composer'
@@ -23,6 +26,9 @@ import type { ComposerSlashCommandActionResult } from './composer-action-context
 import { modelSupportsAttachments } from './composer-attachment-state'
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem } from './mention-panel'
+import { searchPluginMentions } from './plugin-mentions'
+import { DEFAULT_CHAT_RUNTIME_SETTINGS } from './runtime-settings-command'
+import { RuntimeSettingsControl } from './runtime-settings-control'
 import type { SkillMentionItem } from './skill-mention-panel'
 import { useRuntimeComposerSlashCommands } from './use-runtime-composer-slash-commands'
 
@@ -44,6 +50,7 @@ export interface DraftChatComposerSubmitOptions {
   providerTargetName?: string
   modelId?: string
   thinkingEffort?: ChatThinkingEffort
+  runtimeSettings: ChatRuntimeSettings
 }
 
 export type DraftChatComposerSendHandler = (
@@ -95,6 +102,8 @@ export function DraftChatComposer({
   const { t } = useTranslation('new-chat')
   const composerState = useComposerState({ context: 'new-chat' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
+  const runtimeSettings = useNewChatStore(s => s.lastRuntimeSettings ?? DEFAULT_CHAT_RUNTIME_SETTINGS)
+  const setRuntimeSettings = useNewChatStore(s => s.setLastRuntimeSettings)
   const [sending, setSending] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
@@ -187,6 +196,25 @@ export function DraftChatComposer({
     openSettings(activeTabId)
   }, [openSettings, setSettingsSection])
 
+  const updateRuntimeSettings = useCallback((patch: Partial<ChatRuntimeSettings>) => {
+    setRuntimeSettings({
+      ...runtimeSettings,
+      ...patch,
+    })
+  }, [runtimeSettings, setRuntimeSettings])
+
+  const toolbar = useMemo(() => (
+    <div className="flex min-w-0 items-center gap-1">
+      <RuntimeSettingsControl
+        settings={runtimeSettings}
+        applied
+        disabled={sending}
+        onChange={updateRuntimeSettings}
+      />
+      <ComposerToolbar context="new-chat" state={composerState} />
+    </div>
+  ), [composerState, runtimeSettings, sending, updateRuntimeSettings])
+
   const handleSendWithTarget = useCallback(async (
     sendTarget: DraftChatComposerSendHandler,
     text: string,
@@ -215,16 +243,17 @@ export function DraftChatComposer({
           : {
               providerTargetId: effectiveProfile?.id,
               providerTargetName: effectiveProfile?.name,
-              modelId: effectiveModel?.id,
+              modelId: selection.modelId ?? effectiveModel?.id,
               thinkingEffort: selection.thinkingEffort ?? undefined,
             }),
+        runtimeSettings,
       })
       return true
     }
     finally {
       setSending(false)
     }
-  }, [effectiveAgent, effectiveModel, effectiveProfile, selection.runtimeKind, selection.thinkingEffort, sending])
+  }, [effectiveAgent, effectiveModel, effectiveProfile, runtimeSettings, selection.modelId, selection.runtimeKind, selection.thinkingEffort, sending])
 
   const handleSend = useCallback((text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
     return handleSendWithTarget(onSend, text, files, contextParts)
@@ -292,8 +321,13 @@ export function DraftChatComposer({
         attachments={{
           supportsAttachments,
         }}
+        runtimeSettings={{
+          settings: runtimeSettings,
+          disabled: sending,
+          onChange: updateRuntimeSettings,
+        }}
         slots={{
-          toolbar: <ComposerToolbar context="new-chat" state={composerState} />,
+          toolbar,
           contextBar,
         }}
         externalSignals={{
@@ -303,6 +337,7 @@ export function DraftChatComposer({
         view={{
           placeholder,
           searchFiles,
+          searchPlugins: searchPluginMentions,
           searchSkills,
           onDraftChange,
           className: 'relative',

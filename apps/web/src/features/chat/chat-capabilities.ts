@@ -1,4 +1,5 @@
 import { getServerUrl } from '~/lib/electron'
+import type { GetChatSessionsBySessionIdContextUsageResponse } from '~/api-gen/types.gen'
 
 const SERVER_BASE = getServerUrl()
 
@@ -49,6 +50,7 @@ export type ChatRuntimeUiSlotIconKey
     | 'personality'
     | 'plugin'
     | 'plan'
+    | 'quick-question'
     | 'reasoning'
     | 'search'
     | 'side-chat'
@@ -433,6 +435,11 @@ export interface ChatRuntimeUiSlotStatesResponse {
   states: ChatRuntimeUiSlotState[]
 }
 
+export type ChatRuntimeContextUsageResponse = GetChatSessionsBySessionIdContextUsageResponse
+export type ChatRuntimeContextUsage = NonNullable<ChatRuntimeContextUsageResponse['usage']>
+export type ChatRuntimeContextUsageSection = ChatRuntimeContextUsage['sections'][number]
+export type ChatRuntimeContextUsageItem = ChatRuntimeContextUsageSection['items'][number]
+
 export async function getChatRuntimeCapabilities(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeCapabilities> {
   const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/capabilities`, { signal })
   if (!res.ok) {
@@ -460,4 +467,13 @@ export async function getChatRuntimeUiSlotStates(sessionId: string, signal?: Abo
     throw new Error(`Failed to load chat UI slot states: ${res.status} ${body}`)
   }
   return await res.json() as ChatRuntimeUiSlotStatesResponse
+}
+
+export async function getChatRuntimeContextUsage(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeContextUsageResponse> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/context-usage`, { signal })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to load chat context usage: ${res.status} ${body}`)
+  }
+  return await res.json() as ChatRuntimeContextUsageResponse
 }

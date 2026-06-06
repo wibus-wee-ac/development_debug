@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { Activity, memo, useLayoutEffect, useMemo, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { cn } from '~/lib/utils'
 import { chatSelectors, useChatStore } from '~/store/chat'
 

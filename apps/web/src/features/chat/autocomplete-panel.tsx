@@ -20,11 +20,14 @@ interface AutocompletePanelProps<TItem extends AutocompletePanelItem> {
   visible: boolean
   maxResults?: number
   emptyLogLabel: string
+  sectionLabel?: (item: TItem, previousItem: TItem | null) => string | null
   rankFields?: (item: TItem) => FuzzyRankField[]
   renderItem: (input: {
     item: TItem
     positions: Set<number>
     active: boolean
+    index: number
+    previousItem: TItem | null
   }) => React.ReactNode
 }
 
@@ -70,13 +73,14 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
   visible,
   maxResults = 30,
   emptyLogLabel,
+  sectionLabel,
   rankFields,
   renderItem,
 }: AutocompletePanelProps<TItem>) {
   const [selection, setSelection] = useState({ activeIndex: 0, query, visible })
   const [remoteItems, setRemoteItems] = useState<TItem[]>([])
   const [remoteLoading, setRemoteLoading] = useState(false)
-  const listRef = useRef<HTMLDivElement>(null)
+  const listRef = useRef<HTMLMenuElement>(null)
   const requestSeqRef = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const effectiveItems = searchItems ? remoteItems : items
@@ -170,7 +174,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
         visible,
       })
     }
-    else if (e.key === 'Tab' && results[effectiveActiveIndex]) {
+    else if (e.key === 'Tab' && !e.shiftKey && results[effectiveActiveIndex]) {
       e.preventDefault()
       setSelection({ activeIndex: 0, query, visible })
       if (onTabComplete) {
@@ -206,36 +210,50 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
 
   return (
     <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-64 overflow-hidden rounded-xl border border-border bg-popover/95 shadow-xs backdrop-blur-md">
-      <div
+      <menu
         ref={listRef}
-        className="max-h-64 overflow-y-auto p-1"
-        role="listbox"
+        className="m-0 max-h-64 list-none overflow-y-auto p-1"
       >
         {remoteLoading && results.length === 0 && (
           <div className="flex h-9 items-center justify-center">
             <DelayedSpinner active delayMs={180} className="size-3.5 text-muted-foreground" />
           </div>
         )}
-        {results.map(({ item, positions }, idx) => (
-          <button
-            key={item.id}
-            type="button"
-            role="option"
-            aria-selected={idx === effectiveActiveIndex}
-            className={cn(
-              'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs',
-              idx === effectiveActiveIndex
-                ? 'bg-accent text-accent-foreground'
-                : 'text-foreground/80 hover:bg-accent/40',
-            )}
-            onMouseEnter={() => setSelection({ activeIndex: idx, query, visible })}
-            onMouseDown={event => event.preventDefault()}
-            onClick={() => handleOptionClick(item)}
-          >
-            {renderItem({ item, positions, active: idx === effectiveActiveIndex })}
-          </button>
-        ))}
-      </div>
+        {results.map(({ item, positions }, idx) => {
+          const previousItem = results[idx - 1]?.item ?? null
+          const header = sectionLabel?.(item, previousItem)
+          return (
+            <li key={item.id}>
+              {header && (
+                <div className="px-2.5 pb-1 pt-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground first:pt-1">
+                  {header}
+                </div>
+              )}
+              <button
+                type="button"
+                data-active={idx === effectiveActiveIndex}
+                className={cn(
+                  'flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs',
+                  idx === effectiveActiveIndex
+                    ? 'bg-accent text-accent-foreground'
+                    : 'text-foreground/80 hover:bg-accent/40',
+                )}
+                onMouseEnter={() => setSelection({ activeIndex: idx, query, visible })}
+                onMouseDown={event => event.preventDefault()}
+                onClick={() => handleOptionClick(item)}
+              >
+                {renderItem({
+                  item,
+                  positions,
+                  active: idx === effectiveActiveIndex,
+                  index: idx,
+                  previousItem,
+                })}
+              </button>
+            </li>
+          )
+        })}
+      </menu>
     </div>
   )
 }

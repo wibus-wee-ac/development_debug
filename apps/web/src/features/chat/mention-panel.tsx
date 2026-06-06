@@ -4,25 +4,50 @@ import { useCallback, useMemo } from 'react'
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
 
 import { AutocompletePanel, HighlightedAutocompleteText } from './autocomplete-panel'
+import { PluginMentionIcon } from './plugin-mention-icon'
 
 export interface MentionItem {
+  kind?: 'file'
   type: 'file' | 'directory'
   name: string
   /** Relative path from workspace root */
   path: string
 }
 
-type MentionPanelItem = MentionItem & {
+export interface PluginMentionCapability {
+  id: string
+  type: string
+  layer: 'server' | 'web' | 'desktop'
+  label: string | null
+}
+
+export interface PluginMentionItem {
+  kind: 'plugin'
+  provider?: 'cradle' | 'codex'
+  pluginName: string
+  displayName: string
+  description: string | null
+  iconUrl: string | null
+  routeSegment: string
+  capabilities: PluginMentionCapability[]
+  mcpServers: string[]
+  nativeMention?: { name: string, path: string } | null
+  active: boolean
+}
+
+export type MentionPickerItem = MentionItem | PluginMentionItem
+
+type MentionPanelItem = MentionPickerItem & {
   id: string
   searchText: string
 }
 
 interface MentionPanelProps {
-  items: MentionItem[]
+  items: MentionPickerItem[]
   query: string
-  searchItems?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
-  onSelect: (item: MentionItem) => void
-  onTabComplete?: (item: MentionItem) => void
+  searchItems?: (query: string, signal?: AbortSignal) => Promise<MentionPickerItem[]>
+  onSelect: (item: MentionPickerItem) => void
+  onTabComplete?: (item: MentionPickerItem) => void
   onClose: () => void
   visible: boolean
 }
@@ -47,38 +72,114 @@ export function MentionPanel({ items, query, searchItems, onSelect, onTabComplet
         onClose={onClose}
         visible={visible}
         maxResults={MAX_RESULTS}
-        emptyLogLabel="workspace files"
-        rankFields={item => [
-          { value: item.name, role: 'primary' },
-          { value: item.path, role: 'path' },
-        ]}
-        renderItem={({ item, positions }) => (
-          <>
-            {item.type === 'directory'
-              ? <FolderIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-              : <WorkspaceFileIcon path={item.path} className="size-3.5 text-muted-foreground/60" />}
-            <span className="min-w-0 truncate">
-              <HighlightedAutocompleteText text={item.path} positions={positions} />
-            </span>
-          </>
-        )}
+        emptyLogLabel="mentions"
+        sectionLabel={(item, previousItem) => {
+          const section = mentionSection(item)
+          return previousItem && mentionSection(previousItem) === section ? null : section
+        }}
+        rankFields={item => isPluginMentionItem(item)
+          ? [
+              { value: item.displayName, role: 'primary' },
+              { value: item.pluginName, role: 'path' },
+              { value: item.description ?? '', role: 'secondary' },
+            ]
+          : [
+              { value: item.name, role: 'primary' },
+              { value: item.path, role: 'path' },
+            ]}
+        renderItem={({ item, positions }) => <MentionPanelRow item={item} positions={positions} />}
       />
     </>
   )
 }
 
-function toMentionPanelItem(item: MentionItem): MentionPanelItem {
+function isPluginMentionItem(item: MentionPickerItem): item is PluginMentionItem {
+  return item.kind === 'plugin'
+}
+
+function toMentionPanelItem(item: MentionPickerItem): MentionPanelItem {
+  if (isPluginMentionItem(item)) {
+    const provider = item.provider ?? 'cradle'
+    return {
+      ...item,
+      provider,
+      id: `plugin:${provider}:${item.pluginName}`,
+      searchText: `${provider} ${item.displayName} ${item.pluginName} ${item.nativeMention?.path ?? ''} ${item.description ?? ''} ${item.capabilities.map(capability => capability.type).join(' ')}`,
+    }
+  }
   return {
     ...item,
+    kind: 'file',
     id: item.path,
     searchText: item.path,
   }
 }
 
-function toMentionItem(item: MentionPanelItem): MentionItem {
+function toMentionItem(item: MentionPanelItem): MentionPickerItem {
+  if (isPluginMentionItem(item)) {
+    return {
+      kind: 'plugin',
+      provider: item.provider ?? 'cradle',
+      pluginName: item.pluginName,
+      displayName: item.displayName,
+      description: item.description,
+      iconUrl: item.iconUrl,
+      routeSegment: item.routeSegment,
+      capabilities: item.capabilities,
+      mcpServers: item.mcpServers,
+      nativeMention: item.nativeMention ?? null,
+      active: item.active,
+    }
+  }
   return {
+    kind: 'file',
     type: item.type,
     name: item.name,
     path: item.path,
   }
+}
+
+function mentionSection(item: MentionPanelItem): 'Plugins' | 'Files' {
+  return isPluginMentionItem(item) ? 'Plugins' : 'Files'
+}
+
+function MentionPanelRow({ item, positions }: { item: MentionPanelItem, positions: Set<number> }) {
+  if (isPluginMentionItem(item)) {
+    const capabilityLabels = item.mcpServers.length > 0
+      ? item.mcpServers.map(server => `mcp:${server}`)
+      : item.capabilities.slice(0, 2).map(capability => capability.type)
+    return (
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <PluginMentionIcon iconUrl={item.iconUrl} />
+        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate font-medium">
+            <HighlightedAutocompleteText text={item.displayName} positions={positions} />
+          </span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            {item.description ?? item.pluginName}
+          </span>
+        </span>
+        {capabilityLabels.length > 0 && (
+          <span className="flex max-w-36 shrink-0 gap-1 overflow-hidden">
+            {capabilityLabels.slice(0, 2).map(label => (
+              <span key={label} className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                {label}
+              </span>
+            ))}
+          </span>
+        )}
+      </span>
+    )
+  }
+
+  return (
+    <>
+      {item.type === 'directory'
+        ? <FolderIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+        : <WorkspaceFileIcon path={item.path} className="size-3.5 text-muted-foreground/60" />}
+      <span className="min-w-0 truncate">
+        <HighlightedAutocompleteText text={item.path} positions={positions} />
+      </span>
+    </>
+  )
 }

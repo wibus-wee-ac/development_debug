@@ -2,9 +2,13 @@ import { useQuery } from '@tanstack/react-query'
 
 import { getRuntimeSessionStatus } from './runtime-session-status-command'
 
+export function runtimeSessionStatusQueryKey(sessionId: string | null): readonly unknown[] {
+  return ['chat', 'runtime-session-status', sessionId ?? 'none']
+}
+
 export function useRuntimeSessionStatus(sessionId: string | null) {
   return useQuery({
-    queryKey: ['chat', 'runtime-session-status', sessionId ?? 'none'],
+    queryKey: runtimeSessionStatusQueryKey(sessionId),
     queryFn: () => getRuntimeSessionStatus(sessionId!),
     enabled: !!sessionId,
     staleTime: 1_000,

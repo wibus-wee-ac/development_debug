@@ -8,8 +8,10 @@ import type { SkillMentionItem } from '~/features/chat/skill-mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
-import type { RuntimeKind, SkillInventoryEntry } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
+import type { SkillInventoryEntry } from '~/features/skills/types'
 
+import { searchSessionPluginMentions } from './plugin-mentions'
 import type { SendMessageOptions } from './use-chat-session'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
@@ -56,9 +58,6 @@ export function ChatRuntimeView({
     resetKey: composerResetKey,
   })
   const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
-  const composerSelectionPending = pendingProviderTargetId !== null
-    && composerState.selection.profileId === pendingProviderTargetId
-    && !composerState.selection.modelId
   const providerModelSaveStateRef = useRef<SessionProviderModelSaveState | null>(null)
   const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!workspaceId) {
@@ -88,6 +87,21 @@ export function ChatRuntimeView({
     }
     return activeSkills
   }, [agentId, workspaceId])
+  const searchPlugins = useCallback((query: string, signal?: AbortSignal) => {
+    return searchSessionPluginMentions({
+      sessionId,
+      runtimeKind,
+      providerTargetId: composerState.selection.profileId,
+      modelId: composerState.selection.modelId,
+      query,
+      signal,
+    })
+  }, [
+    composerState.selection.modelId,
+    composerState.selection.profileId,
+    runtimeKind,
+    sessionId,
+  ])
 
   const sendOverridesRef = useRef({
     providerTargetId: undefined as string | undefined,
@@ -95,15 +109,12 @@ export function ChatRuntimeView({
     thinkingEffort: undefined as SendMessageOptions['thinkingEffort'],
   })
   useLayoutEffect(() => {
-    const hasPendingProviderSelection = pendingProviderTargetId !== null
-      && composerState.selection.profileId === pendingProviderTargetId
-      && !composerState.selection.modelId
     sendOverridesRef.current = {
-      providerTargetId: hasPendingProviderSelection ? undefined : composerState.selection.profileId ?? undefined,
+      providerTargetId: composerState.selection.profileId ?? undefined,
       modelId: composerState.selection.modelId ?? undefined,
       thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
     }
-  }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort, pendingProviderTargetId])
+  }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort])
 
   const persistSessionProviderModel = useCallback((body: SessionProviderModelPatch) => {
     const targetSessionId = sessionId
@@ -231,11 +242,11 @@ export function ChatRuntimeView({
         runtimeKind={runtimeKind}
         workspaceId={workspaceId}
         searchFiles={searchFiles}
+        searchPlugins={searchPlugins}
         searchSkills={searchSkills}
         composerToolbar={composerToolbar}
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}
-        composerSelectionPending={composerSelectionPending}
       />
     </Suspense>
   )

@@ -7,7 +7,6 @@ import {
   CODEX_USAGE_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_ACTION_ID,
   CRADLE_APPSHOT_SLASH_COMMAND,
-  CRADLE_BTW_SLASH_COMMAND,
   CRADLE_SIDE_CHAT_SLASH_COMMAND,
   createRuntimeSlashCommand,
   createRuntimeUiSlotCommands,
@@ -80,18 +79,6 @@ describe('chat slash commands', () => {
       source: 'cradle',
       action: { kind: 'insertText', text: '/side ' },
       iconKey: 'side-chat',
-    })
-  })
-
-  it('defines BTW as a Cradle-owned quick question slash command', () => {
-    expect(CRADLE_BTW_SLASH_COMMAND).toEqual({
-      id: 'cradle:btw',
-      name: 'btw',
-      description: 'Ask a quick question without saving it to history',
-      argumentHint: '[question]',
-      source: 'cradle',
-      action: { kind: 'insertText', text: '/btw ' },
-      iconKey: 'quick-question',
     })
   })
 
@@ -650,6 +637,17 @@ describe('chat slash commands', () => {
           commandText: '/goal ',
           surfaces: ['slashCommand', 'composerState'],
         },
+        {
+          id: 'codex:quick-question',
+          name: 'btw',
+          label: 'Quick question',
+          description: 'Ask a quick question without saving it to history.',
+          argumentHint: '[question]',
+          aliases: ['quick-question'],
+          iconKey: 'quick-question',
+          commandText: '/btw ',
+          surfaces: ['slashCommand', 'composerState'],
+        },
       ],
     }
 
@@ -683,10 +681,18 @@ describe('chat slash commands', () => {
       expect.objectContaining({ id: 'runtime:status:0', description: 'Native status' }),
     ]))
     expect(draftCommands.some(command => command.id === CRADLE_APPSHOT_SLASH_COMMAND.id)).toBe(false)
+    expect(draftCommands.some(command => command.id === 'codex:quick-question')).toBe(false)
 
     expect(sessionCommands).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'codex:compact', action: { kind: 'submitText', text: '/compact', requiresEmptyComposer: true } }),
       expect.objectContaining({ id: 'codex:goal', stateLabel: 'Active' }),
+      expect.objectContaining({
+        id: 'codex:quick-question',
+        name: 'btw',
+        source: 'runtime',
+        presentation: 'slot',
+        action: { kind: 'insertText', text: '/btw ' },
+      }),
       CRADLE_APPSHOT_SLASH_COMMAND,
       expect.objectContaining({ id: 'runtime:status:0', description: 'Native status' }),
     ]))

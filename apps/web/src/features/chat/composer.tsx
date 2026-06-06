@@ -4,7 +4,8 @@ import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card'
+import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
 import { isLocalMode } from '~/lib/electron'
 import { formatTokenCount } from '~/lib/number-format'
@@ -12,6 +13,7 @@ import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import { readBangCommand } from './bang-command'
 import type { ChatContextPart } from './chat-context-parts'
+import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from './chat-response-command'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import type {
   ComposerActionContextOptions,
@@ -28,7 +30,7 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from './composer-attachments'
-import type { MentionItem } from './mention-panel'
+import type { MentionItem, MentionPickerItem, PluginMentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
 import type { PromptEditorController, PromptEditorSnapshot, PromptEditorTriggerRange } from './prompt-editor'
 import { PromptEditor } from './prompt-editor'
@@ -96,10 +98,18 @@ export interface ComposerExternalSignals {
   appendTextKey?: number
 }
 
+export interface ComposerRuntimeSettingsController {
+  settings: ChatRuntimeSettings
+  disabled?: boolean
+  onChange: (patch: ChatRuntimeSettingsPatch) => void
+}
+
 export interface ComposerViewOptions {
   placeholder?: string
   availableFiles?: MentionItem[]
   searchFiles?: (query: string, signal?: AbortSignal) => Promise<MentionItem[]>
+  availablePlugins?: PluginMentionItem[]
+  searchPlugins?: (query: string, signal?: AbortSignal) => Promise<PluginMentionItem[]>
   availableSkills?: SkillMentionItem[]
   searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   className?: string
@@ -137,6 +147,7 @@ export interface ComposerProps {
   send: ComposerSendController
   commands?: ComposerCommandController
   attachments?: ComposerAttachmentIntegration
+  runtimeSettings?: ComposerRuntimeSettingsController
   slots?: ComposerSlots
   externalSignals?: ComposerExternalSignals
   view?: ComposerViewOptions
@@ -145,6 +156,7 @@ export interface ComposerProps {
 }
 
 const EMPTY_FILES: MentionItem[] = []
+const EMPTY_PLUGINS: PluginMentionItem[] = []
 const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
@@ -167,6 +179,11 @@ function isComposerSendPromise(
 
 function reportComposerSubmitError(error: unknown) {
   console.error('[Composer] submit failed:', error)
+  toastManager.add({
+    type: 'error',
+    title: 'Message submit failed',
+    description: error instanceof Error ? error.message : 'Unknown submit error.',
+  })
 }
 
 function clearSubmittedDraft({
@@ -183,7 +200,41 @@ function clearSubmittedDraft({
   dispatch({ type: 'input/cleared' })
 }
 
+function restoreSubmittedDraft({
+  appendFileParts,
+  contextParts,
+  dispatch,
+  files,
+  promptEditor,
+  text,
+}: {
+  appendFileParts: (fileParts: FileUIPart[]) => void
+  contextParts: ChatContextPart[]
+  dispatch: (action: ComposerAction) => void
+  files: FileUIPart[]
+  promptEditor: PromptEditorController | null
+  text: string
+}) {
+  if (promptEditor?.getText().trim()) {
+    return
+  }
+
+  if (files.length > 0) {
+    appendFileParts(files)
+  }
+  promptEditor?.setText(text)
+  dispatch({
+    type: 'input/changed',
+    state: {
+      ...INITIAL_COMPOSER_STATE,
+      inputValue: text,
+      contextParts,
+    },
+  })
+}
+
 function submitAndClearDraft({
+  appendFileParts,
   clearAttachments,
   contextParts,
   dispatch,
@@ -193,6 +244,7 @@ function submitAndClearDraft({
   submit,
   text,
 }: {
+  appendFileParts: (fileParts: FileUIPart[]) => void
   clearAttachments: () => void
   contextParts: ChatContextPart[]
   dispatch: (action: ComposerAction) => void
@@ -220,7 +272,16 @@ function submitAndClearDraft({
   clearSubmittedDraft({ clearAttachments, dispatch, promptEditor })
 
   if (isComposerSendPromise(result)) {
-    void result.catch(reportComposerSubmitError)
+    void result
+      .then((resolved) => {
+        if (resolved === false) {
+          restoreSubmittedDraft({ appendFileParts, contextParts, dispatch, files, promptEditor, text })
+        }
+      })
+      .catch((error) => {
+        reportComposerSubmitError(error)
+        restoreSubmittedDraft({ appendFileParts, contextParts, dispatch, files, promptEditor, text })
+      })
   }
 }
 
@@ -339,10 +400,15 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
   const label = contextWindow
     ? `${formatTokenCount(tokens)} / ${formatTokenCount(contextWindow)} tokens`
     : `${formatTokenCount(tokens)} tokens`
+  const percentLabel = contextWindow ? `${Math.round(percent * 100)}%` : 'unknown'
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex size-5 cursor-default items-center justify-center">
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <button
+          type="button"
+          className="flex size-6 cursor-default items-center justify-center rounded-md text-muted-foreground transition-[background-color,color] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Context usage: ${label}`}
+        >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ transform: 'rotate(-90deg)' }}>
             <circle cx="9" cy="9" r={TOKEN_CIRCLE_RADIUS} strokeWidth="2" className="stroke-muted" fill="none" />
             {contextWindow && (
@@ -354,7 +420,7 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
                 fill="none"
                 className={cn(
                   'transition-[stroke] duration-150',
-                  isDanger ? 'stroke-destructive/70' : isWarning ? 'stroke-amber-500/70' : 'stroke-primary/50',
+                  isDanger ? 'stroke-destructive/70' : isWarning ? 'stroke-warning/70' : 'stroke-primary/50',
                 )}
                 strokeDasharray={TOKEN_CIRCUMFERENCE}
                 strokeDashoffset={offset}
@@ -362,10 +428,49 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
               />
             )}
           </svg>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="top" className="text-[11px]">{label}</TooltipContent>
-    </Tooltip>
+        </button>
+      </HoverCardTrigger>
+      <HoverCardContent side="top" align="end" sideOffset={8} className="w-56 p-3">
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-medium text-foreground">Context usage</span>
+            <span
+              className={cn(
+                'font-mono text-[10px] tabular-nums',
+                isDanger ? 'text-destructive' : isWarning ? 'text-warning' : 'text-muted-foreground',
+              )}
+            >
+              {percentLabel}
+            </span>
+          </div>
+          {contextWindow && (
+            <div className="h-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn(
+                  'h-full rounded-full transition-[width,background-color] duration-150',
+                  isDanger ? 'bg-destructive' : isWarning ? 'bg-warning' : 'bg-primary',
+                )}
+                style={{ width: `${Math.round(percent * 100)}%` }}
+              />
+            </div>
+          )}
+          <div className="flex items-baseline justify-between gap-3 text-[11px]">
+            <span className="text-muted-foreground">Tokens</span>
+            <span className="font-mono tabular-nums text-foreground">{formatTokenCount(tokens)}</span>
+          </div>
+          {contextWindow
+            ? (
+                <div className="flex items-baseline justify-between gap-3 text-[11px]">
+                  <span className="text-muted-foreground">Window</span>
+                  <span className="font-mono tabular-nums text-foreground">{formatTokenCount(contextWindow)}</span>
+                </div>
+              )
+            : (
+                <div className="text-[11px] text-muted-foreground">Context window unavailable</div>
+              )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   )
 }
 
@@ -448,7 +553,7 @@ function ComposerActions({
         supportsAttachments={attachmentController.supportsAttachments}
         testId={attachButtonTestId}
       />
-      {sessionTokens != null && sessionTokens > 0 && (
+      {sessionTokens != null && sessionTokens > 0 && sessionContextWindow != null && sessionContextWindow > 0 && (
         <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
       )}
       {isStreaming && hasDraft && (
@@ -498,6 +603,7 @@ export function Composer({
   send,
   commands,
   attachments,
+  runtimeSettings,
   slots,
   externalSignals,
   view,
@@ -531,6 +637,8 @@ export function Composer({
     placeholder = 'Message...',
     availableFiles = EMPTY_FILES,
     searchFiles,
+    availablePlugins = EMPTY_PLUGINS,
+    searchPlugins,
     availableSkills = EMPTY_SKILLS,
     searchSkills,
     className,
@@ -574,6 +682,17 @@ export function Composer({
     [state.slashQuery, visibleSlashCommands],
   )
   const slashPanelHasResults = state.slashActive && slashPanelItems.length > 0
+  const mentionItems = useMemo<MentionPickerItem[]>(() => [
+    ...availablePlugins,
+    ...availableFiles,
+  ], [availableFiles, availablePlugins])
+  const searchMentionItems = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionPickerItem[]> => {
+    const [plugins, files] = await Promise.all([
+      searchPlugins ? searchPlugins(query, signal) : Promise.resolve(availablePlugins),
+      searchFiles ? searchFiles(query, signal) : Promise.resolve(availableFiles),
+    ])
+    return [...plugins, ...files]
+  }, [availableFiles, availablePlugins, searchFiles, searchPlugins])
 
   const mentionRangeRef = useRef<PromptEditorTriggerRange | null>(null)
   const slashRangeRef = useRef<PromptEditorTriggerRange | null>(null)
@@ -608,6 +727,9 @@ export function Composer({
   const textareaRowsClassName = textareaRows === undefined
     ? undefined
     : textareaRowsClasses[textareaRows] ?? textareaRowsClasses[3]
+  const runtimeInteractionMode = runtimeSettings?.settings.interactionMode
+  const runtimeSettingsDisabled = runtimeSettings?.disabled ?? false
+  const onRuntimeSettingsChange = runtimeSettings?.onChange
 
   const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
     const selectedSlashCommand = snapshot.trigger?.kind === 'slash'
@@ -635,18 +757,23 @@ export function Composer({
     })
   }, [state, visibleSlashCommands])
 
-  const handleMentionSelect = useCallback((item: MentionItem) => {
+  const handleMentionSelect = useCallback((item: MentionPickerItem) => {
     const range = mentionRangeRef.current
     if (!range) {
       return
     }
-    promptEditorRef.current?.insertFileMention(item, range)
+    if (item.kind === 'plugin') {
+      promptEditorRef.current?.insertPluginMention(item, range)
+    }
+    else {
+      promptEditorRef.current?.insertFileMention(item, range)
+    }
     dispatch({ type: 'mention/selected' })
   }, [])
 
-  const handleMentionTabComplete = useCallback((item: MentionItem) => {
+  const handleMentionTabComplete = useCallback((item: MentionPickerItem) => {
     const range = mentionRangeRef.current
-    if (!range) {
+    if (!range || item.kind === 'plugin') {
       return
     }
     promptEditorRef.current?.replaceFileTriggerWithText(item, range)
@@ -704,6 +831,7 @@ export function Composer({
 
       dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
       submitAndClearDraft({
+        appendFileParts: appendComposerFileParts,
         clearAttachments: clearComposerAttachments,
         contextParts: [],
         dispatch,
@@ -746,6 +874,7 @@ export function Composer({
     }
 
     submitAndClearDraft({
+      appendFileParts: appendComposerFileParts,
       clearAttachments: clearComposerAttachments,
       contextParts: state.contextParts,
       dispatch,
@@ -755,7 +884,18 @@ export function Composer({
       submit: submitHandler,
       text,
     })
-  }, [allowEmptySend, clearComposerAttachments, composerAttachments, disabled, isSending, onQuickQuestion, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
+  }, [allowEmptySend, appendComposerFileParts, clearComposerAttachments, composerAttachments, disabled, isSending, onQuickQuestion, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
+
+  const toggleRuntimeInteractionMode = useCallback(() => {
+    if (!runtimeInteractionMode || runtimeSettingsDisabled || !onRuntimeSettingsChange) {
+      return false
+    }
+
+    onRuntimeSettingsChange({
+      interactionMode: runtimeInteractionMode === 'plan' ? 'default' : 'plan',
+    })
+    return true
+  }, [onRuntimeSettingsChange, runtimeInteractionMode, runtimeSettingsDisabled])
 
   const handlePaste = useCallback((event: ClipboardEvent) => {
     attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)
@@ -764,6 +904,14 @@ export function Composer({
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't interfere with IME composition (e.g. Chinese input)
     if (e.isComposing) {
+      return
+    }
+
+    if (e.key === 'Tab' && e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (toggleRuntimeInteractionMode()) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
       return
     }
 
@@ -788,7 +936,7 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive, submitInNewWindow])
+  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive, submitInNewWindow, toggleRuntimeInteractionMode])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
@@ -856,9 +1004,9 @@ export function Composer({
     <div className={cn('relative w-full', className)}>
       {/* Mention panel — pops up above the composer */}
       <MentionPanel
-        items={availableFiles}
+        items={mentionItems}
         query={state.mentionQuery}
-        searchItems={searchFiles}
+        searchItems={searchMentionItems}
         onSelect={handleMentionSelect}
         onTabComplete={handleMentionTabComplete}
         onClose={() => dispatch({ type: 'mention/closed' })}
@@ -886,7 +1034,7 @@ export function Composer({
       <div
         ref={setActionTargetElement}
         className={cn(
-          'rounded-xl bg-background shadow-xs border border-border/40 focus-within:ring-0 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
+          'rounded-xl bg-background shadow-md border border-border focus-within:ring-0 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
           cardClassName,
         )}
         data-testid={actionTargetTestId}
