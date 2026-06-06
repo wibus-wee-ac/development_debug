@@ -5,7 +5,7 @@ import { lazy, Suspense, useEffect, useMemo } from 'react'
 
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 
 const WorkspaceDetailPage = lazy(() => import('~/features/workspace-detail/workspace-detail-page').then(m => ({ default: m.WorkspaceDetailPage })))
 

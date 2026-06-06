@@ -68,6 +68,15 @@ interface Window {
         bytes: Uint8Array
       }>
       copyScreenshotToClipboard: (input: { threadId: string, tabId?: string }) => Promise<void>
+      applyAnnotationDesign: (input: {
+        threadId: string
+        tabId?: string
+        selector: string
+        designChange: import('~/store/browser-panel').BrowserAnnotationDesignChange
+      }) => Promise<import('~/store/browser-panel').BrowserAnnotationElement | null>
+      clearAnnotationDesign: (input: { threadId: string, tabId?: string }) => Promise<void>
+      startAnnotationRuntime: (input: { threadId: string, tabId?: string }) => Promise<void>
+      stopAnnotationRuntime: (input: { threadId: string, tabId?: string }) => Promise<void>
       executeCdp: (input: {
         threadId: string
         tabId?: string
@@ -124,6 +133,26 @@ interface Window {
             mediaType?: string
             url: string
           }>
+          sourceUrl: string | null
+          sourceTitle: string | null
+        }) => void,
+      ) => () => void
+      onAnnotationRuntimeEvent: (
+        handler: (event: {
+          threadId: string
+          tabId: string
+          type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+          anchor?: import('~/store/browser-panel').BrowserAnnotationAnchor
+          selectedElement?: import('~/store/browser-panel').BrowserAnnotationElement | null
+          body?: string
+          attachedImages?: Array<{
+            filename?: string
+            mediaType?: string
+            url: string
+          }>
+          designChange?: import('~/store/browser-panel').BrowserAnnotationDesignChange | null
+          elements?: import('~/store/browser-panel').BrowserAnnotationElement[]
+          surfaceSize?: { width: number, height: number }
           sourceUrl: string | null
           sourceTitle: string | null
         }) => void,

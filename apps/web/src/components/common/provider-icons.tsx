@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl } from '~/lib/lobe-icons'
-import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, RuntimeKind } from '~/features/agent-runtime/types'
 import { useResolvedThemeMode } from '~/store/theme'
 
 type IconProps = ComponentProps<'svg'>

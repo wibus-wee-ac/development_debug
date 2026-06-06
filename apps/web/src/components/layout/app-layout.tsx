@@ -340,14 +340,12 @@ function AppLayoutContent({
       }
       setBrowserPanelRatio(ratio)
       updateDragging(null)
-      resumeBrowserNativeBounds()
     },
-    [readMainWidth, resumeBrowserNativeBounds, setBrowserPanelRatio, updateDragging],
+    [readMainWidth, setBrowserPanelRatio, updateDragging],
   )
   const handleBrowserPanelDragStart = useCallback(() => {
     updateDragging('browser')
-    pauseBrowserNativeBounds()
-  }, [pauseBrowserNativeBounds, updateDragging])
+  }, [updateDragging])
   const handleBottomPanelDragStart = useCallback(() => {
     updateDragging('panel')
     pauseBrowserNativeBounds()

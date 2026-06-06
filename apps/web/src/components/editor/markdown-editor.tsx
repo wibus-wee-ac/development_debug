@@ -6,7 +6,7 @@ import TaskList from '@tiptap/extension-task-list'
 import Typography from '@tiptap/extension-typography'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useCallback, useEffect, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Markdown } from 'tiptap-markdown'
 
 import { cn } from '~/lib/cn'
@@ -47,7 +47,6 @@ export function MarkdownEditor({
 }: MarkdownEditorProps) {
   const onSaveRef = useRef(onSave)
   const readonlyRef = useRef(readonly)
-  const smartMentionsRef = useRef(smartMentions)
   const documentIdRef = useRef(documentId)
   const externalContentRef = useRef(content ?? '')
 
@@ -58,18 +57,6 @@ export function MarkdownEditor({
   useEffect(() => {
     readonlyRef.current = readonly
   }, [readonly])
-
-  useEffect(() => {
-    smartMentionsRef.current = smartMentions
-  }, [smartMentions])
-
-  const getSmartMentionItems = useCallback((query: string) => {
-    return smartMentionsRef.current?.getItems(query) ?? []
-  }, [])
-
-  const handleSmartMentionOpen = useCallback((attrs: SmartMentionAttrs) => {
-    smartMentionsRef.current?.onOpen?.(attrs)
-  }, [])
 
   const smartMentionsEnabled = !!smartMentions
 
@@ -103,8 +90,8 @@ export function MarkdownEditor({
       ...(smartMentionsEnabled
         ? [
             SmartMention.configure({
-              getItems: getSmartMentionItems,
-              onOpen: handleSmartMentionOpen,
+              getItems: smartMentions.getItems,
+              onOpen: smartMentions.onOpen,
             }),
           ]
         : []),
@@ -123,7 +110,7 @@ export function MarkdownEditor({
         onSaveRef.current(md)
       }
     },
-  }, [getSmartMentionItems, handleSmartMentionOpen, placeholder, smartMentionsEnabled])
+  }, [placeholder, smartMentions, smartMentionsEnabled])
 
   useEffect(() => {
     editor?.setEditable(!readonly)

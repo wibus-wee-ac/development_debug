@@ -10,6 +10,7 @@ type CanvasRuntime = {
   color: DrawColor
   theme: 'dark' | 'light'
   visible: boolean
+  requestPaint: () => void
   cleanup: () => void
 }
 
@@ -45,26 +46,51 @@ function syncCanvas(
   return { W, H }
 }
 
-function createCanvasRuntime(canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D): CanvasRuntime {
+function createCanvasRuntime(
+  canvas: HTMLCanvasElement,
+  ctx: CanvasRenderingContext2D,
+  paint: (runtime: CanvasRuntime) => void,
+): CanvasRuntime {
   let isDocumentVisible = document.visibilityState === 'visible'
   let isIntersecting = true
+  let frameId = 0
+  let disposed = false
   const runtime: CanvasRuntime = {
     size: { W: 0, H: 0 },
     color: readDrawColor(),
     theme: readThemeMode(),
     visible: isDocumentVisible && isIntersecting,
+    requestPaint: () => {},
     cleanup: () => {},
   }
+
+  const requestPaint = () => {
+    if (disposed || frameId !== 0) {
+      return
+    }
+    frameId = requestAnimationFrame(() => {
+      frameId = 0
+      if (!disposed && isCanvasDrawable(runtime)) {
+        paint(runtime)
+      }
+    })
+  }
+  runtime.requestPaint = requestPaint
 
   const refreshColor = () => {
     runtime.color = readDrawColor()
     runtime.theme = readThemeMode()
+    requestPaint()
   }
   const refreshSize = (width: number, height: number) => {
     runtime.size = syncCanvas(canvas, ctx, width, height)
+    requestPaint()
   }
   const refreshVisibility = () => {
     runtime.visible = isDocumentVisible && isIntersecting
+    if (runtime.visible) {
+      requestPaint()
+    }
   }
   const rect = canvas.getBoundingClientRect()
   refreshSize(rect.width, rect.height)
@@ -116,6 +142,8 @@ function createCanvasRuntime(canvas: HTMLCanvasElement, ctx: CanvasRenderingCont
   }
 
   runtime.cleanup = () => {
+    disposed = true
+    cancelAnimationFrame(frameId)
     for (const cleanup of cleanupCallbacks) {
       cleanup()
     }
@@ -128,11 +156,17 @@ function isCanvasDrawable(runtime: CanvasRuntime): boolean {
   return runtime.visible && runtime.size.W > 0 && runtime.size.H > 0
 }
 
+function seededUnit(index: number, salt: number): number {
+  const value = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453
+  return value - Math.floor(value)
+}
+
 // ── Shared mouse tracking hook ──────────────────────────────────────────────────
 
 function useCanvasMouse(
   canvasRef: React.RefObject<HTMLCanvasElement | null>,
   active: boolean,
+  onChangeRef?: React.RefObject<(() => void) | null>,
 ) {
   const mouseRef = useRef({ x: -9999, y: -9999 })
 
@@ -143,9 +177,11 @@ function useCanvasMouse(
 
     const onMove = (e: MouseEvent) => {
       mouseRef.current = { x: e.offsetX, y: e.offsetY }
+      onChangeRef?.current?.()
     }
     const onLeave = () => {
       mouseRef.current = { x: -9999, y: -9999 }
+      onChangeRef?.current?.()
     }
 
     canvas.addEventListener('mousemove', onMove)
@@ -154,21 +190,22 @@ function useCanvasMouse(
       canvas.removeEventListener('mousemove', onMove)
       canvas.removeEventListener('mouseleave', onLeave)
     }
-  }, [active, canvasRef])
+  }, [active, canvasRef, onChangeRef])
 
   return mouseRef
 }
 
 // ── 1. HalftoneArt ─────────────────────────────────────────────────────────────
-// Radial sine wave breathing dot grid. Dots grow and shrink with a wave that
-// travels outward from the center. Classic dither / halftone print aesthetic.
+// Radial sine wave dot grid. Dots vary by a fixed wave from the center, giving
+// a classic dither / halftone print aesthetic without a continuous animation.
 
 const HALFTONE_GRID = 18
 const HALFTONE_MAX_R = 5.5
 
 export function HalftoneArt({ className, interactive = false }: { className?: string; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -179,19 +216,11 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
     if (!ctx) {
       return
     }
-    const runtime = createCanvasRuntime(canvas, ctx)
-
-    let animId: number
-    let t = 0
-
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
-      }
+    const paint = (runtime: CanvasRuntime) => {
       const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
       const [cr, cg, cb] = runtime.color
+      const phase = 0.8
 
       const cols = Math.ceil(W / HALFTONE_GRID) + 1
       const rows = Math.ceil(H / HALFTONE_GRID) + 1
@@ -203,7 +232,7 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
           const dx = x / W - 0.5
           const dy = y / H - 0.5
           const dist = Math.sqrt(dx * dx + dy * dy)
-          const wave = Math.sin(t - dist * 10 + col * 0.25 + row * 0.18)
+          const wave = Math.sin(phase - dist * 10 + col * 0.25 + row * 0.18)
           let radius = Math.max(0.5, HALFTONE_MAX_R * (wave * 0.5 + 0.5))
           let alpha = 0.10 + (wave * 0.5 + 0.5) * 0.28
 
@@ -224,16 +253,15 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
         }
       }
 
-      t += 0.013
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef])
+  }, [interactive, mouseRef, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -243,14 +271,15 @@ export function HalftoneArt({ className, interactive = false }: { className?: st
 }
 
 // ── 2. FlowField ───────────────────────────────────────────────────────────────
-// Particles drifting along a smooth vector field derived from sine-cosine noise.
-// Each particle follows a locally computed angle — gives organic, fluid motion.
+// Particles placed along a smooth vector field derived from sine-cosine noise.
+// Each particle uses a locally computed offset for an organic, fluid look.
 
 const FLOW_PARTICLE_COUNT = 180
 
 export function FlowField({ className, interactive = false }: { className?: string; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -261,29 +290,21 @@ export function FlowField({ className, interactive = false }: { className?: stri
     if (!ctx) {
       return
     }
-    const runtime = createCanvasRuntime(canvas, ctx)
-
     type P = { x: number, y: number }
     let particles: P[] = []
     let W = 0
     let H = 0
-    let animId: number
-    let t = 0
 
     const init = (w: number, h: number) => {
       W = w
       H = h
-      particles = Array.from({ length: FLOW_PARTICLE_COUNT }).map(() => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
+      particles = Array.from({ length: FLOW_PARTICLE_COUNT }).map((_, i) => ({
+        x: seededUnit(i, 71) * w,
+        y: seededUnit(i, 83) * h,
       }))
     }
 
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
-      }
+    const paint = (runtime: CanvasRuntime) => {
       const dims = runtime.size
       ctx.clearRect(0, 0, dims.W, dims.H)
 
@@ -294,11 +315,10 @@ export function FlowField({ className, interactive = false }: { className?: stri
       const [cr, cg, cb] = runtime.color
 
       for (const p of particles) {
-        // Two independent sine waves for x/y velocity — clean Lissajous-like flow
-        const vx = Math.sin(p.x * 0.018 + t * 0.6) * 0.75
-        const vy = Math.sin(p.y * 0.014 - t * 0.45) * 0.75
+        const angle = Math.sin(p.x * 0.018) + Math.sin(p.y * 0.014)
+        let x = p.x + Math.cos(angle) * 8
+        let y = p.y + Math.sin(angle) * 8
 
-        // Mouse repulsion: particles gently pushed away from cursor
         if (interactive) {
           const mx = mouseRef.current.x
           const my = mouseRef.current.y
@@ -306,40 +326,24 @@ export function FlowField({ className, interactive = false }: { className?: stri
           const pdy = p.y - my
           const pdist = Math.sqrt(pdx * pdx + pdy * pdy)
           const influence = Math.max(0, 1 - pdist / 150)
-          p.x += (pdx / (pdist + 0.001)) * influence * 1.0
-          p.y += (pdy / (pdist + 0.001)) * influence * 1.0
+          x += (pdx / (pdist + 0.001)) * influence * 8
+          y += (pdy / (pdist + 0.001)) * influence * 8
         }
 
-        p.x += vx
-        p.y += vy
-        if (p.x < 0) {
-          p.x = W
-        }
-        if (p.x > W) {
-          p.x = 0
-        }
-        if (p.y < 0) {
-          p.y = H
-        }
-        if (p.y > H) {
-          p.y = 0
-        }
         ctx.fillStyle = `rgba(${cr},${cg},${cb},0.4)`
         ctx.beginPath()
-        ctx.arc(p.x, p.y, 2.0, 0, Math.PI * 2)
+        ctx.arc(x, y, 2.0, 0, Math.PI * 2)
         ctx.fill()
       }
-
-      t += 0.014
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef])
+  }, [interactive, mouseRef, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -349,7 +353,7 @@ export function FlowField({ className, interactive = false }: { className?: stri
 }
 
 // ── 3. GridWave ────────────────────────────────────────────────────────────────
-// Dots on a regular grid whose brightness and size oscillate in a diagonal wave.
+// Dots on a regular grid whose brightness and size follow a fixed diagonal wave.
 // Creates a field-of-wheat effect — every column is slightly phase-shifted.
 
 const GRIDWAVE_SPACING = 22
@@ -357,7 +361,8 @@ const GRIDWAVE_MAX_R = 3.8
 
 export function GridWave({ className, interactive = false }: { className?: string; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -368,19 +373,11 @@ export function GridWave({ className, interactive = false }: { className?: strin
     if (!ctx) {
       return
     }
-    const runtime = createCanvasRuntime(canvas, ctx)
-
-    let animId: number
-    let t = 0
-
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
-      }
+    const paint = (runtime: CanvasRuntime) => {
       const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
       const [cr, cg, cb] = runtime.color
+      const phase = 1.1
 
       const cols = Math.ceil(W / GRIDWAVE_SPACING) + 1
       const rows = Math.ceil(H / GRIDWAVE_SPACING) + 1
@@ -398,7 +395,7 @@ export function GridWave({ className, interactive = false }: { className?: strin
             boost = Math.max(0, 1 - Math.sqrt(mdx * mdx + mdy * mdy))
           }
 
-          const wave = Math.sin(col * 0.5 - row * 0.3 + t * 2.2 + boost * 2.5)
+          const wave = Math.sin(col * 0.5 - row * 0.3 + phase + boost * 2.5)
           const r = 0.5 + GRIDWAVE_MAX_R * (wave * 0.5 + 0.5)
           const alpha = 0.06 + (0.28 + boost * 0.15) * (wave * 0.5 + 0.5)
           ctx.fillStyle = `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`
@@ -407,17 +404,15 @@ export function GridWave({ className, interactive = false }: { className?: strin
           ctx.fill()
         }
       }
-
-      t += 0.02
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef])
+  }, [interactive, mouseRef, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -427,15 +422,15 @@ export function GridWave({ className, interactive = false }: { className?: strin
 }
 
 // ── 4. SineRipple ──────────────────────────────────────────────────────────────
-// Concentric rings that expand outward from the center at a constant speed.
-// Multiple rings are phase-offset, giving a continuous ripple / radar effect.
+// Concentric phase-offset rings drawn from the center or pointer.
 
 const RIPPLE_RING_COUNT = 7
 const RIPPLE_SPACING = 40
 
 export function SineRipple({ className, interactive = false }: { className?: string; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -446,19 +441,11 @@ export function SineRipple({ className, interactive = false }: { className?: str
     if (!ctx) {
       return
     }
-    const runtime = createCanvasRuntime(canvas, ctx)
-
-    let animId: number
-    let t = 0
-
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
-      }
+    const paint = (runtime: CanvasRuntime) => {
       const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
       const [cr, cg, cb] = runtime.color
+      const phase = 0.45
 
       // Mouse-driven origin with smooth fallback to center
       const mx = mouseRef.current.x
@@ -469,9 +456,9 @@ export function SineRipple({ className, interactive = false }: { className?: str
       const maxR = Math.sqrt(W * W + H * H) / 2
 
       for (let i = 0; i < RIPPLE_RING_COUNT; i++) {
-        const r = (t * 28 + i * RIPPLE_SPACING) % maxR
+        const r = (phase * 28 + i * RIPPLE_SPACING) % maxR
         const progress = r / maxR
-        const alpha = (1 - progress) * 0.26 * Math.sin(t * 1.5 + i * 0.8)
+        const alpha = (1 - progress) * 0.26 * Math.sin(phase * 1.5 + i * 0.8)
         if (alpha <= 0) {
           continue
         }
@@ -481,17 +468,15 @@ export function SineRipple({ className, interactive = false }: { className?: str
         ctx.arc(cx, cy, r, 0, Math.PI * 2)
         ctx.stroke()
       }
-
-      t += 0.009
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef])
+  }, [interactive, mouseRef, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -501,10 +486,11 @@ export function SineRipple({ className, interactive = false }: { className?: str
 }
 
 // ── 5. RainDots ────────────────────────────────────────────────────────────────
-// Evenly-spaced columns of dots cascade downward at varying speeds.
-// Each dot has a fading 2-step tail. Subtle and organic — not Matrix-like.
+// Evenly-spaced columns of dots with a fading 2-step tail.
+// Subtle and organic — not Matrix-like.
 
 const RAIN_COL_SPACING = 14
+const DITHERED_DECORATION_WIDTH = 4096
 
 export function RainDots({ className }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -518,45 +504,32 @@ export function RainDots({ className }: { className?: string }) {
     if (!ctx) {
       return
     }
-    const runtime = createCanvasRuntime(canvas, ctx)
 
-    type Drop = { x: number, y: number, speed: number, alpha: number }
+    type Drop = { x: number, y: number, alpha: number }
     let drops: Drop[] = []
+    let W = 0
     let H = 0
-    let animId: number
 
     const init = (w: number, h: number) => {
+      W = w
       H = h
       const cols = Math.floor(w / RAIN_COL_SPACING)
       drops = Array.from({ length: cols }).map((_, i) => ({
-        x: i * RAIN_COL_SPACING + RAIN_COL_SPACING / 2 + (Math.random() - 0.5) * 6,
-        y: Math.random() * h,
-        speed: 0.45 + Math.random() * 0.55,
-        alpha: 0.18 + Math.random() * 0.28,
+        x: i * RAIN_COL_SPACING + RAIN_COL_SPACING / 2 + (seededUnit(i, 11) - 0.5) * 6,
+        y: seededUnit(i, 17) * h,
+        alpha: 0.18 + seededUnit(i, 29) * 0.28,
       }))
     }
 
-    let initialized = false
-
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
+    const paint = (runtime: CanvasRuntime) => {
+      const { W: currentW, H: currentH } = runtime.size
+      if (W !== currentW || H !== currentH) {
+        init(currentW, currentH)
       }
-      const { W, H: curH } = runtime.size
-      if (!initialized) {
-        init(W, curH)
-        initialized = true
-      }
-      ctx.clearRect(0, 0, W, curH)
+      ctx.clearRect(0, 0, currentW, currentH)
       const [cr, cg, cb] = runtime.color
 
       for (const d of drops) {
-        d.y += d.speed
-        if (d.y > H + 8) {
-          d.y = -8
-        }
-
         ctx.fillStyle = `rgba(${cr},${cg},${cb},${d.alpha.toFixed(3)})`
         ctx.beginPath()
         ctx.arc(d.x, d.y, 2.8, 0, Math.PI * 2)
@@ -572,13 +545,10 @@ export function RainDots({ className }: { className?: string }) {
         ctx.arc(d.x, d.y - 24, 1.1, 0, Math.PI * 2)
         ctx.fill()
       }
-
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
     return () => {
-      cancelAnimationFrame(animId)
       runtime.cleanup()
     }
   }, [canvasRef])
@@ -591,8 +561,8 @@ export function RainDots({ className }: { className?: string }) {
 }
 
 // ── 6. ConnectionMesh ──────────────────────────────────────────────────────────
-// Random nodes drift with Brownian motion; nearby nodes are connected by faint
-// lines. Mouse attracts nodes within range — subtle interactive network mesh.
+// Stable nodes connected by faint nearby lines. Mouse attraction is applied as a
+// transient draw-time offset instead of mutating the node field.
 
 const MESH_NODE_COUNT = 55
 const MESH_CONNECT_DIST = 100
@@ -600,109 +570,89 @@ const MESH_INFLUENCE_DIST = 150
 
 export function ConnectionMesh({ className, interactive = true }: { className?: string; interactive?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const runtime = createCanvasRuntime(canvas, ctx)
 
-    type Node = { x: number; y: number; vx: number; vy: number }
+    type Node = { x: number; y: number }
     let nodes: Node[] = []
     let W = 0
     let H = 0
-    let animId: number
 
     const init = (w: number, h: number) => {
       W = w; H = h
-      nodes = Array.from({ length: MESH_NODE_COUNT }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
+      nodes = Array.from({ length: MESH_NODE_COUNT }, (_, i) => ({
+        x: seededUnit(i, 41) * w,
+        y: seededUnit(i, 53) * h,
       }))
     }
 
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
+    const getDisplayNode = (node: Node): Node => {
+      if (!interactive) {
+        return node
       }
+      const mx = mouseRef.current.x
+      const my = mouseRef.current.y
+      const dx = mx - node.x
+      const dy = my - node.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      if (dist >= MESH_INFLUENCE_DIST) {
+        return node
+      }
+      const offset = (1 - dist / MESH_INFLUENCE_DIST) * 18
+      return {
+        x: node.x + (dx / (dist + 0.001)) * offset,
+        y: node.y + (dy / (dist + 0.001)) * offset,
+      }
+    }
+
+    const paint = (runtime: CanvasRuntime) => {
       const dims = runtime.size
       ctx.clearRect(0, 0, dims.W, dims.H)
       if (W !== dims.W || H !== dims.H) init(dims.W, dims.H)
 
       const [cr, cg, cb] = runtime.color
-
-      for (const n of nodes) {
-        n.vx += (Math.random() - 0.5) * 0.04
-        n.vy += (Math.random() - 0.5) * 0.04
-        n.vx *= 0.995
-        n.vy *= 0.995
-        const speed = Math.sqrt(n.vx * n.vx + n.vy * n.vy)
-        if (speed > 0.6) {
-          n.vx = (n.vx / speed) * 0.6
-          n.vy = (n.vy / speed) * 0.6
-        }
-
-        if (interactive) {
-          const mx = mouseRef.current.x
-          const my = mouseRef.current.y
-          const dx = mx - n.x
-          const dy = my - n.y
-          const dist = Math.sqrt(dx * dx + dy * dy)
-          if (dist < MESH_INFLUENCE_DIST) {
-            const force = (1 - dist / MESH_INFLUENCE_DIST) * 0.025
-            n.vx += (dx / (dist + 0.001)) * force
-            n.vy += (dy / (dist + 0.001)) * force
-          }
-        }
-
-        n.x += n.vx
-        n.y += n.vy
-        if (n.x < 0) n.x = W
-        if (n.x > W) n.x = 0
-        if (n.y < 0) n.y = H
-        if (n.y > H) n.y = 0
-      }
+      const displayNodes = nodes.map(getDisplayNode)
 
       // Draw connections
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          const dx = nodes[i].x - nodes[j].x
-          const dy = nodes[i].y - nodes[j].y
+      for (let i = 0; i < displayNodes.length; i++) {
+        for (let j = i + 1; j < displayNodes.length; j++) {
+          const dx = displayNodes[i].x - displayNodes[j].x
+          const dy = displayNodes[i].y - displayNodes[j].y
           const dist = Math.sqrt(dx * dx + dy * dy)
           if (dist < MESH_CONNECT_DIST) {
             const alpha = (1 - dist / MESH_CONNECT_DIST) * 0.1
             ctx.strokeStyle = `rgba(${cr},${cg},${cb},${alpha.toFixed(3)})`
             ctx.lineWidth = 0.5
             ctx.beginPath()
-            ctx.moveTo(nodes[i].x, nodes[i].y)
-            ctx.lineTo(nodes[j].x, nodes[j].y)
+            ctx.moveTo(displayNodes[i].x, displayNodes[i].y)
+            ctx.lineTo(displayNodes[j].x, displayNodes[j].y)
             ctx.stroke()
           }
         }
       }
 
       // Draw nodes
-      for (const n of nodes) {
+      for (const n of displayNodes) {
         ctx.fillStyle = `rgba(${cr},${cg},${cb},0.25)`
         ctx.beginPath()
         ctx.arc(n.x, n.y, 1.5, 0, Math.PI * 2)
         ctx.fill()
       }
-
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef])
+  }, [interactive, mouseRef, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -717,22 +667,16 @@ export function ConnectionMesh({ className, interactive = true }: { className?: 
 
 export function SpotlightGradient({ className, interactive = true, radius = 300 }: { className?: string; interactive?: boolean; radius?: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useCanvasMouse(canvasRef, interactive)
+  const requestPaintRef = useRef<(() => void) | null>(null)
+  const mouseRef = useCanvasMouse(canvasRef, interactive, requestPaintRef)
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const runtime = createCanvasRuntime(canvas, ctx)
 
-    let animId: number
-
-    const draw = () => {
-      if (!isCanvasDrawable(runtime)) {
-        animId = requestAnimationFrame(draw)
-        return
-      }
+    const paint = (runtime: CanvasRuntime) => {
       const { W, H } = runtime.size
       ctx.clearRect(0, 0, W, H)
       const [cr, cg, cb] = runtime.color
@@ -747,16 +691,15 @@ export function SpotlightGradient({ className, interactive = true, radius = 300 
         ctx.fillStyle = gradient
         ctx.fillRect(0, 0, W, H)
       }
-
-      animId = requestAnimationFrame(draw)
     }
 
-    draw()
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
     return () => {
-      cancelAnimationFrame(animId)
+      requestPaintRef.current = null
       runtime.cleanup()
     }
-  }, [interactive, mouseRef, radius])
+  }, [interactive, mouseRef, radius, requestPaintRef])
 
   return (
     <div className={cn('relative size-full', className)}>
@@ -783,7 +726,7 @@ interface DitheredGradientDecorationProps {
   /** Track mouse via window listener instead of canvas-only events.
    *  Use when the canvas is a top decoration and content overlaps it. @default false */
   trackGlobal?: boolean
-  /** Whether the animation loop should run. @default true */
+  /** Whether the decoration animation should run. @default true */
   active?: boolean
   className?: string
   style?: React.CSSProperties
@@ -791,9 +734,9 @@ interface DitheredGradientDecorationProps {
 
 /**
  * GitHub-style contribution graph decoration — Canvas-based, monochrome dither
- * pattern where cells trade brightness levels over time. Mouse proximity creates
- * a localized glow. Pattern is position-stable: resizing the window does not
- * reshuffle the layout.
+ * pattern where cells trade deterministic brightness levels over time. Mouse
+ * proximity creates a localized glow. Pattern is position-stable: resizing the
+ * window does not reshuffle the layout.
  */
 export function DitheredGradientDecoration({
   rows = 16,
@@ -811,7 +754,7 @@ export function DitheredGradientDecoration({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mouseRef = useRef({ x: -9999, y: -9999 })
   const targetMouseRef = useRef({ x: -9999, y: -9999 })
-  const rafRef = useRef<number>(0)
+  const requestPaintRef = useRef<(() => void) | null>(null)
 
   const step = cellSize + gap
 
@@ -824,17 +767,6 @@ export function DitheredGradientDecoration({
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    const runtime = createCanvasRuntime(canvas, ctx)
-
-    let cleanupMouse: (() => void) | undefined
-    if (trackGlobal) {
-      const onMove = (e: MouseEvent) => {
-        const rect = canvas.getBoundingClientRect()
-        targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-      }
-      window.addEventListener('mousemove', onMove)
-      cleanupMouse = () => window.removeEventListener('mousemove', onMove)
-    }
 
     // Position-based hash: same (col, row) always produces the same value.
     // This keeps the pattern stable across window / container resizes.
@@ -869,14 +801,9 @@ export function DitheredGradientDecoration({
       return cell
     }
 
-    function draw(time: number) {
-      if (!isCanvasDrawable(runtime)) {
-        rafRef.current = requestAnimationFrame(draw)
-        return
-      }
-
+    const paint = (runtime: CanvasRuntime, time = performance.now()) => {
       const { W: w, H: h } = runtime.size
-      ctx!.clearRect(0, 0, w, h)
+      ctx.clearRect(0, 0, w, h)
 
       const isDark = runtime.theme === 'dark'
       // Wider range per level → visible "alternating bright" contrast
@@ -886,12 +813,12 @@ export function DitheredGradientDecoration({
 
       const t = time / 1000
 
-      // Lazy mouse — lerp current toward target for inertia
       const ease = 0.06
       if (targetMouseRef.current.x > -9998) {
         mouseRef.current.x += (targetMouseRef.current.x - mouseRef.current.x) * ease
         mouseRef.current.y += (targetMouseRef.current.y - mouseRef.current.y) * ease
-      } else {
+      }
+      else {
         mouseRef.current.x += (-9999 - mouseRef.current.x) * 0.15
         mouseRef.current.y += (-9999 - mouseRef.current.y) * 0.15
       }
@@ -923,33 +850,58 @@ export function DitheredGradientDecoration({
             ? Math.min(0.95, l + glow * 0.35)
             : Math.max(0.05, l - glow * 0.35)
 
-          ctx!.globalAlpha = 1
-          ctx!.fillStyle = `oklch(${finalL.toFixed(3)} 0 0)`
-          ctx!.beginPath()
-          ctx!.roundRect(col * step, row * step, cellSize, cellSize, radius)
-          ctx!.fill()
+          ctx.globalAlpha = 1
+          ctx.fillStyle = `oklch(${finalL.toFixed(3)} 0 0)`
+          ctx.beginPath()
+          ctx.roundRect(col * step, row * step, cellSize, cellSize, radius)
+          ctx.fill()
         }
       }
 
       if (fadeBottom) {
-        const grad = ctx!.createLinearGradient(0, 0, 0, h)
+        const grad = ctx.createLinearGradient(0, 0, 0, h)
         grad.addColorStop(0, 'rgba(255,255,255,0)')
         grad.addColorStop(0.3, 'rgba(255,255,255,0)')
         grad.addColorStop(1, 'rgba(255,255,255,1)')
-        ctx!.globalAlpha = 1
-        ctx!.globalCompositeOperation = 'destination-out'
-        ctx!.fillStyle = grad
-        ctx!.fillRect(0, 0, w, h)
-        ctx!.globalCompositeOperation = 'source-over'
+        ctx.globalAlpha = 1
+        ctx.globalCompositeOperation = 'destination-out'
+        ctx.fillStyle = grad
+        ctx.fillRect(0, 0, w, h)
+        ctx.globalCompositeOperation = 'source-over'
       }
-
-      rafRef.current = requestAnimationFrame(draw)
     }
 
-    rafRef.current = requestAnimationFrame(draw)
+    const runtime = createCanvasRuntime(canvas, ctx, paint)
+    requestPaintRef.current = runtime.requestPaint
+    let animationFrameId = 0
+    let animationDisposed = false
+
+    const paintAnimationFrame = (time: number) => {
+      animationFrameId = 0
+      if (isCanvasDrawable(runtime)) {
+        paint(runtime, time)
+      }
+      if (!animationDisposed) {
+        animationFrameId = requestAnimationFrame(paintAnimationFrame)
+      }
+    }
+    animationFrameId = requestAnimationFrame(paintAnimationFrame)
+
+    let cleanupMouse: (() => void) | undefined
+    if (trackGlobal) {
+      const onMove = (e: MouseEvent) => {
+        const rect = canvas.getBoundingClientRect()
+        targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+        runtime.requestPaint()
+      }
+      window.addEventListener('mousemove', onMove)
+      cleanupMouse = () => window.removeEventListener('mousemove', onMove)
+    }
 
     return () => {
-      cancelAnimationFrame(rafRef.current)
+      animationDisposed = true
+      cancelAnimationFrame(animationFrameId)
+      requestPaintRef.current = null
       runtime.cleanup()
       cleanupMouse?.()
     }
@@ -959,10 +911,12 @@ export function DitheredGradientDecoration({
     const rect = canvasRef.current?.getBoundingClientRect()
     if (!rect) return
     targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    requestPaintRef.current?.()
   }
 
   const handleMouseLeave = () => {
     targetMouseRef.current = { x: -9999, y: -9999 }
+    requestPaintRef.current?.()
   }
 
   return (
@@ -970,7 +924,7 @@ export function DitheredGradientDecoration({
       ref={canvasRef}
       aria-hidden
       className={cn(trackGlobal ? 'pointer-events-none' : 'pointer-events-auto', 'absolute left-1/2 top-0 -translate-x-1/2', className)}
-      style={{ height: rows * step + gap, width: '100vw', ...style }}
+      style={{ ...style, height: rows * step + gap, width: DITHERED_DECORATION_WIDTH, maxWidth: 'none' }}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     />

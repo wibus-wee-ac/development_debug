@@ -1,7 +1,8 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
+import type { ChatRuntimeSettings } from '~/features/chat/chat-response-command'
 
 import { persistStorage } from './persist-storage'
 
@@ -14,11 +15,13 @@ interface NewChatState {
   /** map of profileId → last selected modelId */
   lastModelByProfile: Record<string, string>
   lastThinkingEffort: PersistedThinkingEffort
+  lastRuntimeSettings: ChatRuntimeSettings
   setLastRuntimeKind: (kind: RuntimeKind | null) => void
   setLastCliTuiAgentId: (id: string | null) => void
   setLastAgentProfileId: (id: string | null) => void
   setLastModelForProfile: (profileId: string, modelId: string) => void
   setLastThinkingEffort: (effort: PersistedThinkingEffort) => void
+  setLastRuntimeSettings: (settings: ChatRuntimeSettings) => void
   getLastModelForProfile: (profileId: string) => string | undefined
   reconcileProfiles: (profileIds: string[]) => void
 }
@@ -31,6 +34,7 @@ export const useNewChatStore = create<NewChatState>()(
       lastAgentProfileId: null,
       lastModelByProfile: {},
       lastThinkingEffort: 'high',
+      lastRuntimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
       setLastRuntimeKind: (kind) => {
         set((state) => {
           if (state.lastRuntimeKind === kind) {
@@ -71,6 +75,17 @@ export const useNewChatStore = create<NewChatState>()(
             return state
           }
           return { lastThinkingEffort: effort }
+        })
+      },
+      setLastRuntimeSettings: (settings) => {
+        set((state) => {
+          if (
+            state.lastRuntimeSettings.accessMode === settings.accessMode
+            && state.lastRuntimeSettings.interactionMode === settings.interactionMode
+          ) {
+            return state
+          }
+          return { lastRuntimeSettings: settings }
         })
       },
       getLastModelForProfile: profileId => get().lastModelByProfile[profileId],

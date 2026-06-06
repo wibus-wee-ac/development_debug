@@ -182,6 +182,8 @@ export interface BrowserAnnotationElement {
     height: number
   }
   styles: BrowserAnnotationElementStyle
+  pageUrl?: string
+  nearbyText?: string
 }
 
 export interface BrowserAnnotationPoint {
@@ -1001,7 +1003,12 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         }))
       },
       setAnnotationAdjustmentSession: (session) => {
-        set({ annotationAdjustmentSession: session })
+        set((state) => {
+          if (state.annotationAdjustmentSession === session) {
+            return state
+          }
+          return { annotationAdjustmentSession: session }
+        })
       },
       updateAnnotationAdjustmentDesignChanges: (changes) => {
         set((state) => {
