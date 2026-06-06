@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
@@ -262,20 +262,21 @@ export function RightAside({
   const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
   const hasActiveAdjustment = adjustmentSession !== null
   const activeBrowserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
+  const browserPanelOpen = useLayoutStore(state => state.browserPanelOpen)
   const hasActiveBrowserTab = useBrowserPanelStore((state) => {
     const ownerState = state.owners[activeBrowserPanelOwnerId]
     const activePanelTab = ownerState?.tabs.find(tab => tab.id === ownerState.activeTabId)
+      ?? ownerState?.tabs[0]
     return activePanelTab?.kind === 'browser'
   })
-  const visibleTabs = useMemo(
-    () => TABS.filter(tab => tab.id !== 'adjustment' || hasActiveBrowserTab),
-    [hasActiveBrowserTab],
+  const visibleTabs = TABS.filter(
+    tab => tab.id !== 'adjustment' || (browserPanelOpen && hasActiveBrowserTab),
   )
   const resolvedActiveTab = visibleTabs.some(tab => tab.id === activeTab)
     ? activeTab
     : 'files'
 
-  const activateTab = useCallback((tabId: string) => {
+  const activateTab = (tabId: string) => {
     if (tabId === resolvedActiveTab) {
       return
     }
@@ -288,7 +289,7 @@ export function RightAside({
 
     setPanelDirection(nextIndex >= activeIndex ? 1 : -1)
     setActiveTab(tabId)
-  }, [resolvedActiveTab, setActiveTab, visibleTabs])
+  }
 
   return (
     <div

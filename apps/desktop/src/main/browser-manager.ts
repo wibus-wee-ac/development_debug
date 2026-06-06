@@ -82,6 +82,103 @@ export interface BrowserExecuteCdpInput extends BrowserTabInput {
   params?: Record<string, unknown>
 }
 
+export interface BrowserAnnotationElementStyle {
+  color: string
+  backgroundColor: string
+  opacity: string
+  fontFamily: string
+  fontSize: string
+  fontWeight: string
+  lineHeight: string
+  borderRadius: string
+  borderColor?: string
+  borderWidth?: string
+  display?: string
+  alignItems?: string
+  justifyContent?: string
+  flexDirection?: string
+  width?: string
+  height?: string
+  marginTop?: string
+  marginRight?: string
+  marginBottom?: string
+  marginLeft?: string
+  paddingTop?: string
+  paddingRight?: string
+  paddingBottom?: string
+  paddingLeft?: string
+  rowGap?: string
+  columnGap?: string
+}
+
+export interface BrowserAnnotationElement {
+  id: string
+  tagName: string
+  label: string
+  description?: string
+  role: string
+  selector: string
+  attributes?: {
+    id?: string
+    className?: string
+    ariaLabel?: string
+    title?: string
+    alt?: string
+    href?: string
+    type?: string
+    name?: string
+    placeholder?: string
+    value?: string
+    testId?: string
+  }
+  rect: {
+    x: number
+    y: number
+    width: number
+    height: number
+  }
+  styles: BrowserAnnotationElementStyle
+  pageUrl?: string
+  nearbyText?: string
+}
+
+export interface BrowserAnnotationDesignChange {
+  comment?: string
+  color?: string
+  backgroundColor?: string
+  opacity?: string
+  fontFamily?: string
+  fontSize?: string
+  fontWeight?: string
+  borderRadius?: string
+  borderColor?: string
+  borderWidth?: string
+  display?: string
+  alignItems?: string
+  justifyContent?: string
+  flexDirection?: string
+  width?: string
+  height?: string
+  marginTop?: string
+  marginRight?: string
+  marginBottom?: string
+  marginLeft?: string
+  paddingTop?: string
+  paddingRight?: string
+  paddingBottom?: string
+  paddingLeft?: string
+  rowGap?: string
+  columnGap?: string
+}
+
+export interface BrowserAnnotationElementInput extends BrowserTabInput {
+  selector: string
+}
+
+export interface BrowserAnnotationDesignInput extends BrowserAnnotationElementInput {
+  designChange: BrowserAnnotationDesignChange
+}
+
 export interface BrowserPromptAttachmentInput {
   filename?: string
   mediaType?: string
