@@ -209,7 +209,7 @@ describe('server plugin context lifecycle', () => {
       capabilities: {
         supportsSteerTurn: false,
         supportsShellExecution: false,
-        supportsPermissionMode: false,
+        supportsRuntimeSettings: false,
         supportsUiSlotStates: false,
         supportsDynamicCapabilities: false,
         sessionModelSwitch: 'unsupported',

@@ -195,7 +195,7 @@ function requireAgentSession(agentSessionId: string) {
 
 function buildIssuePrompt(
   issue: { id: string, title: string, description: string | null, priority: string, labels: string[], contextRefs: string },
-  rules: { global: string | null, profileSpecific: string | null },
+  rules: { global: string | null, agentSpecific: string | null },
 ): string {
   const parts = [`# Issue: ${issue.title}`, '', `Issue ID: ${issue.id}`, '']
 
@@ -217,13 +217,13 @@ function buildIssuePrompt(
     })
   }
 
-  if (rules.global || rules.profileSpecific) {
+  if (rules.global || rules.agentSpecific) {
     parts.push('', '## Workflow Rules')
     if (rules.global) {
       parts.push(rules.global)
     }
-    if (rules.profileSpecific) {
-      parts.push(rules.profileSpecific)
+    if (rules.agentSpecific) {
+      parts.push(rules.agentSpecific)
     }
   }
 
@@ -411,7 +411,7 @@ async function runSession(agentSessionId: string): Promise<void> {
     }
 
     const issue = requireIssue(session.issueId)
-    const workflowRules = await WorkflowRules.get(issue.workspaceId, session.providerTargetId)
+    const workflowRules = await WorkflowRules.get(issue.workspaceId, session.agentId)
     const chatSession = Session.create({
       workspaceId: issue.workspaceId,
       title: `Issue: ${issue.title}`,

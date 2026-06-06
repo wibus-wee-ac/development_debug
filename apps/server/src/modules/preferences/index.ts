@@ -63,6 +63,34 @@ export const preferences = new Elysia({
       200: PreferencesModel.savedResponse,
     },
   })
+  .get('/desktop', () => Preferences.getDesktopPreferences(), {
+    detail: {
+      'summary': 'Get desktop preferences',
+      'description': 'Read Cradle Desktop runtime preferences.',
+      'x-cradle-cli': {
+        command: ['preferences', 'desktop', 'get'],
+      },
+    },
+    response: {
+      200: PreferencesModel.desktopPreferences,
+    },
+  })
+  .put('/desktop', async ({ body }) => {
+    await Preferences.setDesktopPreferences(body)
+    return { ok: true as const }
+  }, {
+    detail: {
+      'summary': 'Set desktop preferences',
+      'description': 'Persist Cradle Desktop runtime preferences.',
+      'x-cradle-cli': {
+        command: ['preferences', 'desktop', 'set'],
+      },
+    },
+    body: PreferencesModel.desktopPreferences,
+    response: {
+      200: PreferencesModel.savedResponse,
+    },
+  })
   .get('/jarvis', () => Preferences.getJarvisPreferences(), {
     detail: {
       'summary': 'Get Jarvis preferences',

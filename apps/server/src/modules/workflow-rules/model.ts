@@ -5,13 +5,13 @@ const nullableString = t.Nullable(t.String())
 export const WorkflowRulesModel = {
   workflowRuleEntry: t.Object({
     type: t.Union([t.Literal('global'), t.Literal('agent')]),
-    agentProfileId: nullableString,
+    agentId: nullableString,
     content: t.String(),
   }),
 
   workflowRules: t.Object({
     global: nullableString,
-    profileSpecific: nullableString,
+    agentSpecific: nullableString,
   }),
 
   workspaceIdParams: t.Object({
@@ -19,15 +19,15 @@ export const WorkflowRulesModel = {
   }),
 
   getQuery: t.Object({
-    agentProfileId: t.Optional(t.String()),
+    agentId: t.Optional(t.String()),
   }),
 
   saveBody: t.Object({
-    agentProfileId: t.Optional(nullableString),
+    agentId: t.Optional(nullableString),
     content: t.String(),
   }),
 
   deleteQuery: t.Object({
-    agentProfileId: t.Optional(t.String()),
+    agentId: t.Optional(t.String()),
   }),
 }

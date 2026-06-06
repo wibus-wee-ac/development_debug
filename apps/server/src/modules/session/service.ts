@@ -11,8 +11,10 @@ import {
   buildSessionRuntimeConfigJson,
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
+import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
+import { invalidateDurableProviderRuntimeBindingForChatSession } from '../provider-runtime/service'
 import * as Workspace from '../workspace/service'
 
 export type SessionStatus = 'idle' | 'streaming' | 'error'
@@ -20,6 +22,8 @@ export type SessionView = Session & {
   modelId: string | null
   status: SessionStatus
   latestUserMessageAt: number | null
+  latestAssistantMessageAt: number | null
+  unread: boolean
 }
 
 const SessionCreateInputSchema = z.object({
@@ -40,24 +44,133 @@ function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, stri
     return new Map()
   }
 
+  const sessionRows = db()
+    .select({
+      id: sessions.id,
+      configJson: sessions.configJson,
+    })
+    .from(sessions)
+    .where(inArray(sessions.id, sessionIds))
+    .all()
+  const modelsBySessionId = new Map(
+    sessionRows.map(row => [row.id, readSessionModelPreference(row.configJson)]),
+  )
+
   const bindings = db()
     .select({
       chatSessionId: backendSessionBindings.chatSessionId,
       requestedModelId: backendSessionBindings.requestedModelId,
     })
     .from(backendSessionBindings)
-    .where(inArray(backendSessionBindings.chatSessionId, sessionIds))
+    .where(and(
+      inArray(backendSessionBindings.chatSessionId, sessionIds),
+      isNotNull(backendSessionBindings.backendSessionId),
+    ))
     .all()
 
-  return new Map(
-    bindings.map(binding => [binding.chatSessionId, binding.requestedModelId ?? null]),
-  )
+  for (const binding of bindings) {
+    if (modelsBySessionId.get(binding.chatSessionId) === null) {
+      modelsBySessionId.set(binding.chatSessionId, binding.requestedModelId ?? null)
+    }
+  }
+
+  return modelsBySessionId
+}
+
+function readUnknownRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function parseTrustedConfigJson(configJson: string | null | undefined): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(configJson ?? '{}')
+    return readUnknownRecord(parsed)
+  }
+  catch {
+    return {}
+  }
+}
+
+export function readSessionModelPreference(configJson: string | null | undefined): string | null {
+  const config = parseTrustedConfigJson(configJson)
+  return typeof config.requestedModelId === 'string' && config.requestedModelId.trim().length > 0
+    ? config.requestedModelId.trim()
+    : null
+}
+
+function writeSessionModelPreferenceConfigJson(
+  configJson: string | null | undefined,
+  modelId: string | null,
+): string {
+  const config = parseTrustedConfigJson(configJson)
+  if (modelId === null) {
+    const { requestedModelId: _requestedModelId, ...rest } = config
+    return JSON.stringify(rest)
+  }
+  return JSON.stringify({
+    ...config,
+    requestedModelId: modelId,
+  })
+}
+
+function hasActiveCodexGoal(binding: {
+  runtimeKind: string
+  backendStateSnapshot: string | null
+} | null | undefined): boolean {
+  if (binding?.runtimeKind !== 'codex') {
+    return false
+  }
+  try {
+    const snapshot = readProviderStateSnapshot(binding.backendStateSnapshot)
+    const codex = readUnknownRecord(snapshot.codex)
+    const goal = readUnknownRecord(codex.goal)
+    return goal.status === 'active'
+      && typeof goal.objective === 'string'
+      && goal.objective.trim().length > 0
+  }
+  catch {
+    return false
+  }
+}
+
+function projectSessionStatus(input: {
+  runStatus?: string | null
+  binding?: {
+    runtimeKind: string
+    backendStateSnapshot: string | null
+  } | null
+}): SessionStatus {
+  if (input.runStatus === 'streaming' || hasActiveCodexGoal(input.binding)) {
+    return 'streaming'
+  }
+  if (input.runStatus === 'failed') {
+    return 'error'
+  }
+  return 'idle'
 }
 
 function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStatus> {
   if (sessionIds.length === 0) {
     return new Map()
   }
+
+  const bindingsBySessionId = new Map(
+    db()
+      .select({
+        chatSessionId: backendSessionBindings.chatSessionId,
+        runtimeKind: backendSessionBindings.runtimeKind,
+        backendStateSnapshot: backendSessionBindings.backendStateSnapshot,
+      })
+      .from(backendSessionBindings)
+      .where(and(
+        inArray(backendSessionBindings.chatSessionId, sessionIds),
+        isNotNull(backendSessionBindings.backendSessionId),
+      ))
+      .all()
+      .map(binding => [binding.chatSessionId, binding]),
+  )
 
   const runRows = db()
     .select({
@@ -76,15 +189,19 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
     if (statusesBySessionId.has(row.chatSessionId)) {
       continue
     }
-    if (row.status === 'streaming') {
-      statusesBySessionId.set(row.chatSessionId, 'streaming')
+    statusesBySessionId.set(row.chatSessionId, projectSessionStatus({
+      runStatus: row.status,
+      binding: bindingsBySessionId.get(row.chatSessionId),
+    }))
+  }
+
+  for (const sessionId of sessionIds) {
+    if (statusesBySessionId.has(sessionId)) {
       continue
     }
-    if (row.status === 'failed') {
-      statusesBySessionId.set(row.chatSessionId, 'error')
-      continue
-    }
-    statusesBySessionId.set(row.chatSessionId, 'idle')
+    statusesBySessionId.set(sessionId, projectSessionStatus({
+      binding: bindingsBySessionId.get(sessionId),
+    }))
   }
 
   return statusesBySessionId
@@ -100,11 +217,23 @@ function readSessionStatus(sessionId: string): SessionStatus {
     .orderBy(desc(backendRuns.startedAt), desc(sql`backend_runs.rowid`))
     .get()
 
-  if (latestRun?.status === 'streaming') {
-    return 'streaming'
-  }
+  const binding
+    = db()
+      .select({
+        runtimeKind: backendSessionBindings.runtimeKind,
+        backendStateSnapshot: backendSessionBindings.backendStateSnapshot,
+      })
+      .from(backendSessionBindings)
+      .where(and(
+        eq(backendSessionBindings.chatSessionId, sessionId),
+        isNotNull(backendSessionBindings.backendSessionId),
+      ))
+      .get() ?? null
 
-  return latestRun?.status === 'failed' ? 'error' : 'idle'
+  return projectSessionStatus({
+    runStatus: latestRun?.status,
+    binding,
+  })
 }
 
 function toSessionView(
@@ -112,18 +241,22 @@ function toSessionView(
   modelId: string | null,
   status: SessionStatus,
   latestUserMessageAt: number | null = null,
+  latestAssistantMessageAt: number | null = null,
 ): SessionView {
   return {
     ...session,
     modelId,
     status,
     latestUserMessageAt,
+    latestAssistantMessageAt,
+    unread: latestAssistantMessageAt !== null && (session.lastReadAt === null || latestAssistantMessageAt > session.lastReadAt),
   }
 }
 
-function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined): Array<{
+function listRowsByActivity(where: ReturnType<typeof and> | undefined): Array<{
   session: Session
   latestUserMessageAt: number | null
+  latestAssistantMessageAt: number | null
 }> {
   const latestUserMessages = db()
     .select({
@@ -135,13 +268,28 @@ function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined):
     .groupBy(messages.sessionId)
     .as('latest_user_messages')
 
+  const latestAssistantMessages = db()
+    .select({
+      sessionId: messages.sessionId,
+      latestAssistantMessageAt: max(messages.createdAt).as('latest_assistant_message_at'),
+    })
+    .from(messages)
+    .where(and(
+      eq(messages.role, 'assistant'),
+      inArray(messages.status, ['complete', 'aborted', 'failed']),
+    ))
+    .groupBy(messages.sessionId)
+    .as('latest_assistant_messages')
+
   const query = db()
     .select({
       session: sessions,
       latestUserMessageAt: latestUserMessages.latestUserMessageAt,
+      latestAssistantMessageAt: latestAssistantMessages.latestAssistantMessageAt,
     })
     .from(sessions)
     .leftJoin(latestUserMessages, eq(sessions.id, latestUserMessages.sessionId))
+    .leftJoin(latestAssistantMessages, eq(sessions.id, latestAssistantMessages.sessionId))
     .orderBy(
       desc(sql<number>`coalesce(${latestUserMessages.latestUserMessageAt}, ${sessions.createdAt})`),
       desc(sessions.createdAt),
@@ -150,6 +298,7 @@ function listRowsByLatestUserMessage(where: ReturnType<typeof and> | undefined):
   return (where ? query.where(where).all() : query.all()).map(row => ({
     session: row.session,
     latestUserMessageAt: row.latestUserMessageAt ?? null,
+    latestAssistantMessageAt: row.latestAssistantMessageAt ?? null,
   }))
 }
 
@@ -162,6 +311,21 @@ function readLatestUserMessageAt(sessionId: string): number | null {
     .where(and(eq(messages.sessionId, sessionId), eq(messages.role, 'user')))
     .get()
   return row?.latestUserMessageAt ?? null
+}
+
+function readLatestAssistantMessageAt(sessionId: string): number | null {
+  const row = db()
+    .select({
+      latestAssistantMessageAt: max(messages.createdAt),
+    })
+    .from(messages)
+    .where(and(
+      eq(messages.sessionId, sessionId),
+      eq(messages.role, 'assistant'),
+      inArray(messages.status, ['complete', 'aborted', 'failed']),
+    ))
+    .get()
+  return row?.latestAssistantMessageAt ?? null
 }
 
 function assertTargetCompatibleWithRuntime(input: {
@@ -190,7 +354,7 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
     input.archived ? isNotNull(sessions.archivedAt) : isNull(sessions.archivedAt),
   ].filter(predicate => predicate !== undefined)
   const where = predicates.length > 0 ? and(...predicates) : undefined
-  const rows = listRowsByLatestUserMessage(where)
+  const rows = listRowsByActivity(where)
 
   const sessionIds = rows.map(row => row.session.id)
   const modelsBySessionId = listRequestedModelsBySessionIds(sessionIds)
@@ -200,6 +364,7 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
     modelsBySessionId.get(row.session.id) ?? null,
     statusesBySessionId.get(row.session.id) ?? 'idle',
     row.latestUserMessageAt,
+    row.latestAssistantMessageAt,
   ))
 }
 
@@ -236,10 +401,59 @@ export function get(id: string): SessionView | null {
         requestedModelId: backendSessionBindings.requestedModelId,
       })
       .from(backendSessionBindings)
-      .where(eq(backendSessionBindings.chatSessionId, id))
+      .where(and(
+        eq(backendSessionBindings.chatSessionId, id),
+        isNotNull(backendSessionBindings.backendSessionId),
+      ))
       .get() ?? null
 
-  return toSessionView(row, binding?.requestedModelId ?? null, readSessionStatus(id), readLatestUserMessageAt(id))
+  return toSessionView(
+    row,
+    readSessionModelPreference(row.configJson) ?? binding?.requestedModelId ?? null,
+    readSessionStatus(id),
+    readLatestUserMessageAt(id),
+    readLatestAssistantMessageAt(id),
+  )
+}
+
+export function markRead(id: string): SessionView | null {
+  const record = db().select().from(sessions).where(eq(sessions.id, id)).get()
+  if (!record) {
+    return null
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  const latestAssistantMessageAt = readLatestAssistantMessageAt(id)
+  db()
+    .update(sessions)
+    .set({
+      lastReadAt: latestAssistantMessageAt ?? record.lastReadAt,
+      updatedAt: now,
+    })
+    .where(eq(sessions.id, id))
+    .run()
+
+  return get(id)
+}
+
+export function markUnread(id: string): SessionView | null {
+  const record = db().select().from(sessions).where(eq(sessions.id, id)).get()
+  if (!record) {
+    return null
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  const latestAssistantMessageAt = readLatestAssistantMessageAt(id)
+  db()
+    .update(sessions)
+    .set({
+      lastReadAt: latestAssistantMessageAt !== null ? latestAssistantMessageAt - 1 : null,
+      updatedAt: now,
+    })
+    .where(eq(sessions.id, id))
+    .run()
+
+  return get(id)
 }
 
 export function create(input: {
@@ -426,7 +640,6 @@ export function update(input: {
 
   const now = Math.floor(Date.now() / 1000)
   const patch: Partial<typeof sessions.$inferInsert> = { updatedAt: now }
-  const nextProviderTargetId = input.providerTargetId ?? record.providerTargetId
 
   if (input.title !== undefined) {
     patch.title = input.title
@@ -459,96 +672,22 @@ export function update(input: {
       patch.agentId = null
     }
   }
+  if (input.modelId !== undefined) {
+    patch.configJson = writeSessionModelPreferenceConfigJson(record.configJson, input.modelId)
+  }
+  else if (input.providerTargetId !== undefined && input.providerTargetId !== record.providerTargetId) {
+    patch.configJson = writeSessionModelPreferenceConfigJson(record.configJson, null)
+  }
 
   db().update(sessions).set(patch).where(eq(sessions.id, input.id)).run()
-
-  if (input.modelId !== undefined || input.providerTargetId !== undefined) {
-    upsertSessionRequestedModel({
-      session: record,
-      providerTargetId: nextProviderTargetId,
-      modelId: input.modelId,
-      now,
-    })
+  if (
+    input.providerTargetId !== undefined
+    && input.providerTargetId !== record.providerTargetId
+  ) {
+    invalidateDurableProviderRuntimeBindingForChatSession(input.id)
   }
 
   return get(input.id)
-}
-
-function upsertSessionRequestedModel(input: {
-  session: Session
-  providerTargetId: string | null
-  modelId?: string | null
-  now: number
-}): void {
-  if (!input.providerTargetId) {
-    return
-  }
-
-  const existing = db()
-    .select()
-    .from(backendSessionBindings)
-    .where(eq(backendSessionBindings.chatSessionId, input.session.id))
-    .get()
-  const providerChanged = existing?.providerTargetId !== input.providerTargetId
-  const runtimeChanged = existing?.runtimeKind !== input.session.runtimeKind
-  const requestedModelId = input.modelId === undefined
-    ? providerChanged || runtimeChanged ? null : existing?.requestedModelId ?? null
-    : input.modelId
-
-  if (existing) {
-    const backendStateSnapshot = providerChanged || runtimeChanged
-      ? JSON.stringify({ models: { currentModelId: requestedModelId } })
-      : writeRequestedModelToProviderStateSnapshot(existing.backendStateSnapshot, requestedModelId)
-    db()
-      .update(backendSessionBindings)
-      .set({
-        providerTargetId: input.providerTargetId,
-        runtimeKind: input.session.runtimeKind,
-        backendSessionId: providerChanged || runtimeChanged ? null : existing.backendSessionId,
-        backendStateSnapshot,
-        requestedModelId,
-        updatedAt: input.now,
-      })
-      .where(eq(backendSessionBindings.id, existing.id))
-      .run()
-    return
-  }
-
-  if (requestedModelId === null) {
-    return
-  }
-
-  db()
-    .insert(backendSessionBindings)
-    .values({
-      id: randomUUID(),
-      chatSessionId: input.session.id,
-      providerTargetId: input.providerTargetId,
-      runtimeKind: input.session.runtimeKind,
-      backendSessionId: null,
-      backendStateSnapshot: JSON.stringify({ models: { currentModelId: requestedModelId } }),
-      requestedModelId,
-      createdAt: input.now,
-      updatedAt: input.now,
-    })
-    .run()
-}
-
-function writeRequestedModelToProviderStateSnapshot(
-  raw: string | null,
-  modelId: string | null,
-): string {
-  const snapshot = raw ? JSON.parse(raw) as Record<string, unknown> : {}
-  const models = snapshot.models && typeof snapshot.models === 'object' && !Array.isArray(snapshot.models)
-    ? snapshot.models as Record<string, unknown>
-    : {}
-  return JSON.stringify({
-    ...snapshot,
-    models: {
-      ...models,
-      currentModelId: modelId,
-    },
-  })
 }
 
 export function updateTitle(input: { id: string, title: string }): void {
@@ -717,14 +856,17 @@ export function exportMarkdown(sessionId: string): string {
   const binding = d
     .select()
     .from(backendSessionBindings)
-    .where(eq(backendSessionBindings.chatSessionId, sessionId))
+    .where(and(
+      eq(backendSessionBindings.chatSessionId, sessionId),
+      isNotNull(backendSessionBindings.backendSessionId),
+    ))
     .get()
 
   const lines: string[] = []
   lines.push(`# ${session.title}`)
   lines.push('')
   lines.push(
-    `> Model: ${binding?.requestedModelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`,
+    `> Model: ${readSessionModelPreference(session.configJson) ?? binding?.requestedModelId ?? 'unknown'} | Created: ${new Date(session.createdAt * 1000).toLocaleString()}`,
   )
   lines.push('')
 

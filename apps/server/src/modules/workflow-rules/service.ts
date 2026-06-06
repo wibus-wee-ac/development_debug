@@ -8,12 +8,12 @@ import { getServerConfig } from '../../infra'
 
 export interface WorkflowRules {
   global: string | null
-  profileSpecific: string | null
+  agentSpecific: string | null
 }
 
 export interface WorkflowRuleEntry {
   type: 'global' | 'agent'
-  agentProfileId: string | null
+  agentId: string | null
   content: string
 }
 
@@ -48,9 +48,9 @@ function getGlobalRulePath(workspaceId: string): string {
   return join(getWorkspaceRoot(workspaceId), 'rules.md')
 }
 
-function getAgentRulePath(workspaceId: string, agentProfileId: string): string {
-  assertSafeId(agentProfileId, 'agentProfileId')
-  return join(getWorkspaceRoot(workspaceId), 'agents', `${agentProfileId}.md`)
+function getAgentRulePath(workspaceId: string, agentId: string): string {
+  assertSafeId(agentId, 'agentId')
+  return join(getWorkspaceRoot(workspaceId), 'agents', `${agentId}.md`)
 }
 
 async function readOptionalFile(filePath: string): Promise<string | null> {
@@ -67,28 +67,28 @@ async function readOptionalFile(filePath: string): Promise<string | null> {
 
 // ── public API ──
 
-export async function get(workspaceId: string, agentProfileId?: string): Promise<WorkflowRules> {
+export async function get(workspaceId: string, agentId?: string | null): Promise<WorkflowRules> {
   const globalPath = getGlobalRulePath(workspaceId)
-  const profilePath = agentProfileId ? getAgentRulePath(workspaceId, agentProfileId) : null
+  const agentPath = agentId ? getAgentRulePath(workspaceId, agentId) : null
 
   return {
     global: await readOptionalFile(globalPath),
-    profileSpecific: profilePath ? await readOptionalFile(profilePath) : null,
+    agentSpecific: agentPath ? await readOptionalFile(agentPath) : null,
   }
 }
 
-export async function save(workspaceId: string, agentProfileId: string | null, content: string): Promise<void> {
-  const filePath = agentProfileId
-    ? getAgentRulePath(workspaceId, agentProfileId)
+export async function save(workspaceId: string, agentId: string | null, content: string): Promise<void> {
+  const filePath = agentId
+    ? getAgentRulePath(workspaceId, agentId)
     : getGlobalRulePath(workspaceId)
 
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, content, 'utf8')
 }
 
-export async function remove(workspaceId: string, agentProfileId: string | null): Promise<void> {
-  const filePath = agentProfileId
-    ? getAgentRulePath(workspaceId, agentProfileId)
+export async function remove(workspaceId: string, agentId: string | null): Promise<void> {
+  const filePath = agentId
+    ? getAgentRulePath(workspaceId, agentId)
     : getGlobalRulePath(workspaceId)
 
   try {
@@ -105,7 +105,7 @@ export async function list(workspaceId: string): Promise<WorkflowRuleEntry[]> {
   const entries: WorkflowRuleEntry[] = []
   const globalContent = await readOptionalFile(getGlobalRulePath(workspaceId))
   if (globalContent !== null) {
-    entries.push({ type: 'global', agentProfileId: null, content: globalContent })
+    entries.push({ type: 'global', agentId: null, content: globalContent })
   }
 
   const agentsDir = join(getWorkspaceRoot(workspaceId), 'agents')
@@ -126,7 +126,7 @@ export async function list(workspaceId: string): Promise<WorkflowRuleEntry[]> {
     }
     entries.push({
       type: 'agent',
-      agentProfileId: file.replace(MD_EXT_RE, ''),
+      agentId: file.replace(MD_EXT_RE, ''),
       content,
     })
   }

@@ -32,7 +32,6 @@ The server follows the repository convention of **technical primitives + busines
 - `issue-agent`
 - `git`
 - `observability`
-- `pack-codebase`
 - `preferences`
 - `pty`
 - `workflow-rules`

@@ -80,6 +80,24 @@ export const UsageModel = {
       totalTokens: t.Number(),
       count: t.Number(),
     })),
+    byAgent: t.Array(t.Object({
+      agentId: t.String(),
+      agentName: t.String(),
+      costUsd: t.Number(),
+      promptTokens: t.Number(),
+      completionTokens: t.Number(),
+      totalTokens: t.Number(),
+      count: t.Number(),
+    })),
+    byProviderTarget: t.Array(t.Object({
+      providerTargetId: t.String(),
+      providerTargetName: t.Nullable(t.String()),
+      costUsd: t.Number(),
+      promptTokens: t.Number(),
+      completionTokens: t.Number(),
+      totalTokens: t.Number(),
+      count: t.Number(),
+    })),
   }),
 
   sessionCost: t.Array(t.Object({

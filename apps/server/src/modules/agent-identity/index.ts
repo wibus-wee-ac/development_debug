@@ -52,14 +52,14 @@ export const agentIdentity = new Elysia({
   })
   .post('/import/local-config', ({ body }) => AgentIdentity.importLocalConfig(body ?? {}), {
     detail: {
-      summary: 'Import agents from local Claude and Codex config',
+      summary: 'Import agents from local Claude, Codex, Gemini, Pi, Kimi, and CC Switch config',
     },
     body: AgentIdentityModel.importLocalConfigBody,
     response: { 200: AgentIdentityModel.importLocalConfigResult },
   })
   .post('/import/local-config/preview', ({ body }) => AgentIdentity.previewLocalConfigImport(body ?? {}), {
     detail: {
-      summary: 'Preview agents available from local Claude, Codex, and CC Switch config',
+      summary: 'Preview agents available from local Claude, Codex, Gemini, Pi, Kimi, and CC Switch config',
     },
     body: AgentIdentityModel.importLocalConfigBody,
     response: { 200: AgentIdentityModel.previewLocalConfigImportResult },

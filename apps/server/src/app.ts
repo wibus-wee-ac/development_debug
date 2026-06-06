@@ -7,7 +7,7 @@ import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
 import { createRequestLoggerPlugin } from './http/request-logger'
 import { shutdownInfra } from './infra'
-import { flushAllActiveRunSnapshots, recoverPersistedStreamingRuns } from './modules/chat-runtime/service'
+import { flushAllActiveRunSnapshots, recoverPersistedRunProjections } from './modules/chat-runtime/service'
 import { shutdownTraceStreams } from './modules/chat-runtime/stream-trace'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
@@ -33,11 +33,12 @@ import { issueAgent } from './modules/issue-agent'
 import { kanban } from './modules/kanban'
 import { modelRegistry } from './modules/model-registry'
 import { observability } from './modules/observability'
-import { packCodebase } from './modules/pack-codebase'
 import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
 import { providerTargets } from './modules/provider-targets'
 import { providers } from './modules/provider-catalog'
+import { providerRuntimeHostManager } from './modules/provider-runtime/host-manager'
+import { clearSideConversations } from './modules/provider-runtime/side-conversation-registry'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
 import { secrets } from './modules/secrets'
@@ -79,7 +80,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     adapter: node(),
     normalize: 'typebox',
   })
-  recoverPersistedStreamingRuns()
+  recoverPersistedRunProjections()
 
   app.use(
     cors({
@@ -117,7 +118,6 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.use(skills)
   app.use(workflowRules)
   app.use(git)
-  app.use(packCodebase)
   app.use(acp)
   app.use(chatRuntime)
   app.use(chronicle)
@@ -135,6 +135,8 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   app.onStop([
     () => flushAllActiveRunSnapshots(),
+    () => clearSideConversations(),
+    () => providerRuntimeHostManager.shutdown(),
     () => chronicleStopActivityPipelineScheduler(),
     () => chronicleStopSlackBackgroundSync(),
     () => chronicleCleanup(),
@@ -162,6 +164,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
       console.error('[chronicle] Daemon initialization failed:', error)
     })
     chronicleStartSlackBackgroundSync()
+    providerRuntimeHostManager.startReaper()
   }
 
   registerOpenApiAlias(app)

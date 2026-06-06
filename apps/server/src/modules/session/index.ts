@@ -91,6 +91,32 @@ export const session = new Elysia({
     body: SessionModel.archiveBody,
     response: { 200: SessionModel.session },
   })
+  .post('/:id/read', ({ params }) => {
+    const result = Session.markRead(params.id)
+    if (!result) {
+      throw new AppError({ code: 'session_not_found', status: 404, message: 'Session not found' })
+    }
+    return result
+  }, {
+    detail: {
+      summary: 'Mark session as read',
+    },
+    params: SessionModel.idParams,
+    response: { 200: SessionModel.session },
+  })
+  .post('/:id/unread', ({ params }) => {
+    const result = Session.markUnread(params.id)
+    if (!result) {
+      throw new AppError({ code: 'session_not_found', status: 404, message: 'Session not found' })
+    }
+    return result
+  }, {
+    detail: {
+      summary: 'Mark session as unread',
+    },
+    params: SessionModel.idParams,
+    response: { 200: SessionModel.session },
+  })
   .delete('/:id', ({ params }) => {
     Session.remove(params.id)
     return { ok: true as const }

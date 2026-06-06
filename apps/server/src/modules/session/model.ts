@@ -29,9 +29,12 @@ export const SessionModel = {
     status: sessionStatusSchema,
     pinned: t.Number(),
     archivedAt: t.Nullable(t.Number()),
+    lastReadAt: t.Nullable(t.Number()),
     createdAt: t.Number(),
     updatedAt: t.Number(),
     latestUserMessageAt: t.Nullable(t.Number()),
+    latestAssistantMessageAt: t.Nullable(t.Number()),
+    unread: t.Boolean(),
   }),
 
   message: t.Object({

@@ -4,6 +4,18 @@ import { z } from 'zod'
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableProfileRef = t.Union([t.String({ description: 'ID of the agent profile to use for Jarvis' }), t.Null()])
 const runtimeKindRef = t.String({ minLength: 1, description: 'Chat runtime ID used by Jarvis sessions' })
+const titleGenerationThinkingEffort = t.Union([
+  t.Literal('minimal'),
+  t.Literal('low'),
+  t.Literal('medium'),
+  t.Literal('high'),
+  t.Literal('xhigh'),
+])
+const titleGenerationPreferences = t.Object({
+  providerTargetId: nullableString,
+  modelId: nullableString,
+  thinkingEffort: titleGenerationThinkingEffort,
+}, { additionalProperties: false })
 
 export const PreferencesModel = {
   chatPreferences: t.Object({
@@ -13,6 +25,7 @@ export const PreferencesModel = {
       t.Literal('queue'),
       t.Literal('steer'),
     ], { default: 'queue' }),
+    titleGeneration: titleGenerationPreferences,
   }, { additionalProperties: false }),
   chatPreferencesUpdate: t.Object({
     modelId: nullableString,
@@ -21,9 +34,13 @@ export const PreferencesModel = {
       t.Literal('queue'),
       t.Literal('steer'),
     ], { default: 'queue' })),
+    titleGeneration: t.Optional(titleGenerationPreferences),
   }, { additionalProperties: false }),
   codexPreferences: t.Object({
     useCradleUserAgent: t.Boolean({ default: true }),
+  }, { additionalProperties: false }),
+  desktopPreferences: t.Object({
+    requireDoubleCommandQToQuit: t.Boolean({ default: true }),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     runtimeKind: t.Optional(runtimeKindRef),
@@ -49,10 +66,24 @@ export const ChatPreferencesJsonSchema = z.union([
   modelId: z.string().nullable().default(null),
   configSelections: z.record(z.string(), z.union([z.string(), z.boolean()])).default({}),
   continuationBehavior: z.enum(['queue', 'steer']).default('queue'),
+  titleGeneration: z.object({
+    providerTargetId: z.string().nullable().default(null),
+    modelId: z.string().nullable().default(null),
+    thinkingEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('minimal'),
+  }).default({
+    providerTargetId: null,
+    modelId: null,
+    thinkingEffort: 'minimal',
+  }),
 }).default({
   modelId: null,
   configSelections: {},
   continuationBehavior: 'queue',
+  titleGeneration: {
+    providerTargetId: null,
+    modelId: null,
+    thinkingEffort: 'minimal',
+  },
 }))
 
 export const CodexPreferencesJsonSchema = z.union([
@@ -62,6 +93,15 @@ export const CodexPreferencesJsonSchema = z.union([
   useCradleUserAgent: z.boolean().default(true),
 }).default({
   useCradleUserAgent: true,
+}))
+
+export const DesktopPreferencesJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.undefined(),
+]).pipe(z.object({
+  requireDoubleCommandQToQuit: z.boolean().default(true),
+}).default({
+  requireDoubleCommandQToQuit: true,
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([

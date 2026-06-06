@@ -276,6 +276,16 @@ export interface CostSummary {
   totalCompletionTokens: number
   totalTokens: number
   byModel: Array<{ modelId: string, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, count: number }>
+  byAgent: Array<{ agentId: string, agentName: string, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, count: number }>
+  byProviderTarget: Array<{ providerTargetId: string, providerTargetName: string | null, costUsd: number, promptTokens: number, completionTokens: number, totalTokens: number, count: number }>
+}
+
+interface CostBreakdownTotals {
+  costUsd: number
+  promptTokens: number
+  completionTokens: number
+  totalTokens: number
+  count: number
 }
 
 function resolveTimeRange(from?: string, to?: string): { fromEpoch: number, toEpoch: number } {
@@ -287,8 +297,12 @@ function resolveTimeRange(from?: string, to?: string): { fromEpoch: number, toEp
 export function getCostSummary(from?: string, to?: string): CostSummary {
   const { fromEpoch, toEpoch } = resolveTimeRange(from, to)
 
-  const byModel = db().all<{
+  const rows = db().all<{
     model_id: string
+    agent_id: string | null
+    agent_name: string | null
+    provider_target_id: string | null
+    provider_target_name: string | null
     prompt_tokens: number
     completion_tokens: number
     total_tokens: number
@@ -296,34 +310,115 @@ export function getCostSummary(from?: string, to?: string): CostSummary {
   }>(sql`
     SELECT
       COALESCE(${usageLogs.modelId}, 'unknown') AS model_id,
+      ${sessions.agentId} AS agent_id,
+      ${agents.name} AS agent_name,
+      ${usageLogs.providerTargetId} AS provider_target_id,
+      ${providerTargets.displayName} AS provider_target_name,
       SUM(${usageLogs.promptTokens}) AS prompt_tokens,
       SUM(${usageLogs.completionTokens}) AS completion_tokens,
       SUM(${usageLogs.totalTokens}) AS total_tokens,
       COUNT(*) AS count
     FROM ${usageLogs}
+    INNER JOIN ${sessions} ON ${sessions.id} = ${usageLogs.sessionId}
+    LEFT JOIN ${agents} ON ${agents.id} = ${sessions.agentId}
+    LEFT JOIN ${providerTargets} ON ${providerTargets.id} = ${usageLogs.providerTargetId}
     WHERE ${usageLogs.createdAt} >= ${fromEpoch}
       AND ${usageLogs.createdAt} < ${toEpoch}
-    GROUP BY ${usageLogs.modelId}
+    GROUP BY
+      ${usageLogs.modelId},
+      ${sessions.agentId},
+      ${agents.name},
+      ${usageLogs.providerTargetId},
+      ${providerTargets.displayName}
   `)
 
-  const modelEntries = byModel.map(row => ({
-    modelId: row.model_id,
-    promptTokens: row.prompt_tokens,
-    completionTokens: row.completion_tokens,
-    totalTokens: row.total_tokens,
-    count: row.count,
-    costUsd: estimateCost(row.model_id, { promptTokens: row.prompt_tokens, completionTokens: row.completion_tokens }),
-  }))
+  const modelMap = new Map<string, CostBreakdownTotals>()
+  const agentMap = new Map<string, CostBreakdownTotals & { agentName: string }>()
+  const providerTargetMap = new Map<string, CostBreakdownTotals & { providerTargetName: string | null }>()
 
-  modelEntries.sort((a, b) => b.costUsd - a.costUsd)
+  for (const row of rows) {
+    const costUsd = estimateCost(row.model_id, {
+      promptTokens: row.prompt_tokens,
+      completionTokens: row.completion_tokens,
+    })
+    addCostBreakdown(modelMap, row.model_id, {
+      costUsd,
+      promptTokens: row.prompt_tokens,
+      completionTokens: row.completion_tokens,
+      totalTokens: row.total_tokens,
+      count: row.count,
+    })
+    if (row.agent_id && row.agent_name) {
+      addNamedCostBreakdown(agentMap, row.agent_id, 'agentName', row.agent_name, {
+        costUsd,
+        promptTokens: row.prompt_tokens,
+        completionTokens: row.completion_tokens,
+        totalTokens: row.total_tokens,
+        count: row.count,
+      })
+    }
+    if (row.provider_target_id) {
+      addNamedCostBreakdown(providerTargetMap, row.provider_target_id, 'providerTargetName', row.provider_target_name, {
+        costUsd,
+        promptTokens: row.prompt_tokens,
+        completionTokens: row.completion_tokens,
+        totalTokens: row.total_tokens,
+        count: row.count,
+      })
+    }
+  }
+
+  const byModel = Array.from(modelMap.entries())
+    .map(([modelId, data]) => ({ modelId, ...data }))
+    .sort((a, b) => b.costUsd - a.costUsd)
+  const byAgent = Array.from(agentMap.entries())
+    .map(([agentId, data]) => ({ agentId, ...data }))
+    .sort((a, b) => b.costUsd - a.costUsd)
+  const byProviderTarget = Array.from(providerTargetMap.entries())
+    .map(([providerTargetId, data]) => ({ providerTargetId, ...data }))
+    .sort((a, b) => b.costUsd - a.costUsd)
 
   return {
-    totalCostUsd: modelEntries.reduce((sum, r) => sum + r.costUsd, 0),
-    totalPromptTokens: modelEntries.reduce((sum, r) => sum + r.promptTokens, 0),
-    totalCompletionTokens: modelEntries.reduce((sum, r) => sum + r.completionTokens, 0),
-    totalTokens: modelEntries.reduce((sum, r) => sum + r.totalTokens, 0),
-    byModel: modelEntries,
+    totalCostUsd: byModel.reduce((sum, row) => sum + row.costUsd, 0),
+    totalPromptTokens: byModel.reduce((sum, row) => sum + row.promptTokens, 0),
+    totalCompletionTokens: byModel.reduce((sum, row) => sum + row.completionTokens, 0),
+    totalTokens: byModel.reduce((sum, row) => sum + row.totalTokens, 0),
+    byModel,
+    byAgent,
+    byProviderTarget,
   }
+}
+
+function addCostBreakdown(map: Map<string, CostBreakdownTotals>, key: string, data: CostBreakdownTotals): void {
+  const current = map.get(key)
+  if (!current) {
+    map.set(key, { ...data })
+    return
+  }
+  current.costUsd += data.costUsd
+  current.promptTokens += data.promptTokens
+  current.completionTokens += data.completionTokens
+  current.totalTokens += data.totalTokens
+  current.count += data.count
+}
+
+function addNamedCostBreakdown<NameKey extends string>(
+  map: Map<string, CostBreakdownTotals & Record<NameKey, string | null>>,
+  key: string,
+  nameKey: NameKey,
+  name: string | null,
+  data: CostBreakdownTotals,
+): void {
+  const current = map.get(key)
+  if (!current) {
+    map.set(key, { ...data, [nameKey]: name } as CostBreakdownTotals & Record<NameKey, string | null>)
+    return
+  }
+  current.costUsd += data.costUsd
+  current.promptTokens += data.promptTokens
+  current.completionTokens += data.completionTokens
+  current.totalTokens += data.totalTokens
+  current.count += data.count
 }
 
 export interface SessionCostEntry {

@@ -5,7 +5,6 @@ const thinkingEffortEnum = t.Union([
   t.Literal('medium'),
   t.Literal('high'),
   t.Literal('xhigh'),
-  t.Literal('auto'),
 ])
 
 const runtimeKindSchema = t.String({ minLength: 1 })
@@ -26,6 +25,7 @@ const importAppEnum = t.Union([
   t.Literal('codex'),
   t.Literal('gemini'),
   t.Literal('pi'),
+  t.Literal('kimi'),
 ])
 
 interface AgentIdentityRecord {
@@ -37,7 +37,7 @@ interface AgentIdentityRecord {
   avatarSeed: string
   providerTargetId: string | null
   modelId: string | null
-  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh'
   runtimeKind: string
   configJson: string
   enabled: boolean
@@ -89,6 +89,9 @@ const localConfigImportCandidate = t.Object({
   name: t.String(),
   modelId: nullableString,
   endpoint: nullableString,
+  executable: nullableString,
+  iconSlug: nullableString,
+  avatarUrl: nullableString,
   importable: t.Boolean(),
   alreadyConfigured: t.Boolean(),
   reason: nullableString,

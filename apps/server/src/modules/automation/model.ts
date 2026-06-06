@@ -45,7 +45,12 @@ const recipeSchema = t.Object({
   providerTargetId: t.Optional(t.String({ minLength: 1 })),
   runtimeKind: t.Optional(runtimeKindSchema),
   modelId: t.Optional(t.String({ minLength: 1 })),
-  thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('xhigh')])),
+  thinkingEffort: t.Optional(t.Union([
+    t.Literal('low'),
+    t.Literal('medium'),
+    t.Literal('high'),
+    t.Literal('xhigh'),
+  ])),
 }, { additionalProperties: false })
 
 const createdByKindSchema = t.Union([t.Literal('agent'), t.Literal('user'), t.Literal('system')])

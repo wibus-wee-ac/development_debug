@@ -36,7 +36,7 @@ export interface CreateAgentInput {
   avatarSeed: string
   providerTargetId?: string | null
   modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   runtimeKind?: RuntimeKind
   configJson?: string
 }
@@ -48,7 +48,7 @@ export interface UpdateAgentInput {
   avatarSeed?: string
   providerTargetId?: string | null
   modelId?: string | null
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
+  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   runtimeKind?: RuntimeKind
   configJson?: string
   enabled?: boolean
@@ -61,7 +61,7 @@ export interface ImportLocalConfigInput {
 
 export interface LocalConfigImportCandidate {
   id: string
-  app: 'claude' | 'codex' | 'gemini' | 'pi'
+  app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi'
   runtimeKind: 'claude-agent' | 'codex' | 'cli-tui'
   sourceKind: 'cc-switch' | 'local-config'
   sourceLabel: string
@@ -72,6 +72,9 @@ export interface LocalConfigImportCandidate {
   name: string
   modelId: string | null
   endpoint: string | null
+  executable: string | null
+  iconSlug: string | null
+  avatarUrl: string | null
   importable: boolean
   alreadyConfigured: boolean
   reason: string | null
@@ -93,7 +96,7 @@ export interface PreviewLocalConfigImportResult {
 }
 
 export interface ImportedAgentResult {
-  app: 'claude' | 'codex' | 'gemini' | 'pi'
+  app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi'
   candidateId: string
   sourceKind: 'cc-switch' | 'local-config'
   externalRecordId: string
@@ -113,7 +116,18 @@ export interface ImportLocalConfigResult {
 }
 
 const AgentRuntimeKindSchema = z.string().trim().min(1)
-const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'auto'])
+const AgentThinkingEffortSchema = z.enum(['low', 'medium', 'high', 'xhigh'])
+type AgentThinkingEffort = z.infer<typeof AgentThinkingEffortSchema>
+
+function normalizeAgentThinkingEffort(effort: unknown): AgentThinkingEffort {
+  if (effort === 'none' || effort === 'minimal') {
+    return 'low'
+  }
+  if (effort === 'max') {
+    return 'xhigh'
+  }
+  return AgentThinkingEffortSchema.safeParse(effort).data ?? 'high'
+}
 const ImportLocalConfigInputSchema = z.object({
   includeProcessEnv: z.boolean().optional(),
   candidateIds: z.array(z.string().trim().min(1)).optional(),
@@ -134,7 +148,7 @@ const CreateAgentInputSchema = z
     avatarSeed: z.string().min(1),
     providerTargetId: z.string().trim().min(1).nullable().default(null),
     modelId: z.string().trim().min(1).nullable().default(null),
-    thinkingEffort: AgentThinkingEffortSchema.default('auto'),
+    thinkingEffort: AgentThinkingEffortSchema.default('high'),
     runtimeKind: AgentRuntimeKindSchema.default('standard'),
     configJson: AgentRuntimeConfigJsonSchema.default(DefaultAgentRuntimeConfig),
   })
@@ -189,7 +203,7 @@ const CreateAgentInputSchema = z
           ...parsed,
           providerTargetId: null,
           modelId: null,
-          thinkingEffort: 'auto' as const,
+          thinkingEffort: 'high' as const,
         }
       : parsed
   })
@@ -288,10 +302,19 @@ function localAgentApp(app: string): LocalConfigImportCandidate['app'] | null {
   if (app === 'pi') {
     return 'pi'
   }
+  if (app === 'kimi') {
+    return 'kimi'
+  }
   return null
 }
 
-function runtimeKindForLocalApp(app: LocalConfigImportCandidate['app']): LocalConfigImportCandidate['runtimeKind'] {
+function runtimeKindForLocalApp(
+  app: LocalConfigImportCandidate['app'],
+  metadata: Record<string, unknown> = {},
+): LocalConfigImportCandidate['runtimeKind'] {
+  if (metadataString(metadata, 'runtimeKind') === 'cli-tui') {
+    return 'cli-tui'
+  }
   if (app === 'claude') {
     return 'claude-agent'
   }
@@ -307,6 +330,7 @@ function agentNameForLocalApp(app: ImportedAgentResult['app']): string {
     case 'codex': return 'Local Codex'
     case 'gemini': return 'Local Gemini'
     case 'pi': return 'Local Pi'
+    case 'kimi': return 'Local Kimi'
   }
 }
 
@@ -316,6 +340,26 @@ function importedAgentDescription(app: ImportedAgentResult['app']): string {
     case 'codex': return 'Imported from local Codex configuration.'
     case 'gemini': return 'Imported from local Gemini CLI.'
     case 'pi': return 'Imported from local Pi CLI.'
+    case 'kimi': return 'Imported from local Kimi CLI.'
+  }
+}
+
+function importedAgentAvatar(candidate: LocalConfigImportCandidate): { avatarStyle: string, avatarSeed: string } {
+  if (candidate.avatarUrl) {
+    return {
+      avatarStyle: 'external-url',
+      avatarSeed: candidate.avatarUrl,
+    }
+  }
+  if (candidate.iconSlug) {
+    return {
+      avatarStyle: 'lobehub-icon',
+      avatarSeed: candidate.iconSlug,
+    }
+  }
+  return {
+    avatarStyle: 'bottts-neutral',
+    avatarSeed: `${candidate.sourceKind}:${candidate.app}`,
   }
 }
 
@@ -422,7 +466,7 @@ function candidateFromRecord(input: {
   reason: string | null
   notes: string[]
 }): LocalConfigImportCandidate {
-  const runtimeKind = runtimeKindForLocalApp(input.app)
+  const runtimeKind = runtimeKindForLocalApp(input.app, input.metadata)
   const agent = findAgentForLocalImport(input.app, runtimeKind)
   const needsProviderTarget = runtimeKind !== 'cli-tui'
   const importable = (needsProviderTarget ? Boolean(input.providerTargetId) : true) && !input.reason
@@ -440,6 +484,9 @@ function candidateFromRecord(input: {
     name: agentName,
     modelId: metadataString(input.metadata, 'model'),
     endpoint: metadataString(input.metadata, 'baseUrl'),
+    executable: metadataString(input.metadata, 'executable'),
+    iconSlug: metadataString(input.metadata, 'iconSlug'),
+    avatarUrl: metadataString(input.metadata, 'avatarUrl') ?? metadataString(input.metadata, 'iconUrl'),
     importable,
     alreadyConfigured: Boolean(agent),
     reason: input.reason,
@@ -460,7 +507,7 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
   const localRecords = allRecords
     .filter(record => record.sourceKey === localSourceKey)
     .filter(record => record.status === 'active')
-    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini' || record.app === 'pi')
+    .filter(record => record.app === 'claude' || record.app === 'codex' || record.app === 'gemini' || record.app === 'pi' || record.app === 'kimi')
   const ccSwitchCurrentRecords = listExternalProviderRecords()
     .filter(record => record.status === 'active')
     .filter(record => ccSwitchSourceKeys.has(record.sourceKey))
@@ -510,10 +557,10 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
       name: record.name,
       metadata: record.metadata,
       providerTargetId: target?.id ?? record.providerTargetId,
-      reason: target ? null : 'No runtime target was projected for this local provider record.',
+      reason: record.providerKind === 'cli-tool' || target ? null : 'No runtime target was projected for this local provider record.',
       notes: localProxyUrl(metadataString(record.metadata, 'baseUrl'))
         ? ['Detected a local proxy endpoint, but no matching CC Switch current provider target is available.']
-        : ['Detected direct local Claude or Codex configuration.'],
+        : [`Detected direct local ${agentNameForLocalApp(app)} configuration.`],
     }))
   }
 
@@ -552,7 +599,7 @@ function buildAgentRuntimeConfig(candidate: LocalConfigImportCandidate): string 
   }
 
   if (candidate.runtimeKind === 'cli-tui') {
-    const executable = targetConfig.executable ?? candidate.endpoint ?? candidate.app
+    const executable = targetConfig.executable ?? candidate.executable ?? candidate.endpoint ?? candidate.app
     return JSON.stringify(compactRuntimeConfig({
       ...common,
       cliTui: {
@@ -611,7 +658,7 @@ export async function importLocalConfig(input: ImportLocalConfigInput = {}): Pro
         avatarSeed: candidate.agent.avatarSeed,
         providerTargetId: candidate.providerTargetId,
         modelId: candidate.modelId,
-        thinkingEffort: candidate.agent.thinkingEffort,
+        thinkingEffort: normalizeAgentThinkingEffort(candidate.agent.thinkingEffort),
         runtimeKind: candidate.runtimeKind,
         configJson: buildAgentRuntimeConfig(candidate),
       }) ?? candidate.agent
@@ -629,14 +676,15 @@ export async function importLocalConfig(input: ImportLocalConfigInput = {}): Pro
       continue
     }
 
+    const avatar = importedAgentAvatar(candidate)
     const createdAgent = create({
       name: candidate.agentName,
       description: importedAgentDescription(candidate.app),
-      avatarStyle: 'bottts-neutral',
-      avatarSeed: `${candidate.sourceKind}:${candidate.app}`,
+      avatarStyle: avatar.avatarStyle,
+      avatarSeed: avatar.avatarSeed,
       providerTargetId: candidate.providerTargetId,
       modelId: candidate.modelId,
-      thinkingEffort: 'auto',
+      thinkingEffort: 'high',
       runtimeKind: candidate.runtimeKind,
       configJson: buildAgentRuntimeConfig(candidate),
     })
@@ -678,7 +726,7 @@ export function update(id: string, patch: UpdateAgentInput): Agent | null {
       avatarSeed: patch.avatarSeed ?? current.avatarSeed,
       providerTargetId: patch.providerTargetId ?? current.providerTargetId,
       modelId: patch.modelId ?? current.modelId,
-      thinkingEffort: patch.thinkingEffort ?? current.thinkingEffort,
+      thinkingEffort: patch.thinkingEffort ?? normalizeAgentThinkingEffort(current.thinkingEffort),
       runtimeKind: patch.runtimeKind ?? current.runtimeKind,
       configJson: patch.configJson ?? current.configJson,
     })

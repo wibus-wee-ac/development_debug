@@ -1,6 +1,5 @@
-import { execFile } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { promisify } from 'node:util'
 
 import type { StatusResult } from 'simple-git'
 import simpleGit from 'simple-git'
@@ -61,7 +60,6 @@ export interface GitGraphCommitView {
 const FIELD_SEP = '\x1F'
 const RE_REMOTE_PREFIX = /^remotes\//
 const RE_REMOTE_BRANCH = /^[^/]+\/(.+)$/
-const execFileAsync = promisify(execFile)
 const STATUS_RANK: Record<GitFileStatusKind, number> = {
   deleted: 5,
   renamed: 4,
@@ -356,24 +354,31 @@ async function runGitCommand(
   args: string[],
   allowedExitCodes: number[] = [],
 ): Promise<string> {
-  try {
-    const { stdout } = await execFileAsync('git', args, { cwd, maxBuffer: 1024 * 1024 * 50 })
-    return stdout
-  }
- catch (error) {
-    if (
-      isExecError(error)
-      && typeof error.code === 'number'
-      && allowedExitCodes.includes(error.code)
-    ) {
-      return typeof error.stdout === 'string' ? error.stdout : ''
-    }
-    throw error
-  }
-}
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout: Buffer[] = []
+    const stderr: Buffer[] = []
 
-function isExecError(error: unknown): error is Error & { code?: number, stdout?: string } {
-  return error instanceof Error
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout.push(chunk)
+    })
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr.push(chunk)
+    })
+    child.on('error', reject)
+    child.on('close', (code) => {
+      const output = Buffer.concat(stdout).toString('utf8')
+      const exitCode = code ?? 0
+      if (exitCode === 0 || allowedExitCodes.includes(exitCode)) {
+        resolve(output)
+        return
+      }
+
+      const errorOutput = Buffer.concat(stderr).toString('utf8').trim()
+      const message = errorOutput || `git ${args[0] ?? 'command'} exited with code ${exitCode}`
+      reject(Object.assign(new Error(message), { code: exitCode, stdout: output }))
+    })
+  })
 }
 
 function joinDiffs(diffs: string[]): string {
