@@ -1,8 +1,4 @@
 {
-  "breakdown.byAgent": "按 Agent",
-  "breakdown.byProvider": "按 Provider",
-  "breakdown.toggleAgent": "Agent",
-  "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "每日成本（最近 30 天）",
   "chart.last30Days": "最近 30 天",
   "description": "过去一年的 token 消耗",

@@ -37,6 +37,8 @@ import { register as registerChatQueue } from './chat/queue'
 import { register as registerChatQueueAdd } from './chat/queue/add'
 import { register as registerChatQueueCancel } from './chat/queue/cancel'
 import { register as registerChatQueueReorder } from './chat/queue/reorder'
+import { register as registerChatRuntimeSettingsGet } from './chat/runtime-settings/get'
+import { register as registerChatRuntimeSettingsSet } from './chat/runtime-settings/set'
 import { register as registerChatSnapshotRun } from './chat/snapshot/run'
 import { register as registerChatSnapshotSession } from './chat/snapshot/session'
 import { register as registerChatTraceRun } from './chat/trace/run'
@@ -131,6 +133,8 @@ import { register as registerPreferencesChatGet } from './preferences/chat/get'
 import { register as registerPreferencesChatSet } from './preferences/chat/set'
 import { register as registerPreferencesCodexGet } from './preferences/codex/get'
 import { register as registerPreferencesCodexSet } from './preferences/codex/set'
+import { register as registerPreferencesDesktopGet } from './preferences/desktop/get'
+import { register as registerPreferencesDesktopSet } from './preferences/desktop/set'
 import { register as registerPreferencesJarvisGet } from './preferences/jarvis/get'
 import { register as registerPreferencesJarvisSet } from './preferences/jarvis/set'
 import { register as registerProfileCustomModels } from './profile/custom-models'
@@ -200,7 +204,6 @@ import { register as registerWorkspaceGitGraph } from './workspace/git/graph'
 import { register as registerWorkspaceGitStatus } from './workspace/git/status'
 import { register as registerWorkspaceImport } from './workspace/import'
 import { register as registerWorkspaceList } from './workspace/list'
-import { register as registerWorkspacePack } from './workspace/pack'
 import { register as registerWorkspaceResolve } from './workspace/resolve'
 import { register as registerWorkspaceUpdate } from './workspace/update'
 
@@ -242,6 +245,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerChatQueueAdd(program)
   registerChatQueueCancel(program)
   registerChatQueueReorder(program)
+  registerChatRuntimeSettingsGet(program)
+  registerChatRuntimeSettingsSet(program)
   registerChatSnapshotRun(program)
   registerChatSnapshotSession(program)
   registerChatTraceRun(program)
@@ -336,6 +341,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerPreferencesChatSet(program)
   registerPreferencesCodexGet(program)
   registerPreferencesCodexSet(program)
+  registerPreferencesDesktopGet(program)
+  registerPreferencesDesktopSet(program)
   registerPreferencesJarvisGet(program)
   registerPreferencesJarvisSet(program)
   registerProfileCustomModels(program)
@@ -405,7 +412,6 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceGitStatus(program)
   registerWorkspaceImport(program)
   registerWorkspaceList(program)
-  registerWorkspacePack(program)
   registerWorkspaceResolve(program)
   registerWorkspaceUpdate(program)
 }

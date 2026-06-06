@@ -14,7 +14,6 @@
 - **default/home.ts**: Home dashboard sections, quick actions, relative time labels, and automation copy.
 - **default/kanban.ts**: Kanban board, issue, filter, label, status, detail-panel, and issue Activity timeline copy.
 - **default/new-chat.ts**: New chat composer placeholders, quick prompts, readiness notices, workspace picker, and recent session copy.
-- **default/pack-codebase.ts**: Pack-codebase dialog labels, option descriptions, status messages, and scope copy.
 - **default/profile.ts**: Global profile page headings, metric labels, activity graph copy, and Usage-backed ranking labels.
 - **default/search.ts**: Global search command palette labels, groups, result metadata, and empty states.
 - **default/settings.ts**: Settings navigation, appearance/language controls, chat archive recovery/search copy, and support/import/settings-section labels.

@@ -25,7 +25,6 @@ Server module 是 Cradle 后端语义的最小 owner 单元。每个 module 至�
 | Workspace | `/workspaces` | workspace CRUD, resolve, files | `cradle workspace ...` |
 | Filesystem | `/filesystem` | browse, favorites | HTTP-first |
 | Git | `/workspaces/:id/git` | status, branches, remotes, graph, checkout, fetch | `cradle workspace git ...` |
-| Pack Codebase | `/workspaces/:id/pack` | repomix packing | `cradle workspace pack` |
 | Session | `/sessions` | CRUD, messages, export, linked issue | `cradle session ...` |
 | Chat Runtime | `/chat/sessions/:sessionId` | response SSE, capabilities, messages, cancel | `cradle chat messages`, `cradle chat cancel` |
 | Providers | `/providers` | models, health check, lookup, search, cache | `cradle provider ...` |

@@ -436,6 +436,8 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
     current: provider.isCurrent,
     health: provider.health,
     inFailoverQueue: provider.inFailoverQueue,
+    iconSlug: providerIconSlug(provider),
+    iconUrl: provider.icon,
     sourceUpdatedAt: provider.createdAt ? new Date(provider.createdAt).toISOString() : undefined,
     rawFingerprintHint: textHash({
       id: provider.id,
@@ -446,6 +448,13 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
       current: provider.isCurrent,
     }),
   }
+}
+
+function providerIconSlug(provider: CcSwitchProviderRow): string | undefined {
+  if (provider.appType === 'claude') { return 'claude' }
+  if (provider.appType === 'codex') { return 'codex' }
+  if (provider.appType === 'gemini') { return 'gemini' }
+  return undefined
 }
 
 function optionalStringFromRecord(value: unknown, key: string): string | undefined {

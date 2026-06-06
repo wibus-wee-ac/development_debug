@@ -62,8 +62,7 @@ const spec = {
         "low",
         "medium",
         "high",
-        "xhigh",
-        "auto"
+        "xhigh"
       ]
     },
     {

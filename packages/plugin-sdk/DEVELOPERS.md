@@ -782,6 +782,7 @@ The server rewrites bare React imports in served `.mjs` files:
 ```
 from 'react'  →  from 'http://web-host/__plugin-deps/react.mjs'
 from 'react/jsx-runtime'  →  from 'http://web-host/__plugin-deps/react-jsx-runtime.mjs'
+from 'react/jsx-dev-runtime'  →  from 'http://web-host/__plugin-deps/react-jsx-dev-runtime.mjs'
 ```
 
 ### Required Vite Build Config
@@ -805,7 +806,7 @@ export default defineConfig({
       fileName: (_format, entryName) => `${entryName}.mjs`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
     },
     target: 'esnext',
     minify: false,
@@ -817,7 +818,7 @@ export default defineConfig({
 **Critical rules:**
 - Output format must be `'es'` (ES modules)
 - File extension must be `.mjs`
-- `react`, `react-dom`, `react/jsx-runtime` must be external
+- `react`, `react-dom`, `react/jsx-runtime`, `react/jsx-dev-runtime` must be external
 - `minify: false` recommended for debuggability (server does the import rewriting via string replacement)
 
 ### Build Command
@@ -916,6 +917,7 @@ The **Plugins** tab shows:
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | `Invalid hook call` | React not externalized | Add `react` to `rollupOptions.external` |
+| `process is not defined` in `web.mjs` | JSX dev runtime bundled into a browser plugin | Add `react/jsx-dev-runtime` to `rollupOptions.external` |
 | `Plugin does not export 'activate'` | Missing/wrong export | Ensure `export function activate(ctx)` |
 | Panel renders but hooks fail | Bundled React copy | Check `dist/web.mjs` has no React code, only `from 'react'` imports |
 | Route 404 | Wrong route segment | Check `GET /api/plugins` for the plugin `routeSegment` |
@@ -1367,7 +1369,7 @@ export default defineConfig({
       fileName: (_format, entryName) => `${entryName}.mjs`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      external: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
     },
     target: 'esnext',
     minify: false,

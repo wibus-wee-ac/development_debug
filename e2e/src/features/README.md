@@ -30,4 +30,4 @@ Feature 只表达行为，不嵌入具体实现细节，具体自动化绑定在
 - **usage.feature**: Usage Dashboard 真实入口回归，覆盖无 usage 数据时的空状态，以及真实聊天后的精确汇总与热力图 tooltip
 - **user-journeys.feature**: 核心用户旅程回归，覆盖添加工作区后开始聊天，以及创建看板与 Issue 的跨功能路径
 - **workflow-rules.feature**: Workflow Rules 真实入口回归，覆盖工作区详情页 Workflow 标签中的 All Agents / Agent-scoped 规则保存、scope 切换与重开后的可见结果
-- **workspace.feature**: Workspace 空状态、添加、移除、重命名、多工作区切换、详情页 Overview 真实内容、从详情页直接开始项目任务，以及从工作区菜单复制代码库到剪贴板、使用忽略规则排除文件的真实路径回归
+- **workspace.feature**: Workspace 空状态、添加、移除、重命名、多工作区切换、详情页 Overview 真实内容，以及从详情页直接开始项目任务的真实路径回归

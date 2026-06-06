@@ -45,29 +45,6 @@
     那么 我应该看到工作区详情页的标签页
     而且 Overview 应该显示当前工作区的 AGENTS.md 内容
 
-  @P1 @CRADLE-WORKSPACE-007
-  场景: 从工作区菜单复制代码库到剪贴板
-    假如 我已添加了一个包含 AGENTS.md 的工作区
-    当 我打开该工作区的菜单
-    而且 我点击工作区菜单中的复制代码库
-    而且 我将复制代码库范围设置为"AGENTS.md"
-    而且 我点击打包并复制
-    那么 复制代码库应显示已复制状态
-    而且 剪贴板应包含当前工作区的 AGENTS.md 内容
-
-  @P1 @CRADLE-WORKSPACE-009
-  场景: 复制代码库时可以通过忽略规则排除文件
-    假如 我已添加了一个包含 AGENTS.md 的工作区
-    而且 当前工作区中存在文件"notes/secret.txt"，内容为"Secret pack exclusion marker"
-    当 我打开该工作区的菜单
-    而且 我点击工作区菜单中的复制代码库
-    而且 我将复制代码库范围设置为"AGENTS.md,notes/secret.txt"
-    而且 我将复制代码库忽略规则设置为"notes/**"
-    而且 我点击打包并复制
-    那么 复制代码库应显示已复制状态
-    而且 剪贴板应包含当前工作区的 AGENTS.md 内容
-    而且 剪贴板中不应包含文本"Secret pack exclusion marker"
-
   @P1 @CRADLE-WORKSPACE-008
   场景: 从工作区详情页直接开始一次项目任务
     假如 我已进入 Agent Runtime 设置页面

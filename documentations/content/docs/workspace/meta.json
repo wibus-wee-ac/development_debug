@@ -1,5 +1,5 @@
 {
   "title": "Workspace",
   "icon": "PanelsTopLeft",
-  "pages": ["overview", "tabs-and-sidebar", "files", "pack-codebase", "git", "search"]
+  "pages": ["overview", "tabs-and-sidebar", "files", "git", "search"]
 }

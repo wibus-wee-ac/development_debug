@@ -16,5 +16,14 @@
   "continuation.steer.label": "引导",
   "empty.startConversation": "发送一条消息以开始对话",
   "error.loadMessages": "消息加载失败。（未知错误）",
+  "runtimeSettings.access.approvalRequired": "需要审批",
+  "runtimeSettings.access.fullAccess": "完全访问",
+  "runtimeSettings.access.label": "访问",
+  "runtimeSettings.interaction.default": "构建",
+  "runtimeSettings.interaction.label": "交互",
+  "runtimeSettings.interaction.plan": "计划",
+  "runtimeSettings.summary": "{{access}} / {{interaction}}",
+  "runtimeSettings.summary.pendingActiveRun": "{{summary}}（将在下一轮生效）",
+  "runtimeSettings.summary.short": "{{access}} / {{interaction}}",
   "status.thinking": "正在思考..."
 }

@@ -78,7 +78,7 @@ const moduleDescriptions: Record<string, string> = {
   'status': 'Manage Kanban statuses.',
   'usage': 'Inspect usage and cost data.',
   'workflow-rule': 'Manage workflow rules.',
-  'workspace': 'Manage workspaces, files, git helpers, and codebase packing.',
+  'workspace': 'Manage workspaces, files, and git helpers.',
 }
 
 function toGeneratedPath(command: string[]): string {

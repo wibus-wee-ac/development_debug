@@ -18,9 +18,9 @@ const spec = {
   "description": "Save workflow rule",
   "flags": [
     {
-      "name": "agentProfileId",
+      "name": "agentId",
       "required": false,
-      "target": "body.agentProfileId",
+      "target": "body.agentId",
       "type": "string"
     },
     {

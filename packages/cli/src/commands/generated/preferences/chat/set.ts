@@ -32,6 +32,12 @@ const spec = {
         "queue",
         "steer"
       ]
+    },
+    {
+      "name": "titleGeneration",
+      "required": false,
+      "target": "body.titleGeneration",
+      "type": "json"
     }
   ],
   "method": "put",

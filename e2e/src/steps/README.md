@@ -30,4 +30,4 @@ Mock LLM Provider 配置会在服务端 profile 落库后重载当前页面，�
 - **terminal.steps.ts**: 底部终端步骤，覆盖打开 / 关闭 panel、执行命令、读取 transcript、多 session 创建 / 切换 / 关闭的可见标签状态，以及重新打开 panel 后的会话输出保留
 - **usage.steps.ts**: Usage Dashboard 真实入口步骤，复用聊天/工作区前置流，验证 Dashboard 的可见汇总值、空状态与热力图 tooltip
 - **workflow-rules.steps.ts**: Workflow Rules UI 步骤，覆盖真实 Settings 中的 Provider / Agent 创建、工作区详情页 Workflow 标签编辑、scope 切换与关闭后重开；文件系统持久化改由 main 层单测兜底
-- **workspace.steps.ts**: Workspace 添加 / 移除 / 重命名 / 多工作区切换 / 测试文件夹内容准备 / 新建聊天当前工作区选择 / 复制代码库 / 详情页直接开始任务步骤，聚焦列表、详情页、真实内容、Pack Codebase 范围与忽略规则、剪贴板结果与聊天可见跳转
+- **workspace.steps.ts**: Workspace 添加 / 移除 / 重命名 / 多工作区切换 / 测试文件夹内容准备 / 新建聊天当前工作区选择 / 详情页直接开始任务步骤，聚焦列表、详情页、真实内容与聊天可见跳转

@@ -71,14 +71,10 @@ const spec = {
       ]
     },
     {
-      "name": "permissionMode",
+      "name": "runtimeSettings",
       "required": false,
-      "target": "body.permissionMode",
-      "type": "string",
-      "values": [
-        "bypassPermissions",
-        "plan"
-      ]
+      "target": "body.runtimeSettings",
+      "type": "json"
     }
   ],
   "method": "post",

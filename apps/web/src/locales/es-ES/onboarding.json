@@ -87,7 +87,7 @@
   "preview.kanban.status.started": "En progreso",
   "preview.kanban.status.triage": "Triage",
   "preview.metric.activeSessions": "Sesiones activas",
-  "preview.metric.contextIndexed": "Contexto indexado",
+  "preview.metric.contextIndexed": "Contexto del proyecto",
   "preview.metric.toolCalls": "Llamadas de herramientas hoy",
   "preview.newChat.quick.explain": "Explicar este código base",
   "preview.newChat.quick.refactor": "Planear una refactorización",
@@ -157,7 +157,7 @@
   "step.chat.feature.3": "Cambia de modelo a mitad de sesión",
   "step.chat.headline": "Un compositor diseñado para trabajo real",
   "step.done.action.addWorkspace": "Agregar espacio de trabajo",
-  "step.done.action.addWorkspace.description": "Indexa un proyecto y conserva archivos, issues y estado Git a mano.",
+  "step.done.action.addWorkspace.description": "Agrega un proyecto y mantén cerca archivos, chats y estado Git.",
   "step.done.action.newChat": "Nuevo chat",
   "step.done.action.newChat.description": "Abre un compositor listo para Codex con contexto del workspace.",
   "step.done.action.settings": "Configuración",
@@ -171,10 +171,10 @@
   "step.welcome.feature.2": "Sesiones persistentes, historial completo",
   "step.welcome.feature.3": "Agentes con uso real de herramientas",
   "step.welcome.headline": "Tu espacio de trabajo de IA, totalmente bajo tu control",
-  "step.workspace.description": "Conecta tus directorios locales y deja que Cradle indexe tu código. Los agentes leen el gráfico completo del proyecto para que no tengas que pegar archivos manualmente.",
+  "step.workspace.description": "Agrega una carpeta local de proyecto y úsala como workspace para tus sesiones. Explora archivos, mantén los chats ligados al proyecto y pasa contexto relevante a los agentes cuando haga falta.",
   "step.workspace.eyebrow": "Gestión de espacios de trabajo",
   "step.workspace.feature.1": "Importa proyectos con un clic",
-  "step.workspace.feature.2": "Memoria persistente del espacio de trabajo",
-  "step.workspace.feature.3": "Contexto de archivo con conciencia de Git",
-  "step.workspace.headline": "Cada proyecto, siempre en contexto"
+  "step.workspace.feature.2": "Sesiones por proyecto",
+  "step.workspace.feature.3": "Exploración de archivos y contexto Git",
+  "step.workspace.headline": "Mantén los proyectos cerca de la conversación"
 }

@@ -197,6 +197,9 @@ export interface ExternalProviderRecordMetadata {
   baseUrl?: string
   model?: string
   apiFormat?: string
+  iconSlug?: string
+  iconUrl?: string
+  avatarUrl?: string
   sourceUpdatedAt?: string
   rawFingerprintHint?: string
 }

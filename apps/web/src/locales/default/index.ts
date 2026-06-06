@@ -1,5 +1,6 @@
 import agentManagement from './agent-management'
 import awaits from './awaits'
+import automation from './automation'
 import chat from './chat'
 import chrome from './chrome'
 import chronicle from './chronicle'
@@ -11,7 +12,6 @@ import home from './home'
 import kanban from './kanban'
 import newChat from './new-chat'
 import onboarding from './onboarding'
-import packCodebase from './pack-codebase'
 import search from './search'
 import settings from './settings'
 import skills from './skills'
@@ -22,6 +22,7 @@ import workspace from './workspace'
 const resources = {
   agentManagement,
   awaits,
+  automation,
   chat,
   chronicle,
   chrome,
@@ -33,7 +34,6 @@ const resources = {
   kanban,
   'new-chat': newChat,
   onboarding,
-  'pack-codebase': packCodebase,
   search,
   settings,
   skills,

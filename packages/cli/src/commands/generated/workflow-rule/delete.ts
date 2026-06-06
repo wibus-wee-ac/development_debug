@@ -18,9 +18,9 @@ const spec = {
   "description": "Delete workflow rule",
   "flags": [
     {
-      "name": "agentProfileId",
+      "name": "agentId",
       "required": false,
-      "target": "query.agentProfileId",
+      "target": "query.agentId",
       "type": "string"
     }
   ],

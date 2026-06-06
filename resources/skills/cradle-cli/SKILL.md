@@ -24,7 +24,7 @@ Use `cradle` to manage Cradle or query its state from the terminal. You can use 
 | --- | --- | --- |
 | Wait for CI, review, approval, or later continuation | `cradle session await ...` | `sleep`, polling loops, `gh run watch` |
 | Manage tasks, status, comments, delegation, or issue sessions | `cradle issue ...`, `cradle issue-agent-session ...` | local TODO files, direct DB edits |
-| Inspect workspace identity, files, git state, or packed context | `cradle workspace ...` | guessing workspace IDs, raw HTTP |
+| Inspect workspace identity, files, or git state | `cradle workspace ...` | guessing workspace IDs, raw HTTP |
 | Search Cradle state or past threads | `cradle search ...` | grepping data directories |
 | Read or maintain Chronicle memory/activity/knowledge | `cradle chronicle ...` | direct SQLite edits |
 | Schedule or inspect recurring work | `cradle automation ...` | cron scripts outside Cradle |
@@ -91,7 +91,6 @@ cradle workspace files <workspaceId> --json type,name,path
 cradle workspace file read <workspaceId> --path AGENTS.md
 cradle workspace git status <workspaceId> --json branch,tracking,ahead,behind,isDetached
 cradle workspace git diff <workspaceId> --paths src/index.ts --format json
-cradle workspace pack <workspaceId> --style markdown --include "src/**" --format json
 ```
 
 ## Output Patterns
@@ -219,13 +218,13 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `agent` | 5 | Manage Cradle agent identities. | `cradle man agent` |
 | `automation` | 13 | Manage scheduled automations, runs, and artifacts. | `cradle man automation` |
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
-| `chat` | 10 | Control chat runtime commands. | `cradle man chat` |
+| `chat` | 12 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 48 | Generated Cradle CLI module. | `cradle man chronicle` |
 | `health` | 1 | Check server health. | `cradle man health` |
 | `issue` | 30 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
 | `observability` | 4 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
-| `preferences` | 6 | Read and update server preferences. | `cradle man preferences` |
+| `preferences` | 8 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 1 | Inspect provider model availability. | `cradle man provider` |
 | `search` | 2 | Search Cradle data. | `cradle man search` |
@@ -234,6 +233,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
 | `workflow-rule` | 4 | Manage workflow rules. | `cradle man workflow-rule` |
-| `workspace` | 21 | Manage workspaces, files, git helpers, and codebase packing. | `cradle man workspace` |
+| `workspace` | 20 | Manage workspaces, files, and git helpers. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
+

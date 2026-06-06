@@ -1,8 +1,4 @@
 {
-  "breakdown.byAgent": "By Agent",
-  "breakdown.byProvider": "By Provider",
-  "breakdown.toggleAgent": "Agent",
-  "breakdown.toggleProvider": "Provider",
   "chart.dailyCostLast30Days": "Daily cost (last 30 days)",
   "chart.last30Days": "Last 30 days",
   "description": "Token consumption over the past year",

@@ -26,12 +26,12 @@ export default {
 
   // Step 3 – Workspace
   'step.workspace.eyebrow': 'Workspace Management',
-  'step.workspace.headline': 'Every project, always in context',
+  'step.workspace.headline': 'Keep projects close to the conversation',
   'step.workspace.description':
-    "Connect your local directories and let Cradle index your code. Agents read the full project graph so you don't have to paste files manually.",
+    'Add a local project folder and use it as the workspace for your sessions. Browse files, keep chats tied to the project, and bring relevant context to agents when needed.',
   'step.workspace.feature.1': 'Import projects with one click',
-  'step.workspace.feature.2': 'Persistent workspace memory',
-  'step.workspace.feature.3': 'Git-aware file context',
+  'step.workspace.feature.2': 'Project-scoped sessions',
+  'step.workspace.feature.3': 'File browsing and Git context',
 
   // Step 4 – Agents
   'step.agents.eyebrow': 'Agents & Skills',
@@ -51,7 +51,7 @@ export default {
   'step.done.action.addWorkspace': 'Add workspace',
   'step.done.action.settings': 'Settings',
   'step.done.action.newChat.description': 'Open a Codex-ready composer with workspace context.',
-  'step.done.action.addWorkspace.description': 'Index a project and keep files, issues, and Git state close.',
+  'step.done.action.addWorkspace.description': 'Add a project and keep files, chats, and Git state close.',
   'step.done.action.settings.description': 'Tune providers, models, appearance, and local runtime defaults.',
 
   // Locale selector
@@ -79,7 +79,7 @@ export default {
   'preview.welcome.action.browseWeb': 'Browse web',
   'preview.metric.activeSessions': 'Active sessions',
   'preview.metric.toolCalls': 'Tool calls today',
-  'preview.metric.contextIndexed': 'Context indexed',
+  'preview.metric.contextIndexed': 'Project context',
 
   // Product preview kanban data
   'preview.kanban.status.triage': 'Triage',
@@ -103,7 +103,7 @@ export default {
   'preview.chat.user': 'Review the onboarding surface and keep the preview wired to real components.',
   'preview.chat.assistant':
     'I will trace the first-run path, verify the responsive layout, and keep all preview data local to the onboarding feature.',
-  'preview.chat.toolOutput': 'TypeScript project graph checked successfully.',
+  'preview.chat.toolOutput': 'Workspace files checked successfully.',
   'preview.chat.composerDraft': 'Review @apps/web/src/features/onboarding and use $react-doctor before shipping',
   'preview.composer.placeholder': 'Ask Cradle to inspect this workspace...',
   'preview.composer.textareaAria': 'Preview prompt',

@@ -57,6 +57,7 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
     'react.mjs': 'react',
     'react-dom.mjs': 'react-dom',
     'react-jsx-runtime.mjs': 'react/jsx-runtime',
+    'react-jsx-dev-runtime.mjs': 'react/jsx-dev-runtime',
     'react-dom-client.mjs': 'react-dom/client',
   }
 
@@ -64,6 +65,7 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
     'react.mjs': 'react',
     'react-dom.mjs': 'react-dom',
     'react-jsx-runtime.mjs': 'react/jsx-runtime',
+    'react-jsx-dev-runtime.mjs': 'react/jsx-dev-runtime',
     'react-dom-client.mjs': 'react-dom/client',
   }
 
@@ -135,6 +137,7 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
                   'react': '/__plugin-deps/react.mjs',
                   'react-dom': '/__plugin-deps/react-dom.mjs',
                   'react/jsx-runtime': '/__plugin-deps/react-jsx-runtime.mjs',
+                  'react/jsx-dev-runtime': '/__plugin-deps/react-jsx-dev-runtime.mjs',
                   'react-dom/client': '/__plugin-deps/react-dom-client.mjs',
                 },
               }),
@@ -153,6 +156,7 @@ export function pluginImportMap(): CradlePluginImportMapVitePlugin {
                 'react': './assets/vendor-react.js',
                 'react-dom': './assets/vendor-react.js',
                 'react/jsx-runtime': './assets/vendor-react.js',
+                'react/jsx-dev-runtime': './assets/vendor-react.js',
                 'react-dom/client': './assets/vendor-react.js',
               },
             }),

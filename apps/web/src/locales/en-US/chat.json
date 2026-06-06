@@ -16,5 +16,14 @@
   "continuation.steer.label": "Guide",
   "empty.startConversation": "Send a message to start the conversation",
   "error.loadMessages": "Failed to load messages. (Unknown error)",
+  "runtimeSettings.access.approvalRequired": "Approval required",
+  "runtimeSettings.access.fullAccess": "Full access",
+  "runtimeSettings.access.label": "Access",
+  "runtimeSettings.interaction.default": "Build",
+  "runtimeSettings.interaction.label": "Interaction",
+  "runtimeSettings.interaction.plan": "Plan",
+  "runtimeSettings.summary": "{{access}} / {{interaction}}",
+  "runtimeSettings.summary.pendingActiveRun": "{{summary}} (saved for the next run)",
+  "runtimeSettings.summary.short": "{{access}} / {{interaction}}",
   "status.thinking": "Thinking..."
 }
