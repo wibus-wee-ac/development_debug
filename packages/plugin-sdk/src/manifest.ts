@@ -44,6 +44,7 @@ const CradlePluginMetaSchema = z
     apiVersion: z.literal('1'),
     displayName: z.string().optional(),
     description: z.string().optional(),
+    icon: PluginEntryPathSchema.optional(),
     deployments: z.array(z.enum(['desktop', 'web'])).optional(),
     server: PluginEntryPathSchema.optional(),
     web: PluginEntryPathSchema.optional(),
@@ -67,10 +68,11 @@ const CradlePluginMetaSchema = z
       })
     }
   })
-  .transform(({ apiVersion, displayName, description, deployments, server, web, desktop, contributes }) => ({
+  .transform(({ apiVersion, displayName, description, icon, deployments, server, web, desktop, contributes }) => ({
     apiVersion,
     displayName,
     description,
+    icon,
     deployments,
     server,
     web,

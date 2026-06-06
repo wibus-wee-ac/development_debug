@@ -158,6 +158,7 @@ plugins/
 | `cradle` | Yes | Plugin metadata object (see below) |
 | `cradle.displayName` | No | Human-readable name for UI |
 | `cradle.description` | No | What the plugin does |
+| `cradle.icon` | No | Package-relative image file for host UI surfaces |
 | `cradle.server` | No* | Path to server entry relative to package root |
 | `cradle.web` | No* | Path to web entry (pre-built `.mjs`) |
 | `cradle.desktop` | No* | Path to desktop entry |
@@ -967,6 +968,7 @@ interface CradlePluginMeta {
   apiVersion: '1'
   displayName?: string
   description?: string
+  icon?: string
   deployments?: Array<'desktop' | 'web'>
   server?: string
   web?: string

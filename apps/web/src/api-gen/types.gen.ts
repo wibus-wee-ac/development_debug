@@ -3429,8 +3429,13 @@ export type PostSessionsData = {
         workspaceId?: string | null;
         title: string;
         providerTargetId?: string | null;
+        modelId?: string | null;
         agentId?: string;
         runtimeKind?: string;
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
         id?: string;
     };
     path?: never;
@@ -5320,6 +5325,45 @@ export type GetSearchChronicleResponses = {
 
 export type GetSearchChronicleResponse = GetSearchChronicleResponses[keyof GetSearchChronicleResponses];
 
+export type GetPluginsMentionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/plugins/mentions';
+};
+
+export type GetPluginsMentionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        pluginName: string;
+        displayName: string;
+        description: string | null;
+        iconUrl: string | null;
+        routeSegment: string;
+        capabilities: Array<{
+            id: string;
+            type: string;
+            layer: 'server' | 'web' | 'desktop';
+            label: string | null;
+        }>;
+        mcpServers: Array<string>;
+        active: boolean;
+    }>;
+};
+
+export type GetPluginsMentionsResponse = GetPluginsMentionsResponses[keyof GetPluginsMentionsResponses];
+
+export type GetPluginsByRouteSegmentIconData = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/plugins/{routeSegment}/icon';
+};
+
 export type GetSkillsData = {
     body?: never;
     path?: never;
@@ -6187,8 +6231,23 @@ export type PostChatSessionsBySessionIdResponseData = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         messages?: Array<{
@@ -6405,8 +6464,23 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         messages?: Array<{
@@ -6559,8 +6633,23 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                 type: string;
                 name: string;
                 path: string;
-                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+                scope: string;
                 description: string | null;
+                position?: number;
+            } | {
+                type: string;
+                pluginName: string;
+                displayName: string;
+                description: string | null;
+                iconUrl?: string | null;
+                routeSegment: string;
+                capabilities: Array<{
+                    id: string;
+                    type: string;
+                    layer: string;
+                    label: string | null;
+                }>;
+                mcpServers: Array<string>;
                 position?: number;
             }>;
             providerTargetId: string | null;
@@ -6597,8 +6686,23 @@ export type PostChatSessionsBySessionIdQueueData = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         providerTargetId?: string;
@@ -6638,8 +6742,23 @@ export type PostChatSessionsBySessionIdQueueResponses = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         providerTargetId: string | null;
@@ -6675,8 +6794,23 @@ export type PostChatSessionsBySessionIdSteerData = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         providerTargetId?: string;
@@ -6752,8 +6886,23 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                 type: string;
                 name: string;
                 path: string;
-                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+                scope: string;
                 description: string | null;
+                position?: number;
+            } | {
+                type: string;
+                pluginName: string;
+                displayName: string;
+                description: string | null;
+                iconUrl?: string | null;
+                routeSegment: string;
+                capabilities: Array<{
+                    id: string;
+                    type: string;
+                    layer: string;
+                    label: string | null;
+                }>;
+                mcpServers: Array<string>;
                 position?: number;
             }>;
             providerTargetId: string | null;
@@ -6807,8 +6956,23 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
             type: string;
             name: string;
             path: string;
-            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            scope: string;
             description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: string;
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
             position?: number;
         }>;
         providerTargetId: string | null;
@@ -6857,7 +7021,7 @@ export type GetChatDraftRuntimeCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -6895,7 +7059,7 @@ export type GetChatSessionsBySessionIdCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -7205,6 +7369,63 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
 };
 
 export type GetChatSessionsBySessionIdUiSlotStatesResponse = GetChatSessionsBySessionIdUiSlotStatesResponses[keyof GetChatSessionsBySessionIdUiSlotStatesResponses];
+
+export type GetChatSessionsBySessionIdContextUsageData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/context-usage';
+};
+
+export type GetChatSessionsBySessionIdContextUsageResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sessionId: string;
+        runtimeKind: string;
+        providerSessionId: string | null;
+        usage: {
+            runtimeKind: string;
+            providerSessionId: string | null;
+            source: string;
+            model: string | null;
+            totalTokens: number;
+            maxTokens: number | null;
+            rawMaxTokens: number | null;
+            percentage: number | null;
+            sections: Array<{
+                kind: string;
+                label: string;
+                tokenCount: number;
+                color: string | null;
+                isDeferred: boolean;
+                items: Array<{
+                    kind: string;
+                    label: string;
+                    tokenCount: number;
+                    metadata?: {
+                        [key: string]: unknown;
+                    };
+                    raw?: unknown;
+                }>;
+                raw?: unknown;
+            }>;
+            messageBreakdown: {
+                [key: string]: unknown;
+            } | null;
+            apiUsage: {
+                [key: string]: unknown;
+            } | null;
+            raw: unknown;
+            updatedAt: number;
+        } | null;
+    };
+};
+
+export type GetChatSessionsBySessionIdContextUsageResponse = GetChatSessionsBySessionIdContextUsageResponses[keyof GetChatSessionsBySessionIdContextUsageResponses];
 
 export type GetChatSessionsBySessionIdProviderThreadsData = {
     body?: never;
@@ -7579,6 +7800,7 @@ export type GetChatRunsCompletedResponses = {
             sessionId: string;
             sessionTitle: string;
             messageId: string | null;
+            responseBody: string | null;
             messagePreview: string | null;
             startedAt: number;
             finishedAt: number;
@@ -10616,14 +10838,90 @@ export type PostApiMemoryCrystallizeResponses = {
 
 export type PostApiMemoryCrystallizeResponse = PostApiMemoryCrystallizeResponses[keyof PostApiMemoryCrystallizeResponses];
 
-export type GetDesktopTrayAwaitsData = {
+export type GetDesktopSummaryData = {
     body?: never;
     path?: never;
     query?: never;
-    url: '/desktop/tray/awaits';
+    url: '/desktop/summary';
 };
 
-export type GetDesktopTrayAwaitsResponses = {
+export type GetDesktopSummaryResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        generatedAt: number;
+        running: number;
+        recentSessions: number;
+        pinnedSessions: number;
+        pendingAwaits: number;
+        enabledAutomations: number;
+        runningAutomations: number;
+        workspaces: number;
+        enabledProviders: number;
+        totalProviders: number;
+    };
+};
+
+export type GetDesktopSummaryResponse = GetDesktopSummaryResponses[keyof GetDesktopSummaryResponses];
+
+export type GetDesktopRecentSessionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/desktop/recent-sessions';
+};
+
+export type GetDesktopRecentSessionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        sessionId: string;
+        title: string;
+        workspaceId: string | null;
+        workspaceName: string;
+        runtimeKind: string;
+        modelId: string | null;
+        updatedAt: number;
+        state: 'running' | 'awaiting' | 'pinned' | 'recent';
+        detail: string;
+    }>;
+};
+
+export type GetDesktopRecentSessionsResponse = GetDesktopRecentSessionsResponses[keyof GetDesktopRecentSessionsResponses];
+
+export type GetDesktopHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/desktop/health';
+};
+
+export type GetDesktopHealthResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        label: string;
+        value: string;
+        status: 'ok' | 'active' | 'warning' | 'danger' | 'unknown';
+        detail: string | null;
+    }>;
+};
+
+export type GetDesktopHealthResponse = GetDesktopHealthResponses[keyof GetDesktopHealthResponses];
+
+export type GetDesktopAwaitsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/desktop/awaits';
+};
+
+export type GetDesktopAwaitsResponses = {
     /**
      * Response for status 200
      */
@@ -10639,61 +10937,7 @@ export type GetDesktopTrayAwaitsResponses = {
     }>;
 };
 
-export type GetDesktopTrayAwaitsResponse = GetDesktopTrayAwaitsResponses[keyof GetDesktopTrayAwaitsResponses];
-
-export type GetDesktopTrayData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/desktop/tray';
-};
-
-export type GetDesktopTrayResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        generatedAt: number;
-        running: Array<{
-            id: string;
-            sessionId: string;
-            title: string;
-            workspaceId: string | null;
-            workspaceName: string;
-            runtimeKind: string;
-            modelId: string | null;
-            updatedAt: number;
-            detail: string;
-        }>;
-        resident: Array<{
-            id: string;
-            sessionId: string;
-            title: string;
-            workspaceId: string | null;
-            workspaceName: string;
-            runtimeKind: string;
-            modelId: string | null;
-            updatedAt: number;
-            detail: string;
-        }>;
-        metrics: Array<{
-            id: string;
-            label: string;
-            value: string;
-            tone: 'neutral' | 'active' | 'warning' | 'danger';
-        }>;
-        quickActions: Array<{
-            id: string;
-            label: string;
-            description: string;
-            accelerator: string | null;
-            badge: string | null;
-            enabled: boolean;
-        }>;
-    };
-};
-
-export type GetDesktopTrayResponse = GetDesktopTrayResponses[keyof GetDesktopTrayResponses];
+export type GetDesktopAwaitsResponse = GetDesktopAwaitsResponses[keyof GetDesktopAwaitsResponses];
 
 export type GetTerminalSessionsResourcesData = {
     body?: never;

@@ -20,6 +20,8 @@ export interface CradlePluginMeta {
   apiVersion: '1'
   displayName?: string
   description?: string
+  /** Plugin package-relative icon file used by host UI surfaces. */
+  icon?: string
   /** Which deployments this plugin supports */
   deployments?: Array<'desktop' | 'web'>
   /** Entry point for server-side plugin */
@@ -154,6 +156,7 @@ export interface PluginDescriptor {
   version: string
   displayName: string
   description?: string
+  icon?: string
   deployments?: Array<'desktop' | 'web'>
   source: PluginSourceDescriptor
   layers: Record<PluginLayer, PluginLayerState>

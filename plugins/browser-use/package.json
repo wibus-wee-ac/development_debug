@@ -6,6 +6,7 @@
   "cradle": {
     "apiVersion": "1",
     "displayName": "Browser Use",
+    "icon": "assets/icon.svg",
     "server": "dist/server.mjs",
     "desktop": "dist/desktop.mjs",
     "deployments": ["desktop"],

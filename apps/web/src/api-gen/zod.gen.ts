@@ -749,8 +749,13 @@ export const zPostSessionsBody = z.object({
     workspaceId: z.string().min(1).nullish(),
     title: z.string().min(1),
     providerTargetId: z.string().min(1).nullish(),
+    modelId: z.string().min(1).nullish(),
     agentId: z.string().min(1).optional(),
     runtimeKind: z.string().min(1).optional(),
+    runtimeSettings: z.object({
+        accessMode: z.enum(['approval-required', 'full-access']).optional(),
+        interactionMode: z.enum(['default', 'plan']).optional()
+    }).optional(),
     id: z.string().optional()
 });
 
@@ -1158,6 +1163,10 @@ export const zGetSearchChronicleQuery = z.object({
     ]).optional()
 });
 
+export const zGetPluginsByRouteSegmentIconPath = z.object({
+    routeSegment: z.string().min(1)
+});
+
 export const zGetSkillsQuery = z.object({
     workspaceId: z.string().min(1).regex(/.*\S.*/).optional(),
     agentId: z.string().min(1).regex(/.*\S.*/).optional()
@@ -1418,21 +1427,29 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
-    contextParts: z.array(z.object({
-        type: z.string(),
-        name: z.string().min(1),
-        path: z.string().min(1),
-        scope: z.enum([
-            'builtin',
-            'legacy',
-            'global',
-            'repository',
-            'workspace',
-            'agent'
-        ]),
-        description: z.string().nullable(),
-        position: z.number().gte(0).optional()
-    })).optional(),
+    contextParts: z.array(z.union([z.object({
+            type: z.string(),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            scope: z.string(),
+            description: z.string().nullable(),
+            position: z.number().gte(0).optional()
+        }), z.object({
+            type: z.string(),
+            pluginName: z.string().min(1),
+            displayName: z.string().min(1),
+            description: z.string().nullable(),
+            iconUrl: z.string().min(1).nullish(),
+            routeSegment: z.string().min(1),
+            capabilities: z.array(z.object({
+                id: z.string().min(1),
+                type: z.string().min(1),
+                layer: z.string(),
+                label: z.string().nullable()
+            })),
+            mcpServers: z.array(z.string().min(1)),
+            position: z.number().gte(0).optional()
+        })])).optional(),
     messages: z.array(z.object({
         id: z.string(),
         role: z.enum([
@@ -1510,21 +1527,29 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
-    contextParts: z.array(z.object({
-        type: z.string(),
-        name: z.string().min(1),
-        path: z.string().min(1),
-        scope: z.enum([
-            'builtin',
-            'legacy',
-            'global',
-            'repository',
-            'workspace',
-            'agent'
-        ]),
-        description: z.string().nullable(),
-        position: z.number().gte(0).optional()
-    })).optional(),
+    contextParts: z.array(z.union([z.object({
+            type: z.string(),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            scope: z.string(),
+            description: z.string().nullable(),
+            position: z.number().gte(0).optional()
+        }), z.object({
+            type: z.string(),
+            pluginName: z.string().min(1),
+            displayName: z.string().min(1),
+            description: z.string().nullable(),
+            iconUrl: z.string().min(1).nullish(),
+            routeSegment: z.string().min(1),
+            capabilities: z.array(z.object({
+                id: z.string().min(1),
+                type: z.string().min(1),
+                layer: z.string(),
+                label: z.string().nullable()
+            })),
+            mcpServers: z.array(z.string().min(1)),
+            position: z.number().gte(0).optional()
+        })])).optional(),
     messages: z.array(z.object({
         id: z.string(),
         role: z.enum([
@@ -1576,21 +1601,29 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
-    contextParts: z.array(z.object({
-        type: z.string(),
-        name: z.string().min(1),
-        path: z.string().min(1),
-        scope: z.enum([
-            'builtin',
-            'legacy',
-            'global',
-            'repository',
-            'workspace',
-            'agent'
-        ]),
-        description: z.string().nullable(),
-        position: z.number().gte(0).optional()
-    })).optional(),
+    contextParts: z.array(z.union([z.object({
+            type: z.string(),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            scope: z.string(),
+            description: z.string().nullable(),
+            position: z.number().gte(0).optional()
+        }), z.object({
+            type: z.string(),
+            pluginName: z.string().min(1),
+            displayName: z.string().min(1),
+            description: z.string().nullable(),
+            iconUrl: z.string().min(1).nullish(),
+            routeSegment: z.string().min(1),
+            capabilities: z.array(z.object({
+                id: z.string().min(1),
+                type: z.string().min(1),
+                layer: z.string(),
+                label: z.string().nullable()
+            })),
+            mcpServers: z.array(z.string().min(1)),
+            position: z.number().gte(0).optional()
+        })])).optional(),
     providerTargetId: z.string().optional(),
     modelId: z.string().optional(),
     thinkingEffort: z.enum([
@@ -1618,21 +1651,29 @@ export const zPostChatSessionsBySessionIdSteerBody = z.object({
         url: z.string().min(1),
         providerMetadata: z.unknown().optional()
     })).optional(),
-    contextParts: z.array(z.object({
-        type: z.string(),
-        name: z.string().min(1),
-        path: z.string().min(1),
-        scope: z.enum([
-            'builtin',
-            'legacy',
-            'global',
-            'repository',
-            'workspace',
-            'agent'
-        ]),
-        description: z.string().nullable(),
-        position: z.number().gte(0).optional()
-    })).optional(),
+    contextParts: z.array(z.union([z.object({
+            type: z.string(),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            scope: z.string(),
+            description: z.string().nullable(),
+            position: z.number().gte(0).optional()
+        }), z.object({
+            type: z.string(),
+            pluginName: z.string().min(1),
+            displayName: z.string().min(1),
+            description: z.string().nullable(),
+            iconUrl: z.string().min(1).nullish(),
+            routeSegment: z.string().min(1),
+            capabilities: z.array(z.object({
+                id: z.string().min(1),
+                type: z.string().min(1),
+                layer: z.string(),
+                label: z.string().nullable()
+            })),
+            mcpServers: z.array(z.string().min(1)),
+            position: z.number().gte(0).optional()
+        })])).optional(),
     providerTargetId: z.string().optional(),
     modelId: z.string().optional(),
     thinkingEffort: z.enum([
@@ -1673,6 +1714,10 @@ export const zGetChatSessionsBySessionIdCapabilitiesPath = z.object({
 });
 
 export const zGetChatSessionsBySessionIdUiSlotStatesPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdContextUsagePath = z.object({
     sessionId: z.string().min(1)
 });
 
