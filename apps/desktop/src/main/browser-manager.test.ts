@@ -93,8 +93,10 @@ const electronMocks = vi.hoisted(() => {
     readonly webContents = new FakeWebContents()
     readonly setBounds = vi.fn()
     readonly setVisible = vi.fn()
+    readonly options: unknown
 
-    constructor() {
+    constructor(options?: unknown) {
+      this.options = options
       FakeWebContentsView.instances.push(this)
     }
   }
@@ -107,6 +109,9 @@ const electronMocks = vi.hoisted(() => {
   }
 
   return {
+    app: {
+      getAppPath: vi.fn(() => '/Applications/Cradle.app/Contents/Resources/app.asar'),
+    },
     BrowserWindow: FakeBrowserWindow,
     WebContentsView: FakeWebContentsView,
     clipboard: {
@@ -128,6 +133,8 @@ const electronMocks = vi.hoisted(() => {
 vi.mock('electron', () => electronMocks)
 
 const bounds = { x: 0, y: 0, width: 900, height: 600 }
+const hiddenBounds = { x: -10000, y: -10000, width: 1, height: 1 }
+const previousRendererUrl = process.env.ELECTRON_RENDERER_URL
 
 async function flushBrowserWork(): Promise<void> {
   await Promise.resolve()
@@ -147,6 +154,12 @@ afterEach(() => {
   vi.resetModules()
   vi.clearAllMocks()
   electronMocks.__reset()
+  if (previousRendererUrl === undefined) {
+    delete process.env.ELECTRON_RENDERER_URL
+  }
+ else {
+    process.env.ELECTRON_RENDERER_URL = previousRendererUrl
+  }
 })
 
 describe('desktop browser manager tab runtime retention', () => {
@@ -207,6 +220,8 @@ describe('desktop browser manager tab runtime retention', () => {
     await vi.advanceTimersByTimeAsync(31_000)
 
     expect(view.webContents.close).not.toHaveBeenCalled()
+    expect(view.setBounds).toHaveBeenLastCalledWith(hiddenBounds)
+    expect(view.setVisible).toHaveBeenLastCalledWith(false)
 
     manager.setPanelBounds({ threadId, bounds, surface: 'native' })
     manager.selectTab({ threadId, tabId })
@@ -214,7 +229,55 @@ describe('desktop browser manager tab runtime retention', () => {
 
     expect(electronMocks.WebContentsView.instances).toHaveLength(1)
     expect(view.webContents.loadURL).toHaveBeenCalledTimes(1)
+    expect(view.setBounds).toHaveBeenLastCalledWith(bounds)
+    expect(view.setVisible).toHaveBeenLastCalledWith(true)
     expect(manager.getState({ threadId }).activeTabId).toBe(tabId)
+
+    manager.dispose()
+  })
+
+  it('maps guest prompt requests to the owning browser tab runtime', async () => {
+    vi.useFakeTimers()
+    delete process.env.ELECTRON_RENDERER_URL
+    const manager = await createManager()
+    const threadId = 'thread-1'
+    const requests: unknown[] = []
+    manager.subscribeToPromptRequests(request => requests.push(request))
+
+    const initialState = manager.open({ threadId, initialUrl: 'https://one.test/path' })
+    const tabId = initialState.activeTabId!
+    manager.setPanelBounds({ threadId, bounds, surface: 'native' })
+    await flushBrowserWork()
+
+    const view = electronMocks.WebContentsView.instances[0]!
+    expect(view.options).toMatchObject({
+      webPreferences: {
+        preload: '/Applications/Cradle.app/Contents/Resources/app.asar/dist/preload/browser-panel.js',
+      },
+    })
+
+    const request = manager.handlePromptRequest(view.webContents as never, {
+      text: 'Summarize this page.',
+      attachments: [{
+        filename: 'screen.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,test',
+      }],
+    })
+
+    expect(request).toMatchObject({
+      threadId,
+      tabId,
+      text: 'Summarize this page.',
+      attachments: [{
+        filename: 'screen.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,test',
+      }],
+      sourceUrl: 'https://one.test/path',
+      sourceTitle: 'one.test',
+    })
+    expect(requests).toEqual([request])
 
     manager.dispose()
   })

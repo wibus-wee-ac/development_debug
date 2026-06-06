@@ -3,7 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 // Parse --server-url and --session-id from additionalArguments
 function getArg(name: string): string | null {
   const prefix = `--${name}=`
-  const arg = process.argv.find((a) => a.startsWith(prefix))
+  const arg = process.argv.find(a => a.startsWith(prefix))
   return arg ? arg.slice(prefix.length) : null
 }
 
@@ -16,6 +16,7 @@ const CHAT_STREAM_CHUNK_CHANNEL = 'chat-stream:chunk'
 const CHAT_STREAM_CLOSED_CHANNEL = 'chat-stream:closed'
 const CHAT_STREAM_ERROR_CHANNEL = 'chat-stream:error'
 const BROWSER_STATE_CHANNEL = 'desktop:browser-state'
+const BROWSER_PROMPT_REQUESTED_CHANNEL = 'desktop:browser-prompt-requested'
 
 function subscribeIpc<T>(channel: string, handler: (payload: T) => void): () => void {
   const listener = (_event: Electron.IpcRendererEvent, payload: T) => handler(payload)
@@ -36,7 +37,7 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener(channel, listener)
       }
-    }
+    },
   },
 
   /** Environment info */
@@ -46,7 +47,7 @@ const cradleElectron = {
     isTearoff,
     surface,
     platform: process.platform as 'darwin' | 'win32' | 'linux',
-    isElectron: true as const
+    isElectron: true as const,
   },
 
   /** Window controls (for custom titlebar if needed) */
@@ -70,7 +71,7 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener('window:pointer-outside-window', listener)
       }
-    }
+    },
   },
 
   /** Desktop update status events pushed by the main process */
@@ -81,13 +82,13 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener('desktop-update:status-changed', listener)
       }
-    }
+    },
   },
 
   /** Desktop app icon badge bridge */
   desktopAppBadge: {
     setUnreadCount: (count: number) =>
-      ipcRenderer.invoke('desktop-app-badge:set-unread-count', count)
+      ipcRenderer.invoke('desktop-app-badge:set-unread-count', count),
   },
 
   /** Desktop-owned long-lived chat stream bridge */
@@ -101,7 +102,7 @@ const cradleElectron = {
       subscribeIpc(CHAT_STREAM_CHUNK_CHANNEL, handler),
     onClosed: (handler: (event: unknown) => void) =>
       subscribeIpc(CHAT_STREAM_CLOSED_CHANNEL, handler),
-    onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler)
+    onError: (handler: (event: unknown) => void) => subscribeIpc(CHAT_STREAM_ERROR_CHANNEL, handler),
   },
 
   /** Native BrowserPanel bridge backed by Electron WebContentsView. */
@@ -116,6 +117,7 @@ const cradleElectron = {
     copyScreenshotToClipboard: (input: unknown) =>
       ipcRenderer.invoke('desktop:browser-copy-screenshot-to-clipboard', input),
     executeCdp: (input: unknown) => ipcRenderer.invoke('desktop:browser-execute-cdp', input),
+    discoverLocalServers: () => ipcRenderer.invoke('desktop:browser-discover-local-servers'),
     navigate: (input: unknown) => ipcRenderer.invoke('desktop:browser-navigate', input),
     reload: (input: unknown) => ipcRenderer.invoke('desktop:browser-reload', input),
     goBack: (input: unknown) => ipcRenderer.invoke('desktop:browser-go-back', input),
@@ -124,7 +126,9 @@ const cradleElectron = {
     closeTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-close-tab', input),
     selectTab: (input: unknown) => ipcRenderer.invoke('desktop:browser-select-tab', input),
     openDevTools: (input: unknown) => ipcRenderer.invoke('desktop:browser-open-devtools', input),
-    onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler)
+    onState: (handler: (state: unknown) => void) => subscribeIpc(BROWSER_STATE_CHANNEL, handler),
+    onPromptRequested: (handler: (request: unknown) => void) =>
+      subscribeIpc(BROWSER_PROMPT_REQUESTED_CHANNEL, handler),
   },
 
   /** Desktop tray action bridge */
@@ -138,8 +142,8 @@ const cradleElectron = {
       return () => {
         ipcRenderer.removeListener('desktop-tray:action-requested', listener)
       }
-    }
-  }
+    },
+  },
 }
 
 contextBridge.exposeInMainWorld('cradle', cradleElectron)

@@ -9,28 +9,40 @@ const traySessionItem = t.Object({
   runtimeKind: t.String(),
   modelId: t.Nullable(t.String()),
   updatedAt: t.Number(),
+  state: t.Union([
+    t.Literal('running'),
+    t.Literal('awaiting'),
+    t.Literal('pinned'),
+    t.Literal('recent'),
+  ]),
   detail: t.String(),
 })
 
-const trayMetric = t.Object({
+const trayHealthItem = t.Object({
   id: t.String(),
   label: t.String(),
   value: t.String(),
-  tone: t.Union([
-    t.Literal('neutral'),
+  status: t.Union([
+    t.Literal('ok'),
     t.Literal('active'),
     t.Literal('warning'),
     t.Literal('danger'),
+    t.Literal('unknown'),
   ]),
+  detail: t.Nullable(t.String()),
 })
 
-const trayQuickAction = t.Object({
-  id: t.String(),
-  label: t.String(),
-  description: t.String(),
-  accelerator: t.Nullable(t.String()),
-  badge: t.Nullable(t.String()),
-  enabled: t.Boolean(),
+const trayCounts = t.Object({
+  generatedAt: t.Number(),
+  running: t.Number(),
+  recentSessions: t.Number(),
+  pinnedSessions: t.Number(),
+  pendingAwaits: t.Number(),
+  enabledAutomations: t.Number(),
+  runningAutomations: t.Number(),
+  workspaces: t.Number(),
+  enabledProviders: t.Number(),
+  totalProviders: t.Number(),
 })
 
 const trayAwaitItem = t.Object({
@@ -45,12 +57,8 @@ const trayAwaitItem = t.Object({
 })
 
 export const DesktopModel = {
-  traySnapshot: t.Object({
-    generatedAt: t.Number(),
-    running: t.Array(traySessionItem),
-    resident: t.Array(traySessionItem),
-    metrics: t.Array(trayMetric),
-    quickActions: t.Array(trayQuickAction),
-  }),
+  trayCounts,
+  trayHealth: t.Array(trayHealthItem),
+  trayRecentSessions: t.Array(traySessionItem),
   trayAwaits: t.Array(trayAwaitItem),
 } as const

@@ -3,20 +3,22 @@
 // Layer: Desktop IPC adapter
 // Depends on: Electron ipcMain/webContents and DesktopBrowserManager
 
+import type { IpcMain, WebContents } from 'electron'
+
 import type {
   BrowserCaptureScreenshotResult,
   BrowserExecuteCdpInput,
+  BrowserLocalServer,
   BrowserNavigateInput,
   BrowserNewTabInput,
   BrowserOpenInput,
+  BrowserPromptRequest,
   BrowserSetPanelBoundsInput,
   BrowserTabInput,
   BrowserThreadInput,
-  ThreadBrowserState
+DesktopBrowserManager,
+  ThreadBrowserState,
 } from './browser-manager'
-import type { IpcMain, WebContents } from 'electron'
-
-import type { DesktopBrowserManager } from './browser-manager'
 
 export const BROWSER_IPC_CHANNELS = {
   state: 'desktop:browser-state',
@@ -29,6 +31,7 @@ export const BROWSER_IPC_CHANNELS = {
   copyScreenshotToClipboard: 'desktop:browser-copy-screenshot-to-clipboard',
   captureScreenshot: 'desktop:browser-capture-screenshot',
   executeCdp: 'desktop:browser-execute-cdp',
+  discoverLocalServers: 'desktop:browser-discover-local-servers',
   navigate: 'desktop:browser-navigate',
   reload: 'desktop:browser-reload',
   goBack: 'desktop:browser-go-back',
@@ -36,31 +39,42 @@ export const BROWSER_IPC_CHANNELS = {
   newTab: 'desktop:browser-new-tab',
   closeTab: 'desktop:browser-close-tab',
   selectTab: 'desktop:browser-select-tab',
-  openDevTools: 'desktop:browser-open-devtools'
+  openDevTools: 'desktop:browser-open-devtools',
+  sendPrompt: 'desktop:browser-send-prompt',
+  promptRequested: 'desktop:browser-prompt-requested',
 } as const
 
 // Pushes the latest browser state snapshot to the renderer shell.
 export function sendBrowserState(
   webContents: WebContents | null | undefined,
-  state: ThreadBrowserState
+  state: ThreadBrowserState,
 ): void {
   webContents?.send(BROWSER_IPC_CHANNELS.state, state)
+}
+
+export function sendBrowserPromptRequest(
+  webContents: WebContents | null | undefined,
+  request: BrowserPromptRequest,
+): void {
+  webContents?.send(BROWSER_IPC_CHANNELS.promptRequested, request)
 }
 
 // Registers the desktop browser bridge in one place so main.ts stays focused on app boot.
 export function registerBrowserIpcHandlers(
   ipcMain: IpcMain,
-  browserManager: DesktopBrowserManager
+  browserManager: DesktopBrowserManager,
 ): void {
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.sendPrompt)
+  ipcMain.handle(BROWSER_IPC_CHANNELS.sendPrompt, async (event, payload: unknown) =>
+    browserManager.handlePromptRequest(event.sender, payload) !== null)
+
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.open)
   ipcMain.handle(BROWSER_IPC_CHANNELS.open, async (_event, input: BrowserOpenInput) =>
-    browserManager.open(input)
-  )
+    browserManager.open(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.close)
   ipcMain.handle(BROWSER_IPC_CHANNELS.close, async (_event, input: BrowserThreadInput) =>
-    browserManager.close(input)
-  )
+    browserManager.close(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.hide)
   ipcMain.handle(BROWSER_IPC_CHANNELS.hide, async (_event, input: BrowserThreadInput) => {
@@ -69,8 +83,7 @@ export function registerBrowserIpcHandlers(
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.getState)
   ipcMain.handle(BROWSER_IPC_CHANNELS.getState, async (_event, input: BrowserThreadInput) =>
-    browserManager.getState(input)
-  )
+    browserManager.getState(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.setBounds)
   ipcMain.removeAllListeners(BROWSER_IPC_CHANNELS.setBounds)
@@ -82,7 +95,7 @@ export function registerBrowserIpcHandlers(
   ipcMain.handle(
     BROWSER_IPC_CHANNELS.captureScreenshot,
     async (_event, input: BrowserTabInput): Promise<BrowserCaptureScreenshotResult> =>
-      browserManager.captureScreenshot(input)
+      browserManager.captureScreenshot(input),
   )
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.copyScreenshotToClipboard)
@@ -90,48 +103,46 @@ export function registerBrowserIpcHandlers(
     BROWSER_IPC_CHANNELS.copyScreenshotToClipboard,
     async (_event, input: BrowserTabInput) => {
       await browserManager.copyScreenshotToClipboard(input)
-    }
+    },
   )
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.executeCdp)
   ipcMain.handle(BROWSER_IPC_CHANNELS.executeCdp, async (_event, input: BrowserExecuteCdpInput) =>
-    browserManager.executeCdp(input)
+    browserManager.executeCdp(input))
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.discoverLocalServers)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.discoverLocalServers,
+    async (): Promise<BrowserLocalServer[]> => browserManager.discoverLocalServers(),
   )
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.navigate)
   ipcMain.handle(BROWSER_IPC_CHANNELS.navigate, async (_event, input: BrowserNavigateInput) =>
-    browserManager.navigate(input)
-  )
+    browserManager.navigate(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.reload)
   ipcMain.handle(BROWSER_IPC_CHANNELS.reload, async (_event, input: BrowserTabInput) =>
-    browserManager.reload(input)
-  )
+    browserManager.reload(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.goBack)
   ipcMain.handle(BROWSER_IPC_CHANNELS.goBack, async (_event, input: BrowserTabInput) =>
-    browserManager.goBack(input)
-  )
+    browserManager.goBack(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.goForward)
   ipcMain.handle(BROWSER_IPC_CHANNELS.goForward, async (_event, input: BrowserTabInput) =>
-    browserManager.goForward(input)
-  )
+    browserManager.goForward(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.newTab)
   ipcMain.handle(BROWSER_IPC_CHANNELS.newTab, async (_event, input: BrowserNewTabInput) =>
-    browserManager.newTab(input)
-  )
+    browserManager.newTab(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.closeTab)
   ipcMain.handle(BROWSER_IPC_CHANNELS.closeTab, async (_event, input: BrowserTabInput) =>
-    browserManager.closeTab(input)
-  )
+    browserManager.closeTab(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.selectTab)
   ipcMain.handle(BROWSER_IPC_CHANNELS.selectTab, async (_event, input: BrowserTabInput) =>
-    browserManager.selectTab(input)
-  )
+    browserManager.selectTab(input))
 
   ipcMain.removeHandler(BROWSER_IPC_CHANNELS.openDevTools)
   ipcMain.handle(BROWSER_IPC_CHANNELS.openDevTools, async (_event, input: BrowserTabInput) => {

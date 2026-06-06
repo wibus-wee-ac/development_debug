@@ -5,8 +5,10 @@
 
 import * as Crypto from 'node:crypto'
 
-import { BrowserWindow, clipboard, nativeImage, shell, WebContentsView } from 'electron'
-import type { WebContents } from 'electron'
+import type { BrowserWindow, WebContents } from 'electron'
+import { clipboard, nativeImage, shell, WebContentsView } from 'electron'
+
+import { resolveDesktopBrowserPanelPreloadPath } from './desktop-assets'
 
 export type ThreadId = string
 
@@ -80,13 +82,62 @@ export interface BrowserExecuteCdpInput extends BrowserTabInput {
   params?: Record<string, unknown>
 }
 
+export interface BrowserPromptAttachmentInput {
+  filename?: string
+  mediaType?: string
+  url: string
+}
+
+export interface BrowserPromptRequest {
+  threadId: ThreadId
+  tabId: string
+  text: string
+  attachments: BrowserPromptAttachmentInput[]
+  sourceUrl: string | null
+  sourceTitle: string | null
+}
+
+export interface BrowserLocalServer {
+  port: number
+  url: string
+  title: string
+  statusCode: number | null
+}
+
 const ABOUT_BLANK_URL = 'about:blank'
 const BROWSER_SESSION_PARTITION = 'persist:cradle-browser'
 const BROWSER_ERROR_ABORTED = -3
 const SEARCH_URL_PREFIX = 'https://www.google.com/search?q='
+const LOCAL_SERVER_DISCOVERY_TIMEOUT_MS = 650
+const LOCAL_SERVER_DISCOVERY_LIMIT = 12
+const LOCAL_SERVER_CANDIDATE_PORTS = [
+  3000,
+  3001,
+  3002,
+  3003,
+  3333,
+  4000,
+  4173,
+  5000,
+  5173,
+  5174,
+  5175,
+  5176,
+  6006,
+  7000,
+  7331,
+  8000,
+  8080,
+  8787,
+  9000,
+  10000,
+  21423,
+  21424,
+] as const
 
 type BrowserStateListener = (state: ThreadBrowserState) => void
 type BrowserWebContentsListener = (webContents: WebContents, tabId: string) => void
+type BrowserPromptRequestListener = (request: BrowserPromptRequest) => void
 
 interface LiveTabRuntime {
   key: string
@@ -109,6 +160,7 @@ interface PendingRuntimeSync {
 
 const LIVE_TAB_STATUS: BrowserTabState['status'] = 'live'
 const SUSPENDED_TAB_STATUS: BrowserTabState['status'] = 'suspended'
+const BROWSER_PROMPT_ATTACHMENT_LIMIT = 16
 
 interface BrowserPerformanceSnapshot {
   counters: {
@@ -145,7 +197,7 @@ function createBrowserTab(url = ABOUT_BLANK_URL): BrowserTabState {
     canGoForward: false,
     faviconUrl: null,
     lastCommittedUrl: null,
-    lastError: null
+    lastError: null,
   }
 }
 
@@ -156,14 +208,14 @@ function defaultThreadBrowserState(threadId: ThreadId): ThreadBrowserState {
     open: false,
     activeTabId: null,
     tabs: [],
-    lastError: null
+    lastError: null,
   }
 }
 
 function cloneThreadState(state: ThreadBrowserState): ThreadBrowserState {
   return {
     ...state,
-    tabs: state.tabs.map((tab) => ({ ...tab }))
+    tabs: state.tabs.map(tab => ({ ...tab })),
   }
 }
 
@@ -175,7 +227,8 @@ function defaultTitleForUrl(url: string): string {
   try {
     const parsed = new URL(url)
     return parsed.hostname || url
-  } catch {
+  }
+ catch {
     return url
   }
 }
@@ -186,18 +239,19 @@ function screenshotFileNameForUrl(url: string): string {
     const hostname = new URL(url).hostname.trim().toLowerCase()
     const normalizedHost = hostname.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
     return `${normalizedHost || fallback}-${Date.now()}.png`
-  } catch {
+  }
+ catch {
     return `${fallback}-${Date.now()}.png`
   }
 }
 
 function normalizeBounds(bounds: BrowserPanelBounds | null): BrowserPanelBounds | null {
-  if (!bounds) return null
+  if (!bounds) { return null }
   if (
-    !Number.isFinite(bounds.x) ||
-    !Number.isFinite(bounds.y) ||
-    !Number.isFinite(bounds.width) ||
-    !Number.isFinite(bounds.height)
+    !Number.isFinite(bounds.x)
+    || !Number.isFinite(bounds.y)
+    || !Number.isFinite(bounds.width)
+    || !Number.isFinite(bounds.height)
   ) {
     return null
   }
@@ -212,17 +266,17 @@ function normalizeBounds(bounds: BrowserPanelBounds | null): BrowserPanelBounds 
     x: Math.max(0, Math.floor(bounds.x)),
     y: Math.max(0, Math.floor(bounds.y)),
     width,
-    height
+    height,
   }
 }
 
 function looksLikeUrlInput(value: string): boolean {
   return (
-    value.includes('.') ||
-    value.startsWith('localhost') ||
-    value.startsWith('127.0.0.1') ||
-    value.startsWith('0.0.0.0') ||
-    value.startsWith('[::1]')
+    value.includes('.')
+    || value.startsWith('localhost')
+    || value.startsWith('127.0.0.1')
+    || value.startsWith('0.0.0.0')
+    || value.startsWith('[::1]')
   )
 }
 
@@ -240,7 +294,8 @@ function normalizeUrlInput(input: string | undefined): string {
     if (withScheme.protocol === 'about:') {
       return withScheme.toString()
     }
-  } catch {
+  }
+ catch {
     // Fall through to heuristics below.
   }
 
@@ -249,15 +304,16 @@ function normalizeUrlInput(input: string | undefined): string {
   }
 
   if (looksLikeUrlInput(trimmed)) {
-    const prefersHttp =
-      trimmed.startsWith('localhost') ||
-      trimmed.startsWith('127.0.0.1') ||
-      trimmed.startsWith('0.0.0.0') ||
-      trimmed.startsWith('[::1]')
+    const prefersHttp
+      = trimmed.startsWith('localhost')
+        || trimmed.startsWith('127.0.0.1')
+        || trimmed.startsWith('0.0.0.0')
+        || trimmed.startsWith('[::1]')
     const scheme = prefersHttp ? 'http' : 'https'
     try {
       return new URL(`${scheme}://${trimmed}`).toString()
-    } catch {
+    }
+ catch {
       return `${SEARCH_URL_PREFIX}${encodeURIComponent(trimmed)}`
     }
   }
@@ -277,17 +333,17 @@ function mapBrowserLoadError(errorCode: number): string {
     case -102:
       return 'Connection refused.'
     case -105:
-      return "Couldn't resolve this address."
+      return 'Couldn\'t resolve this address.'
     case -106:
-      return "You're offline."
+      return 'You\'re offline.'
     case -118:
       return 'This page took too long to respond.'
     case -137:
-      return "A secure connection couldn't be established."
+      return 'A secure connection couldn\'t be established.'
     case -200:
-      return "A secure connection couldn't be established."
+      return 'A secure connection couldn\'t be established.'
     default:
-      return "Couldn't open this page."
+      return 'Couldn\'t open this page.'
   }
 }
 
@@ -299,12 +355,143 @@ function browserSessionPartition(threadId: ThreadId): string {
   return `${BROWSER_SESSION_PARTITION}-${Buffer.from(threadId).toString('base64url')}`
 }
 
+function normalizeBrowserPromptPayload(
+  payload: unknown,
+): Pick<BrowserPromptRequest, 'text' | 'attachments'> | null {
+  if (!payload || typeof payload !== 'object') {
+    return null
+  }
+
+  const candidate = payload as {
+    attachments?: unknown
+    text?: unknown
+  }
+  const text = typeof candidate.text === 'string' ? candidate.text : ''
+  const attachments = Array.isArray(candidate.attachments)
+    ? candidate.attachments.flatMap(normalizeBrowserPromptAttachment).slice(0, BROWSER_PROMPT_ATTACHMENT_LIMIT)
+    : []
+
+  if (!text.trim() && attachments.length === 0) {
+    return null
+  }
+
+  return {
+    text,
+    attachments,
+  }
+}
+
+function normalizeBrowserPromptAttachment(value: unknown): BrowserPromptAttachmentInput[] {
+  if (!value || typeof value !== 'object') {
+    return []
+  }
+
+  const candidate = value as {
+    filename?: unknown
+    mediaType?: unknown
+    url?: unknown
+  }
+  if (typeof candidate.url !== 'string' || !candidate.url.trim()) {
+    return []
+  }
+
+  return [{
+    ...(typeof candidate.filename === 'string' && candidate.filename.trim()
+      ? { filename: candidate.filename.trim() }
+      : {}),
+    ...(typeof candidate.mediaType === 'string' && candidate.mediaType.trim()
+      ? { mediaType: candidate.mediaType.trim() }
+      : {}),
+    url: candidate.url.trim(),
+  }]
+}
+
+function readWebContentsUrl(webContents: WebContents): string | null {
+  const url = webContents.getURL()
+  return url.trim() ? url : null
+}
+
+function readWebContentsTitle(webContents: WebContents): string | null {
+  const title = webContents.getTitle()
+  return title.trim() ? title : null
+}
+
 function browserBoundsSignature(bounds: BrowserPanelBounds | null): string {
   if (!bounds) {
     return 'hidden'
   }
 
   return `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function decodeTitleEntity(entity: string): string {
+  switch (entity) {
+    case 'amp':
+      return '&'
+    case 'lt':
+      return '<'
+    case 'gt':
+      return '>'
+    case 'quot':
+      return '"'
+    case '#39':
+    case 'apos':
+      return '\''
+    default:
+      return `&${entity};`
+  }
+}
+
+function extractHtmlTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  const rawTitle = normalizeWhitespace(match?.[1] ?? '')
+  if (!rawTitle) {
+    return null
+  }
+  return rawTitle.replace(/&([a-z0-9#]+);/gi, (_match, entity: string) =>
+    decodeTitleEntity(entity))
+}
+
+function fallbackLocalServerTitle(port: number): string {
+  return `localhost:${port}`
+}
+
+async function probeLocalServer(port: number): Promise<BrowserLocalServer | null> {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => {
+    controller.abort()
+  }, LOCAL_SERVER_DISCOVERY_TIMEOUT_MS)
+  timeout.unref?.()
+
+  try {
+    const response = await fetch(`http://localhost:${port}/`, {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5',
+      },
+    })
+    const contentType = response.headers.get('content-type') ?? ''
+    const title = contentType.includes('text/html')
+      ? extractHtmlTitle(await response.text().catch(() => ''))
+      : null
+    return {
+      port,
+      url: `http://localhost:${port}/`,
+      title: title ?? fallbackLocalServerTitle(port),
+      statusCode: response.status,
+    }
+  }
+ catch {
+    return null
+  }
+ finally {
+    clearTimeout(timeout)
+  }
 }
 
 export class DesktopBrowserManager {
@@ -318,13 +505,15 @@ export class DesktopBrowserManager {
   private readonly threadVersionById = new Map<ThreadId, number>()
   private readonly snapshotCacheByThreadId = new Map<
     ThreadId,
-    { version: number; snapshot: ThreadBrowserState }
+    { version: number, snapshot: ThreadBrowserState }
   >()
+
   private readonly lastEmittedVersionByThreadId = new Map<ThreadId, number>()
   private readonly runtimes = new Map<string, LiveTabRuntime>()
   private readonly pendingRuntimeSyncs = new Map<string, PendingRuntimeSync>()
   private readonly listeners = new Set<BrowserStateListener>()
   private readonly webContentsListeners = new Set<BrowserWebContentsListener>()
+  private readonly promptRequestListeners = new Set<BrowserPromptRequestListener>()
   private runtimeSyncFlushScheduled = false
   private readonly perfCounters = {
     setPanelBoundsCalls: 0,
@@ -334,7 +523,7 @@ export class DesktopBrowserManager {
     stateEmitSkips: 0,
     stateCloneCount: 0,
     runtimeSyncQueueFlushes: 0,
-    syncRuntimeStateCalls: 0
+    syncRuntimeStateCalls: 0,
   }
 
   setWindow(window: BrowserWindow | null): void {
@@ -367,12 +556,20 @@ export class DesktopBrowserManager {
     }
   }
 
+  subscribeToPromptRequests(listener: BrowserPromptRequestListener): () => void {
+    this.promptRequestListeners.add(listener)
+    return () => {
+      this.promptRequestListeners.delete(listener)
+    }
+  }
+
   dispose(): void {
     this.detachAttachedRuntime()
     this.destroyAllRuntimes()
     this.pendingRuntimeSyncs.clear()
     this.listeners.clear()
     this.webContentsListeners.clear()
+    this.promptRequestListeners.clear()
     this.states.clear()
     this.threadVersionById.clear()
     this.snapshotCacheByThreadId.clear()
@@ -388,7 +585,7 @@ export class DesktopBrowserManager {
   getPerformanceSnapshot(): BrowserPerformanceSnapshot {
     return {
       counters: { ...this.perfCounters },
-      trackedProcessIds: this.getTrackedProcessIds()
+      trackedProcessIds: this.getTrackedProcessIds(),
     }
   }
 
@@ -398,7 +595,7 @@ export class DesktopBrowserManager {
       if (activeState?.open) {
         return {
           threadId: this.activeThreadId,
-          state: this.snapshotThreadState(this.activeThreadId, activeState)
+          state: this.snapshotThreadState(this.activeThreadId, activeState),
         }
       }
     }
@@ -407,11 +604,18 @@ export class DesktopBrowserManager {
       if (state.open) {
         return {
           threadId,
-          state: this.snapshotThreadState(threadId, state)
+          state: this.snapshotThreadState(threadId, state),
         }
       }
     }
     return null
+  }
+
+  async discoverLocalServers(): Promise<BrowserLocalServer[]> {
+    const results = await Promise.all(LOCAL_SERVER_CANDIDATE_PORTS.map(probeLocalServer))
+    return results
+      .filter((server): server is BrowserLocalServer => server !== null)
+      .slice(0, LOCAL_SERVER_DISCOVERY_LIMIT)
   }
 
   open(input: BrowserOpenInput): ThreadBrowserState {
@@ -426,9 +630,9 @@ export class DesktopBrowserManager {
     }
 
     if (
-      this.activeBounds &&
-      this.activeBoundsThreadId === input.threadId &&
-      (this.activeThreadId === null || this.activeThreadId === input.threadId)
+      this.activeBounds
+      && this.activeBoundsThreadId === input.threadId
+      && (this.activeThreadId === null || this.activeThreadId === input.threadId)
     ) {
       this.activateThread(input.threadId, this.activeBounds)
     }
@@ -491,9 +695,9 @@ export class DesktopBrowserManager {
     // Bounds sync fires often during panel motion. If the visible runtime and
     // applied viewport are already current, avoid waking the browser stack again.
     if (
-      this.activeThreadId === input.threadId &&
-      this.attachedRuntimeKey === activeRuntimeKey &&
-      this.attachedBoundsSignature === nextBoundsSignature
+      this.activeThreadId === input.threadId
+      && this.attachedRuntimeKey === activeRuntimeKey
+      && this.attachedBoundsSignature === nextBoundsSignature
     ) {
       this.perfCounters.setPanelBoundsNoopSkips += 1
       return
@@ -533,7 +737,8 @@ export class DesktopBrowserManager {
         this.attachRuntime(runtime, bounds)
       }
       void this.loadTab(input.threadId, tab.id, { force: true, runtime })
-    } else if (this.activeThreadId === input.threadId) {
+    }
+ else if (this.activeThreadId === input.threadId) {
       // Load the target tab directly so we don't clobber its pending URL with a
       // thread-wide runtime sync from the old live page state.
       const nextRuntime = this.ensureLiveRuntime(input.threadId, tab.id)
@@ -554,7 +759,8 @@ export class DesktopBrowserManager {
     const runtime = this.runtimes.get(buildRuntimeKey(input.threadId, tab.id))
     if (runtime) {
       runtime.webContents.reload()
-    } else if (this.activeThreadId === input.threadId) {
+    }
+ else if (this.activeThreadId === input.threadId) {
       this.resumeThread(input.threadId)
       void this.loadTab(input.threadId, tab.id, { force: true })
     }
@@ -598,10 +804,12 @@ export class DesktopBrowserManager {
         }
         void this.loadTab(input.threadId, tab.id, { force: true, runtime })
       }
-    } else if (state.activeTabId === tab.id) {
+    }
+ else if (state.activeTabId === tab.id) {
       const runtime = this.ensureLiveRuntime(input.threadId, tab.id)
       void this.loadTab(input.threadId, tab.id, { force: true, runtime })
-    } else {
+    }
+ else {
       tab.status = 'suspended'
     }
 
@@ -614,7 +822,7 @@ export class DesktopBrowserManager {
   closeTab(input: BrowserTabInput): ThreadBrowserState {
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
-    const nextTabs = state.tabs.filter((candidate) => candidate.id !== tab.id)
+    const nextTabs = state.tabs.filter(candidate => candidate.id !== tab.id)
     if (nextTabs.length === state.tabs.length) {
       return this.snapshotThreadState(input.threadId, state)
     }
@@ -691,6 +899,32 @@ export class DesktopBrowserManager {
     runtime.webContents.openDevTools({ mode: 'detach' })
   }
 
+  handlePromptRequest(sender: WebContents, payload: unknown): BrowserPromptRequest | null {
+    const runtime = this.findRuntimeByWebContents(sender)
+    if (!runtime) {
+      return null
+    }
+
+    const normalizedPayload = normalizeBrowserPromptPayload(payload)
+    if (!normalizedPayload) {
+      return null
+    }
+
+    const request: BrowserPromptRequest = {
+      threadId: runtime.threadId,
+      tabId: runtime.tabId,
+      text: normalizedPayload.text,
+      attachments: normalizedPayload.attachments,
+      sourceUrl: readWebContentsUrl(runtime.webContents),
+      sourceTitle: readWebContentsTitle(runtime.webContents),
+    }
+
+    for (const listener of this.promptRequestListeners) {
+      listener(request)
+    }
+    return request
+  }
+
   // Ensures the requested tab is active/live, then returns a fresh PNG capture
   // from the native browser surface for whichever destination needs it next.
   private async captureScreenshotPng(input: BrowserTabInput): Promise<{
@@ -719,18 +953,19 @@ export class DesktopBrowserManager {
 
     if (wasSuspended || currentUrl.length === 0 || currentUrl !== expectedUrl) {
       await this.loadTab(input.threadId, tab.id, { runtime })
-    } else {
+    }
+ else {
       this.queueRuntimeStateSync(input.threadId, tab.id)
     }
 
     const pngBytes = (await webContents.capturePage()).toPNG()
     if (pngBytes.byteLength === 0) {
-      throw new Error("Couldn't capture a browser screenshot.")
+      throw new Error('Couldn\'t capture a browser screenshot.')
     }
 
     return {
       name: screenshotFileNameForUrl(tab.lastCommittedUrl ?? tab.url),
-      pngBytes
+      pngBytes,
     }
   }
 
@@ -743,7 +978,7 @@ export class DesktopBrowserManager {
       name,
       mimeType: 'image/png',
       sizeBytes: pngBytes.byteLength,
-      bytes: Uint8Array.from(pngBytes)
+      bytes: Uint8Array.from(pngBytes),
     }
   }
 
@@ -753,7 +988,7 @@ export class DesktopBrowserManager {
     const { pngBytes } = await this.captureScreenshotPng(input)
     const image = nativeImage.createFromBuffer(pngBytes)
     if (image.isEmpty()) {
-      throw new Error("Couldn't copy a browser screenshot to the clipboard.")
+      throw new Error('Couldn\'t copy a browser screenshot to the clipboard.')
     }
     clipboard.writeImage(image)
   }
@@ -781,7 +1016,8 @@ export class DesktopBrowserManager {
 
     if (wasSuspended) {
       await this.loadTab(input.threadId, tab.id, { force: true, runtime })
-    } else {
+    }
+ else {
       this.queueRuntimeStateSync(input.threadId, tab.id)
     }
 
@@ -791,7 +1027,8 @@ export class DesktopBrowserManager {
 
     try {
       return await webContents.debugger.sendCommand(input.method, input.params ?? {})
-    } catch (error) {
+    }
+ catch (error) {
       if (error instanceof Error) {
         throw new Error(`CDP ${input.method} failed: ${error.message}`)
       }
@@ -818,7 +1055,8 @@ export class DesktopBrowserManager {
 
     if (wasSuspended) {
       await this.loadTab(input.threadId, tab.id, { force: true, runtime })
-    } else {
+    }
+ else {
       this.queueRuntimeStateSync(input.threadId, tab.id)
     }
 
@@ -829,7 +1067,7 @@ export class DesktopBrowserManager {
 
   subscribeToCdpEvents(
     input: BrowserTabInput,
-    listener: (event: BrowserUseCdpEvent) => void
+    listener: (event: BrowserUseCdpEvent) => void,
   ): () => void {
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
@@ -841,7 +1079,7 @@ export class DesktopBrowserManager {
     const handleMessage = (_event: Electron.Event, method: string, params?: unknown) => {
       listener({
         method,
-        ...(params !== undefined ? { params } : {})
+        ...(params !== undefined ? { params } : {}),
       })
     }
 
@@ -899,7 +1137,8 @@ export class DesktopBrowserManager {
       const runtime = this.ensureLiveRuntime(threadId, tab.id)
       if (wasSuspended) {
         void this.loadTab(threadId, tab.id, { force: true, runtime })
-      } else {
+      }
+ else {
         didChange = syncTabStateFromRuntime(state, tab, runtime.webContents) || didChange
       }
     }
@@ -923,7 +1162,8 @@ export class DesktopBrowserManager {
     this.attachRuntime(runtime, bounds)
     if (wasSuspended) {
       void this.loadTab(threadId, activeTab.id, { force: true, runtime })
-    } else {
+    }
+ else {
       this.syncRuntimeState(threadId, activeTab.id)
     }
   }
@@ -962,7 +1202,8 @@ export class DesktopBrowserManager {
 
     try {
       window.contentView.removeChildView(runtime.view)
-    } catch {
+    }
+ catch {
       // Electron throws when the view is not attached yet; adding it below is the desired state.
     }
     window.contentView.addChildView(runtime.view)
@@ -986,10 +1227,11 @@ export class DesktopBrowserManager {
 
   private setRuntimeViewHidden(runtime: LiveTabRuntime, hidden: boolean): void {
     const nativeView = runtime.view as typeof runtime.view & NativeBrowserViewVisibility
-    nativeView.setVisible?.(!hidden)
     if (hidden) {
-      runtime.view.setBounds({ x: 0, y: 0, width: 0, height: 0 })
+      nativeView.setVisible?.(false)
+      return
     }
+    nativeView.setVisible?.(true)
   }
 
   private ensureLiveRuntime(threadId: ThreadId, tabId: string): LiveTabRuntime {
@@ -998,7 +1240,8 @@ export class DesktopBrowserManager {
     if (existing) {
       if (existing.webContents.isDestroyed()) {
         this.destroyRuntime(threadId, tabId)
-      } else {
+      }
+ else {
         return existing
       }
     }
@@ -1023,10 +1266,11 @@ export class DesktopBrowserManager {
     const view = new WebContentsView({
       webPreferences: {
         partition: browserSessionPartition(threadId),
+        preload: resolveDesktopBrowserPanelPreloadPath(__dirname),
         contextIsolation: true,
         nodeIntegration: false,
-        sandbox: true
-      }
+        sandbox: true,
+      },
     })
     view.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
       callback(true)
@@ -1038,13 +1282,22 @@ export class DesktopBrowserManager {
       tabId,
       webContents: view.webContents,
       view,
-      listenerDisposers: []
+      listenerDisposers: [],
     }
     this.configureRuntimeWebContents(runtime)
     for (const listener of this.webContentsListeners) {
       listener(runtime.webContents, tabId)
     }
     return runtime
+  }
+
+  private findRuntimeByWebContents(webContents: WebContents): LiveTabRuntime | null {
+    for (const runtime of this.runtimes.values()) {
+      if (runtime.webContents === webContents) {
+        return runtime
+      }
+    }
+    return null
   }
 
   private configureRuntimeWebContents(runtime: LiveTabRuntime): void {
@@ -1055,7 +1308,7 @@ export class DesktopBrowserManager {
         this.newTab({
           threadId,
           url,
-          activate: true
+          activate: true,
         })
         const bounds = this.getVisibleBoundsForThread(threadId)
         if (this.activeThreadId === threadId && bounds) {
@@ -1122,7 +1375,7 @@ export class DesktopBrowserManager {
       errorCode: number,
       _errorDescription: string,
       validatedURL: string,
-      isMainFrame: boolean
+      isMainFrame: boolean,
     ) => {
       if (!isMainFrame || errorCode === BROWSER_ERROR_ABORTED) {
         return
@@ -1173,7 +1426,7 @@ export class DesktopBrowserManager {
   private async loadTab(
     threadId: ThreadId,
     tabId: string,
-    options: { force?: boolean; runtime?: LiveTabRuntime } = {}
+    options: { force?: boolean, runtime?: LiveTabRuntime } = {},
   ): Promise<void> {
     const state = this.ensureWorkspace(threadId)
     const tab = this.getTab(state, tabId)
@@ -1184,7 +1437,7 @@ export class DesktopBrowserManager {
     const runtime = options.runtime ?? this.ensureLiveRuntime(threadId, tabId)
     const webContents = runtime.webContents
     const nextUrl = normalizeUrlInput(
-      options.force === true ? tab.url : (tab.lastCommittedUrl ?? tab.url)
+      options.force === true ? tab.url : (tab.lastCommittedUrl ?? tab.url),
     )
     const currentUrl = webContents.getURL()
     const shouldLoad = options.force === true || currentUrl !== nextUrl || currentUrl.length === 0
@@ -1205,14 +1458,15 @@ export class DesktopBrowserManager {
     try {
       await webContents.loadURL(nextUrl)
       this.queueRuntimeStateSync(threadId, tabId)
-    } catch (error) {
+    }
+ catch (error) {
       if (isAbortedNavigationError(error)) {
         this.queueRuntimeStateSync(threadId, tabId)
         return
       }
 
       tab.isLoading = false
-      tab.lastError = "Couldn't open this page."
+      tab.lastError = 'Couldn\'t open this page.'
       syncThreadLastError(state)
       this.markThreadStateChanged(threadId)
       this.emitState(threadId)
@@ -1241,7 +1495,7 @@ export class DesktopBrowserManager {
     const existing = this.pendingRuntimeSyncs.get(key)
     const nextPendingSync: PendingRuntimeSync = {
       threadId,
-      tabId
+      tabId,
     }
     const nextFaviconUrls = faviconUrls ?? existing?.faviconUrls
     if (nextFaviconUrls !== undefined) {
@@ -1307,7 +1561,8 @@ export class DesktopBrowserManager {
       if (webContents.debugger.isAttached()) {
         try {
           webContents.debugger.detach()
-        } catch {
+        }
+ catch {
           // The runtime is being torn down anyway; ignore stale-debugger cleanup noise.
         }
       }
@@ -1338,7 +1593,7 @@ export class DesktopBrowserManager {
 
   private snapshotThreadState(
     threadId: ThreadId,
-    state = this.getOrCreateState(threadId)
+    state = this.getOrCreateState(threadId),
   ): ThreadBrowserState {
     const version = state.version
     const cached = this.snapshotCacheByThreadId.get(threadId)
@@ -1350,7 +1605,7 @@ export class DesktopBrowserManager {
     this.perfCounters.stateCloneCount += 1
     this.snapshotCacheByThreadId.set(threadId, {
       version,
-      snapshot
+      snapshot,
     })
     return snapshot
   }
@@ -1375,7 +1630,7 @@ export class DesktopBrowserManager {
       state.activeTabId = initialTab.id
     }
 
-    if (!state.activeTabId || !state.tabs.some((tab) => tab.id === state.activeTabId)) {
+    if (!state.activeTabId || !state.tabs.some(tab => tab.id === state.activeTabId)) {
       state.activeTabId = state.tabs[0]?.id ?? null
     }
 
@@ -1384,9 +1639,9 @@ export class DesktopBrowserManager {
 
   private resolveTab(state: ThreadBrowserState, tabId?: string): BrowserTabState {
     const resolvedTabId = tabId ?? state.activeTabId
-    const existing =
-      (resolvedTabId ? state.tabs.find((tab) => tab.id === resolvedTabId) : undefined) ??
-      state.tabs[0]
+    const existing
+      = (resolvedTabId ? state.tabs.find(tab => tab.id === resolvedTabId) : undefined)
+        ?? state.tabs[0]
     if (existing) {
       return existing
     }
@@ -1401,11 +1656,11 @@ export class DesktopBrowserManager {
     if (!state.activeTabId) {
       return state.tabs[0] ?? null
     }
-    return state.tabs.find((tab) => tab.id === state.activeTabId) ?? state.tabs[0] ?? null
+    return state.tabs.find(tab => tab.id === state.activeTabId) ?? state.tabs[0] ?? null
   }
 
   private getTab(state: ThreadBrowserState, tabId: string): BrowserTabState | null {
-    return state.tabs.find((tab) => tab.id === tabId) ?? null
+    return state.tabs.find(tab => tab.id === tabId) ?? null
   }
 
   private emitState(threadId: ThreadId): void {
@@ -1436,45 +1691,45 @@ function syncTabStateFromRuntime(
   state: ThreadBrowserState,
   tab: BrowserTabState,
   webContents: WebContents,
-  faviconUrls?: string[]
+  faviconUrls?: string[],
 ): boolean {
   const currentUrl = webContents.getURL()
   const nextUrl = currentUrl || tab.url
   const nextTitle = webContents.getTitle()
   let didChange = false
-  didChange =
-    setIfChanged(tab.status, LIVE_TAB_STATUS, (value) => {
+  didChange
+    = setIfChanged(tab.status, LIVE_TAB_STATUS, (value) => {
       tab.status = value
     }) || didChange
-  didChange =
-    setIfChanged(tab.url, nextUrl, (value) => {
+  didChange
+    = setIfChanged(tab.url, nextUrl, (value) => {
       tab.url = value
     }) || didChange
-  const resolvedTitle =
-    !nextTitle || nextTitle === ABOUT_BLANK_URL ? defaultTitleForUrl(nextUrl) : nextTitle
-  didChange =
-    setIfChanged(tab.title, resolvedTitle, (value) => {
+  const resolvedTitle
+    = !nextTitle || nextTitle === ABOUT_BLANK_URL ? defaultTitleForUrl(nextUrl) : nextTitle
+  didChange
+    = setIfChanged(tab.title, resolvedTitle, (value) => {
       tab.title = value
     }) || didChange
-  didChange =
-    setIfChanged(tab.isLoading, webContents.isLoading(), (value) => {
+  didChange
+    = setIfChanged(tab.isLoading, webContents.isLoading(), (value) => {
       tab.isLoading = value
     }) || didChange
-  didChange =
-    setIfChanged(tab.canGoBack, canWebContentsGoBack(webContents), (value) => {
+  didChange
+    = setIfChanged(tab.canGoBack, canWebContentsGoBack(webContents), (value) => {
       tab.canGoBack = value
     }) || didChange
-  didChange =
-    setIfChanged(tab.canGoForward, canWebContentsGoForward(webContents), (value) => {
+  didChange
+    = setIfChanged(tab.canGoForward, canWebContentsGoForward(webContents), (value) => {
       tab.canGoForward = value
     }) || didChange
-  didChange =
-    setIfChanged(tab.lastCommittedUrl, currentUrl || tab.lastCommittedUrl, (value) => {
+  didChange
+    = setIfChanged(tab.lastCommittedUrl, currentUrl || tab.lastCommittedUrl, (value) => {
       tab.lastCommittedUrl = value
     }) || didChange
   if (faviconUrls) {
-    didChange =
-      setIfChanged(tab.faviconUrl, faviconUrls[0] ?? tab.faviconUrl, (value) => {
+    didChange
+      = setIfChanged(tab.faviconUrl, faviconUrls[0] ?? tab.faviconUrl, (value) => {
         tab.faviconUrl = value
       }) || didChange
   }
@@ -1495,9 +1750,9 @@ function canWebContentsGoForward(webContents: WebContents): boolean {
 }
 
 function syncThreadLastError(state: ThreadBrowserState): boolean {
-  const activeTab =
-    (state.activeTabId ? state.tabs.find((tab) => tab.id === state.activeTabId) : undefined) ??
-    state.tabs[0]
+  const activeTab
+    = (state.activeTabId ? state.tabs.find(tab => tab.id === state.activeTabId) : undefined)
+      ?? state.tabs[0]
   const nextLastError = activeTab?.lastError ?? null
   if (state.lastError === nextLastError) {
     return false

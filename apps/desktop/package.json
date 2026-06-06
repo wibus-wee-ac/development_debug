@@ -11,7 +11,7 @@
   "main": "dist/main/index.js",
   "scripts": {
     "dev": "pnpm build:mac-bridge && electron-vite dev",
-    "build": "pnpm --filter @cradle/server build:desktop-runtime && pnpm --filter @cradle/cli build && pnpm --filter @cradle/browser-use build && pnpm build:mac-bridge && electron-vite build",
+    "build": "pnpm --filter @cradle/server build:desktop-runtime && pnpm --filter @cradle/server build:desktop-plugins && pnpm --filter @cradle/cli build && pnpm build:mac-bridge && electron-vite build",
     "build:mac-bridge": "node scripts/build-mac-bridge.mjs",
     "record:appshot-parity": "node scripts/record-appshot-parity.mjs",
     "set-version": "node scripts/set-version.mjs",

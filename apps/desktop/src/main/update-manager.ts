@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events'
 
 import { app } from 'electron'
-import { autoUpdater } from 'electron-updater'
 import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater'
+import { autoUpdater } from 'electron-updater'
 
 const BACKGROUND_CHECK_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_RETRY_COUNT = 3

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
 
+import { NotificationCenterManager } from './notification-center-manager'
+
 const electronMocks = vi.hoisted(() => ({
   Notification: vi.fn(),
 }))
 
 vi.mock('electron', () => electronMocks)
-
-import { NotificationCenterManager } from './notification-center-manager'
 
 type Listener = (event: unknown, reply?: string) => void
 
@@ -14,12 +14,13 @@ class FakeNotification {
   readonly options: Electron.NotificationConstructorOptions
   readonly listeners = new Map<string, Listener[]>()
   readonly show = vi.fn()
+  readonly close = vi.fn()
 
   constructor(options: Electron.NotificationConstructorOptions) {
     this.options = options
   }
 
-  on(eventName: 'reply' | 'click', listener: Listener): void {
+  on(eventName: 'reply' | 'click' | 'close', listener: Listener): void {
     const listeners = this.listeners.get(eventName) ?? []
     listeners.push(listener)
     this.listeners.set(eventName, listeners)
@@ -28,6 +29,12 @@ class FakeNotification {
   emitReply(reply: string): void {
     for (const listener of this.listeners.get('reply') ?? []) {
       listener({}, reply)
+    }
+  }
+
+  emitClick(): void {
+    for (const listener of this.listeners.get('click') ?? []) {
+      listener({})
     }
   }
 }
@@ -39,7 +46,7 @@ function createJsonResponse(value: unknown): Response {
   })
 }
 
-describe('NotificationCenterManager', () => {
+describe('notificationCenterManager', () => {
   it('shows a native reply notification for completed chat runs', async () => {
     const notifications: FakeNotification[] = []
     const broker = { startResponseDetached: vi.fn() }
@@ -49,6 +56,7 @@ describe('NotificationCenterManager', () => {
         sessionId: 'session-1',
         sessionTitle: 'Fix the build',
         messageId: 'message-1',
+        messagePreview: 'The build has been fixed successfully',
         startedAt: 100,
         finishedAt: 105,
       }],
@@ -72,7 +80,7 @@ describe('NotificationCenterManager', () => {
     expect(notifications).toHaveLength(1)
     expect(notifications[0]?.options).toMatchObject({
       title: 'Fix the build',
-      body: '已完成',
+      body: 'The build has been fixed successfully',
       hasReply: true,
       replyPlaceholder: '回复并继续对话',
     })
@@ -93,6 +101,7 @@ describe('NotificationCenterManager', () => {
           sessionId: 'session-2',
           sessionTitle: 'Review PR',
           messageId: 'message-2',
+          messagePreview: 'PR reviewed and approved',
           startedAt: 100,
           finishedAt: 105,
         }],
@@ -138,6 +147,7 @@ describe('NotificationCenterManager', () => {
           sessionId: 'session-3',
           sessionTitle: 'Long task',
           messageId: 'message-3',
+          messagePreview: 'Task completed after long processing',
           startedAt: 100,
           finishedAt: 105,
         }],

@@ -1,11 +1,12 @@
 import {
   automationDefinitions,
   automationRuns,
+  providerTargets,
   sessionAwaits,
   sessions,
   workspaces,
 } from '@cradle/db'
-import { desc, eq, inArray, or, sql } from 'drizzle-orm'
+import { desc, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
@@ -21,23 +22,29 @@ interface TraySessionItem {
   runtimeKind: string
   modelId: string | null
   updatedAt: number
+  state: 'running' | 'awaiting' | 'pinned' | 'recent'
   detail: string
 }
 
-interface TrayMetric {
+interface TrayHealthItem {
   id: string
   label: string
   value: string
-  tone: 'neutral' | 'active' | 'warning' | 'danger'
+  status: 'ok' | 'active' | 'warning' | 'danger' | 'unknown'
+  detail: string | null
 }
 
-interface TrayQuickAction {
-  id: string
-  label: string
-  description: string
-  accelerator: string | null
-  badge: string | null
-  enabled: boolean
+interface TrayCounts {
+  generatedAt: number
+  running: number
+  recentSessions: number
+  pinnedSessions: number
+  pendingAwaits: number
+  enabledAutomations: number
+  runningAutomations: number
+  workspaces: number
+  enabledProviders: number
+  totalProviders: number
 }
 
 interface TrayAwaitItem {
@@ -51,18 +58,10 @@ interface TrayAwaitItem {
   createdAt: number
 }
 
-export interface TraySnapshot {
-  generatedAt: number
-  running: TraySessionItem[]
-  resident: TraySessionItem[]
-  metrics: TrayMetric[]
-  quickActions: TrayQuickAction[]
-}
-
 const DEFAULT_WORKSPACE_NAME = 'No workspace'
 const DEFAULT_SESSION_TITLE = 'Waiting session'
 const RUNNING_LIMIT = 8
-const RESIDENT_LIMIT = 10
+const RECENT_SESSION_LIMIT = 8
 const AWAIT_LIMIT = 20
 
 function readWorkspaceNames(workspaceIds: Array<string | null>): Map<string, string> {
@@ -100,6 +99,7 @@ function toTrayItem(
   workspaceNames: Map<string, string>,
   detail: string,
   modelId: string | null,
+  state: TraySessionItem['state'],
 ): TraySessionItem {
   const workspaceName = row.workspaceId ? workspaceNames.get(row.workspaceId) ?? DEFAULT_WORKSPACE_NAME : DEFAULT_WORKSPACE_NAME
 
@@ -112,6 +112,7 @@ function toTrayItem(
     runtimeKind: row.runtimeKind,
     modelId,
     updatedAt: row.updatedAt,
+    state,
     detail,
   }
 }
@@ -136,27 +137,69 @@ function readRunningItems(): TraySessionItem[] {
       workspaceNames,
       `Running ${row.runtimeKind}`,
       runBySessionId.get(row.id)?.modelId ?? null,
+      'running',
     ))
     .sort((left, right) => right.updatedAt - left.updatedAt)
     .slice(0, RUNNING_LIMIT)
 }
 
-function readResidentItems(activeSessionIds: Set<string>): TraySessionItem[] {
+function readRecentSessionItems(activeItems: TraySessionItem[]): TraySessionItem[] {
+  const activeBySessionId = new Map(activeItems.map(item => [item.sessionId, item]))
+  const pendingAwaitSessionIds = new Set(db()
+    .select({ sessionId: sessionAwaits.chatSessionId })
+    .from(sessionAwaits)
+    .where(eq(sessionAwaits.status, 'pending'))
+    .all()
+    .map(row => row.sessionId))
   const rows = db()
     .select()
     .from(sessions)
-    .where(eq(sessions.pinned, 1))
+    .where(isNull(sessions.archivedAt))
     .orderBy(desc(sessions.updatedAt))
-    .limit(RESIDENT_LIMIT)
+    .limit(RECENT_SESSION_LIMIT)
     .all()
   const workspaceNames = readWorkspaceNames(rows.map(row => row.workspaceId))
 
-  return rows.map(row => toTrayItem(
-    row,
-    workspaceNames,
-    activeSessionIds.has(row.id) ? `Running ${row.runtimeKind}` : `Resident ${row.runtimeKind}`,
-    null,
-  ))
+  const recentItems = rows.map((row) => {
+    const activeItem = activeBySessionId.get(row.id)
+    if (activeItem) {
+      return {
+        ...activeItem,
+        title: row.title,
+        workspaceId: row.workspaceId,
+        workspaceName: row.workspaceId ? workspaceNames.get(row.workspaceId) ?? DEFAULT_WORKSPACE_NAME : DEFAULT_WORKSPACE_NAME,
+        updatedAt: row.updatedAt,
+      }
+    }
+
+    const state: TraySessionItem['state'] = pendingAwaitSessionIds.has(row.id)
+      ? 'awaiting'
+      : row.pinned ? 'pinned' : 'recent'
+
+    return toTrayItem(
+      row,
+      workspaceNames,
+      state === 'awaiting'
+        ? `Awaiting input or external signal`
+        : state === 'pinned' ? `Pinned ${row.runtimeKind}` : `Recent ${row.runtimeKind}`,
+      null,
+      state,
+    )
+  })
+
+  const knownSessionIds = new Set(recentItems.map(item => item.sessionId))
+  const missingActiveItems = activeItems.filter(item => !knownSessionIds.has(item.sessionId))
+  return [...missingActiveItems, ...recentItems]
+    .sort((left, right) => {
+      if (left.state === 'running' && right.state !== 'running') {
+        return -1
+      }
+      if (right.state === 'running' && left.state !== 'running') {
+        return 1
+      }
+      return right.updatedAt - left.updatedAt
+    })
+    .slice(0, RECENT_SESSION_LIMIT)
 }
 
 function readAutomationCounts(): { enabled: number, running: number } {
@@ -182,6 +225,15 @@ function readAwaitCount(): number {
     .select({ count: sql<number>`count(*)` })
     .from(sessionAwaits)
     .where(eq(sessionAwaits.status, 'pending'))
+    .get()
+?.count ?? 0
+}
+
+function readPinnedSessionCount(): number {
+  return db()
+    .select({ count: sql<number>`count(*)` })
+    .from(sessions)
+    .where(eq(sessions.pinned, 1))
     .get()
 ?.count ?? 0
 }
@@ -217,14 +269,32 @@ function readWorkspaceCount(): number {
 ?.count ?? 0
 }
 
-async function readChronicleMetric(): Promise<TrayMetric> {
+function readProviderCounts(): { enabled: number, total: number } {
+  const enabled = db()
+    .select({ count: sql<number>`count(*)` })
+    .from(providerTargets)
+    .where(eq(providerTargets.enabled, true))
+    .get()
+?.count ?? 0
+
+  const total = db()
+    .select({ count: sql<number>`count(*)` })
+    .from(providerTargets)
+    .get()
+?.count ?? 0
+
+  return { enabled, total }
+}
+
+async function readChronicleHealthItem(): Promise<TrayHealthItem> {
   try {
     const status = await Chronicle.getStatus()
     return {
       id: 'chronicle',
       label: 'Chronicle',
       value: status.running ? 'Running' : 'Idle',
-      tone: status.running ? 'active' : 'neutral',
+      status: status.running ? 'active' : status.available ? 'ok' : 'warning',
+      detail: status.available ? null : 'Chronicle is not configured.',
     }
   }
   catch {
@@ -232,186 +302,80 @@ async function readChronicleMetric(): Promise<TrayMetric> {
       id: 'chronicle',
       label: 'Chronicle',
       value: 'Unavailable',
-      tone: 'warning',
+      status: 'warning',
+      detail: 'Chronicle status could not be read.',
     }
   }
 }
 
-function buildQuickActions(input: {
-  runningCount: number
-  residentCount: number
-  pendingAwaitCount: number
-  enabledAutomationCount: number
-  runningAutomationCount: number
-  workspaceCount: number
-}): TrayQuickAction[] {
-  return [
-    {
-      id: 'open-app',
-      label: 'Open Cradle',
-      description: 'Bring the main desktop window forward.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'new-chat',
-      label: 'New Chat',
-      description: 'Start a fresh agent conversation.',
-      accelerator: '⌘N',
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'global-search',
-      label: 'Search Threads',
-      description: 'Open the command palette for threads, files, and issues.',
-      accelerator: '⌘K',
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-resident',
-      label: 'Resident Chats',
-      description: 'Jump to pinned sessions kept close at hand.',
-      accelerator: null,
-      badge: input.residentCount > 0 ? String(input.residentCount) : null,
-      enabled: input.residentCount > 0,
-    },
-    {
-      id: 'open-running',
-      label: 'Running Agents',
-      description: 'Focus the most recent active agent run.',
-      accelerator: null,
-      badge: input.runningCount > 0 ? String(input.runningCount) : null,
-      enabled: input.runningCount > 0,
-    },
-    {
-      id: 'open-awaits',
-      label: 'Awaits',
-      description: 'Check sessions waiting on external signals.',
-      accelerator: null,
-      badge: input.pendingAwaitCount > 0 ? String(input.pendingAwaitCount) : null,
-      enabled: true,
-    },
-    {
-      id: 'open-automation',
-      label: 'Automations',
-      description: 'Inspect scheduled agent work and recent runs.',
-      accelerator: null,
-      badge: input.runningAutomationCount > 0 ? String(input.runningAutomationCount) : String(input.enabledAutomationCount),
-      enabled: true,
-    },
-    {
-      id: 'open-workspaces',
-      label: 'Workspaces',
-      description: 'Open the workspace hub.',
-      accelerator: null,
-      badge: input.workspaceCount > 0 ? String(input.workspaceCount) : null,
-      enabled: true,
-    },
-    {
-      id: 'open-agents',
-      label: 'Agents',
-      description: 'Manage resident agent profiles and runtime defaults.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-providers',
-      label: 'Providers',
-      description: 'Review model providers and connection settings.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-chronicle',
-      label: 'Chronicle',
-      description: 'View local activity memory and capture status.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-usage',
-      label: 'Usage',
-      description: 'Review token and cost analytics.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-plugins',
-      label: 'Plugins',
-      description: 'Inspect plugin capability surfaces.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-    {
-      id: 'open-desktop-settings',
-      label: 'Desktop Updates',
-      description: 'Check update status and desktop settings.',
-      accelerator: null,
-      badge: null,
-      enabled: true,
-    },
-  ]
-}
-
-export async function getTraySnapshot(): Promise<TraySnapshot> {
+export function getTrayCounts(): TrayCounts {
   const running = readRunningItems()
-  const activeSessionIds = new Set(running.map(item => item.sessionId))
-  const resident = readResidentItems(activeSessionIds)
   const pendingAwaitCount = readAwaitCount()
   const automationCounts = readAutomationCounts()
-  const workspaceCount = readWorkspaceCount()
-  const chronicleMetric = await readChronicleMetric()
+  const providerCounts = readProviderCounts()
 
-  const metrics: TrayMetric[] = [
+  return {
+    generatedAt: currentUnixSeconds(),
+    running: running.length,
+    recentSessions: readRecentSessionItems(running).length,
+    pinnedSessions: readPinnedSessionCount(),
+    pendingAwaits: pendingAwaitCount,
+    enabledAutomations: automationCounts.enabled,
+    runningAutomations: automationCounts.running,
+    workspaces: readWorkspaceCount(),
+    enabledProviders: providerCounts.enabled,
+    totalProviders: providerCounts.total,
+  }
+}
+
+export function getTrayRecentSessions(): TraySessionItem[] {
+  return readRecentSessionItems(readRunningItems())
+}
+
+export async function getTrayHealth(): Promise<TrayHealthItem[]> {
+  const counts = getTrayCounts()
+  const chronicleHealth = await readChronicleHealthItem()
+
+  return [
     {
-      id: 'running',
-      label: 'Running',
-      value: String(running.length),
-      tone: running.length > 0 ? 'active' : 'neutral',
+      id: 'server',
+      label: 'Server',
+      value: 'Online',
+      status: 'ok',
+      detail: null,
     },
     {
-      id: 'resident',
-      label: 'Resident',
-      value: String(resident.length),
-      tone: resident.length > 0 ? 'active' : 'neutral',
+      id: 'chat-runtime',
+      label: 'Chat Runtime',
+      value: counts.running > 0 ? `${counts.running} running` : 'Idle',
+      status: counts.running > 0 ? 'active' : 'ok',
+      detail: null,
     },
     {
       id: 'awaits',
       label: 'Awaits',
-      value: String(pendingAwaitCount),
-      tone: pendingAwaitCount > 0 ? 'warning' : 'neutral',
+      value: counts.pendingAwaits > 0 ? `${counts.pendingAwaits} pending` : 'Clear',
+      status: counts.pendingAwaits > 0 ? 'warning' : 'ok',
+      detail: counts.pendingAwaits > 0 ? 'Sessions are waiting on user input or external checks.' : null,
     },
     {
       id: 'automations',
       label: 'Automations',
-      value: automationCounts.running > 0
-        ? `${automationCounts.running} active`
-        : `${automationCounts.enabled} enabled`,
-      tone: automationCounts.running > 0 ? 'active' : 'neutral',
+      value: counts.runningAutomations > 0
+        ? `${counts.runningAutomations} active`
+        : `${counts.enabledAutomations} enabled`,
+      status: counts.runningAutomations > 0 ? 'active' : 'ok',
+      detail: null,
     },
-    chronicleMetric,
+    {
+      id: 'providers',
+      label: 'Providers',
+      value: counts.enabledProviders > 0
+        ? `${counts.enabledProviders} enabled`
+        : 'Not configured',
+      status: counts.enabledProviders > 0 ? 'ok' : 'warning',
+      detail: counts.enabledProviders > 0 ? null : 'No enabled provider targets are configured.',
+    },
+    chronicleHealth,
   ]
-
-  return {
-    generatedAt: currentUnixSeconds(),
-    running,
-    resident,
-    metrics,
-    quickActions: buildQuickActions({
-      runningCount: running.length,
-      residentCount: resident.length,
-      pendingAwaitCount,
-      enabledAutomationCount: automationCounts.enabled,
-      runningAutomationCount: automationCounts.running,
-      workspaceCount,
-    }),
-  }
 }

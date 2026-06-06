@@ -155,7 +155,7 @@ async function createCommandLink(sourcePath: string): Promise<void> {
 }
 
 function quoteForMacScript(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
+  return `'${value.replaceAll('\'', '\'\\\'\'')}'`
 }
 
 export async function installDesktopCliCommand(): Promise<DesktopCliStatus> {

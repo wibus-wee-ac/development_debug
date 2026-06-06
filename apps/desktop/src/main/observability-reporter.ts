@@ -84,4 +84,3 @@ export function installDesktopMainErrorCapture(): void {
     reportEvent(createEvent('DESKTOP_MAIN_UNHANDLED_REJECTION', 'Desktop main unhandled promise rejection', reason))
   })
 }
-

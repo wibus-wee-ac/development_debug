@@ -30,7 +30,7 @@ function createBeforeQuitEvent() {
   } as unknown as Electron.Event & { preventDefault: ReturnType<typeof vi.fn> }
 }
 
-describe('QuitGuard', () => {
+describe('quitGuard', () => {
   beforeEach(() => {
     vi.spyOn(Date, 'now').mockReturnValue(1_000)
     electronMocks.app.quit.mockClear()

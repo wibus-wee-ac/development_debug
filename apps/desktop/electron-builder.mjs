@@ -139,12 +139,14 @@ const config = {
       filter: ['**/*'],
     },
     {
-      from: '../../plugins/browser-use',
-      to: 'plugins/browser-use',
-      filter: [
-        'package.json',
-        'dist/**/*',
-      ],
+      from: '../../resources/skills',
+      to: 'resources/skills',
+      filter: ['**/*'],
+    },
+    {
+      from: '../server/dist/desktop-plugins',
+      to: 'server/plugins',
+      filter: ['**/*'],
     },
     {
       from: 'native/macos/mac-bridge/.build/cradle-dist',

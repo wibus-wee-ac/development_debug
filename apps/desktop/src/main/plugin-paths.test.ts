@@ -55,7 +55,7 @@ describe('resolveDesktopPrimaryPluginsDir', () => {
       env: {},
       isDev: false,
       resourcesPath,
-    })).toBe(join(resourcesPath, 'plugins'))
+    })).toBe(join(resourcesPath, 'server', 'plugins'))
   })
 })
 

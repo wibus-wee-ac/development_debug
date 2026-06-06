@@ -1,3 +1,4 @@
+import type { BrowserWindow } from 'electron'
 import { Notification } from 'electron'
 
 import type { ChatStreamBroker } from './chat-stream-broker'
@@ -7,6 +8,7 @@ interface CompletedRun {
   sessionId: string
   sessionTitle: string
   messageId: string | null
+  messagePreview: string | null
   startedAt: number
   finishedAt: number
 }
@@ -21,12 +23,14 @@ interface RuntimeStatusResponse {
 
 interface NativeNotification {
   show: () => void
-  on: (eventName: 'reply' | 'click', listener: (event: unknown, reply?: string) => void) => void
+  close: () => void
+  on: (eventName: 'reply' | 'click' | 'close', listener: (event: unknown, reply?: string) => void) => void
 }
 
 interface NotificationCenterManagerOptions {
   serverUrl: string
   chatStreamBroker: ChatStreamBroker
+  getMainWindow?: () => BrowserWindow | null
   fetchFn?: typeof fetch
   createNotification?: (options: Electron.NotificationConstructorOptions) => NativeNotification
   pollIntervalMs?: number
@@ -41,6 +45,7 @@ const MAX_SEEN_RUN_IDS = 500
 export class NotificationCenterManager {
   private readonly serverUrl: string
   private readonly chatStreamBroker: ChatStreamBroker
+  private readonly getMainWindow: () => BrowserWindow | null
   private readonly fetchFn: typeof fetch
   private readonly createNotification: (options: Electron.NotificationConstructorOptions) => NativeNotification
   private readonly pollIntervalMs: number
@@ -54,6 +59,7 @@ export class NotificationCenterManager {
   constructor(options: NotificationCenterManagerOptions) {
     this.serverUrl = options.serverUrl
     this.chatStreamBroker = options.chatStreamBroker
+    this.getMainWindow = options.getMainWindow ?? (() => null)
     this.fetchFn = options.fetchFn ?? fetch
     this.createNotification = options.createNotification
       ?? (notificationOptions => new Notification(notificationOptions) as unknown as NativeNotification)
@@ -112,9 +118,10 @@ export class NotificationCenterManager {
   }
 
   private showCompletionNotification(run: CompletedRun): void {
+    const body = run.messagePreview || '已完成'
     const notification = this.createNotification({
       title: run.sessionTitle || 'Cradle session',
-      body: '已完成',
+      body,
       hasReply: this.platform === 'darwin',
       replyPlaceholder: '回复并继续对话',
       actions: this.platform === 'darwin'
@@ -127,9 +134,32 @@ export class NotificationCenterManager {
       void this.handleReply(run.sessionId, reply)
     })
     notification.on('click', () => {
-      // macOS shows the inline reply field from the notification UI; click is intentionally passive.
+      this.handleNotificationClick(run.sessionId, notification)
     })
     notification.show()
+  }
+
+  private handleNotificationClick(sessionId: string, notification: NativeNotification): void {
+    const mainWindow = this.getMainWindow()
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return
+    }
+
+    // Focus and show the main window
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.show()
+    mainWindow.focus()
+
+    // Navigate to the session
+    mainWindow.webContents.send('desktop-tray:action-requested', {
+      actionId: 'open-chat',
+      payload: { sessionId },
+    })
+
+    // Close the notification
+    notification.close()
   }
 
   private async handleReply(sessionId: string, rawReply: string | undefined): Promise<void> {

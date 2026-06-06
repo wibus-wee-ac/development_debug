@@ -3,7 +3,7 @@ import { join, resolve } from 'node:path'
 import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
-import { registerBrowserIpcHandlers, sendBrowserState } from './browser-ipc'
+import { registerBrowserIpcHandlers, sendBrowserPromptRequest, sendBrowserState } from './browser-ipc'
 import { DesktopBrowserManager } from './browser-manager'
 import { ChatStreamBroker } from './chat-stream-broker'
 import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
@@ -11,19 +11,19 @@ import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './de
 import { MacBridgeManager } from './mac-bridge-manager'
 import { createNativeServices } from './native-services'
 import { NotificationCenterManager } from './notification-center-manager'
+import { bindDesktopObservabilityServerUrl } from './observability-reporter'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
   installPluginFromRequest,
   parsePluginInstallUrl,
-  PluginInstallLinkError
+  PluginInstallLinkError,
 } from './plugin-install-links'
 import {
   activateDesktopPlugins,
   deactivateDesktopPlugins,
-  notifyWebviewCreated
+  notifyWebviewCreated,
 } from './plugin-loader'
-import { bindDesktopObservabilityServerUrl } from './observability-reporter'
 import { resolveDesktopPrimaryPluginsDir } from './plugin-paths'
 import { QuitGuard } from './quit-guard'
 import { detachServer, startServer, stopServer } from './server-process'
@@ -41,6 +41,7 @@ let macBridgeManager: MacBridgeManager | null = null
 let chatStreamBroker: ChatStreamBroker | null = null
 let notificationCenterManager: NotificationCenterManager | null = null
 let isQuitting = false
+let shutdownPromise: Promise<void> | null = null
 const quitGuard = new QuitGuard()
 
 const MAIN_WINDOW_DEFAULT_WIDTH = 1280
@@ -61,23 +62,23 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   const mainWindowState = windowStateKeeper({
     defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
     defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
-    file: MAIN_WINDOW_STATE_FILE
+    file: MAIN_WINDOW_STATE_FILE,
   })
   const restoredBounds = resolveVisibleWindowBounds(
     storedBounds ?? {
       x: mainWindowState.x,
       y: mainWindowState.y,
       width: mainWindowState.width,
-      height: mainWindowState.height
+      height: mainWindowState.height,
     },
-    screen.getAllDisplays().map((display) => display.workArea),
+    screen.getAllDisplays().map(display => display.workArea),
     {
       defaultWidth: MAIN_WINDOW_DEFAULT_WIDTH,
       defaultHeight: MAIN_WINDOW_DEFAULT_HEIGHT,
       minWidth: MAIN_WINDOW_MIN_WIDTH,
-      minHeight: MAIN_WINDOW_MIN_HEIGHT
+      minHeight: MAIN_WINDOW_MIN_HEIGHT,
     },
-    screen.getPrimaryDisplay().workArea
+    screen.getPrimaryDisplay().workArea,
   )
 
   const win = new BrowserWindow({
@@ -95,9 +96,9 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
       nodeIntegration: false,
       sandbox: true,
       webviewTag: false,
-      additionalArguments: [`--server-url=${serverUrl}`]
+      additionalArguments: [`--server-url=${serverUrl}`],
     },
-    show: false
+    show: false,
   })
   mainWindowState.manage(win)
 
@@ -107,7 +108,8 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
 
   if (process.env.ELECTRON_RENDERER_URL) {
     await win.loadURL(process.env.ELECTRON_RENDERER_URL)
-  } else {
+  }
+ else {
     await win.loadFile(resolveDesktopRendererIndexPath())
   }
 
@@ -167,7 +169,7 @@ function broadcastUpdateStatus(status: unknown): void {
 function registerPluginInstallProtocol(): void {
   if (process.defaultApp && process.argv.length >= 2) {
     app.setAsDefaultProtocolClient(DEEP_LINK_PROTOCOL, process.execPath, [
-      resolve(process.argv[1]!)
+      resolve(process.argv[1]!),
     ])
     return
   }
@@ -175,18 +177,18 @@ function registerPluginInstallProtocol(): void {
 }
 
 function describePluginInstallSummary(summary: PluginInstallSummary): string {
-  const capabilities =
-    summary.declaredCapabilities.length > 0
+  const capabilities
+    = summary.declaredCapabilities.length > 0
       ? summary.declaredCapabilities
           .map(
-            (capability) =>
-              `- ${capability.type}:${capability.localId}${capability.layer ? ` (${capability.layer})` : ''}`
+            capability =>
+              `- ${capability.type}:${capability.localId}${capability.layer ? ` (${capability.layer})` : ''}`,
           )
           .join('\n')
       : '- None declared'
-  const permissions =
-    summary.requiredPermissions.length > 0
-      ? summary.requiredPermissions.map((permission) => `- ${permission}`).join('\n')
+  const permissions
+    = summary.requiredPermissions.length > 0
+      ? summary.requiredPermissions.map(permission => `- ${permission}`).join('\n')
       : '- None required'
 
   return [
@@ -202,7 +204,7 @@ function describePluginInstallSummary(summary: PluginInstallSummary): string {
     permissions,
     '',
     'Declared capabilities:',
-    capabilities
+    capabilities,
   ].join('\n')
 }
 
@@ -214,14 +216,14 @@ async function askPluginInstallConsent(summary: PluginInstallSummary): Promise<b
     detail: `${describePluginInstallSummary(summary)}\n\nCradle will install this first-party plugin into the desktop Marketplace plugin directory. The plugin is activated after restart.`,
     buttons: ['Install', 'Cancel'],
     defaultId: 0,
-    cancelId: 1
+    cancelId: 1,
   })
   return response === 0
 }
 
 async function showPluginInstallSuccess(result: PluginInstallResult): Promise<void> {
-  const detail =
-    result.mode === 'alreadyAvailable'
+  const detail
+    = result.mode === 'alreadyAvailable'
       ? 'This plugin is already available in the current Cradle plugin directory. Cradle recorded the Marketplace install request.'
       : 'Restart Cradle to activate the plugin in the desktop and server runtimes.'
   const { response } = await dialog.showMessageBox({
@@ -231,7 +233,7 @@ async function showPluginInstallSuccess(result: PluginInstallResult): Promise<vo
     detail,
     buttons: ['Restart Now', 'Later'],
     defaultId: 0,
-    cancelId: 1
+    cancelId: 1,
   })
   if (response === 0) {
     quitGuard.allowNextQuit()
@@ -250,7 +252,7 @@ async function showPluginInstallFailure(err: unknown): Promise<void> {
         ? 'The plugin install link is invalid.'
         : 'Cradle could not install the plugin.',
     detail: message,
-    buttons: ['OK']
+    buttons: ['OK'],
   })
 }
 
@@ -263,13 +265,14 @@ async function installPluginFromDeepLink(rawUrl: string): Promise<void> {
     const result = await installPluginFromRequest(request, {
       availablePluginsDir: resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname }),
       confirmInstall: askPluginInstallConsent,
-      userDataPath: app.getPath('userData')
+      userDataPath: app.getPath('userData'),
     })
     if (!result) {
       return
     }
     await showPluginInstallSuccess(result)
-  } catch (err) {
+  }
+ catch (err) {
     console.error('[plugin-marketplace] install link failed:', err)
     await showPluginInstallFailure(err)
   }
@@ -314,6 +317,36 @@ async function shutdownDesktopRuntime(options: { stopServerRuntime: boolean }): 
   }
 }
 
+function requestDesktopExit(input: { reason: string, exitCode: number, stopServerRuntime: boolean }): void {
+  if (shutdownPromise) {
+    return
+  }
+
+  console.warn(`[desktop] shutting down runtime: ${input.reason}`)
+  isQuitting = true
+  shutdownPromise = shutdownDesktopRuntime({ stopServerRuntime: input.stopServerRuntime })
+    .catch((error) => {
+      console.error('[desktop] runtime shutdown failed:', error)
+    })
+    .finally(() => {
+      app.exit(input.exitCode)
+    })
+}
+
+function registerProcessShutdownHandlers(): void {
+  const handleSignal = (signal: NodeJS.Signals) => {
+    quitGuard.allowNextQuit()
+    requestDesktopExit({
+      reason: signal,
+      exitCode: 0,
+      stopServerRuntime: true,
+    })
+  }
+
+  process.once('SIGINT', handleSignal)
+  process.once('SIGTERM', handleSignal)
+}
+
 async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void> {
   try {
     const response = await fetch(new URL('/preferences/desktop', serverUrl))
@@ -328,6 +361,7 @@ async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void
 }
 
 export async function startDesktopApp(): Promise<void> {
+  registerProcessShutdownHandlers()
   registerPluginInstallProtocol()
   registerBrowserIpcHandlers(ipcMain, browserManager)
   browserManager.subscribe((state) => {
@@ -340,6 +374,13 @@ export async function startDesktopApp(): Promise<void> {
   browserManager.subscribeToWebContentsCreated((webContents, tabId) => {
     notifyWebviewCreated(webContents, tabId)
   })
+  browserManager.subscribeToPromptRequests((request) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        sendBrowserPromptRequest(window.webContents, request)
+      }
+    }
+  })
   const gotLock = app.requestSingleInstanceLock()
   if (!gotLock) {
     app.quit()
@@ -350,12 +391,12 @@ export async function startDesktopApp(): Promise<void> {
     beforeApplyUpdate: async () => {
       quitGuard.allowNextQuit()
       await shutdownDesktopRuntime({ stopServerRuntime: true })
-    }
+    },
   })
   const appBadgeManager = new DesktopAppBadgeManager()
   desktopAppBadgeManager = appBadgeManager
   macBridgeManager = new MacBridgeManager({
-    moduleDir: __dirname
+    moduleDir: __dirname,
   })
   macBridgeManager.on('hotkeyTriggered', (event) => {
     console.log('[mac-bridge] forwarding Appshot hotkey to renderer:', event)
@@ -401,17 +442,20 @@ export async function startDesktopApp(): Promise<void> {
     bindDesktopObservabilityServerUrl(serverUrl)
     await syncDesktopPreferencesFromServer(serverUrl)
     chatStreamBroker = new ChatStreamBroker({ serverUrl })
-    notificationCenterManager = new NotificationCenterManager({
-      serverUrl,
-      chatStreamBroker,
-    })
-    notificationCenterManager.start()
 
     windowManager = new WindowManager(serverUrl)
     appBadgeManager.initialize()
 
     mainWindow = await createMainWindow(serverUrl)
     setMainWindow(mainWindow)
+
+    notificationCenterManager = new NotificationCenterManager({
+      serverUrl,
+      chatStreamBroker,
+      getMainWindow: () => mainWindow,
+    })
+    notificationCenterManager.start()
+
     trayManager = new TrayManager({
       serverUrl,
       getMainWindow: () => mainWindow,
@@ -419,7 +463,7 @@ export async function startDesktopApp(): Promise<void> {
         const win = await createMainWindow(serverUrl)
         setMainWindow(win)
         return win
-      }
+      },
     })
     trayManager.initialize()
 
@@ -435,6 +479,13 @@ export async function startDesktopApp(): Promise<void> {
       }
       showMainWindow()
     })
+  }).catch((error) => {
+    console.error('[desktop] app startup failed:', error)
+    requestDesktopExit({
+      reason: 'startup failure',
+      exitCode: 1,
+      stopServerRuntime: true,
+    })
   })
 
   app.on('window-all-closed', () => {
@@ -443,12 +494,16 @@ export async function startDesktopApp(): Promise<void> {
     }
   })
 
-  app.on('before-quit', async (event) => {
+  app.on('before-quit', (event) => {
     if (!quitGuard.handleBeforeQuit(event)) {
       return
     }
-    isQuitting = true
-    await shutdownDesktopRuntime({ stopServerRuntime: false })
+    event.preventDefault()
+    requestDesktopExit({
+      reason: 'app quit',
+      exitCode: 0,
+      stopServerRuntime: true,
+    })
   })
 
   app.on('second-instance', (_event, argv) => {

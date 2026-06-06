@@ -129,7 +129,7 @@ afterEach(() => {
   }
 })
 
-describe('WindowManager tear-off windows', () => {
+describe('windowManager tear-off windows', () => {
   it('uses the last focused main or tear-off window for AppShot capture routing', async () => {
     const userDataPath = mkdtempSync(join(tmpdir(), 'cradle-window-manager-'))
     tempRoots.push(userDataPath)

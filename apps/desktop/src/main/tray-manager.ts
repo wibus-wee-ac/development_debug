@@ -6,8 +6,6 @@ export type TrayActionId
     | 'open-chat'
     | 'new-chat'
     | 'global-search'
-    | 'open-resident'
-    | 'open-running'
     | 'open-awaits'
     | 'open-automation'
     | 'open-workspaces'
@@ -27,7 +25,10 @@ interface TrayManagerOptions {
 
 const TRAY_ACTION_CHANNEL = 'desktop-tray:perform-action'
 const TRAY_PENDING_ACTIONS_CHANNEL = 'desktop-tray:consume-pending-actions'
-const TRAY_SNAPSHOT_PATH = '/desktop/tray'
+const TRAY_COUNTS_PATH = '/desktop/tray/counts'
+const TRAY_RECENT_SESSIONS_PATH = '/desktop/tray/recent-sessions'
+const TRAY_HEALTH_PATH = '/desktop/tray/health'
+const TRAY_REFRESH_INTERVAL_MS = 30 * 1000
 
 interface TrayActionRequest {
   actionId: TrayActionId
@@ -40,33 +41,38 @@ interface TraySessionItem {
   workspaceName: string
   runtimeKind: string
   modelId: string | null
+  updatedAt: number
+  state: 'running' | 'awaiting' | 'pinned' | 'recent'
   detail: string
 }
 
-interface TrayMetric {
+interface TrayHealthItem {
+  id: string
   label: string
   value: string
-  tone: 'neutral' | 'active' | 'warning' | 'danger'
+  status: 'ok' | 'active' | 'warning' | 'danger' | 'unknown'
+  detail: string | null
 }
 
-interface TrayQuickAction {
-  id: TrayActionId
-  label: string
-  description: string
-  accelerator: string | null
-  badge: string | null
-  enabled: boolean
+interface TrayCounts {
+  running: number
+  recentSessions: number
+  pinnedSessions: number
+  pendingAwaits: number
+  enabledAutomations: number
+  runningAutomations: number
+  workspaces: number
 }
 
-interface TraySnapshot {
-  metrics: TrayMetric[]
-  running: TraySessionItem[]
-  resident: TraySessionItem[]
-  quickActions: TrayQuickAction[]
+interface TrayData {
+  counts: TrayCounts
+  recentSessions: TraySessionItem[]
+  health: TrayHealthItem[]
 }
 
 const TRAY_ICON_SIZE = 18
 const MENU_ICON_SIZE = 10
+const MAX_SESSION_LABEL_LENGTH = 52
 
 function createCircleImage(size: number, red: number, green: number, blue: number, alpha = 255): Electron.NativeImage {
   const buffer = Buffer.alloc(size * size * 4, 0)
@@ -102,22 +108,41 @@ function createMenuDotIcon(red: number, green: number, blue: number): Electron.N
   return createCircleImage(MENU_ICON_SIZE, red, green, blue)
 }
 
-function createMetricIcon(tone: TrayMetric['tone']): Electron.NativeImage {
-  if (tone === 'active') {
+function createStatusIcon(status: TrayHealthItem['status'] | TraySessionItem['state']): Electron.NativeImage {
+  if (status === 'active' || status === 'running') {
     return createMenuDotIcon(16, 185, 129)
   }
-  if (tone === 'warning') {
+  if (status === 'warning' || status === 'awaiting') {
     return createMenuDotIcon(245, 158, 11)
   }
-  if (tone === 'danger') {
+  if (status === 'danger') {
     return createMenuDotIcon(239, 68, 68)
   }
+  if (status === 'pinned') {
+    return createMenuDotIcon(59, 130, 246)
+  }
   return createMenuDotIcon(115, 115, 115)
+}
+
+function isAttentionItem(item: TrayHealthItem): boolean {
+  return item.status === 'warning' || item.status === 'danger'
+}
+
+function pluralize(value: number, singular: string, plural = `${singular}s`): string {
+  return `${value} ${value === 1 ? singular : plural}`
+}
+
+function truncateLabel(label: string): string {
+  if (label.length <= MAX_SESSION_LABEL_LENGTH) {
+    return label
+  }
+  return `${label.slice(0, MAX_SESSION_LABEL_LENGTH - 1)}...`
 }
 
 export class TrayManager {
   private tray: Tray | null = null
   private pendingActionRequests: TrayActionRequest[] = []
+  private refreshTimer: NodeJS.Timeout | null = null
   private readonly options: TrayManagerOptions
 
   constructor(options: TrayManagerOptions) {
@@ -149,6 +174,7 @@ export class TrayManager {
       await this.performAction(actionId as TrayActionId, payload)
     })
     ipcMain.handle(TRAY_PENDING_ACTIONS_CHANNEL, () => this.pendingActionRequests.splice(0))
+    this.startPresentationRefresh()
   }
 
   async openNativeMenu(): Promise<void> {
@@ -156,7 +182,7 @@ export class TrayManager {
       return
     }
 
-    const snapshot = await this.readTraySnapshot()
+    const snapshot = await this.readTrayData()
     this.updateTrayPresentation(snapshot)
     this.updatePlatformNotification(snapshot)
     const menu = this.buildTrayMenu(snapshot)
@@ -192,6 +218,7 @@ export class TrayManager {
   destroy(): void {
     ipcMain.removeHandler(TRAY_ACTION_CHANNEL)
     ipcMain.removeHandler(TRAY_PENDING_ACTIONS_CHANNEL)
+    this.stopPresentationRefresh()
     this.pendingActionRequests = []
     this.tray?.closeContextMenu()
     if (process.platform === 'win32') {
@@ -216,107 +243,110 @@ export class TrayManager {
     return mainWindow
   }
 
-  private async readTraySnapshot(): Promise<TraySnapshot | null> {
+  private startPresentationRefresh(): void {
+    if (this.refreshTimer) {
+      return
+    }
+    void this.refreshTrayPresentation()
+    this.refreshTimer = setInterval(() => {
+      void this.refreshTrayPresentation()
+    }, TRAY_REFRESH_INTERVAL_MS)
+    this.refreshTimer.unref?.()
+  }
+
+  private stopPresentationRefresh(): void {
+    if (!this.refreshTimer) {
+      return
+    }
+    clearInterval(this.refreshTimer)
+    this.refreshTimer = null
+  }
+
+  private async refreshTrayPresentation(): Promise<void> {
+    if (!this.tray) {
+      return
+    }
+    const snapshot = await this.readTrayData()
+    this.updateTrayPresentation(snapshot)
+  }
+
+  private async readTrayData(): Promise<TrayData | null> {
     try {
-      const response = await fetch(new URL(TRAY_SNAPSHOT_PATH, this.options.serverUrl))
-      if (!response.ok) {
-        return null
-      }
-      return await response.json() as TraySnapshot
+      const [counts, recentSessions, health] = await Promise.all([
+        this.readTrayJson<TrayCounts>(TRAY_COUNTS_PATH),
+        this.readTrayJson<TraySessionItem[]>(TRAY_RECENT_SESSIONS_PATH),
+        this.readTrayJson<TrayHealthItem[]>(TRAY_HEALTH_PATH),
+      ])
+      return { counts, recentSessions, health }
     }
     catch {
       return null
     }
   }
 
-  private buildTrayMenu(snapshot: TraySnapshot | null): Electron.Menu {
-    const quickActions = snapshot?.quickActions ?? []
-    const openAppAction = quickActions.find(action => action.id === 'open-app')
-    const newChatAction = quickActions.find(action => action.id === 'new-chat')
-    const searchAction = quickActions.find(action => action.id === 'global-search')
-    const secondaryActions = quickActions.filter(action => (
-      action.id !== 'open-app'
-      && action.id !== 'new-chat'
-      && action.id !== 'global-search'
-      && action.id !== 'quit'
-    ))
+  private async readTrayJson<T>(path: string): Promise<T> {
+    const response = await fetch(new URL(path, this.options.serverUrl))
+    if (!response.ok) {
+      throw new Error(`Tray data request failed: ${response.status}`)
+    }
+    return await response.json() as T
+  }
 
+  private buildTrayMenu(snapshot: TrayData | null): Electron.Menu {
     return Menu.buildFromTemplate([
       {
         id: 'header',
         type: 'header',
         label: this.buildHeaderLabel(snapshot),
-        sublabel: snapshot ? 'Native tray menu' : 'Native tray menu - offline',
+        sublabel: snapshot ? this.buildHeaderSublabel(snapshot) : 'Desktop status unavailable',
         enabled: false,
         visible: true,
       },
       { type: 'separator' },
-      this.buildQuickActionMenuItem(openAppAction ?? {
-        id: 'open-app',
-        label: 'Open Cradle',
-        description: 'Bring the main desktop window forward.',
-        accelerator: null,
-        badge: null,
-        enabled: true,
-      }, snapshot),
-      this.buildQuickActionMenuItem(newChatAction ?? {
-        id: 'new-chat',
-        label: 'New Chat',
-        description: 'Start a fresh agent conversation.',
+      this.buildActionMenuItem('new-chat', 'New Chat', {
         accelerator: 'CommandOrControl+N',
-        badge: null,
-        enabled: true,
-      }, snapshot),
-      this.buildQuickActionMenuItem(searchAction ?? {
-        id: 'global-search',
-        label: 'Search Threads',
-        description: 'Open the command palette for threads, files, and issues.',
+      }),
+      this.buildActionMenuItem('global-search', 'Search', {
         accelerator: 'CommandOrControl+K',
-        badge: null,
-        enabled: true,
-      }, snapshot),
+      }),
+      this.buildActionMenuItem('open-app', 'Open Cradle'),
       { type: 'separator' },
       {
-        id: 'status',
-        type: 'submenu',
-        label: 'Status',
-        enabled: Boolean(snapshot),
+        id: 'recent-sessions-header',
+        type: 'header',
+        label: 'Recent Sessions',
+        enabled: false,
         visible: true,
-        submenu: this.buildMetricMenuItems(snapshot?.metrics ?? []),
       },
+      ...this.buildRecentSessionMenuItems(snapshot?.recentSessions ?? []),
+      { type: 'separator' },
       {
-        id: 'running',
+        id: 'health',
         type: 'submenu',
-        label: this.buildSectionLabel('Running Agents', snapshot?.running.length ?? 0),
+        label: snapshot ? `Health (${this.buildHealthLabel(snapshot)})` : 'Health',
         enabled: Boolean(snapshot),
         visible: true,
-        submenu: this.buildSessionMenuItems(snapshot?.running ?? []),
-      },
-      {
-        id: 'resident',
-        type: 'submenu',
-        label: this.buildSectionLabel('Resident Chats', snapshot?.resident.length ?? 0),
-        enabled: Boolean(snapshot),
-        visible: true,
-        submenu: this.buildSessionMenuItems(snapshot?.resident ?? []),
+        submenu: this.buildHealthMenuItems(snapshot?.health ?? []),
       },
       { type: 'separator' },
       {
-        id: 'actions',
-        type: 'submenu',
-        label: 'Actions',
-        enabled: secondaryActions.length > 0,
+        id: 'quick-header',
+        type: 'header',
+        label: 'Quick',
+        enabled: false,
         visible: true,
-        submenu: secondaryActions.length > 0
-          ? secondaryActions.map(action => this.buildQuickActionMenuItem(action, snapshot))
-          : [{ label: 'No actions', enabled: false }],
       },
+      this.buildActionMenuItem('open-awaits', this.buildBadgeLabel('Awaits', snapshot?.counts.pendingAwaits ?? 0)),
+      this.buildActionMenuItem('open-automation', this.buildAutomationLabel(snapshot?.counts)),
+      this.buildActionMenuItem('open-workspaces', this.buildBadgeLabel('Workspaces', snapshot?.counts.workspaces ?? 0)),
+      this.buildActionMenuItem('open-desktop-settings', 'Settings'),
       ...(snapshot
         ? []
         : [{
             label: 'Tray data unavailable',
             enabled: false,
           }]),
+      { type: 'separator' },
       {
         id: 'quit',
         label: 'Quit Cradle',
@@ -330,33 +360,41 @@ export class TrayManager {
     ])
   }
 
-  private buildMetricMenuItems(items: TrayMetric[]): Electron.MenuItemConstructorOptions[] {
-    if (items.length === 0) {
-      return [{ label: 'Status unavailable', enabled: false }]
-    }
-
-    return items.map(item => ({
-      id: `metric-${item.label.toLowerCase().replaceAll(' ', '-')}`,
-      type: 'checkbox',
-      label: `${item.label}: ${item.value}`,
-      icon: createMetricIcon(item.tone),
-      checked: item.tone === 'active' || item.tone === 'warning' || item.tone === 'danger',
-      enabled: false,
+  private buildActionMenuItem(
+    actionId: TrayActionId,
+    label: string,
+    options: {
+      accelerator?: string
+      enabled?: boolean
+      payload?: unknown
+    } = {},
+  ): Electron.MenuItemConstructorOptions {
+    return {
+      id: actionId,
+      type: 'normal',
+      label,
+      accelerator: options.accelerator,
+      enabled: options.enabled ?? true,
       visible: true,
-      toolTip: `${item.label} is ${item.value}`,
-    }))
+      registerAccelerator: Boolean(options.accelerator),
+      acceleratorWorksWhenHidden: false,
+      click: () => {
+        void this.performAction(actionId, options.payload)
+      },
+    }
   }
 
-  private buildSessionMenuItems(items: TraySessionItem[]): Electron.MenuItemConstructorOptions[] {
+  private buildRecentSessionMenuItems(items: TraySessionItem[]): Electron.MenuItemConstructorOptions[] {
     if (items.length === 0) {
-      return [{ label: 'No items', enabled: false }]
+      return [{ label: 'No recent sessions', enabled: false }]
     }
 
     return items.map(item => ({
       id: `session-${item.sessionId}`,
       type: 'normal',
-      label: item.title,
-      sublabel: item.workspaceName,
+      label: truncateLabel(item.title),
+      sublabel: this.buildSessionSublabel(item),
+      icon: createStatusIcon(item.state),
       toolTip: item.detail,
       enabled: true,
       visible: true,
@@ -366,70 +404,105 @@ export class TrayManager {
     }))
   }
 
-  private buildQuickActionMenuItem(
-    action: TrayQuickAction,
-    snapshot: TraySnapshot | null,
-  ): Electron.MenuItemConstructorOptions {
-    return {
-      id: action.id,
-      type: 'normal',
-      label: this.buildActionLabel(action),
-      sublabel: action.description,
-      accelerator: this.normalizeAccelerator(action.accelerator),
-      enabled: action.enabled,
-      visible: true,
-      registerAccelerator: Boolean(action.accelerator),
-      acceleratorWorksWhenHidden: false,
-      click: () => {
-        void this.performAction(action.id, this.readListActionPayload(action.id, snapshot))
-      },
+  private buildHealthMenuItems(items: TrayHealthItem[]): Electron.MenuItemConstructorOptions[] {
+    if (items.length === 0) {
+      return [{ label: 'Health unavailable', enabled: false }]
     }
+
+    return items.map(item => ({
+      id: `health-${item.id}`,
+      type: 'normal',
+      label: `${item.label}: ${item.value}`,
+      icon: createStatusIcon(item.status),
+      enabled: false,
+      visible: true,
+      toolTip: item.detail ?? `${item.label} is ${item.value}`,
+    }))
   }
 
-  private buildActionLabel(action: TrayQuickAction): string {
-    return action.badge ? `${action.label} (${action.badge})` : action.label
+  private buildSessionSublabel(item: TraySessionItem): string {
+    const stateLabel = this.readSessionStateLabel(item)
+    if (item.modelId) {
+      return `${stateLabel} - ${item.workspaceName} - ${item.modelId}`
+    }
+    return `${stateLabel} - ${item.workspaceName}`
   }
 
-  private buildSectionLabel(label: string, count: number): string {
-    return `${label} (${count})`
+  private readSessionStateLabel(item: TraySessionItem): string {
+    if (item.state === 'running') {
+      return 'Running'
+    }
+    if (item.state === 'awaiting') {
+      return 'Awaiting'
+    }
+    if (item.state === 'pinned') {
+      return 'Pinned'
+    }
+    return 'Recent'
   }
 
-  private buildHeaderLabel(snapshot: TraySnapshot | null): string {
+  private buildBadgeLabel(label: string, count: number): string {
+    return count > 0 ? `${label} (${count})` : label
+  }
+
+  private buildAutomationLabel(counts: TrayCounts | undefined): string {
+    if (!counts) {
+      return 'Automations'
+    }
+    if (counts.runningAutomations > 0) {
+      return this.buildBadgeLabel('Automations', counts.runningAutomations)
+    }
+    return this.buildBadgeLabel('Automations', counts.enabledAutomations)
+  }
+
+  private buildHeaderLabel(snapshot: TrayData | null): string {
     if (!snapshot) {
       return 'Cradle'
     }
-    const running = snapshot.running.length
-    const resident = snapshot.resident.length
-    return `Cradle - ${running} running, ${resident} resident`
+    return `Cradle - ${this.buildHealthLabel(snapshot)}`
   }
 
-  private normalizeAccelerator(accelerator: string | null): string | undefined {
-    if (!accelerator) {
-      return undefined
-    }
-    if (accelerator.startsWith('CommandOrControl+')) {
-      return accelerator
-    }
-    return accelerator.replaceAll('⌘', 'CommandOrControl+')
+  private buildHeaderSublabel(snapshot: TrayData): string {
+    return [
+      pluralize(snapshot.counts.running, 'running'),
+      pluralize(snapshot.counts.recentSessions, 'recent'),
+      pluralize(snapshot.counts.pendingAwaits, 'await'),
+    ].join(' | ')
   }
 
-  private updateTrayPresentation(snapshot: TraySnapshot | null): void {
+  private buildHealthLabel(snapshot: TrayData): string {
+    const attentionCount = snapshot.health.filter(isAttentionItem).length
+    return attentionCount > 0 ? pluralize(attentionCount, 'issue') : 'Healthy'
+  }
+
+  private updateTrayPresentation(snapshot: TrayData | null): void {
     if (!this.tray) {
       return
     }
 
-    const running = snapshot?.running.length ?? 0
-    const resident = snapshot?.resident.length ?? 0
     this.tray.setToolTip(snapshot
-      ? `Cradle - ${running} running, ${resident} resident`
+      ? `Cradle - ${this.buildHealthLabel(snapshot)}: ${snapshot.counts.running} running, ${snapshot.counts.pendingAwaits} awaits`
       : 'Cradle')
 
     if (process.platform === 'darwin') {
-      this.tray.setTitle(running > 0 ? String(running) : '')
+      this.tray.setTitle(this.readTrayTitle(snapshot))
     }
   }
 
-  private updatePlatformNotification(snapshot: TraySnapshot | null): void {
+  private readTrayTitle(snapshot: TrayData | null): string {
+    if (!snapshot) {
+      return ''
+    }
+    if (snapshot.counts.pendingAwaits > 0) {
+      return String(snapshot.counts.pendingAwaits)
+    }
+    if (snapshot.health.some(isAttentionItem)) {
+      return '!'
+    }
+    return snapshot.counts.running > 0 ? String(snapshot.counts.running) : ''
+  }
+
+  private updatePlatformNotification(snapshot: TrayData | null): void {
     if (!this.tray || process.platform !== 'win32') {
       return
     }
@@ -462,20 +535,6 @@ export class TrayManager {
       return
     }
     this.tray.focus()
-  }
-
-  private readListActionPayload(actionId: TrayActionId, snapshot: TraySnapshot | null): { sessionId: string } | undefined {
-    if (actionId === 'open-running') {
-      const firstRunning = snapshot?.running[0]
-      return firstRunning ? { sessionId: firstRunning.sessionId } : undefined
-    }
-
-    if (actionId === 'open-resident') {
-      const firstResident = snapshot?.resident[0]
-      return firstResident ? { sessionId: firstResident.sessionId } : undefined
-    }
-
-    return undefined
   }
 }
 

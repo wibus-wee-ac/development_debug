@@ -23,7 +23,7 @@ inputs:
   s3-region:
     description: S3 region
     required: false
-    default: 'us-east-1'
+    default: us-east-1
   s3-endpoint:
     description: S3-compatible endpoint
     required: false

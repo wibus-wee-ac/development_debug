@@ -17,6 +17,9 @@ let restartCount = 0
 let isServerShutdownRequested = false
 let locatedServerPid: number | null = null
 const MAX_RESTARTS = 3
+const SERVER_STARTUP_TIMEOUT_MS = 90_000
+const SERVER_RESTART_READY_TIMEOUT_MS = 60_000
+const SERVER_OUTPUT_LINE_LIMIT = 200
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
@@ -31,6 +34,7 @@ const ServerLocatorSchema = z.object({
   updatedAt: z.string().optional(),
 })
 let currentServerUrl = ''
+const recentServerOutputLines: string[] = []
 
 function resolveDevServerEntry(): string {
   const candidates = [
@@ -71,7 +75,7 @@ export async function startServer(): Promise<string> {
   await spawnServer({ host, port, dataDir, credentialSecret })
 
   // Wait for server to be ready
-  await waitForServer(currentServerUrl, 15_000)
+  await waitForServer(currentServerUrl, SERVER_STARTUP_TIMEOUT_MS)
   writeCliServerLocator({
     dataDir: app.getPath('userData'),
     serverUrl: currentServerUrl,
@@ -142,6 +146,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const pluginsSourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
   const configuredMigrationsDir = process.env.CRADLE_MIGRATIONS_DIR?.trim()
   const migrationsDir = configuredMigrationsDir || (isDev ? undefined : join(process.resourcesPath, 'drizzle'))
+  const builtinSkillsDir = isDev ? undefined : join(process.resourcesPath, 'resources/skills')
   const installedPluginsDir = resolveDesktopInstalledPluginsDir(app.getPath('userData'))
   const externalPluginsDirs = [
     installedPluginsDir,
@@ -161,6 +166,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
     CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
     ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
+    ...(builtinSkillsDir ? { CRADLE_BUILTIN_SKILLS_DIR: builtinSkillsDir } : {}),
     NODE_ENV: isDev ? 'development' : 'production',
     FORCE_COLOR: '1',
   }
@@ -171,10 +177,17 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     execPath,
     execArgv,
     detached: true,
-    stdio: ['ignore', 'ignore', 'ignore', 'ipc'],
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
   locatedServerPid = serverProcess.pid ?? null
 
+  serverProcess.stdout?.on('data', chunk => recordServerOutput('stdout', chunk))
+  serverProcess.stderr?.on('data', chunk => recordServerOutput('stderr', chunk))
+  serverProcess.on('error', (err) => {
+    const message = `[server:error] ${err instanceof Error ? err.stack ?? err.message : String(err)}`
+    appendServerOutputLine(message)
+    console.error(message)
+  })
   serverProcess.on('exit', (code, signal) => {
     if (isServerShutdownRequested || signal === 'SIGTERM' || signal === 'SIGKILL') {
       // Intentional shutdown
@@ -188,7 +201,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       restartCount++
       console.warn(`[desktop] Restarting server (attempt ${restartCount}/${MAX_RESTARTS})...`)
       spawnServer(opts)
-        .then(() => waitForServer(currentServerUrl, 10_000))
+        .then(() => waitForServer(currentServerUrl, SERVER_RESTART_READY_TIMEOUT_MS))
         .then(() => {
           writeCliServerLocator({
             dataDir: app.getPath('userData'),
@@ -204,6 +217,42 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       showServerCrashDialog(code)
     }
   })
+}
+
+function recordServerOutput(source: 'stdout' | 'stderr', chunk: Buffer | string): void {
+  const text = chunk.toString()
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trimEnd()
+    if (!line) {
+      continue
+    }
+
+    const message = `[server:${source}] ${line}`
+    appendServerOutputLine(message)
+    if (source === 'stderr') {
+      console.error(message)
+    }
+    else {
+      console.warn(message)
+    }
+  }
+}
+
+function appendServerOutputLine(line: string): void {
+  recentServerOutputLines.push(line)
+  if (recentServerOutputLines.length > SERVER_OUTPUT_LINE_LIMIT) {
+    recentServerOutputLines.splice(0, recentServerOutputLines.length - SERVER_OUTPUT_LINE_LIMIT)
+  }
+}
+
+function createServerStartupError(url: string, timeoutMs: number): Error {
+  const recentOutput = recentServerOutputLines.slice(-40).join('\n')
+  if (!recentOutput) {
+    return new Error(`Server failed to start within ${timeoutMs}ms at ${url}`)
+  }
+  return new Error(
+    `Server failed to start within ${timeoutMs}ms at ${url}\n\nRecent server output:\n${recentOutput}`,
+  )
 }
 
 /**
@@ -398,5 +447,5 @@ async function waitForServer(url: string, timeoutMs: number): Promise<void> {
     }
     await new Promise(r => setTimeout(r, 200))
   }
-  throw new Error(`Server failed to start within ${timeoutMs}ms`)
+  throw createServerStartupError(url, timeoutMs)
 }

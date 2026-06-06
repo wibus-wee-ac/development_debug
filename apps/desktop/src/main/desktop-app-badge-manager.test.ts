@@ -33,7 +33,7 @@ function setPlatform(platform: NodeJS.Platform): void {
   })
 }
 
-describe('DesktopAppBadgeManager', () => {
+describe('desktopAppBadgeManager', () => {
   const originalPlatform = process.platform
 
   beforeEach(() => {

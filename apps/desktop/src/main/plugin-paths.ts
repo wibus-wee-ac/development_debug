@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 const WORKSPACE_MARKER_FILE = 'pnpm-workspace.yaml'
 const PLUGINS_DIR_NAME = 'plugins'
+const SERVER_RESOURCE_DIR_NAME = 'server'
 const WORKSPACE_SCAN_DEPTH = 12
 
 interface DesktopPluginDirOptions {
@@ -54,7 +55,7 @@ export function resolveDesktopPrimaryPluginsDir(options: DesktopPluginDirOptions
 
   if (!options.isDev) {
     const resourcesPath = options.resourcesPath ?? (process as { resourcesPath?: string }).resourcesPath
-    return resolve(resourcesPath ?? process.cwd(), PLUGINS_DIR_NAME)
+    return resolve(resourcesPath ?? process.cwd(), SERVER_RESOURCE_DIR_NAME, PLUGINS_DIR_NAME)
   }
 
   const anchors = [
