@@ -33,6 +33,8 @@ export interface BrowserAnnotationSurfaceSize {
 }
 
 interface BrowserAnnotationOverlayProps {
+  ownerId: string
+  tabId: string
   imageDataUrl: string
   elements: BrowserAnnotationElement[]
   surfaceSize: BrowserAnnotationSurfaceSize
@@ -153,6 +155,11 @@ function elementAtPoint(
   return best
 }
 
+function initialAttachedImageId(filePart: FileUIPart, index: number): string {
+  const label = filePart.filename ?? filePart.mediaType ?? 'file'
+  return `browser-annotation-image-initial-${index}-${label}`
+}
+
 function readImageFilePart(file: File): Promise<BrowserAnnotationAttachedImage | null> {
   if (!file.type.startsWith('image/')) {
     return Promise.resolve(null)
@@ -180,7 +187,14 @@ function readImageFilePart(file: File): Promise<BrowserAnnotationAttachedImage |
   })
 }
 
+function hasDesignChanges(designChange: BrowserAnnotationDesignChange | null): boolean {
+  return designChange !== null
+    && Object.values(designChange).some(value => typeof value === 'string' && value.trim())
+}
+
 export function BrowserAnnotationOverlay({
+  ownerId,
+  tabId,
   imageDataUrl,
   elements,
   surfaceSize,
@@ -192,6 +206,7 @@ export function BrowserAnnotationOverlay({
 }: BrowserAnnotationOverlayProps) {
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const previewDialogRef = useRef<HTMLDialogElement | null>(null)
   const setAnnotationAdjustmentSession = useBrowserPanelStore(state => state.setAnnotationAdjustmentSession)
   const openAsideTab = useLayoutStore(state => state.openAsideTab)
   const setAsideOpen = useLayoutStore(state => state.setAsideOpen)
@@ -202,8 +217,8 @@ export function BrowserAnnotationOverlay({
   const [draft, setDraft] = useState(() => initialAnnotation?.body ?? '')
   const [attachedImages, setAttachedImages] = useState<BrowserAnnotationAttachedImage[]>(
     () =>
-      initialAnnotation?.attachedImages.map(filePart => ({
-        id: `browser-annotation-image-${nextAttachedImageId++}`,
+      initialAnnotation?.attachedImages.map((filePart, index) => ({
+        id: initialAttachedImageId(filePart, index),
         filePart,
       })) ?? [],
   )
@@ -216,6 +231,13 @@ export function BrowserAnnotationOverlay({
 
   const visibleRegion = drag ? buildRegion(drag) : anchor?.kind === 'region' ? anchor : null
   const selectedElement = anchor?.kind === 'element' ? anchor.element : null
+  const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
+  const activeDesignChange = adjustmentSession?.ownerId === ownerId
+    && adjustmentSession.tabId === tabId
+    && selectedElement
+    && adjustmentSession.selectedElement?.selector === selectedElement.selector
+    ? adjustmentSession.designChanges
+    : null
   const framedElement = selectedElement ?? hoveredElement
   const anchoredEditor = useMemo(() => editorPosition(anchor, surfaceSize), [anchor, surfaceSize])
   const editor = editorOverride ?? anchoredEditor
@@ -230,6 +252,17 @@ export function BrowserAnnotationOverlay({
       y: clamp(event.clientY - rect.top, 0, rect.height),
     }
   }, [])
+
+  const clearOwnedAdjustmentSession = useCallback(() => {
+    const currentSession = useBrowserPanelStore.getState().annotationAdjustmentSession
+    if (
+      currentSession?.ownerId === ownerId
+      && currentSession.tabId === tabId
+      && currentSession.annotationId === (initialAnnotation?.id ?? null)
+    ) {
+      setAnnotationAdjustmentSession(null)
+    }
+  }, [initialAnnotation?.id, ownerId, setAnnotationAdjustmentSession, tabId])
 
   const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || event.button !== 0) {
@@ -275,6 +308,7 @@ export function BrowserAnnotationOverlay({
     const region = buildRegion(drag)
     if (region.width >= MIN_REGION_SIZE && region.height >= MIN_REGION_SIZE) {
       setAnchor(region)
+      clearOwnedAdjustmentSession()
       setEditorOverride(null)
     }
     else {
@@ -288,8 +322,8 @@ export function BrowserAnnotationOverlay({
           })
       if (element) {
         setAnnotationAdjustmentSession({
-          ownerId: 'global',
-          tabId: 'current',
+          ownerId,
+          tabId,
           annotationId: null,
           selectedElement: element,
           designChanges: {},
@@ -297,10 +331,22 @@ export function BrowserAnnotationOverlay({
         openAsideTab('adjustment')
         setAsideOpen(true)
       }
+      else {
+        clearOwnedAdjustmentSession()
+      }
       setEditorOverride(null)
     }
     setDrag(null)
-  }, [drag, elements, setAnnotationAdjustmentSession, openAsideTab, setAsideOpen])
+  }, [
+    clearOwnedAdjustmentSession,
+    drag,
+    elements,
+    ownerId,
+    setAnnotationAdjustmentSession,
+    openAsideTab,
+    setAsideOpen,
+    tabId,
+  ])
 
   const handleEditorPointerMove = useCallback((event: ReactPointerEvent<HTMLFormElement>) => {
     if (!editorDrag) {
@@ -325,7 +371,7 @@ export function BrowserAnnotationOverlay({
   }, [editorDrag])
 
   const canSubmit = Boolean(anchor)
-    && (draft.trim().length > 0 || attachedImages.length > 0)
+    && (draft.trim().length > 0 || attachedImages.length > 0 || hasDesignChanges(activeDesignChange))
     && !submitting
   const buildSubmitInput = useCallback((): BrowserAnnotationOverlaySubmitInput | null => {
     if (!anchor || !canSubmit) {
@@ -335,9 +381,9 @@ export function BrowserAnnotationOverlay({
       body: draft.trim(),
       anchor,
       attachedImages: attachedImages.map(image => image.filePart),
-      designChange: null,
+      designChange: activeDesignChange,
     }
-  }, [anchor, attachedImages, canSubmit, draft])
+  }, [activeDesignChange, anchor, attachedImages, canSubmit, draft])
 
   const appendImageFiles = useCallback(async (files: File[]) => {
     if (files.length === 0) {
@@ -401,12 +447,19 @@ export function BrowserAnnotationOverlay({
     }
   }, [buildSubmitInput, onCancel, onSubmit])
 
-  // Cleanup adjustment session on unmount
   useEffect(() => {
     return () => {
-      setAnnotationAdjustmentSession(null)
+      clearOwnedAdjustmentSession()
     }
-  }, [setAnnotationAdjustmentSession])
+  }, [clearOwnedAdjustmentSession])
+
+  useEffect(() => {
+    const dialog = previewDialogRef.current
+    if (!previewImage || !dialog || dialog.open) {
+      return
+    }
+    dialog.showModal()
+  }, [previewImage])
 
   return (
     <div
@@ -581,21 +634,18 @@ export function BrowserAnnotationOverlay({
                 const label = image.filePart.filename ?? image.filePart.mediaType
                 return (
                   <div
-                    role="button"
-                    tabIndex={0}
                     key={image.id}
                     className="group relative size-14 shrink-0 overflow-hidden rounded-md bg-muted shadow-[inset_0_0_0_1px_rgba(0,0,0,0.10)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.10)]"
-                    onClick={() => setPreviewImage(image)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        setPreviewImage(image)
-                      }
-                    }}
-                    aria-label={`Preview ${label}`}
                   >
-                    <img src={image.filePart.url} alt={label} className="size-full object-cover" />
-                    <span className="absolute bottom-1 left-1 flex size-5 items-center justify-center rounded-sm bg-background/90 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
+                    <button
+                      type="button"
+                      className="size-full text-left"
+                      onClick={() => setPreviewImage(image)}
+                      aria-label={`Preview ${label}`}
+                    >
+                      <img src={image.filePart.url} alt={label} className="size-full object-cover" />
+                    </button>
+                    <span className="pointer-events-none absolute bottom-1 left-1 flex size-5 items-center justify-center rounded-sm bg-background/90 text-muted-foreground opacity-0 shadow-sm transition-opacity group-hover:opacity-100">
                       <Maximize2Icon className="size-3" />
                     </span>
                     <button
@@ -622,6 +672,7 @@ export function BrowserAnnotationOverlay({
               <input
                 ref={imageInputRef}
                 type="file"
+                aria-label="Attached images"
                 accept="image/*"
                 multiple
                 className="hidden"
@@ -670,14 +721,20 @@ export function BrowserAnnotationOverlay({
         Exit annotate
       </button>
       {previewImage && (
-        <div
-          className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-6"
-          role="dialog"
-          aria-modal="true"
+        <dialog
+          ref={previewDialogRef}
+          className="fixed inset-0 z-40 m-0 h-dvh max-h-none w-dvw max-w-none border-0 bg-transparent p-0 backdrop:bg-black/70"
           aria-label={`Preview ${previewImage.filePart.filename ?? previewImage.filePart.mediaType}`}
-          onClick={() => setPreviewImage(null)}
+          onCancel={() => setPreviewImage(null)}
         >
-          <div className="relative max-h-full max-w-full" onClick={event => event.stopPropagation()}>
+          <div className="relative flex h-full w-full items-center justify-center p-6">
+            <button
+              type="button"
+              className="absolute inset-0 cursor-default"
+              onClick={() => setPreviewImage(null)}
+              aria-label="Close image preview"
+            />
+            <div className="relative max-h-full max-w-full">
             <img
               src={previewImage.filePart.url}
               alt={previewImage.filePart.filename ?? 'Attached image'}
@@ -691,8 +748,9 @@ export function BrowserAnnotationOverlay({
             >
               <XIcon className="size-4" />
             </button>
+            </div>
           </div>
-        </div>
+        </dialog>
       )}
     </div>
   )

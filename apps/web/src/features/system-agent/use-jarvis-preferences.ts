@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { getPreferencesJarvisOptions, getPreferencesJarvisQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { putPreferencesJarvis } from '~/api-gen/sdk.gen'
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 
 export interface JarvisPreferences {
   runtimeKind: RuntimeKind

@@ -3,8 +3,6 @@ export type TrayActionId
     | 'open-chat'
     | 'new-chat'
     | 'global-search'
-    | 'open-resident'
-    | 'open-running'
     | 'open-awaits'
     | 'open-automation'
     | 'open-workspaces'
@@ -16,7 +14,7 @@ export type TrayActionId
     | 'open-desktop-settings'
     | 'quit'
 
-export interface TrayAwaitItem {
+export interface DesktopAwaitItem {
   id: string
   sessionId: string
   title: string

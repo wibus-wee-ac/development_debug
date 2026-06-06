@@ -270,6 +270,7 @@ export function JarvisPopover({
             workspaceId: null,
             title: 'Jarvis',
             providerTargetId: prefs!.profileId!,
+            modelId: prefs!.model,
             runtimeKind: prefs!.runtimeKind,
           },
         })

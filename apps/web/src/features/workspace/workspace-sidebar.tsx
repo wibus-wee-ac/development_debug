@@ -71,6 +71,7 @@ import { Input } from '~/components/ui/input'
 import {
   Menu,
   MenuCheckboxItem,
+  MenuGroup,
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
@@ -88,7 +89,7 @@ import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
@@ -147,9 +148,8 @@ function SessionRenameInput({
   }, [])
 
   return (
-    <div
-      role="group"
-      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-1.5 text-sidebar-foreground/80"
+    <fieldset
+      className="m-0 flex min-w-0 flex-1 items-center gap-2 border-0 p-0 px-2.5 py-1.5 text-sidebar-foreground/80"
       onClick={e => e.stopPropagation()}
       onKeyDown={e => e.stopPropagation()}
     >
@@ -158,6 +158,7 @@ function SessionRenameInput({
         : null}
       <input
         ref={renameInputRef}
+        aria-label="Rename session"
         defaultValue={initialTitle}
         onBlur={(e) => { void onCommit(e.currentTarget.value) }}
         onKeyDown={(e) => {
@@ -176,7 +177,7 @@ function SessionRenameInput({
       <span className="shrink-0 text-[11px] text-muted-foreground">
         {formatRelativeTime(listActivityAt, t)}
       </span>
-    </div>
+    </fieldset>
   )
 }
 
@@ -1558,29 +1559,33 @@ const WorkspaceSidebarBody = memo(({
                 <ArrowUpDownIcon className="size-3" />
               </MenuTrigger>
               <MenuPopup align="end" side="bottom" sideOffset={4} className="w-48">
-                <MenuGroupLabel>{t('sidebar.sort.by')}</MenuGroupLabel>
-                <MenuRadioGroup
-                  value={projectSortKey}
-                  onValueChange={value => setProjectSortKey(value as WorkspaceSidebarProjectSortKey)}
-                >
-                  {PROJECT_SORT_OPTIONS.map(sortKey => (
-                    <MenuRadioItem key={sortKey} value={sortKey}>
-                      {t(`sidebar.sort.option.${sortKey}`)}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
+                <MenuGroup>
+                  <MenuGroupLabel>{t('sidebar.sort.by')}</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={projectSortKey}
+                    onValueChange={value => setProjectSortKey(value as WorkspaceSidebarProjectSortKey)}
+                  >
+                    {PROJECT_SORT_OPTIONS.map(sortKey => (
+                      <MenuRadioItem key={sortKey} value={sortKey}>
+                        {t(`sidebar.sort.option.${sortKey}`)}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuGroup>
                 <MenuSeparator />
-                <MenuGroupLabel>{t('sidebar.sort.direction')}</MenuGroupLabel>
-                <MenuRadioGroup
-                  value={projectSortDirection}
-                  onValueChange={value => setProjectSortDirection(value as WorkspaceSidebarProjectSortDirection)}
-                >
-                  {PROJECT_SORT_DIRECTION_OPTIONS.map(direction => (
-                    <MenuRadioItem key={direction} value={direction}>
-                      {t(`sidebar.sort.direction.${direction}`)}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
+                <MenuGroup>
+                  <MenuGroupLabel>{t('sidebar.sort.direction')}</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={projectSortDirection}
+                    onValueChange={value => setProjectSortDirection(value as WorkspaceSidebarProjectSortDirection)}
+                  >
+                    {PROJECT_SORT_DIRECTION_OPTIONS.map(direction => (
+                      <MenuRadioItem key={direction} value={direction}>
+                        {t(`sidebar.sort.direction.${direction}`)}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuGroup>
                 <MenuSeparator />
                 <MenuCheckboxItem
                   checked={projectPinnedFirst}
@@ -1609,17 +1614,19 @@ const WorkspaceSidebarBody = memo(({
                 <ListFilterIcon className="size-3" />
               </MenuTrigger>
               <MenuPopup align="end" side="bottom" sideOffset={4} className="w-44">
-                <MenuGroupLabel>{t('sidebar.filter.show')}</MenuGroupLabel>
-                <MenuRadioGroup
-                  value={projectFilter}
-                  onValueChange={value => setProjectFilter(value as WorkspaceSidebarProjectFilter)}
-                >
-                  {PROJECT_FILTER_OPTIONS.map(filter => (
-                    <MenuRadioItem key={filter} value={filter}>
-                      {t(`sidebar.filter.option.${filter}`)}
-                    </MenuRadioItem>
-                  ))}
-                </MenuRadioGroup>
+                <MenuGroup>
+                  <MenuGroupLabel>{t('sidebar.filter.show')}</MenuGroupLabel>
+                  <MenuRadioGroup
+                    value={projectFilter}
+                    onValueChange={value => setProjectFilter(value as WorkspaceSidebarProjectFilter)}
+                  >
+                    {PROJECT_FILTER_OPTIONS.map(filter => (
+                      <MenuRadioItem key={filter} value={filter}>
+                        {t(`sidebar.filter.option.${filter}`)}
+                      </MenuRadioItem>
+                    ))}
+                  </MenuRadioGroup>
+                </MenuGroup>
               </MenuPopup>
             </Menu>
             <Button

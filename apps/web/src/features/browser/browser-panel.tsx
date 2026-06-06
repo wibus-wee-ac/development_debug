@@ -28,6 +28,7 @@ import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } fr
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -61,8 +62,10 @@ import {
   useBrowserPanelStore,
 } from '~/store/browser-panel'
 
-import type { BrowserAnnotationOverlaySubmitInput } from './browser-annotation-overlay'
-import { BrowserAnnotationOverlay } from './browser-annotation-overlay'
+import type { BrowserAnnotationAdjustmentApplyDetail } from './browser-annotation-adjustment-panel'
+import {
+  BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT,
+} from './browser-annotation-adjustment-panel'
 import type { BrowserAddressSuggestion } from './browser-panel.logic'
 import {
   browserAddressDisplayValue,
@@ -105,225 +108,31 @@ interface BrowserPromptRequest {
   sourceTitle: string | null
 }
 
+interface BrowserAnnotationRuntimeEvent {
+  threadId: string
+  tabId: string
+  type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+  anchor?: BrowserAnnotationAnchor
+  selectedElement?: BrowserAnnotationElement | null
+  body?: string
+  attachedImages?: BrowserPromptAttachment[]
+  designChange?: BrowserAnnotationDesignChange | null
+  elements?: BrowserAnnotationElement[]
+  surfaceSize?: {
+    width: number
+    height: number
+  }
+  sourceUrl: string | null
+  sourceTitle: string | null
+}
+
 const BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET = 2
 const BROWSER_SCREENSHOT_CHUNK_SIZE = 0x8000
 const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
 const EMPTY_BROWSER_LOCAL_SERVERS: BrowserLocalServer[] = []
-const BROWSER_ANNOTATION_ELEMENT_SCAN_EXPRESSION = `(() => {
-  const MAX_ELEMENTS = 250;
-  const MIN_AREA = 16;
-  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-  const interactiveTags = new Set(['A', 'BUTTON', 'INPUT', 'TEXTAREA', 'SELECT', 'SUMMARY']);
-
-  function cssPath(element) {
-    const parts = [];
-    let current = element;
-    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
-      const tag = current.tagName.toLowerCase();
-      if (current.id) {
-        parts.unshift(tag + '#' + CSS.escape(current.id));
-        break;
-      }
-      const classes = Array.from(current.classList || []).slice(0, 2).map((name) => '.' + CSS.escape(name)).join('');
-      let index = 1;
-      let sibling = current.previousElementSibling;
-      while (sibling) {
-        if (sibling.tagName === current.tagName) {
-          index += 1;
-        }
-        sibling = sibling.previousElementSibling;
-      }
-      parts.unshift(tag + classes + ':nth-of-type(' + index + ')');
-      current = current.parentElement;
-    }
-    return parts.join(' > ');
-  }
-
-  function labelFor(element) {
-    const aria = element.getAttribute('aria-label') || element.getAttribute('alt') || element.getAttribute('title') || element.getAttribute('placeholder') || '';
-    const value = typeof element.value === 'string' ? element.value : '';
-    const text = aria || value || element.innerText || element.textContent || '';
-    return text.replace(/\\s+/g, ' ').trim().slice(0, 140);
-  }
-
-  function implicitRole(element) {
-    const explicit = element.getAttribute('role');
-    if (explicit) {
-      return explicit;
-    }
-    switch (element.tagName) {
-      case 'A':
-        return element.hasAttribute('href') ? 'link' : '';
-      case 'BUTTON':
-        return 'button';
-      case 'IMG':
-        return 'img';
-      case 'INPUT': {
-        const type = (element.getAttribute('type') || 'text').toLowerCase();
-        if (type === 'checkbox') return 'checkbox';
-        if (type === 'radio') return 'radio';
-        if (type === 'range') return 'slider';
-        if (type === 'submit' || type === 'button' || type === 'reset') return 'button';
-        return 'textbox';
-      }
-      case 'TEXTAREA':
-        return 'textbox';
-      case 'SELECT':
-        return 'combobox';
-      case 'H1':
-      case 'H2':
-      case 'H3':
-      case 'H4':
-      case 'H5':
-      case 'H6':
-        return 'heading';
-      case 'NAV':
-        return 'navigation';
-      case 'MAIN':
-        return 'main';
-      case 'FORM':
-        return 'form';
-      case 'TABLE':
-        return 'table';
-      case 'VIDEO':
-        return 'video';
-      default:
-        return '';
-    }
-  }
-
-  function attributesFor(element) {
-    const href = element instanceof HTMLAnchorElement ? element.href : element.getAttribute('href');
-    const value = typeof element.value === 'string' ? element.value : '';
-    return {
-      id: element.id || undefined,
-      className: element.className && typeof element.className === 'string' ? element.className.slice(0, 160) : undefined,
-      ariaLabel: element.getAttribute('aria-label') || undefined,
-      title: element.getAttribute('title') || undefined,
-      alt: element.getAttribute('alt') || undefined,
-      href: href || undefined,
-      type: element.getAttribute('type') || undefined,
-      name: element.getAttribute('name') || undefined,
-      placeholder: element.getAttribute('placeholder') || undefined,
-      value: value ? value.slice(0, 120) : undefined,
-      testId: element.getAttribute('data-testid') || element.getAttribute('data-test-id') || undefined,
-    };
-  }
-
-  function descriptionFor(element, attributes) {
-    const parts = [];
-    if (attributes.href) parts.push('href=' + attributes.href);
-    if (attributes.placeholder) parts.push('placeholder=' + attributes.placeholder);
-    if (attributes.name) parts.push('name=' + attributes.name);
-    if (attributes.type) parts.push('type=' + attributes.type);
-    if (attributes.testId) parts.push('testid=' + attributes.testId);
-    return parts.join(' · ').slice(0, 220);
-  }
-
-  function semanticScore(element, label, role) {
-    let score = 0;
-    if (interactiveTags.has(element.tagName)) score += 80;
-    if (role) score += 40;
-    if (label) score += 30;
-    if (element.getAttribute('data-testid') || element.getAttribute('data-test-id')) score += 20;
-    if (['H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(element.tagName)) score += 18;
-    if (['IMG', 'SVG', 'VIDEO', 'CANVAS'].includes(element.tagName)) score += 14;
-    return score;
-  }
-
-  function isCandidate(element, rect, style, label, role) {
-    if (rect.width <= 0 || rect.height <= 0 || rect.width * rect.height < MIN_AREA) {
-      return false;
-    }
-    if (rect.right < 0 || rect.bottom < 0 || rect.left > viewportWidth || rect.top > viewportHeight) {
-      return false;
-    }
-    if (style.visibility === 'hidden' || style.display === 'none' || Number(style.opacity) === 0) {
-      return false;
-    }
-    if (element.closest('[aria-hidden="true"], script, style, meta, link, noscript')) {
-      return false;
-    }
-    const hasSemanticSignal = label
-      || interactiveTags.has(element.tagName)
-      || role
-      || ['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'IMG', 'SVG', 'VIDEO', 'CANVAS'].includes(element.tagName);
-    return Boolean(hasSemanticSignal);
-  }
-
-  return Array.from(document.querySelectorAll('body *'))
-    .map((element, index) => {
-      const rect = element.getBoundingClientRect();
-      const style = window.getComputedStyle(element);
-      const label = labelFor(element);
-      const role = implicitRole(element);
-      if (!isCandidate(element, rect, style, label, role)) {
-        return null;
-      }
-      const attributes = attributesFor(element);
-      const area = Math.max(1, rect.width * rect.height);
-      return {
-        id: 'element-' + index,
-        tagName: element.tagName,
-        label,
-        description: descriptionFor(element, attributes),
-        role,
-        selector: cssPath(element),
-        attributes,
-        score: semanticScore(element, label, role),
-        rect: {
-          x: Math.max(0, Math.min(viewportWidth, rect.left)),
-          y: Math.max(0, Math.min(viewportHeight, rect.top)),
-          width: Math.max(1, Math.min(viewportWidth, rect.right) - Math.max(0, rect.left)),
-          height: Math.max(1, Math.min(viewportHeight, rect.bottom) - Math.max(0, rect.top)),
-        },
-        area,
-        styles: {
-          color: style.color,
-          backgroundColor: style.backgroundColor,
-          opacity: style.opacity,
-          fontFamily: style.fontFamily,
-          fontSize: style.fontSize,
-          fontWeight: style.fontWeight,
-          lineHeight: style.lineHeight,
-          borderRadius: style.borderRadius,
-          borderColor: style.borderColor,
-          borderWidth: style.borderWidth,
-          display: style.display,
-          alignItems: style.alignItems,
-          justifyContent: style.justifyContent,
-          flexDirection: style.flexDirection,
-          width: style.width,
-          height: style.height,
-          marginTop: style.marginTop,
-          marginRight: style.marginRight,
-          marginBottom: style.marginBottom,
-          marginLeft: style.marginLeft,
-          paddingTop: style.paddingTop,
-          paddingRight: style.paddingRight,
-          paddingBottom: style.paddingBottom,
-          paddingLeft: style.paddingLeft,
-          rowGap: style.rowGap,
-          columnGap: style.columnGap,
-        },
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => (b.score - a.score) || (b.area - a.area))
-    .map(({ score, area, ...element }) => element)
-    .slice(0, MAX_ELEMENTS);
-})()`
-
-interface BrowserAnnotationSession {
-  imageDataUrl: string
-  filePart: FileUIPart
-  elements: BrowserAnnotationElement[]
+interface BrowserAnnotationRuntimeSession {
+  tabId: string
   editingAnnotationId: string | null
-  surfaceSize: {
-    width: number
-    height: number
-  }
 }
 
 interface BrowserNativeBoundsPreview {
@@ -391,40 +200,6 @@ function localServerStatusLabel(statusCode: number | null): string {
   return `${statusCode}`
 }
 
-function browserViewportSamplePoints(rect: DOMRect): Array<{ x: number, y: number }> {
-  const left = rect.left + 8
-  const right = rect.right - 8
-  const centerX = rect.left + rect.width / 2
-  const top = rect.top + 8
-  const centerY = rect.top + rect.height / 2
-  const bottom = rect.bottom - 8
-  const points = [
-    { x: left, y: top },
-    { x: centerX, y: top },
-    { x: right, y: top },
-    { x: left, y: centerY },
-    { x: centerX, y: centerY },
-    { x: right, y: centerY },
-    { x: left, y: bottom },
-    { x: centerX, y: bottom },
-    { x: right, y: bottom },
-  ]
-
-  return points.filter((point) => {
-    return point.x >= 0
-      && point.y >= 0
-      && point.x <= window.innerWidth
-      && point.y <= window.innerHeight
-  })
-}
-
-function isBrowserViewportOccluded(element: HTMLElement, rect: DOMRect): boolean {
-  return browserViewportSamplePoints(rect).some((point) => {
-    const topElement = document.elementFromPoint(point.x, point.y)
-    return topElement !== null && topElement !== element
-  })
-}
-
 interface BrowserNewTabSurfaceProps {
   localServers: BrowserLocalServer[]
   localServersLoading: boolean
@@ -440,72 +215,64 @@ const BrowserNewTabSurface = ({
   onOpenUrl,
   onRefreshLocalServers,
 }: BrowserNewTabSurfaceProps) => {
-  return (
-    <div className="absolute inset-0 overflow-auto bg-background">
-      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col justify-center px-6 py-8">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-foreground/5 text-foreground shadow-sm ring-1 ring-border/60">
-            <GlobeIcon className="size-5" aria-hidden="true" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-lg font-semibold text-foreground">New Tab</h2>
-            <p className="truncate text-xs text-muted-foreground">localhost</p>
-          </div>
-        </div>
+  const localServerCountLabel = localServersLoading
+    ? 'Scanning'
+    : `${localServers.length} local ${localServers.length === 1 ? 'server' : 'servers'}`
 
-        <div className="flex items-center justify-between gap-3">
+  return (
+    <div className="absolute inset-0 overflow-auto bg-background text-foreground">
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col px-5 py-10">
+        <div className="mb-6 flex items-center justify-between gap-3">
           <div className="min-w-0">
-            <h3 className="truncate text-sm font-medium text-foreground">Local</h3>
-            <p className="truncate text-xs text-muted-foreground">
-              {localServersLoading ? 'Scanning' : `${localServers.length} available`}
-            </p>
+            <h2 className="truncate text-sm font-medium text-foreground">New tab</h2>
+            <p className="mt-1 truncate text-xs text-muted-foreground">{localServerCountLabel}</p>
           </div>
           <button
             type="button"
-            className="flex size-9 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-40"
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-40"
             onClick={onRefreshLocalServers}
             disabled={localServersLoading}
             aria-label="Refresh local servers"
           >
-            <RefreshCwIcon className={cn('size-4', localServersLoading && 'animate-spin')} />
+            <RefreshCwIcon className={cn('size-3.5', localServersLoading && 'animate-spin')} />
           </button>
         </div>
 
-        <div className="mt-3 grid gap-2">
+        <div className="grid overflow-hidden rounded-lg border border-border/60 bg-muted/20">
           {localServers.map(server => (
             <button
               key={server.url}
               type="button"
-              className="group flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg bg-card px-3 py-2 text-left shadow-sm ring-1 ring-border/70 transition-shadow hover:shadow-md"
+              className="group flex min-h-14 w-full min-w-0 items-center gap-3 border-b border-border/50 px-3 py-2 text-left transition-colors last:border-b-0 hover:bg-muted/50"
               onClick={() => onOpenUrl(server.url)}
             >
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-foreground/5 text-muted-foreground ring-1 ring-border/50">
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground ring-1 ring-border/60">
                 <ServerIcon className="size-4" aria-hidden="true" />
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium text-foreground">
+                <span className="block truncate text-xs font-medium text-foreground">
                   {server.title}
                 </span>
-                <span className="block truncate text-xs text-muted-foreground">
+                <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                   {`localhost:${server.port}`}
                 </span>
               </span>
-              <span className="shrink-0 rounded-md bg-foreground/5 px-2 py-1 text-[10px] font-medium text-muted-foreground tabular-nums">
+              <span className="shrink-0 rounded-md bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground tabular-nums ring-1 ring-border/60">
                 {localServerStatusLabel(server.statusCode)}
               </span>
-              <ExternalLinkIcon className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-foreground" />
+              <ExternalLinkIcon className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
             </button>
           ))}
         </div>
 
         {!localServersLoading && localServers.length === 0 && (
-          <div className="mt-3 rounded-lg bg-card px-4 py-6 text-center text-xs text-muted-foreground shadow-sm ring-1 ring-border/70">
+          <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-4 py-8 text-center text-xs text-muted-foreground">
             {localServersError ?? 'No local servers found.'}
           </div>
         )}
 
         {localServersLoading && localServers.length === 0 && (
-          <div className="mt-3 rounded-lg bg-card px-4 py-6 text-center text-xs text-muted-foreground shadow-sm ring-1 ring-border/70">
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-4 py-8 text-center text-xs text-muted-foreground">
             Scanning localhost.
           </div>
         )}
@@ -633,6 +400,39 @@ function isBrowserPromptRequest(value: unknown): value is BrowserPromptRequest {
     && candidate.attachments.every(isBrowserPromptAttachment)
 }
 
+function isBrowserAnnotationRuntimeEvent(value: unknown): value is BrowserAnnotationRuntimeEvent {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const candidate = value as BrowserAnnotationRuntimeEvent
+  return typeof candidate.threadId === 'string'
+    && typeof candidate.tabId === 'string'
+    && (
+      candidate.type === 'ready'
+      || candidate.type === 'selected-element'
+      || candidate.type === 'save'
+      || candidate.type === 'submit'
+      || candidate.type === 'cancel'
+      || candidate.type === 'closed'
+      || candidate.type === 'toggle'
+    )
+}
+
+function isBrowserAnnotationAdjustmentApplyEvent(
+  event: Event,
+): event is CustomEvent<BrowserAnnotationAdjustmentApplyDetail> {
+  if (!(event instanceof CustomEvent)) {
+    return false
+  }
+  const detail = event.detail
+  return Boolean(
+    detail
+    && typeof detail === 'object'
+    && typeof (detail as BrowserAnnotationAdjustmentApplyDetail).ownerId === 'string'
+    && typeof (detail as BrowserAnnotationAdjustmentApplyDetail).tabId === 'string',
+  )
+}
+
 function screenshotFileNameForBrowserAnnotationUrl(url: string): string {
   try {
     const parsed = new URL(url)
@@ -646,56 +446,6 @@ function screenshotFileNameForBrowserAnnotationUrl(url: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object'
-}
-
-function isBrowserAnnotationElement(value: unknown): value is BrowserAnnotationElement {
-  if (!isRecord(value) || !isRecord(value.rect) || !isRecord(value.styles)) {
-    return false
-  }
-  return typeof value.id === 'string'
-    && typeof value.tagName === 'string'
-    && typeof value.label === 'string'
-    && (value.description === undefined || typeof value.description === 'string')
-    && typeof value.role === 'string'
-    && typeof value.selector === 'string'
-    && (value.attributes === undefined || isRecord(value.attributes))
-    && typeof value.rect.x === 'number'
-    && typeof value.rect.y === 'number'
-    && typeof value.rect.width === 'number'
-    && typeof value.rect.height === 'number'
-    && typeof value.styles.color === 'string'
-    && typeof value.styles.backgroundColor === 'string'
-    && typeof value.styles.opacity === 'string'
-    && typeof value.styles.fontFamily === 'string'
-    && typeof value.styles.fontSize === 'string'
-    && typeof value.styles.fontWeight === 'string'
-    && typeof value.styles.lineHeight === 'string'
-    && typeof value.styles.borderRadius === 'string'
-    && (value.styles.borderColor === undefined || typeof value.styles.borderColor === 'string')
-    && (value.styles.borderWidth === undefined || typeof value.styles.borderWidth === 'string')
-    && (value.styles.display === undefined || typeof value.styles.display === 'string')
-    && (value.styles.alignItems === undefined || typeof value.styles.alignItems === 'string')
-    && (value.styles.justifyContent === undefined || typeof value.styles.justifyContent === 'string')
-    && (value.styles.flexDirection === undefined || typeof value.styles.flexDirection === 'string')
-    && (value.styles.width === undefined || typeof value.styles.width === 'string')
-    && (value.styles.height === undefined || typeof value.styles.height === 'string')
-    && (value.styles.marginTop === undefined || typeof value.styles.marginTop === 'string')
-    && (value.styles.marginRight === undefined || typeof value.styles.marginRight === 'string')
-    && (value.styles.marginBottom === undefined || typeof value.styles.marginBottom === 'string')
-    && (value.styles.marginLeft === undefined || typeof value.styles.marginLeft === 'string')
-    && (value.styles.paddingTop === undefined || typeof value.styles.paddingTop === 'string')
-    && (value.styles.paddingRight === undefined || typeof value.styles.paddingRight === 'string')
-    && (value.styles.paddingBottom === undefined || typeof value.styles.paddingBottom === 'string')
-    && (value.styles.paddingLeft === undefined || typeof value.styles.paddingLeft === 'string')
-    && (value.styles.rowGap === undefined || typeof value.styles.rowGap === 'string')
-    && (value.styles.columnGap === undefined || typeof value.styles.columnGap === 'string')
-}
-
-function readRuntimeEvaluateValue(result: unknown): unknown {
-  if (!isRecord(result) || !isRecord(result.result)) {
-    return null
-  }
-  return result.result.value
 }
 
 function readCdpScreenshotData(result: unknown): string | null {
@@ -742,33 +492,6 @@ async function captureBrowserAnnotationScreenshot(input: {
       mimeType: 'image/png',
       base64: data,
     })
-  }
-}
-
-async function readBrowserAnnotationElements(input: {
-  bridge: NonNullable<ReturnType<typeof readBrowserBridge>>
-  threadId: string
-  tabId: string
-}): Promise<BrowserAnnotationElement[]> {
-  try {
-    const result = await input.bridge.executeCdp({
-      threadId: input.threadId,
-      tabId: input.tabId,
-      method: 'Runtime.evaluate',
-      params: {
-        expression: BROWSER_ANNOTATION_ELEMENT_SCAN_EXPRESSION,
-        returnByValue: true,
-        awaitPromise: false,
-      },
-    })
-    const value = readRuntimeEvaluateValue(result)
-    if (!Array.isArray(value)) {
-      return []
-    }
-    return value.filter(isBrowserAnnotationElement)
-  }
-  catch {
-    return []
   }
 }
 
@@ -965,6 +688,12 @@ function countBrowserAnnotationDesignChanges(
   return Object.values(designChange).filter(value => Boolean(value?.trim())).length
 }
 
+function hasBrowserAnnotationDesignChanges(
+  designChange: BrowserAnnotationDesignChange | null | undefined,
+): boolean {
+  return countBrowserAnnotationDesignChanges(designChange ?? null) > 0
+}
+
 function getBrowserAnnotationPreviewTarget(
   annotation: BrowserAnnotationRecord,
 ): { style: CSSProperties, mode: 'point' | 'rect' } | null {
@@ -1029,8 +758,20 @@ export function BrowserPanel({
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
-  const browserState = useBrowserPanelStore(selectOwnerBrowserState(resolvedOwnerId))
-  const recentHistory = useBrowserPanelStore(selectOwnerBrowserHistory(resolvedOwnerId))
+  const selectBrowserState = useMemo(
+    () => selectOwnerBrowserState(resolvedOwnerId),
+    [resolvedOwnerId],
+  )
+  const selectBrowserHistory = useMemo(
+    () => selectOwnerBrowserHistory(resolvedOwnerId),
+    [resolvedOwnerId],
+  )
+  const selectBrowserAnnotations = useMemo(
+    () => selectOwnerBrowserAnnotations(resolvedOwnerId),
+    [resolvedOwnerId],
+  )
+  const browserState = useBrowserPanelStore(selectBrowserState)
+  const recentHistory = useBrowserPanelStore(selectBrowserHistory)
   const requestedTab = useBrowserPanelStore(
     state => state.owners[resolvedOwnerId]?.requestedTab ?? null,
   )
@@ -1045,16 +786,14 @@ export function BrowserPanel({
   const markAnnotationSent = useBrowserPanelStore(state => state.markAnnotationSent)
   const deleteAnnotation = useBrowserPanelStore(state => state.deleteAnnotation)
   const clearAnnotations = useBrowserPanelStore(state => state.clearAnnotations)
-  const setAnnotationInteractionMode = useBrowserPanelStore(
-    state => state.setAnnotationInteractionMode,
+  const annotationAdjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
+  const setAnnotationAdjustmentSession = useBrowserPanelStore(
+    state => state.setAnnotationAdjustmentSession,
   )
   const setAnnotationTrayCollapsed = useBrowserPanelStore(
     state => state.setAnnotationTrayCollapsed,
   )
-  const ownerAnnotations = useBrowserPanelStore(selectOwnerBrowserAnnotations(resolvedOwnerId))
-  const annotationInteractionMode = useBrowserPanelStore(
-    state => state.annotationInteractionModeByOwnerId[resolvedOwnerId] ?? 'browse',
-  )
+  const ownerAnnotations = useBrowserPanelStore(selectBrowserAnnotations)
   const annotationTrayCollapsed = useBrowserPanelStore(
     state => state.annotationTrayCollapsedByOwnerId[resolvedOwnerId] ?? false,
   )
@@ -1063,6 +802,7 @@ export function BrowserPanel({
   const previousActiveTabIdRef = useRef<string | null>(null)
   const addressDraftByTabIdRef = useRef<Map<string, string>>(new Map())
   const lastSyncedAddressValueRef = useRef<string | undefined>(undefined)
+  const previousAnnotationRuntimeTabIdRef = useRef<string | null>(null)
   const stableBoundsFrameCountRef = useRef(0)
   const animationFrameRef = useRef<number | null>(null)
   const localServerDiscoveryRequestRef = useRef(0)
@@ -1073,8 +813,10 @@ export function BrowserPanel({
   const [isEditingAddress, setIsEditingAddress] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
-  const [annotationSession, setAnnotationSession] = useState<BrowserAnnotationSession | null>(null)
-  const [annotationSubmitting, setAnnotationSubmitting] = useState(false)
+  const [annotationSession, setAnnotationSession] = useState<BrowserAnnotationRuntimeSession | null>(
+    null,
+  )
+  const [, setAnnotationSubmitting] = useState(false)
   const [nativeBoundsPreview, setNativeBoundsPreview] = useState<BrowserNativeBoundsPreview | null>(
     null,
   )
@@ -1104,14 +846,10 @@ export function BrowserPanel({
     () => ownerAnnotations.filter(annotation => annotation.tabId === activeBrowserTabId),
     [activeBrowserTabId, ownerAnnotations],
   )
-  const isAnnotationCommentMode = annotationInteractionMode === 'comment'
-  const editingBrowserAnnotation = useMemo(
-    () =>
-      annotationSession?.editingAnnotationId
-        ? activeBrowserAnnotations.find(annotation => annotation.id === annotationSession.editingAnnotationId) ?? null
-        : null,
-    [activeBrowserAnnotations, annotationSession?.editingAnnotationId],
-  )
+  const activeAnnotationSession = annotationSession?.tabId === activeBrowserTabId
+    ? annotationSession
+    : null
+  const hasActiveAnnotationSession = activeAnnotationSession !== null
   const suggestions = useMemo(
     () =>
       buildBrowserAddressSuggestions({
@@ -1208,13 +946,12 @@ export function BrowserPanel({
       })
 
     return () => {
-      setAnnotationInteractionMode('browse', resolvedOwnerId)
       setAnnotationSession(null)
       setAnnotationSubmitting(false)
       unsubscribe()
       void bridge.hide({ threadId: resolvedOwnerId }).catch(() => { })
     }
-  }, [resolvedOwnerId, setAnnotationInteractionMode, upsertOwnerState])
+  }, [resolvedOwnerId, upsertOwnerState])
 
   useEffect(() => {
     if (!requestedTab) {
@@ -1259,7 +996,7 @@ export function BrowserPanel({
   }, [resolvedOwnerId])
 
   const syncBounds = useCallback(() => {
-    if (nativeBoundsPausedRef.current) {
+    if (nativeBoundsPausedRef.current && !hasActiveAnnotationSession) {
       return
     }
 
@@ -1276,8 +1013,6 @@ export function BrowserPanel({
         && browserState?.open
         && activePanelTab?.kind === 'browser'
         && !activeBrowserTabIsBlank
-        && annotationSession === null
-        && !isBrowserViewportOccluded(element, rect)
     if (!visible) {
       hideNativeBrowserSurface()
       return
@@ -1296,8 +1031,8 @@ export function BrowserPanel({
   }, [
     activeBrowserTabIsBlank,
     activePanelTab?.kind,
-    annotationSession,
     browserState?.open,
+    hasActiveAnnotationSession,
     hideNativeBrowserSurface,
     resolvedOwnerId,
   ])
@@ -1306,7 +1041,7 @@ export function BrowserPanel({
     if (typeof window === 'undefined') {
       return
     }
-    if (nativeBoundsPausedRef.current) {
+    if (nativeBoundsPausedRef.current && !hasActiveAnnotationSession) {
       return
     }
     if (animationFrameRef.current !== null) {
@@ -1330,44 +1065,44 @@ export function BrowserPanel({
     }
 
     animationFrameRef.current = window.requestAnimationFrame(tick)
-  }, [syncBounds])
+  }, [hasActiveAnnotationSession, syncBounds])
+
+  const scheduleStableBoundsSyncFromObserver = useEffectEvent(() => {
+    scheduleStableBoundsSync()
+  })
+
+  const hideNativeBrowserSurfaceFromObserver = useEffectEvent(() => {
+    hideNativeBrowserSurface()
+  })
 
   useLayoutEffect(() => {
     const element = viewportRef.current
     if (!element) {
-      hideNativeBrowserSurface()
+      hideNativeBrowserSurfaceFromObserver()
       return
     }
 
-    scheduleStableBoundsSync()
-    const resizeObserver = new ResizeObserver(scheduleStableBoundsSync)
+    scheduleStableBoundsSyncFromObserver()
+    const resizeObserver = new ResizeObserver(scheduleStableBoundsSyncFromObserver)
     resizeObserver.observe(element)
-    const mutationObserver = new MutationObserver(scheduleStableBoundsSync)
-    mutationObserver.observe(document.body, {
-      attributeFilter: ['aria-hidden', 'class', 'data-state', 'hidden', 'style'],
-      attributes: true,
-      childList: true,
-    })
-    window.addEventListener('resize', scheduleStableBoundsSync)
-    window.addEventListener('scroll', scheduleStableBoundsSync, true)
+    window.addEventListener('resize', scheduleStableBoundsSyncFromObserver)
+    window.addEventListener('scroll', scheduleStableBoundsSyncFromObserver, true)
 
     return () => {
       resizeObserver.disconnect()
-      mutationObserver.disconnect()
-      window.removeEventListener('resize', scheduleStableBoundsSync)
-      window.removeEventListener('scroll', scheduleStableBoundsSync, true)
+      window.removeEventListener('resize', scheduleStableBoundsSyncFromObserver)
+      window.removeEventListener('scroll', scheduleStableBoundsSyncFromObserver, true)
       if (animationFrameRef.current !== null) {
         window.cancelAnimationFrame(animationFrameRef.current)
         animationFrameRef.current = null
       }
-      hideNativeBrowserSurface()
+      hideNativeBrowserSurfaceFromObserver()
     }
-  }, [activePanelTab?.kind, hideNativeBrowserSurface, scheduleStableBoundsSync])
+  }, [activePanelTab?.kind])
 
   useEffect(() => {
-    if (!nativeBoundsPaused) {
+    if (!nativeBoundsPaused || hasActiveAnnotationSession) {
       nativeBoundsPreviewRequestRef.current += 1
-      setNativeBoundsPreview(null)
       scheduleStableBoundsSync()
       return
     }
@@ -1380,10 +1115,8 @@ export function BrowserPanel({
       || !activeBrowserTabId
       || !activeBrowserTabUrl
       || activeBrowserTabIsBlank
-      || annotationSession !== null
     ) {
       nativeBoundsPreviewRequestRef.current += 1
-      setNativeBoundsPreview(null)
       hideNativeBrowserSurface()
       return
     }
@@ -1424,7 +1157,7 @@ export function BrowserPanel({
     activeBrowserTabIsBlank,
     activeBrowserTabUrl,
     activePanelTab?.kind,
-    annotationSession,
+    hasActiveAnnotationSession,
     browserState?.open,
     hideNativeBrowserSurface,
     nativeBoundsPaused,
@@ -1433,11 +1166,56 @@ export function BrowserPanel({
   ])
 
   useEffect(() => {
+    const bridge = readBrowserBridge()
+    const selectedElement = annotationAdjustmentSession?.selectedElement
+    if (
+      !bridge
+      || activeAnnotationSession === null
+      || !activeBrowserTab
+      || !activeBrowserTabId
+      || !selectedElement
+      || annotationAdjustmentSession.ownerId !== resolvedOwnerId
+      || annotationAdjustmentSession.tabId !== activeBrowserTabId
+    ) {
+      return
+    }
+
+    const designChange = annotationAdjustmentSession.designChanges
+
+    void (async () => {
+      if (hasBrowserAnnotationDesignChanges(designChange)) {
+        await bridge.applyAnnotationDesign({
+          threadId: resolvedOwnerId,
+          tabId: activeBrowserTabId,
+          selector: selectedElement.selector,
+          designChange,
+        })
+      }
+      else {
+        await bridge.applyAnnotationDesign({
+          threadId: resolvedOwnerId,
+          tabId: activeBrowserTabId,
+          selector: selectedElement.selector,
+          designChange: {},
+        })
+      }
+    })().catch((error) => {
+      setLocalError(formatBrowserActionError(error))
+    })
+  }, [
+    activeBrowserTab,
+    activeBrowserTabId,
+    annotationAdjustmentSession,
+    activeAnnotationSession,
+    resolvedOwnerId,
+  ])
+
+  useEffect(() => {
     scheduleStableBoundsSync()
   }, [
     activeBrowserTabIsBlank,
     activePanelTab?.id,
-    annotationSession,
+    hasActiveAnnotationSession,
     chromeStatusLabel,
     chromeStatusTone,
     scheduleStableBoundsSync,
@@ -1445,10 +1223,16 @@ export function BrowserPanel({
   ])
 
   useEffect(() => {
-    setAnnotationSession(null)
-    setAnnotationSubmitting(false)
-    setAnnotationInteractionMode('browse', resolvedOwnerId)
-  }, [activeBrowserTabId, resolvedOwnerId, setAnnotationInteractionMode])
+    const previousAnnotationRuntimeTabId = previousAnnotationRuntimeTabIdRef.current
+    if (previousAnnotationRuntimeTabId) {
+      void readBrowserBridge()?.clearAnnotationDesign({
+        threadId: resolvedOwnerId,
+        tabId: previousAnnotationRuntimeTabId,
+      }).catch(() => { })
+    }
+    previousAnnotationRuntimeTabIdRef.current = activeBrowserTabId
+    setAnnotationAdjustmentSession(null)
+  }, [activeBrowserTabId, resolvedOwnerId, setAnnotationAdjustmentSession])
 
   useEffect(() => {
     const nextDisplayValue = browserAddressDisplayValue(activeBrowserTab)
@@ -1704,7 +1488,7 @@ export function BrowserPanel({
   }, [activeBrowserTabId, activeSessionId, resolvedOwnerId, runBrowserAction])
 
   const handleStartAnnotation = useCallback(() => {
-    if (!activeBrowserTabId || !activeBrowserTab) {
+    if (!activeBrowserTabId) {
       return
     }
     const bridge = readBrowserBridge()
@@ -1712,73 +1496,77 @@ export function BrowserPanel({
     if (!bridge || !viewport) {
       return
     }
-    const activeBrowserTabUrl = activeBrowserTab.lastCommittedUrl ?? activeBrowserTab.url
     void runBrowserAction(async () => {
+      await bridge.clearAnnotationDesign({
+        threadId: resolvedOwnerId,
+        tabId: activeBrowserTabId,
+      }).catch(() => { })
       const rect = viewport.getBoundingClientRect()
       if (rect.width <= 0 || rect.height <= 0) {
         throw new Error('The browser viewport isn\'t ready for annotation.')
       }
-
-      const filePart = await captureBrowserAnnotationScreenshot({
-        bridge,
-        threadId: resolvedOwnerId,
-        tabId: activeBrowserTabId,
-        url: activeBrowserTabUrl,
-      })
-      const elements = await readBrowserAnnotationElements({
-        bridge,
+      await bridge.startAnnotationRuntime({
         threadId: resolvedOwnerId,
         tabId: activeBrowserTabId,
       })
-
-      bridge.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
-      setAnnotationInteractionMode('comment', resolvedOwnerId)
+      setAnnotationAdjustmentSession(null)
       setAnnotationSession({
-        imageDataUrl: filePart.url,
-        filePart,
-        elements,
+        tabId: activeBrowserTabId,
         editingAnnotationId: null,
-        surfaceSize: {
-          width: rect.width,
-          height: rect.height,
-        },
       })
     })
   }, [
-    activeBrowserTab,
     activeBrowserTabId,
     resolvedOwnerId,
     runBrowserAction,
-    setAnnotationInteractionMode,
+    setAnnotationAdjustmentSession,
   ])
 
-  const handleCancelAnnotation = useCallback(() => {
-    setAnnotationSession(null)
-    setAnnotationSubmitting(false)
-    setAnnotationInteractionMode('browse', resolvedOwnerId)
-    scheduleStableBoundsSync()
-  }, [resolvedOwnerId, scheduleStableBoundsSync, setAnnotationInteractionMode])
-
-  const buildBrowserAnnotationRecordInput = useCallback((
-    input: BrowserAnnotationOverlaySubmitInput,
-  ): Omit<BrowserAnnotationRecord, 'id' | 'createdAt' | 'updatedAt' | 'status'> | null => {
-    if (!annotationSession || !activeBrowserTab) {
+  const buildBrowserAnnotationRecordInput = useCallback(async (
+    input: BrowserAnnotationRuntimeEvent,
+  ): Promise<Omit<BrowserAnnotationRecord, 'id' | 'createdAt' | 'updatedAt' | 'status'> | null> => {
+    if (!input.anchor) {
       return null
     }
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      throw new Error('Browser annotations are available in the desktop app.')
+    }
+    const ownerState = useBrowserPanelStore.getState().owners[resolvedOwnerId]
+    const sourceTab = ownerState?.tabs.find(
+      (tab): tab is BrowserWebTab => tab.id === input.tabId && tab.kind === 'browser',
+    ) ?? null
+    const sourceUrl = input.sourceUrl ?? sourceTab?.lastCommittedUrl ?? sourceTab?.url ?? ''
+    const screenshot = await captureBrowserAnnotationScreenshot({
+      bridge,
+      threadId: resolvedOwnerId,
+      tabId: input.tabId,
+      url: sourceUrl,
+    })
+    const attachedImages = (input.attachedImages ?? [])
+      .map(createBrowserPromptFilePart)
+      .filter(file => file !== null)
+    const fallbackSurfaceRect = viewportRef.current?.getBoundingClientRect()
+    const designChange = input.designChange ?? null
     return {
       ownerId: resolvedOwnerId,
-      tabId: activeBrowserTab.id,
-      title: getTabTitle(activeBrowserTab),
-      url: activeBrowserTab.lastCommittedUrl ?? activeBrowserTab.url,
-      body: input.body,
+      tabId: input.tabId,
+      title: input.sourceTitle ?? (sourceTab ? getTabTitle(sourceTab) : sourceUrl),
+      url: sourceUrl,
+      body: input.body ?? '',
       anchor: input.anchor,
-      designChange: input.designChange,
-      attachedImages: input.attachedImages,
-      screenshot: annotationSession.filePart,
-      elements: annotationSession.elements,
-      surfaceSize: annotationSession.surfaceSize,
+      designChange: hasBrowserAnnotationDesignChanges(designChange)
+        ? designChange
+        : null,
+      attachedImages,
+      screenshot,
+      elements: input.elements ?? [],
+      surfaceSize: input.surfaceSize ?? {
+        width: fallbackSurfaceRect?.width ?? 0,
+        height: fallbackSurfaceRect?.height ?? 0,
+      },
     }
-  }, [activeBrowserTab, annotationSession, resolvedOwnerId])
+  }, [resolvedOwnerId])
 
   const sendBrowserAnnotationRecord = useCallback(async (record: BrowserAnnotationRecord) => {
     if (!activeSessionId) {
@@ -1816,85 +1604,250 @@ export function BrowserPanel({
     return sent
   }, [activeSessionId])
 
-  const handleSaveAnnotation = useCallback((input: BrowserAnnotationOverlaySubmitInput) => {
-    const recordInput = buildBrowserAnnotationRecordInput(input)
-    if (!recordInput) {
+  const clearAnnotationRuntimeDraft = useCallback(() => {
+    if (!activeBrowserTabId) {
       return
     }
-    saveAnnotation({
-      ...recordInput,
-      id: annotationSession?.editingAnnotationId ?? undefined,
-      status: 'saved',
-    }, resolvedOwnerId)
-    setAnnotationSession(null)
-    setAnnotationSubmitting(false)
-    setAnnotationInteractionMode('browse', resolvedOwnerId)
-    scheduleStableBoundsSync()
+    void readBrowserBridge()?.clearAnnotationDesign({
+      threadId: resolvedOwnerId,
+      tabId: activeBrowserTabId,
+    }).catch(() => { })
   }, [
-    annotationSession?.editingAnnotationId,
-    buildBrowserAnnotationRecordInput,
+    activeBrowserTabId,
     resolvedOwnerId,
-    saveAnnotation,
-    scheduleStableBoundsSync,
-    setAnnotationInteractionMode,
   ])
 
-  const handleSubmitAnnotation = useCallback((input: BrowserAnnotationOverlaySubmitInput) => {
-    const recordInput = buildBrowserAnnotationRecordInput(input)
-    if (!recordInput) {
+  const stopAnnotationRuntime = useCallback((tabId: string | null = activeBrowserTabId) => {
+    if (!tabId) {
       return
     }
-    const annotationId = saveAnnotation({
-      ...recordInput,
-      id: annotationSession?.editingAnnotationId ?? undefined,
-      status: 'saved',
-    }, resolvedOwnerId)
-    const now = Date.now()
-    const record: BrowserAnnotationRecord = {
-      ...recordInput,
-      id: annotationId,
-      createdAt: now,
-      updatedAt: now,
-      status: 'saved',
-    }
+    void readBrowserBridge()?.stopAnnotationRuntime({
+      threadId: resolvedOwnerId,
+      tabId,
+    }).catch(() => { })
+  }, [activeBrowserTabId, resolvedOwnerId])
+
+  const closeAnnotationSession = useCallback(() => {
+    clearAnnotationRuntimeDraft()
+    setAnnotationAdjustmentSession(null)
+    setAnnotationSession(null)
+    setAnnotationSubmitting(false)
+    scheduleStableBoundsSync()
+  }, [
+    clearAnnotationRuntimeDraft,
+    scheduleStableBoundsSync,
+    setAnnotationAdjustmentSession,
+  ])
+
+  const handleCancelAnnotation = useCallback(() => {
+    stopAnnotationRuntime(activeAnnotationSession?.tabId ?? activeBrowserTabId)
+    closeAnnotationSession()
+  }, [
+    activeAnnotationSession?.tabId,
+    activeBrowserTabId,
+    closeAnnotationSession,
+    stopAnnotationRuntime,
+  ])
+
+  const handleRuntimeAnnotationCommit = useCallback((event: BrowserAnnotationRuntimeEvent) => {
     void (async () => {
-      setAnnotationSubmitting(true)
+      if (event.type === 'submit') {
+        setAnnotationSubmitting(true)
+      }
+      const recordInput = await buildBrowserAnnotationRecordInput(event)
+      if (!recordInput) {
+        setAnnotationSubmitting(false)
+        return
+      }
+      const annotationId = saveAnnotation({
+        ...recordInput,
+        id: annotationSession?.editingAnnotationId ?? undefined,
+        status: 'saved',
+      }, resolvedOwnerId)
+      if (event.type === 'save') {
+        closeAnnotationSession()
+        return
+      }
+      const now = Date.now()
+      const record: BrowserAnnotationRecord = {
+        ...recordInput,
+        id: annotationId,
+        createdAt: now,
+        updatedAt: now,
+        status: 'saved',
+      }
       const sent = await sendBrowserAnnotationRecord(record)
       if (!sent) {
         setAnnotationSubmitting(false)
         return
       }
       markAnnotationSent(annotationId, resolvedOwnerId)
-      setAnnotationSession(null)
-      setAnnotationSubmitting(false)
-      setAnnotationInteractionMode('browse', resolvedOwnerId)
-      scheduleStableBoundsSync()
+      closeAnnotationSession()
     })()
   }, [
     buildBrowserAnnotationRecordInput,
     annotationSession?.editingAnnotationId,
+    closeAnnotationSession,
     markAnnotationSent,
     resolvedOwnerId,
     saveAnnotation,
-    scheduleStableBoundsSync,
     sendBrowserAnnotationRecord,
-    setAnnotationInteractionMode,
+  ])
+
+  const handleApplyAnnotationAdjustment = useCallback((
+    detail: BrowserAnnotationAdjustmentApplyDetail,
+  ) => {
+    if (detail.ownerId !== resolvedOwnerId || detail.tabId !== activeBrowserTabId) {
+      return
+    }
+    if (
+      !annotationAdjustmentSession
+      || annotationAdjustmentSession.ownerId !== resolvedOwnerId
+      || annotationAdjustmentSession.tabId !== activeBrowserTabId
+      || !annotationAdjustmentSession.selectedElement
+      || !hasBrowserAnnotationDesignChanges(annotationAdjustmentSession.designChanges)
+    ) {
+      return
+    }
+
+    const element = annotationAdjustmentSession.selectedElement
+    const surfaceRect = viewportRef.current?.getBoundingClientRect()
+    handleRuntimeAnnotationCommit({
+      threadId: resolvedOwnerId,
+      tabId: activeBrowserTabId,
+      type: 'submit',
+      anchor: { kind: 'element', element },
+      selectedElement: element,
+      body: '',
+      attachedImages: [],
+      designChange: annotationAdjustmentSession.designChanges,
+      elements: [element],
+      surfaceSize: {
+        width: surfaceRect?.width ?? 0,
+        height: surfaceRect?.height ?? 0,
+      },
+      sourceUrl: activeBrowserTabUrl,
+      sourceTitle: activeBrowserTab ? getTabTitle(activeBrowserTab) : activeBrowserTabUrl,
+    })
+  }, [
+    activeBrowserTab,
+    activeBrowserTabId,
+    activeBrowserTabUrl,
+    annotationAdjustmentSession,
+    handleRuntimeAnnotationCommit,
+    resolvedOwnerId,
+  ])
+
+  const handleToggleAnnotation = useCallback(() => {
+    if (hasActiveAnnotationSession) {
+      handleCancelAnnotation()
+      return
+    }
+    handleStartAnnotation()
+  }, [handleCancelAnnotation, handleStartAnnotation, hasActiveAnnotationSession])
+
+  useEffect(() => {
+    const handleEvent = (event: Event) => {
+      if (!isBrowserAnnotationAdjustmentApplyEvent(event)) {
+        return
+      }
+      handleApplyAnnotationAdjustment(event.detail)
+    }
+
+    window.addEventListener(BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT, handleEvent)
+    return () => {
+      window.removeEventListener(BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT, handleEvent)
+    }
+  }, [handleApplyAnnotationAdjustment])
+
+  useEffect(() => {
+    const bridge = readBrowserBridge()
+    if (!bridge?.onAnnotationRuntimeEvent) {
+      return undefined
+    }
+
+    return bridge.onAnnotationRuntimeEvent((event) => {
+      if (!isBrowserAnnotationRuntimeEvent(event) || event.threadId !== resolvedOwnerId) {
+        return
+      }
+      if (event.type === 'ready') {
+        setAnnotationSession(previous => previous ?? {
+          tabId: event.tabId,
+          editingAnnotationId: null,
+        })
+        return
+      }
+      if (event.type === 'toggle') {
+        if (event.tabId !== activeBrowserTabId) {
+          return
+        }
+        handleToggleAnnotation()
+        return
+      }
+      if (event.type === 'selected-element') {
+        if (event.selectedElement) {
+          setAnnotationAdjustmentSession({
+            ownerId: resolvedOwnerId,
+            tabId: event.tabId,
+            annotationId: annotationSession?.editingAnnotationId ?? null,
+            selectedElement: event.selectedElement,
+            designChanges: event.designChange ?? {},
+          })
+        }
+        else {
+          setAnnotationAdjustmentSession(null)
+        }
+        return
+      }
+      if (event.type === 'save' || event.type === 'submit') {
+        handleRuntimeAnnotationCommit(event)
+        return
+      }
+      if (event.type === 'cancel' || event.type === 'closed') {
+        closeAnnotationSession()
+      }
+    })
+  }, [
+    activeBrowserTabId,
+    annotationSession?.editingAnnotationId,
+    closeAnnotationSession,
+    handleToggleAnnotation,
+    handleRuntimeAnnotationCommit,
+    resolvedOwnerId,
+    setAnnotationAdjustmentSession,
   ])
 
   const handleEditSavedAnnotation = useCallback((annotation: BrowserAnnotationRecord) => {
     if (activeBrowserTabId !== annotation.tabId) {
       return
     }
-    readBrowserBridge()?.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
-    setAnnotationInteractionMode('comment', resolvedOwnerId)
-    setAnnotationSession({
-      imageDataUrl: annotation.screenshot.url,
-      filePart: annotation.screenshot,
-      elements: annotation.elements,
-      editingAnnotationId: annotation.id,
-      surfaceSize: annotation.surfaceSize,
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      return
+    }
+    void runBrowserAction(async () => {
+      await bridge.startAnnotationRuntime({
+        threadId: resolvedOwnerId,
+        tabId: annotation.tabId,
+      })
     })
-  }, [activeBrowserTabId, resolvedOwnerId, setAnnotationInteractionMode])
+    if (annotation.anchor.kind === 'element') {
+      setAnnotationAdjustmentSession({
+        ownerId: resolvedOwnerId,
+        tabId: annotation.tabId,
+        annotationId: annotation.id,
+        selectedElement: annotation.anchor.element,
+        designChanges: annotation.designChange ?? {},
+      })
+    }
+    else {
+      setAnnotationAdjustmentSession(null)
+    }
+    setAnnotationSession({
+      tabId: annotation.tabId,
+      editingAnnotationId: annotation.id,
+    })
+  }, [activeBrowserTabId, resolvedOwnerId, runBrowserAction, setAnnotationAdjustmentSession])
 
   const handleSendSavedAnnotation = useCallback((annotation: BrowserAnnotationRecord) => {
     void (async () => {
@@ -1907,6 +1860,20 @@ export function BrowserPanel({
 
   const handlePanelKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      const isAnnotationToggle
+        = event.nativeEvent.metaKey
+          && event.nativeEvent.shiftKey
+          && !event.nativeEvent.altKey
+          && !event.nativeEvent.ctrlKey
+          && event.nativeEvent.key.toLowerCase() === 'd'
+      if (isAnnotationToggle) {
+        event.preventDefault()
+        event.stopPropagation()
+        event.nativeEvent.stopImmediatePropagation()
+        handleToggleAnnotation()
+        return
+      }
+
       const isCommandOnly
         = event.nativeEvent.metaKey
           && !event.nativeEvent.altKey
@@ -1939,7 +1906,7 @@ export function BrowserPanel({
       event.nativeEvent.stopImmediatePropagation()
       handleSelectTab(targetTab.id)
     },
-    [activePanelTab, handleCloseTab, handleSelectTab, tabs],
+    [activePanelTab, handleCloseTab, handleSelectTab, handleToggleAnnotation, tabs],
   )
 
   if (!isElectron) {
@@ -2178,24 +2145,22 @@ export function BrowserPanel({
             >
               <CameraIcon className="size-3.5" />
             </button>
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                className={cn(
-                  'flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors disabled:opacity-30',
-                  isAnnotationCommentMode
-                    ? 'bg-primary/12 text-primary hover:bg-primary/16'
-                    : 'text-muted-foreground/70 hover:bg-foreground/5 hover:text-foreground',
-                )}
-                disabled={!activeBrowserTabId}
-                onClick={annotationSession ? handleCancelAnnotation : handleStartAnnotation}
-                aria-pressed={isAnnotationCommentMode}
-                aria-label={isAnnotationCommentMode ? 'Exit annotate mode' : 'Annotate browser'}
-              >
-                <MessageSquarePlusIcon className="size-3.5" />
-                <span>Annotate</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              className={cn(
+                'flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-xs transition-colors disabled:opacity-30',
+                hasActiveAnnotationSession
+                  ? 'bg-primary/12 text-primary hover:bg-primary/16'
+                  : 'text-muted-foreground/70 hover:bg-foreground/5 hover:text-foreground',
+              )}
+              disabled={!activeBrowserTabId}
+              onClick={hasActiveAnnotationSession ? handleCancelAnnotation : handleStartAnnotation}
+              aria-label={hasActiveAnnotationSession ? 'Cancel annotation' : 'Comment on browser'}
+              title="Toggle browser comments (Command Shift D)"
+            >
+              <MessageSquarePlusIcon className="size-3.5" />
+              <span>Comment</span>
+            </button>
           </div>
         )
       }
@@ -2226,9 +2191,10 @@ export function BrowserPanel({
                   onRefreshLocalServers={refreshLocalServers}
                 />
               )}
-              {nativeBoundsPaused && !activeBrowserTabIsBlank && (
+              {nativeBoundsPaused && !activeBrowserTabIsBlank && !hasActiveAnnotationSession && (
                 <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden bg-background">
-                  {nativeBoundsPreview?.tabId === activeBrowserTabId && (
+                  {nativeBoundsPreview?.tabId === activeBrowserTabId
+                    && nativeBoundsPreview.url === activeBrowserTabUrl && (
                     <img
                       src={nativeBoundsPreview.imageDataUrl}
                       alt=""
@@ -2237,19 +2203,6 @@ export function BrowserPanel({
                     />
                   )}
                 </div>
-              )}
-              {annotationSession && (
-                <BrowserAnnotationOverlay
-                  key={annotationSession.editingAnnotationId ?? 'new'}
-                  imageDataUrl={annotationSession.imageDataUrl}
-                  elements={annotationSession.elements}
-                  surfaceSize={annotationSession.surfaceSize}
-                  submitting={annotationSubmitting}
-                  initialAnnotation={editingBrowserAnnotation}
-                  onCancel={handleCancelAnnotation}
-                  onSave={handleSaveAnnotation}
-                  onSubmit={handleSubmitAnnotation}
-                />
               )}
             </div>
 

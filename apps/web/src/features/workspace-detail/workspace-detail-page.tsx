@@ -18,8 +18,6 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useTranslation } from 'react-i18next'
 
 import {
-  getChatSessionsBySessionIdMessagesQueryKey,
-  getSessionsByIdQueryKey,
   getWorkflowRulesByWorkspaceIdOptions,
   getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdOptions,
@@ -30,9 +28,9 @@ import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
 import type { ChatContextPart } from '~/features/chat/chat-context-parts'
-import { startChatResponse } from '~/features/chat/chat-response-command'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/draft-chat-composer'
 import { DraftChatComposer } from '~/features/chat/draft-chat-composer'
+import { startOptimisticChatResponse } from '~/features/chat/optimistic-chat-turn'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
@@ -608,7 +606,12 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       }
       const sessionTitle = text.slice(0, 80) || opts.agentName || opts.agentId
       const session = await createSessionMutation.mutateAsync({
-        body: { workspaceId, agentId: opts.agentId, title: sessionTitle },
+        body: {
+          workspaceId,
+          agentId: opts.agentId,
+          title: sessionTitle,
+          runtimeSettings: opts.runtimeSettings,
+        },
       })
       if (!session?.id) {
         return false
@@ -635,7 +638,14 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     }
     const sessionTitle = text.slice(0, 80) || opts.providerTargetName || opts.providerTargetId
     const session = await createSessionMutation.mutateAsync({
-      body: { workspaceId, providerTargetId: opts.providerTargetId, runtimeKind: opts.runtimeKind, title: sessionTitle },
+      body: {
+        workspaceId,
+        providerTargetId: opts.providerTargetId,
+        modelId: opts.modelId ?? null,
+        runtimeKind: opts.runtimeKind,
+        title: sessionTitle,
+        runtimeSettings: opts.runtimeSettings,
+      },
     })
     if (!session?.id) {
       return false
@@ -657,33 +667,42 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     }, { promote: true })
     await openCreatedWorkspaceSession(session.id, target)
 
-    void startChatResponse({
+    startOptimisticChatResponse({
       sessionId: session.id,
-      body: { text, files, contextParts, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
-    }).then(async (response) => {
-      if (!response.ok) {
-        const body = await response.text().catch(() => '')
-        throw new Error(`Failed to start chat response: ${response.status} ${body}`)
-      }
-      await response.body?.cancel()
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-        queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-      ])
-    }).catch((error) => {
-      toastManager.add({
-        type: 'error',
-        title: t('detail.toast.startChatFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }).finally(() => {
-      void queryClient.invalidateQueries({
-        queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: session.id } }),
-      })
-      void queryClient.invalidateQueries({
-        queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }),
-      })
+      runtimeKind: opts.runtimeKind,
+      queryClient,
+      body: {
+        text,
+        files,
+        contextParts,
+        modelId: opts.modelId,
+        thinkingEffort: opts.thinkingEffort,
+        runtimeSettings: opts.runtimeSettings,
+      },
+      onAccepted: () => {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+        ])
+      },
+      onError: (error) => {
+        toastManager.add({
+          type: 'error',
+          title: t('detail.toast.startChatFailed'),
+          description: error instanceof Error ? error.message : String(error),
+        })
+      },
+      onSettled: () => {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+        ])
+      },
     })
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+    ])
     return true
   }, [createSessionMutation, openCreatedWorkspaceSession, queryClient, t, workspace, workspaceId])
 
@@ -905,8 +924,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
 
 function WorkspacePaneLoading({ label, testId }: { label: string, testId: string }) {
   return (
-    <div
-      role="status"
+    <output
       data-testid={testId}
       className="flex min-h-48 items-center justify-center text-sm text-muted-foreground"
     >
@@ -914,7 +932,7 @@ function WorkspacePaneLoading({ label, testId }: { label: string, testId: string
         <Loader2Icon className="size-3.5 animate-spin" />
         <span>{label}</span>
       </span>
-    </div>
+    </output>
   )
 }
 

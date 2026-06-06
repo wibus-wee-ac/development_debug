@@ -9,7 +9,7 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionsByIdResponse, GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
 import { queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 const SESSION_LIST_REFRESH_INTERVAL_MS = 10_000

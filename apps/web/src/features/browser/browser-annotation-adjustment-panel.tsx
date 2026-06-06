@@ -1,53 +1,118 @@
 // FILE: browser-annotation-adjustment-panel.tsx
-// Purpose: Displays and allows editing of browser annotation element style adjustments
+// Purpose: Browser-owned visual inspector for selected page elements and draft style adjustments.
 // Layer: Browser feature UI
 // Depends on: BrowserPanel Zustand store
 
-import { MinusIcon, PlusIcon, RotateCcwIcon } from 'lucide-react'
-import { useCallback, useMemo } from 'react'
+import {
+  AlignCenterIcon,
+  AlignHorizontalSpaceAroundIcon,
+  AlignHorizontalSpaceBetweenIcon,
+  AlignJustifyIcon,
+  AlignLeftIcon,
+  AlignRightIcon,
+  BoxIcon,
+  ChevronDownIcon,
+  Code2Icon,
+  Columns2Icon,
+  MinusIcon,
+  MousePointer2Icon,
+  PlusIcon,
+  RotateCcwIcon,
+  Rows2Icon,
+  SlidersHorizontalIcon,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 
+import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import type { BrowserAnnotationDesignChange, BrowserAnnotationElement } from '~/store/browser-panel'
 import { useBrowserPanelStore } from '~/store/browser-panel'
-import { useLayoutStore } from '~/store/layout'
 
-export interface BrowserAnnotationDesignField {
-  key: Exclude<keyof BrowserAnnotationDesignChange, 'comment'>
+type DesignKey = Exclude<keyof BrowserAnnotationDesignChange, 'comment'>
+type InspectorTab = 'design' | 'css'
+type InspectorGroup = 'Position' | 'Layout' | 'Dimensions' | 'Spacing' | 'Appearance'
+
+export const BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT = 'browser:annotation-adjustment-apply'
+
+export interface BrowserAnnotationAdjustmentApplyDetail {
+  ownerId: string
+  tabId: string
+}
+
+interface BrowserAnnotationDesignField {
+  key: DesignKey
   label: string
-  targetLabel: string
-  group: 'Color' | 'Type' | 'Border' | 'Layout' | 'Spacing'
+  cssProperty: string
+  group: InspectorGroup
   swatch?: boolean
 }
 
-export const DESIGN_FIELDS: BrowserAnnotationDesignField[] = [
-  { key: 'color', label: 'Text', targetLabel: 'Text to', group: 'Color', swatch: true },
-  { key: 'backgroundColor', label: 'Fill', targetLabel: 'Fill to', group: 'Color', swatch: true },
-  { key: 'opacity', label: 'Opacity', targetLabel: 'Opacity to', group: 'Color' },
-  { key: 'fontFamily', label: 'Font', targetLabel: 'Font to', group: 'Type' },
-  { key: 'fontSize', label: 'Size', targetLabel: 'Size to', group: 'Type' },
-  { key: 'fontWeight', label: 'Weight', targetLabel: 'Weight to', group: 'Type' },
-  { key: 'borderRadius', label: 'Radius', targetLabel: 'Radius to', group: 'Border' },
-  { key: 'borderColor', label: 'Border', targetLabel: 'Border to', group: 'Border', swatch: true },
-  { key: 'borderWidth', label: 'Stroke', targetLabel: 'Stroke to', group: 'Border' },
-  { key: 'width', label: 'Width', targetLabel: 'Width to', group: 'Layout' },
-  { key: 'height', label: 'Height', targetLabel: 'Height to', group: 'Layout' },
-  { key: 'display', label: 'Display', targetLabel: 'Display to', group: 'Layout' },
-  { key: 'alignItems', label: 'Align', targetLabel: 'Align to', group: 'Layout' },
-  { key: 'justifyContent', label: 'Justify', targetLabel: 'Justify to', group: 'Layout' },
-  { key: 'flexDirection', label: 'Direction', targetLabel: 'Direction to', group: 'Layout' },
-  { key: 'marginTop', label: 'M top', targetLabel: 'M top to', group: 'Spacing' },
-  { key: 'marginRight', label: 'M right', targetLabel: 'M right to', group: 'Spacing' },
-  { key: 'marginBottom', label: 'M bottom', targetLabel: 'M bottom to', group: 'Spacing' },
-  { key: 'marginLeft', label: 'M left', targetLabel: 'M left to', group: 'Spacing' },
-  { key: 'paddingTop', label: 'P top', targetLabel: 'P top to', group: 'Spacing' },
-  { key: 'paddingRight', label: 'P right', targetLabel: 'P right to', group: 'Spacing' },
-  { key: 'paddingBottom', label: 'P bottom', targetLabel: 'P bottom to', group: 'Spacing' },
-  { key: 'paddingLeft', label: 'P left', targetLabel: 'P left to', group: 'Spacing' },
-  { key: 'rowGap', label: 'Row gap', targetLabel: 'Row gap to', group: 'Spacing' },
-  { key: 'columnGap', label: 'Col gap', targetLabel: 'Col gap to', group: 'Spacing' },
+const DESIGN_FIELDS: BrowserAnnotationDesignField[] = [
+  { key: 'display', label: 'Flow', cssProperty: 'display', group: 'Layout' },
+  { key: 'flexDirection', label: 'Direction', cssProperty: 'flex-direction', group: 'Layout' },
+  { key: 'alignItems', label: 'Align', cssProperty: 'align-items', group: 'Layout' },
+  { key: 'justifyContent', label: 'Justify', cssProperty: 'justify-content', group: 'Layout' },
+  { key: 'rowGap', label: 'Row gap', cssProperty: 'row-gap', group: 'Layout' },
+  { key: 'columnGap', label: 'Col gap', cssProperty: 'column-gap', group: 'Layout' },
+  { key: 'width', label: 'W', cssProperty: 'width', group: 'Dimensions' },
+  { key: 'height', label: 'H', cssProperty: 'height', group: 'Dimensions' },
+  { key: 'paddingTop', label: 'Pad top', cssProperty: 'padding-top', group: 'Spacing' },
+  { key: 'paddingRight', label: 'Pad right', cssProperty: 'padding-right', group: 'Spacing' },
+  { key: 'paddingBottom', label: 'Pad bottom', cssProperty: 'padding-bottom', group: 'Spacing' },
+  { key: 'paddingLeft', label: 'Pad left', cssProperty: 'padding-left', group: 'Spacing' },
+  { key: 'marginTop', label: 'Mar top', cssProperty: 'margin-top', group: 'Spacing' },
+  { key: 'marginRight', label: 'Mar right', cssProperty: 'margin-right', group: 'Spacing' },
+  { key: 'marginBottom', label: 'Mar bottom', cssProperty: 'margin-bottom', group: 'Spacing' },
+  { key: 'marginLeft', label: 'Mar left', cssProperty: 'margin-left', group: 'Spacing' },
+  { key: 'color', label: 'Text', cssProperty: 'color', group: 'Appearance', swatch: true },
+  {
+    key: 'backgroundColor',
+    label: 'Fill',
+    cssProperty: 'background-color',
+    group: 'Appearance',
+    swatch: true,
+  },
+  { key: 'opacity', label: 'Opacity', cssProperty: 'opacity', group: 'Appearance' },
+  { key: 'borderRadius', label: 'Radius', cssProperty: 'border-radius', group: 'Appearance' },
+  { key: 'borderColor', label: 'Border', cssProperty: 'border-color', group: 'Appearance', swatch: true },
+  { key: 'borderWidth', label: 'Stroke', cssProperty: 'border-width', group: 'Appearance' },
+  { key: 'fontFamily', label: 'Font', cssProperty: 'font-family', group: 'Appearance' },
+  { key: 'fontSize', label: 'Size', cssProperty: 'font-size', group: 'Appearance' },
+  { key: 'fontWeight', label: 'Weight', cssProperty: 'font-weight', group: 'Appearance' },
 ]
 
-export const DESIGN_GROUPS = ['Color', 'Type', 'Border', 'Layout', 'Spacing'] as const
+const INSPECTOR_GROUPS: InspectorGroup[] = [
+  'Position',
+  'Layout',
+  'Dimensions',
+  'Spacing',
+  'Appearance',
+]
+
+const FLOW_OPTIONS = [
+  { value: 'block', label: 'Block', icon: BoxIcon },
+  { value: 'flex', label: 'Flex', icon: Rows2Icon },
+  { value: 'grid', label: 'Grid', icon: Columns2Icon },
+] as const
+
+const DIRECTION_OPTIONS = [
+  { value: 'row', label: 'Row', icon: Rows2Icon },
+  { value: 'column', label: 'Column', icon: Columns2Icon },
+] as const
+
+const ALIGN_OPTIONS = [
+  { value: 'flex-start', label: 'Start', icon: AlignLeftIcon },
+  { value: 'center', label: 'Center', icon: AlignCenterIcon },
+  { value: 'flex-end', label: 'End', icon: AlignRightIcon },
+] as const
+
+const JUSTIFY_OPTIONS = [
+  { value: 'flex-start', label: 'Start', icon: AlignLeftIcon },
+  { value: 'center', label: 'Center', icon: AlignCenterIcon },
+  { value: 'space-between', label: 'Between', icon: AlignHorizontalSpaceBetweenIcon },
+  { value: 'space-around', label: 'Around', icon: AlignHorizontalSpaceAroundIcon },
+] as const
 
 function readableStyleValue(value: string): string {
   if (!value || value === 'rgba(0, 0, 0, 0)') {
@@ -56,10 +121,7 @@ function readableStyleValue(value: string): string {
   return value.replaceAll('"', '')
 }
 
-export function elementStyleValue(
-  element: BrowserAnnotationElement,
-  key: Exclude<keyof BrowserAnnotationDesignChange, 'comment'>,
-): string {
+function elementStyleValue(element: BrowserAnnotationElement, key: DesignKey): string {
   switch (key) {
     case 'color':
       return element.styles.color
@@ -130,43 +192,83 @@ function formatScrubbableStyleValue(value: { number: number, unit: string }): st
   return `${Number.isInteger(rounded) ? rounded.toFixed(0) : String(rounded)}${value.unit}`
 }
 
-interface StyleRowProps {
-  label: string
-  value: string
-  swatch?: string
+function selectorSegments(selector: string): string[] {
+  return selector
+    .split('>')
+    .map(segment => segment.trim())
+    .filter(Boolean)
 }
 
-export function StyleRow({ label, value, swatch }: StyleRowProps) {
+function changedCount(designChanges: BrowserAnnotationDesignChange): number {
+  return Object.values(designChanges).filter(value => Boolean(value?.trim())).length
+}
+
+function cssRows(
+  element: BrowserAnnotationElement,
+  designChanges: BrowserAnnotationDesignChange,
+): Array<{ property: string, value: string, changed: boolean }> {
+  return DESIGN_FIELDS
+    .map((field) => {
+      const original = elementStyleValue(element, field.key)
+      const draft = designChanges[field.key]?.trim() ?? ''
+      return {
+        property: field.cssProperty,
+        value: draft || original,
+        changed: Boolean(draft),
+      }
+    })
+    .filter(row => Boolean(row.value))
+}
+
+interface SegmentControlProps {
+  value: string
+  options: ReadonlyArray<{
+    value: string
+    label: string
+    icon: typeof BoxIcon
+  }>
+  onChange: (value: string) => void
+}
+
+function SegmentControl({ value, options, onChange }: SegmentControlProps) {
   return (
-    <div className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="flex min-w-0 items-center gap-2 text-foreground">
-        {swatch !== undefined && (
-          <span
-            className="size-4 shrink-0 rounded border border-border shadow-sm"
-            style={{ backgroundColor: swatch }}
-            aria-hidden="true"
-          />
-        )}
-        <span className="min-w-0 truncate font-mono text-[11px] tabular-nums">
-          {readableStyleValue(value)}
-        </span>
-      </span>
+    <div className="grid h-8 grid-flow-col auto-cols-fr rounded-md bg-muted/60 p-0.5">
+      {options.map(({ value: optionValue, label, icon: Icon }) => {
+        const selected = value === optionValue
+        return (
+          <button
+            key={optionValue}
+            type="button"
+            className={cn(
+              'flex min-w-0 items-center justify-center rounded-sm text-muted-foreground transition-[background-color,color,box-shadow]',
+              selected && 'bg-background text-foreground shadow-sm',
+            )}
+            onClick={() => onChange(optionValue)}
+            aria-label={label}
+            title={label}
+          >
+            <Icon className="size-3.5" aria-hidden="true" />
+          </button>
+        )
+      })}
     </div>
   )
 }
 
 interface DesignInputProps {
-  label: string
+  field: BrowserAnnotationDesignField
   value: string
-  placeholder: string
+  originalValue: string
   onChange: (value: string) => void
   onReset: () => void
 }
 
-export function DesignInput({ label, value, placeholder, onChange, onReset }: DesignInputProps) {
+function DesignInput({ field, value, originalValue, onChange, onReset }: DesignInputProps) {
   const changed = value.trim().length > 0
-  const scrubValue = parseScrubbableStyleValue(value || placeholder)
+  const effectiveValue = value || originalValue
+  const scrubValue = parseScrubbableStyleValue(effectiveValue)
+  const readableOriginal = readableStyleValue(originalValue)
+
   const handleScrub = (delta: number) => {
     if (!scrubValue) {
       return
@@ -176,16 +278,55 @@ export function DesignInput({ label, value, placeholder, onChange, onReset }: De
       unit: scrubValue.unit,
     }))
   }
+
+  if (field.key === 'display') {
+    return (
+      <InspectorRow label={field.label} changed={changed} onReset={onReset}>
+        <SegmentControl value={effectiveValue} options={FLOW_OPTIONS} onChange={onChange} />
+      </InspectorRow>
+    )
+  }
+
+  if (field.key === 'flexDirection') {
+    return (
+      <InspectorRow label={field.label} changed={changed} onReset={onReset}>
+        <SegmentControl value={effectiveValue} options={DIRECTION_OPTIONS} onChange={onChange} />
+      </InspectorRow>
+    )
+  }
+
+  if (field.key === 'alignItems') {
+    return (
+      <InspectorRow label={field.label} changed={changed} onReset={onReset}>
+        <SegmentControl value={effectiveValue} options={ALIGN_OPTIONS} onChange={onChange} />
+      </InspectorRow>
+    )
+  }
+
+  if (field.key === 'justifyContent') {
+    return (
+      <InspectorRow label={field.label} changed={changed} onReset={onReset}>
+        <SegmentControl value={effectiveValue} options={JUSTIFY_OPTIONS} onChange={onChange} />
+      </InspectorRow>
+    )
+  }
+
   return (
-    <label className="grid grid-cols-[82px_minmax(0,1fr)] items-center gap-2 text-xs">
-      <span className={cn('text-muted-foreground', changed && 'text-primary')}>{label}</span>
+    <InspectorRow label={field.label} changed={changed} onReset={onReset}>
       <span className="flex min-w-0 items-center gap-1">
+        {field.swatch && (
+          <span
+            className="size-5 shrink-0 rounded border border-border shadow-sm"
+            style={{ backgroundColor: effectiveValue }}
+            aria-hidden="true"
+          />
+        )}
         {scrubValue && (
           <button
             type="button"
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             onClick={() => handleScrub(-1)}
-            aria-label={`Decrease ${label}`}
+            aria-label={`Decrease ${field.label}`}
           >
             <MinusIcon className="size-3.5" />
           </button>
@@ -193,7 +334,7 @@ export function DesignInput({ label, value, placeholder, onChange, onReset }: De
         <input
           type="text"
           value={value}
-          placeholder={readableStyleValue(placeholder)}
+          placeholder={readableOriginal}
           className={cn(
             'h-7 min-w-0 flex-1 rounded-md bg-background px-2 font-mono text-[11px] text-foreground outline-none ring-1 transition-colors placeholder:text-muted-foreground/45 focus:ring-primary/50',
             changed ? 'ring-primary/45' : 'ring-border/70',
@@ -205,145 +346,274 @@ export function DesignInput({ label, value, placeholder, onChange, onReset }: De
             type="button"
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
             onClick={() => handleScrub(1)}
-            aria-label={`Increase ${label}`}
+            aria-label={`Increase ${field.label}`}
           >
             <PlusIcon className="size-3.5" />
           </button>
         )}
-        <button
-          type="button"
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
-          disabled={!changed}
-          onClick={onReset}
-          aria-label={`Reset ${label}`}
-        >
-          <RotateCcwIcon className="size-3.5" />
-        </button>
       </span>
+    </InspectorRow>
+  )
+}
+
+interface InspectorRowProps {
+  label: string
+  changed?: boolean
+  onReset?: () => void
+  children: ReactNode
+}
+
+function InspectorRow({ label, changed = false, onReset, children }: InspectorRowProps) {
+  return (
+    <label className="grid grid-cols-[70px_minmax(0,1fr)_28px] items-center gap-2 text-xs">
+      <span className={cn('text-muted-foreground', changed && 'text-primary')}>{label}</span>
+      <span className="min-w-0">{children}</span>
+      <button
+        type="button"
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-25"
+        disabled={!changed}
+        onClick={onReset}
+        aria-label={`Reset ${label}`}
+      >
+        <RotateCcwIcon className="size-3.5" />
+      </button>
     </label>
+  )
+}
+
+interface InspectorSectionProps {
+  title: string
+  children: ReactNode
+}
+
+function InspectorSection({ title, children }: InspectorSectionProps) {
+  return (
+    <section className="border-b border-border/70 px-3 py-3">
+      <div className="mb-2 flex items-center gap-1.5">
+        <ChevronDownIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+        <h3 className="text-xs font-semibold text-foreground">{title}</h3>
+      </div>
+      <div className="space-y-2">{children}</div>
+    </section>
+  )
+}
+
+interface ReadOnlyMetricProps {
+  label: string
+  value: string
+}
+
+function ReadOnlyMetric({ label, value }: ReadOnlyMetricProps) {
+  return (
+    <div className="min-w-0 rounded-md bg-muted/50 px-2 py-1.5">
+      <div className="text-[10px] font-medium uppercase tracking-normal text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 truncate font-mono text-[11px] text-foreground tabular-nums">
+        {value}
+      </div>
+    </div>
+  )
+}
+
+function EmptyInspector() {
+  return (
+    <div className="flex flex-1 items-center justify-center p-4">
+      <div className="max-w-56 text-center">
+        <MousePointer2Icon className="mx-auto mb-2 size-5 text-muted-foreground" />
+        <p className="text-xs text-muted-foreground">
+          Select an element in browser comment mode to inspect and adjust it.
+        </p>
+      </div>
+    </div>
   )
 }
 
 export function BrowserAnnotationAdjustmentPanel() {
   const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
-  const updateDesignChanges = useBrowserPanelStore(state => state.updateAnnotationAdjustmentDesignChanges)
-  const openAsideTab = useLayoutStore(state => state.openAsideTab)
+  const updateDesignChanges = useBrowserPanelStore(
+    state => state.updateAnnotationAdjustmentDesignChanges,
+  )
+  const [activeTab, setActiveTab] = useState<InspectorTab>('design')
 
   const selectedElement = adjustmentSession?.selectedElement
   const designChanges = adjustmentSession?.designChanges ?? {}
+  const changeCount = changedCount(designChanges)
 
   const fieldsByGroup = useMemo(() => {
-    const groups: Record<string, BrowserAnnotationDesignField[]> = {}
+    const groups: Record<InspectorGroup, BrowserAnnotationDesignField[]> = {
+      Position: [],
+      Layout: [],
+      Dimensions: [],
+      Spacing: [],
+      Appearance: [],
+    }
     for (const field of DESIGN_FIELDS) {
-      if (!groups[field.group]) {
-        groups[field.group] = []
-      }
       groups[field.group].push(field)
     }
     return groups
   }, [])
 
-  const handleFieldChange = useCallback((key: Exclude<keyof BrowserAnnotationDesignChange, 'comment'>, value: string) => {
+  const handleFieldChange = useCallback((key: DesignKey, value: string) => {
     updateDesignChanges({ [key]: value })
   }, [updateDesignChanges])
 
-  const handleFieldReset = useCallback((key: Exclude<keyof BrowserAnnotationDesignChange, 'comment'>) => {
+  const handleFieldReset = useCallback((key: DesignKey) => {
     updateDesignChanges({ [key]: '' })
   }, [updateDesignChanges])
 
   if (!adjustmentSession || !selectedElement) {
-    return (
-      <div className="flex flex-1 items-center justify-center p-4">
-        <div className="text-center">
-          <p className="text-xs text-muted-foreground">
-            Select an element in annotation mode to adjust its styles
-          </p>
-        </div>
-      </div>
-    )
+    return <EmptyInspector />
+  }
+
+  const segments = selectorSegments(selectedElement.selector)
+  const rows = cssRows(selectedElement, designChanges)
+  const handleApply = () => {
+    window.dispatchEvent(new CustomEvent<BrowserAnnotationAdjustmentApplyDetail>(
+      BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT,
+      {
+        detail: {
+          ownerId: adjustmentSession.ownerId,
+          tabId: adjustmentSession.tabId,
+        },
+      },
+    ))
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden" data-testid="browser-annotation-adjustment-panel">
-      <div className="border-b border-border p-3">
-        <div className="mb-2 flex items-center gap-1.5">
-          <span className="rounded-md bg-primary/10 px-2 py-1 text-[11px] font-medium text-primary">
-            {selectedElement.tagName.toLowerCase()}
+    <div className="flex flex-1 flex-col overflow-hidden bg-sidebar" data-testid="browser-annotation-adjustment-panel">
+      <div className="border-b border-border px-3 py-2">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="text-xs font-semibold text-foreground">Components</h2>
+          <span className="rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
+            {segments.length || 1}
           </span>
-          {selectedElement.label && (
-            <span className="min-w-0 truncate text-[11px] text-muted-foreground">
-              {selectedElement.label}
-            </span>
-          )}
         </div>
-        {selectedElement.selector && (
-          <p className="truncate font-mono text-[10px] text-muted-foreground">
-            {selectedElement.selector}
-          </p>
-        )}
+        <div className="max-h-36 overflow-y-auto rounded-md bg-background/70 py-1 ring-1 ring-border/70">
+          {(segments.length > 0 ? segments : [selectedElement.tagName.toLowerCase()]).map((segment, index, list) => {
+            const selected = index === list.length - 1
+            const key = list.slice(0, index + 1).join(' > ')
+            return (
+              <div
+                key={key}
+                className={cn(
+                  'flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px]',
+                  selected ? 'bg-primary/10 text-primary' : 'text-muted-foreground',
+                )}
+                style={{ paddingLeft: `${8 + index * 10}px` }}
+              >
+                <Code2Icon className="size-3 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 truncate font-mono">{segment}</span>
+              </div>
+            )
+          })}
+        </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        {DESIGN_GROUPS.map((group) => {
-          const fields = fieldsByGroup[group] ?? []
-          if (fields.length === 0) {
-            return null
-          }
+      <div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-3">
+        <button
+          type="button"
+          className={cn(
+            'flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors',
+            activeTab === 'design'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+          )}
+          onClick={() => setActiveTab('design')}
+        >
+          <SlidersHorizontalIcon className="size-3.5" />
+          Design
+        </button>
+        <button
+          type="button"
+          className={cn(
+            'flex h-7 items-center gap-1.5 rounded-md px-2 text-xs transition-colors',
+            activeTab === 'css'
+              ? 'bg-background text-foreground shadow-sm'
+              : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
+          )}
+          onClick={() => setActiveTab('css')}
+        >
+          <Code2Icon className="size-3.5" />
+          CSS
+        </button>
+      </div>
 
-          return (
-            <div key={group} className="border-b border-border p-3">
-              <h3 className="mb-2 text-xs font-semibold text-foreground">{group}</h3>
-              <div className="space-y-2">
+      {activeTab === 'design' && (
+        <div className="flex-1 overflow-y-auto">
+          {INSPECTOR_GROUPS.map((group) => {
+            if (group === 'Position') {
+              return (
+                <InspectorSection key={group} title={group}>
+                  <div className="grid grid-cols-3 gap-2">
+                    <ReadOnlyMetric label="X" value={`${Math.round(selectedElement.rect.x)} px`} />
+                    <ReadOnlyMetric label="Y" value={`${Math.round(selectedElement.rect.y)} px`} />
+                    <ReadOnlyMetric label="Z" value="0" />
+                  </div>
+                </InspectorSection>
+              )
+            }
+
+            const fields = fieldsByGroup[group].filter(field => Boolean(elementStyleValue(selectedElement, field.key)))
+            if (fields.length === 0) {
+              return null
+            }
+
+            return (
+              <InspectorSection key={group} title={group}>
                 {fields.map((field) => {
                   const originalValue = elementStyleValue(selectedElement, field.key)
                   const currentValue = designChanges[field.key] ?? ''
-                  const displayValue = currentValue || originalValue
-
-                  if (!originalValue) {
-                    return null
-                  }
-
                   return (
                     <DesignInput
                       key={field.key}
-                      label={field.label}
+                      field={field}
                       value={currentValue}
-                      placeholder={originalValue}
+                      originalValue={originalValue}
                       onChange={value => handleFieldChange(field.key, value)}
                       onReset={() => handleFieldReset(field.key)}
                     />
                   )
                 })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+              </InspectorSection>
+            )
+          })}
+        </div>
+      )}
 
-      <div className="border-t border-border p-3">
-        <div className="text-xs text-muted-foreground">
-          <p className="mb-1">Current Styles</p>
-          <div className="space-y-1.5">
-            <StyleRow
-              label="Text"
-              value={selectedElement.styles.color}
-              swatch={selectedElement.styles.color}
-            />
-            <StyleRow
-              label="Fill"
-              value={selectedElement.styles.backgroundColor}
-              swatch={selectedElement.styles.backgroundColor}
-            />
-            <StyleRow
-              label="Font"
-              value={selectedElement.styles.fontFamily}
-            />
-            <StyleRow
-              label="Size"
-              value={selectedElement.styles.fontSize}
-            />
+      {activeTab === 'css' && (
+        <div className="flex-1 overflow-y-auto p-3">
+          <pre className="min-h-full overflow-x-auto rounded-md bg-background/75 p-3 text-[11px] leading-5 text-muted-foreground ring-1 ring-border/70">
+            <code>
+              {`${selectedElement.selector} {\n${rows
+                .map(row => `  ${row.property}: ${row.value};${row.changed ? ' /* draft */' : ''}`)
+                .join('\n')}\n}`}
+            </code>
+          </pre>
+        </div>
+      )}
+
+      <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate text-[11px] font-medium text-foreground">
+            {selectedElement.tagName.toLowerCase()}
+            {selectedElement.label ? ` · ${selectedElement.label}` : ''}
+          </div>
+          <div className="text-[10px] text-muted-foreground tabular-nums">
+            {changeCount === 0 ? 'No draft changes' : `${changeCount} draft ${changeCount === 1 ? 'change' : 'changes'}`}
           </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          disabled={changeCount === 0}
+          onClick={handleApply}
+        >
+          <AlignJustifyIcon className="size-3.5" />
+          Apply
+        </Button>
       </div>
     </div>
   )

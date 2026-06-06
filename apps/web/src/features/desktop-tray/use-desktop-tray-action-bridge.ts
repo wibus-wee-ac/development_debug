@@ -65,12 +65,6 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
       case 'global-search':
         onOpenGlobalSearch()
         return
-      case 'open-resident':
-      case 'open-running':
-        if (!openChatFromPayload(request.payload)) {
-          openHome()
-        }
-        return
       case 'open-awaits':
         useCradleTabStore.getState().openTab('awaits', {})
         return
@@ -99,6 +93,7 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         return
       case 'open-desktop-settings':
         openSettingsSection('desktop')
+        return
 
       case 'open-app':
       case 'quit':
