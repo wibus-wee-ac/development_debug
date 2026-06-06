@@ -26,7 +26,7 @@ import type { WorkspaceSession } from '~/features/workspace/use-session'
 import { useAllSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
 

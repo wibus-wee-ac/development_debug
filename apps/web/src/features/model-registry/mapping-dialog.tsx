@@ -27,7 +27,7 @@ import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
-import type { ModelCapabilities } from '~/lib/types'
+import type { ModelCapabilities } from '~/features/agent-runtime/types'
 
 import type { ModelsDevModel, SearchResult } from './schemas'
 import { SearchResultItem } from './search-result-item'

@@ -21,7 +21,7 @@ import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/f
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import type { WorkspaceSession } from '../workspace/use-session'
 import { sessionsQueryKey, useAllSessions } from '../workspace/use-session'

@@ -44,6 +44,7 @@ function issue(id: string, milestoneId: string | null, statusId: string | null):
     dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
+    sourceChatSessionId: null,
     delegateAgentId: null,
     delegateAgentProfileId: null,
     contextRefs: '[]',

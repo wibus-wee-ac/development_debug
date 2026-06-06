@@ -28,6 +28,7 @@ function issue(id: string, labels: string[]): KanbanIssue {
     dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
+    sourceChatSessionId: null,
     delegateAgentId: null,
     delegateAgentProfileId: null,
     contextRefs: '[]',

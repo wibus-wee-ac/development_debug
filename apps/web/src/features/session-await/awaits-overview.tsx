@@ -13,8 +13,8 @@ import {
   EmptyTitle,
 } from '~/components/ui/empty'
 import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
-import { readTrayAwaits } from '~/features/desktop-tray/api'
-import type { TrayAwaitItem } from '~/features/desktop-tray/types'
+import { readDesktopAwaits } from '~/features/desktop-tray/api'
+import type { DesktopAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'
 import { useCradleTabStore } from '~/tabs/registry'
 
@@ -32,7 +32,7 @@ function formatRelativeTime(unixSeconds: number, t: TFunction<'awaits'>): string
   return t('relative.day', { count: Math.floor(diff / 86400) })
 }
 
-function AwaitRow({ item }: { item: TrayAwaitItem }) {
+function AwaitRow({ item }: { item: DesktopAwaitItem }) {
   const { t } = useTranslation('awaits')
   const queryClient = useQueryClient()
 
@@ -81,8 +81,8 @@ function AwaitRow({ item }: { item: TrayAwaitItem }) {
 export function AwaitsOverview() {
   const { t } = useTranslation('awaits')
   const awaitsQuery = useQuery({
-    queryKey: ['desktop-tray', 'awaits'],
-    queryFn: readTrayAwaits,
+    queryKey: ['desktop', 'awaits'],
+    queryFn: readDesktopAwaits,
     refetchInterval: 15_000,
     staleTime: 5_000,
   })

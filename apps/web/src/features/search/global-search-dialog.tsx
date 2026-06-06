@@ -699,12 +699,12 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
         }
       }}
     >
-      <div
+      <dialog
         ref={panelRef}
-        role="dialog"
+        open={open}
         aria-modal="true"
         aria-label={t('aria.dialog')}
-        className="w-full max-w-2xl overflow-hidden rounded-xl bg-popover text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
+        className="w-full max-w-2xl overflow-hidden rounded-xl border-0 bg-popover p-0 text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
       >
         <Command shouldFilter={false} data-testid="global-search-dialog">
           <div className="overflow-hidden rounded-xl!">
@@ -847,7 +847,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
             </div>
           </div>
         </Command>
-      </div>
+      </dialog>
     </div>,
     document.body,
   )

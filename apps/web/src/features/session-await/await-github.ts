@@ -1,4 +1,4 @@
-import type { GitStatus } from '~/lib/types'
+import type { GitStatus } from '~/features/git/types'
 
 interface GitRemote {
   name: string

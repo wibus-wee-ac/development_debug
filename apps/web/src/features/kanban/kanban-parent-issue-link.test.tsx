@@ -70,6 +70,7 @@ const childIssue: KanbanIssue = {
   dueDate: null,
   createdByKind: 'user',
   createdById: '__self__',
+  sourceChatSessionId: null,
   delegateAgentId: null,
   delegateAgentProfileId: null,
   contextRefs: '[]',

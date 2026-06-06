@@ -44,7 +44,7 @@ const IssueSearchListSchema = z.array(z.object({
   dueDate: z.number().nullable(),
   createdByKind: z.enum(['user', 'agent', 'provider-target', 'system']),
   createdById: z.string(),
-  sourceChatSessionId: z.string().nullable().optional(),
+  sourceChatSessionId: z.string().nullable(),
   delegateAgentId: z.string().nullable(),
   delegateAgentProfileId: z.string().nullable(),
   contextRefs: z.string(),

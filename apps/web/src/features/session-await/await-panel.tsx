@@ -33,7 +33,7 @@ import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { GitRemote, GitStatus } from '~/lib/types'
+import type { GitRemote, GitStatus } from '~/features/git/types'
 
 import {
   derivePullRequestNumberFromStatus,

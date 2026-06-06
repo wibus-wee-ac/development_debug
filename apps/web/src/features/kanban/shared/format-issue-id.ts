@@ -1,4 +1,4 @@
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 import type { KanbanIssue } from '~/features/kanban/types'
 
 /**

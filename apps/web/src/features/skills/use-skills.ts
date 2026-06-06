@@ -13,13 +13,7 @@ import {
   postSkillsImportFromFetch,
   putSkillsDocument,
 } from '~/api-gen/sdk.gen'
-import type {
-  DiscoveredSkill,
-  ParsedSkillSource,
-  SkillDocument,
-  SkillInventoryEntry,
-  SkillScope,
-} from '~/lib/types'
+import type { DiscoveredSkill, ParsedSkillSource, SkillDocument, SkillInventoryEntry, SkillScope } from '~/features/skills/types'
 
 export interface SkillQueryContext {
   workspaceId?: string | null

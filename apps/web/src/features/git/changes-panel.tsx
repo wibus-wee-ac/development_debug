@@ -27,7 +27,7 @@ import {
 } from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
-import type { GitFileStatus } from '~/lib/types'
+import type { GitFileStatus } from '~/features/git/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
@@ -446,7 +446,9 @@ function ChangesTreeView({
       {...{ [WORKSPACE_FILE_SHORTCUT_SCOPE_ATTRIBUTE]: 'true' }}
       onDoubleClick={handleTreeDoubleClick}
       onKeyDown={handleTreeKeyDown}
+      aria-label="Changed files"
       role="tree"
+      tabIndex={0}
     >
       <PierreFileTree
         model={model}

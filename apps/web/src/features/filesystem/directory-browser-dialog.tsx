@@ -236,10 +236,9 @@ export function DirectoryBrowserDialog({
               )}
 
               {!isLoading && !error && (directories.length > 0 || files.length > 0) && (
-                <div
+                <section
                   className="py-0.5 outline-none"
                   tabIndex={0}
-                  role="group"
                   aria-label={t('directory.listing')}
                   onKeyDown={handleListingKeyDown}
                   data-testid="directory-browser-listing"
@@ -258,7 +257,7 @@ export function DirectoryBrowserDialog({
                   {files.map(entry => (
                     <FileRow key={entry.path} name={entry.name} />
                   ))}
-                </div>
+                </section>
               )}
             </ScrollArea>
           </div>

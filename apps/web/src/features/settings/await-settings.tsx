@@ -10,7 +10,7 @@ import { toastManager } from '~/components/ui/toast'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { client } from '~/lib/client.config'
 import { cn } from '~/lib/cn'
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 
 import { SettingsDivider, SettingsSectionHeader } from './settings-row'
 

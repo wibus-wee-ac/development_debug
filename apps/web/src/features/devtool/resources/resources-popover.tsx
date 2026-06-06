@@ -499,14 +499,13 @@ export function ResourcesPopover() {
         {/* Process breakdown */}
         <div className="px-3 py-2 flex flex-row gap-2 w-full">
           {snap && snap.warnings.length > 0 && (
-            <div
-              role="status"
+            <output
               data-testid="resources-warning"
               className="mb-2 flex items-start gap-2 rounded-md bg-warning/8 px-2 py-1.5 text-[11px] leading-snug text-warning"
             >
               <CircleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
               <span>{snap.warnings.join('. ')}</span>
-            </div>
+            </output>
           )}
 
           <div className="flex-1">

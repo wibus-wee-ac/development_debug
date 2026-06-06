@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { Workspace } from '~/lib/types'
+import type { Workspace } from '~/features/workspace/types'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import { CreateIssueDialog } from './create-issue-dialog'

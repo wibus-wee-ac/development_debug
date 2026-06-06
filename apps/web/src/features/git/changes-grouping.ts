@@ -1,4 +1,4 @@
-import type { GitFileStatus } from '~/lib/types'
+import type { GitFileStatus } from '~/features/git/types'
 
 type ChangeSectionId = 'tests' | 'docs' | 'sources'
 

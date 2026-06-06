@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { Fragment } from 'react'
 
 import { cn } from '~/lib/cn'
-import type { MatchRange } from '~/lib/types'
+import type { MatchRange } from '~/features/search/types'
 
 interface HighlightedTextProps {
   text: string

@@ -289,6 +289,7 @@ const AgentSessionSchema = z.object({
   agentId: z.string().nullable(),
   chatSessionId: z.string().nullable(),
   status: z.enum(['created', 'active', 'completed', 'stopped', 'failed']),
+  isCurrentDelegation: z.boolean(),
   createdAt: z.number(),
   updatedAt: z.number(),
 }).passthrough()

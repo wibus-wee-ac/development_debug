@@ -28,7 +28,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { TruncatedText } from '~/components/ui/truncated-text'
 import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { cn } from '~/lib/cn'
-import type { SkillInventoryEntry, SkillScope } from '~/lib/types'
+import type { SkillInventoryEntry, SkillScope } from '~/features/skills/types'
 
 import { SettingsDivider, SettingsSectionHeader } from '../settings/settings-row'
 import { SkillImportDialog } from './skill-import-dialog'
@@ -587,6 +587,7 @@ export function SkillManager({
           <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/50" />
           <input
             type="text"
+            aria-label="Search skills"
             value={uiState.searchQuery}
             onChange={e => dispatch({ type: 'set-search-query', value: e.target.value })}
             placeholder="Search skills..."

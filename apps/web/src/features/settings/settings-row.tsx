@@ -2,6 +2,8 @@ import { InfoIcon } from 'lucide-react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
+import { SettingsDivider } from './settings-divider'
+import { SettingsSectionHeader } from './settings-section-header'
 
 interface SettingsRowProps {
   label: string
@@ -85,27 +87,4 @@ export function SettingsRow({
   )
 }
 
-interface SettingsSectionHeaderProps {
-  title: string
-  description?: string
-  action?: React.ReactNode
-  className?: string
-}
-
-export function SettingsSectionHeader({ title, description, action, className }: SettingsSectionHeaderProps) {
-  return (
-    <div className={cn('flex items-start justify-between gap-4 pb-3', className)}>
-      <div>
-        <h3 className="text-base font-semibold text-foreground text-balance">{title}</h3>
-        {description && (
-          <p className="mt-1 text-[12px] text-muted-foreground">{description}</p>
-        )}
-      </div>
-      {action}
-    </div>
-  )
-}
-
-export function SettingsDivider() {
-  return <div className="border-t border-foreground/5" />
-}
+export { SettingsDivider, SettingsSectionHeader }

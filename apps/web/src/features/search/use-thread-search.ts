@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 
 import { getSearchThreads } from '~/api-gen/sdk.gen'
-import type { ThreadSearchHit } from '~/lib/types'
+import type { ThreadSearchHit } from '~/features/search/types'
 
 import { ThreadSearchHitsSchema } from './thread-search-normalize'
 

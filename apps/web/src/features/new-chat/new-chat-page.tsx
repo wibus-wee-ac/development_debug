@@ -143,6 +143,7 @@ function useNewChatPageOwner(active: boolean) {
             ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
             title: trimmedText.slice(0, 80) || options.agentName || options.agentId,
             agentId: options.agentId,
+            runtimeSettings: options.runtimeSettings,
           },
         })
         const session = sessionData as { id: string, workspaceId: string | null } | null
@@ -180,7 +181,9 @@ function useNewChatPageOwner(active: boolean) {
           ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
           title: trimmedText.slice(0, 80) || options.providerTargetName || options.providerTargetId,
           providerTargetId: options.providerTargetId,
+          modelId: options.modelId ?? null,
           runtimeKind: options.runtimeKind,
+          runtimeSettings: options.runtimeSettings,
         },
       })
       const session = sessionData as { id: string, workspaceId: string | null } | null
@@ -212,6 +215,7 @@ function useNewChatPageOwner(active: boolean) {
           contextParts,
           modelId: options.modelId,
           thinkingEffort: options.thinkingEffort,
+          runtimeSettings: options.runtimeSettings,
         },
         onAccepted: () => {
           void Promise.all([

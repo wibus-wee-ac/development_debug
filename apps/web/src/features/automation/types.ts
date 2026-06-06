@@ -1,4 +1,4 @@
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 
 export type AutomationRunStatus = 'queued' | 'running' | 'complete' | 'failed' | 'cancelled' | 'skipped'
 

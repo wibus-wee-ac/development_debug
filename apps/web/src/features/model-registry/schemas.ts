@@ -6,7 +6,7 @@
  */
 import { z } from 'zod'
 
-import type { ModelCapabilities } from '~/lib/types'
+import type { ModelCapabilities } from '~/features/agent-runtime/types'
 
 // ── models.dev model shape ───────────────────────────────────────────────────
 

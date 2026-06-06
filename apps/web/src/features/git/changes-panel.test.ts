@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { GitFileStatus } from '~/lib/types'
+import type { GitFileStatus } from '~/features/git/types'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID, useLayoutStore } from '~/store/layout'
 

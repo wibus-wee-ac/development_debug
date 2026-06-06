@@ -2,7 +2,7 @@
 
 # Features/Model Registry
 
-Model registry shared UI owns the renderer-side search, manual mapping form, and result-row presentation for Cradle model registry mappings. It is used by Settings and Agent Management, while model data semantics remain owned by the server registry API and `~/lib/types`.
+Model registry shared UI owns the renderer-side search, manual mapping form, and result-row presentation for Cradle model registry mappings. It is used by Settings and Agent Management, while model data semantics remain owned by the server registry API and `~/features/agent-runtime/types`.
 
 ## Files
 

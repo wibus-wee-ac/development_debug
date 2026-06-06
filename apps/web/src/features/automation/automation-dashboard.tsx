@@ -55,7 +55,7 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
 import type { ThinkingEffort } from '~/features/composer-toolbar/types'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import { listAutomationArtifacts, listAutomationRuns } from './api-client'
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'

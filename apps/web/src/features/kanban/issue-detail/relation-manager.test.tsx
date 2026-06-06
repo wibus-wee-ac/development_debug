@@ -138,6 +138,7 @@ function issue(id: string, number: number, title: string): KanbanIssue {
     dueDate: null,
     createdByKind: 'user',
     createdById: '__self__',
+    sourceChatSessionId: null,
     delegateAgentId: null,
     delegateAgentProfileId: null,
     contextRefs: '[]',

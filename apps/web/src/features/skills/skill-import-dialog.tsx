@@ -17,7 +17,7 @@ import {
 import { Spinner } from '~/components/ui/spinner'
 import { TruncatedText } from '~/components/ui/truncated-text'
 import { cn } from '~/lib/cn'
-import type { DiscoveredSkill, SkillScope } from '~/lib/types'
+import type { DiscoveredSkill, SkillScope } from '~/features/skills/types'
 
 import { useSkillSourceImport } from './use-skills'
 
@@ -312,6 +312,7 @@ function InputForm({
           <input
             ref={inputRef}
             type="text"
+            aria-label="Skill source"
             value={value}
             onChange={e => setValue(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSubmit()}
