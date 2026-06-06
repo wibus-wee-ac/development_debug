@@ -10,8 +10,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
-import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import { getActiveRunReplayBufferSummary, reportRuntimeSessionTitle } from '../src/modules/chat-runtime/service'
 import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 import {
   clearSideConversations,
@@ -379,6 +379,42 @@ class TestCodexAppServerStreamRuntime implements ChatRuntime {
   async cancelTurn(): Promise<void> {}
 }
 
+class TestCodexQuickQuestionRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+  readonly quickQuestionInputs: QuickQuestionInput[] = []
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-quick-question-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({
+        models: { currentModelId: input.modelId ?? 'codex-quick-question-model' },
+      }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.quickQuestionInputs.push(input)
+    yield { type: 'text-start', id: 'quick-question-text' }
+    yield { type: 'text-delta', id: 'quick-question-text', delta: `Answer: ${input.question}` }
+    yield { type: 'text-end', id: 'quick-question-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {}
+
+  async cancelTurn(): Promise<void> {}
+}
+
 class TestCodexShellCommandRuntime implements ChatRuntime {
   readonly runtimeKind = 'codex' as const
   readonly metadata = TEST_CODEX_RUNTIME_METADATA
@@ -460,6 +496,7 @@ class TestCodexSideRuntime implements ChatRuntime {
   readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
   readonly startInputs: StartChatSessionInput[] = []
   readonly forkInputs: ForkRuntimeSessionInput[] = []
+  readonly forkHostSnapshots: ReturnType<typeof providerRuntimeHostManager.listHosts>[] = []
   readonly streamInputs: StreamTurnInput[] = []
   readonly providerThreadListInputs: ProviderThreadListInput[] = []
   blockStreams = false
@@ -517,6 +554,7 @@ class TestCodexSideRuntime implements ChatRuntime {
 
   async forkRuntimeSession(input: ForkRuntimeSessionInput): Promise<RuntimeSession> {
     this.forkInputs.push(input)
+    this.forkHostSnapshots.push(providerRuntimeHostManager.listHosts())
     return {
       id: input.childChatSessionId,
       chatSessionId: input.childChatSessionId,
@@ -817,6 +855,54 @@ class TestPendingRuntimeSettingsRuntime implements ChatRuntime {
 }
 
 describe('chat runtime capability', () => {
+  it('ignores trivial provider session titles', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      db().insert(sessions).values({
+        id: 'session-provider-title-trivial',
+        title: 'Investigate provider switch failure',
+        titleSource: 'initial',
+        runtimeKind: 'codex',
+      }).run()
+
+      reportRuntimeSessionTitle({
+        sessionId: 'session-provider-title-trivial',
+        title: '继续',
+      })
+
+      expect(db()
+        .select({ title: sessions.title, titleSource: sessions.titleSource })
+        .from(sessions)
+        .where(eq(sessions.id, 'session-provider-title-trivial'))
+        .get()).toEqual({
+        title: 'Investigate provider switch failure',
+        titleSource: 'initial',
+      })
+
+      reportRuntimeSessionTitle({
+        sessionId: 'session-provider-title-trivial',
+        title: 'Provider switch recovery',
+      })
+
+      expect(db()
+        .select({ title: sessions.title, titleSource: sessions.titleSource })
+        .from(sessions)
+        .where(eq(sessions.id, 'session-provider-title-trivial'))
+        .get()).toEqual({
+        title: 'Provider switch recovery',
+        titleSource: 'provider',
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+    }
+  })
+
   it('serves provider-owned draft runtime capabilities before a session exists', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -922,6 +1008,70 @@ describe('chat runtime capability', () => {
           await collectSseChunks(runResponse).catch(() => undefined)
         }
       }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('streams quick questions as AI SDK SSE frames', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexQuickQuestionRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-quick-question',
+        name: 'Workspace Codex Quick Question',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-quick-question', {
+        providerTargetId: 'provider-target-codex-quick-question',
+        sessionId: 'session-codex-quick-question',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-quick-question/quick-question', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: 'What is /btw?' }),
+      }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toContain('text/event-stream')
+      const payload = await response.text()
+      expect(payload).toContain('data: {"type":"text-start","id":"quick-question-text"}\n\n')
+      expect(payload).toContain('data: [DONE]\n\n')
+
+      const replayResponse = new Response(payload, { headers: { 'content-type': 'text/event-stream' } })
+      expect(await collectSseChunks(replayResponse)).toEqual([
+        { type: 'text-start', id: 'quick-question-text' },
+        { type: 'text-delta', id: 'quick-question-text', delta: 'Answer: What is /btw?' },
+        { type: 'text-end', id: 'quick-question-text' },
+        { type: 'finish', finishReason: 'stop' },
+      ])
+      expect(runtime.quickQuestionInputs[0]).toEqual(expect.objectContaining({
+        question: 'What is /btw?',
+        workspaceId: 'workspace-codex-quick-question',
+        workspacePath: workspaceRoot,
+      }))
+    }
+    finally {
       if (originalCodexRuntime) {
         registerRuntime(originalCodexRuntime)
       }
@@ -1201,6 +1351,95 @@ describe('chat runtime capability', () => {
     }
   })
 
+  it('accepts Codex plugin mention context parts on ordinary chat responses', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSkillRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    const pluginPart = {
+      type: 'data-cradle-plugin',
+      provider: 'codex',
+      pluginName: 'test-plugin',
+      displayName: 'Test Plugin',
+      description: 'Test plugin context',
+      iconUrl: null,
+      routeSegment: 'test-plugin',
+      capabilities: [{
+        id: 'test-plugin:mcp',
+        type: 'mcp',
+        layer: 'server',
+        label: null,
+      }],
+      mcpServers: ['test-server'],
+      nativeMention: {
+        name: 'test-plugin',
+        path: '/Users/test/.codex/plugins/test-plugin',
+      },
+      position: 0,
+    }
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-plugin-mention',
+        name: 'Workspace Codex Plugin Mention',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-plugin-mention', {
+        providerTargetId: 'provider-target-codex-plugin-mention',
+        sessionId: 'session-codex-plugin-mention',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-plugin-mention/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Use this plugin.',
+          contextParts: [pluginPart],
+        }),
+      }))
+      expect(response.status).toBe(200)
+      await collectSseChunks(response)
+
+      await waitForMessageStatus(app, 'session-codex-plugin-mention', 'complete')
+
+      expect(runtime.streamInputs).toHaveLength(1)
+      const runtimePluginPart = runtime.streamInputs[0]?.message.parts.find(part => part.type === 'data-cradle-plugin')
+      expect(runtimePluginPart).toEqual(expect.objectContaining({
+        type: 'data-cradle-plugin',
+        data: expect.objectContaining(pluginPart),
+      }))
+
+      const rows = await getChatMessages(app, 'session-codex-plugin-mention')
+      const userRow = rows.find(row => row.role === 'user')
+      const storedPluginPart = userRow?.message.parts.find(part => part.type === 'data-cradle-plugin')
+      expect(storedPluginPart).toEqual(expect.objectContaining({
+        type: 'data-cradle-plugin',
+        data: expect.objectContaining(pluginPart),
+      }))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
   it('keeps provider-native side conversations live-only without durable provider bindings', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
@@ -1264,6 +1503,15 @@ describe('chat runtime capability', () => {
       }))
       expect(runtime.forkInputs).toHaveLength(1)
       expect(runtime.forkInputs[0]?.sourceRuntimeSession.providerSessionId).toBe('codex-thread-side-parent')
+      expect(runtime.forkHostSnapshots[0]).toEqual([
+        expect.objectContaining({
+          runtimeKind: 'codex',
+          providerTargetId: 'provider-target-codex-side',
+          scopeId: side.sideConversationId,
+          refCount: 1,
+          pinnedCount: 1,
+        }),
+      ])
       expect(readSideConversation(side.sideConversationId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
       expect(db()
         .select()
@@ -2191,7 +2439,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('rejects live steer when its snapshot differs from the active run', async () => {
+  it('rejects live steer when its provider target differs from the active run', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -2218,6 +2466,28 @@ describe('chat runtime capability', () => {
         sessionId: 'session-live-steer-snapshot',
         runtimeKind: 'codex',
       })
+      const otherCredentialRes = await app.handle(new Request('http://localhost/secrets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'openai-compatible',
+          label: 'Other Live Steer Provider Key',
+          secret: 'sk-other-live-steer-test',
+        }),
+      }))
+      const otherCredential = await otherCredentialRes.json() as { id: string }
+      const otherTargetRes = await app.handle(new Request('http://localhost/provider-targets/provider-target-live-steer-other', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          displayName: 'Other Live Steer Provider',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          connectionConfig: { baseUrl: 'https://example.com/v1', model: 'gpt-4o-mini' },
+          credentialRef: otherCredential.id,
+        }),
+      }))
+      expect(otherTargetRes.status).toBe(200)
 
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-snapshot/response', {
         method: 'POST',
@@ -2236,10 +2506,8 @@ describe('chat runtime capability', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          text: 'Use a different snapshot.',
-          modelId: 'codex-queued-model',
-          thinkingEffort: 'high',
-          runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+          text: 'Use a different provider target.',
+          providerTargetId: 'provider-target-live-steer-other',
         }),
       }))
       expect(steerRes.status).toBe(409)
@@ -2257,6 +2525,85 @@ describe('chat runtime capability', () => {
       }, 'snapshot-mismatched steer item to stay out of queue drain')
       expect(runtime.steerInputs).toHaveLength(0)
       expect(await listChatQueue(app, 'session-live-steer-snapshot')).toEqual([])
+    }
+    finally {
+      runtime.release()
+      if (runChunksPromise) {
+        await runChunksPromise.catch(() => undefined)
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('accepts live steer when model, thinking effort, and runtime settings change on the same provider target', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestLiveSteerSnapshotRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runChunksPromise: Promise<UIMessageChunk[]> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-live-steer-thinking-effort',
+        name: 'Workspace Live Steer Thinking Effort',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-live-steer-thinking-effort', {
+        providerTargetId: 'provider-target-live-steer-thinking-effort',
+        sessionId: 'session-live-steer-thinking-effort',
+        runtimeKind: 'codex',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-thinking-effort/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Keep the run active with high effort.',
+          modelId: 'codex-live-model',
+          thinkingEffort: 'high',
+          runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        }),
+      }))
+      expect(runRes.status).toBe(200)
+      runChunksPromise = collectSseChunks(runRes)
+      await runtime.firstStreamStarted
+
+      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-thinking-effort/steer', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Apply live guidance after changing composer run settings.',
+          modelId: 'codex-next-run-model',
+          thinkingEffort: 'xhigh',
+          runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        }),
+      }))
+      expect(steerRes.status).toBe(200)
+      expect(await steerRes.json()).toEqual(expect.objectContaining({
+        ok: true,
+        sessionId: 'session-live-steer-thinking-effort',
+      }))
+      expect(runtime.steerInputs).toHaveLength(1)
+      expect(await listChatQueue(app, 'session-live-steer-thinking-effort')).toEqual([])
+
+      runtime.release()
+      await runChunksPromise
     }
     finally {
       runtime.release()

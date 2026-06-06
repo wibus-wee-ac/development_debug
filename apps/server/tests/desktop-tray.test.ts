@@ -14,7 +14,7 @@ function createTempDir(prefix: string): string {
 }
 
 describe('desktop tray projection', () => {
-  it('returns resident sessions, quick actions, and pending awaits', async () => {
+  it('returns desktop facts for recent sessions, health, summary, and pending awaits', async () => {
     const dataDir = createTempDir('cradle-data-')
     const workspaceRoot = createTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -49,35 +49,34 @@ describe('desktop tray projection', () => {
         reason: 'Waiting for checks',
       }).run()
 
-      const trayResponse = await app.handle(new Request('http://localhost/desktop/tray'))
-      expect(trayResponse.status).toBe(200)
-      const tray = await trayResponse.json() as {
-        resident: Array<{ sessionId: string, title: string, workspaceName: string }>
-        quickActions: Array<{ id: string }>
-        metrics: Array<{ id: string, value: string }>
-      }
-      expect(tray.resident).toEqual([
+      const summaryResponse = await app.handle(new Request('http://localhost/desktop/summary'))
+      expect(summaryResponse.status).toBe(200)
+      expect(await summaryResponse.json()).toEqual(expect.objectContaining({
+        recentSessions: 1,
+        pinnedSessions: 1,
+        pendingAwaits: 1,
+        running: 0,
+      }))
+
+      const recentSessionsResponse = await app.handle(new Request('http://localhost/desktop/recent-sessions'))
+      expect(recentSessionsResponse.status).toBe(200)
+      expect(await recentSessionsResponse.json()).toEqual([
         expect.objectContaining({
           sessionId,
           title: 'Pinned Chat',
           workspaceName: 'Desktop Workspace',
+          state: 'awaiting',
         }),
       ])
-      expect(tray.quickActions.length).toBeGreaterThanOrEqual(10)
-      expect(tray.quickActions.map(action => action.id)).toEqual(expect.arrayContaining([
-        'new-chat',
-        'open-awaits',
-        'open-automation',
-        'open-agents',
-        'open-providers',
-        'open-desktop-settings',
-      ]))
-      expect(tray.metrics).toEqual(expect.arrayContaining([
-        expect.objectContaining({ id: 'resident', value: '1' }),
-        expect.objectContaining({ id: 'awaits', value: '1' }),
+
+      const healthResponse = await app.handle(new Request('http://localhost/desktop/health'))
+      expect(healthResponse.status).toBe(200)
+      expect(await healthResponse.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'server', value: 'Online', status: 'ok' }),
+        expect.objectContaining({ id: 'awaits', value: '1 pending', status: 'warning' }),
       ]))
 
-      const awaitsResponse = await app.handle(new Request('http://localhost/desktop/tray/awaits'))
+      const awaitsResponse = await app.handle(new Request('http://localhost/desktop/awaits'))
       expect(awaitsResponse.status).toBe(200)
       expect(await awaitsResponse.json()).toEqual([
         expect.objectContaining({

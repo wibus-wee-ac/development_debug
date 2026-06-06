@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendSessionBindings, workspaces } from '@cradle/db'
+import { backendRuns, backendSessionBindings, messages, workspaces } from '@cradle/db'
 import { sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
@@ -42,6 +42,20 @@ describe('chat runtime completed runs projection', () => {
         chatSessionId: sessionId,
         runtimeKind: 'codex',
       }).run()
+      store.insert(messages).values({
+        id: 'message-complete',
+        sessionId,
+        role: 'assistant',
+        status: 'complete',
+        content: 'Latest assistant response body\nwith a second line',
+        messageJson: JSON.stringify({
+          id: 'message-complete',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'Latest assistant response body\nwith a second line' }],
+        }),
+        createdAt: 104,
+        updatedAt: 105,
+      }).run()
       store.insert(backendRuns).values([
         {
           id: 'run-old',
@@ -60,6 +74,7 @@ describe('chat runtime completed runs projection', () => {
           origin: 'user',
           status: 'complete',
           stopReason: 'response.completed',
+          messageId: 'message-complete',
           startedAt: 100,
           finishedAt: 105,
         },
@@ -91,8 +106,9 @@ describe('chat runtime completed runs projection', () => {
             runId: 'run-complete',
             sessionId,
             sessionTitle: 'Notification Session',
-            messageId: null,
-            messagePreview: null,
+            messageId: 'message-complete',
+            responseBody: 'Latest assistant response body\nwith a second line',
+            messagePreview: 'Latest assistant response body\nwith a second line',
             startedAt: 100,
             finishedAt: 105,
           },

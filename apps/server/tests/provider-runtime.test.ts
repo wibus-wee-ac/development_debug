@@ -20,7 +20,9 @@ import {
   readSideConversation,
   registerSideConversation,
   releaseSideConversationsByProviderTargetId,
+  reserveSideConversationHostLease,
 } from '../src/modules/provider-runtime/side-conversation-registry'
+import type { RuntimeKind } from '../src/modules/provider-contracts/types'
 
 const runtimeSession: RuntimeSession = {
   id: 'side-session',
@@ -83,6 +85,35 @@ function createTestRuntime() {
   return runtime
 }
 
+function registerTestSideConversation(input: {
+  sideConversationId?: string
+  parentSessionId?: string
+  providerTargetId?: string
+  runtimeKind?: RuntimeKind
+  runtimeSession?: RuntimeSession
+  requestedModelId?: string | null
+  ttlMs?: number
+} = {}) {
+  const sideConversationId = input.sideConversationId ?? 'side-session'
+  const providerTargetId = input.providerTargetId ?? 'provider-target'
+  const runtimeKind = input.runtimeKind ?? 'codex'
+  return registerSideConversation({
+    sideConversationId,
+    parentSessionId: input.parentSessionId ?? 'parent-session',
+    providerTargetId,
+    runtimeKind,
+    runtimeSession: input.runtimeSession ?? runtimeSession,
+    requestedModelId: input.requestedModelId ?? 'gpt-5-codex',
+    ttlMs: input.ttlMs,
+    hostLease: reserveSideConversationHostLease({
+      sideConversationId,
+      providerTargetId,
+      runtimeKind,
+      ttlMs: input.ttlMs,
+    }),
+  })
+}
+
 async function withDataDir<T>(run: () => Promise<T>): Promise<T> {
   const dataDir = mkdtempSync(join(tmpdir(), 'cradle-provider-runtime-'))
   const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -104,15 +135,8 @@ async function withDataDir<T>(run: () => Promise<T>): Promise<T> {
 
 describe('provider runtime side conversations', () => {
   it('holds a pinned host lease for live-only side conversations', () => {
-    registerSideConversation({
-      sideConversationId: 'side-session',
-      parentSessionId: 'parent-session',
-      providerTargetId: 'provider-target',
-      runtimeKind: 'codex',
-      runtimeSession,
-      requestedModelId: 'gpt-5-codex',
+    registerTestSideConversation({
       ttlMs: 1_000,
-      pinned: true,
     })
 
     expect(providerRuntimeHostManager.listHosts()).toEqual([
@@ -130,15 +154,8 @@ describe('provider runtime side conversations', () => {
     vi.useFakeTimers()
     vi.setSystemTime(1_000)
 
-    registerSideConversation({
-      sideConversationId: 'side-session',
-      parentSessionId: 'parent-session',
-      providerTargetId: 'provider-target',
-      runtimeKind: 'codex',
-      runtimeSession,
-      requestedModelId: 'gpt-5-codex',
+    registerTestSideConversation({
       ttlMs: 1,
-      pinned: true,
     })
 
     expect(readSideConversation('side-session')).toBeDefined()
@@ -159,15 +176,8 @@ describe('provider runtime side conversations', () => {
       createResource: () => ({ id: 'resource-1' }),
       disposeResource,
     })
-    registerSideConversation({
-      sideConversationId: 'side-session',
-      parentSessionId: 'parent-session',
-      providerTargetId: 'provider-target',
-      runtimeKind: 'codex',
-      runtimeSession,
-      requestedModelId: 'gpt-5-codex',
+    registerTestSideConversation({
       ttlMs: 30 * 60 * 1000,
-      pinned: true,
     })
     resourceLease.release()
 
@@ -179,30 +189,19 @@ describe('provider runtime side conversations', () => {
   })
 
   it('releases side conversations for a removed provider target', () => {
-    registerSideConversation({
-      sideConversationId: 'side-session',
-      parentSessionId: 'parent-session',
-      providerTargetId: 'provider-target',
-      runtimeKind: 'codex',
-      runtimeSession,
-      requestedModelId: 'gpt-5-codex',
+    registerTestSideConversation({
       ttlMs: 1_000,
-      pinned: true,
     })
-    registerSideConversation({
+    registerTestSideConversation({
       sideConversationId: 'side-session-other-target',
-      parentSessionId: 'parent-session',
       providerTargetId: 'provider-target-other',
-      runtimeKind: 'codex',
       runtimeSession: {
         ...runtimeSession,
         id: 'side-session-other-target',
         chatSessionId: 'side-session-other-target',
         providerTargetId: 'provider-target-other',
       },
-      requestedModelId: 'gpt-5-codex',
       ttlMs: 1_000,
-      pinned: true,
     })
 
     releaseSideConversationsByProviderTargetId('provider-target')
@@ -216,21 +215,33 @@ describe('provider runtime side conversations', () => {
       }),
     ])
   })
+
+  it('rejects side registration with a mismatched pre-reserved host lease', () => {
+    const hostLease = reserveSideConversationHostLease({
+      sideConversationId: 'other-side-session',
+      providerTargetId: 'provider-target',
+      runtimeKind: 'codex',
+    })
+
+    expect(() => registerSideConversation({
+      sideConversationId: 'side-session',
+      parentSessionId: 'parent-session',
+      providerTargetId: 'provider-target',
+      runtimeKind: 'codex',
+      runtimeSession,
+      requestedModelId: 'gpt-5-codex',
+      hostLease,
+    })).toThrow('Reserved side conversation host lease does not match side conversation')
+    expect(providerRuntimeHostManager.listHosts()).toEqual([])
+  })
 })
 
 describe('provider runtime session resolution', () => {
   it('resolves live side conversations without durable bindings', async () => {
     await withDataDir(async () => {
       const runtime = createTestRuntime()
-      registerSideConversation({
-        sideConversationId: 'side-session',
-        parentSessionId: 'parent-session',
-        providerTargetId: 'provider-target',
-        runtimeKind: 'codex',
-        runtimeSession,
-        requestedModelId: 'gpt-5-codex',
+      registerTestSideConversation({
         ttlMs: 1_000,
-        pinned: true,
       })
 
       const resolved = await resolveExistingProviderRuntimeSession({
