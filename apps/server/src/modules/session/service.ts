@@ -12,6 +12,13 @@ import {
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
+import {
+  mergeRuntimeSettings,
+  normalizeRuntimeSettingsPatch,
+  readSessionRuntimeSettings,
+  writeSessionRuntimeSettingsConfigJson,
+} from '../chat-runtime/runtime-settings'
+import type { ChatRuntimeSettingsPatch } from '../chat-runtime/runtime-provider-types'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { invalidateDurableProviderRuntimeBindingForChatSession } from '../provider-runtime/service'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
@@ -33,7 +40,9 @@ const SessionCreateInputSchema = z.object({
   parentSessionId: z.string().nullable().optional(),
   sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable().optional(),
   providerTargetId: z.string().nullable().optional(),
+  modelId: z.string().nullable().optional(),
   runtimeKind: z.string().trim().min(1).optional(),
+  runtimeSettings: z.unknown().optional(),
   agentId: z.string().nullable().optional(),
   linkedIssueId: z.string().nullable().default(null),
   configJson: z.string().optional(),
@@ -463,7 +472,9 @@ export function create(input: {
   parentSessionId?: string | null
   sideContextSource?: 'provider-native' | 'cradle-context' | null
   providerTargetId?: string | null
+  modelId?: string | null
   runtimeKind?: RuntimeKind
+  runtimeSettings?: ChatRuntimeSettingsPatch
   agentId?: string | null
   linkedIssueId?: string | null
   configJson?: string
@@ -476,6 +487,14 @@ export function create(input: {
       configJson: z.string().default(() => resolved.configJson),
     })
     .parse(parsed)
+  const runtimeSettings = mergeRuntimeSettings(
+    readSessionRuntimeSettings(rowInput.configJson),
+    normalizeRuntimeSettingsPatch(parsed.runtimeSettings),
+  )
+  const runtimeConfigJson = writeSessionRuntimeSettingsConfigJson(rowInput.configJson, runtimeSettings)
+  const configJson = parsed.modelId !== undefined
+    ? writeSessionModelPreferenceConfigJson(runtimeConfigJson, parsed.modelId)
+    : runtimeConfigJson
   const created = db()
     .insert(sessions)
     .values({
@@ -487,7 +506,7 @@ export function create(input: {
       providerTargetId: resolved.providerTargetId,
       runtimeKind: resolved.runtimeKind,
       agentId: resolved.agentId,
-      configJson: rowInput.configJson,
+      configJson,
       linkedIssueId: parsed.linkedIssueId,
     })
     .returning()

@@ -13,7 +13,7 @@ import { db } from '../../infra'
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Chronicle from '../chronicle/service'
 
-interface TraySessionItem {
+interface DesktopSessionItem {
   id: string
   sessionId: string
   title: string
@@ -26,7 +26,7 @@ interface TraySessionItem {
   detail: string
 }
 
-interface TrayHealthItem {
+interface DesktopHealthItem {
   id: string
   label: string
   value: string
@@ -34,7 +34,7 @@ interface TrayHealthItem {
   detail: string | null
 }
 
-interface TrayCounts {
+interface DesktopSummary {
   generatedAt: number
   running: number
   recentSessions: number
@@ -47,7 +47,7 @@ interface TrayCounts {
   totalProviders: number
 }
 
-interface TrayAwaitItem {
+interface DesktopAwaitItem {
   id: string
   sessionId: string
   title: string
@@ -94,13 +94,13 @@ function readSessionTitles(sessionIds: string[]): Map<string, string> {
   return new Map(rows.map(row => [row.id, row.title]))
 }
 
-function toTrayItem(
+function toDesktopSessionItem(
   row: typeof sessions.$inferSelect,
   workspaceNames: Map<string, string>,
   detail: string,
   modelId: string | null,
-  state: TraySessionItem['state'],
-): TraySessionItem {
+  state: DesktopSessionItem['state'],
+): DesktopSessionItem {
   const workspaceName = row.workspaceId ? workspaceNames.get(row.workspaceId) ?? DEFAULT_WORKSPACE_NAME : DEFAULT_WORKSPACE_NAME
 
   return {
@@ -117,7 +117,7 @@ function toTrayItem(
   }
 }
 
-function readRunningItems(): TraySessionItem[] {
+function readRunningItems(): DesktopSessionItem[] {
   const activeRuns = ChatRuntime.listActiveRunSummaries()
   if (activeRuns.length === 0) {
     return []
@@ -132,7 +132,7 @@ function readRunningItems(): TraySessionItem[] {
   const workspaceNames = readWorkspaceNames(rows.map(row => row.workspaceId))
 
   return rows
-    .map(row => toTrayItem(
+    .map(row => toDesktopSessionItem(
       row,
       workspaceNames,
       `Running ${row.runtimeKind}`,
@@ -143,7 +143,7 @@ function readRunningItems(): TraySessionItem[] {
     .slice(0, RUNNING_LIMIT)
 }
 
-function readRecentSessionItems(activeItems: TraySessionItem[]): TraySessionItem[] {
+function readRecentSessionItems(activeItems: DesktopSessionItem[]): DesktopSessionItem[] {
   const activeBySessionId = new Map(activeItems.map(item => [item.sessionId, item]))
   const pendingAwaitSessionIds = new Set(db()
     .select({ sessionId: sessionAwaits.chatSessionId })
@@ -172,11 +172,11 @@ function readRecentSessionItems(activeItems: TraySessionItem[]): TraySessionItem
       }
     }
 
-    const state: TraySessionItem['state'] = pendingAwaitSessionIds.has(row.id)
+    const state: DesktopSessionItem['state'] = pendingAwaitSessionIds.has(row.id)
       ? 'awaiting'
       : row.pinned ? 'pinned' : 'recent'
 
-    return toTrayItem(
+    return toDesktopSessionItem(
       row,
       workspaceNames,
       state === 'awaiting'
@@ -238,7 +238,7 @@ function readPinnedSessionCount(): number {
 ?.count ?? 0
 }
 
-export function getTrayAwaits(): TrayAwaitItem[] {
+export function getDesktopAwaits(): DesktopAwaitItem[] {
   const rows = db()
     .select()
     .from(sessionAwaits)
@@ -286,7 +286,7 @@ function readProviderCounts(): { enabled: number, total: number } {
   return { enabled, total }
 }
 
-async function readChronicleHealthItem(): Promise<TrayHealthItem> {
+async function readChronicleHealthItem(): Promise<DesktopHealthItem> {
   try {
     const status = await Chronicle.getStatus()
     return {
@@ -308,7 +308,7 @@ async function readChronicleHealthItem(): Promise<TrayHealthItem> {
   }
 }
 
-export function getTrayCounts(): TrayCounts {
+export function getDesktopSummary(): DesktopSummary {
   const running = readRunningItems()
   const pendingAwaitCount = readAwaitCount()
   const automationCounts = readAutomationCounts()
@@ -328,12 +328,12 @@ export function getTrayCounts(): TrayCounts {
   }
 }
 
-export function getTrayRecentSessions(): TraySessionItem[] {
+export function getDesktopRecentSessions(): DesktopSessionItem[] {
   return readRecentSessionItems(readRunningItems())
 }
 
-export async function getTrayHealth(): Promise<TrayHealthItem[]> {
-  const counts = getTrayCounts()
+export async function getDesktopHealth(): Promise<DesktopHealthItem[]> {
+  const summary = getDesktopSummary()
   const chronicleHealth = await readChronicleHealthItem()
 
   return [
@@ -347,34 +347,34 @@ export async function getTrayHealth(): Promise<TrayHealthItem[]> {
     {
       id: 'chat-runtime',
       label: 'Chat Runtime',
-      value: counts.running > 0 ? `${counts.running} running` : 'Idle',
-      status: counts.running > 0 ? 'active' : 'ok',
+      value: summary.running > 0 ? `${summary.running} running` : 'Idle',
+      status: summary.running > 0 ? 'active' : 'ok',
       detail: null,
     },
     {
       id: 'awaits',
       label: 'Awaits',
-      value: counts.pendingAwaits > 0 ? `${counts.pendingAwaits} pending` : 'Clear',
-      status: counts.pendingAwaits > 0 ? 'warning' : 'ok',
-      detail: counts.pendingAwaits > 0 ? 'Sessions are waiting on user input or external checks.' : null,
+      value: summary.pendingAwaits > 0 ? `${summary.pendingAwaits} pending` : 'Clear',
+      status: summary.pendingAwaits > 0 ? 'warning' : 'ok',
+      detail: summary.pendingAwaits > 0 ? 'Sessions are waiting on user input or external checks.' : null,
     },
     {
       id: 'automations',
       label: 'Automations',
-      value: counts.runningAutomations > 0
-        ? `${counts.runningAutomations} active`
-        : `${counts.enabledAutomations} enabled`,
-      status: counts.runningAutomations > 0 ? 'active' : 'ok',
+      value: summary.runningAutomations > 0
+        ? `${summary.runningAutomations} active`
+        : `${summary.enabledAutomations} enabled`,
+      status: summary.runningAutomations > 0 ? 'active' : 'ok',
       detail: null,
     },
     {
       id: 'providers',
       label: 'Providers',
-      value: counts.enabledProviders > 0
-        ? `${counts.enabledProviders} enabled`
+      value: summary.enabledProviders > 0
+        ? `${summary.enabledProviders} enabled`
         : 'Not configured',
-      status: counts.enabledProviders > 0 ? 'ok' : 'warning',
-      detail: counts.enabledProviders > 0 ? null : 'No enabled provider targets are configured.',
+      status: summary.enabledProviders > 0 ? 'ok' : 'warning',
+      detail: summary.enabledProviders > 0 ? null : 'No enabled provider targets are configured.',
     },
     chronicleHealth,
   ]

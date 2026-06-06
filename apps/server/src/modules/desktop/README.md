@@ -4,6 +4,6 @@
 
 ## 文件清单
 
-- `index.ts`: exposes `/desktop/tray` and `/desktop/tray/awaits` for Electron Desktop tray and overview surfaces. These routes are intentionally not CLI-exposed.
-- `model.ts`: Elysia response schemas for the tray snapshot contract.
-- `service.ts`: read-only tray snapshot aggregation for running sessions, resident sessions, pending awaits, metrics, and desktop quick actions.
+- `index.ts`: exposes `/desktop/summary`, `/desktop/recent-sessions`, `/desktop/health`, and `/desktop/awaits` as read-only facts for Electron Desktop entry surfaces. These routes are intentionally not CLI-exposed.
+- `model.ts`: Elysia response schemas for the Desktop projection contract.
+- `service.ts`: read-only Desktop fact aggregation for running sessions, recent sessions, pending awaits, health, automation counts, provider counts, and workspace counts. Electron Desktop owns tray layout, ordering, labels, and action semantics.

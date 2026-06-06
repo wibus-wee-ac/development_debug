@@ -7,27 +7,27 @@ export const desktop = new Elysia({
   prefix: '/desktop',
   detail: { tags: ['desktop'] },
 })
-  .get('/tray/counts', () => Desktop.getTrayCounts(), {
+  .get('/summary', () => Desktop.getDesktopSummary(), {
     detail: {
-      summary: 'Get desktop tray counts',
+      summary: 'Get desktop summary facts',
     },
-    response: { 200: DesktopModel.trayCounts },
+    response: { 200: DesktopModel.desktopSummary },
   })
-  .get('/tray/recent-sessions', () => Desktop.getTrayRecentSessions(), {
+  .get('/recent-sessions', () => Desktop.getDesktopRecentSessions(), {
     detail: {
-      summary: 'Get desktop tray recent sessions',
+      summary: 'Get desktop recent sessions',
     },
-    response: { 200: DesktopModel.trayRecentSessions },
+    response: { 200: DesktopModel.desktopRecentSessions },
   })
-  .get('/tray/health', () => Desktop.getTrayHealth(), {
+  .get('/health', () => Desktop.getDesktopHealth(), {
     detail: {
-      summary: 'Get desktop tray health items',
+      summary: 'Get desktop health facts',
     },
-    response: { 200: DesktopModel.trayHealth },
+    response: { 200: DesktopModel.desktopHealth },
   })
-  .get('/tray/awaits', () => Desktop.getTrayAwaits(), {
+  .get('/awaits', () => Desktop.getDesktopAwaits(), {
     detail: {
-      summary: 'Get desktop tray await items',
+      summary: 'Get desktop await facts',
     },
-    response: { 200: DesktopModel.trayAwaits },
+    response: { 200: DesktopModel.desktopAwaits },
   })

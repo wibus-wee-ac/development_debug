@@ -88,6 +88,7 @@ export function createPluginDescriptor(
     version: manifest.version,
     displayName: manifest.cradle.displayName ?? identity,
     description: manifest.cradle.description,
+    icon: manifest.cradle.icon,
     deployments: manifest.cradle.deployments,
     source,
     layers,

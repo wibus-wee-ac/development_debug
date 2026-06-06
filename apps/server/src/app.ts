@@ -21,6 +21,7 @@ import { kanban } from './modules/kanban'
 import { modelRegistry } from './modules/model-registry'
 import { observability } from './modules/observability'
 import { preferences } from './modules/preferences'
+import { plugins as pluginsApi } from './modules/plugins'
 import { profiles } from './modules/profiles'
 import { providers } from './modules/provider-catalog'
 import { providerTargets } from './modules/provider-targets'
@@ -108,6 +109,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(issue)
   app.use(kanban)
   app.use(search)
+  app.use(pluginsApi)
   app.use(skills)
   app.use(workflowRules)
   app.use(git)

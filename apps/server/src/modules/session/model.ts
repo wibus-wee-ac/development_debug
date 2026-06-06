@@ -1,5 +1,7 @@
 import { t } from 'elysia'
 
+import { runtimeSettingsPatchSchema } from '../chat-runtime/runtime-settings-model'
+
 const runtimeKindSchema = t.String({ minLength: 1 })
 
 const nullableString = t.Nullable(t.String())
@@ -70,8 +72,10 @@ export const SessionModel = {
     workspaceId: t.Optional(nullableRequiredString),
     title: t.String({ minLength: 1 }),
     providerTargetId: t.Optional(nullableRequiredString),
+    modelId: t.Optional(nullableRequiredString),
     agentId: t.Optional(t.String({ minLength: 1 })),
     runtimeKind: t.Optional(runtimeKindSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
     id: t.Optional(t.String()),
   }),
 

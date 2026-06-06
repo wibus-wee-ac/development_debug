@@ -1,6 +1,6 @@
 import { t } from 'elysia'
 
-const traySessionItem = t.Object({
+const desktopSessionItem = t.Object({
   id: t.String(),
   sessionId: t.String(),
   title: t.String(),
@@ -18,7 +18,7 @@ const traySessionItem = t.Object({
   detail: t.String(),
 })
 
-const trayHealthItem = t.Object({
+const desktopHealthItem = t.Object({
   id: t.String(),
   label: t.String(),
   value: t.String(),
@@ -32,7 +32,7 @@ const trayHealthItem = t.Object({
   detail: t.Nullable(t.String()),
 })
 
-const trayCounts = t.Object({
+const desktopSummary = t.Object({
   generatedAt: t.Number(),
   running: t.Number(),
   recentSessions: t.Number(),
@@ -45,7 +45,7 @@ const trayCounts = t.Object({
   totalProviders: t.Number(),
 })
 
-const trayAwaitItem = t.Object({
+const desktopAwaitItem = t.Object({
   id: t.String(),
   sessionId: t.String(),
   title: t.String(),
@@ -57,8 +57,8 @@ const trayAwaitItem = t.Object({
 })
 
 export const DesktopModel = {
-  trayCounts,
-  trayHealth: t.Array(trayHealthItem),
-  trayRecentSessions: t.Array(traySessionItem),
-  trayAwaits: t.Array(trayAwaitItem),
+  desktopSummary,
+  desktopHealth: t.Array(desktopHealthItem),
+  desktopRecentSessions: t.Array(desktopSessionItem),
+  desktopAwaits: t.Array(desktopAwaitItem),
 } as const
