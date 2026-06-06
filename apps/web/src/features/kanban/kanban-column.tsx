@@ -4,10 +4,10 @@ import { useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
-import { KanbanCard } from './kanban-card'
 import type { KanbanCardRuntimeData } from './kanban-card'
+import { KanbanCard } from './kanban-card'
 import type { IssueSelectionMode } from './kanban-selection'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
 import { StatusIcon } from './shared/status-icon'

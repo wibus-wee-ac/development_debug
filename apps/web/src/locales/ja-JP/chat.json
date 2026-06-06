@@ -3,7 +3,6 @@
   "await.source.event": "イベント",
   "await.waitingFor": "{{source}} を待機中...",
   "continuation.mode.queue": "キュー",
-  "continuation.mode.steer": "誘導",
   "continuation.queue.attachmentLabel_many": "{{count}} 個の添付",
   "continuation.queue.attachmentLabel_one": "{{count}} 個の添付",
   "continuation.queue.attachmentLabel_other": "{{count}} 個の添付",
@@ -16,5 +15,14 @@
   "continuation.steer.label": "ガイド",
   "empty.startConversation": "メッセージを送信して会話を開始",
   "error.loadMessages": "メッセージを読み込めませんでした。（不明なエラー）",
+  "runtimeSettings.access.approvalRequired": "承認が必要",
+  "runtimeSettings.access.fullAccess": "フルアクセス",
+  "runtimeSettings.access.label": "アクセス",
+  "runtimeSettings.interaction.default": "ビルド",
+  "runtimeSettings.interaction.label": "操作モード",
+  "runtimeSettings.interaction.plan": "計画",
+  "runtimeSettings.summary": "{{access}} / {{interaction}}",
+  "runtimeSettings.summary.pendingActiveRun": "{{summary}}（次の実行に保存）",
+  "runtimeSettings.summary.short": "{{access}} / {{interaction}}",
   "status.thinking": "考えています..."
 }

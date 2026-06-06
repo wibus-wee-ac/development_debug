@@ -5,7 +5,7 @@ import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } 
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { Skeleton } from '~/components/ui/skeleton'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue } from '~/features/kanban/types'
 
 import { formatIssueId } from '../shared/format-issue-id'
 import { useAddRelation, useDeleteRelation, useIssues, useRelations, useSearchIssues } from '../use-kanban'

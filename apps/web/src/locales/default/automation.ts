@@ -120,8 +120,6 @@ export default {
   'status.running': 'running',
   'status.skipped': 'skipped',
   'status.unknown': 'unknown',
-  'thinking.auto': 'Auto',
-  'thinking.defaultDescription': 'Use the runtime default.',
   'thinking.effortDescription': '{{effort}} reasoning effort.',
   'thinking.high': 'High',
   'thinking.low': 'Low',

@@ -123,8 +123,6 @@
   "preview.sidebar.workspace.toggle": "Toggle workspace sessions",
   "preview.skill.agentBrowser": "Inspect local product UI in a browser",
   "preview.skill.reactDoctor": "Review React quality, accessibility, and regressions",
-  "preview.thinking.auto.description": "Use model default",
-  "preview.thinking.auto.label": "Auto",
   "preview.thinking.high.description": "Deep reasoning",
   "preview.thinking.high.label": "High",
   "preview.thinking.low.description": "Fast reasoning",

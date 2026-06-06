@@ -3,7 +3,6 @@
   "await.source.event": "evento",
   "await.waitingFor": "Esperando {{source}}...",
   "continuation.mode.queue": "Cola",
-  "continuation.mode.steer": "Guiar",
   "continuation.queue.attachmentLabel_many": "{{count}} archivos adjuntos",
   "continuation.queue.attachmentLabel_one": "{{count}} archivo adjunto",
   "continuation.queue.attachmentLabel_other": "{{count}} archivos adjuntos",
@@ -16,5 +15,14 @@
   "continuation.steer.label": "Guía",
   "empty.startConversation": "Envía un mensaje para iniciar la conversación",
   "error.loadMessages": "No se pudieron cargar los mensajes. (Error desconocido)",
+  "runtimeSettings.access.approvalRequired": "Requiere aprobación",
+  "runtimeSettings.access.fullAccess": "Acceso completo",
+  "runtimeSettings.access.label": "Acceso",
+  "runtimeSettings.interaction.default": "Construir",
+  "runtimeSettings.interaction.label": "Interacción",
+  "runtimeSettings.interaction.plan": "Plan",
+  "runtimeSettings.summary": "{{access}} / {{interaction}}",
+  "runtimeSettings.summary.pendingActiveRun": "{{summary}} (guardado para la próxima ejecución)",
+  "runtimeSettings.summary.short": "{{access}} / {{interaction}}",
   "status.thinking": "Pensando..."
 }

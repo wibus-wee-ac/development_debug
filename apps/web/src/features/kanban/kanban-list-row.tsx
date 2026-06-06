@@ -6,7 +6,7 @@ import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'

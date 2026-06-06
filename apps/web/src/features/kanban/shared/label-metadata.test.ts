@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue } from '~/features/kanban/types'
 
 import {
   buildDeleteLabelPatches,

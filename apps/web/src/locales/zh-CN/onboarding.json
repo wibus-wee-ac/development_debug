@@ -123,8 +123,6 @@
   "preview.sidebar.workspace.toggle": "切换工作区会话",
   "preview.skill.agentBrowser": "在浏览器中检查本地产品 UI",
   "preview.skill.reactDoctor": "评审 React 质量、可访问性和回归风险",
-  "preview.thinking.auto.description": "使用模型默认值",
-  "preview.thinking.auto.label": "自动",
   "preview.thinking.high.description": "深度推理",
   "preview.thinking.high.label": "高",
   "preview.thinking.xhigh.description": "最高推理",

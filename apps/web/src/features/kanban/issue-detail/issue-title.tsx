@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue } from '~/features/kanban/types'
 
 interface IssueTitleProps {
   issue: KanbanIssue

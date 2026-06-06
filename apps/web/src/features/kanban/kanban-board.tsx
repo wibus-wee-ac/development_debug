@@ -9,10 +9,10 @@ import {
 import { m } from 'motion/react'
 import { useMemo, useState } from 'react'
 
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
-import { KanbanCardPreview } from './kanban-card'
 import type { KanbanCardRuntimeData } from './kanban-card'
+import { KanbanCardPreview } from './kanban-card'
 import { KanbanColumn } from './kanban-column'
 import type { IssueSelectionMode } from './kanban-selection'
 import type { ParentIssueRef } from './shared/parent-issue-ref'

@@ -3,7 +3,7 @@ import type { ComponentProps, ReactNode } from 'react'
 import { createContext, useContext } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanIssue, KanbanIssueRelation } from '~/lib/types'
+import type { KanbanIssue, KanbanIssueRelation } from '~/features/kanban/types'
 
 import { RelationManager } from './relation-manager'
 
@@ -103,7 +103,7 @@ vi.mock('~/components/ui/combobox', () => ({
     const context = useContext(ComboboxContext)
 
     return (
-      <button type="button" role="option" disabled={disabled} onClick={() => context.onValueChange?.(value)}>
+      <button type="button" role="option" aria-selected={false} disabled={disabled} onClick={() => context.onValueChange?.(value)}>
         {children}
       </button>
     )

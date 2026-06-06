@@ -120,8 +120,6 @@
   "status.running": "実行中",
   "status.skipped": "スキップ済み",
   "status.unknown": "不明",
-  "thinking.auto": "自動",
-  "thinking.defaultDescription": "runtime の既定値を使用します。",
   "thinking.effortDescription": "{{effort}} の推論 effort。",
   "thinking.high": "高",
   "thinking.low": "低",

@@ -120,8 +120,6 @@
   "status.running": "en ejecución",
   "status.skipped": "omitida",
   "status.unknown": "desconocido",
-  "thinking.auto": "Auto",
-  "thinking.defaultDescription": "Usar el valor predeterminado del runtime.",
   "thinking.effortDescription": "Esfuerzo de razonamiento {{effort}}.",
   "thinking.high": "Alto",
   "thinking.low": "Bajo",

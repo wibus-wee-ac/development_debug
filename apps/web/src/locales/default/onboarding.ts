@@ -43,10 +43,10 @@ export default {
   'step.agents.feature.3': 'Human-in-the-loop approvals',
 
   // Step 5 – Done
-  'step.done.eyebrow': "You're all set",
+  'step.done.eyebrow': 'You\'re all set',
   'step.done.headline': 'Start building today',
   'step.done.description':
-    "Cradle is ready. Open a new chat, connect a workspace, or explore the settings to configure your preferred models and providers.",
+    'Cradle is ready. Open a new chat, connect a workspace, or explore the settings to configure your preferred models and providers.',
   'step.done.action.newChat': 'New chat',
   'step.done.action.addWorkspace': 'Add workspace',
   'step.done.action.settings': 'Settings',
@@ -108,8 +108,6 @@ export default {
   'preview.composer.placeholder': 'Ask Cradle to inspect this workspace...',
   'preview.composer.textareaAria': 'Preview prompt',
   'preview.composer.sendAria': 'Send preview prompt',
-  'preview.thinking.auto.label': 'Auto',
-  'preview.thinking.auto.description': 'Use model default',
   'preview.thinking.low.label': 'Low',
   'preview.thinking.low.description': 'Fast reasoning',
   'preview.thinking.medium.label': 'Medium',

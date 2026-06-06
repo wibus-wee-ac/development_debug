@@ -86,8 +86,6 @@ export default {
   'batch.provider.emptySelection': 'Select provider',
   'batch.provider.selected': '{{count}} agents selected',
   'batch.provider.skippedCliTui': '{{count}} CLI TUI agents skipped.',
-  'detail.thinking.auto.description': 'Use the runtime default for this agent.',
-  'detail.thinking.auto.label': 'Auto',
   'detail.thinking.none.description': 'Disable extended reasoning when the provider supports it.',
   'detail.thinking.none.label': 'None',
   'detail.thinking.minimal.description': 'Smallest reasoning budget for direct tasks.',
@@ -205,5 +203,5 @@ export default {
   'runtime.toast.syncFailed': 'Sync failed for {{sourceCount}} source(s)',
   'runtime.visible.count': '{{visibleCount}} visible',
   'runtime.visible.select': 'Select visible',
-  'runtime.visible.unselect': 'Unselect visible'
+  'runtime.visible.unselect': 'Unselect visible',
 } as const

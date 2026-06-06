@@ -13,17 +13,16 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m, useMotionValue, useSpring, useTransform } from 'motion/react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useI18n } from '~/i18n/i18n-context'
-import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import type { SupportedLocale } from '~/i18n/locales'
+import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import { cn } from '~/lib/cn'
 
-import onboardingBackgroundUrl from './assets/onboarding-abstract-field.svg'
 import { ONBOARDING_TOTAL_STEPS, useOnboardingStore } from './onboarding-store'
 
 type OnboardingKey = keyof typeof import('~/locales/default').default.onboarding
@@ -90,7 +89,7 @@ function AmbientGlow() {
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (!ref.current) return
+      if (!ref.current) { return }
       const r = ref.current.getBoundingClientRect()
       x.set((e.clientX - r.left) / r.width)
       y.set((e.clientY - r.top) / r.height)
@@ -106,7 +105,7 @@ function AmbientGlow() {
 function KeyHint() {
   const [visible, setVisible] = useState(true)
   useEffect(() => {
-    const t = setTimeout(() => setVisible(false), 4000)
+    const t = setTimeout(setVisible, 4000, false)
     return () => clearTimeout(t)
   }, [])
   return (
@@ -156,8 +155,8 @@ export function OnboardingPage() {
 
   const handleNext = useCallback(() => {
     setDirection(1)
-    if (isLast) complete()
-    else nextStep()
+    if (isLast) { complete() }
+    else { nextStep() }
   }, [isLast, complete, nextStep])
 
   const handlePrev = useCallback(() => {
@@ -175,9 +174,9 @@ export function OnboardingPage() {
       return
     }
 
-    if (e.key === 'ArrowRight' || e.key === 'Enter') handleNext()
-    else if (e.key === 'ArrowLeft' && !isFirst) handlePrev()
-    else if (e.key === 'Escape') complete()
+    if (e.key === 'ArrowRight' || e.key === 'Enter') { handleNext() }
+    else if (e.key === 'ArrowLeft' && !isFirst) { handlePrev() }
+    else if (e.key === 'Escape') { complete() }
   }, [handleNext, isFirst, handlePrev, complete])
 
   return (
@@ -258,7 +257,9 @@ export function OnboardingPage() {
             disabled={isFirst}
             className="gap-1 text-xs text-muted-foreground"
           >
-            ← {t('nav.back')}
+            ←
+{' '}
+{t('nav.back')}
           </Button>
         </m.div>
 
@@ -337,22 +338,12 @@ const slideVariants = {
 // Then the headline writes itself char-by-char. Features float up as pills.
 // ═══════════════════════════════════════════════════════════════════════════════
 function StepWelcome({ t }: { t: (key: OnboardingKey) => string }) {
-  // Generate random starting positions for constellation effect
-  const particles = useMemo(() =>
-    Array.from({ length: 12 }, (_, i) => ({
-      id: i,
-      startX: (Math.random() - 0.5) * 120,
-      startY: (Math.random() - 0.5) * 120,
-      delay: Math.random() * 0.3,
-    })),
-  [])
-
   return (
     <div className="flex flex-col items-center text-center">
       {/* Constellation → Logo */}
       <div className="relative mb-10 flex size-20 items-center justify-center">
         {/* Particles that converge */}
-        {particles.map(p => (
+        {WELCOME_PARTICLES.map(p => (
           <m.div
             key={p.id}
             className="absolute size-1 rounded-full bg-foreground"
@@ -456,9 +447,10 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
       if (i <= userMessage.length) {
         setTypedText(userMessage.slice(0, i))
         i++
-      } else {
+      }
+ else {
         clearInterval(interval)
-        setTimeout(() => setPhase('sent'), 400)
+        setTimeout(setPhase, 400, 'sent')
       }
     }, 35)
     return () => clearInterval(interval)
@@ -466,7 +458,7 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
 
   // Phase 2→3: After send, AI responds
   useEffect(() => {
-    if (phase !== 'sent') return
+    if (phase !== 'sent') { return }
     const timeout = setTimeout(() => {
       setPhase('responding')
       let i = 0
@@ -474,7 +466,8 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
         if (i <= aiResponse.length) {
           setResponseText(aiResponse.slice(0, i))
           i++
-        } else {
+        }
+ else {
           clearInterval(interval)
           setPhase('done')
         }
@@ -544,7 +537,8 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
           {/* User message / typing input */}
           <div className="flex justify-end">
             <div className="max-w-[80%] rounded-xl rounded-br-sm bg-foreground px-3 py-2 text-left text-[12px] text-background">
-              {phase === 'typing' ? (
+              {phase === 'typing'
+? (
                 <>
                   {typedText}
                   <m.span
@@ -553,7 +547,8 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
                     transition={{ duration: 0.5, repeat: Infinity }}
                   />
                 </>
-              ) : (
+              )
+: (
                 userMessage
               )}
             </div>
@@ -642,7 +637,7 @@ function StepWorkspace({ t }: { t: (key: OnboardingKey) => string }) {
       const interval = setInterval(() => {
         setScanIndex(i)
         i++
-        if (i >= files.length) clearInterval(interval)
+        if (i >= files.length) { clearInterval(interval) }
       }, 300)
       return () => clearInterval(interval)
     }, 1800)
@@ -727,11 +722,13 @@ function StepWorkspace({ t }: { t: (key: OnboardingKey) => string }) {
               <file.icon className={cn(
                 'relative size-3.5 shrink-0 transition-colors duration-200',
                 scanIndex >= i ? 'text-foreground' : 'text-muted-foreground',
-              )} />
+              )}
+              />
               <span className={cn(
                 'relative text-[12px] transition-colors duration-200',
                 scanIndex >= i ? 'text-foreground' : 'text-muted-foreground',
-              )}>
+              )}
+              >
                 {file.name}
               </span>
               {scanIndex >= i && (
@@ -782,7 +779,7 @@ function StepAgents({ t }: { t: (key: OnboardingKey) => string }) {
     const interval = setInterval(() => {
       step++
       setVisibleSteps(step)
-      if (step >= agentSteps.length) clearInterval(interval)
+      if (step >= agentSteps.length) { clearInterval(interval) }
     }, 800)
     return () => clearInterval(interval)
   }, [agentSteps.length])
@@ -839,7 +836,8 @@ function StepAgents({ t }: { t: (key: OnboardingKey) => string }) {
             <span className={cn(
               'size-1.5 rounded-full',
               visibleSteps >= agentSteps.length ? 'bg-emerald-500' : 'bg-amber-400',
-            )} />
+            )}
+            />
           </m.div>
         </div>
 
@@ -895,7 +893,7 @@ function StepAgents({ t }: { t: (key: OnboardingKey) => string }) {
 // ─── Design: Cards appear from radial positions (not just vertically).
 // Each card has 3D tilt. Clicking a card triggers a ripple before dismiss.
 // ═══════════════════════════════════════════════════════════════════════════════
-function StepDone({ t, onComplete }: { t: (key: OnboardingKey) => string; onComplete: () => void }) {
+function StepDone({ t, onComplete }: { t: (key: OnboardingKey) => string, onComplete: () => void }) {
   const actions = [
     { icon: MessageSquareIcon, titleKey: 'step.done.action.newChat' as const, descKey: 'step.done.action.newChat.description' as const, angle: -15 },
     { icon: FolderIcon, titleKey: 'step.done.action.addWorkspace' as const, descKey: 'step.done.action.addWorkspace.description' as const, angle: 0 },
@@ -992,7 +990,7 @@ function StepDone({ t, onComplete }: { t: (key: OnboardingKey) => string; onComp
 }
 
 // ─── Typewriter headline ───────────────────────────────────────────────────────
-function TypewriterHeadline({ text, startDelay = 400 }: { text: string; startDelay?: number }) {
+function TypewriterHeadline({ text, startDelay = 400 }: { text: string, startDelay?: number }) {
   const [revealed, setRevealed] = useState(0)
 
   useEffect(() => {
@@ -1001,11 +999,11 @@ function TypewriterHeadline({ text, startDelay = 400 }: { text: string; startDel
     const duration = text.length * 25
 
     const tick = (ts: number) => {
-      if (!start) start = ts
+      if (!start) { start = ts }
       const elapsed = ts - start
       const progress = Math.min(elapsed / duration, 1)
       setRevealed(Math.floor(progress * text.length))
-      if (progress < 1) frame = requestAnimationFrame(tick)
+      if (progress < 1) { frame = requestAnimationFrame(tick) }
     }
 
     const timeout = setTimeout(() => {
@@ -1046,7 +1044,7 @@ function TiltCard({ children, index, initialRotate = 0, onClick }: {
   const sry = useSpring(ry, { stiffness: 300, damping: 20 })
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!ref.current) return
+    if (!ref.current) { return }
     const rect = ref.current.getBoundingClientRect()
     rx.set((e.clientY - rect.top - rect.height / 2) / 14)
     ry.set((e.clientX - rect.left - rect.width / 2) / -14)

@@ -11,7 +11,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'

@@ -1,7 +1,7 @@
 import { CalendarIcon, FlagIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
-import type { KanbanMilestone } from '~/lib/types'
+import type { KanbanMilestone } from '~/features/kanban/types'
 
 import type { MilestoneProgressSummary } from './milestone-progress'
 

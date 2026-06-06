@@ -1,4 +1,4 @@
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import type { ViewConfig } from './use-view-config'
 

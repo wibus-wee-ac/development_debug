@@ -123,8 +123,6 @@
   "preview.sidebar.workspace.toggle": "ワークスペースセッションを切り替え",
   "preview.skill.agentBrowser": "ブラウザーでローカルプロダクト UI を検査",
   "preview.skill.reactDoctor": "React 品質、アクセシビリティ、回帰リスクをレビュー",
-  "preview.thinking.auto.description": "モデルの既定値を使用",
-  "preview.thinking.auto.label": "自動",
   "preview.thinking.high.description": "深い推論",
   "preview.thinking.high.label": "高",
   "preview.thinking.xhigh.description": "最大推論",

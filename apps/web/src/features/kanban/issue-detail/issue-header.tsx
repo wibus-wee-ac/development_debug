@@ -2,7 +2,7 @@ import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, CornerUpLeftIcon, Mor
 import { memo } from 'react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 import { StatusIcon } from '../shared/status-icon'
 import type { StatusCategory } from '../use-view-config'

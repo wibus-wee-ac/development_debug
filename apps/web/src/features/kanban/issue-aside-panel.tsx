@@ -7,7 +7,7 @@ import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } 
 import { Skeleton } from '~/components/ui/skeleton'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { formatIssueId } from './shared/format-issue-id'

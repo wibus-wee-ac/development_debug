@@ -1,5 +1,5 @@
 import type { Agent } from '~/features/agent-runtime/use-agents'
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue } from '~/features/kanban/types'
 
 type IssueDelegationFields = Pick<KanbanIssue, 'delegateAgentId' | 'delegateAgentProfileId'>
 

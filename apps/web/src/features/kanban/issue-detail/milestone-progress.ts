@@ -1,4 +1,4 @@
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 export interface MilestoneProgressSummary {
   total: number

@@ -39,7 +39,7 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueActivityItem, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueActivityItem, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 

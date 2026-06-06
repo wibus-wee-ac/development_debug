@@ -120,8 +120,6 @@
   "status.running": "运行中",
   "status.skipped": "已跳过",
   "status.unknown": "未知",
-  "thinking.auto": "自动",
-  "thinking.defaultDescription": "使用运行时默认值。",
   "thinking.effortDescription": "{{effort}} 推理强度。",
   "thinking.high": "高",
   "thinking.low": "低",

@@ -42,7 +42,7 @@ import {
 import { toastManager } from '~/components/ui/toast'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'

@@ -9,7 +9,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import type { KanbanStatus } from '~/lib/types'
+import type { KanbanStatus } from '~/features/kanban/types'
 import { cn } from '~/lib/utils'
 
 import { priorityOptions } from '../shared/issue-metadata'

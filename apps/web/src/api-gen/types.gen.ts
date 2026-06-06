@@ -1157,6 +1157,7 @@ export type PatchProfilesByIdCustomModelsData = {
                 inputModalities?: Array<string>;
                 outputModalities?: Array<string>;
                 reasoning?: boolean;
+                reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
                 toolCall?: boolean;
                 temperature?: boolean;
                 structuredOutput?: boolean;
@@ -1195,6 +1196,7 @@ export type PatchProfilesByIdCustomModelsResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
+            reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -1390,6 +1392,7 @@ export type PatchProviderTargetsByProviderTargetIdCustomModelsResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
+            reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -2037,6 +2040,7 @@ export type PostProvidersModelsResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
+            reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -2082,6 +2086,7 @@ export type GetProvidersTargetsByProviderTargetIdModelsCacheResponses = {
                 inputModalities?: Array<string>;
                 outputModalities?: Array<string>;
                 reasoning?: boolean;
+                reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
                 toolCall?: boolean;
                 temperature?: boolean;
                 structuredOutput?: boolean;
@@ -2131,6 +2136,7 @@ export type GetProvidersByProfileIdModelsCacheResponses = {
                 inputModalities?: Array<string>;
                 outputModalities?: Array<string>;
                 reasoning?: boolean;
+                reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
                 toolCall?: boolean;
                 temperature?: boolean;
                 structuredOutput?: boolean;
@@ -2177,6 +2183,7 @@ export type PostProvidersModelLookupResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
+            reasoningEfforts?: Array<string>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -2220,6 +2227,7 @@ export type PostProvidersModelSearchResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
+            reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -6267,6 +6275,44 @@ export type PostChatSessionsBySessionIdBangCommandResponses = {
 
 export type PostChatSessionsBySessionIdBangCommandResponse = PostChatSessionsBySessionIdBangCommandResponses[keyof PostChatSessionsBySessionIdBangCommandResponses];
 
+export type PostChatSessionsBySessionIdTitleRegenerateData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/title/regenerate';
+};
+
+export type PostChatSessionsBySessionIdTitleRegenerateResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
+        runtimeKind: string;
+        status: 'idle' | 'streaming' | 'error';
+        pinned: number;
+        archivedAt: number | null;
+        lastReadAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+        latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
+    };
+};
+
+export type PostChatSessionsBySessionIdTitleRegenerateResponse = PostChatSessionsBySessionIdTitleRegenerateResponses[keyof PostChatSessionsBySessionIdTitleRegenerateResponses];
+
 export type PostChatSessionsBySessionIdSideChatData = {
     body: {
         providerTargetId?: string;
@@ -6284,40 +6330,129 @@ export type PostChatSessionsBySessionIdSideChatResponses = {
      * Response for status 200
      */
     200: {
-        sessionId: string;
+        sideConversationId: string;
         parentSessionId: string;
         runtimeKind: string;
         providerTargetId: string | null;
         providerSessionId: string | null;
-        sideContextSource: 'provider-native' | 'cradle-context';
+        title: string;
+        expiresAt: number;
     };
 };
 
 export type PostChatSessionsBySessionIdSideChatResponse = PostChatSessionsBySessionIdSideChatResponses[keyof PostChatSessionsBySessionIdSideChatResponses];
 
-export type PostChatSessionsBySessionIdPromoteSideData = {
-    body?: never;
+export type PostChatSessionsBySessionIdQuickQuestionData = {
+    body: {
+        question: string;
+    };
     path: {
         sessionId: string;
     };
     query?: never;
-    url: '/chat/sessions/{sessionId}/promote-side';
+    url: '/chat/sessions/{sessionId}/quick-question';
 };
 
-export type PostChatSessionsBySessionIdPromoteSideResponses = {
+export type PostChatSessionsBySessionIdQuickQuestionResponses = {
+    /**
+     * Server-sent event stream with AI SDK UIMessageChunk JSON frames
+     */
+    200: string;
+};
+
+export type PostChatSessionsBySessionIdQuickQuestionResponse = PostChatSessionsBySessionIdQuickQuestionResponses[keyof PostChatSessionsBySessionIdQuickQuestionResponses];
+
+export type PostChatSessionsBySessionIdUserInputByRequestIdData = {
+    body: {
+        answers: {
+            [key: string]: unknown;
+        };
+    };
+    path: {
+        sessionId: string;
+        requestId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/user-input/{requestId}';
+};
+
+export type PostChatSessionsBySessionIdUserInputByRequestIdResponses = {
     /**
      * Response for status 200
      */
     200: {
-        sessionId: string;
-        sourceSessionId: string;
-        runtimeKind: string;
-        providerTargetId: string | null;
-        title: string;
+        requestId: string;
+        answers: {
+            [key: string]: unknown;
+        };
     };
 };
 
-export type PostChatSessionsBySessionIdPromoteSideResponse = PostChatSessionsBySessionIdPromoteSideResponses[keyof PostChatSessionsBySessionIdPromoteSideResponses];
+export type PostChatSessionsBySessionIdUserInputByRequestIdResponse = PostChatSessionsBySessionIdUserInputByRequestIdResponses[keyof PostChatSessionsBySessionIdUserInputByRequestIdResponses];
+
+export type PostChatSideConversationsBySideConversationIdResponseData = {
+    body: {
+        text?: string;
+        files?: Array<{
+            type: string;
+            mediaType: string;
+            filename?: string;
+            url: string;
+            providerMetadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        contextParts?: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        }>;
+        messages?: Array<{
+            id: string;
+            role: 'system' | 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        providerTargetId?: string;
+        modelId?: string;
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
+    };
+    path: {
+        sideConversationId: string;
+    };
+    query?: never;
+    url: '/chat/side-conversations/{sideConversationId}/response';
+};
+
+export type DeleteChatSideConversationsBySideConversationIdData = {
+    body?: never;
+    path: {
+        sideConversationId: string;
+    };
+    query?: never;
+    url: '/chat/side-conversations/{sideConversationId}';
+};
+
+export type DeleteChatSideConversationsBySideConversationIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteChatSideConversationsBySideConversationIdResponse = DeleteChatSideConversationsBySideConversationIdResponses[keyof DeleteChatSideConversationsBySideConversationIdResponses];
 
 export type GetChatSessionsBySessionIdStreamData = {
     body?: never;
@@ -6409,7 +6544,7 @@ export type GetChatSessionsBySessionIdQueueResponses = {
         items: Array<{
             id: string;
             sessionId: string;
-            mode: 'queue' | 'steer';
+            mode: string;
             status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed';
             text: string;
             files: Array<{
@@ -6449,7 +6584,6 @@ export type GetChatSessionsBySessionIdQueueResponse = GetChatSessionsBySessionId
 
 export type PostChatSessionsBySessionIdQueueData = {
     body: {
-        mode: 'queue' | 'steer';
         text?: string;
         files?: Array<{
             type: string;
@@ -6489,7 +6623,7 @@ export type PostChatSessionsBySessionIdQueueResponses = {
     200: {
         id: string;
         sessionId: string;
-        mode: 'queue' | 'steer';
+        mode: string;
         status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed';
         text: string;
         files: Array<{
@@ -6526,6 +6660,64 @@ export type PostChatSessionsBySessionIdQueueResponses = {
 
 export type PostChatSessionsBySessionIdQueueResponse = PostChatSessionsBySessionIdQueueResponses[keyof PostChatSessionsBySessionIdQueueResponses];
 
+export type PostChatSessionsBySessionIdSteerData = {
+    body: {
+        text?: string;
+        files?: Array<{
+            type: string;
+            mediaType: string;
+            filename?: string;
+            url: string;
+            providerMetadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        contextParts?: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        }>;
+        providerTargetId?: string;
+        modelId?: string;
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
+    };
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/steer';
+};
+
+export type PostChatSessionsBySessionIdSteerResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+        sessionId: string;
+        runId: string;
+        sourceMessageId: string;
+        message: {
+            id: string;
+            role: 'system' | 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostChatSessionsBySessionIdSteerResponse = PostChatSessionsBySessionIdSteerResponses[keyof PostChatSessionsBySessionIdSteerResponses];
+
 export type PostChatSessionsBySessionIdQueueReorderData = {
     body: {
         queueItemIds: Array<string>;
@@ -6545,7 +6737,7 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
         items: Array<{
             id: string;
             sessionId: string;
-            mode: 'queue' | 'steer';
+            mode: string;
             status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed';
             text: string;
             files: Array<{
@@ -6600,7 +6792,7 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
     200: {
         id: string;
         sessionId: string;
-        mode: 'queue' | 'steer';
+        mode: string;
         status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed';
         text: string;
         files: Array<{
@@ -7387,6 +7579,7 @@ export type GetChatRunsCompletedResponses = {
             sessionId: string;
             sessionTitle: string;
             messageId: string | null;
+            messagePreview: string | null;
             startedAt: number;
             finishedAt: number;
         }>;
@@ -11049,7 +11242,7 @@ export type PostIssueAgentSessionsByAgentSessionIdContinuationResponses = {
     200: {
         ok: boolean;
         chatSessionId: string;
-        queueItemId: string;
+        continuationId: string;
         mode: 'queue' | 'steer';
     };
 };

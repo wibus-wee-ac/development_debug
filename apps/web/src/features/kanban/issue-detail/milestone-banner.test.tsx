@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanMilestone } from '~/lib/types'
+import type { KanbanMilestone } from '~/features/kanban/types'
 
 import { MilestoneBanner } from './milestone-banner'
 

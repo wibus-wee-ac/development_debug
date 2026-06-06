@@ -15,7 +15,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { priorityOptions } from './shared/issue-metadata'

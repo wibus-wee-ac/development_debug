@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import { StatusIcon as UIStatusIcon, kanbanCategoryColors } from '~/components/ui/status-tag'
+import { kanbanCategoryColors, StatusIcon as UIStatusIcon } from '~/components/ui/status-tag'
 
 import type { StatusCategory } from '../use-view-config'
 

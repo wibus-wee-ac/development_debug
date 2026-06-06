@@ -1,6 +1,6 @@
 import agentManagement from './agent-management'
-import awaits from './awaits'
 import automation from './automation'
+import awaits from './awaits'
 import chat from './chat'
 import chrome from './chrome'
 import chronicle from './chronicle'

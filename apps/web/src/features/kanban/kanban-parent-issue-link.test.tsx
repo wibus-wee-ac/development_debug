@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { KanbanIssue } from '~/lib/types'
+import type { KanbanIssue } from '~/features/kanban/types'
 
 import { KanbanCard } from './kanban-card'
 import { KanbanListRow } from './kanban-list-row'
@@ -22,6 +22,12 @@ vi.mock('@dnd-kit/core', () => ({
 vi.mock('~/features/workspace/use-workspace', () => ({
   useWorkspaces: () => ({
     workspaces: [{ id: 'workspace-1', identifier: 'CRA' }],
+  }),
+}))
+
+vi.mock('~/features/agent-runtime/use-agents', () => ({
+  useAgents: () => ({
+    agents: [],
   }),
 }))
 

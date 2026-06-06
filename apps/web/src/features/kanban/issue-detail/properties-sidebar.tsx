@@ -17,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { findDelegatedAgent } from '../shared/issue-delegation'

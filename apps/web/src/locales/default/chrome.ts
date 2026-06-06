@@ -12,9 +12,13 @@ export default {
   'rightAside.tab.issue': 'Issue',
   'rightAside.tab.runtime': 'Runtime',
   'rightAside.tab.await': 'Feed',
+  'rightAside.tab.adjustment': 'Adjust',
   'rightAside.issue.empty': 'No session selected',
   'dev.action.hardReload': 'Hard reload',
   'dev.action.hardReload.title': 'Hard reload (ignore cache)',
   'dev.action.openDevtools': 'Open DevTools',
   'dev.action.openDevtools.title': 'Open DevTools window',
+  'dev.action.reactDiagnostics': 'React tools',
+  'dev.action.reactDiagnostics.disableTitle': 'Disable React Scan and React Grab; hard reload to unload active scripts',
+  'dev.action.reactDiagnostics.enableTitle': 'Enable React Scan and React Grab',
 } as const

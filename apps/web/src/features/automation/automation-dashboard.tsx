@@ -692,8 +692,8 @@ function CreateAutomationPanel({
   const isLoadingModels = selectedProfileId ? loadingProfileIds.has(selectedProfileId) : false
   const thinkingOptions = useMemo(() => THINKING_EFFORTS.map(option => ({
     value: option.value,
-    label: option.value ? t(`thinking.${option.value}`) : t('thinking.auto'),
-    description: option.value ? t('thinking.effortDescription', { effort: t(`thinking.${option.value}`) }) : t('thinking.defaultDescription'),
+    label: t(`thinking.${option.value}`),
+    description: t('thinking.effortDescription', { effort: t(`thinking.${option.value}`) }),
   })), [t])
   const selectThinkingForModel = useCallback(
     (model: ModelDescriptor | null): ThinkingEffort =>

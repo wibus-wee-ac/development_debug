@@ -7,7 +7,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
-import type { IssueActivityAction, IssueActivityField, IssueActivityValue, IssueActivityValueToken, IssueCommentAuthor, KanbanIssueActivityItem } from '~/lib/types'
+import type { IssueActivityAction, IssueActivityField, IssueActivityValue, IssueActivityValueToken, IssueCommentAuthor, KanbanIssueActivityItem } from '~/features/kanban/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { useAddComment, useDeleteComment, useIssueActivity } from '../use-kanban'

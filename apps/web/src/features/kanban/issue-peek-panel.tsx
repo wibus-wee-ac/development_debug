@@ -5,7 +5,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 import { formatIssueId } from './shared/format-issue-id'
 import { LabelChip } from './shared/label-chip'

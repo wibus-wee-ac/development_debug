@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { KanbanIssue, KanbanStatus } from '~/lib/types'
+import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
 import { calculateMilestoneProgress } from './milestone-progress'
 
