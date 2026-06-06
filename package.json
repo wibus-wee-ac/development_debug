@@ -5,7 +5,7 @@
   "description": "Cradle - AI agent management platform",
   "author": "example.com",
   "bin": {
-    "cradle": "./packages/cli/src/index.ts"
+    "cradle": "./packages/cli/dist/index.js"
   },
   "scripts": {
     "format": "prettier --write .",
@@ -96,7 +96,6 @@
     "react-day-picker": "^9.14.0",
     "react-resizable-panels": "^4.10.0",
     "recharts": "3.8.0",
-    "repomix": "^1.14.0",
     "shadcn": "^4.2.0",
     "shiki": "^4.0.2",
     "simple-git": "^3.36.0",
