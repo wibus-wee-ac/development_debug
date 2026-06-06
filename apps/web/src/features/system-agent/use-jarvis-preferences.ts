@@ -25,6 +25,7 @@ export function useUpdateJarvisPreferencesMutation() {
   const queryClient = useQueryClient()
 
   return useMutation<JarvisPreferences | null, Error, Partial<JarvisPreferences>>({
+    scope: { id: 'jarvis-preferences' },
     mutationFn: async (updates) => {
       const current = queryClient.getQueryData<JarvisPreferences>(JARVIS_PREFS_QUERY_KEY)
       if (!current) {

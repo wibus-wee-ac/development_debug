@@ -4,6 +4,7 @@ import { ChronicleSettings } from '~/features/chronicle/chronicle-settings'
 import { GlobalSkillsSettings } from '~/features/skills/global-skills-settings'
 import { cn } from '~/lib/cn'
 
+import { AboutSettings } from './about-settings'
 import { AppearanceSettings } from './appearance-settings'
 import { AwaitSettings } from './await-settings'
 import { ChatSettings } from './chat-settings'
@@ -26,6 +27,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   desktop: DesktopUpdateSettings,
   import: ExternalWorkImportSettings,
   support: SupportSettings,
+  about: AboutSettings,
 }
 
 const FIXED_HEIGHT_SECTIONS = new Set(['import', 'registry'])

@@ -17,13 +17,12 @@ import type {
   PostAgentsImportLocalConfigPreviewResponse,
   PostAgentsImportLocalConfigResponse,
 } from '~/api-gen/types.gen'
-import type { Agent as AgentRecord } from '~/lib/types'
 
 export const AGENTS_QUERY_KEY = getAgentsQueryKey()
 
 type AgentResponse = GetAgentsResponse[number]
 
-export type Agent = AgentRecord
+export type Agent = AgentResponse
 export type CreateAgentInput = PostAgentsData['body']
 export type UpdateAgentInput = PatchAgentsByIdData['body']
 export type PreviewLocalConfigImportResult = PostAgentsImportLocalConfigPreviewResponse

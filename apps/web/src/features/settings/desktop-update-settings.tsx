@@ -1,15 +1,17 @@
-import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon } from 'lucide-react'
+import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon, TerminalIcon, UnlinkIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
 import { Spinner } from '~/components/ui/spinner'
-import type { DesktopUpdateStatus } from '~/lib/electron'
+import { Switch } from '~/components/ui/switch'
+import type { DesktopCliStatus, DesktopUpdateStatus } from '~/lib/electron'
 import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
 import { formatCompactBytes } from '~/lib/number-format'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { useDesktopPreferences } from './use-desktop-preferences'
 
 const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   unsupported: true,
@@ -20,6 +22,16 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   updateDownloaded: false,
   updateInfo: null,
   errorMessage: 'Desktop updates are only available in the Electron app',
+}
+
+const EMPTY_CLI_STATUS: DesktopCliStatus = {
+  supported: false,
+  installed: false,
+  linked: false,
+  requiresRepair: false,
+  commandPath: '/usr/local/bin/cradle',
+  sourcePath: null,
+  errorMessage: 'CLI installation is only available in the Electron app',
 }
 
 function readTargetVersion(status: DesktopUpdateStatus): string | null {
@@ -57,10 +69,37 @@ function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
   )
 }
 
+function CliStatusBadge({ status }: { status: DesktopCliStatus }) {
+  const label = useMemo(() => {
+    if (!status.supported) {
+      return 'Unavailable'
+    }
+    if (status.installed) {
+      return 'Installed'
+    }
+    if (status.requiresRepair) {
+      return 'Repair'
+    }
+    return 'Not installed'
+  }, [status])
+
+  return (
+    <Badge variant={status.errorMessage ? 'destructive' : 'outline'} className="font-mono text-[11px]">
+      {label}
+    </Badge>
+  )
+}
+
 export function DesktopUpdateSettings() {
   const [status, setStatus] = useState<DesktopUpdateStatus>(EMPTY_UPDATE_STATUS)
+  const [cliStatus, setCliStatus] = useState<DesktopCliStatus>(EMPTY_CLI_STATUS)
   const [statusReady, setStatusReady] = useState(false)
   const [loading, setLoading] = useState(false)
+  const {
+    prefs: desktopPrefs,
+    isSaving: isSavingDesktopPrefs,
+    savePrefs: saveDesktopPrefs,
+  } = useDesktopPreferences()
 
   const targetVersion = readTargetVersion(status)
   const targetSize = readTargetSize(status)
@@ -72,15 +111,32 @@ export function DesktopUpdateSettings() {
   const refreshStatus = useCallback(async () => {
     if (!isElectron || !nativeIpc) {
       setStatus(EMPTY_UPDATE_STATUS)
+      setCliStatus(EMPTY_CLI_STATUS)
       setStatusReady(true)
       return
     }
 
     setLoading(true)
     try {
-      const nextStatus = await nativeIpc.desktopUpdate.getStatus()
+      const [nextStatus, nextCliStatus] = await Promise.all([
+        nativeIpc.desktopUpdate.getStatus(),
+        nativeIpc.native.getDesktopCliStatus(),
+      ])
       setStatus(nextStatus)
+      setCliStatus(nextCliStatus)
       setStatusReady(true)
+    }
+    finally {
+      setLoading(false)
+    }
+  }, [])
+
+  const runCliAction = useCallback(async (
+    action: () => Promise<DesktopCliStatus>,
+  ) => {
+    setLoading(true)
+    try {
+      setCliStatus(await action())
     }
     finally {
       setLoading(false)
@@ -102,6 +158,14 @@ export function DesktopUpdateSettings() {
     }
   }, [])
 
+  const handleDoubleCommandQChange = useCallback((requireDoubleCommandQToQuit: boolean) => {
+    void saveDesktopPrefs({ requireDoubleCommandQToQuit }).then((updated) => {
+      if (updated && isElectron && nativeIpc) {
+        void nativeIpc.native.setDesktopPreferences(updated).catch(() => {})
+      }
+    })
+  }, [saveDesktopPrefs])
+
   useEffect(() => {
     void refreshStatus()
     return subscribeDesktopUpdateStatus(setStatus)
@@ -114,9 +178,30 @@ export function DesktopUpdateSettings() {
       data-settings-desktop-ready={statusReady ? 'true' : 'false'}
     >
       <SettingsSectionHeader
+        title="Desktop"
+        description="Manage packaged Desktop app behavior, updates, and CLI integration."
+        action={<StatusBadge status={status} />}
+      />
+      <SettingsDivider />
+
+      <SettingsRow
+        label="Double Command+Q to quit"
+        description="Require pressing Command+Q twice within a short window before Cradle quits."
+      >
+        <Switch
+          checked={desktopPrefs?.requireDoubleCommandQToQuit ?? true}
+          onCheckedChange={handleDoubleCommandQChange}
+          disabled={!desktopPrefs || isSavingDesktopPrefs}
+          aria-label="Double Command+Q to quit"
+          data-testid="desktop-double-command-q"
+        />
+      </SettingsRow>
+      <SettingsDivider />
+
+      <SettingsSectionHeader
         title="Desktop Updates"
         description="Manage updates for the packaged Desktop app."
-        action={<StatusBadge status={status} />}
+        className="pt-6"
       />
       <SettingsDivider />
 
@@ -201,6 +286,68 @@ export function DesktopUpdateSettings() {
           >
             <RotateCwIcon className="size-3.5" aria-hidden="true" />
             Restart
+          </Button>
+        </div>
+      </SettingsRow>
+      <SettingsDivider />
+
+      <SettingsSectionHeader
+        title="CLI Command"
+        description="Install the cradle command so terminal workflows can reach the running Desktop server."
+        action={<CliStatusBadge status={cliStatus} />}
+        className="pt-6"
+      />
+      <SettingsDivider />
+
+      <SettingsRow
+        label="Command path"
+        description={cliStatus.errorMessage ?? 'The command is installed as a symlink to the packaged Desktop launcher.'}
+      >
+        <div className="flex min-w-44 flex-col items-end gap-1">
+          <span className="font-mono text-[12px] tabular-nums text-foreground">{cliStatus.commandPath}</span>
+          {cliStatus.sourcePath && (
+            <span className="max-w-96 truncate text-right font-mono text-[11px] text-muted-foreground">
+              {cliStatus.sourcePath}
+            </span>
+          )}
+        </div>
+      </SettingsRow>
+      <SettingsDivider />
+
+      <SettingsRow
+        label="CLI actions"
+        description="Install, repair, or remove the PATH command for this Desktop build."
+      >
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refreshStatus()}
+            disabled={!isElectron || !nativeIpc || loading}
+          >
+            {loading ? <Spinner className="size-3.5" /> : <RefreshCwIcon className="size-3.5" aria-hidden="true" />}
+            Refresh
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void runCliAction(() => nativeIpc!.native.removeDesktopCliCommand())}
+            disabled={!isElectron || !nativeIpc || loading || !cliStatus.supported || !cliStatus.installed}
+          >
+            <UnlinkIcon className="size-3.5" aria-hidden="true" />
+            Remove
+          </Button>
+          <Button
+            type="button"
+            variant="default"
+            size="sm"
+            onClick={() => void runCliAction(() => nativeIpc!.native.installDesktopCliCommand())}
+            disabled={!isElectron || !nativeIpc || loading || !cliStatus.supported}
+          >
+            <TerminalIcon className="size-3.5" aria-hidden="true" />
+            {cliStatus.installed ? 'Repair' : 'Install'}
           </Button>
         </div>
       </SettingsRow>

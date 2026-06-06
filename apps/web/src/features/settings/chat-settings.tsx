@@ -1,27 +1,62 @@
 // Chat settings for default continuation behavior and archived session recovery.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArchiveRestoreIcon, MessageSquareIcon, SearchIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { ArchiveRestoreIcon, BrainIcon, CheckIcon, MessageSquareIcon, SearchIcon } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { postSessionsByIdArchive } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
+import { useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
+import { listSelectableComposerProfiles } from '~/features/composer-toolbar/composer-profile-selection'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
+import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
+import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { cn } from '~/lib/cn'
+import type { ModelDescriptor } from '~/lib/types'
 
 import type { WorkspaceSession } from '../workspace/use-session'
 import { sessionsQueryKey, useAllSessions } from '../workspace/use-session'
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
-import type { ContinuationBehavior } from './use-chat-preferences'
+import type { ContinuationBehavior, TitleGenerationPreferences, TitleGenerationThinkingEffort } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
 import { useCodexPreferences } from './use-codex-preferences'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
+
+const TITLE_GENERATION_THINKING_LEVELS: TitleGenerationThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh']
+
+const titleGenerationThinkingLabelKeys = {
+  minimal: 'chat.titleGeneration.thinking.minimal.label',
+  low: 'chat.titleGeneration.thinking.low.label',
+  medium: 'chat.titleGeneration.thinking.medium.label',
+  high: 'chat.titleGeneration.thinking.high.label',
+  xhigh: 'chat.titleGeneration.thinking.xhigh.label',
+} satisfies Record<TitleGenerationThinkingEffort, SettingsKey>
+
+const titleGenerationThinkingDescriptionKeys = {
+  minimal: 'chat.titleGeneration.thinking.minimal.description',
+  low: 'chat.titleGeneration.thinking.low.description',
+  medium: 'chat.titleGeneration.thinking.medium.description',
+  high: 'chat.titleGeneration.thinking.high.description',
+  xhigh: 'chat.titleGeneration.thinking.xhigh.description',
+} satisfies Record<TitleGenerationThinkingEffort, SettingsKey>
+
+function selectTitleGenerationThinkingEffort(
+  model: ModelDescriptor | null,
+  options: Array<ThinkingOption<TitleGenerationThinkingEffort>>,
+  current: TitleGenerationThinkingEffort,
+): TitleGenerationThinkingEffort {
+  return selectSupportedThinkingValue(model, options, current, 'high')
+}
 
 function formatArchivedAt(session: WorkspaceSession): string {
   const timestamp = session.archivedAt ?? session.updatedAt
@@ -39,12 +74,16 @@ function normalizeArchivedSession(session: {
   runtimeKind: WorkspaceSession['runtimeKind']
   status: WorkspaceSession['status']
   pinned: number
+  lastReadAt?: number | unknown | null
   archivedAt: number | unknown | null
   createdAt: number
   updatedAt: number
   latestUserMessageAt: number | unknown | null
+  latestAssistantMessageAt?: number | unknown | null
+  unread?: boolean | unknown
 }): WorkspaceSession {
   const latestUserMessageAt = typeof session.latestUserMessageAt === 'number' ? session.latestUserMessageAt : null
+  const latestAssistantMessageAt = typeof session.latestAssistantMessageAt === 'number' ? session.latestAssistantMessageAt : null
   return {
     id: session.id,
     workspaceId: typeof session.workspaceId === 'string' ? session.workspaceId : null,
@@ -56,10 +95,13 @@ function normalizeArchivedSession(session: {
     runtimeKind: session.runtimeKind,
     status: session.status,
     pinned: session.pinned,
+    lastReadAt: typeof session.lastReadAt === 'number' ? session.lastReadAt : null,
     archivedAt: typeof session.archivedAt === 'number' ? session.archivedAt : null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     latestUserMessageAt,
+    latestAssistantMessageAt,
+    unread: session.unread === true,
     listActivityAt: latestUserMessageAt ?? session.createdAt,
   }
 }
@@ -221,10 +263,206 @@ function ArchivedSessionList() {
   )
 }
 
+function ThinkingEffortPicker({
+  value,
+  options,
+  disabled,
+  onChange,
+}: {
+  value: TitleGenerationThinkingEffort
+  options: Array<ThinkingOption<TitleGenerationThinkingEffort>>
+  disabled: boolean
+  onChange: (value: TitleGenerationThinkingEffort) => void
+}) {
+  const selected = options.find(option => option.value === value) ?? options[0]
+
+  return (
+    <Menu>
+      <MenuTrigger render={<Button type="button" variant="ghost" size="xs" disabled={disabled} data-testid="chat-title-generation-thinking" />}>
+        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+        <span className="max-w-24 truncate">{selected?.label}</span>
+      </MenuTrigger>
+      <MenuPopup side="bottom" align="end">
+        {options.map(option => (
+          <MenuItem
+            key={option.value}
+            onClick={() => onChange(option.value)}
+            className={cn('flex-col items-start', value === option.value && 'text-primary font-medium')}
+          >
+            <div className="flex w-full items-center gap-2">
+              <span className="font-medium">{option.label}</span>
+              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', value === option.value ? 'text-primary' : 'text-transparent')} />
+            </div>
+            <span className="text-[11px] text-muted-foreground/60">{option.description}</span>
+          </MenuItem>
+        ))}
+      </MenuPopup>
+    </Menu>
+  )
+}
+
+function TitleGenerationSettings({
+  prefs,
+  saving,
+  save,
+}: {
+  prefs: TitleGenerationPreferences
+  saving: boolean
+  save: (patch: Partial<TitleGenerationPreferences>) => void
+}) {
+  const { t } = useTranslation('settings')
+  const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
+  const { providerOptions } = useProviderTargets()
+  const { runtimes } = useRuntimeCatalog()
+  const profiles = useMemo(
+    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: 'codex', runtimes }),
+    [providerOptions, runtimes],
+  )
+  const selectedProviderTargetId = pendingProviderTargetId ?? prefs.providerTargetId
+  const initialModelProfileIds = useMemo(
+    () => [prefs.providerTargetId, pendingProviderTargetId],
+    [pendingProviderTargetId, prefs.providerTargetId],
+  )
+  const {
+    modelsByProviderTargetId,
+    loadingProviderTargetIds,
+    successfulProviderTargetIds,
+    requestProviderTargetModels,
+  } = useProviderTargetModelMap(profiles, initialModelProfileIds)
+  const selectedModels = selectedProviderTargetId ? modelsByProviderTargetId[selectedProviderTargetId] ?? [] : []
+  const pendingProviderTargetExists = pendingProviderTargetId
+    ? profiles.some(profile => profile.id === pendingProviderTargetId)
+    : false
+  const pendingProviderFirstModel = pendingProviderTargetId
+    ? modelsByProviderTargetId[pendingProviderTargetId]?.[0] ?? null
+    : null
+  const selectedModelId = pendingProviderTargetId ? null : prefs.modelId
+  const selectedModel = selectedModels.find(model => model.id === selectedModelId) ?? null
+  const thinkingOptions = useMemo<Array<ThinkingOption<TitleGenerationThinkingEffort>>>(() => TITLE_GENERATION_THINKING_LEVELS.map(value => ({
+    value,
+    label: t(titleGenerationThinkingLabelKeys[value]),
+    description: t(titleGenerationThinkingDescriptionKeys[value]),
+  })), [t])
+  const supportedThinkingOptions = useMemo(
+    () => selectedProviderTargetId && selectedModel ? filterThinkingOptionsForModel(selectedModel, thinkingOptions) : thinkingOptions,
+    [selectedModel, selectedProviderTargetId, thinkingOptions],
+  )
+  const selectedThinkingEffort = selectedProviderTargetId && selectedModel
+    ? selectTitleGenerationThinkingEffort(selectedModel, thinkingOptions, prefs.thinkingEffort)
+    : prefs.thinkingEffort
+  const selectThinkingForCurrentSelection = useCallback((thinkingEffort: TitleGenerationThinkingEffort): TitleGenerationThinkingEffort => {
+    if (!selectedProviderTargetId || !selectedModel) {
+      return thinkingEffort
+    }
+    return selectTitleGenerationThinkingEffort(selectedModel, thinkingOptions, thinkingEffort)
+  }, [selectedModel, selectedProviderTargetId, thinkingOptions])
+  const saveResolvedModel = useCallback((providerTargetId: string, model: ModelDescriptor) => {
+    save({
+      providerTargetId,
+      modelId: model.id,
+      thinkingEffort: selectTitleGenerationThinkingEffort(model, thinkingOptions, prefs.thinkingEffort),
+    })
+  }, [prefs.thinkingEffort, save, thinkingOptions])
+
+  useEffect(() => {
+    if (!pendingProviderTargetId) {
+      return
+    }
+    if (!pendingProviderTargetExists) {
+      setPendingProviderTargetId(null)
+      return
+    }
+    if (saving) {
+      return
+    }
+    if (!pendingProviderFirstModel) {
+      if (successfulProviderTargetIds.has(pendingProviderTargetId)) {
+        save({ providerTargetId: pendingProviderTargetId, modelId: null })
+        setPendingProviderTargetId(null)
+      }
+      return
+    }
+    saveResolvedModel(pendingProviderTargetId, pendingProviderFirstModel)
+    setPendingProviderTargetId(null)
+  }, [pendingProviderFirstModel, pendingProviderTargetExists, pendingProviderTargetId, save, saveResolvedModel, saving, successfulProviderTargetIds])
+
+  return (
+    <SettingsRow
+      label={t('chat.titleGeneration.label' as SettingsKey)}
+      description={t('chat.titleGeneration.description' as SettingsKey)}
+    >
+      <div className="flex items-center justify-end gap-1.5">
+        <ProviderModelPicker
+          providerTargets={profiles}
+          selectedProviderTargetId={selectedProviderTargetId}
+          selectedModelId={selectedModelId}
+          selectedModel={selectedModel}
+          modelsByProviderTargetId={modelsByProviderTargetId}
+          loadingProviderTargetIds={loadingProviderTargetIds}
+          thinkingValue={null}
+          thinkingOptions={[]}
+          emptyProviderTargetsLabel={t('chat.titleGeneration.emptyProfiles' as SettingsKey)}
+          emptySelectionLabel={t('chat.titleGeneration.followCurrent' as SettingsKey)}
+          menuSide="bottom"
+          menuAlign="end"
+          triggerTestId="chat-title-generation-model"
+          disabled={saving}
+          leadingSelection={{
+            label: t('chat.titleGeneration.followCurrent' as SettingsKey),
+            description: t('chat.titleGeneration.followCurrent.description' as SettingsKey),
+            active: !selectedProviderTargetId,
+            onSelect: () => {
+              setPendingProviderTargetId(null)
+              save({ providerTargetId: null, modelId: null })
+            },
+          }}
+          onRequestProviderTargetModels={requestProviderTargetModels}
+          onSelectProviderTarget={(providerTargetId) => {
+            requestProviderTargetModels(providerTargetId)
+            const nextModel = (modelsByProviderTargetId[providerTargetId] ?? [])[0] ?? null
+            if (nextModel) {
+              setPendingProviderTargetId(null)
+              saveResolvedModel(providerTargetId, nextModel)
+              return
+            }
+            if (successfulProviderTargetIds.has(providerTargetId)) {
+              setPendingProviderTargetId(null)
+              save({ providerTargetId, modelId: null })
+              return
+            }
+            setPendingProviderTargetId(providerTargetId)
+          }}
+          onSelectModel={(modelId, providerTargetId) => {
+            setPendingProviderTargetId(null)
+            const nextModel = (modelsByProviderTargetId[providerTargetId] ?? []).find(model => model.id === modelId) ?? null
+            save({
+              providerTargetId,
+              modelId,
+              thinkingEffort: nextModel
+                ? selectTitleGenerationThinkingEffort(nextModel, thinkingOptions, prefs.thinkingEffort)
+                : prefs.thinkingEffort,
+            })
+          }}
+          onSelectThinking={() => undefined}
+        />
+        <ThinkingEffortPicker
+          value={selectedThinkingEffort}
+          options={supportedThinkingOptions}
+          disabled={saving}
+          onChange={thinkingEffort => save({ thinkingEffort: selectThinkingForCurrentSelection(thinkingEffort) })}
+        />
+      </div>
+    </SettingsRow>
+  )
+}
+
 export function ChatSettings() {
   const { t } = useTranslation('settings')
   const { prefs, isSaving, savePrefs } = useChatPreferences()
   const { prefs: codexPrefs, isSaving: isSavingCodexPrefs, savePrefs: saveCodexPrefs } = useCodexPreferences()
+  const handleTitleGenerationChange = useCallback((titleGeneration: Partial<TitleGenerationPreferences>) => {
+    void savePrefs({ titleGeneration })
+  }, [savePrefs])
 
   if (!prefs) {
     return null
@@ -261,6 +499,14 @@ export function ChatSettings() {
           data-testid="chat-codex-user-agent"
         />
       </SettingsRow>
+
+      <SettingsDivider />
+
+      <TitleGenerationSettings
+        prefs={prefs.titleGeneration}
+        saving={isSaving}
+        save={handleTitleGenerationChange}
+      />
 
       <SettingsDivider />
 

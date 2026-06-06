@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
-import { boundedPercent, formatPercentFromRatio, formatTokenCount, formatUsd } from '~/lib/number-format'
 import { cn } from '~/lib/cn'
+import { boundedPercent, formatPercentFromRatio, formatTokenCount, formatUsd } from '~/lib/number-format'
 
 import { UsageHeatmap } from './usage-heatmap'
 import type { DailyCost, DailyUsage } from './use-usage-overview'
@@ -43,7 +43,6 @@ function Sparkline({ data }: { data: DailyUsage[] }) {
   )
 }
 
-
 /** Tiny SVG sparkline for daily cost */
 function CostSparkline({ data }: { data: DailyCost[] }) {
   const last30 = data.slice(-30)
@@ -77,7 +76,6 @@ function CostSparkline({ data }: { data: DailyCost[] }) {
 
 export function UsageDashboard() {
   const { t, i18n } = useTranslation('usage')
-  const [agentView, setAgentView] = useState<'agent' | 'provider'>('agent')
   const [rankingMode, setRankingMode] = useState<'tokens' | 'cost'>('tokens')
   const { daily, summary, stats, costSummary, dailyCost, usageReady, hasData } = useUsageOverview()
   const locale = i18n.language
@@ -231,7 +229,7 @@ export function UsageDashboard() {
                 </RankGroup>
               )}
               {/* Agents ranking */}
-              {summary!.byAgent.length > 0 && (
+              {rankingMode === 'tokens' && summary!.byAgent.length > 0 && (
                 <RankGroup title={t('topUsage.agents')}>
                   {summary!.byAgent.slice(0, TOP_ITEM_LIMIT).map(item => (
                     <RankedUsageRow
@@ -245,8 +243,22 @@ export function UsageDashboard() {
                   ))}
                 </RankGroup>
               )}
+              {rankingMode === 'cost' && costSummary && costSummary.byAgent.length > 0 && (
+                <RankGroup title={t('topUsage.agents')}>
+                  {costSummary.byAgent.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedCostRow
+                      key={item.agentId}
+                      label={item.agentName}
+                      costUsd={item.costUsd}
+                      maxCost={costSummary.byAgent[0]?.costUsd ?? 0}
+                      totalCost={costSummary.totalCostUsd}
+                      tokens={item.totalTokens}
+                    />
+                  ))}
+                </RankGroup>
+              )}
               {/* Providers ranking */}
-              {summary!.byProviderTarget.length > 0 && (
+              {rankingMode === 'tokens' && summary!.byProviderTarget.length > 0 && (
                 <RankGroup title={t('topUsage.providers')}>
                   {summary!.byProviderTarget.slice(0, TOP_ITEM_LIMIT).map(item => (
                     <RankedUsageRow
@@ -260,45 +272,20 @@ export function UsageDashboard() {
                   ))}
                 </RankGroup>
               )}
-            </div>
-          </div>
-        )}
-
-        {/* Breakdown - Agent/Provider only */}
-        {hasData && (summary!.byAgent.length > 0 || summary!.byProviderTarget.length > 0) && (
-          <div className="mt-10">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-[11px] font-medium text-muted-foreground">
-                {agentView === 'agent' ? t('breakdown.byAgent') : t('breakdown.byProvider')}
-              </p>
-              <ToggleGroup
-                type="single"
-                value={agentView}
-                onValueChange={(value) => {
-                  if (value === 'agent' || value === 'provider') {
-                    setAgentView(value)
-                  }
-                }}
-                variant="outline"
-                size="sm"
-                className="h-5 shrink-0 gap-px rounded-md"
-              >
-                <ToggleGroupItem value="agent" className="h-5 px-1.5 text-[10px]">
-                  {t('breakdown.toggleAgent')}
-                </ToggleGroupItem>
-                <ToggleGroupItem value="provider" className="h-5 px-1.5 text-[10px]">
-                  {t('breakdown.toggleProvider')}
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            <div className="space-y-2.5">
-              {agentView === 'agent'
-                ? summary!.byAgent.map(a => (
-                  <BarRow key={a.agentId} label={a.agentName} value={a.totalTokens} max={summary!.byAgent[0].totalTokens} />
-                ))
-                : summary!.byProviderTarget.map(p => (
-                  <BarRow key={p.providerTargetId} label={p.providerTargetName ?? p.providerTargetId} value={p.totalTokens} max={summary!.byProviderTarget[0].totalTokens} />
-                ))}
+              {rankingMode === 'cost' && costSummary && costSummary.byProviderTarget.length > 0 && (
+                <RankGroup title={t('topUsage.providers')}>
+                  {costSummary.byProviderTarget.slice(0, TOP_ITEM_LIMIT).map(item => (
+                    <RankedCostRow
+                      key={item.providerTargetId}
+                      label={item.providerTargetName ?? item.providerTargetId}
+                      costUsd={item.costUsd}
+                      maxCost={costSummary.byProviderTarget[0]?.costUsd ?? 0}
+                      totalCost={costSummary.totalCostUsd}
+                      tokens={item.totalTokens}
+                    />
+                  ))}
+                </RankGroup>
+              )}
             </div>
           </div>
         )}
@@ -335,45 +322,6 @@ function Pill({ label, value, dataTestId, accent }: { label: string, value: stri
       >
         {value}
       </span>
-    </div>
-  )
-}
-
-function BarRow({ label, value, max }: { label: string, value: number, max: number }) {
-  const pct = max > 0 ? (value / max) * 100 : 0
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground font-mono truncate max-w-[70%]">{label}</span>
-        <span className="text-xs tabular-nums text-foreground">{formatTokenCount(value)}</span>
-      </div>
-      <div className="h-1 w-full rounded-full bg-foreground/5">
-        <div
-          className="h-full rounded-full  bg-foreground/50"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  )
-}
-
-function CostBarRow({ label, costUsd, tokens, max }: { label: string, costUsd: number, tokens: number, max: number }) {
-  const pct = max > 0 ? (costUsd / max) * 100 : 0
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-xs text-muted-foreground font-mono truncate max-w-[55%]">{label}</span>
-        <span className="text-xs tabular-nums text-foreground">
-          {formatUsd(costUsd)}
-          <span className="text-muted-foreground ml-1.5">{formatTokenCount(tokens)}</span>
-        </span>
-      </div>
-      <div className="h-1 w-full rounded-full bg-foreground/5">
-        <div
-          className="h-full rounded-full bg-foreground/50"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
     </div>
   )
 }
@@ -454,4 +402,3 @@ function RankedCostRow({
     </div>
   )
 }
-

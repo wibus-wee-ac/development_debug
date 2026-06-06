@@ -1,5 +1,6 @@
 import { BotIcon } from 'lucide-react'
 
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { cn } from '~/lib/cn'
 
@@ -44,14 +45,20 @@ export function AgentAvatar({
       )}
       style={{ width: size, height: size }}
     >
-      {imageUrl && (
+      {avatarStyle === 'lobehub-icon' && avatarSeed
+        ? (
+            <div className="flex size-full items-center justify-center p-1">
+              <ProviderIcon iconSlug={avatarSeed} presetId={null} className="size-full" />
+            </div>
+          )
+        : imageUrl && (
         <AvatarImage
           src={imageUrl}
           alt={name ?? ''}
           className="rounded-full"
           crossOrigin="anonymous"
         />
-      )}
+          )}
       <AvatarFallback className="text-[10px] font-medium">
         {initial ?? <BotIcon className="size-3" aria-hidden="true" />}
       </AvatarFallback>

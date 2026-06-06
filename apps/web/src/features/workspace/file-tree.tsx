@@ -166,10 +166,9 @@ function buildWorkspaceFileEventsUrl(workspaceId: string): string {
 interface FileTreeProps {
   workspaceId: string | null
   workspacePath?: string | null
-  onPackRequested?: (paths: string[]) => void
 }
 
-export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTreeProps) {
+export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   const { t } = useTranslation('workspace')
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
@@ -388,7 +387,6 @@ export function FileTree({ workspaceId, workspacePath, onPackRequested }: FileTr
       onDirectoryExpanded={loadDirectoryChildren}
       onRefreshDirectory={loadDirectoryChildren}
       workspacePath={workspacePath ?? undefined}
-      onPackRequested={onPackRequested}
     />
   )
 }
@@ -404,10 +402,9 @@ interface FileTreeInnerProps {
   onDirectoryExpanded: (path: string) => Promise<void>
   onRefreshDirectory: (path: string, force?: boolean) => Promise<void>
   workspacePath?: string
-  onPackRequested?: (paths: string[]) => void
 }
 
-function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, onDirectoryExpanded, onRefreshDirectory, workspacePath, onPackRequested }: FileTreeInnerProps) {
+function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, onDirectoryExpanded, onRefreshDirectory, workspacePath }: FileTreeInnerProps) {
   const { t } = useTranslation('workspace')
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
@@ -770,12 +767,10 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
               model.focusPath(toTreeDirectoryPath(path))
             }}
             onOpenDefault={openInDefaultApplication}
-            onPackRequested={onPackRequested}
             onRename={(path) => {
               model.startRenaming(path)
             }}
             onReveal={revealWorkspacePath}
-            selectedPaths={selectedPaths}
             t={t}
             workspacePath={workspacePath}
           />

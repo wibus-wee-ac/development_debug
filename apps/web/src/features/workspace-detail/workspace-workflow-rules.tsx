@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { BotIcon, GlobeIcon } from 'lucide-react'
+import { useEffect } from 'react'
 import { z } from 'zod'
 
 import { getWorkflowRulesByWorkspaceId, putWorkflowRulesByWorkspaceId } from '~/api-gen'
@@ -9,7 +10,7 @@ import { cn } from '~/lib/cn'
 
 const WorkflowRuleSchema = z.object({
   global: z.string().nullable(),
-  profileSpecific: z.string().nullable(),
+  agentSpecific: z.string().nullable(),
 })
 
 function useSaveWorkflowRule() {
@@ -18,7 +19,7 @@ function useSaveWorkflowRule() {
     mutationFn: async (params: { workspaceId: string, agentId: string | null, content: string }) => {
       await putWorkflowRulesByWorkspaceId({
         path: { workspaceId: params.workspaceId },
-        body: { agentProfileId: params.agentId, content: params.content },
+        body: { agentId: params.agentId, content: params.content },
       })
     },
     onSuccess: () => {
@@ -67,27 +68,34 @@ export function WorkspaceWorkflowRules({
   onSelectedAgentId: (agentId: string | null) => void
 }) {
   const { agents, isSuccess: agentsReady } = useAgents()
+  const issueAgentEligibleAgents = agents.filter(agent => agent.enabled && agent.providerTargetId)
+  const activeScope = selectedAgentId
+    ? issueAgentEligibleAgents.find(agent => agent.id === selectedAgentId)
+    : null
   const workflowRule = useQuery({
     queryKey: ['workflow-rules', workspaceId, selectedAgentId],
     queryFn: async () => {
       const { data } = await getWorkflowRulesByWorkspaceId({
         path: { workspaceId },
-        query: selectedAgentId ? { agentProfileId: selectedAgentId } : {},
+        query: selectedAgentId ? { agentId: selectedAgentId } : {},
       })
       return WorkflowRuleSchema.parse(data)
     },
-    enabled: !!workspaceId,
+    enabled: !!workspaceId && (!selectedAgentId || !!activeScope),
   })
   const saveMutation = useSaveWorkflowRule()
-  const enabledAgents = agents.filter(a => a.enabled)
 
-  const activeScope = selectedAgentId
-    ? enabledAgents.find(a => a.id === selectedAgentId)
-    : null
   const content = selectedAgentId
-    ? (workflowRule.data?.profileSpecific ?? null)
+    ? (workflowRule.data?.agentSpecific ?? null)
     : (workflowRule.data?.global ?? null)
   const ready = agentsReady && workflowRule.isSuccess
+
+  useEffect(() => {
+    if (!agentsReady || !selectedAgentId || activeScope) {
+      return
+    }
+    onSelectedAgentId(null)
+  }, [activeScope, agentsReady, onSelectedAgentId, selectedAgentId])
 
   const handleSave = (agentId: string | null, content: string) => {
     saveMutation.mutate({ workspaceId, agentId, content })
@@ -116,7 +124,7 @@ export function WorkspaceWorkflowRules({
           <GlobeIcon className="size-3" />
           All Agents
         </button>
-        {enabledAgents.map(agent => (
+        {issueAgentEligibleAgents.map(agent => (
           <button
             key={agent.id}
             type="button"
@@ -169,9 +177,9 @@ export function WorkspaceWorkflowRules({
       </div>
 
       {/* Info note */}
-      {enabledAgents.length === 0 && (
+      {issueAgentEligibleAgents.length === 0 && (
         <div className="py-8 text-center text-[11px] text-muted-foreground/40">
-          No agents configured yet
+          No issue agents configured yet
         </div>
       )}
     </div>

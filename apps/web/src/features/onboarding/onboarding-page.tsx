@@ -9,7 +9,6 @@ import {
   MessageSquareIcon,
   SearchIcon,
   Settings2Icon,
-  SparklesIcon,
   TerminalIcon,
   XIcon,
 } from 'lucide-react'
@@ -19,6 +18,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { useI18n } from '~/i18n/i18n-context'
 import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import type { SupportedLocale } from '~/i18n/locales'
 import { cn } from '~/lib/cn'
@@ -34,6 +34,12 @@ const LOCALE_LABEL_KEYS: Record<SupportedLocale, OnboardingKey> = {
   'ja-JP': 'locale.jaJP',
   'es-ES': 'locale.esES',
 }
+
+function isSelectKeyboardEventTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-slot^="select"]') !== null
+}
+
+const CRADLE_ICON_URL = '/icon.png'
 
 const WELCOME_PARTICLES = [
   { id: 0, startX: -56, startY: -28, delay: 0.04 },
@@ -63,7 +69,7 @@ const WORKSPACE_FILES = [
 const WORKSPACE_INDENT_CLASSES = ['pl-3', 'pl-7', 'pl-11'] as const
 
 const AGENT_STEPS = [
-  { icon: SearchIcon, text: '> Reading project graph...', success: false },
+  { icon: SearchIcon, text: '> Checking workspace files...', success: false },
   { icon: CodeIcon, text: '> Editing onboarding-page.tsx', success: false },
   { icon: TerminalIcon, text: '> tsc --noEmit', success: false },
   { icon: CheckIcon, text: 'OK All checks passed', success: true },
@@ -129,6 +135,7 @@ function ProgressLine({ step }: { step: number }) {
     <div className="absolute top-12 right-0 left-0 z-30 h-px bg-border">
       <m.div
         className="h-full bg-foreground"
+        initial={{ width: '0%' }}
         animate={{ width: `${progress}%` }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       />
@@ -139,6 +146,7 @@ function ProgressLine({ step }: { step: number }) {
 // ─── Main orchestrator ─────────────────────────────────────────────────────────
 export function OnboardingPage() {
   const { t, i18n } = useTranslation('onboarding')
+  const { switchLang } = useI18n()
   const { step, nextStep, prevStep, complete } = useOnboardingStore()
   const [direction, setDirection] = useState(1)
 
@@ -158,11 +166,15 @@ export function OnboardingPage() {
   }, [prevStep])
 
   const handleLangChange = useCallback(
-    (lang: string) => { void i18n.changeLanguage(normalizeLocale(lang)) },
-    [i18n],
+    (lang: string) => { void switchLang(normalizeLocale(lang)) },
+    [switchLang],
   )
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (isSelectKeyboardEventTarget(e.target)) {
+      return
+    }
+
     if (e.key === 'ArrowRight' || e.key === 'Enter') handleNext()
     else if (e.key === 'ArrowLeft' && !isFirst) handlePrev()
     else if (e.key === 'Escape') complete()
@@ -180,27 +192,17 @@ export function OnboardingPage() {
 
       {/* Header */}
       <m.header
-        className="relative z-20 flex h-12 shrink-0 items-center justify-between px-5"
+        className="relative z-20 flex h-12 shrink-0 items-center justify-end px-5"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6, delay: 0.2 }}
       >
-        <div className="flex items-center gap-2">
-          <m.div
-            className="flex size-5 items-center justify-center rounded bg-foreground text-background"
-            whileHover={{ rotate: 15, scale: 1.1 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 12 }}
-          >
-            <SparklesIcon className="size-3" />
-          </m.div>
-          <span className="text-[13px] font-medium">Cradle</span>
-        </div>
         <div className="flex items-center gap-3">
           <Select value={activeLocale} onValueChange={handleLangChange}>
             <SelectTrigger size="sm" className="h-7 w-24 border-transparent bg-transparent text-xs text-muted-foreground shadow-none hover:bg-muted">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="z-[10000]">
               {localeOptions.map(opt => (
                 <SelectItem key={opt.value} value={opt.value} className="text-xs">
                   {t(LOCALE_LABEL_KEYS[opt.value])}
@@ -222,7 +224,7 @@ export function OnboardingPage() {
 
       {/* Step content */}
       <main className="relative z-10 flex min-h-0 flex-1 flex-col items-center justify-center overflow-hidden px-6">
-        <AnimatePresence mode="wait" custom={direction} initial={false}>
+        <AnimatePresence mode="wait" custom={direction}>
           <m.div
             key={step}
             custom={direction}
@@ -365,18 +367,20 @@ function StepWelcome({ t }: { t: (key: OnboardingKey) => string }) {
         ))}
         {/* Logo materializes after particles converge */}
         <m.div
-          className="absolute flex size-16 items-center justify-center rounded-2xl border border-border"
+          className="absolute flex size-16 items-center justify-center overflow-hidden rounded-2xl bg-background shadow-sm ring-1 ring-black/10 dark:ring-white/10"
           initial={{ scale: 0, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           transition={{ delay: 0.8, type: 'spring', stiffness: 200, damping: 15 }}
         >
-          <m.div
-            initial={{ rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
+          <m.img
+            src={CRADLE_ICON_URL}
+            alt=""
+            className="size-full object-cover"
+            draggable={false}
+            initial={{ scale: 0.82, opacity: 0, filter: 'blur(4px)' }}
+            animate={{ scale: 1, opacity: 1, filter: 'blur(0px)' }}
             transition={{ delay: 1.0, type: 'spring', stiffness: 300, damping: 20 }}
-          >
-            <SparklesIcon className="size-7 text-foreground" />
-          </m.div>
+          />
         </m.div>
         {/* Subtle pulse ring after logo appears */}
         <m.div
@@ -615,8 +619,8 @@ function StepChat({ t }: { t: (key: OnboardingKey) => string }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // STEP 2: Workspace
-// ─── Design: File tree grows, then a "scan line" passes through indexing each
-// file. Indexed files get a flash highlight, showing the project is alive.
+// ─── Design: File tree grows, then a scan pass highlights each file,
+// showing the workspace can be inspected without implying hidden project analysis.
 // ═══════════════════════════════════════════════════════════════════════════════
 function StepWorkspace({ t }: { t: (key: OnboardingKey) => string }) {
   const [scanIndex, setScanIndex] = useState(-1)
@@ -694,7 +698,7 @@ function StepWorkspace({ t }: { t: (key: OnboardingKey) => string }) {
               initial={{ opacity: 0 }}
               animate={{ opacity: scanIndex >= 0 ? 1 : 0 }}
             >
-              indexing
+              checking
             </m.span>
           </div>
         </div>
@@ -743,7 +747,7 @@ function StepWorkspace({ t }: { t: (key: OnboardingKey) => string }) {
             </m.div>
           ))}
         </div>
-        {/* Index progress */}
+        {/* File check progress */}
         <div className="border-t border-border px-3 py-2">
           <div className="h-1 overflow-hidden rounded-full bg-muted">
             <m.div
@@ -767,7 +771,7 @@ function StepAgents({ t }: { t: (key: OnboardingKey) => string }) {
   const [visibleSteps, setVisibleSteps] = useState(0)
 
   const agentSteps = [
-    { icon: SearchIcon, text: '→ Reading project graph...', color: 'text-muted-foreground' },
+    { icon: SearchIcon, text: '→ Checking workspace files...', color: 'text-muted-foreground' },
     { icon: CodeIcon, text: '→ Editing onboarding-page.tsx', color: 'text-muted-foreground' },
     { icon: TerminalIcon, text: '→ tsc --noEmit', color: 'text-muted-foreground' },
     { icon: CheckIcon, text: '✓ All checks passed', color: 'text-emerald-500' },

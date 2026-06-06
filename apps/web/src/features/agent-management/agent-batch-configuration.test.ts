@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Agent } from '~/lib/types'
+import type { Agent } from '~/features/agent-runtime/use-agents'
 
 import { buildAgentProviderBatchPatches } from './agent-batch-configuration'
 
@@ -14,7 +14,7 @@ function createAgent(overrides: Partial<Agent>): Agent {
     avatarSeed: overrides.avatarSeed ?? 'seed',
     providerTargetId: overrides.providerTargetId ?? 'profile-old',
     modelId: overrides.modelId ?? 'model-old',
-    thinkingEffort: overrides.thinkingEffort ?? 'auto',
+    thinkingEffort: overrides.thinkingEffort ?? 'high',
     runtimeKind: overrides.runtimeKind ?? 'standard',
     configJson: overrides.configJson ?? '{}',
     enabled: overrides.enabled ?? true,
@@ -53,7 +53,6 @@ describe('buildAgentProviderBatchPatches', () => {
             description: 'Description',
             avatarStyle: 'bottts-neutral',
             avatarSeed: 'avatar-a',
-            avatarUrl: null,
             providerTargetId: 'profile-new',
             modelId: 'model-new',
             thinkingEffort: 'high',
@@ -79,14 +78,27 @@ describe('buildAgentProviderBatchPatches', () => {
       ],
       {
         providerTarget: { kind: 'manual', id: 'profile-new' },
-        modelId: null,
-        thinkingEffort: 'auto',
+        modelId: 'model-new',
+        thinkingEffort: 'high',
       },
     )
 
     expect(result.skippedCliTuiCount).toBe(1)
     expect(result.patches).toHaveLength(1)
     expect(result.patches[0]?.id).toBe('provider-agent')
+  })
+
+  it('rejects provider-backed batch patches without a resolved model', () => {
+    expect(() =>
+      buildAgentProviderBatchPatches(
+        [createAgent({ id: 'provider-agent', runtimeKind: 'standard' })],
+        {
+          providerTarget: { kind: 'manual', id: 'profile-new' },
+          modelId: null,
+          thinkingEffort: 'high',
+        },
+      ),
+    ).toThrow('resolved model')
   })
 
   it('writes external provider targets without fabricating a profile id', () => {

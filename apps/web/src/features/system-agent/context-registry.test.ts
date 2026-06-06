@@ -4,7 +4,6 @@ import { createContextRegistry } from '~/features/context/context-registry'
 import { useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 import { readSystemAgentContextItems } from './system-context-provider'
@@ -78,21 +77,13 @@ describe('system-agent Jarvis context provider', () => {
         { id: 'tab-chat', type: 'chat', label: 'Architecture discussion', params: { sessionId: 'session-1' }, pinned: false },
       ],
     })
-    useChatStore.setState({
-      sessions: {
-        'session-1': {
-          messages: [
-            { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Can you inspect the context model?' }] },
-            { id: 'm2', role: 'assistant', parts: [{ type: 'text', text: 'The current model is too shallow.' }] },
-          ],
-          status: 'idle',
-        },
-      },
-    } as Partial<ReturnType<typeof useChatStore.getState>>)
+    useChatStore.getState().setMessages('session-1', [
+      { id: 'm1', role: 'user', parts: [{ type: 'text', text: 'Can you inspect the context model?' }] },
+      { id: 'm2', role: 'assistant', parts: [{ type: 'text', text: 'The current model is too shallow.' }] },
+    ])
     useLayoutStore.setState({ sidebarCollapsed: true, asideOpen: true, asideActiveTab: 'browser', bottomPanelOpen: false })
     useSettingsOverlayStore.setState({ settingsTabId: null, settingsSection: 'general' })
     useNewChatStore.setState({ lastAgentProfileId: 'profile-1' })
-    useSessionActivityStore.setState({ unread: new Set(['session-2']) })
 
     const items = readSystemAgentContextItems(1779781200000)
 
@@ -101,7 +92,6 @@ describe('system-agent Jarvis context provider', () => {
       ['view', 'Open tabs', 'system-agent'],
       ['history', 'Active chat summary', 'system-agent'],
       ['layout', 'Layout', 'system-agent'],
-      ['attention', 'Unread sessions', 'system-agent'],
       ['entity', 'Active Jarvis profile', 'system-agent'],
     ])
     expect(items.find(item => item.title === 'Active chat summary')).toMatchObject({

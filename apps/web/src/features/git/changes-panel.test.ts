@@ -130,6 +130,41 @@ describe('groupGitFileStatuses', () => {
   })
 })
 
+describe('changesPanel type interactions', () => {
+  it('reuses the all changes diff tab while scrolling to clicked files', () => {
+    gitQueryMocks.useGitFileStatuses.mockReturnValue({
+      data: [
+        { path: 'src/app.tsx', status: 'modified' },
+        { path: 'src/feature.ts', status: 'added' },
+      ],
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    })
+
+    renderWithQueryClient(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
+
+    const rows = screen.getAllByTestId('changes-file-row')
+    fireEvent.click(rows[0]!)
+    const tabId = useBrowserPanelStore.getState().activeTabId
+    fireEvent.click(rows[1]!)
+
+    expect(useLayoutStore.getState().browserPanelOpen).toBe(true)
+    expect(useBrowserPanelStore.getState().tabs).toEqual([
+      expect.objectContaining({
+        kind: 'workspace-diff',
+        workspaceId: 'workspace-1',
+        title: 'All Changes',
+      }),
+    ])
+    expect(useBrowserPanelStore.getState().activeTabId).toBe(tabId)
+    expect(useBrowserPanelStore.getState().scrollToFilePath).toMatchObject({
+      path: 'src/feature.ts',
+      tabId,
+    })
+  })
+})
+
 describe('changesPanel tree interactions', () => {
   it('opens the diff tab and scrolls to the double-clicked tree file', () => {
     renderWithQueryClient(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))

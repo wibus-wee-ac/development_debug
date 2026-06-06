@@ -8,7 +8,6 @@ import {
   FilePlusIcon,
   FolderOpenIcon,
   FolderPlusIcon,
-  PackageIcon,
 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
@@ -148,10 +147,8 @@ export interface WorkspaceFileContextMenuProps {
   onCreateRequest: (kind: 'file' | 'folder', parentPath: string) => void
   onOpen: (path: string, kind: 'file' | 'directory') => void
   onOpenDefault: (path: string) => Promise<void>
-  onPackRequested?: (paths: string[]) => void
   onRename: (path: string) => void
   onReveal: (path: string) => Promise<void>
-  selectedPaths: readonly string[]
   t: WorkspaceTranslation
   workspacePath?: string
 }
@@ -164,18 +161,13 @@ export function WorkspaceFileContextMenu({
   onCreateRequest,
   onOpen,
   onOpenDefault,
-  onPackRequested,
   onRename,
   onReveal,
-  selectedPaths,
   t,
   workspacePath,
 }: WorkspaceFileContextMenuProps) {
   const copyPathChordActiveRef = useRef(false)
   const parentPath = item.kind === 'directory' ? item.path : getParentPath(item.path)
-  const selectedPackPaths = selectedPaths.length > 0 && selectedPaths.includes(item.path)
-    ? [...selectedPaths]
-    : [item.path]
 
   return (
     <Menu
@@ -296,19 +288,6 @@ export function WorkspaceFileContextMenu({
           {t('fileTree.action.copyPath')}
           <MenuShortcut>{VSCODE_COPY_PATH_SHORTCUT}</MenuShortcut>
         </MenuItem>
-        {onPackRequested && (
-          <>
-            <MenuSeparator />
-            <MenuItem onClick={() => {
-              onPackRequested(selectedPackPaths)
-              context.close({ restoreFocus: true })
-            }}
-            >
-              <PackageIcon />
-              {t('fileTree.action.packToAi')}
-            </MenuItem>
-          </>
-        )}
       </MenuPopup>
     </Menu>
   )

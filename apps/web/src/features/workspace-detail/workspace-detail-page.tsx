@@ -29,21 +29,25 @@ import {
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
+import type { ChatContextPart } from '~/features/chat/chat-context-parts'
 import { startChatResponse } from '~/features/chat/chat-response-command'
+import type { DraftChatComposerSubmitOptions } from '~/features/chat/draft-chat-composer'
+import { DraftChatComposer } from '~/features/chat/draft-chat-composer'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
-import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
+import { useCradleTabStore } from '~/tabs/registry'
+import { openTearoffSessionWindow } from '~/tabs/tearoff-tabs'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
-import { CapsuleComposer } from './capsule-composer'
 import { useWorkspaceFile } from './use-workspace-file'
 
 const LazySkillManager = lazy(() => import('~/features/skills/skill-manager').then(module => ({ default: module.SkillManager })))
 const LazyWorkspaceWorkflowRules = lazy(() => import('./workspace-workflow-rules').then(module => ({ default: module.WorkspaceWorkflowRules })))
+const SHOW_WORKFLOW_RULES_TAB = import.meta.env.DEV
 
 /* ─── Types ──────────────────────────────────────────────── */
 
@@ -494,12 +498,12 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const { data: workflowRule } = useQuery({
     ...getWorkflowRulesByWorkspaceIdOptions({
       path: { workspaceId },
-      query: selectedWorkflowAgentId ? { agentProfileId: selectedWorkflowAgentId } : {},
+      query: selectedWorkflowAgentId ? { agentId: selectedWorkflowAgentId } : {},
     }),
-    enabled: activeTab === 'workflow-rules' && !!workspaceId,
+    enabled: SHOW_WORKFLOW_RULES_TAB && activeTab === 'workflow-rules' && !!workspaceId,
   })
   const workflowContent = selectedWorkflowAgentId
-    ? (workflowRule?.profileSpecific ?? null)
+    ? (workflowRule?.agentSpecific ?? null)
     : (workflowRule?.global ?? null)
 
   const recentSessions = useMemo(() => {
@@ -510,7 +514,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     if (activeTab === 'overview') {
       return parseHeadings(agents.content, 'AGENTS.md')
     }
-    if (activeTab === 'workflow-rules') {
+    if (SHOW_WORKFLOW_RULES_TAB && activeTab === 'workflow-rules') {
       return parseHeadings(workflowContent, t('detail.toc.workflowRules'))
     }
     return []
@@ -538,7 +542,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const handleRename = useCallback(async (newName: string) => {
     await renameWorkspaceMutation.mutateAsync({ path: { id: workspaceId }, body: { name: newName } })
-  }, [renameWorkspaceMutation.mutateAsync, workspaceId])
+  }, [renameWorkspaceMutation, workspaceId])
 
   const handleOpenInFinder = useCallback(async () => {
     if (!workspace || !isElectron || !nativeIpc) {
@@ -578,97 +582,128 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     openTab('new-chat')
   }, [openTab])
 
-  const handleCapsuleSend = useCallback(async (
+  const openCreatedWorkspaceSession = useCallback(async (sessionId: string, target: 'tab' | 'window') => {
+    if (target === 'window') {
+      const openedWindow = await openTearoffSessionWindow(useCradleTabStore, sessionId)
+      if (openedWindow) {
+        return
+      }
+    }
+    openTab('chat', { sessionId })
+  }, [openTab])
+
+  const handleDraftComposerSendToTarget = useCallback(async (
     text: string,
     files: FileUIPart[],
-    opts: { runtimeKind: RuntimeKind, agentId?: string, providerTargetId?: string, modelId?: string, thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' },
+    contextParts: ChatContextPart[],
+    opts: DraftChatComposerSubmitOptions,
+    target: 'tab' | 'window',
   ) => {
     if (!workspace) {
-      return
+      return false
     }
     if (opts.runtimeKind === 'cli-tui') {
       if (!opts.agentId) {
-        return
+        return false
       }
+      const sessionTitle = text.slice(0, 80) || opts.agentName || opts.agentId
       const session = await createSessionMutation.mutateAsync({
-        body: { workspaceId, agentId: opts.agentId, title: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle') },
+        body: { workspaceId, agentId: opts.agentId, title: sessionTitle },
       })
       if (!session?.id) {
-        return
+        return false
       }
       useSessionLayoutStore.getState().upsertSession({
         sessionId: session.id,
-        sessionTitle: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle'),
+        sessionTitle,
         workspaceId,
         workspacePath: workspace.path,
         runtimeKind: 'cli-tui',
       })
       updateSessionInSessionLists(queryClient, {
         id: session.id,
-        title: text.slice(0, 80) || t('detail.session.cliTuiFallbackTitle'),
+        title: sessionTitle,
         workspaceId,
         agentId: opts.agentId,
         runtimeKind: 'cli-tui',
       }, { promote: true })
-      openTab('chat', { sessionId: session.id })
-      return
+      await openCreatedWorkspaceSession(session.id, target)
+      return true
     }
+    if (!opts.providerTargetId) {
+      return false
+    }
+    const sessionTitle = text.slice(0, 80) || opts.providerTargetName || opts.providerTargetId
     const session = await createSessionMutation.mutateAsync({
-      body: { workspaceId, providerTargetId: opts.providerTargetId!, runtimeKind: opts.runtimeKind, title: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle') },
+      body: { workspaceId, providerTargetId: opts.providerTargetId, runtimeKind: opts.runtimeKind, title: sessionTitle },
     })
     if (!session?.id) {
-      return
+      return false
     }
     useSessionLayoutStore.getState().upsertSession({
       sessionId: session.id,
-      sessionTitle: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle'),
+      sessionTitle,
       workspaceId,
       workspacePath: workspace.path,
       runtimeKind: opts.runtimeKind,
     })
     updateSessionInSessionLists(queryClient, {
       id: session.id,
-      title: text.slice(0, 80) || opts.providerTargetId || t('detail.session.newChatFallbackTitle'),
+      title: sessionTitle,
       workspaceId,
       providerTargetId: opts.providerTargetId ?? null,
       modelId: opts.modelId ?? null,
       runtimeKind: opts.runtimeKind,
     }, { promote: true })
-    openTab('chat', { sessionId: session.id })
+    await openCreatedWorkspaceSession(session.id, target)
 
-    void (async () => {
-      try {
-        const response = await startChatResponse({
-          sessionId: session.id,
-          body: { text, files, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
-        })
-        if (!response.ok) {
-          const body = await response.text().catch(() => '')
-          throw new Error(`Failed to start chat response: ${response.status} ${body}`)
-        }
-        await response.body?.cancel()
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-        ])
+    void startChatResponse({
+      sessionId: session.id,
+      body: { text, files, contextParts, modelId: opts.modelId, thinkingEffort: opts.thinkingEffort },
+    }).then(async (response) => {
+      if (!response.ok) {
+        const body = await response.text().catch(() => '')
+        throw new Error(`Failed to start chat response: ${response.status} ${body}`)
       }
-      catch (error) {
-        toastManager.add({
-          type: 'error',
-          title: t('detail.toast.startChatFailed'),
-          description: error instanceof Error ? error.message : String(error),
-        })
-      }
-      finally {
-        void queryClient.invalidateQueries({
-          queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: session.id } }),
-        })
-        void queryClient.invalidateQueries({
-          queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }),
-        })
-      }
-    })()
-  }, [createSessionMutation.mutateAsync, openTab, queryClient, t, workspace, workspaceId])
+      await response.body?.cancel()
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+        queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      ])
+    }).catch((error) => {
+      toastManager.add({
+        type: 'error',
+        title: t('detail.toast.startChatFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }).finally(() => {
+      void queryClient.invalidateQueries({
+        queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId: session.id } }),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }),
+      })
+    })
+    return true
+  }, [createSessionMutation, openCreatedWorkspaceSession, queryClient, t, workspace, workspaceId])
+
+  const handleDraftComposerSend = useCallback((
+    text: string,
+    files: FileUIPart[],
+    contextParts: ChatContextPart[],
+    opts: DraftChatComposerSubmitOptions,
+  ) => {
+    return handleDraftComposerSendToTarget(text, files, contextParts, opts, 'tab')
+  }, [handleDraftComposerSendToTarget])
+
+  const handleDraftComposerSendInNewWindow = useCallback((
+    text: string,
+    files: FileUIPart[],
+    contextParts: ChatContextPart[],
+    opts: DraftChatComposerSubmitOptions,
+  ) => {
+    return handleDraftComposerSendToTarget(text, files, contextParts, opts, 'window')
+  }, [handleDraftComposerSendToTarget])
 
   const handleTocNavigate = useCallback((slug: string) => {
     const el = document.getElementById(slug)
@@ -736,7 +771,8 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     activeTab,
     agents,
     gitStatus,
-    handleCapsuleSend,
+    handleDraftComposerSend,
+    handleDraftComposerSendInNewWindow,
     handleNewChat,
     handleOpenInApp,
     handleOpenInFinder,
@@ -760,7 +796,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
 function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
   const { t } = useTranslation('workspace')
-  const { activeTab, agents, handleCapsuleSend, handleRename, scrollRef, selectedWorkflowAgentId, setActiveTab, setSelectedWorkflowAgentId, workspace, workspaceId } = owner
+  const { activeTab, agents, handleDraftComposerSend, handleDraftComposerSendInNewWindow, handleRename, scrollRef, selectedWorkflowAgentId, setActiveTab, setSelectedWorkflowAgentId, workspace, workspaceId } = owner
 
   if (!workspace) {
     return null
@@ -780,7 +816,9 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
           <div className="mb-6 flex items-center gap-0.5 overflow-x-auto scrollbar-none">
             {([
               { id: 'overview', label: t('detail.tab.overview'), icon: FileTextIcon },
-              { id: 'workflow-rules', label: t('detail.tab.workflow'), icon: ScrollTextIcon },
+              ...(SHOW_WORKFLOW_RULES_TAB
+                ? [{ id: 'workflow-rules', label: t('detail.tab.workflow'), icon: ScrollTextIcon } as const]
+                : []),
               { id: 'skills', label: t('detail.tab.skills'), icon: PencilIcon },
             ] as const).map(({ id, label, icon: Icon }) => (
               <button
@@ -825,7 +863,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
             )}
           </div>
 
-          {activeTab === 'workflow-rules' && (
+          {SHOW_WORKFLOW_RULES_TAB && activeTab === 'workflow-rules' && (
             <Suspense fallback={<WorkspacePaneLoading label={t('detail.loading.workflow')} testId="workspace-workflow-loading" />}>
               <LazyWorkspaceWorkflowRules
                 workspaceId={workspaceId}
@@ -852,8 +890,13 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 px-4 pb-4">
-        <div className="pointer-events-auto mx-auto max-w-2xl">
-          <CapsuleComposer workspaceId={workspaceId} onSend={handleCapsuleSend} />
+        <div className="pointer-events-auto mx-auto max-w-160">
+          <DraftChatComposer
+            workspaceId={workspaceId}
+            onSend={handleDraftComposerSend}
+            onSendInNewWindow={handleDraftComposerSendInNewWindow}
+            testIdPrefix="workspace-detail"
+          />
         </div>
       </div>
     </div>

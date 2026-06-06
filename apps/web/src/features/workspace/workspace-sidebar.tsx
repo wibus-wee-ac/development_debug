@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   ArchiveIcon,
+  ArrowUpDownIcon,
   BarChart3Icon,
   CalendarClockIcon,
   ChevronDownIcon,
@@ -16,22 +17,19 @@ import {
   FolderClosedIcon,
   FolderOpenIcon,
   FolderPlusIcon,
-  GitBranchIcon,
+  ListFilterIcon,
   LoaderCircleIcon,
   MailIcon,
   MailOpenIcon,
   MessageSquarePlusIcon,
   MoreHorizontalIcon,
-  PackageIcon,
   PencilIcon,
   PinIcon,
   PinOffIcon,
   PlusIcon,
   SearchIcon,
   SettingsIcon,
-  SlidersHorizontalIcon,
   Trash2Icon,
-  UserCircleIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -42,6 +40,8 @@ import {
   getSessionsByIdExportMarkdown,
   patchSessionsById,
   postSessionsByIdArchive,
+  postSessionsByIdRead,
+  postSessionsByIdUnread,
 } from '~/api-gen'
 import {
   getSessionsByIdQueryKey,
@@ -66,20 +66,28 @@ import {
   DialogTitle,
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuTrigger,
+} from '~/components/ui/menu'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
-import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
 import type { Workspace } from '~/lib/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -87,13 +95,23 @@ import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession }
 import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
-import { sessionsQueryKey, useAllSessions } from './use-session'
+import { sessionsQueryKey, updateSessionReadState, useAllSessions } from './use-session'
 import { useAddWorkspace, useDeleteWorkspace, useToggleWorkspacePin, useWorkspaces, WORKSPACES_QUERY_KEY } from './use-workspace'
+import type {
+  WorkspaceSidebarProjectFilter,
+  WorkspaceSidebarProjectSortDirection,
+  WorkspaceSidebarProjectSortKey,
+} from './workspace-sidebar-ui-store'
+import { useWorkspaceSidebarUiStore } from './workspace-sidebar-ui-store'
 
 type WorkspaceTranslation = TFunction<'workspace'>
 const SESSION_PREVIEW_LIMIT = 5
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
+
+const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = ['all', 'pinned', 'unpinned', 'unread', 'running']
+const PROJECT_SORT_OPTIONS: readonly WorkspaceSidebarProjectSortKey[] = ['name', 'updatedAt', 'createdAt']
+const PROJECT_SORT_DIRECTION_OPTIONS: readonly WorkspaceSidebarProjectSortDirection[] = ['asc', 'desc']
 
 function isSessionRunning(session: WorkspaceSession, locallyStreamingSessionIds: Set<string>): boolean {
   return session.status === 'streaming' || locallyStreamingSessionIds.has(session.id)
@@ -352,7 +370,7 @@ const SessionItem = memo(({
   const isActive = useIsActiveTab('chat', { sessionId: session.id })
   const { openNewTab } = useCradleNavigation()
   const queryClient = useQueryClient()
-  const isUnread = useSessionActivityStore(s => s.unread.has(session.id))
+  const isUnread = session.unread
   const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id))
   const isStreaming = session.status === 'streaming' || hasLocalStreamingState
   const latestLocalError = useChatStore(chatSelectors.latestError(session.id))
@@ -469,14 +487,14 @@ const SessionItem = memo(({
     }
   }, [session.id])
 
-  function handleToggleReadState() {
-    const { markRead, markUnread } = useSessionActivityStore.getState()
-    if (isUnread) {
-      markRead(session.id)
-      return
+  const handleToggleReadState = useCallback(async () => {
+    const { data } = isUnread
+      ? await postSessionsByIdRead({ path: { id: session.id } })
+      : await postSessionsByIdUnread({ path: { id: session.id } })
+    if (data) {
+      updateSessionReadState(queryClient, data)
     }
-    markUnread(session.id)
-  }
+  }, [isUnread, queryClient, session.id])
 
   const handleOpenInNewTab = useCallback(() => {
     recordSessionLayout()
@@ -779,9 +797,10 @@ const WorkspaceGroup = memo(({
   const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
-  const [expanded, setExpanded] = useState(true)
-  const [sessionListExpanded, setSessionListExpanded] = useState(false)
-  const [packOpen, setPackOpen] = useState(false)
+  const expanded = useWorkspaceSidebarUiStore(state => state.collapsedWorkspaceIds[workspace.id] !== true)
+  const sessionListExpanded = useWorkspaceSidebarUiStore(state => state.expandedSessionListWorkspaceIds[workspace.id] === true)
+  const toggleWorkspaceExpanded = useWorkspaceSidebarUiStore(state => state.toggleWorkspaceExpanded)
+  const toggleWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(state => state.toggleWorkspaceSessionListExpanded)
   const [renameOpen, setRenameOpen] = useState(false)
   const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
   const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
@@ -899,11 +918,11 @@ const WorkspaceGroup = memo(({
     acknowledgedSessionIdsRef.current! = next
   }, [locallyStreamingSessionIds, sessions])
   const toggleExpanded = useCallback(() => {
-    setExpanded(prev => !prev)
-  }, [])
+    toggleWorkspaceExpanded(workspace.id)
+  }, [toggleWorkspaceExpanded, workspace.id])
   const toggleSessionListExpanded = useCallback(() => {
-    setSessionListExpanded(prev => !prev)
-  }, [])
+    toggleWorkspaceSessionListExpanded(workspace.id)
+  }, [toggleWorkspaceSessionListExpanded, workspace.id])
   const recordWorkspaceLayout = useCallback(() => {
     useSessionLayoutStore.getState().upsertWorkspace({
       workspaceId: workspace.id,
@@ -1073,14 +1092,6 @@ const WorkspaceGroup = memo(({
       invoke: async () => navigator.clipboard.writeText('.'),
     },
     {
-      key: 'pack-codebase',
-      label: t('workspace.action.packCodebase'),
-      icon: <PackageIcon />,
-      testId: `workspace-pack-codebase-${workspace.id}`,
-      invoke: () => setPackOpen(true),
-      separatorBefore: true,
-    },
-    {
       key: 'toggle-pin',
       label: workspacePinned ? t('workspace.action.unpin') : t('workspace.action.pin'),
       icon: workspacePinned ? <PinOffIcon /> : <PinIcon />,
@@ -1167,13 +1178,6 @@ const WorkspaceGroup = memo(({
           <WorkspaceMenuActionItems actions={workspaceActions} surface="context" />
         </ContextMenuContent>
       </ContextMenu>
-
-      <PackCodebaseDialog
-        workspaceId={workspace.id}
-        workspaceName={workspace.name}
-        open={packOpen}
-        onOpenChange={setPackOpen}
-      />
       <WorkspaceTextInputDialog
         open={renameOpen}
         title={t('workspace.dialog.renameTitle')}
@@ -1320,10 +1324,53 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
   )
 }
 
+function workspaceHasUnreadSession(sessions: readonly WorkspaceSession[]): boolean {
+  return sessions.some(session => session.unread)
+}
+
+function workspaceHasRunningSession(sessions: readonly WorkspaceSession[]): boolean {
+  return sessions.some(session => session.status === 'streaming')
+}
+
+function projectMatchesFilter(
+  workspace: Workspace,
+  sessions: readonly WorkspaceSession[],
+  filter: WorkspaceSidebarProjectFilter,
+): boolean {
+  switch (filter) {
+    case 'pinned':
+      return Boolean(workspace.pinned)
+    case 'unpinned':
+      return !workspace.pinned
+    case 'unread':
+      return workspaceHasUnreadSession(sessions)
+    case 'running':
+      return workspaceHasRunningSession(sessions)
+    case 'all':
+      return true
+  }
+}
+
+function compareProjectBySortKey(
+  left: Workspace,
+  right: Workspace,
+  sortKey: WorkspaceSidebarProjectSortKey,
+): number {
+  switch (sortKey) {
+    case 'createdAt':
+      return left.createdAt - right.createdAt
+    case 'updatedAt':
+      return left.updatedAt - right.updatedAt
+    case 'name':
+      return left.name.localeCompare(right.name)
+  }
+}
+
 // ── Main sidebar content ──────────────────────────────────────────────────────
 
 interface WorkspaceSidebarBodyProps {
   workspaces: Workspace[]
+  workspacesReady: boolean
   sessionsByWorkspaceId: Map<string, WorkspaceSession[]>
   adding: boolean
   onAddFromPicker: () => void
@@ -1333,6 +1380,7 @@ interface WorkspaceSidebarBodyProps {
 
 const WorkspaceSidebarBody = memo(({
   workspaces,
+  workspacesReady,
   sessionsByWorkspaceId,
   adding,
   onAddFromPicker,
@@ -1340,6 +1388,48 @@ const WorkspaceSidebarBody = memo(({
   onTogglePin,
 }: WorkspaceSidebarBodyProps) => {
   const { t } = useTranslation('workspace')
+  const pruneWorkspaceSidebarState = useWorkspaceSidebarUiStore(state => state.pruneWorkspaceSidebarState)
+  const projectFilter = useWorkspaceSidebarUiStore(state => state.projectFilter)
+  const projectSortKey = useWorkspaceSidebarUiStore(state => state.projectSortKey)
+  const projectSortDirection = useWorkspaceSidebarUiStore(state => state.projectSortDirection)
+  const projectPinnedFirst = useWorkspaceSidebarUiStore(state => state.projectPinnedFirst)
+  const setProjectFilter = useWorkspaceSidebarUiStore(state => state.setProjectFilter)
+  const setProjectSortKey = useWorkspaceSidebarUiStore(state => state.setProjectSortKey)
+  const setProjectSortDirection = useWorkspaceSidebarUiStore(state => state.setProjectSortDirection)
+  const setProjectPinnedFirst = useWorkspaceSidebarUiStore(state => state.setProjectPinnedFirst)
+  const workspaceIds = useMemo(() => workspaces.map(workspace => workspace.id), [workspaces])
+  const visibleWorkspaces = useMemo(() => {
+    return workspaces
+      .filter(workspace => projectMatchesFilter(
+        workspace,
+        sessionsByWorkspaceId.get(workspace.id) ?? [],
+        projectFilter,
+      ))
+      .toSorted((left, right) => {
+        if (projectPinnedFirst) {
+          const pinDiff = (right.pinned ? 1 : 0) - (left.pinned ? 1 : 0)
+          if (pinDiff !== 0) {
+            return pinDiff
+          }
+        }
+
+        const keyDiff = compareProjectBySortKey(left, right, projectSortKey)
+        const directedKeyDiff = projectSortDirection === 'desc' ? -keyDiff : keyDiff
+        if (directedKeyDiff !== 0) {
+          return directedKeyDiff
+        }
+
+        return left.name.localeCompare(right.name)
+      })
+  }, [projectFilter, projectPinnedFirst, projectSortDirection, projectSortKey, sessionsByWorkspaceId, workspaces])
+  const hasFilteredWorkspaces = workspaces.length > 0 && visibleWorkspaces.length === 0
+
+  useEffect(() => {
+    if (!workspacesReady) {
+      return
+    }
+    pruneWorkspaceSidebarState(workspaceIds)
+  }, [pruneWorkspaceSidebarState, workspaceIds, workspacesReady])
 
   return (
     <>
@@ -1356,29 +1446,89 @@ const WorkspaceSidebarBody = memo(({
             {t('sidebar.projects.title')}
           </span>
           <div className="flex items-center gap-0.5">
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              title={t('sidebar.action.sort')}
-            >
-              <SlidersHorizontalIcon className="size-3" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              title={t('sidebar.action.filter')}
-              onClick={() => {
-                toastManager.add({
-                  type: 'error',
-                  title: t('sidebar.filterSoon.title'),
-                  description: t('sidebar.filterSoon.description'),
-                })
-              }}
-            >
-              <GitBranchIcon className="size-3" />
-            </Button>
+            <Menu>
+              <MenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className={cn(
+                      'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
+                      (projectSortKey !== 'name' || projectSortDirection !== 'asc' || !projectPinnedFirst) && 'text-foreground',
+                    )}
+                    title={t('sidebar.action.sort')}
+                    aria-label={t('sidebar.action.sort')}
+                    data-testid="workspace-sort-menu-trigger"
+                  />
+                )}
+              >
+                <ArrowUpDownIcon className="size-3" />
+              </MenuTrigger>
+              <MenuPopup align="end" side="bottom" sideOffset={4} className="w-48">
+                <MenuGroupLabel>{t('sidebar.sort.by')}</MenuGroupLabel>
+                <MenuRadioGroup
+                  value={projectSortKey}
+                  onValueChange={value => setProjectSortKey(value as WorkspaceSidebarProjectSortKey)}
+                >
+                  {PROJECT_SORT_OPTIONS.map(sortKey => (
+                    <MenuRadioItem key={sortKey} value={sortKey}>
+                      {t(`sidebar.sort.option.${sortKey}`)}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+                <MenuSeparator />
+                <MenuGroupLabel>{t('sidebar.sort.direction')}</MenuGroupLabel>
+                <MenuRadioGroup
+                  value={projectSortDirection}
+                  onValueChange={value => setProjectSortDirection(value as WorkspaceSidebarProjectSortDirection)}
+                >
+                  {PROJECT_SORT_DIRECTION_OPTIONS.map(direction => (
+                    <MenuRadioItem key={direction} value={direction}>
+                      {t(`sidebar.sort.direction.${direction}`)}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+                <MenuSeparator />
+                <MenuCheckboxItem
+                  checked={projectPinnedFirst}
+                  onCheckedChange={checked => setProjectPinnedFirst(checked)}
+                >
+                  {t('sidebar.sort.pinnedFirst')}
+                </MenuCheckboxItem>
+              </MenuPopup>
+            </Menu>
+            <Menu>
+              <MenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className={cn(
+                      'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
+                      projectFilter !== 'all' && 'text-foreground',
+                    )}
+                    title={t('sidebar.action.filter')}
+                    aria-label={t('sidebar.action.filter')}
+                    data-testid="workspace-filter-menu-trigger"
+                  />
+                )}
+              >
+                <ListFilterIcon className="size-3" />
+              </MenuTrigger>
+              <MenuPopup align="end" side="bottom" sideOffset={4} className="w-44">
+                <MenuGroupLabel>{t('sidebar.filter.show')}</MenuGroupLabel>
+                <MenuRadioGroup
+                  value={projectFilter}
+                  onValueChange={value => setProjectFilter(value as WorkspaceSidebarProjectFilter)}
+                >
+                  {PROJECT_FILTER_OPTIONS.map(filter => (
+                    <MenuRadioItem key={filter} value={filter}>
+                      {t(`sidebar.filter.option.${filter}`)}
+                    </MenuRadioItem>
+                  ))}
+                </MenuRadioGroup>
+              </MenuPopup>
+            </Menu>
             <Button
               variant="ghost"
               size="icon-xs"
@@ -1417,7 +1567,26 @@ const WorkspaceSidebarBody = memo(({
               </Button>
             </div>
           )}
-          {workspaces.map(workspace => (
+          {hasFilteredWorkspaces && (
+            <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+              <div className="flex size-9 items-center justify-center rounded-xl bg-muted/60">
+                <ListFilterIcon className="size-4 text-muted-foreground/50" aria-hidden="true" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.filteredEmpty.title')}</p>
+                <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.filteredEmpty.description')}</p>
+              </div>
+              <Button
+                variant="ghost"
+                size="xs"
+                onClick={() => setProjectFilter('all')}
+                data-testid="workspace-filter-clear-btn"
+              >
+                {t('sidebar.filter.clear')}
+              </Button>
+            </div>
+          )}
+          {visibleWorkspaces.map(workspace => (
             <WorkspaceGroup
               key={workspace.id}
               workspace={workspace}
@@ -1435,20 +1604,11 @@ WorkspaceSidebarBody.displayName = 'WorkspaceSidebarBody'
 
 export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { t } = useTranslation('workspace')
-  const { workspaces } = useWorkspaces()
+  const { workspaces, ready: workspacesReady } = useWorkspaces()
   const { sessions } = useAllSessions()
   const { addFromPicker, adding } = useAddWorkspace()
   const { remove } = useDeleteWorkspace()
   const { togglePin } = useToggleWorkspacePin()
-  const sortedWorkspaces = useMemo(() => {
-    return workspaces.toSorted((a, b) => {
-      const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
-      if (pinDiff !== 0) {
-        return pinDiff
-      }
-      return a.name.localeCompare(b.name)
-    })
-  }, [workspaces])
   const sessionsByWorkspaceId = useMemo(() => {
     const grouped = new Map<string, WorkspaceSession[]>()
     for (const session of sessions) {
@@ -1537,7 +1697,8 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       >
         <div className={cn(collapsed ? 'hidden' : 'contents')}>
           <WorkspaceSidebarBody
-            workspaces={sortedWorkspaces}
+            workspaces={workspaces}
+            workspacesReady={workspacesReady}
             sessionsByWorkspaceId={sessionsByWorkspaceId}
             adding={adding}
             onAddFromPicker={addFromPicker}

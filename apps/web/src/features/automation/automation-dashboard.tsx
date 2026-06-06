@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { TFunction } from 'i18next'
 import {
   ArrowLeftIcon,
   BotIcon,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
 import { Badge } from '~/components/ui/badge'
@@ -31,10 +33,19 @@ import {
 } from '~/components/ui/empty'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from '~/components/ui/number-field'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Switch } from '~/components/ui/switch'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
+import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
@@ -55,6 +66,31 @@ interface AutomationDashboardProps {
 }
 
 type AutomationRuntimeKind = RuntimeKind
+type ScheduleFrequency = 'daily' | 'weekly' | 'monthly'
+type Weekday = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU'
+
+interface ScheduleDraft {
+  frequency: ScheduleFrequency
+  interval: number
+  weekdays: Weekday[]
+  monthDay: number
+  time: string
+}
+
+const WEEKDAY_OPTIONS: Weekday[] = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+const FREQUENCY_TO_RRULE: Record<ScheduleFrequency, string> = {
+  daily: 'DAILY',
+  weekly: 'WEEKLY',
+  monthly: 'MONTHLY',
+}
+
+const DEFAULT_SCHEDULE: ScheduleDraft = {
+  frequency: 'weekly',
+  interval: 1,
+  weekdays: ['MO'],
+  monthDay: 1,
+  time: '09:00',
+}
 
 const STATUS_STYLES: Record<AutomationRunStatus, string> = {
   queued: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
@@ -86,7 +122,7 @@ interface CreateAutomationDraft {
   title: string
   description: string
   enabled: boolean
-  rrule: string
+  schedule: ScheduleDraft
   timezone: string
   misfirePolicy: 'skip' | 'run_latest'
   providerTargetId: string
@@ -102,7 +138,7 @@ function createDefaultDraft(providerTargetId = ''): CreateAutomationDraft {
     title: '',
     description: '',
     enabled: true,
-    rrule: 'FREQ=WEEKLY;BYDAY=MO;BYHOUR=9;BYMINUTE=0;BYSECOND=0',
+    schedule: DEFAULT_SCHEDULE,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
     misfirePolicy: 'run_latest',
     providerTargetId,
@@ -114,29 +150,30 @@ function createDefaultDraft(providerTargetId = ''): CreateAutomationDraft {
   }
 }
 
-function toCreateAutomationInput(draft: CreateAutomationDraft): CreateAutomationInput {
+function toCreateAutomationInput(draft: CreateAutomationDraft, t: TFunction<'automation'>): CreateAutomationInput {
   const title = draft.title.trim()
   const prompt = draft.prompt.trim()
   const providerTargetId = draft.providerTargetId.trim()
   const artifactName = draft.artifactName.trim()
+  const rrule = buildScheduleRrule(draft.schedule)
 
   if (!title) {
-    throw new Error('Title is required')
-  }
-  if (!draft.rrule.trim()) {
-    throw new Error('RRULE is required')
+    throw new Error(t('validation.titleRequired'))
   }
   if (!draft.timezone.trim()) {
-    throw new Error('Timezone is required')
+    throw new Error(t('validation.timezoneRequired'))
   }
   if (!providerTargetId) {
-    throw new Error('Provider target is required')
+    throw new Error(t('validation.providerTargetRequired'))
+  }
+  if (!draft.modelId) {
+    throw new Error(t('validation.modelRequired'))
   }
   if (!prompt) {
-    throw new Error('Prompt is required')
+    throw new Error(t('validation.promptRequired'))
   }
   if (!artifactName) {
-    throw new Error('Artifact name is required')
+    throw new Error(t('validation.artifactNameRequired'))
   }
 
   return {
@@ -145,7 +182,7 @@ function toCreateAutomationInput(draft: CreateAutomationDraft): CreateAutomation
     enabled: draft.enabled,
     trigger: {
       type: 'rrule',
-      rrule: draft.rrule.trim(),
+      rrule,
       timezone: draft.timezone.trim(),
       misfirePolicy: draft.misfirePolicy,
     },
@@ -159,20 +196,54 @@ function toCreateAutomationInput(draft: CreateAutomationDraft): CreateAutomation
       }],
       providerTargetId,
       runtimeKind: draft.runtimeKind,
-      modelId: draft.modelId ?? undefined,
+      modelId: draft.modelId,
       thinkingEffort: draft.thinkingEffort ?? undefined,
     },
     createdByKind: 'user',
   }
 }
 
-function formatDateTime(value: number | string | null | undefined): string {
-  const unixSeconds = UnixSecondsSchema.parse(value)
-  if (unixSeconds === null) {
-    return 'Not recorded'
+function clampNumber(value: number, min: number, max: number): number {
+  if (Number.isNaN(value)) {
+    return min
+  }
+  return Math.min(Math.max(Math.trunc(value), min), max)
+}
+
+function parseScheduleTime(time: string): { hour: number, minute: number } {
+  const [hourInput, minuteInput] = time.split(':')
+  return {
+    hour: clampNumber(Number(hourInput), 0, 23),
+    minute: clampNumber(Number(minuteInput), 0, 59),
+  }
+}
+
+function buildScheduleRrule(schedule: ScheduleDraft): string {
+  const { hour, minute } = parseScheduleTime(schedule.time)
+  const parts = [
+    `FREQ=${FREQUENCY_TO_RRULE[schedule.frequency]}`,
+    `INTERVAL=${clampNumber(schedule.interval, 1, 99)}`,
+  ]
+
+  if (schedule.frequency === 'weekly') {
+    parts.push(`BYDAY=${(schedule.weekdays.length > 0 ? schedule.weekdays : DEFAULT_SCHEDULE.weekdays).join(',')}`)
   }
 
-  return new Intl.DateTimeFormat('zh-CN', {
+  if (schedule.frequency === 'monthly') {
+    parts.push(`BYMONTHDAY=${clampNumber(schedule.monthDay, 1, 31)}`)
+  }
+
+  parts.push(`BYHOUR=${hour}`, `BYMINUTE=${minute}`, 'BYSECOND=0')
+  return parts.join(';')
+}
+
+function formatDateTime(value: number | string | null | undefined, locale: string, t: TFunction<'automation'>): string {
+  const unixSeconds = UnixSecondsSchema.parse(value)
+  if (unixSeconds === null) {
+    return t('datetime.notRecorded')
+  }
+
+  return new Intl.DateTimeFormat(locale, {
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
@@ -180,23 +251,23 @@ function formatDateTime(value: number | string | null | undefined): string {
   }).format(new Date(unixSeconds * 1000))
 }
 
-function formatRelative(value: number | string | null | undefined): string {
+function formatRelative(value: number | string | null | undefined, t: TFunction<'automation'>): string {
   const unixSeconds = UnixSecondsSchema.parse(value)
   if (unixSeconds === null) {
-    return 'Not recorded'
+    return t('datetime.notRecorded')
   }
 
   const diff = Math.floor(Date.now() / 1000) - unixSeconds
   if (diff < 60) {
-    return 'just now'
+    return t('relative.justNow')
   }
   if (diff < 3600) {
-    return `${Math.floor(diff / 60)}m`
+    return t('relative.minute', { count: Math.floor(diff / 60) })
   }
   if (diff < 86400) {
-    return `${Math.floor(diff / 3600)}h`
+    return t('relative.hour', { count: Math.floor(diff / 3600) })
   }
-  return `${Math.floor(diff / 86400)}d`
+  return t('relative.day', { count: Math.floor(diff / 86400) })
 }
 
 function getTrigger(definition: AutomationDefinition): AutomationTrigger | null {
@@ -234,12 +305,13 @@ function getInputKey(input: AutomationInput): string {
 }
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
+  const { t } = useTranslation('automation')
   const normalized = (status ?? 'queued') as AutomationRunStatus
   const className = STATUS_STYLES[normalized] ?? STATUS_STYLES.queued
 
   return (
-    <Badge variant="outline" className={cn('capitalize', className)}>
-      {status ?? 'unknown'}
+    <Badge variant="outline" className={className}>
+      {t(`status.${status ?? 'unknown'}`, { defaultValue: status ?? t('status.unknown') })}
     </Badge>
   )
 }
@@ -255,6 +327,7 @@ function DefinitionListItem({
   latestRun: AutomationRun | null
   onSelect: () => void
 }) {
+  const { t } = useTranslation('automation')
   const trigger = getTrigger(definition)
 
   return (
@@ -273,14 +346,14 @@ function DefinitionListItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium text-foreground">{definition.title}</span>
-            {definition.enabled === false ? <Badge variant="secondary">disabled</Badge> : null}
+            {definition.enabled === false ? <Badge variant="secondary">{t('state.disabled')}</Badge> : null}
           </div>
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{definition.description || 'No description'}</p>
+          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{definition.description || t('definition.noDescription')}</p>
         </div>
       </div>
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate font-mono">{trigger?.rrule ?? 'No RRULE'}</span>
-        {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">no runs</Badge>}
+        <span className="truncate font-mono">{trigger?.rrule ?? t('trigger.noRrule')}</span>
+        {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
       </div>
     </button>
   )
@@ -296,24 +369,25 @@ function DetailField({ label, value, mono }: { label: string, value: string, mon
 }
 
 function RunRow({ run }: { run: AutomationRun }) {
+  const { i18n, t } = useTranslation('automation')
   return (
     <div className="grid grid-cols-[112px_minmax(0,1fr)_minmax(0,1fr)_96px] items-center gap-3 rounded-md px-2 py-2 text-xs hover:bg-accent/40">
       <StatusBadge status={run.status} />
       <div className="min-w-0">
         <div className="truncate font-mono text-[11px] text-foreground">{run.id}</div>
-        <div className="text-[11px] text-muted-foreground">{formatDateTime(run.startedAt ?? run.createdAt ?? run.scheduledFor)}</div>
+        <div className="text-[11px] text-muted-foreground">{formatDateTime(run.startedAt ?? run.createdAt ?? run.scheduledFor, i18n.resolvedLanguage ?? i18n.language, t)}</div>
       </div>
       <div className="min-w-0 space-y-1 text-[11px] text-muted-foreground">
         <div className="flex min-w-0 items-center gap-1.5">
           <ExternalLinkIcon className="size-3 shrink-0" />
-          <span className="truncate font-mono">{run.chatSessionId ?? 'No chat session'}</span>
+          <span className="truncate font-mono">{run.chatSessionId ?? t('runs.noChatSession')}</span>
         </div>
         <div className="flex min-w-0 items-center gap-1.5">
           <HashIcon className="size-3 shrink-0" />
-          <span className="truncate font-mono">{run.backendRunId ?? 'No backend run'}</span>
+          <span className="truncate font-mono">{run.backendRunId ?? t('runs.noBackendRun')}</span>
         </div>
       </div>
-      <div className="truncate text-right text-[11px] text-muted-foreground">{run.errorText ?? run.reason ?? formatRelative(run.finishedAt ?? run.startedAt ?? run.createdAt)}</div>
+      <div className="truncate text-right text-[11px] text-muted-foreground">{run.errorText ?? run.reason ?? formatRelative(run.finishedAt ?? run.startedAt ?? run.createdAt, t)}</div>
     </div>
   )
 }
@@ -327,6 +401,7 @@ function ArtifactRow({
   active: boolean
   onSelect: () => void
 }) {
+  const { t } = useTranslation('automation')
   return (
     <button
       type="button"
@@ -338,7 +413,7 @@ function ArtifactRow({
     >
       <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate">{artifact.title ?? artifact.name ?? artifact.id}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{artifact.kind ?? artifact.mediaType ?? 'artifact'}</span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">{artifact.kind ?? artifact.mediaType ?? t('artifact.fallbackKind')}</span>
     </button>
   )
 }
@@ -346,18 +421,215 @@ function ArtifactRow({
 function FormField({
   label,
   description,
+  htmlFor,
   children,
 }: {
   label: string
   description?: string
+  htmlFor?: string
   children: ReactNode
 }) {
   return (
     <div className="grid gap-1.5">
-      <Label className="text-[12px] text-foreground">{label}</Label>
+      <Label htmlFor={htmlFor} className="text-[12px] text-foreground">{label}</Label>
       {children}
       {description ? <p className="text-[11px] leading-relaxed text-muted-foreground">{description}</p> : null}
     </div>
+  )
+}
+
+function formatScheduleSummary(schedule: ScheduleDraft, t: TFunction<'automation'>): string {
+  const interval = clampNumber(schedule.interval, 1, 99)
+  const time = schedule.time
+
+  if (schedule.frequency === 'daily') {
+    return interval === 1
+      ? t('schedule.summary.daily', { time })
+      : t('schedule.summary.dailyInterval', { count: interval, time })
+  }
+
+  if (schedule.frequency === 'weekly') {
+    const days = (schedule.weekdays.length > 0 ? schedule.weekdays : DEFAULT_SCHEDULE.weekdays)
+      .map(day => t(`schedule.weekday.${day}`))
+      .join(t('list.separator'))
+    return interval === 1
+      ? t('schedule.summary.weekly', { days, time })
+      : t('schedule.summary.weeklyInterval', { count: interval, days, time })
+  }
+
+  return interval === 1
+    ? t('schedule.summary.monthly', { day: clampNumber(schedule.monthDay, 1, 31), time })
+    : t('schedule.summary.monthlyInterval', { count: interval, day: clampNumber(schedule.monthDay, 1, 31), time })
+}
+
+function ScheduleBuilder({
+  schedule,
+  timezone,
+  misfirePolicy,
+  onScheduleChange,
+  onTimezoneChange,
+  onMisfirePolicyChange,
+}: {
+  schedule: ScheduleDraft
+  timezone: string
+  misfirePolicy: CreateAutomationDraft['misfirePolicy']
+  onScheduleChange: (schedule: ScheduleDraft) => void
+  onTimezoneChange: (timezone: string) => void
+  onMisfirePolicyChange: (policy: CreateAutomationDraft['misfirePolicy']) => void
+}) {
+  const { t } = useTranslation('automation')
+  const rrulePreview = buildScheduleRrule(schedule)
+
+  const updateFrequency = useCallback((frequency: string) => {
+    if (!frequency) {
+      return
+    }
+    onScheduleChange({
+      ...schedule,
+      frequency: frequency as ScheduleFrequency,
+      weekdays: schedule.weekdays.length > 0 ? schedule.weekdays : DEFAULT_SCHEDULE.weekdays,
+    })
+  }, [onScheduleChange, schedule])
+
+  const updateWeekdays = useCallback((weekdays: string[]) => {
+    onScheduleChange({
+      ...schedule,
+      weekdays: weekdays.length > 0 ? weekdays as Weekday[] : DEFAULT_SCHEDULE.weekdays,
+    })
+  }, [onScheduleChange, schedule])
+
+  return (
+    <TooltipProvider>
+      <div className="grid gap-3">
+        <div className="grid gap-3 rounded-lg border border-border/60 bg-muted/15 p-3">
+          <div className="grid gap-2">
+            <Label className="text-[12px] text-foreground">{t('schedule.frequency.label')}</Label>
+            <ToggleGroup
+              type="single"
+              value={schedule.frequency}
+              onValueChange={updateFrequency}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              <ToggleGroupItem value="daily" className="min-w-0 flex-1">{t('schedule.frequency.daily')}</ToggleGroupItem>
+              <ToggleGroupItem value="weekly" className="min-w-0 flex-1">{t('schedule.frequency.weekly')}</ToggleGroupItem>
+              <ToggleGroupItem value="monthly" className="min-w-0 flex-1">{t('schedule.frequency.monthly')}</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+
+          <div className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,0.8fr)_minmax(0,1fr)] gap-3">
+            <FormField label={t('schedule.interval.label')} description={t('schedule.interval.description')}>
+              <NumberField
+                size="sm"
+                min={1}
+                max={99}
+                value={schedule.interval}
+                onValueChange={value => onScheduleChange({ ...schedule, interval: clampNumber(value ?? 1, 1, 99) })}
+              >
+                <NumberFieldGroup>
+                  <NumberFieldDecrement />
+                  <NumberFieldInput aria-label={t('schedule.interval.aria')} />
+                  <NumberFieldIncrement />
+                </NumberFieldGroup>
+              </NumberField>
+            </FormField>
+
+            <FormField label={t('schedule.time.label')} htmlFor="automation-schedule-time">
+              <Input
+                id="automation-schedule-time"
+                type="time"
+                value={schedule.time}
+                onChange={event => onScheduleChange({ ...schedule, time: event.target.value || DEFAULT_SCHEDULE.time })}
+                className="font-mono tabular-nums"
+              />
+            </FormField>
+
+            <FormField label={t('schedule.timezone.label')}>
+              <Input
+                value={timezone}
+                onChange={event => onTimezoneChange(event.target.value)}
+                placeholder={t('schedule.timezone.placeholder')}
+                className="font-mono text-[12px]"
+              />
+            </FormField>
+          </div>
+
+          {schedule.frequency === 'weekly'
+            ? (
+              <div className="grid gap-2">
+                <Label className="text-[12px] text-foreground">{t('schedule.weekdays.label')}</Label>
+                <ToggleGroup
+                  type="multiple"
+                  value={schedule.weekdays}
+                  onValueChange={updateWeekdays}
+                  variant="outline"
+                  size="sm"
+                  className="flex w-full flex-wrap"
+                >
+                  {WEEKDAY_OPTIONS.map(day => (
+                    <ToggleGroupItem key={day} value={day} className="min-w-10 flex-1">
+                      {t(`schedule.weekdayShort.${day}`)}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+              </div>
+            )
+            : null}
+
+          {schedule.frequency === 'monthly'
+            ? (
+              <FormField label={t('schedule.monthDay.label')} description={t('schedule.monthDay.description')}>
+                <NumberField
+                  size="sm"
+                  min={1}
+                  max={31}
+                  value={schedule.monthDay}
+                  onValueChange={value => onScheduleChange({ ...schedule, monthDay: clampNumber(value ?? 1, 1, 31) })}
+                >
+                  <NumberFieldGroup className="max-w-40">
+                    <NumberFieldDecrement />
+                    <NumberFieldInput aria-label={t('schedule.monthDay.aria')} />
+                    <NumberFieldIncrement />
+                  </NumberFieldGroup>
+                </NumberField>
+              </FormField>
+            )
+            : null}
+        </div>
+
+        <div className="grid grid-cols-[minmax(0,1fr)_220px] gap-3">
+          <div className="rounded-lg border border-border/50 bg-background px-3 py-2">
+            <div className="text-[11px] text-muted-foreground">{t('schedule.summary.label')}</div>
+            <div className="mt-1 text-sm text-foreground text-pretty">{formatScheduleSummary(schedule, t)}</div>
+            <Tooltip>
+              <TooltipTrigger
+                render={(
+                  <div className="mt-2 truncate rounded-md bg-muted/60 px-2 py-1 font-mono text-[11px] text-muted-foreground">
+                    {rrulePreview}
+                  </div>
+                )}
+              />
+              <TooltipContent>{t('schedule.rrulePreview.tooltip')}</TooltipContent>
+            </Tooltip>
+          </div>
+          <FormField label={t('schedule.misfire.label')} description={t('schedule.misfire.description')}>
+            <Select
+              value={misfirePolicy}
+              onValueChange={value => onMisfirePolicyChange(value as CreateAutomationDraft['misfirePolicy'])}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="run_latest">{t('schedule.misfire.runLatest')}</SelectItem>
+                <SelectItem value="skip">{t('schedule.misfire.skip')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </FormField>
+        </div>
+      </div>
+    </TooltipProvider>
   )
 }
 
@@ -365,6 +637,7 @@ function CreateAutomationPanel({
   draft,
   saving,
   error,
+  canSave,
   onChange,
   onCancel,
   onSave,
@@ -372,10 +645,12 @@ function CreateAutomationPanel({
   draft: CreateAutomationDraft
   saving: boolean
   error: string | null
+  canSave: boolean
   onChange: (draft: CreateAutomationDraft) => void
   onCancel: () => void
   onSave: () => void
 }) {
+  const { t } = useTranslation('automation')
   const { providerOptions, isLoading } = useProviderTargets()
   const { runtimes } = useRuntimeCatalog()
   const runtimeOptions = useMemo(
@@ -417,9 +692,9 @@ function CreateAutomationPanel({
   const isLoadingModels = selectedProfileId ? loadingProfileIds.has(selectedProfileId) : false
   const thinkingOptions = useMemo(() => THINKING_EFFORTS.map(option => ({
     value: option.value,
-    label: option.value ?? 'Auto',
-    description: option.value ? `${option.value} reasoning effort` : 'Use the runtime default',
-  })), [])
+    label: option.value ? t(`thinking.${option.value}`) : t('thinking.auto'),
+    description: option.value ? t('thinking.effortDescription', { effort: t(`thinking.${option.value}`) }) : t('thinking.defaultDescription'),
+  })), [t])
   const selectThinkingForModel = useCallback(
     (model: ModelDescriptor | null): ThinkingEffort =>
       selectSupportedThinkingValue(model, thinkingOptions, draft.thinkingEffort, null),
@@ -472,6 +747,15 @@ function CreateAutomationPanel({
   const updateProviderTarget = useCallback((providerTargetId: string) => {
     requestProfileModels(providerTargetId)
     const nextModel = (modelsByProfileId[providerTargetId] ?? [])[0] ?? null
+    if (!nextModel) {
+      onChange({
+        ...draft,
+        providerTargetId,
+        modelId: null,
+        thinkingEffort: draft.thinkingEffort,
+      })
+      return
+    }
     onChange({
       ...draft,
       providerTargetId,
@@ -498,12 +782,14 @@ function CreateAutomationPanel({
   }, [draft, onChange])
 
   const providerModelLabel = isLoading
-    ? 'Loading providers...'
+    ? t('runtime.loadingProviders')
     : selectableProfiles.length === 0
-      ? 'No provider targets support the selected runtime'
-      : 'Uses the same provider and model picker as the composer.'
+      ? t('runtime.noCompatibleTargets')
+      : t('runtime.description')
 
   const effectiveSelectedModel = selectedModel ?? models.find(model => model.id === selectedModelId) ?? null
+  const resolvedModelReady = Boolean(draft.providerTargetId && draft.modelId && effectiveSelectedModel)
+  const saveEnabled = canSave && resolvedModelReady
 
   return (
     <div className="flex min-h-full flex-col">
@@ -513,13 +799,13 @@ function CreateAutomationPanel({
             <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
               <SparklesIcon className="size-3.5" />
             </span>
-            <h2 className="text-base font-semibold text-foreground text-balance">New automation</h2>
+            <h2 className="text-base font-semibold text-foreground text-balance">{t('create.title')}</h2>
           </div>
           <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
-            Create a provider-backed scheduled prompt. It will run through the normal chat runtime and save a run artifact.
+            {t('create.description')}
           </p>
         </div>
-        <Button type="button" variant="ghost" size="icon-sm" onClick={onCancel} aria-label="Cancel automation draft">
+        <Button type="button" variant="ghost" size="icon-sm" onClick={onCancel} aria-label={t('create.cancelAria')}>
           <XIcon className="size-4" />
         </Button>
       </header>
@@ -538,11 +824,11 @@ function CreateAutomationPanel({
           <section className="grid gap-4">
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h3 className="text-[13px] font-medium text-foreground">Definition</h3>
-                <p className="mt-0.5 text-[12px] text-muted-foreground">Name the automation and decide whether it starts scheduling immediately.</p>
+                <h3 className="text-[13px] font-medium text-foreground">{t('definition.section')}</h3>
+                <p className="mt-0.5 text-[12px] text-muted-foreground">{t('definition.description')}</p>
               </div>
               <div className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5">
-                <span className="text-[12px] text-muted-foreground">Enabled</span>
+                <span className="text-[12px] text-muted-foreground">{t('definition.enabled')}</span>
                 <Switch
                   size="sm"
                   checked={draft.enabled}
@@ -551,18 +837,18 @@ function CreateAutomationPanel({
               </div>
             </div>
             <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
-              <FormField label="Title">
+              <FormField label={t('definition.titleLabel')}>
                 <Input
                   value={draft.title}
                   onChange={event => onChange({ ...draft, title: event.target.value })}
-                  placeholder="Weekly workspace summary"
+                  placeholder={t('definition.titlePlaceholder')}
                 />
               </FormField>
-              <FormField label="Description">
+              <FormField label={t('definition.descriptionLabel')}>
                 <Input
                   value={draft.description}
                   onChange={event => onChange({ ...draft, description: event.target.value })}
-                  placeholder="Generate a short report every Monday"
+                  placeholder={t('definition.descriptionPlaceholder')}
                 />
               </FormField>
             </div>
@@ -572,46 +858,24 @@ function CreateAutomationPanel({
 
           <section className="grid gap-4">
             <div>
-              <h3 className="text-[13px] font-medium text-foreground">Schedule</h3>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">RRULE is interpreted in the selected timezone.</p>
+              <h3 className="text-[13px] font-medium text-foreground">{t('schedule.section')}</h3>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">{t('schedule.description')}</p>
             </div>
-            <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)_minmax(0,0.7fr)] gap-3">
-              <FormField label="RRULE">
-                <Input
-                  value={draft.rrule}
-                  onChange={event => onChange({ ...draft, rrule: event.target.value })}
-                  className="font-mono text-[12px]"
-                />
-              </FormField>
-              <FormField label="Timezone">
-                <Input
-                  value={draft.timezone}
-                  onChange={event => onChange({ ...draft, timezone: event.target.value })}
-                  className="font-mono text-[12px]"
-                />
-              </FormField>
-              <FormField label="Misfire policy">
-                <Select
-                  value={draft.misfirePolicy}
-                  onValueChange={value => onChange({ ...draft, misfirePolicy: value as CreateAutomationDraft['misfirePolicy'] })}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="run_latest">Run latest</SelectItem>
-                    <SelectItem value="skip">Skip</SelectItem>
-                  </SelectContent>
-                </Select>
-              </FormField>
-            </div>
+            <ScheduleBuilder
+              schedule={draft.schedule}
+              timezone={draft.timezone}
+              misfirePolicy={draft.misfirePolicy}
+              onScheduleChange={schedule => onChange({ ...draft, schedule })}
+              onTimezoneChange={timezone => onChange({ ...draft, timezone })}
+              onMisfirePolicyChange={misfirePolicy => onChange({ ...draft, misfirePolicy })}
+            />
           </section>
 
           <div className="border-t border-foreground/5" />
 
           <section className="grid gap-4">
             <div>
-              <h3 className="text-[13px] font-medium text-foreground">Runtime</h3>
+              <h3 className="text-[13px] font-medium text-foreground">{t('runtime.section')}</h3>
               <p className="mt-0.5 text-[12px] text-muted-foreground">{providerModelLabel}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border px-2 py-2">
@@ -626,8 +890,8 @@ function CreateAutomationPanel({
                 thinkingValue={draft.thinkingEffort}
                 thinkingOptions={thinkingOptions}
                 isLoadingSelectedModels={isLoadingModels}
-                emptyProviderTargetsLabel="No compatible provider targets"
-                emptySelectionLabel="Select model"
+                emptyProviderTargetsLabel={t('runtime.noCompatibleTargetsShort')}
+                emptySelectionLabel={t('runtime.selectModel')}
                 menuSide="bottom"
                 menuAlign="start"
                 triggerTestId="automation-provider-model-selector"
@@ -651,28 +915,28 @@ function CreateAutomationPanel({
 
           <section className="grid gap-4">
             <div>
-              <h3 className="text-[13px] font-medium text-foreground">Recipe</h3>
-              <p className="mt-0.5 text-[12px] text-muted-foreground">This prompt becomes the automation run message.</p>
+              <h3 className="text-[13px] font-medium text-foreground">{t('recipe.section')}</h3>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">{t('recipe.description')}</p>
             </div>
-            <FormField label="Prompt">
+            <FormField label={t('recipe.promptLabel')}>
               <Textarea
                 value={draft.prompt}
                 onChange={event => onChange({ ...draft, prompt: event.target.value })}
-                placeholder="Summarize recent workspace activity and produce a concise markdown report."
+                placeholder={t('recipe.promptPlaceholder')}
                 className="min-h-40 resize-y text-[13px] leading-relaxed"
               />
             </FormField>
             <div className="grid grid-cols-[minmax(0,1fr)_220px] gap-3">
-              <FormField label="Artifact name">
+              <FormField label={t('artifact.nameLabel')} description={t('artifact.nameDescription')}>
                 <Input
                   value={draft.artifactName}
                   onChange={event => onChange({ ...draft, artifactName: event.target.value })}
-                  placeholder="automation-run.md"
+                  placeholder={t('artifact.namePlaceholder')}
                 />
               </FormField>
-              <FormField label="Artifact kind" description="Current runs export the chat transcript as markdown.">
+              <FormField label={t('artifact.kindLabel')} description={t('artifact.kindDescription')}>
                 <div className="flex h-8 items-center rounded-lg border border-input px-2.5 text-sm text-muted-foreground">
-                  Markdown
+                  {t('artifact.kindMarkdown')}
                 </div>
               </FormField>
             </div>
@@ -681,14 +945,14 @@ function CreateAutomationPanel({
       </div>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border/40 px-5 py-3">
-        <p className="text-[11px] text-muted-foreground">The automation will create a normal chat session for every run.</p>
+        <p className="text-[11px] text-muted-foreground">{t('create.footer')}</p>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>
-            Cancel
+            {t('action.cancel')}
           </Button>
-          <Button type="button" size="sm" onClick={onSave} disabled={saving}>
+          <Button type="button" size="sm" onClick={onSave} disabled={saving || !saveEnabled}>
             {saving ? <Loader2Icon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
-            Create automation
+            {t('action.createAutomation')}
           </Button>
         </div>
       </footer>
@@ -697,6 +961,7 @@ function CreateAutomationPanel({
 }
 
 export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
+  const { i18n, t } = useTranslation('automation')
   const definitionsQuery = useAutomationDefinitions()
   const definitions = definitionsQuery.data ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -735,6 +1000,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   }, [artifactsQuery.data, selectedArtifactId])
   const automationReady = definitionsQuery.isSuccess
     && (!selectedAutomationId || (runsQuery.isSuccess && artifactsQuery.isSuccess))
+  const locale = i18n.resolvedLanguage ?? i18n.language
 
   const startDraft = useCallback((): void => {
     setDraft(createDefaultDraft())
@@ -757,20 +1023,24 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     if (!draft) {
       return
     }
+    if (!draft.modelId) {
+      setDraftError(t('validation.modelRequired'))
+      return
+    }
     try {
       setDraftError(null)
-      const created = await createAutomationMutation.mutateAsync(toCreateAutomationInput(draft))
+      const created = await createAutomationMutation.mutateAsync(toCreateAutomationInput(draft, t))
       setDraft(null)
       setSelectedId(created.id)
       setSelectedArtifactId(null)
-      toastManager.add({ type: 'success', title: 'Automation created' })
+      toastManager.add({ type: 'success', title: t('toast.created') })
     }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setDraftError(message)
-      toastManager.add({ type: 'error', title: 'Create automation failed', description: message })
+      toastManager.add({ type: 'error', title: t('toast.createFailed'), description: message })
     }
-  }, [createAutomationMutation, draft])
+  }, [createAutomationMutation, draft, t])
 
   return (
     <div
@@ -782,24 +1052,24 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
         <div className="flex items-center gap-3">
           {onBack
 ? (
-            <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label="Back to home">
+            <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label={t('action.backToHome')}>
               <ArrowLeftIcon className="size-4" />
             </Button>
           )
 : null}
           <div>
-            <h1 className="text-sm font-semibold text-foreground">Automations</h1>
-            <p className="text-xs text-muted-foreground">Agent-authored definitions, runs, links, and artifacts</p>
+            <h1 className="text-sm font-semibold text-foreground">{t('page.title')}</h1>
+            <p className="text-xs text-muted-foreground">{t('page.description')}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Button type="button" size="sm" onClick={startDraft} disabled={!!draft}>
             <PlusIcon className="size-3.5" />
-            Create
+            {t('action.create')}
           </Button>
           <Button type="button" variant="outline" size="sm" onClick={() => void definitionsQuery.refetch()}>
             <RefreshCwIcon className="size-3.5" />
-            Refresh
+            {t('action.refresh')}
           </Button>
           <Button
             type="button"
@@ -808,7 +1078,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
             onClick={() => selectedAutomationId && runNowMutation.mutate(selectedAutomationId)}
           >
             {runNowMutation.isPending ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlayIcon className="size-3.5" />}
-            Run now
+            {t('action.runNow')}
           </Button>
         </div>
       </div>
@@ -818,7 +1088,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
         <div className="m-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
           <div>
-            <div className="font-medium">Automation API unavailable</div>
+            <div className="font-medium">{t('error.apiUnavailable')}</div>
             <div className="mt-1 text-xs opacity-80">{definitionsQuery.error.message}</div>
           </div>
         </div>
@@ -828,7 +1098,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
       <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] divide-x divide-border/40 overflow-hidden">
         <aside className="flex min-h-0 flex-col overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-xs font-medium text-muted-foreground">Definitions</span>
+            <span className="text-xs font-medium text-muted-foreground">{t('definitions.title')}</span>
             <Badge variant="secondary">{definitions.length}</Badge>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
@@ -846,9 +1116,9 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                   <SparklesIcon className="size-4" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-foreground">New automation</div>
+                  <div className="text-sm font-medium text-foreground">{t('create.title')}</div>
                   <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    Configure a provider-backed scheduled prompt
+                    {t('create.listDescription')}
                   </p>
                 </div>
               </button>
@@ -858,14 +1128,14 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 ? (
               <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" />
-                Loading automations
+                {t('loading.automations')}
               </div>
             )
 : null}
             {!definitionsQuery.isLoading && definitions.length === 0
 ? (
               <div className="rounded-lg border border-dashed border-border/60 px-3 py-5 text-center text-xs text-muted-foreground">
-                No automation definitions yet
+                {t('definitions.empty')}
               </div>
             )
 : null}
@@ -891,6 +1161,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
               draft={draft}
               saving={createAutomationMutation.isPending}
               error={draftError}
+              canSave={!createAutomationMutation.isPending}
               onChange={updateDraft}
               onCancel={cancelDraft}
               onSave={() => void saveDraft()}
@@ -903,15 +1174,15 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">
                     <h2 className="truncate text-lg font-semibold text-foreground">{selectedDefinition.title}</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{selectedDefinition.description || 'No description'}</p>
+                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{selectedDefinition.description || t('definition.noDescription')}</p>
                   </div>
-                  {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">no runs</Badge>}
+                  {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
                 </div>
                 <div className="grid grid-cols-4 gap-2">
-                  <DetailField label="RRULE" value={trigger?.rrule ?? 'No trigger'} mono />
-                  <DetailField label="Timezone" value={trigger?.timezone ?? 'Unknown'} />
-                  <DetailField label="Next run" value={formatDateTime(selectedDefinition.nextRunAt)} />
-                  <DetailField label="Updated" value={formatDateTime(selectedDefinition.updatedAt ?? selectedDefinition.createdAt)} />
+                  <DetailField label={t('detail.rrule')} value={trigger?.rrule ?? t('trigger.noTrigger')} mono />
+                  <DetailField label={t('detail.timezone')} value={trigger?.timezone ?? t('common.unknown')} />
+                  <DetailField label={t('detail.nextRun')} value={formatDateTime(selectedDefinition.nextRunAt, locale, t)} />
+                  <DetailField label={t('detail.updated')} value={formatDateTime(selectedDefinition.updatedAt ?? selectedDefinition.createdAt, locale, t)} />
                 </div>
               </section>
 
@@ -920,18 +1191,18 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                   <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
                     <div className="flex items-center gap-2 text-xs font-medium text-foreground">
                       <BotIcon className="size-3.5 text-muted-foreground" />
-                      Recipe
+                      {t('recipe.section')}
                     </div>
-                    <Badge variant="outline">{recipe?.kind ?? 'unknown'}</Badge>
+                    <Badge variant="outline">{recipe?.kind ?? t('common.unknown')}</Badge>
                   </div>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap p-3 text-xs leading-relaxed text-muted-foreground">{recipe?.prompt ?? 'No prompt snapshot available'}</pre>
+                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap p-3 text-xs leading-relaxed text-muted-foreground">{recipe?.prompt ?? t('recipe.noPromptSnapshot')}</pre>
                 </div>
                 <div className="rounded-lg border border-border/50">
-                  <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-foreground">Inputs and artifact requests</div>
+                  <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-foreground">{t('recipe.inputsAndArtifacts')}</div>
                   <div className="space-y-3 p-3 text-xs text-muted-foreground">
                     <div>
-                      <div className="mb-1 font-medium text-foreground">Inputs</div>
-                      {(recipe?.inputs ?? []).length === 0 ? <div>No inputs</div> : null}
+                      <div className="mb-1 font-medium text-foreground">{t('inputs.title')}</div>
+                      {(recipe?.inputs ?? []).length === 0 ? <div>{t('inputs.empty')}</div> : null}
                       {(recipe?.inputs ?? []).map(input => (
                         <div key={getInputKey(input)} className="truncate rounded bg-muted/40 px-2 py-1">
                           {input.type}
@@ -942,8 +1213,8 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                       ))}
                     </div>
                     <div>
-                      <div className="mb-1 font-medium text-foreground">Artifacts</div>
-                      {(recipe?.artifactRequests ?? []).length === 0 ? <div>No requests</div> : null}
+                      <div className="mb-1 font-medium text-foreground">{t('artifact.requestsTitle')}</div>
+                      {(recipe?.artifactRequests ?? []).length === 0 ? <div>{t('artifact.noRequests')}</div> : null}
                       {(recipe?.artifactRequests ?? []).map(request => (
                         <div key={request.name} className="truncate rounded bg-muted/40 px-2 py-1">
                           {request.name}
@@ -957,7 +1228,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 
               <section className="rounded-lg border border-border/50">
                 <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                  <span className="text-xs font-medium text-foreground">Run history</span>
+                  <span className="text-xs font-medium text-foreground">{t('runs.history')}</span>
                   <Badge variant="secondary">{runsQuery.data?.length ?? 0}</Badge>
                 </div>
                 <div className="divide-y divide-border/30 p-1">
@@ -965,13 +1236,13 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 ? (
                     <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                       <Loader2Icon className="size-3.5 animate-spin" />
-                      Loading runs
+                      {t('runs.loading')}
                     </div>
                   )
 : null}
                   {!runsQuery.isLoading && (runsQuery.data ?? []).length === 0
 ? (
-                    <div className="px-2 py-4 text-xs text-muted-foreground">No runs recorded</div>
+                    <div className="px-2 py-4 text-xs text-muted-foreground">{t('runs.empty')}</div>
                   )
 : null}
                   {(runsQuery.data ?? []).map(run => <RunRow key={run.id} run={run} />)}
@@ -981,7 +1252,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
               <section className="grid grid-cols-[320px_minmax(0,1fr)] gap-4">
                 <div className="rounded-lg border border-border/50">
                   <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                    <span className="text-xs font-medium text-foreground">Artifacts</span>
+                    <span className="text-xs font-medium text-foreground">{t('artifact.title')}</span>
                     <Badge variant="secondary">{artifactsQuery.data?.length ?? 0}</Badge>
                   </div>
                   <div className="p-1">
@@ -989,13 +1260,13 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 ? (
                       <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                         <Loader2Icon className="size-3.5 animate-spin" />
-                        Loading artifacts
+                        {t('artifact.loading')}
                       </div>
                     )
 : null}
                     {!artifactsQuery.isLoading && (artifactsQuery.data ?? []).length === 0
 ? (
-                      <div className="px-2 py-4 text-xs text-muted-foreground">No artifacts recorded</div>
+                      <div className="px-2 py-4 text-xs text-muted-foreground">{t('artifact.empty')}</div>
                     )
 : null}
                     {(artifactsQuery.data ?? []).map(artifact => (
@@ -1010,7 +1281,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                 </div>
                 <div className="min-w-0 rounded-lg border border-border/50">
                   <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-foreground">
-                    {selectedArtifact ? selectedArtifact.title ?? selectedArtifact.name ?? selectedArtifact.id : 'Artifact preview'}
+                    {selectedArtifact ? selectedArtifact.title ?? selectedArtifact.name ?? selectedArtifact.id : t('artifact.preview')}
                   </div>
                   <pre className="max-h-96 overflow-auto whitespace-pre-wrap p-3 text-xs leading-relaxed text-muted-foreground">
                     {selectedArtifact?.content ?? JSON.stringify(selectedArtifact?.metadata ?? {}, null, 2)}
@@ -1026,13 +1297,13 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                   <EmptyMedia variant="icon">
                     <CalendarClockIcon />
                   </EmptyMedia>
-                  <EmptyTitle>No automation selected</EmptyTitle>
-                  <EmptyDescription>Select an automation definition or create a new scheduled prompt.</EmptyDescription>
+                  <EmptyTitle>{t('emptySelection.title')}</EmptyTitle>
+                  <EmptyDescription>{t('emptySelection.description')}</EmptyDescription>
                 </EmptyHeader>
                 <EmptyContent>
                   <Button size="sm" variant="outline" onClick={startDraft}>
                     <PlusIcon className="size-3.5" />
-                    Create automation
+                    {t('action.createAutomation')}
                   </Button>
                 </EmptyContent>
               </Empty>

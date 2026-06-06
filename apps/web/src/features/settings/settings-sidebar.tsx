@@ -1,4 +1,4 @@
-import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, DatabaseIcon, DownloadIcon, HourglassIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
+import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, DatabaseIcon, DownloadIcon, HourglassIcon, InfoIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon, SparklesIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -27,6 +27,7 @@ const SETTINGS_NAV: SettingsNavItem[] = [
   { id: 'desktop', labelKey: 'nav.desktop', icon: DownloadIcon },
   { id: 'import', labelKey: 'nav.import', icon: ArrowDownToLineIcon },
   { id: 'support', labelKey: 'nav.support', icon: LifeBuoyIcon },
+  { id: 'about', labelKey: 'nav.about', icon: InfoIcon },
 ]
 
 interface SettingsSidebarProps {

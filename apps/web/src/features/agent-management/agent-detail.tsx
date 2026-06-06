@@ -1,10 +1,11 @@
 import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef } from 'react'
+import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
+import { PROVIDER_ICONS, ProviderIcon } from '~/components/common/provider-icons'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,23 +23,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Spinner } from '~/components/ui/spinner'
 import type { ClaudeAgentConfig } from '~/features/agent-runtime/agent-config-schema'
 import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema } from '~/features/agent-runtime/agent-config-schema'
+import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import type { Agent, CreateAgentInput } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import type { CreateAgentInput } from '~/features/agent-runtime/use-agents'
 import type { ProviderTargetOption } from '~/features/agent-runtime/use-provider-targets'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
-import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from '~/features/composer-toolbar/constants'
+import { filterThinkingOptionsForModel, selectSupportedThinkingValue } from '~/features/composer-toolbar/constants'
 import type { ModelsByProviderTargetId, ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { Agent, CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/lib/types'
-import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
+import type { CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/lib/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
-import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -107,12 +107,18 @@ const AVATAR_STYLES = [
   { id: 'adventurer', labelKey: 'detail.avatar.style.adventurer' },
 ] as const
 
-type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
+type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
 
+const AGENT_THINKING_EFFORTS: Array<{ value: ThinkingEffort }> = [
+  { value: 'low' },
+  { value: 'medium' },
+  { value: 'high' },
+  { value: 'xhigh' },
+]
+
 const thinkingLabelKeys = {
-  auto: 'detail.thinking.auto.label',
   low: 'detail.thinking.low.label',
   medium: 'detail.thinking.medium.label',
   high: 'detail.thinking.high.label',
@@ -120,7 +126,6 @@ const thinkingLabelKeys = {
 } satisfies Record<ThinkingEffort, AgentManagementKey>
 
 const thinkingDescriptionKeys = {
-  auto: 'detail.thinking.auto.description',
   low: 'detail.thinking.low.description',
   medium: 'detail.thinking.medium.description',
   high: 'detail.thinking.high.description',
@@ -382,7 +387,7 @@ function listSelectableProviderTargets(
   runtimeKind: RuntimeKind,
 ): ProviderTargetOption[] {
   return providerTargets.filter(target =>
-    runtimeSupportsProviderKind(runtimeKind, target.providerKind))
+    target.enabled && runtimeSupportsProviderKind(runtimeKind, target.providerKind))
 }
 
 function defaultProviderTargetId(
@@ -408,7 +413,7 @@ function getAgentDetailFormValues(agent: Agent | undefined, providerTargets: Pro
     avatarSeed: agent?.avatarSeed ?? generateSeed(),
     providerTargetId: defaultProviderTargetId(agent, providerTargets, runtimeKind),
     modelId: agent?.modelId ?? null,
-    thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'auto',
+    thinkingEffort: (agent?.thinkingEffort as ThinkingEffort) ?? 'high',
     runtimeKind,
     systemPrompt: initialConfig.systemPrompt,
     claudeAgentHaikuModel: initialConfig.claudeAgent.modelAliases.haiku,
@@ -419,6 +424,10 @@ function getAgentDetailFormValues(agent: Agent | undefined, providerTargets: Pro
     cliTuiArguments: initialConfig.cliTui?.args?.join(' ') ?? '',
     cliTuiEnvText: parseEnvText(initialConfig.cliTui?.env),
   }
+}
+
+function serializeAgentDetailFormValues(values: AgentDetailFormValues): string {
+  return JSON.stringify(values)
 }
 
 // ── Provider / Model Picker ───────────────────────────────────────────────────
@@ -436,47 +445,78 @@ function AgentProviderModelPicker({
 }) {
   const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
-  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(() => THINKING_EFFORTS.map((option) => {
-    const value = option.value ?? 'auto'
+  const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(() => AGENT_THINKING_EFFORTS.map((option) => {
+    const value = option.value
     return {
       value,
       label: t(thinkingLabelKeys[value]),
       description: t(thinkingDescriptionKeys[value]),
     }
   }), [t])
-  const initialModelProviderTargetIds = useMemo(() => [providerTargetId], [providerTargetId])
+  const selectedProviderTargetId = pendingProviderTargetId ?? providerTargetId
+  const initialModelProviderTargetIds = useMemo(
+    () => [providerTargetId, pendingProviderTargetId],
+    [pendingProviderTargetId, providerTargetId],
+  )
   const {
     modelsByProviderTargetId,
     loadingProviderTargetIds,
+    successfulProviderTargetIds,
     requestProviderTargetModels,
   } = useProviderTargetModelMap(providerTargets, initialModelProviderTargetIds)
   const models = useMemo(
-    () => providerTargetId ? modelsByProviderTargetId[providerTargetId] ?? [] : [],
-    [modelsByProviderTargetId, providerTargetId],
+    () => selectedProviderTargetId ? modelsByProviderTargetId[selectedProviderTargetId] ?? [] : [],
+    [modelsByProviderTargetId, selectedProviderTargetId],
   )
-  const selectedModel = models.find(model => model.id === modelId) ?? null
-  const isLoadingModels = providerTargetId ? loadingProviderTargetIds.has(providerTargetId) : false
+  const selectedModelId = pendingProviderTargetId ? null : modelId
+  const selectedModel = models.find(model => model.id === selectedModelId) ?? null
+  const isLoadingModels = selectedProviderTargetId ? loadingProviderTargetIds.has(selectedProviderTargetId) : false
 
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
-    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'auto')
+    selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
 
   const applyDefaultModel = useEffectEvent((nextModel: ModelDescriptor) => {
+    if (pendingProviderTargetId) {
+      form.setValue('providerTargetId', pendingProviderTargetId, { shouldDirty: true })
+      setPendingProviderTargetId(null)
+    }
     form.setValue('modelId', nextModel.id, { shouldDirty: false })
     form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: false })
   })
 
   useEffect(() => {
-    if (!providerTargetId || modelId !== null || models.length === 0) {
+    if (!selectedProviderTargetId || selectedModelId !== null || models.length === 0) {
       return
     }
     applyDefaultModel(models[0]!)
-  }, [providerTargetId, modelId, models])
+  }, [applyDefaultModel, models, selectedModelId, selectedProviderTargetId])
+
+  useEffect(() => {
+    if (!pendingProviderTargetId) {
+      return
+    }
+    if (!providerTargets.some(target => target.id === pendingProviderTargetId)) {
+      setPendingProviderTargetId(null)
+      return
+    }
+    const pendingProviderTarget = providerTargets.find(target => target.id === pendingProviderTargetId) ?? null
+    if (pendingProviderTarget && !pendingProviderTarget.enabled) {
+      setPendingProviderTargetId(null)
+      return
+    }
+    if (successfulProviderTargetIds.has(pendingProviderTargetId) && (modelsByProviderTargetId[pendingProviderTargetId] ?? []).length === 0) {
+      form.setValue('providerTargetId', pendingProviderTargetId, { shouldDirty: true })
+      form.setValue('modelId', null, { shouldDirty: true })
+      setPendingProviderTargetId(null)
+    }
+  }, [form, modelsByProviderTargetId, pendingProviderTargetId, providerTargets, successfulProviderTargetIds])
 
   return (
     <ProviderModelPicker
       providerTargets={providerTargets}
-      selectedProviderTargetId={providerTargetId}
-      selectedModelId={modelId}
+      selectedProviderTargetId={selectedProviderTargetId}
+      selectedModelId={selectedModelId}
       selectedModel={selectedModel}
       modelsByProviderTargetId={modelsByProviderTargetId}
       loadingProviderTargetIds={loadingProviderTargetIds}
@@ -493,11 +533,17 @@ function AgentProviderModelPicker({
       onSelectProviderTarget={(nextProviderTargetId) => {
         requestProviderTargetModels(nextProviderTargetId)
         const nextModel = (modelsByProviderTargetId[nextProviderTargetId] ?? [])[0] ?? null
+        if (!nextModel) {
+          setPendingProviderTargetId(nextProviderTargetId)
+          return
+        }
+        setPendingProviderTargetId(null)
         form.setValue('providerTargetId', nextProviderTargetId, { shouldDirty: true })
-        form.setValue('modelId', nextModel?.id ?? null, { shouldDirty: true })
+        form.setValue('modelId', nextModel.id, { shouldDirty: true })
         form.setValue('thinkingEffort', selectThinkingForModel(nextModel), { shouldDirty: true })
       }}
       onSelectModel={(nextModelId, nextProviderTargetId) => {
+        setPendingProviderTargetId(null)
         const nextModel = nextModelId
           ? (modelsByProviderTargetId[nextProviderTargetId] ?? []).find(model => model.id === nextModelId) ?? null
           : null
@@ -573,7 +619,7 @@ function ClaudeAgentAliasModelPicker({
               models={models}
               selectedModelId={value || null}
               thinkingValue={null}
-              getThinkingOptionsForModel={() => [{ value: null, label: t('detail.thinking.auto.label'), description: '' }]}
+              getThinkingOptionsForModel={() => [{ value: null, label: '', description: '' }]}
               isLoadingModels={isLoadingModels}
               leadingContent={reusedMainModelRow}
               onSelectModel={modelId => form.setValue(field, modelId, { shouldDirty: true })}
@@ -805,13 +851,15 @@ function AgentIdentitySection({
   selectableProviderTargets,
   providerDisabledReason,
   avatarUrl,
+  avatarIconSlug,
   avatarSpinKey,
   onShuffleAvatar,
 }: {
   draft: AgentDetailDraft
   selectableProviderTargets: ProviderTargetOption[]
   providerDisabledReason: string | null
-  avatarUrl: string
+  avatarUrl: string | null
+  avatarIconSlug: string | null
   avatarSpinKey: number
   onShuffleAvatar: () => void
 }) {
@@ -833,16 +881,30 @@ function AgentIdentitySection({
             title={t('detail.avatar.shuffle')}
             whileTap={{ scale: 0.91 }}
           >
-            <m.img
-              key={avatarSpinKey}
-              src={avatarUrl}
-              alt={draft.name || t('detail.avatar.alt')}
-              className="size-full object-cover"
-              crossOrigin="anonymous"
-              initial={{ scale: 0.82, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 380, damping: 22 }}
-            />
+            {avatarIconSlug
+              ? (
+                  <m.div
+                    key={`${avatarSpinKey}:${avatarIconSlug}`}
+                    className="flex size-full items-center justify-center p-3"
+                    initial={{ scale: 0.82, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                  >
+                    <ProviderIcon iconSlug={avatarIconSlug} presetId={null} className="size-full" />
+                  </m.div>
+                )
+              : avatarUrl && (
+                  <m.img
+                    key={avatarSpinKey}
+                    src={avatarUrl}
+                    alt={draft.name || t('detail.avatar.alt')}
+                    className="size-full object-cover"
+                    crossOrigin="anonymous"
+                    initial={{ scale: 0.82, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 380, damping: 22 }}
+                  />
+                )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
               <DicesIcon className="size-4 text-white" />
             </div>
@@ -1156,7 +1218,7 @@ function useAgentDetailOwner({
     avatarSeed: watchedValues.avatarSeed ?? '',
     providerTargetId: watchedValues.providerTargetId ?? null,
     modelId: watchedValues.modelId ?? null,
-    thinkingEffort: watchedValues.thinkingEffort ?? 'auto',
+    thinkingEffort: watchedValues.thinkingEffort ?? 'high',
     runtimeKind: watchedValues.runtimeKind ?? 'codex',
     systemPrompt: watchedValues.systemPrompt ?? '',
     claudeAgentHaikuModel: watchedValues.claudeAgentHaikuModel ?? '',
@@ -1189,6 +1251,7 @@ function useAgentDetailOwner({
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const syncedAgentIdRef = useRef<string | null>(agent?.id ?? null)
 
   const clearTimers = useCallback(() => {
     if (autoSaveTimerRef.current) {
@@ -1206,6 +1269,12 @@ function useAgentDetailOwner({
   }, [clearTimers])
 
   useEffect(() => {
+    const nextAgentId = agent?.id ?? null
+    const agentChanged = syncedAgentIdRef.current !== nextAgentId
+    if (!agentChanged && form.formState.isDirty) {
+      return
+    }
+    syncedAgentIdRef.current = nextAgentId
     clearTimers()
     form.reset(getAgentDetailFormValues(agent, providerOptions))
     dispatch({ type: 'reset' })
@@ -1256,7 +1325,7 @@ function useAgentDetailOwner({
     }
     form.setValue('providerTargetId', selectableProviderTargets[0]?.id ?? null, { shouldDirty: true })
     form.setValue('modelId', null, { shouldDirty: true })
-    form.setValue('thinkingEffort', 'auto', { shouldDirty: true })
+    form.setValue('thinkingEffort', 'high', { shouldDirty: true })
   }, [draft.providerTargetId, draft.runtimeKind, form, selectableProviderTargets])
 
   const isDirty = form.formState.isDirty
@@ -1267,7 +1336,9 @@ function useAgentDetailOwner({
       return
     }
 
+    const submittedAgentId = agent.id
     const currentValues = form.getValues()
+    const submittedSignature = serializeAgentDetailFormValues(currentValues)
     const requiresProviderTarget = currentValues.runtimeKind !== 'cli-tui'
     if (!currentValues.name.trim() || (requiresProviderTarget && !currentValues.providerTargetId) || (!requiresProviderTarget && !currentValues.cliTuiExecutable.trim())) {
       return
@@ -1296,7 +1367,7 @@ function useAgentDetailOwner({
         cliTuiEnvText: currentValues.cliTuiEnvText,
       })
       await updateAgent.mutateAsync({
-        path: { id: agent.id },
+        path: { id: submittedAgentId },
         body: {
           name: normalizedValues.name,
           description: normalizedValues.description || null,
@@ -1304,11 +1375,20 @@ function useAgentDetailOwner({
           avatarSeed: currentValues.avatarSeed,
           providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
           modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
-          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
+          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'high' : currentValues.thinkingEffort,
           runtimeKind: currentValues.runtimeKind,
           configJson,
         },
       })
+      if (agent?.id !== submittedAgentId) {
+        return
+      }
+      const latestValues = form.getValues()
+      if (serializeAgentDetailFormValues(latestValues) !== submittedSignature) {
+        dispatch({ type: 'save/state', state: 'pending' })
+        return
+      }
+
       dispatch({ type: 'save/state', state: 'saved' })
       form.reset(normalizedValues)
       if (savedClearTimerRef.current) {
@@ -1368,7 +1448,7 @@ function useAgentDetailOwner({
           avatarSeed: currentValues.avatarSeed,
           providerTargetId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.providerTargetId,
           modelId: currentValues.runtimeKind === 'cli-tui' ? null : currentValues.modelId,
-          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'auto' : currentValues.thinkingEffort,
+          thinkingEffort: currentValues.runtimeKind === 'cli-tui' ? 'high' : currentValues.thinkingEffort,
           runtimeKind: currentValues.runtimeKind,
           configJson: stringifyConfigJson({
             systemPrompt: currentValues.systemPrompt,
@@ -1416,6 +1496,7 @@ function useAgentDetailOwner({
     providerDisabledReason,
     avatarSpinKey,
     avatarUrl: buildAvatarUrl(draft.avatarStyle, draft.avatarSeed),
+    avatarIconSlug: draft.avatarStyle === 'lobehub-icon' ? draft.avatarSeed : null,
     saveState,
     createSaving,
     saveError,
@@ -1458,6 +1539,7 @@ export function AgentDetailPage({
           selectableProviderTargets={owner.selectableProviderTargets}
           providerDisabledReason={owner.providerDisabledReason}
           avatarUrl={owner.avatarUrl}
+          avatarIconSlug={owner.avatarIconSlug}
           avatarSpinKey={owner.avatarSpinKey}
           onShuffleAvatar={owner.shuffleAvatar}
         />

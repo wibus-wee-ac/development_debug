@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -37,22 +38,22 @@ import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-config-schema'
+import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
-import type { PreviewLocalConfigImportResult } from '~/features/agent-runtime/use-agents'
+import type { Agent, PreviewLocalConfigImportResult } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import type { ProviderTargetOption } from '~/features/agent-runtime/use-provider-targets'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import {
   filterThinkingOptionsForModel,
   selectSupportedThinkingValue,
-  THINKING_EFFORTS,
 } from '~/features/composer-toolbar/constants'
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cn } from '~/lib/cn'
-import type { Agent, ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { ModelDescriptor, ProviderTarget } from '~/lib/types'
+import { useSettingsOverlayStore } from '~/store/settings-overlay'
 
 import type { AgentBatchThinkingEffort, AgentProviderBatchSelection } from './agent-batch-configuration'
 import {
@@ -60,7 +61,6 @@ import {
 } from './agent-batch-configuration'
 import { AgentDetailPage } from './agent-detail'
 import { StatusDot } from './agent-status-dot'
-import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import {
   applyVisibleRangeSelection,
   mergeVisibleSelection,
@@ -73,11 +73,16 @@ import {
 import { useSettingsSelectionShortcuts } from './settings-selection-shortcuts'
 
 const DRAFT_ID = '__agent-draft__'
+const AGENT_THINKING_EFFORTS: Array<{ value: AgentBatchThinkingEffort }> = [
+  { value: 'low' },
+  { value: 'medium' },
+  { value: 'high' },
+  { value: 'xhigh' },
+]
 
 type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
 
 const thinkingLabelKeys = {
-  auto: 'detail.thinking.auto.label',
   low: 'detail.thinking.low.label',
   medium: 'detail.thinking.medium.label',
   high: 'detail.thinking.high.label',
@@ -85,7 +90,6 @@ const thinkingLabelKeys = {
 } satisfies Record<AgentBatchThinkingEffort, AgentManagementKey>
 
 const thinkingDescriptionKeys = {
-  auto: 'detail.thinking.auto.description',
   low: 'detail.thinking.low.description',
   medium: 'detail.thinking.medium.description',
   high: 'detail.thinking.high.description',
@@ -143,13 +147,30 @@ function defaultBatchModelId(agents: Agent[], providerTarget: ProviderTarget | n
   return commonString(matchingAgents.map(agent => agent.modelId))
 }
 
+function readAgentBatchThinkingEffort(value: unknown): AgentBatchThinkingEffort {
+  switch (value) {
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'xhigh':
+      return value
+    case 'max':
+      return 'xhigh'
+    case 'none':
+    case 'minimal':
+      return 'low'
+    default:
+      return 'high'
+  }
+}
+
 function defaultBatchThinkingEffort(agents: Agent[]): AgentBatchThinkingEffort {
   const providerAgents = agents.filter(agent => agent.runtimeKind !== 'cli-tui')
   if (providerAgents.length === 0) {
-    return 'auto'
+    return 'high'
   }
-  const first = providerAgents[0]?.thinkingEffort ?? 'auto'
-  return providerAgents.every(agent => agent.thinkingEffort === first) ? first : 'auto'
+  const first = readAgentBatchThinkingEffort(providerAgents[0]?.thinkingEffort)
+  return providerAgents.every(agent => readAgentBatchThinkingEffort(agent.thinkingEffort) === first) ? first : 'high'
 }
 
 function AgentSidebarRow({
@@ -169,6 +190,7 @@ function AgentSidebarRow({
 }) {
   const checkboxShiftKeyRef = useRef(false)
   const avatarUrl = agent.avatarUrl || buildAvatarUrl(agent.avatarStyle, agent.avatarSeed)
+  const lobeIconSlug = agent.avatarStyle === 'lobehub-icon' ? agent.avatarSeed : null
   const providerTarget = agent.providerTargetId
     ? providerTargets.find(target => target.id === agent.providerTargetId) ?? null
     : null
@@ -212,12 +234,16 @@ function AgentSidebarRow({
         onClick={event => onClick(event.shiftKey)}
       >
         <div className="size-7 shrink-0 overflow-hidden rounded-lg bg-foreground/5">
-          <img
-            src={avatarUrl}
-            alt={agent.name}
-            className="size-full object-cover"
-            crossOrigin="anonymous"
-          />
+          {lobeIconSlug
+            ? <ProviderIcon iconSlug={lobeIconSlug} presetId={null} className="size-full p-1" />
+            : avatarUrl && (
+                <img
+                  src={avatarUrl}
+                  alt={agent.name}
+                  className="size-full object-cover"
+                  crossOrigin="anonymous"
+                />
+              )}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
@@ -271,8 +297,8 @@ function AgentBatchProviderPanel({
       target.enabled && providerTargetCompatibleWithAgents(target, providerAgents)),
     [providerAgents, providerTargets],
   )
-  const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = useMemo(() => THINKING_EFFORTS.map((option) => {
-    const value = option.value ?? 'auto'
+  const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = useMemo(() => AGENT_THINKING_EFFORTS.map((option) => {
+    const value = option.value
     return {
       value,
       label: t(thinkingLabelKeys[value]),
@@ -315,11 +341,11 @@ function AgentBatchProviderPanel({
     ? loadingProviderTargetIds.has(selectedProviderTargetId)
     : false
 
-  const resolveThinkingForModel = (
+  const resolveThinkingForModel = useCallback((
     model: ModelDescriptor | null,
     current: AgentBatchThinkingEffort,
   ): AgentBatchThinkingEffort =>
-    selectSupportedThinkingValue(model, thinkingOptions, current, 'auto')
+    selectSupportedThinkingValue(model, thinkingOptions, current, 'high'), [thinkingOptions])
 
   const applyProviderTargetSelection = (nextProviderTargetId: string) => {
     requestProviderTargetModels(nextProviderTargetId)
@@ -330,7 +356,9 @@ function AgentBatchProviderPanel({
         ? providerTargetFromOption(nextTarget)
         : { id: nextProviderTargetId },
       modelId: nextModel?.id ?? null,
-      thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
+      thinkingEffort: nextModel
+        ? resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'high')
+        : selection?.thinkingEffort ?? 'high',
     })
   }
 
@@ -344,9 +372,21 @@ function AgentBatchProviderPanel({
         ? providerTargetFromOption(nextTarget)
         : { id: nextProviderTargetId },
       modelId: nextModelId,
-      thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'auto'),
+      thinkingEffort: resolveThinkingForModel(nextModel, selection?.thinkingEffort ?? 'high'),
     })
   }
+
+  useEffect(() => {
+    if (!selection || selection.modelId !== null || selectedModels.length === 0) {
+      return
+    }
+    const nextModel = selectedModels[0]!
+    setSelectionOverride({
+      ...selection,
+      modelId: nextModel.id,
+      thinkingEffort: resolveThinkingForModel(nextModel, selection.thinkingEffort),
+    })
+  }, [resolveThinkingForModel, selectedModels, selection])
 
   return (
     <div className="flex flex-1 items-center justify-center">
@@ -377,7 +417,7 @@ function AgentBatchProviderPanel({
             selectedModel={selectedModel}
             modelsByProviderTargetId={modelsByProviderTargetId}
             loadingProviderTargetIds={loadingProviderTargetIds}
-            thinkingValue={selection?.thinkingEffort ?? 'auto'}
+            thinkingValue={selection?.thinkingEffort ?? 'high'}
             thinkingOptions={thinkingOptions}
             isLoadingSelectedModels={isLoadingSelectedModels}
             emptyProviderTargetsLabel={t('batch.provider.emptyProviderTargets')}
@@ -401,11 +441,11 @@ function AgentBatchProviderPanel({
           <Button
             size="sm"
             onClick={() => {
-              if (selection) {
+              if (selection && selection.modelId !== null) {
                 onApply(selection)
               }
             }}
-            disabled={busy || !selection || providerAgents.length === 0}
+            disabled={busy || !selection || selection.modelId === null || providerAgents.length === 0}
           >
             {t('batch.provider.apply')}
           </Button>
@@ -446,7 +486,7 @@ function AgentImportDialog({
         <DialogHeader>
           <DialogTitle>Import Agents</DialogTitle>
           <DialogDescription>
-            Review detected Claude, Codex, Gemini, Pi, and CC Switch mappings before creating Agents.
+            Review detected Claude, Codex, Gemini, Pi, Kimi, and CC Switch mappings before creating Agents.
           </DialogDescription>
         </DialogHeader>
 
@@ -465,7 +505,7 @@ function AgentImportDialog({
 
           {preview && preview.candidates.length === 0 && (
             <div className="rounded-md border border-foreground/8 px-3 py-6 text-center text-[12.5px] text-muted-foreground">
-              No Claude, Codex, Gemini, Pi, or CC Switch mappings found
+              No Claude, Codex, Gemini, Pi, Kimi, or CC Switch mappings found
             </div>
           )}
 
@@ -484,6 +524,13 @@ function AgentImportDialog({
                     disabled={!candidate.importable || busy}
                     onCheckedChange={value => onToggleCandidate(candidate.id, Boolean(value))}
                   />
+                  {(candidate.avatarUrl || candidate.iconSlug) && (
+                    <span className="mt-0.5 flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md border border-foreground/8 bg-background">
+                      {candidate.avatarUrl
+                        ? <img src={candidate.avatarUrl} alt="" className="size-5 object-contain" />
+                        : <ProviderIcon iconSlug={candidate.iconSlug} presetId={candidate.app} className="size-5" />}
+                    </span>
+                  )}
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-[13px] font-medium text-foreground">
@@ -503,6 +550,7 @@ function AgentImportDialog({
                       <span className="truncate">{candidate.resolvedProviderName}</span>
                       {candidate.modelId && <span className="truncate">{candidate.modelId}</span>}
                       {candidate.endpoint && <span className="truncate font-mono">{candidate.endpoint}</span>}
+                      {candidate.executable && <span className="truncate font-mono">{candidate.executable}</span>}
                     </div>
                     {candidate.notes.map(note => (
                       <p key={note} className="text-[11.5px] leading-relaxed text-muted-foreground">

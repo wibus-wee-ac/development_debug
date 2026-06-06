@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeftIcon,
   CheckIcon,
@@ -16,11 +17,13 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
+import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { PROVIDER_ICONS } from '~/components/common/provider-icons'
+import { warmManualProviderModelCache } from './provider-model-cache'
 import type { DraftProvider } from './provider-settings-utils'
 import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
@@ -122,6 +125,7 @@ function PresetSetupForm({
 }) {
   const Icon = PROVIDER_ICONS[preset.id] ?? PROVIDER_ICONS.custom!
   const { createProfile } = useAgentProfiles()
+  const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ ok: boolean, text: string } | null>(null)
 
@@ -182,6 +186,15 @@ function PresetSetupForm({
         },
       })
 
+      void warmManualProviderModelCache({
+        id: profileId,
+        name: currentValues.name,
+        providerKind: preset.providerKind,
+        config,
+        credentialRef,
+      })
+        .then(() => queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }))
+        .catch(error => console.error('[ProviderSetup] model cache warm failed', error))
       setStatus({ ok: true, text: 'Saved' })
       setTimeout(onComplete, 500, profileId)
     }
@@ -192,7 +205,7 @@ function PresetSetupForm({
  finally {
       setBusy(false)
     }
-  }, [createProfile, form, onComplete, preset, profileId])
+  }, [createProfile, form, onComplete, preset, profileId, queryClient])
 
   return (
     <div className="flex flex-col gap-5">

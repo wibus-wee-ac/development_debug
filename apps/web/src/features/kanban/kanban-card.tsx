@@ -5,10 +5,11 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
+import type { Agent } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { Agent, KanbanIssue, KanbanMilestone, KanbanStatus, Workspace } from '~/lib/types'
+import type { KanbanIssue, KanbanMilestone, KanbanStatus, Workspace } from '~/lib/types'
 
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'

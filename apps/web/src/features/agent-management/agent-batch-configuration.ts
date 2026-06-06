@@ -1,7 +1,7 @@
-import type { UpdateAgentInput } from '~/features/agent-runtime/use-agents'
-import type { Agent, ProviderTarget } from '~/lib/types'
+import type { Agent, UpdateAgentInput } from '~/features/agent-runtime/use-agents'
+import type { ProviderTarget } from '~/lib/types'
 
-export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'auto'
+export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
 export interface AgentProviderBatchSelection {
   providerTarget: ProviderTarget
@@ -23,6 +23,10 @@ export function buildAgentProviderBatchPatches(
   agents: Agent[],
   selection: AgentProviderBatchSelection,
 ): AgentBatchProviderPatchResult {
+  if (selection.modelId === null) {
+    throw new Error('Provider-backed batch configuration requires a resolved model')
+  }
+
   const patches: AgentBatchProviderPatch[] = []
   let skippedCliTuiCount = 0
 

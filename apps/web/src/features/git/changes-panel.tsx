@@ -1,6 +1,6 @@
 // Renders workspace Git changes in the right-aside Changes tab.
 import { prepareFileTreeInput } from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
+import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { FileDiffIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
@@ -45,10 +45,9 @@ function formatErrorDescription(error: unknown): string {
 interface ChangesPanelProps {
   workspaceId: string | null | undefined
   workspacePath?: string | null
-  onPackRequested?: (paths: string[]) => void
 }
 
-export function ChangesPanel({ workspaceId, workspacePath, onPackRequested }: ChangesPanelProps) {
+export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) {
   const [viewMode, setViewMode] = useState<ChangesViewMode>('type')
   const { data: files, isLoading, isError, isSuccess } = useGitFileStatuses(workspaceId)
   const sections = groupGitFileStatuses(files ?? [])
@@ -97,7 +96,6 @@ export function ChangesPanel({ workspaceId, workspacePath, onPackRequested }: Ch
         workspaceId={workspaceId}
         workspacePath={workspacePath ?? undefined}
         onFileClick={handleReviewFile}
-        onPackRequested={onPackRequested}
       />
     )
   }
@@ -258,13 +256,11 @@ function ChangesTreeView({
   workspaceId,
   workspacePath,
   onFileClick,
-  onPackRequested,
 }: {
   files: GitFileStatus[]
   workspaceId: string | null | undefined
   workspacePath?: string
   onFileClick: (path: string) => void
-  onPackRequested?: (paths: string[]) => void
 }) {
   const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
@@ -340,8 +336,6 @@ function ChangesTreeView({
       },
     },
   })
-  const selectedPaths = useFileTreeSelection(model)
-
   const commitCreate = async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
     if (!workspaceId) {
       return null
@@ -472,12 +466,10 @@ function ChangesTreeView({
               model.focusPath(path)
             }}
             onOpenDefault={openInDefaultApplication}
-            onPackRequested={onPackRequested}
             onRename={(path) => {
               model.startRenaming(path)
             }}
             onReveal={revealWorkspacePath}
-            selectedPaths={selectedPaths}
             t={t}
             workspacePath={workspacePath}
           />

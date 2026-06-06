@@ -2,10 +2,10 @@ import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
 import { jarvisContextRegistry } from '~/features/context/context-registry'
+import { readUnreadSessionIdsSnapshot } from '~/features/workspace/use-session'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
 
@@ -48,7 +48,7 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
   const layoutState = useLayoutStore.getState()
   const settingsState = useSettingsOverlayStore.getState()
   const newChatState = useNewChatStore.getState()
-  const activityState = useSessionActivityStore.getState()
+  const unreadSessionIds = readUnreadSessionIdsSnapshot()
   const activeTab = tabState.activeTabId
     ? tabState.tabs.find(tab => tab.id === tabState.activeTabId) ?? null
     : null
@@ -163,13 +163,13 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
     }))
   }
 
-  if (activityState.unread.size > 0) {
+  if (unreadSessionIds.length > 0) {
     items.push(createItem({
       id: 'system-agent:attention:unread-sessions',
       kind: 'attention',
       owner: OWNER,
       title: 'Unread sessions',
-      summary: `${activityState.unread.size} session(s) have unread activity.`,
+      summary: `${unreadSessionIds.length} session(s) have unread activity.`,
       priority: 30,
       freshness: 'recent',
       sensitivity: 'private',

@@ -1,3 +1,4 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
@@ -23,12 +24,14 @@ import {
   SelectValue,
 } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
+import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
 import type { ApiProviderKind } from '~/lib/types'
 
 import type { ParsedProvider } from './import-provider-parser'
 import { parseProviderConfig } from './import-provider-parser'
+import { warmManualProviderModelCache } from './provider-model-cache'
 import { buildProfileId } from './provider-settings-utils'
 
 const SecretCreateResponseSchema = z.object({ id: z.string().min(1) })
@@ -59,6 +62,7 @@ export function ImportProviderDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const queryClient = useQueryClient()
   const { createProfile, profiles } = useAgentProfiles()
   const [text, setText] = useState('')
   const [importing, setImporting] = useState(false)
@@ -159,16 +163,26 @@ export function ImportProviderDialog({
 
         const name = resolvedNames[index] ?? p.name
         const profileId = buildProfileId(name, `imported-${importBatchId}-${index}`)
+        const config = { baseUrl: p.baseUrl }
         await createProfile.mutateAsync({
           path: { id: profileId },
           body: {
             name,
             providerKind: kind,
             enabled: true,
-            config: { baseUrl: p.baseUrl },
+            config,
             credentialRef,
           },
         })
+        void warmManualProviderModelCache({
+          id: profileId,
+          name,
+          providerKind: kind,
+          config,
+          credentialRef,
+        })
+          .then(() => queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY }))
+          .catch(error => console.error('[ImportProvider] model cache warm failed', error))
       }
       onOpenChange(false)
       setText('')
@@ -179,7 +193,7 @@ export function ImportProviderDialog({
       console.error('[ImportProvider]', err)
       setImporting(false)
     }
-  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames])
+  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames, queryClient])
 
   const handleClose = useCallback(() => {
     if (importing) { return }

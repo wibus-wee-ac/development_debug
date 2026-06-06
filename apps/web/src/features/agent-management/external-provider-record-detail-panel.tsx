@@ -42,6 +42,8 @@ const ExternalRecordMetadataSchema = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiFormat: z.string().optional(),
+  iconUrl: z.string().optional(),
+  avatarUrl: z.string().optional(),
 })
 
 function sourceStatusTone(status: ExternalProviderSourceView['lastSyncStatus']) {
@@ -339,9 +341,23 @@ export function ExternalProviderRecordDetailPanel({
           },
           body: { enabled },
         })
-        setRuntimeTarget(toRuntimeTargetView(next))
+        const nextRuntimeTarget = toRuntimeTargetView(next)
+        setRuntimeTarget(nextRuntimeTarget)
         void queryClient.invalidateQueries({ queryKey: AGENTS_QUERY_KEY })
         void queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
+        if (enabled && apiProviderKind) {
+          void fetchProviderModels({
+            body: {
+              ...createProviderTargetRequestBody(record, apiProviderKind),
+              providerTargetId: nextRuntimeTarget.id,
+            },
+          })
+            .then((fetched) => {
+              setModels(fetched as ModelDescriptor[])
+              void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+            })
+            .catch(error => console.error('[ExternalProviderRecordDetailPanel] model cache warm failed', error))
+        }
         onUpdated?.()
       }
       catch (error) {
@@ -355,7 +371,7 @@ export function ExternalProviderRecordDetailPanel({
         setUpdatingEnabled(false)
       }
     },
-    [onUpdated, queryClient, record.externalId, record.sourceKey, updateRuntimeTarget],
+    [apiProviderKind, fetchProviderModels, onUpdated, queryClient, record, updateRuntimeTarget],
   )
 
   return (
@@ -364,6 +380,7 @@ export function ExternalProviderRecordDetailPanel({
         <div className="mt-1 shrink-0 rounded-md p-0.5 text-muted-foreground">
           <ProviderIcon
             iconSlug={runtimeTarget?.iconSlug ?? null}
+            iconUrl={metadata.avatarUrl ?? metadata.iconUrl ?? null}
             presetId={preset.id}
             className="size-6"
           />

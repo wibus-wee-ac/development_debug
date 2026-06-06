@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
@@ -17,6 +17,7 @@ import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-
 const JARVIS_THINKING_LEVELS: Array<JarvisPreferences['thinkingLevel']> = ['minimal', 'low', 'medium', 'high', 'xhigh']
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
+type PendingSelection = { runtimeKind: string, profileId: string }
 
 const jarvisThinkingLabelKeys = {
   minimal: 'jarvis.thinking.minimal.label',
@@ -39,7 +40,8 @@ export function JarvisSettings() {
   const { prefs, isSuccess: prefsReady, isSaving: saving, savePrefs: save } = useJarvisPreferences()
   const { providerOptions, isSuccess: providerTargetsReady } = useProviderTargets()
   const { runtimes } = useRuntimeCatalog()
-  const runtimeKind = prefs?.runtimeKind ?? 'jar-core'
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null)
+  const runtimeKind = pendingSelection?.runtimeKind ?? prefs?.runtimeKind ?? 'jar-core'
   const runtimeOptions = useMemo(
     () => listRuntimeCatalogForSurface(runtimes, 'jarvis').map(runtime => ({
       value: runtime.runtimeKind,
@@ -54,10 +56,10 @@ export function JarvisSettings() {
     [providerOptions, runtimeKind, runtimes],
   )
   const selectedProviderTarget = useMemo(
-    () => profiles.find(profile => profile.id === prefs?.profileId) ?? null,
-    [prefs?.profileId, profiles],
+    () => profiles.find(profile => profile.id === (pendingSelection?.profileId ?? prefs?.profileId)) ?? null,
+    [pendingSelection?.profileId, prefs?.profileId, profiles],
   )
-  const initialModelProfileIds = useMemo(() => [prefs?.profileId ?? null], [prefs?.profileId])
+  const initialModelProfileIds = useMemo(() => [pendingSelection?.profileId ?? prefs?.profileId ?? null], [pendingSelection?.profileId, prefs?.profileId])
   const {
     modelsByProviderTargetId: modelsByProfileId,
     loadingProviderTargetIds: loadingProfileIds,
@@ -68,18 +70,70 @@ export function JarvisSettings() {
     initialModelProfileIds,
   )
   const selectedModels = selectedProviderTarget ? modelsByProfileId[selectedProviderTarget.id] ?? [] : []
-  const selectedModel = selectedModels.find(model => model.id === prefs?.model) ?? null
+  const selectedModel = pendingSelection ? null : selectedModels.find(model => model.id === prefs?.model) ?? null
   const selectedProviderTargetModelsReady = !selectedProviderTarget
     || !selectedProviderTarget.enabled
     || successfulProfileIds.has(selectedProviderTarget.id)
-  const settingsJarvisReady = prefsReady && providerTargetsReady && selectedProviderTargetModelsReady
+  const settingsJarvisReady = prefsReady && providerTargetsReady && !pendingSelection && selectedProviderTargetModelsReady
   const thinkingOptions: Array<ThinkingOption<JarvisPreferences['thinkingLevel']>> = useMemo(() => JARVIS_THINKING_LEVELS.map(value => ({
     value,
     label: t(jarvisThinkingLabelKeys[value]),
     description: t(jarvisThinkingDescriptionKeys[value]),
   })), [t])
-  const selectThinkingForModel = (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
-    selectSupportedThinkingValue(model, thinkingOptions, prefs?.thinkingLevel ?? 'medium', 'medium')
+  const selectThinkingForModel = useCallback(
+    (model: typeof selectedModel): JarvisPreferences['thinkingLevel'] =>
+      selectSupportedThinkingValue(model, thinkingOptions, prefs?.thinkingLevel ?? 'medium', 'medium'),
+    [prefs?.thinkingLevel, thinkingOptions],
+  )
+  const completePendingSelection = useCallback((selection: PendingSelection, patch: Partial<JarvisPreferences>) => {
+    void save(patch).then(
+      () => {
+        setPendingSelection(current => current?.runtimeKind === selection.runtimeKind && current.profileId === selection.profileId
+          ? null
+          : current)
+      },
+      () => {
+        setPendingSelection(current => current?.runtimeKind === selection.runtimeKind && current.profileId === selection.profileId
+          ? null
+          : current)
+      },
+    )
+  }, [save])
+
+  useEffect(() => {
+    if (!pendingSelection || saving) {
+      return
+    }
+    if (!profiles.some(profile => profile.id === pendingSelection.profileId)) {
+      setPendingSelection(null)
+      return
+    }
+    const nextModel = selectedModels[0] ?? null
+    if (!nextModel) {
+      if (successfulProfileIds.has(pendingSelection.profileId)) {
+        completePendingSelection(pendingSelection, {
+          runtimeKind: pendingSelection.runtimeKind,
+          profileId: pendingSelection.profileId,
+          model: undefined,
+        })
+      }
+      return
+    }
+    completePendingSelection(pendingSelection, {
+      runtimeKind: pendingSelection.runtimeKind,
+      profileId: pendingSelection.profileId,
+      model: nextModel.id,
+      thinkingLevel: selectThinkingForModel(nextModel),
+    })
+  }, [completePendingSelection, pendingSelection, profiles, saving, selectThinkingForModel, selectedModels, successfulProfileIds])
+
+  useEffect(() => {
+    if (pendingSelection || !prefs || !prefs.profileId || prefs.model || selectedModels.length === 0 || saving) {
+      return
+    }
+    const nextModel = selectedModels[0]!
+    void save({ model: nextModel.id, thinkingLevel: selectThinkingForModel(nextModel) })
+  }, [pendingSelection, prefs, save, saving, selectThinkingForModel, selectedModels])
 
   if (!prefs) {
     return null
@@ -108,14 +162,24 @@ export function JarvisSettings() {
             const nextProfile = currentProfileStillValid
               ? nextProfiles.find(profile => profile.id === prefs.profileId) ?? null
               : nextProfiles[0] ?? null
+            if (!nextProfile) {
+              setPendingSelection(null)
+              void save({ runtimeKind: nextRuntimeKind, profileId: null, model: undefined })
+              return
+            }
+            requestProfileModels(nextProfile.id)
+            const nextModel = (modelsByProfileId[nextProfile.id] ?? [])[0] ?? null
+            if (!nextModel) {
+              setPendingSelection({ runtimeKind: nextRuntimeKind, profileId: nextProfile.id })
+              return
+            }
+            setPendingSelection(null)
             void save({
               runtimeKind: nextRuntimeKind,
-              profileId: nextProfile?.id ?? null,
-              model: undefined,
+              profileId: nextProfile.id,
+              model: nextModel.id,
+              thinkingLevel: selectThinkingForModel(nextModel),
             })
-            if (nextProfile) {
-              requestProfileModels(nextProfile.id)
-            }
           }}
           options={runtimeOptions}
           disabled={saving}
@@ -127,11 +191,12 @@ export function JarvisSettings() {
       <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>
         <ProviderModelPicker
           providerTargets={profiles}
-          selectedProviderTargetId={prefs.profileId}
-          selectedModelId={prefs.model ?? null}
+          selectedProviderTargetId={pendingSelection?.profileId ?? prefs.profileId}
+          selectedModelId={pendingSelection ? null : prefs.model ?? null}
           selectedModel={selectedModel}
           modelsByProviderTargetId={modelsByProfileId}
           loadingProviderTargetIds={loadingProfileIds}
+          isLoadingSelectedModels={Boolean(pendingSelection && loadingProfileIds.has(pendingSelection.profileId))}
           thinkingValue={prefs.thinkingLevel}
           thinkingOptions={thinkingOptions}
           emptyProviderTargetsLabel={t('jarvis.model.emptyProfiles')}
@@ -146,9 +211,10 @@ export function JarvisSettings() {
             requestProfileModels(profileId)
             const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
             if (!nextModel) {
-              void save({ profileId, model: undefined })
+              setPendingSelection({ runtimeKind, profileId })
               return
             }
+            setPendingSelection(null)
             void save({ profileId, model: nextModel.id, thinkingLevel: selectThinkingForModel(nextModel) })
           }}
           onSelectModel={(model, profileId) => {
@@ -156,6 +222,7 @@ export function JarvisSettings() {
               return
             }
             const nextModel = (modelsByProfileId[profileId] ?? []).find(item => item.id === model) ?? null
+            setPendingSelection(null)
             void save({ profileId, model, thinkingLevel: selectThinkingForModel(nextModel) })
           }}
           onSelectThinking={thinkingLevel => void save({ thinkingLevel })}

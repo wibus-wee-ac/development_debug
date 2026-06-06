@@ -3,15 +3,27 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo } from 'react'
 
 import {
+  getSessionsByIdQueryKey,
   getSessionsOptions,
   getSessionsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
-import type { GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
+import type { GetSessionsByIdResponse, GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
 import { queryRefreshPolicy } from '~/lib/query-refresh-policy'
 import type { RuntimeKind } from '~/lib/types'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 const SESSION_LIST_REFRESH_INTERVAL_MS = 10_000
+
+let unreadSessionIdsSnapshot: string[] = []
+
+export function readUnreadSessionIdsSnapshot(): string[] {
+  return unreadSessionIdsSnapshot
+}
+
+export function useUnreadSessionIds(): Set<string> {
+  const { sessions } = useAllSessions()
+  return useMemo(() => new Set(sessions.filter(session => session.unread).map(session => session.id)), [sessions])
+}
 
 export interface WorkspaceSession {
   id: string
@@ -25,9 +37,12 @@ export interface WorkspaceSession {
   status: 'idle' | 'streaming' | 'error'
   pinned: number
   archivedAt: number | null
+  lastReadAt: number | null
   createdAt: number
   updatedAt: number
   latestUserMessageAt: number | null
+  latestAssistantMessageAt: number | null
+  unread: boolean
   listActivityAt: number
 }
 
@@ -68,6 +83,17 @@ interface SessionListOptimisticOptions {
   promote?: boolean
   updatedAt?: number
   latestUserMessageAt?: number
+}
+
+export function updateSessionReadState(queryClient: QueryClient, session: GetSessionsByIdResponse) {
+  queryClient.setQueryData(
+    getSessionsByIdQueryKey({ path: { id: session.id } }),
+    session,
+  )
+  updateSessionInSessionLists(queryClient, session)
+  unreadSessionIdsSnapshot = session.unread
+    ? [...new Set([...unreadSessionIdsSnapshot, session.id])]
+    : unreadSessionIdsSnapshot.filter(sessionId => sessionId !== session.id)
 }
 
 function queryKeyMatchesWorkspace(queryKey: readonly unknown[], workspaceId: string | null | undefined): boolean {
@@ -140,7 +166,10 @@ export function updateSessionInSessionLists(
         runtimeKind: 'standard',
         pinned: 0,
         archivedAt: null,
+        lastReadAt: null,
         createdAt: updatedAt,
+        latestAssistantMessageAt: null,
+        unread: false,
         ...existing,
         ...patch,
         id: patch.id,
@@ -173,9 +202,12 @@ function readSessionStatus(value: unknown): WorkspaceSession['status'] {
 
 function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSession {
   const archivedAt = (session as { archivedAt?: unknown }).archivedAt
+  const lastReadAt = (session as { lastReadAt?: unknown }).lastReadAt
   const latestUserMessageAt = (session as { latestUserMessageAt?: unknown }).latestUserMessageAt
+  const latestAssistantMessageAt = (session as { latestAssistantMessageAt?: unknown }).latestAssistantMessageAt
   const status = (session as { status?: unknown }).status
   const normalizedLatestUserMessageAt = typeof latestUserMessageAt === 'number' ? latestUserMessageAt : null
+  const normalizedLatestAssistantMessageAt = typeof latestAssistantMessageAt === 'number' ? latestAssistantMessageAt : null
   return {
     id: session.id,
     workspaceId: nullableString(session.workspaceId),
@@ -188,9 +220,12 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
     status: readSessionStatus(status),
     pinned: session.pinned,
     archivedAt: typeof archivedAt === 'number' ? archivedAt : null,
+    lastReadAt: typeof lastReadAt === 'number' ? lastReadAt : null,
     createdAt: session.createdAt,
     updatedAt: session.updatedAt,
     latestUserMessageAt: normalizedLatestUserMessageAt,
+    latestAssistantMessageAt: normalizedLatestAssistantMessageAt,
+    unread: session.unread === true,
     listActivityAt: normalizedLatestUserMessageAt ?? session.createdAt,
   }
 }
@@ -204,6 +239,10 @@ function asSessionLayoutRecords(sessions: WorkspaceSession[]) {
   }))
 }
 
+function updateUnreadSessionIdsSnapshot(sessions: WorkspaceSession[]) {
+  unreadSessionIdsSnapshot = sessions.filter(session => session.unread).map(session => session.id)
+}
+
 export function useAllSessions(archived?: boolean) {
   const queryOptions = sessionListOptions(null, archived)
   const { data: rawSessions = [], isPending: loading } = useQuery({
@@ -214,7 +253,10 @@ export function useAllSessions(archived?: boolean) {
 
   useEffect(() => {
     useSessionLayoutStore.getState().upsertSessions(asSessionLayoutRecords(sessions))
-  }, [sessions])
+    if (archived !== true) {
+      updateUnreadSessionIdsSnapshot(sessions)
+    }
+  }, [archived, sessions])
 
   return { sessions, loading }
 }
