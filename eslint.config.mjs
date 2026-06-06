@@ -10,6 +10,8 @@ export default defineConfig(
       '**/components/ui/**',
       '**/routeTree.gen.ts',
       '**/api-gen/**',
+      'apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol/**',
+      'apps/server/src/modules/chat-runtime-providers/codex/app-server-capabilities.ts',
       '.agents/**',
       '.claude/**',
       '.tools/**',

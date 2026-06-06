@@ -24,3 +24,4 @@ apps/web/i18n-unused-keys-report.json
 tmp
 
 artifacts
+.pnpm-store

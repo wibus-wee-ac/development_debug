@@ -440,6 +440,7 @@ export const TabBar = memo(({
             type="button"
             aria-label="New tab"
             onClick={onNewTab}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             data-testid="tab-new-btn"
             className={cn(
               'flex shrink-0 items-center justify-center rounded-md size-7',

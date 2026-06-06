@@ -47,7 +47,6 @@ export function StreamingProvider({
   return <StreamingCtx.Provider value={value}>{children}</StreamingCtx.Provider>
 }
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useStreamingContext(): StreamingContextValue {
   return useContext(StreamingCtx)
 }

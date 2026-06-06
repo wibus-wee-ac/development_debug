@@ -13,13 +13,21 @@ export default defineConfig({
   build: {
     lib: {
       entry: {
+        server: resolve(__dirname, 'src/server.ts'),
         web: resolve(__dirname, 'src/web.tsx'),
       },
       formats: ['es'],
       fileName: (_format, entryName) => `${entryName}.mjs`,
     },
     rollupOptions: {
-      external: ['react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
+      external: [
+        /^node:/,
+        '@cradle/plugin-sdk/server',
+        'react',
+        'react-dom',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+      ],
     },
     target: 'esnext',
     minify: false,

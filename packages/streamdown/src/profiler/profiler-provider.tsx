@@ -16,7 +16,6 @@ interface ProfilerContextValue {
 
 const ProfilerContext = createContext<ProfilerContextValue | null>(null)
 
-// eslint-disable-next-line react-refresh/only-export-components
 export function useProfilerContext(): ProfilerContextValue | null {
   return useContext(ProfilerContext)
 }

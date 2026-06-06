@@ -215,7 +215,6 @@ export const HighlightedCode = memo<HighlightedCodeProps>(({ children, className
   const lang = normalizeLang(rawLang)
   const code = extractText(children)
 
-  // eslint-disable-next-line ts/no-use-before-define
   return <FencedCodeBlock code={code} language={lang} className={className} />
 })
 

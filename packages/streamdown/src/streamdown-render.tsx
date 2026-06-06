@@ -92,7 +92,7 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
   const renderNow = getNow()
 
   // Compute births for this frame (reads ref intentionally during render)
-  /* eslint-disable react-hooks/refs */
+
   const prevBirths = blockBirthsRef.current
   const birthsForRender = new Map<number, number[]>()
   const animatedBlockOffsets = new Set<number>()
@@ -131,7 +131,6 @@ export const StreamdownRender = memo<StreamdownRenderProps>(({
 
     birthsForRender.set(block.startOffset, arr)
   }
-  /* eslint-enable react-hooks/refs */
 
   // Persist births after render
   useEffect(() => {

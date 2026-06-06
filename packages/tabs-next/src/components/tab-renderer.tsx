@@ -67,7 +67,7 @@ export function TabRenderer({ fallback, wrapper: Wrapper, className }: TabRender
 
   const content = (
     <div className={cn('relative min-h-0 min-w-0 overflow-hidden', className ?? 'flex-1 flex')} data-testid="tab-content-renderer">
-      {tabs.map((tab) => (
+      {tabs.map(tab => (
         <TabRouteFrame
           key={tab.id}
           tab={tab}

@@ -187,6 +187,12 @@ function compactJsonObject(value: JsonObject): JsonObject {
   return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined))
 }
 
+function optionalExternalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') { return undefined }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
 function compactInventory(inventory: CcSwitchSnapshotReadResult['inventory']): CcSwitchSnapshotReadResult['inventory'] {
   return Object.fromEntries(Object.entries(inventory).filter(([, entry]) => entry !== undefined)) as CcSwitchSnapshotReadResult['inventory']
 }
@@ -437,7 +443,7 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
     health: provider.health,
     inFailoverQueue: provider.inFailoverQueue,
     iconSlug: providerIconSlug(provider),
-    iconUrl: provider.icon,
+    iconUrl: optionalExternalString(provider.icon),
     sourceUpdatedAt: provider.createdAt ? new Date(provider.createdAt).toISOString() : undefined,
     rawFingerprintHint: textHash({
       id: provider.id,

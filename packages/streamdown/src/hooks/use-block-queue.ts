@@ -47,7 +47,7 @@ export function useStreamQueue(blocks: BlockInfo[]): UseStreamQueueReturn {
   // promoted to revealed — its chars are already visible via birth timestamps.
   // NOTE: Reading refs during render is intentional here (Lobe pattern) —
   // this data is mutable state that must be synchronous with the render frame.
-  /* eslint-disable react-hooks/refs */
+
   if (blocks.length === 0 && prevBlocksLenRef.current !== 0) {
     minRevealedRef.current = 0
   }

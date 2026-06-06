@@ -18,7 +18,6 @@ export default defineConfig({
         /^node:/,
         '@cradle/plugin-sdk/server',
         'better-sqlite3',
-        'smol-toml',
       ],
     },
     target: 'node20',
