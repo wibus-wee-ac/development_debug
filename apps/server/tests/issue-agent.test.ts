@@ -12,7 +12,7 @@ import * as Issue from '../src/modules/issue/service'
 interface AgentSessionView {
   id: string
   issueId: string
-  agentProfileId: string
+  providerTargetId: string
   agentId: string | null
   chatSessionId: string | null
   status: 'created' | 'active' | 'completed' | 'stopped' | 'failed'
@@ -22,7 +22,7 @@ interface AgentSessionView {
 interface DelegationState {
   issueId: string
   delegated: boolean
-  agentProfileId: string | null
+  providerTargetId: string | null
   agentId: string | null
   agentSessionId: string | null
   chatSessionId: string | null
@@ -76,12 +76,12 @@ async function createAgent(app: ElysiaApp) {
       name: 'Issue Agent',
       avatarStyle: 'bottts-neutral',
       avatarSeed: 'issue-agent',
-      agentProfileId: 'profile-issue-agent',
+      providerTargetId: 'profile-issue-agent',
       runtimeKind: 'standard',
     }),
   }))
   expect(agentRes.status).toBe(200)
-  return await agentRes.json() as { id: string, name: string, agentProfileId: string }
+  return await agentRes.json() as { id: string, name: string, providerTargetId: string }
 }
 
 async function createIssue(app: ElysiaApp, workspaceId: string) {
@@ -281,6 +281,27 @@ describe('issue-agent capability', () => {
       const agent = await createAgent(app)
       const issue = await createIssue(app, 'workspace-issue-agent')
 
+      const saveGlobalRule = await app.handle(new Request('http://localhost/workflow-rules/workspace-issue-agent', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content: 'global issue-agent rule' }),
+      }))
+      expect(saveGlobalRule.status).toBe(200)
+
+      const saveAgentRule = await app.handle(new Request('http://localhost/workflow-rules/workspace-issue-agent', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.id, content: 'agent identity issue-agent rule' }),
+      }))
+      expect(saveAgentRule.status).toBe(200)
+
+      const saveProviderTargetNamedRule = await app.handle(new Request('http://localhost/workflow-rules/workspace-issue-agent', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agentId: agent.providerTargetId, content: 'provider target named rule should not load' }),
+      }))
+      expect(saveProviderTargetNamedRule.status).toBe(200)
+
       const delegateRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/delegation`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -289,7 +310,7 @@ describe('issue-agent capability', () => {
       expect(delegateRes.status).toBe(200)
       const delegatedSession = await delegateRes.json() as AgentSessionView
       expect(delegatedSession.issueId).toBe(issue.id)
-      expect(delegatedSession.agentProfileId).toBe('profile-issue-agent')
+      expect(delegatedSession.providerTargetId).toBe('profile-issue-agent')
       expect(delegatedSession.agentId).toBe(agent.id)
 
       const sessionsAfterDelegate = await waitForSessionStatus(app, issue.id, 'completed')
@@ -306,7 +327,7 @@ describe('issue-agent capability', () => {
       expect(delegationState).toEqual(expect.objectContaining({
         issueId: issue.id,
         delegated: true,
-        agentProfileId: 'profile-issue-agent',
+        providerTargetId: 'profile-issue-agent',
         agentId: agent.id,
         agentSessionId: delegatedSession.id,
       }))
@@ -341,6 +362,9 @@ describe('issue-agent capability', () => {
       const messages = await messagesRes.json() as Array<{ role: string, content: string, status: string }>
       expect(messages.at(-1)).toEqual(expect.objectContaining({ role: 'assistant', content: 'Hello from delegated run 1', status: 'complete' }))
       expect(completionBodies[0]).toContain(`Issue ID: ${issue.id}`)
+      expect(completionBodies[0]).toContain('global issue-agent rule')
+      expect(completionBodies[0]).toContain('agent identity issue-agent rule')
+      expect(completionBodies[0]).not.toContain('provider target named rule should not load')
 
       const chatSessionRes = await app.handle(new Request(`http://localhost/sessions/${encodeURIComponent(String(delegationState.chatSessionId))}`))
       expect(chatSessionRes.status).toBe(200)
@@ -373,7 +397,7 @@ describe('issue-agent capability', () => {
       expect(await delegationAfterDeleteRes.json()).toEqual(expect.objectContaining({
         issueId: issue.id,
         delegated: false,
-        agentProfileId: null,
+        providerTargetId: null,
         agentId: null,
         agentSessionId: null,
         chatSessionId: null,

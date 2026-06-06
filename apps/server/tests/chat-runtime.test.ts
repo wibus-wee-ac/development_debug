@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
+import { backendRuns, backendRunSnapshots, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
@@ -11,7 +11,13 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import * as SessionService from '../src/modules/session/service'
+import {
+  clearSideConversations,
+  readSideConversation,
+} from '../src/modules/provider-runtime/side-conversation-registry'
+import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 
 interface ChatMessageRow {
   messageId: string
@@ -31,6 +37,12 @@ interface ChatQueueItemView {
   status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
   text: string
   providerTargetId: string | null
+  modelId: string | null
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | null
+  runtimeSettings: {
+    accessMode: 'approval-required' | 'full-access'
+    interactionMode: 'default' | 'plan'
+  }
   position: number
   startedRunId: string | null
 }
@@ -45,14 +57,16 @@ const TEST_CODEX_RUNTIME_METADATA = {
 const TEST_CODEX_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: false,
   supportsShellExecution: false,
-  supportsPermissionMode: false,
+  supportsRuntimeSettings: false,
   supportsUiSlotStates: false,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'in-session',
 } satisfies ChatRuntimeCapabilities
 
 interface ChatCompletionRequestBody {
+  model?: string
   messages: Array<{ role: string, content: string }>
+  reasoning_effort?: string
 }
 
 function parseChatCompletionRequestBody(raw: BodyInit | null | undefined): ChatCompletionRequestBody {
@@ -290,6 +304,82 @@ class TestCodexGoalContinuationRuntime implements ChatRuntime {
   async cancelTurn(): Promise<void> {}
 }
 
+class TestCodexAppServerStreamRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+  readonly invokeStarted: Promise<void>
+  private resolveInvokeStarted: (() => void) | null = null
+  private releaseInvoke: (() => void) | null = null
+
+  constructor() {
+    this.invokeStarted = new Promise((resolve) => {
+      this.resolveInvokeStarted = resolve
+    })
+  }
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-app-server-stream',
+      providerStateSnapshot: JSON.stringify({
+        models: { currentModelId: 'codex-app-server-initial-model' },
+      }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async invokeProviderNativeAppServer(input: ProviderNativeAppServerInvokeInput): Promise<ProviderNativeAppServerInvokeResponse> {
+    this.resolveInvokeStarted?.()
+    await new Promise<void>((resolve) => {
+      this.releaseInvoke = resolve
+    })
+    input.runtimeSession.providerStateSnapshot = JSON.stringify({
+      models: { currentModelId: 'codex-app-server-invoke-model' },
+      appServer: { invoked: true },
+    })
+    return {
+      method: input.method,
+      capability: {
+        method: input.method,
+        paramsType: null,
+        category: 'thread',
+        operation: 'start',
+        interaction: 'request',
+      },
+      result: { ok: true },
+    }
+  }
+
+  openProviderNativeAppServerStream(input: ProviderNativeAppServerStreamInput): ReadableStream<Uint8Array> {
+    const encoder = new TextEncoder()
+    return new ReadableStream({
+      start(controller) {
+        input.runtimeSession.providerStateSnapshot = JSON.stringify({
+          models: { currentModelId: 'codex-app-server-stream-model' },
+          appServer: { streamed: true },
+        })
+        controller.enqueue(encoder.encode('event: result\ndata: {"ok":true}\n\n'))
+        controller.close()
+      },
+    })
+  }
+
+  releaseInvokeResponse(): void {
+    this.releaseInvoke?.()
+  }
+
+  async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {}
+
+  async cancelTurn(): Promise<void> {}
+}
+
 class TestCodexShellCommandRuntime implements ChatRuntime {
   readonly runtimeKind = 'codex' as const
   readonly metadata = TEST_CODEX_RUNTIME_METADATA
@@ -332,6 +422,307 @@ class TestCodexShellCommandRuntime implements ChatRuntime {
   async cancelTurn(): Promise<void> {}
 }
 
+class TestCodexSkillRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+  readonly streamInputs: StreamTurnInput[] = []
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-skill',
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-test-model' } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    yield { type: 'text-start', id: 'codex-skill-text' }
+    yield { type: 'text-delta', id: 'codex-skill-text', delta: 'Done' }
+    yield { type: 'text-end', id: 'codex-skill-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async cancelTurn(): Promise<void> {}
+}
+
+class TestCodexSideRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+  readonly startInputs: StartChatSessionInput[] = []
+  readonly forkInputs: ForkRuntimeSessionInput[] = []
+  readonly streamInputs: StreamTurnInput[] = []
+  readonly providerThreadListInputs: ProviderThreadListInput[] = []
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    this.startInputs.push(input)
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-started-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? 'codex-side-model' } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async forkRuntimeSession(input: ForkRuntimeSessionInput): Promise<RuntimeSession> {
+    this.forkInputs.push(input)
+    return {
+      id: input.childChatSessionId,
+      chatSessionId: input.childChatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-side-${input.childChatSessionId}`,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? 'codex-side-model' } }),
+    }
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    yield { type: 'text-start', id: 'codex-side-text' }
+    yield { type: 'text-delta', id: 'codex-side-text', delta: 'Side response' }
+    yield { type: 'text-end', id: 'codex-side-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async listProviderThreads(input: ProviderThreadListInput): Promise<ProviderThreadListResult> {
+    this.providerThreadListInputs.push(input)
+    return {
+      runtimeKind: 'codex',
+      providerSessionId: input.runtimeSession.providerSessionId,
+      threads: [
+        {
+          id: 'codex-side-thread',
+          providerSessionTreeId: input.runtimeSession.providerSessionId,
+          forkedFromId: 'codex-thread-side-parent',
+          preview: 'Side thread',
+          ephemeral: true,
+          modelProvider: null,
+          createdAt: 1_700_000_000,
+          updatedAt: 1_700_000_001,
+          status: 'idle',
+          sourceKind: 'unknown',
+          source: null,
+          threadSource: null,
+          agentNickname: null,
+          agentRole: null,
+          name: 'Side thread',
+          cwd: null,
+        },
+      ],
+      nextCursor: null,
+      backwardsCursor: null,
+    }
+  }
+
+  async cancelTurn(): Promise<void> {}
+}
+
+class TestRuntimeSettingsRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = {
+    ...TEST_CODEX_RUNTIME_CAPABILITIES,
+    supportsRuntimeSettings: true,
+  } satisfies ChatRuntimeCapabilities
+  readonly updateInputs: UpdateRuntimeSettingsInput[] = []
+  private releaseStream: (() => void) | null = null
+  readonly streamStarted: Promise<void>
+  private resolveStreamStarted: (() => void) | null = null
+
+  constructor(private readonly options: { failUpdate?: boolean } = {}) {
+    this.streamStarted = new Promise((resolve) => {
+      this.resolveStreamStarted = resolve
+    })
+  }
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-runtime-settings-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? 'codex-runtime-settings-model' } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async updateRuntimeSettings(input: UpdateRuntimeSettingsInput): Promise<void> {
+    this.updateInputs.push(input)
+    if (this.options.failUpdate) {
+      throw new Error('runtime settings update failed')
+    }
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    yield { type: 'text-start', id: 'runtime-settings-text' }
+    this.resolveStreamStarted?.()
+    await new Promise<void>((resolve) => {
+      this.releaseStream = resolve
+    })
+    yield { type: 'text-delta', id: 'runtime-settings-text', delta: input.providerOptions?.runtimeSettings?.interactionMode ?? 'default' }
+    yield { type: 'text-end', id: 'runtime-settings-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  release(): void {
+    this.releaseStream?.()
+  }
+
+  async cancelTurn(): Promise<void> {
+    this.release()
+  }
+}
+
+class TestLiveSteerSnapshotRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = {
+    ...TEST_CODEX_RUNTIME_CAPABILITIES,
+    supportsSteerTurn: true,
+  } satisfies ChatRuntimeCapabilities
+  readonly streamInputs: StreamTurnInput[] = []
+  readonly steerInputs: SteerTurnInput[] = []
+  private releaseFirstStream: (() => void) | null = null
+  readonly firstStreamStarted: Promise<void>
+  private resolveFirstStreamStarted: (() => void) | null = null
+
+  constructor() {
+    this.firstStreamStarted = new Promise((resolve) => {
+      this.resolveFirstStreamStarted = resolve
+    })
+  }
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-live-steer-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? null } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    const streamIndex = this.streamInputs.length
+    yield { type: 'text-start', id: `live-steer-text-${streamIndex}` }
+    if (streamIndex === 1) {
+      this.resolveFirstStreamStarted?.()
+      await new Promise<void>((resolve) => {
+        this.releaseFirstStream = resolve
+      })
+    }
+    yield {
+      type: 'text-delta',
+      id: `live-steer-text-${streamIndex}`,
+      delta: input.providerOptions?.runtimeSettings?.interactionMode ?? 'default',
+    }
+    yield { type: 'text-end', id: `live-steer-text-${streamIndex}` }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async steerTurn(input: SteerTurnInput): Promise<void> {
+    this.steerInputs.push(input)
+  }
+
+  release(): void {
+    this.releaseFirstStream?.()
+  }
+
+  async cancelTurn(): Promise<void> {
+    this.release()
+  }
+}
+
+class TestPendingRuntimeSettingsRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = {
+    ...TEST_CODEX_RUNTIME_CAPABILITIES,
+    supportsRuntimeSettings: true,
+  } satisfies ChatRuntimeCapabilities
+  readonly streamInputs: StreamTurnInput[] = []
+  readonly updateInputs: UpdateRuntimeSettingsInput[] = []
+  cancelCount = 0
+  readonly startRequested: Promise<void>
+  private resolveStartRequested: (() => void) | null = null
+  private releaseStart: (() => void) | null = null
+
+  constructor() {
+    this.startRequested = new Promise((resolve) => {
+      this.resolveStartRequested = resolve
+    })
+  }
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    this.resolveStartRequested?.()
+    await new Promise<void>((resolve) => {
+      this.releaseStart = resolve
+    })
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-pending-runtime-settings-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? null } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async updateRuntimeSettings(input: UpdateRuntimeSettingsInput): Promise<void> {
+    this.updateInputs.push(input)
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    yield { type: 'text-start', id: 'pending-runtime-settings-text' }
+    yield {
+      type: 'text-delta',
+      id: 'pending-runtime-settings-text',
+      delta: input.providerOptions?.runtimeSettings?.interactionMode ?? 'default',
+    }
+    yield { type: 'text-end', id: 'pending-runtime-settings-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  release(): void {
+    this.releaseStart?.()
+  }
+
+  async cancelTurn(): Promise<void> {
+    this.cancelCount += 1
+    this.release()
+  }
+}
+
 describe('chat runtime capability', () => {
   it('serves provider-owned draft runtime capabilities before a session exists', async () => {
     const dataDir = makeTempDir('cradle-data-')
@@ -369,6 +760,856 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
+    }
+  })
+
+  it('persists Codex app-server stream runtime session mutations when the stream completes', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexAppServerStreamRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-app-server-stream',
+        name: 'Workspace Codex App Server Stream',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-app-server-stream', {
+        providerTargetId: 'provider-target-codex-app-server-stream',
+        sessionId: 'session-codex-app-server-stream',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-app-server-stream/codex/app-server/stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method: 'turn/start' }),
+      }))
+      expect(response.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+
+      const binding = db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-codex-app-server-stream'))
+        .get()
+      expect(binding).toEqual(expect.objectContaining({
+        providerTargetId: 'provider-target-codex-app-server-stream',
+        backendSessionId: 'codex-thread-app-server-stream',
+        requestedModelId: 'codex-app-server-stream-model',
+      }))
+      expect(JSON.parse(binding?.backendStateSnapshot ?? '{}')).toEqual({
+        models: { currentModelId: 'codex-app-server-stream-model' },
+        appServer: { streamed: true },
+      })
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('does not restore a deleted provider target when Codex app-server stream persistence finishes', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexAppServerStreamRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-app-server-stream-delete',
+        name: 'Workspace Codex App Server Stream Delete',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-app-server-stream-delete', {
+        providerTargetId: 'provider-target-codex-app-server-stream-delete',
+        sessionId: 'session-codex-app-server-stream-delete',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-app-server-stream-delete/codex/app-server/stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method: 'turn/start' }),
+      }))
+      expect(response.status).toBe(200)
+
+      const deleteResponse = await app.handle(new Request('http://localhost/provider-targets/provider-target-codex-app-server-stream-delete', {
+        method: 'DELETE',
+      }))
+      expect(deleteResponse.status).toBe(200)
+      expect(await response.text()).toContain('event: result')
+
+      const binding = db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-codex-app-server-stream-delete'))
+        .get()
+      expect(binding).toEqual(expect.objectContaining({
+        backendSessionId: 'codex-thread-app-server-stream',
+        providerTargetId: null,
+      }))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('does not restore a deleted provider target when Codex app-server invoke persistence finishes', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexAppServerStreamRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-app-server-invoke-delete',
+        name: 'Workspace Codex App Server Invoke Delete',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-app-server-invoke-delete', {
+        providerTargetId: 'provider-target-codex-app-server-invoke-delete',
+        sessionId: 'session-codex-app-server-invoke-delete',
+        runtimeKind: 'codex',
+      })
+
+      const responsePromise = app.handle(new Request('http://localhost/chat/sessions/session-codex-app-server-invoke-delete/codex/app-server/invoke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ method: 'thread/read' }),
+      }))
+      await runtime.invokeStarted
+
+      const deleteResponse = await app.handle(new Request('http://localhost/provider-targets/provider-target-codex-app-server-invoke-delete', {
+        method: 'DELETE',
+      }))
+      expect(deleteResponse.status).toBe(200)
+
+      runtime.releaseInvokeResponse()
+      const response = await responsePromise
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(expect.objectContaining({
+        method: 'thread/read',
+        result: { ok: true },
+      }))
+
+      const binding = db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-codex-app-server-invoke-delete'))
+        .get()
+      expect(binding).toEqual(expect.objectContaining({
+        backendSessionId: 'codex-thread-app-server-stream',
+        providerTargetId: null,
+      }))
+    }
+    finally {
+      runtime.releaseInvokeResponse()
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('adds the Cradle CLI skill to ordinary Codex chat sessions', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSkillRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-skill',
+        name: 'Workspace Codex Skill',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-skill', {
+        providerTargetId: 'provider-target-codex-skill',
+        sessionId: 'session-codex-skill',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-skill/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'List the current Cradle state.' }),
+      }))
+      expect(response.status).toBe(200)
+      await collectSseChunks(response)
+
+      await waitForMessageStatus(app, 'session-codex-skill', 'complete')
+
+      expect(runtime.streamInputs).toHaveLength(1)
+      const runtimeSkillPart = runtime.streamInputs[0]?.message.parts.find(part => part.type === 'data-cradle-skill')
+      expect(runtimeSkillPart).toEqual(expect.objectContaining({
+        type: 'data-cradle-skill',
+        data: expect.objectContaining({
+          type: 'data-cradle-skill',
+          name: 'cradle-cli',
+          scope: 'builtin',
+          path: expect.stringContaining('resources/skills/cradle-cli'),
+        }),
+      }))
+
+      const rows = await getChatMessages(app, 'session-codex-skill')
+      const userRow = rows.find(row => row.role === 'user')
+      const storedSkillPart = userRow?.message.parts.find(part => part.type === 'data-cradle-skill')
+      expect(storedSkillPart).toEqual(expect.objectContaining({
+        type: 'data-cradle-skill',
+        data: expect.objectContaining({
+          type: 'data-cradle-skill',
+          name: 'cradle-cli',
+          scope: 'builtin',
+          path: expect.stringContaining('resources/skills/cradle-cli'),
+        }),
+      }))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('keeps provider-native side conversations live-only without durable provider bindings', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side',
+        name: 'Workspace Codex Side',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side', {
+        providerTargetId: 'provider-target-codex-side',
+        sessionId: 'session-codex-side-parent',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-side-parent',
+        chatSessionId: 'session-codex-side-parent',
+        providerTargetId: 'provider-target-codex-side',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-side-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as {
+        sessionId: string
+        parentSessionId: string
+        runtimeKind: string
+        providerTargetId: string | null
+        providerSessionId: string | null
+        sideContextSource: string
+      }
+
+      expect(side).toEqual(expect.objectContaining({
+        parentSessionId: 'session-codex-side-parent',
+        runtimeKind: 'codex',
+        providerTargetId: 'provider-target-codex-side',
+        sideContextSource: 'provider-native',
+      }))
+      expect(runtime.forkInputs).toHaveLength(1)
+      expect(runtime.forkInputs[0]?.sourceRuntimeSession.providerSessionId).toBe('codex-thread-side-parent')
+      expect(readSideConversation(side.sessionId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .get()).toBeUndefined()
+
+      const providerThreadsResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/provider-threads`))
+      expect(providerThreadsResponse.status).toBe(200)
+      expect(await providerThreadsResponse.json()).toEqual(expect.objectContaining({
+        providerSessionId: side.providerSessionId,
+        threads: [
+          expect.objectContaining({
+            id: 'codex-side-thread',
+            ephemeral: true,
+          }),
+        ],
+      }))
+      expect(runtime.providerThreadListInputs).toHaveLength(1)
+      expect(runtime.providerThreadListInputs[0]?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+
+      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Continue in side.' }),
+      }))
+      expect(runResponse.status).toBe(200)
+      await collectSseChunks(runResponse)
+      const run = await waitForBackendRunStatus(side.sessionId, 'complete')
+
+      expect(runtime.streamInputs).toHaveLength(1)
+      expect(runtime.streamInputs[0]?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+      expect(run.bindingId).toBeNull()
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .get()).toBeUndefined()
+
+      const deleteTargetResponse = await app.handle(new Request('http://localhost/provider-targets/provider-target-codex-side', {
+        method: 'DELETE',
+      }))
+      expect(deleteTargetResponse.status).toBe(200)
+      expect(readSideConversation(side.sessionId)).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts()).toEqual([])
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('rejects expired provider-native side conversations instead of starting an empty provider session', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side-expired',
+        name: 'Workspace Codex Side Expired',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side-expired', {
+        providerTargetId: 'provider-target-codex-side-expired',
+        sessionId: 'session-codex-side-expired-parent',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-side-expired-parent',
+        chatSessionId: 'session-codex-side-expired-parent',
+        providerTargetId: 'provider-target-codex-side-expired',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-side-expired-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-expired-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as { sessionId: string }
+      expect(readSideConversation(side.sessionId)).toBeDefined()
+
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+
+      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Continue after side host expired.' }),
+      }))
+      expect(runResponse.status).toBe(409)
+      expect(await runResponse.json()).toEqual(expect.objectContaining({
+        code: 'side_chat_expired',
+      }))
+      expect(runtime.startInputs).toHaveLength(0)
+      expect(runtime.streamInputs).toHaveLength(0)
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('rejects expired Cradle-context side conversations instead of starting a replacement provider session', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side-cradle-context-expired',
+        name: 'Workspace Codex Side Cradle Context Expired',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side-cradle-context-expired', {
+        providerTargetId: 'provider-target-codex-side-cradle-context-expired',
+        sessionId: 'session-codex-side-cradle-context-expired-parent',
+        runtimeKind: 'codex',
+      })
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-cradle-context-expired-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as {
+        sessionId: string
+        sideContextSource: string
+      }
+      expect(side.sideContextSource).toBe('cradle-context')
+      expect(readSideConversation(side.sessionId)).toBeDefined()
+      expect(runtime.startInputs).toHaveLength(1)
+
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+
+      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Continue after Cradle side handle expired.' }),
+      }))
+      expect(runResponse.status).toBe(409)
+      expect(await runResponse.json()).toEqual(expect.objectContaining({
+        code: 'side_chat_expired',
+      }))
+      expect(runtime.startInputs).toHaveLength(1)
+      expect(runtime.streamInputs).toHaveLength(0)
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .get()).toBeUndefined()
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('promotes provider-native side conversations into fresh durable sessions', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side-promote',
+        name: 'Workspace Codex Side Promote',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side-promote', {
+        providerTargetId: 'provider-target-codex-side-promote',
+        sessionId: 'session-codex-side-promote-parent',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-side-promote-parent',
+        chatSessionId: 'session-codex-side-promote-parent',
+        providerTargetId: 'provider-target-codex-side-promote',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-side-promote-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-promote-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as {
+        sessionId: string
+        providerSessionId: string | null
+      }
+      expect(readSideConversation(side.sessionId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+
+      const sideRunResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Continue in side before promote.' }),
+      }))
+      expect(sideRunResponse.status).toBe(200)
+      await collectSseChunks(sideRunResponse)
+      const sideRun = await waitForBackendRunStatus(side.sessionId, 'complete')
+      expect(sideRun.bindingId).toBeNull()
+
+      const sideMessages = await getChatMessages(app, side.sessionId)
+      expect(sideMessages.map(row => row.content)).toEqual(['Continue in side before promote.', 'Side response'])
+      expect(runtime.startInputs).toHaveLength(0)
+
+      const promoteResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/promote-side`, {
+        method: 'POST',
+      }))
+      expect(promoteResponse.status).toBe(200)
+      const promoted = await promoteResponse.json() as {
+        sessionId: string
+        sourceSessionId: string
+        runtimeKind: string
+        providerTargetId: string | null
+        title: string
+      }
+
+      expect(promoted).toEqual(expect.objectContaining({
+        sourceSessionId: side.sessionId,
+        runtimeKind: 'codex',
+        providerTargetId: 'provider-target-codex-side-promote',
+      }))
+      expect(promoted.sessionId).not.toBe(side.sessionId)
+      expect(readSideConversation(side.sessionId)).toBeUndefined()
+
+      const promotedSession = db()
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, promoted.sessionId))
+        .get()
+      expect(promotedSession).toEqual(expect.objectContaining({
+        parentSessionId: null,
+        sideContextSource: null,
+        workspaceId: 'workspace-codex-side-promote',
+        providerTargetId: 'provider-target-codex-side-promote',
+        runtimeKind: 'codex',
+      }))
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, promoted.sessionId))
+        .get()).toBeUndefined()
+
+      const promotedMessages = await getChatMessages(app, promoted.sessionId)
+      expect(promotedMessages.map(row => row.content)).toEqual(sideMessages.map(row => row.content))
+      expect(promotedMessages.map(row => row.messageId)).not.toEqual(sideMessages.map(row => row.messageId))
+
+      const promotedRunResponse = await app.handle(new Request(`http://localhost/chat/sessions/${promoted.sessionId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Continue after promote.' }),
+      }))
+      expect(promotedRunResponse.status).toBe(200)
+      await collectSseChunks(promotedRunResponse)
+      const promotedRun = await waitForBackendRunStatus(promoted.sessionId, 'complete')
+
+      expect(runtime.startInputs).toHaveLength(1)
+      expect(runtime.startInputs[0]?.chatSessionId).toBe(promoted.sessionId)
+      expect(runtime.streamInputs[1]?.runtimeSession.providerSessionId).toBe(`codex-thread-started-${promoted.sessionId}`)
+      expect(promotedRun.bindingId).not.toBeNull()
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, promoted.sessionId))
+        .get()).toEqual(expect.objectContaining({
+          backendSessionId: `codex-thread-started-${promoted.sessionId}`,
+          runtimeKind: 'codex',
+        }))
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .get()).toBeUndefined()
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('releases provider-native side conversations when side sessions are archived or deleted', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side-close',
+        name: 'Workspace Codex Side Close',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side-close', {
+        providerTargetId: 'provider-target-codex-side-close',
+        sessionId: 'session-codex-side-close-parent',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-side-close-parent',
+        chatSessionId: 'session-codex-side-close-parent',
+        providerTargetId: 'provider-target-codex-side-close',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-side-close-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const archivedSideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-close-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(archivedSideResponse.status).toBe(200)
+      const archivedSide = await archivedSideResponse.json() as { sessionId: string }
+      expect(readSideConversation(archivedSide.sessionId)).toBeDefined()
+
+      const archiveResponse = await app.handle(new Request(`http://localhost/sessions/${archivedSide.sessionId}/archive`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: true }),
+      }))
+      expect(archiveResponse.status).toBe(200)
+      expect(readSideConversation(archivedSide.sessionId)).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === archivedSide.sessionId)).toBe(false)
+
+      const deletedSideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-close-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(deletedSideResponse.status).toBe(200)
+      const deletedSide = await deletedSideResponse.json() as { sessionId: string }
+      expect(readSideConversation(deletedSide.sessionId)).toBeDefined()
+
+      const deleteResponse = await app.handle(new Request(`http://localhost/sessions/${deletedSide.sessionId}`, {
+        method: 'DELETE',
+      }))
+      expect(deleteResponse.status).toBe(200)
+      expect(readSideConversation(deletedSide.sessionId)).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === deletedSide.sessionId)).toBe(false)
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('releases reserved provider-native side host when side session persistence fails', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let createSessionSpy: ReturnType<typeof vi.spyOn> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-side-failure',
+        name: 'Workspace Codex Side Failure',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-side-failure', {
+        providerTargetId: 'provider-target-codex-side-failure',
+        sessionId: 'session-codex-side-failure-parent',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-side-failure-parent',
+        chatSessionId: 'session-codex-side-failure-parent',
+        providerTargetId: 'provider-target-codex-side-failure',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-side-failure-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const createSession = SessionService.create
+      createSessionSpy = vi.spyOn(SessionService, 'create').mockImplementation((createInput) => {
+        if (createInput.parentSessionId === 'session-codex-side-failure-parent') {
+          throw new Error('Side session persistence failed')
+        }
+        return createSession(createInput)
+      })
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-failure-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+
+      expect(sideResponse.status).not.toBe(200)
+      expect(runtime.forkInputs).toHaveLength(1)
+      expect(readSideConversation('session-codex-side-failure-parent')).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts()).toEqual([])
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+      createSessionSpy?.mockRestore()
     }
   })
 
@@ -537,6 +1778,599 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('keeps active runtime settings unchanged when live runtime update fails', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestRuntimeSettingsRuntime({ failUpdate: true })
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runChunksPromise: Promise<UIMessageChunk[]> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-runtime-settings-failure',
+        name: 'Workspace Runtime Settings Failure',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-runtime-settings-failure', {
+        providerTargetId: 'provider-target-runtime-settings-failure',
+        sessionId: 'session-runtime-settings-failure',
+        runtimeKind: 'codex',
+      })
+
+      const initialSettingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-settings'))
+      expect(initialSettingsRes.status).toBe(200)
+      expect(await initialSettingsRes.json()).toEqual({
+        sessionId: 'session-runtime-settings-failure',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        applied: true,
+      })
+
+      const idlePatchRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accessMode: 'full-access', interactionMode: 'default' }),
+      }))
+      expect(idlePatchRes.status).toBe(200)
+      expect(await idlePatchRes.json()).toEqual({
+        sessionId: 'session-runtime-settings-failure',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        applied: true,
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Keep this run active.' }),
+      }))
+      expect(runRes.status).toBe(200)
+      runChunksPromise = collectSseChunks(runRes)
+      await runtime.streamStarted
+
+      const patchRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accessMode: 'approval-required', interactionMode: 'plan' }),
+      }))
+      expect(patchRes.status).toBe(200)
+      expect(await patchRes.json()).toEqual({
+        sessionId: 'session-runtime-settings-failure',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: false,
+      })
+      expect(runtime.updateInputs).toHaveLength(1)
+
+      const unappliedSettingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-settings'))
+      expect(unappliedSettingsRes.status).toBe(200)
+      expect(await unappliedSettingsRes.json()).toEqual({
+        sessionId: 'session-runtime-settings-failure',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: false,
+      })
+
+      const persistedSettings = JSON.parse(
+        db()
+          .select({ configJson: sessions.configJson })
+          .from(sessions)
+          .where(eq(sessions.id, 'session-runtime-settings-failure'))
+          .get()!.configJson ?? '{}',
+      ) as { runtimeSettings?: unknown }
+      expect(persistedSettings.runtimeSettings).toEqual({
+        accessMode: 'approval-required',
+        interactionMode: 'plan',
+      })
+
+      const statusRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-status'))
+      expect(statusRes.status).toBe(200)
+      expect(await statusRes.json()).toEqual(expect.objectContaining({
+        status: 'streaming',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        activeRun: expect.objectContaining({
+          runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        }),
+      }))
+
+      runtime.release()
+      await runChunksPromise
+      await waitForMessageStatus(app, 'session-runtime-settings-failure', 'complete')
+
+      const completedSettingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-runtime-settings-failure/runtime-settings'))
+      expect(completedSettingsRes.status).toBe(200)
+      expect(await completedSettingsRes.json()).toEqual({
+        sessionId: 'session-runtime-settings-failure',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: true,
+      })
+    }
+    finally {
+      runtime.release()
+      if (runChunksPromise) {
+        await runChunksPromise.catch(() => undefined)
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('reports runtime settings as unapplied while a run is still starting', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestPendingRuntimeSettingsRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runChunksPromise: Promise<UIMessageChunk[]> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-pending-runtime-settings',
+        name: 'Workspace Pending Runtime Settings',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-pending-runtime-settings', {
+        providerTargetId: 'provider-target-pending-runtime-settings',
+        sessionId: 'session-pending-runtime-settings',
+        runtimeKind: 'codex',
+      })
+
+      const runResPromise = app.handle(new Request('http://localhost/chat/sessions/session-pending-runtime-settings/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start slowly.' }),
+      }))
+      await runtime.startRequested
+
+      const patchRes = await app.handle(new Request('http://localhost/chat/sessions/session-pending-runtime-settings/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accessMode: 'approval-required', interactionMode: 'plan' }),
+      }))
+      expect(patchRes.status).toBe(200)
+      expect(await patchRes.json()).toEqual({
+        sessionId: 'session-pending-runtime-settings',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: false,
+      })
+
+      const settingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-pending-runtime-settings/runtime-settings'))
+      expect(settingsRes.status).toBe(200)
+      expect(await settingsRes.json()).toEqual({
+        sessionId: 'session-pending-runtime-settings',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: false,
+      })
+
+      runtime.release()
+      const runRes = await runResPromise
+      expect(runRes.status).toBe(200)
+      runChunksPromise = collectSseChunks(runRes)
+      await runChunksPromise
+      await waitForMessageStatus(app, 'session-pending-runtime-settings', 'complete')
+
+      expect(runtime.streamInputs[0]?.providerOptions?.runtimeSettings).toEqual({
+        accessMode: 'full-access',
+        interactionMode: 'default',
+      })
+
+      const completedSettingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-pending-runtime-settings/runtime-settings'))
+      expect(completedSettingsRes.status).toBe(200)
+      expect(await completedSettingsRes.json()).toEqual({
+        sessionId: 'session-pending-runtime-settings',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        applied: true,
+      })
+    }
+    finally {
+      runtime.release()
+      if (runChunksPromise) {
+        await runChunksPromise.catch(() => undefined)
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('fails cleanly when the provider target is deleted while a run is still starting', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestPendingRuntimeSettingsRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-pending-provider-target-delete',
+        name: 'Workspace Pending Provider Target Delete',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-pending-provider-target-delete', {
+        providerTargetId: 'provider-target-pending-delete',
+        sessionId: 'session-pending-provider-target-delete',
+        runtimeKind: 'codex',
+      })
+
+      const runResPromise = app.handle(new Request('http://localhost/chat/sessions/session-pending-provider-target-delete/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start while the target disappears.' }),
+      }))
+      await runtime.startRequested
+
+      const deleteRes = await app.handle(new Request('http://localhost/provider-targets/provider-target-pending-delete', {
+        method: 'DELETE',
+      }))
+      expect(deleteRes.status).toBe(200)
+
+      runtime.release()
+      const runRes = await runResPromise
+      expect(runRes.status).toBe(409)
+      expect(await runRes.json()).toEqual(expect.objectContaining({
+        code: 'chat_provider_target_not_available',
+      }))
+      expect(runtime.cancelCount).toBe(1)
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-pending-provider-target-delete'))
+        .all()).toHaveLength(0)
+      expect(db()
+        .select()
+        .from(backendRuns)
+        .where(eq(backendRuns.chatSessionId, 'session-pending-provider-target-delete'))
+        .all()).toHaveLength(0)
+    }
+    finally {
+      runtime.release()
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('keeps steer items queued when their snapshot differs from the active run', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestLiveSteerSnapshotRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runChunksPromise: Promise<UIMessageChunk[]> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-live-steer-snapshot',
+        name: 'Workspace Live Steer Snapshot',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-live-steer-snapshot', {
+        providerTargetId: 'provider-target-live-steer-snapshot',
+        sessionId: 'session-live-steer-snapshot',
+        runtimeKind: 'codex',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-snapshot/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Keep the first run active.',
+          modelId: 'codex-live-model',
+          runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        }),
+      }))
+      expect(runRes.status).toBe(200)
+      runChunksPromise = collectSseChunks(runRes)
+      await runtime.firstStreamStarted
+
+      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-snapshot/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'steer',
+          text: 'Use a different snapshot.',
+          modelId: 'codex-queued-model',
+          thinkingEffort: 'high',
+          runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        }),
+      }))
+      expect(steerRes.status).toBe(200)
+      const steer = await steerRes.json() as ChatQueueItemView
+      expect(steer).toEqual(expect.objectContaining({
+        mode: 'steer',
+        status: 'pending',
+        modelId: 'codex-queued-model',
+        thinkingEffort: 'high',
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      }))
+      expect(runtime.steerInputs).toHaveLength(0)
+
+      runtime.release()
+      await runChunksPromise
+
+      await waitForCondition(() => {
+        expect(runtime.streamInputs).toHaveLength(2)
+        expect(runtime.streamInputs[1].message.parts).toEqual(expect.arrayContaining([
+          expect.objectContaining({ type: 'text', text: 'Use a different snapshot.' }),
+        ]))
+      }, 'snapshot-mismatched steer item to drain normally')
+
+      expect(runtime.streamInputs[1]).toEqual(expect.objectContaining({
+        modelId: 'codex-queued-model',
+        providerOptions: {
+          thinkingEffort: 'high',
+          runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        },
+      }))
+      expect(runtime.steerInputs).toHaveLength(0)
+
+      await waitForCondition(async () => {
+        const items = await listChatQueue(app!, 'session-live-steer-snapshot')
+        expect(items.find(item => item.id === steer.id)).toEqual(expect.objectContaining({
+          status: 'completed',
+        }))
+      }, 'snapshot-mismatched steer item to complete after drain')
+    }
+    finally {
+      runtime.release()
+      if (runChunksPromise) {
+        await runChunksPromise.catch(() => undefined)
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('uses stored queue runtime defaults for historical rows instead of current session settings', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestLiveSteerSnapshotRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-historical-queue-runtime-settings',
+        name: 'Workspace Historical Queue Runtime Settings',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-historical-queue-runtime-settings', {
+        providerTargetId: 'provider-target-historical-queue-runtime-settings',
+        sessionId: 'session-historical-queue-runtime-settings',
+        runtimeKind: 'codex',
+      })
+
+      const patchRes = await app.handle(new Request('http://localhost/chat/sessions/session-historical-queue-runtime-settings/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ accessMode: 'approval-required', interactionMode: 'plan' }),
+      }))
+      expect(patchRes.status).toBe(200)
+
+      const now = Math.floor(Date.now() / 1000)
+      db().insert(chatSessionQueueItems).values([
+        {
+          id: 'queue-historical-default-runtime-settings',
+          sessionId: 'session-historical-queue-runtime-settings',
+          mode: 'queue',
+          status: 'pending',
+          text: 'Use historical defaults.',
+          filesJson: '[]',
+          contextPartsJson: '[]',
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: null,
+          permissionMode: null,
+          runtimeAccessMode: null,
+          runtimeInteractionMode: null,
+          position: 1,
+          sourceRunId: null,
+          startedRunId: null,
+          errorText: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: 'queue-historical-plan-runtime-settings',
+          sessionId: 'session-historical-queue-runtime-settings',
+          mode: 'queue',
+          status: 'pending',
+          text: 'Use historical plan mode.',
+          filesJson: '[]',
+          contextPartsJson: '[]',
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: null,
+          permissionMode: 'plan',
+          runtimeAccessMode: null,
+          runtimeInteractionMode: null,
+          position: 2,
+          sourceRunId: null,
+          startedRunId: null,
+          errorText: null,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]).run()
+
+      const visibleQueue = await listChatQueue(app, 'session-historical-queue-runtime-settings')
+      expect(visibleQueue.find(item => item.id === 'queue-historical-default-runtime-settings')).toEqual(expect.objectContaining({
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+      }))
+      expect(visibleQueue.find(item => item.id === 'queue-historical-plan-runtime-settings')).toEqual(expect.objectContaining({
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      }))
+
+      const triggerRes = await app.handle(new Request('http://localhost/chat/sessions/session-historical-queue-runtime-settings/queue', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode: 'queue', text: 'Trigger drain.' }),
+      }))
+      expect(triggerRes.status).toBe(200)
+
+      await waitForCondition(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      }, 'first historical queue item to start')
+      runtime.release()
+      await waitForCondition(() => {
+        expect(runtime.streamInputs).toHaveLength(3)
+      }, 'historical queue items to drain')
+
+      expect(runtime.streamInputs.map(input => input.providerOptions?.runtimeSettings)).toEqual([
+        { accessMode: 'full-access', interactionMode: 'default' },
+        { accessMode: 'approval-required', interactionMode: 'plan' },
+        { accessMode: 'approval-required', interactionMode: 'plan' },
+      ])
+    }
+    finally {
+      runtime.release()
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('maps selected thinking effort to OpenAI reasoning effort', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+    const completionPayloads: ChatCompletionRequestBody[] = []
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        expect(init?.method).toBe('POST')
+        const payload = parseChatCompletionRequestBody(init?.body)
+        completionPayloads.push(payload)
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-5","choices":[{"index":0,"delta":{"content":"Reasoned"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-5","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"total_tokens":12}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-thinking',
+        name: 'Workspace Chat Thinking',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-thinking', {
+        providerTargetId: 'provider-target-chat-thinking',
+        sessionId: 'session-chat-thinking',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-thinking/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          text: 'Use high reasoning.',
+          modelId: 'gpt-5',
+          thinkingEffort: 'high',
+        }),
+      }))
+      expect(runRes.status).toBe(200)
+      await waitForMessageStatus(app, 'session-chat-thinking', 'complete')
+
+      expect(completionPayloads).toHaveLength(1)
+      expect(completionPayloads[0]).toEqual(expect.objectContaining({
+        model: 'gpt-5',
+        reasoning_effort: 'high',
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      fetchSpy.mockRestore()
     }
   })
 
@@ -953,15 +2787,17 @@ describe('chat runtime capability', () => {
       const rows = await waitForMessageStatus(app, 'session-chat-switch', 'complete')
       expect(rows.find(row => row.role === 'assistant')?.content).toBe('Switched provider')
 
-      const binding = db().select().from(backendSessionBindings).where(eq(backendSessionBindings.chatSessionId, 'session-chat-switch')).get()
-      expect(binding?.providerTargetId).toBe('provider-target-chat-secondary')
-      expect(binding?.requestedModelId).toBe('gpt-4.1-mini')
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-chat-switch'))
+        .get()).toBeUndefined()
 
       const sessionRes = await app.handle(new Request('http://localhost/sessions/session-chat-switch'))
       expect(sessionRes.status).toBe(200)
       expect(await sessionRes.json()).toEqual(expect.objectContaining({
         providerTargetId: 'provider-target-chat-primary',
-        modelId: 'gpt-4.1-mini',
+        modelId: null,
       }))
 
       const queueRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-switch/queue', {
@@ -978,6 +2814,95 @@ describe('chat runtime capability', () => {
       const queued = await queueRes.json() as ChatQueueItemView
       expect(queued.providerTargetId).toBe('provider-target-chat-secondary')
       expect(fetchSpy).toHaveBeenCalled()
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      fetchSpy.mockRestore()
+    }
+  })
+
+  it('uses session model preference for the first durable runtime run', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = new Request(input).url
+      if (url.endsWith('/chat/completions')) {
+        const payload = parseChatCompletionRequestBody(init?.body)
+        expect(payload.model).toBe('gpt-session-preferred')
+        expect(payload.messages.at(-1)).toEqual({ role: 'user', content: 'Use the preferred model' })
+        return buildSseResponse([
+          'data: {"id":"chunk-1","object":"chat.completion.chunk","created":1700000000,"model":"gpt-session-preferred","choices":[{"index":0,"delta":{"content":"Preferred model used"},"finish_reason":null}]}\n\n',
+          'data: {"id":"chunk-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-session-preferred","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":6,"completion_tokens":3,"total_tokens":9}}\n\n',
+          'data: [DONE]\n\n',
+        ])
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-chat-session-model',
+        name: 'Workspace Chat Session Model',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-session-model', {
+        providerTargetId: 'provider-target-chat-session-model',
+        sessionId: 'session-chat-session-model',
+        providerKind: 'openai-compatible',
+        runtimeKind: 'standard',
+      })
+
+      const patchRes = await app.handle(new Request('http://localhost/sessions/session-chat-session-model', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ modelId: 'gpt-session-preferred' }),
+      }))
+      expect(patchRes.status).toBe(200)
+      expect(await patchRes.json()).toEqual(expect.objectContaining({
+        modelId: 'gpt-session-preferred',
+      }))
+      expect(
+        db().select().from(backendSessionBindings).where(eq(backendSessionBindings.chatSessionId, 'session-chat-session-model')).get(),
+      ).toBeUndefined()
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-session-model/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Use the preferred model' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const rows = await waitForMessageStatus(app, 'session-chat-session-model', 'complete')
+      expect(rows.find(row => row.role === 'assistant')?.content).toBe('Preferred model used')
+
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-chat-session-model'))
+        .get()).toBeUndefined()
     }
     finally {
       shutdownInfra()
@@ -1430,20 +3355,9 @@ describe('chat runtime capability', () => {
         createdAt: 1700000000,
         updatedAt: 1700000000,
       }).run()
-      db().insert(backendSessionBindings).values({
-        id: 'binding-chat-orphan',
-        chatSessionId: 'session-chat-orphan',
-        providerTargetId: 'provider-target-chat-orphan',
-        runtimeKind: 'standard',
-        backendSessionId: null,
-        backendStateSnapshot: null,
-        requestedModelId: 'gpt-4o-mini',
-        createdAt: 1700000000,
-        updatedAt: 1700000000,
-      }).run()
       db().insert(backendRuns).values({
         id: 'run-chat-orphan',
-        bindingId: 'binding-chat-orphan',
+        bindingId: null,
         chatSessionId: 'session-chat-orphan',
         messageId: 'message-orphan-assistant',
         origin: 'user',
@@ -1469,23 +3383,107 @@ describe('chat runtime capability', () => {
         createdAt: 1700000000,
         updatedAt: 1700000000,
       }).run()
-
-      const rows = await getChatMessages(app, 'session-chat-orphan')
-      expect(rows[0]).toEqual(expect.objectContaining({ role: 'assistant', status: 'aborted' }))
-
-      const run = db().select().from(backendRuns).where(eq(backendRuns.id, 'run-chat-orphan')).get()
-      expect(run).toEqual(expect.objectContaining({
+      db().insert(messages).values({
+        id: 'message-terminal-projection-assistant',
+        sessionId: 'session-chat-orphan',
+        parentMessageId: null,
+        parentToolCallId: null,
+        taskId: null,
+        depth: 0,
+        role: 'assistant',
+        status: 'streaming',
+        content: 'terminal projection drift',
+        messageJson: JSON.stringify({
+          id: 'message-terminal-projection-assistant',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'terminal projection drift' }],
+        }),
+        errorText: null,
+        createdAt: 1700000001,
+        updatedAt: 1700000001,
+      }).run()
+      db().insert(backendRuns).values({
+        id: 'run-terminal-projection',
+        bindingId: null,
+        chatSessionId: 'session-chat-orphan',
+        messageId: 'message-terminal-projection-assistant',
+        origin: 'user',
         status: 'aborted',
         stopReason: 'response.cancelled',
         errorText: null,
+        startedAt: 1700000001,
+        finishedAt: 1700000100,
+      }).run()
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-terminal-projection',
+        sessionId: 'session-chat-orphan',
+        mode: 'queue',
+        status: 'running',
+        text: 'terminal projection queued follow-up',
+        filesJson: '[]',
+        modelId: 'gpt-4o-mini',
+        thinkingEffort: null,
+        position: 2,
+        sourceRunId: null,
+        startedRunId: 'run-terminal-projection',
+        errorText: null,
+        createdAt: 1700000001,
+        updatedAt: 1700000001,
+      }).run()
+      db().insert(backendRunSnapshots).values({
+        id: 'snapshot-terminal-projection',
+        schemaVersion: 1,
+        traceId: 'run-terminal-projection',
+        chatSessionId: 'session-chat-orphan',
+        runId: 'run-terminal-projection',
+        messageId: 'message-terminal-projection-assistant',
+        providerTargetId: 'provider-target-chat-orphan',
+        runtimeKind: 'standard',
+        providerSessionId: null,
+        modelId: 'gpt-4o-mini',
+        agentId: null,
+        workspaceId: 'workspace-chat-orphan',
+        status: 'running',
+        startedAt: 1700000001000,
+        completedAt: null,
+        completionReason: null,
+        errorText: null,
+        summaryJson: '{}',
+      }).run()
+
+      const rows = await getChatMessages(app, 'session-chat-orphan')
+      expect(rows).toEqual([
+        expect.objectContaining({ messageId: 'message-orphan-assistant', role: 'assistant', status: 'failed' }),
+        expect.objectContaining({ messageId: 'message-terminal-projection-assistant', role: 'assistant', status: 'aborted' }),
+      ])
+
+      const run = db().select().from(backendRuns).where(eq(backendRuns.id, 'run-chat-orphan')).get()
+      expect(run).toEqual(expect.objectContaining({
+        status: 'failed',
+        stopReason: 'response.interrupted',
+        errorText: 'Response interrupted because the Cradle server process exited while the run was streaming.',
       }))
       expect(run?.finishedAt).toEqual(expect.any(Number))
 
       const queueItem = db().select().from(chatSessionQueueItems).where(eq(chatSessionQueueItems.id, 'queue-chat-orphan')).get()
       expect(queueItem).toEqual(expect.objectContaining({
+        status: 'failed',
+        errorText: 'Response interrupted because the Cradle server process exited while the run was streaming.',
+        startedRunId: 'run-chat-orphan',
+      }))
+
+      const terminalProjectionQueueItem = db().select().from(chatSessionQueueItems).where(eq(chatSessionQueueItems.id, 'queue-terminal-projection')).get()
+      expect(terminalProjectionQueueItem).toEqual(expect.objectContaining({
         status: 'cancelled',
         errorText: null,
-        startedRunId: 'run-chat-orphan',
+        startedRunId: 'run-terminal-projection',
+      }))
+      const terminalProjectionSnapshot = db().select().from(backendRunSnapshots).where(eq(backendRunSnapshots.id, 'snapshot-terminal-projection')).get()
+      expect(terminalProjectionSnapshot).toEqual(expect.objectContaining({
+        status: 'aborted',
+        completedAt: 1700000100000,
+        completionReason: 'response.cancelled',
+        errorText: null,
       }))
     }
     finally {
@@ -2513,6 +4511,209 @@ describe('chat runtime capability', () => {
         .where(eq(messages.sessionId, 'session-codex-goal-status-wake'))
         .all()
         .filter(row => row.role === 'user')).toHaveLength(1)
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('does not wake an idle Codex goal when the provider target is disabled', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexGoalContinuationRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-goal-disabled-target',
+        name: 'Workspace Codex Goal Disabled Target',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-goal-disabled-target', {
+        providerTargetId: 'provider-target-codex-goal-disabled',
+        sessionId: 'session-codex-goal-disabled-target',
+        runtimeKind: 'codex',
+      })
+
+      const now = 1_700_000_000
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-goal-disabled-target',
+        chatSessionId: 'session-codex-goal-disabled-target',
+        providerTargetId: 'provider-target-codex-goal-disabled',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-goal-disabled',
+        backendStateSnapshot: JSON.stringify({
+          models: { currentModelId: null },
+          codex: {
+            goal: {
+              threadId: 'codex-thread-goal-disabled',
+              objective: 'Keep going',
+              status: 'active',
+              tokenBudget: null,
+              tokensUsed: 0,
+              timeUsedSeconds: 0,
+              createdAt: 1,
+              updatedAt: 2,
+            },
+          },
+        }),
+        requestedModelId: null,
+        createdAt: now,
+        updatedAt: now,
+      }).run()
+      db()
+        .update(providerTargets)
+        .set({ enabled: false, updatedAt: now + 1 })
+        .where(eq(providerTargets.id, 'provider-target-codex-goal-disabled'))
+        .run()
+
+      const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-goal-disabled-target/runtime-status'))
+      expect(statusResponse.status).toBe(200)
+      expect(await statusResponse.json()).toEqual(expect.objectContaining({
+        status: 'idle',
+        providerTargetId: 'provider-target-codex-goal-disabled',
+        hasActiveGoal: false,
+      }))
+      await new Promise(resolve => setTimeout(resolve, 350))
+      expect(runtime.streamInputs).toHaveLength(0)
+      expect(db()
+        .select()
+        .from(backendRuns)
+        .where(eq(backendRuns.chatSessionId, 'session-codex-goal-disabled-target'))
+        .all()).toHaveLength(0)
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('ignores stale Codex goal bindings after the session switches provider target', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexGoalContinuationRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-goal-stale-binding',
+        name: 'Workspace Codex Goal Stale Binding',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-goal-stale-binding', {
+        providerTargetId: 'provider-target-codex-goal-current',
+        sessionId: 'session-codex-goal-stale-binding',
+        runtimeKind: 'codex',
+      })
+      db().insert(providerTargets).values({
+        id: 'provider-target-codex-goal-stale',
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Stale Codex Provider',
+        enabled: true,
+        iconSlug: null,
+        connectionConfigJson: JSON.stringify({ baseUrl: 'https://example.com/v1' }),
+        credentialRef: null,
+        enabledModelsJson: JSON.stringify(['gpt-4o-mini']),
+        customModelsJson: JSON.stringify([]),
+        sourceKey: null,
+        externalRecordId: null,
+        sourceFingerprint: null,
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+      db().insert(backendSessionBindings).values({
+        id: 'binding-codex-goal-stale',
+        chatSessionId: 'session-codex-goal-stale-binding',
+        providerTargetId: 'provider-target-codex-goal-stale',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-stale',
+        backendStateSnapshot: JSON.stringify({
+          models: { currentModelId: null },
+          codex: {
+            goal: {
+              threadId: 'codex-thread-stale',
+              objective: 'Keep going on the stale target',
+              status: 'active',
+              tokenBudget: null,
+              tokensUsed: 0,
+              timeUsedSeconds: 0,
+              createdAt: 1,
+              updatedAt: 2,
+            },
+          },
+        }),
+        requestedModelId: null,
+        createdAt: 1_700_000_001,
+        updatedAt: 1_700_000_001,
+      }).run()
+
+      const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-goal-stale-binding/runtime-status'))
+      expect(statusResponse.status).toBe(200)
+      expect(await statusResponse.json()).toEqual(expect.objectContaining({
+        status: 'idle',
+        providerTargetId: 'provider-target-codex-goal-current',
+        providerSessionId: null,
+        hasActiveGoal: false,
+      }))
+      await new Promise(resolve => setTimeout(resolve, 100))
+      expect(runtime.streamInputs).toHaveLength(0)
+      expect(db()
+        .select()
+        .from(backendRuns)
+        .where(eq(backendRuns.chatSessionId, 'session-codex-goal-stale-binding'))
+        .all()).toHaveLength(0)
     }
     finally {
       if (originalCodexRuntime) {

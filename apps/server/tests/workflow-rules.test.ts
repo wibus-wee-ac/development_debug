@@ -31,7 +31,7 @@ describe('workflow rules capability', () => {
       const saveAgent = await app.handle(new Request('http://localhost/workflow-rules/workspace-1', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ agentProfileId: 'agent-1', content: 'agent rule' }),
+        body: JSON.stringify({ agentId: 'agent-1', content: 'agent rule' }),
       }))
       expect(saveAgent.status).toBe(200)
       expect(await saveAgent.json()).toEqual({ ok: true })
@@ -39,21 +39,21 @@ describe('workflow rules capability', () => {
       expect(readFileSync(join(dataDir, 'workflow-rules', 'workspace-1', 'rules.md'), 'utf8')).toBe('global rule')
       expect(readFileSync(join(dataDir, 'workflow-rules', 'workspace-1', 'agents', 'agent-1.md'), 'utf8')).toBe('agent rule')
 
-      const getRes = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentProfileId=agent-1'))
+      const getRes = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentId=agent-1'))
       expect(getRes.status).toBe(200)
       expect(await getRes.json()).toEqual({
         global: 'global rule',
-        profileSpecific: 'agent rule',
+        agentSpecific: 'agent rule',
       })
 
       const listRes = await app.handle(new Request('http://localhost/workflow-rules/workspace-1/list'))
       expect(listRes.status).toBe(200)
       expect(await listRes.json()).toEqual([
-        { type: 'global', agentProfileId: null, content: 'global rule' },
-        { type: 'agent', agentProfileId: 'agent-1', content: 'agent rule' },
+        { type: 'global', agentId: null, content: 'global rule' },
+        { type: 'agent', agentId: 'agent-1', content: 'agent rule' },
       ])
 
-      const deleteAgent = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentProfileId=agent-1', {
+      const deleteAgent = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentId=agent-1', {
         method: 'DELETE',
       }))
       expect(deleteAgent.status).toBe(200)
@@ -65,11 +65,11 @@ describe('workflow rules capability', () => {
       expect(deleteGlobal.status).toBe(200)
       expect(await deleteGlobal.json()).toEqual({ ok: true })
 
-      const afterDelete = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentProfileId=agent-1'))
+      const afterDelete = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentId=agent-1'))
       expect(afterDelete.status).toBe(200)
       expect(await afterDelete.json()).toEqual({
         global: null,
-        profileSpecific: null,
+        agentSpecific: null,
       })
 
       const missingList = await app.handle(new Request('http://localhost/workflow-rules/workspace-2/list'))
@@ -104,7 +104,7 @@ describe('workflow rules capability', () => {
       expect(invalidWorkspace.status).toBe(400)
       expect((await invalidWorkspace.json()).code).toBe('invalid_workflow_rule_id')
 
-      const invalidAgent = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentProfileId=../bad'))
+      const invalidAgent = await app.handle(new Request('http://localhost/workflow-rules/workspace-1?agentId=../bad'))
       expect(invalidAgent.status).toBe(400)
       expect((await invalidAgent.json()).code).toBe('invalid_workflow_rule_id')
 

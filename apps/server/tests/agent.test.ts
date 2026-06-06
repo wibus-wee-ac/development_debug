@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,6 +13,13 @@ import { db, shutdownInfra } from '../src/infra'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
+}
+
+function createExecutable(dir: string, name: string): string {
+  const path = join(dir, name)
+  writeFileSync(path, '#!/bin/sh\nexit 0\n')
+  chmodSync(path, 0o755)
+  return path
 }
 
 function buildAvatarUrl(style: string, seed: string): string {
@@ -290,6 +297,20 @@ describe('agent identity capability', () => {
       const invalidProviderBody = await invalidProvider.json()
       expect(invalidProviderBody.code).toBe('invalid_agent_input')
 
+      const invalidThinkingEffort = await app.handle(new Request('http://localhost/agents', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Unsupported Thinking Agent',
+          avatarStyle: 'thumbs',
+          avatarSeed: 'unsupported-thinking-seed',
+          providerTargetId: providerTargetOneId,
+          thinkingEffort: 'minimal',
+        }),
+      }))
+      expect(invalidThinkingEffort.status).toBe(400)
+      expect((await invalidThinkingEffort.json()).code).toBe('validation_error')
+
       const invalidCli = await app.handle(new Request('http://localhost/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -378,6 +399,7 @@ describe('agent identity capability', () => {
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', codexConfigPath, previousEnv)
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', codexAuthPath, previousEnv)
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false', previousEnv)
+      setEnv('PATH', '', previousEnv)
 
       app = await createServerApp()
       const importBody = { includeProcessEnv: false }
@@ -479,6 +501,92 @@ describe('agent identity capability', () => {
     }
   })
 
+  it('imports local CLI command agents with the detected executable path', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const homeDir = makeTempDir('cradle-local-cli-home-')
+    const binDir = join(homeDir, 'bin')
+    const previousEnv = new Map<string, string | undefined>()
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousHome = process.env.HOME
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.HOME = homeDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      mkdirSync(binDir, { recursive: true })
+      const kimiPath = createExecutable(binDir, 'kimi')
+
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false', previousEnv)
+      setEnv('PATH', binDir, previousEnv)
+
+      app = await createServerApp()
+      const importRes = await app.handle(new Request('http://localhost/agents/import/local-config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ includeProcessEnv: false }),
+      }))
+      expect(importRes.status).toBe(200)
+      const imported = await importRes.json()
+
+      expect(imported).toEqual(expect.objectContaining({
+        created: 1,
+        existing: 0,
+        skipped: 0,
+      }))
+      expect(imported.preview.candidates).toEqual([
+        expect.objectContaining({
+          app: 'kimi',
+          externalRecordId: 'kimi:local-command',
+          runtimeKind: 'cli-tui',
+          executable: kimiPath,
+          importable: true,
+        }),
+      ])
+      expect(imported.agents).toEqual([
+        expect.objectContaining({
+          app: 'kimi',
+          externalRecordId: 'kimi:local-command',
+          runtimeKind: 'cli-tui',
+          status: 'created',
+          agent: expect.objectContaining({
+            name: 'Local Kimi',
+            runtimeKind: 'cli-tui',
+            providerTargetId: null,
+          }),
+        }),
+      ])
+      expect(JSON.parse(imported.agents[0].agent.configJson)).toEqual(expect.objectContaining({
+        cliTui: {
+          executable: kimiPath,
+          args: [],
+        },
+        cradleOnboarding: expect.objectContaining({
+          localApp: 'kimi',
+          sourceKind: 'local-config',
+          externalRecordId: 'kimi:local-command',
+        }),
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(homeDir, { recursive: true, force: true })
+      restoreEnv(previousEnv)
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+    }
+  })
+
   it('maps local CC Switch proxy config to CC Switch current provider agents', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const homeDir = makeTempDir('cradle-local-cc-switch-home-')
@@ -540,6 +648,7 @@ describe('agent identity capability', () => {
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', codexConfigPath, previousEnv)
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', codexAuthPath, previousEnv)
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false', previousEnv)
+      setEnv('PATH', '', previousEnv)
 
       app = await createServerApp({ startBackgroundTasks: false })
       const previewRes = await app.handle(new Request('http://localhost/agents/import/local-config/preview', {

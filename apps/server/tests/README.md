@@ -42,5 +42,4 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **skills.test.ts**: skills inventory, CRUD, import/export, and fetch-source flows across scopes.
 - **usage.test.ts**: usage analytics daily totals, summary with matched agent profile names, streak stats, and per-session totals.
 - **search.test.ts**: thread search over titles, user content, and assistant plain-text cache derived from `messages.content`, plus read-only Chronicle memory and knowledge search with workspace scoping.
-- **pack-codebase.test.ts**: workspace-owned repomix packing over HTTP and structured validation errors.
 - **test-reset.test.ts**: test-only reset route cleanup boundaries, including isolated HOME skills safety.

@@ -26,6 +26,11 @@ describe('preferences capability', () => {
         modelId: null,
         configSelections: {},
         continuationBehavior: 'queue',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
 
       const filePath = join(dataDir, 'preferences', 'chat.json')
@@ -53,6 +58,11 @@ describe('preferences capability', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
 
       const finalRes = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -64,6 +74,11 @@ describe('preferences capability', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
     }
     finally {
@@ -113,6 +128,55 @@ describe('preferences capability', () => {
       expect(finalRes.status).toBe(200)
       expect(await finalRes.json()).toEqual({
         useCradleUserAgent: false,
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('returns defaults when missing and persists Desktop preferences under the server data directory', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const initialRes = await app.handle(new Request('http://localhost/preferences/desktop'))
+      expect(initialRes.status).toBe(200)
+      expect(await initialRes.json()).toEqual({
+        requireDoubleCommandQToQuit: true,
+      })
+
+      const filePath = join(dataDir, 'preferences', 'desktop.json')
+      expect(existsSync(filePath)).toBe(false)
+
+      const saveRes = await app.handle(new Request('http://localhost/preferences/desktop', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          requireDoubleCommandQToQuit: false,
+        }),
+      }))
+      expect(saveRes.status).toBe(200)
+      expect(await saveRes.json()).toEqual({ ok: true })
+
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        requireDoubleCommandQToQuit: false,
+      })
+
+      const finalRes = await app.handle(new Request('http://localhost/preferences/desktop'))
+      expect(finalRes.status).toBe(200)
+      expect(await finalRes.json()).toEqual({
+        requireDoubleCommandQToQuit: false,
       })
     }
     finally {
@@ -182,6 +246,16 @@ describe('preferences capability', () => {
       }))
       expect(invalidCodexPreferences.status).toBe(400)
       expect((await invalidCodexPreferences.json()).code).toBe('validation_error')
+
+      const invalidDesktopPreferences = await app.handle(new Request('http://localhost/preferences/desktop', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          requireDoubleCommandQToQuit: 'true',
+        }),
+      }))
+      expect(invalidDesktopPreferences.status).toBe(400)
+      expect((await invalidDesktopPreferences.json()).code).toBe('validation_error')
     }
     finally {
       shutdownInfra()

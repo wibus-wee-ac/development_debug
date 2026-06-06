@@ -1,6 +1,6 @@
-// Verifies local Claude/Codex onboarding config mapping without reading real user config.
+// Verifies local agent onboarding config mapping without reading real user config.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -13,6 +13,7 @@ import {
 } from '../src/modules/external-provider-sources/local-agent-config-source'
 
 const tempDirs: string[] = []
+let previousPath: string | undefined
 
 function createTempDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'cradle-local-agent-config-'))
@@ -36,9 +37,28 @@ function createFixtureConfig(root: string) {
   }
 }
 
+function setPath(value: string): void {
+  previousPath ??= process.env.PATH
+  process.env.PATH = value
+}
+
+function createExecutable(dir: string, name: string): string {
+  const path = join(dir, name)
+  writeFileSync(path, '#!/bin/sh\nexit 0\n')
+  chmodSync(path, 0o755)
+  return path
+}
+
 afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true })
+  }
+  if (previousPath === undefined) {
+    delete process.env.PATH
+  }
+  else {
+    process.env.PATH = previousPath
+    previousPath = undefined
   }
 })
 
@@ -116,12 +136,91 @@ describe('local agent config external provider source', () => {
   it('returns an empty snapshot when allowlisted local config files do not exist', () => {
     const root = createTempDir()
     const config = createFixtureConfig(root)
+    setPath('')
 
     const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
 
     expect(snapshot.source.status).toBe('ok')
     expect(snapshot.providers).toEqual([])
-    expect(snapshot.source.message).toBe('No local Claude or Codex config records were detected.')
+    expect(snapshot.source.message).toBe('No local agent config records were detected.')
+  })
+
+  it('detects installed local agent commands as CLI import records', () => {
+    const root = createTempDir()
+    const binDir = join(root, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    const config = createFixtureConfig(root)
+    const claudePath = createExecutable(binDir, 'claude')
+    const codexPath = createExecutable(binDir, 'codex')
+    const geminiPath = createExecutable(binDir, 'gemini')
+    const piPath = createExecutable(binDir, 'pi')
+    const kimiPath = createExecutable(binDir, 'kimi')
+    setPath(binDir)
+
+    const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
+
+    expect(snapshot.providers).toEqual([
+      expect.objectContaining({
+        externalId: 'claude:local-command',
+        app: 'claude',
+        providerKind: 'cli-tool',
+        config: { executable: claudePath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'claudecode' }),
+      }),
+      expect.objectContaining({
+        externalId: 'codex:local-command',
+        app: 'codex',
+        providerKind: 'cli-tool',
+        config: { executable: codexPath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'codex' }),
+      }),
+      expect.objectContaining({
+        externalId: 'gemini:local-command',
+        app: 'gemini',
+        providerKind: 'cli-tool',
+        config: { executable: geminiPath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'geminicli' }),
+      }),
+      expect.objectContaining({
+        externalId: 'pi:local-command',
+        app: 'pi',
+        providerKind: 'cli-tool',
+        config: { executable: piPath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui' }),
+      }),
+      expect.objectContaining({
+        externalId: 'kimi:local-command',
+        app: 'kimi',
+        providerKind: 'cli-tool',
+        config: { executable: kimiPath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'kimi' }),
+      }),
+    ])
+  })
+
+  it('detects the Kimi CI command alias as a Kimi CLI import record', () => {
+    const root = createTempDir()
+    const binDir = join(root, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    const config = createFixtureConfig(root)
+    const kimiCiPath = createExecutable(binDir, 'kimi-ci')
+    setPath(binDir)
+
+    const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
+
+    expect(snapshot.providers).toEqual([
+      expect.objectContaining({
+        externalId: 'kimi:local-command',
+        app: 'kimi',
+        providerKind: 'cli-tool',
+        config: { executable: kimiCiPath },
+        metadata: expect.objectContaining({
+          executable: kimiCiPath,
+          runtimeKind: 'cli-tui',
+          iconSlug: 'kimi',
+        }),
+      }),
+    ])
   })
 
   it('emits warnings for partial config without credentials', () => {
@@ -162,6 +261,7 @@ describe('local agent config external provider source', () => {
     const root = createTempDir()
     const config = createFixtureConfig(root)
     const source = createLocalAgentConfigExternalProviderSource()
+    setPath('')
     writeFileSync(config.codexConfigPath, 'model = "gpt-test"\nopenai_base_url = "https://openai.example.test/v1"\n')
     writeFileSync(config.codexAuthPath, JSON.stringify({ OPENAI_API_KEY: 'test-openai-secret' }))
 

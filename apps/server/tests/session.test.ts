@@ -267,6 +267,52 @@ describe('session capability', () => {
         expect.objectContaining({ id: assistantMessageId, role: 'assistant' }),
       ])
 
+      const unreadGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await unreadGetRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        latestAssistantMessageAt: now + 1,
+        lastReadAt: null,
+        unread: true,
+      }))
+
+      const unreadListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await unreadListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({
+          id: sessionId,
+          latestAssistantMessageAt: now + 1,
+          unread: true,
+        })]),
+      )
+
+      const readRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}/read`, { method: 'POST' }),
+      )
+      expect(readRes.status).toBe(200)
+      expect(await readRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        lastReadAt: now + 1,
+        latestAssistantMessageAt: now + 1,
+        unread: false,
+      }))
+
+      const unreadRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}/unread`, { method: 'POST' }),
+      )
+      expect(unreadRes.status).toBe(200)
+      expect(await unreadRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        lastReadAt: now,
+        latestAssistantMessageAt: now + 1,
+        unread: true,
+      }))
+
+      const missingReadRes = await app.handle(
+        new Request('http://localhost/sessions/missing/read', { method: 'POST' }),
+      )
+      expect(missingReadRes.status).toBe(404)
+
       const bindingId = randomUUID()
       d.insert(backendSessionBindings)
         .values({
@@ -274,6 +320,7 @@ describe('session capability', () => {
           chatSessionId: sessionId,
           providerTargetId,
           runtimeKind: 'standard',
+          backendSessionId: 'provider-session-primary',
           requestedModelId: 'gpt-test',
         })
         .run()
@@ -306,10 +353,10 @@ describe('session capability', () => {
       }))
       expect(
         d.select().from(backendSessionBindings).where(eq(backendSessionBindings.id, bindingId)).get(),
-      ).toEqual(expect.objectContaining({
-        providerTargetId: secondaryProviderTargetId,
+      ).toBeUndefined()
+      const patchedSessionRow = d.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      expect(JSON.parse(patchedSessionRow?.configJson ?? '{}')).toEqual(expect.objectContaining({
         requestedModelId: 'gpt-secondary',
-        backendSessionId: null,
       }))
 
       const getWithPatchedProviderRes = await app.handle(
@@ -324,7 +371,7 @@ describe('session capability', () => {
       d.insert(backendRuns)
         .values({
           id: streamingRunId,
-          bindingId,
+          bindingId: null,
           chatSessionId: sessionId,
           messageId: assistantMessageId,
           origin: 'user',
@@ -363,7 +410,7 @@ describe('session capability', () => {
       d.insert(backendRuns)
         .values({
           id: failedRunId,
-          bindingId,
+          bindingId: null,
           chatSessionId: sessionId,
           messageId: assistantMessageId,
           origin: 'user',
@@ -389,7 +436,7 @@ describe('session capability', () => {
       d.insert(backendRuns)
         .values({
           id: randomUUID(),
-          bindingId,
+          bindingId: null,
           chatSessionId: sessionId,
           messageId: assistantMessageId,
           origin: 'user',
@@ -404,10 +451,52 @@ describe('session capability', () => {
         expect.objectContaining({ id: sessionId, status: 'idle' }),
       )
 
+      const activeGoalBindingId = randomUUID()
+      d.insert(backendSessionBindings)
+        .values({
+          id: activeGoalBindingId,
+          chatSessionId: sessionId,
+          providerTargetId: secondaryProviderTargetId,
+          runtimeKind: 'codex',
+          backendSessionId: 'provider-session-secondary',
+          backendStateSnapshot: JSON.stringify({
+            models: { currentModelId: 'gpt-secondary' },
+            codex: {
+              goal: {
+                threadId: 'codex-thread-active-goal',
+                objective: 'Finish active goal',
+                status: 'active',
+              },
+            },
+          }),
+          requestedModelId: 'gpt-secondary',
+        })
+        .run()
+
+      const activeGoalGetRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await activeGoalGetRes.json()).toEqual(
+        expect.objectContaining({ id: sessionId, status: 'streaming' }),
+      )
+
+      const activeGoalListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await activeGoalListRes.json()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: sessionId, status: 'streaming' })]),
+      )
+
+      d.update(backendSessionBindings)
+        .set({
+          runtimeKind: 'standard',
+          backendStateSnapshot: null,
+        })
+        .where(eq(backendSessionBindings.id, activeGoalBindingId))
+        .run()
+
       d.insert(backendRuns)
         .values({
           id: randomUUID(),
-          bindingId,
+          bindingId: activeGoalBindingId,
           chatSessionId: sessionId,
           messageId: assistantMessageId,
           origin: 'user',
@@ -592,6 +681,7 @@ describe('session capability', () => {
           chatSessionId: sessionId,
           providerTargetId,
           runtimeKind: 'standard',
+          backendSessionId: 'provider-session-stale-streaming',
           requestedModelId: 'gpt-test',
         })
         .run()
@@ -613,21 +703,126 @@ describe('session capability', () => {
       const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
       expect(await getRes.json()).toEqual(expect.objectContaining({
         id: sessionId,
-        status: 'idle',
+        modelId: 'gpt-test',
+        status: 'error',
       }))
       expect(d.select().from(backendRuns).where(eq(backendRuns.id, runId)).get()).toEqual(
         expect.objectContaining({
-          status: 'aborted',
-          stopReason: 'response.cancelled',
+          status: 'failed',
+          stopReason: 'response.interrupted',
+          errorText: 'Response interrupted because the Cradle server process exited while the run was streaming.',
           finishedAt: expect.any(Number),
         }),
       )
       expect(d.select().from(messages).where(eq(messages.id, assistantMessageId)).get()).toEqual(
         expect.objectContaining({
-          status: 'aborted',
-          errorText: null,
+          status: 'failed',
+          errorText: 'Response interrupted because the Cradle server process exited while the run was streaming.',
         }),
       )
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('ignores legacy non-resumable provider bindings in session projections', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+
+      const workspaceId = randomUUID()
+      const providerTargetId = randomUUID()
+      const sessionId = randomUUID()
+      const now = Math.floor(Date.now() / 1000)
+
+      d.insert(workspaces)
+        .values({
+          id: workspaceId,
+          name: 'Workspace',
+          path: workspaceRoot,
+        })
+        .run()
+      d.insert(providerTargets)
+        .values({
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+      d.insert(sessions)
+        .values({
+          id: sessionId,
+          workspaceId,
+          title: 'Legacy Binding Session',
+          providerTargetId,
+          runtimeKind: 'codex',
+          agentId: null,
+          configJson: '{}',
+          linkedIssueId: null,
+          pinned: 0,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .run()
+      d.insert(backendSessionBindings)
+        .values({
+          id: randomUUID(),
+          chatSessionId: sessionId,
+          providerTargetId,
+          runtimeKind: 'codex',
+          requestedModelId: 'legacy-model',
+          backendStateSnapshot: JSON.stringify({
+            codex: {
+              goal: {
+                threadId: 'legacy-thread',
+                objective: 'Do not project this goal',
+                status: 'active',
+              },
+            },
+          }),
+        })
+        .run()
+
+      const getRes = await app.handle(new Request(`http://localhost/sessions/${sessionId}`))
+      expect(await getRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        modelId: null,
+        status: 'idle',
+      }))
+
+      const listRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}`),
+      )
+      expect(await listRes.json()).toEqual([
+        expect.objectContaining({
+          id: sessionId,
+          modelId: null,
+          status: 'idle',
+        }),
+      ])
+
+      const exportRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}/export/markdown`),
+      )
+      const exportBody = await exportRes.json()
+      expect(exportBody.markdown).toContain('Model: unknown')
+      expect(exportBody.markdown).not.toContain('legacy-model')
     }
     finally {
       shutdownInfra()

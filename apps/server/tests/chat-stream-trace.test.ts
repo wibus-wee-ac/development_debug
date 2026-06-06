@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendSessionBindings, messages, providerTargets, sessions, workspaces } from '@cradle/db'
+import { backendRuns, messages, providerTargets, sessions, workspaces } from '@cradle/db'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -253,20 +253,9 @@ describe('chat stream trace', () => {
       createdAt: now,
       updatedAt: now,
     }).run()
-    db().insert(backendSessionBindings).values({
-      id: 'binding-trace-route',
-      chatSessionId: 'session-trace-route',
-      providerTargetId: 'provider-target-trace-route',
-      runtimeKind: 'claude-agent',
-      backendSessionId: null,
-      backendStateSnapshot: null,
-      requestedModelId: 'claude-sonnet-4-20250514',
-      createdAt: now,
-      updatedAt: now,
-    }).run()
     db().insert(backendRuns).values({
       id: 'run-trace-route',
-      bindingId: 'binding-trace-route',
+      bindingId: null,
       chatSessionId: 'session-trace-route',
       messageId: 'message-trace-route',
       origin: 'user',

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, sessions, usageLogs, workspaces } from '@cradle/db'
+import { agents, providerTargets, sessions, usageLogs, workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -40,26 +40,32 @@ describe('usage capability', () => {
       const d = db()
 
       const workspaceId = randomUUID()
-      const profileOneId = randomUUID()
-      const profileTwoId = randomUUID()
+      const providerTargetOneId = randomUUID()
+      const providerTargetTwoId = randomUUID()
+      const agentOneId = randomUUID()
+      const agentTwoId = randomUUID()
       const sessionOneId = randomUUID()
       const sessionTwoId = randomUUID()
 
       d.insert(workspaces).values({ id: workspaceId, name: 'Workspace', path: workspaceRoot }).run()
-      d.insert(agentProfiles).values([
-        { id: profileOneId, name: 'Profile One', providerKind: 'openai-compatible' },
-        { id: profileTwoId, name: 'Profile Two', providerKind: 'codex' },
+      d.insert(providerTargets).values([
+        { id: providerTargetOneId, kind: 'manual', providerKind: 'openai-compatible', displayName: 'Provider One' },
+        { id: providerTargetTwoId, kind: 'manual', providerKind: 'openai-compatible', displayName: 'Provider Two' },
+      ]).run()
+      d.insert(agents).values([
+        { id: agentOneId, name: 'Agent One', avatarSeed: 'agent-one', providerTargetId: providerTargetOneId },
+        { id: agentTwoId, name: 'Agent Two', avatarSeed: 'agent-two', providerTargetId: providerTargetTwoId },
       ]).run()
       d.insert(sessions).values([
-        { id: sessionOneId, workspaceId, title: 'Session One', agentProfileId: profileOneId },
-        { id: sessionTwoId, workspaceId, title: 'Session Two', agentProfileId: profileTwoId },
+        { id: sessionOneId, workspaceId, title: 'Session One', providerTargetId: providerTargetOneId, agentId: agentOneId },
+        { id: sessionTwoId, workspaceId, title: 'Session Two', providerTargetId: providerTargetTwoId, agentId: agentTwoId },
       ]).run()
       d.insert(usageLogs).values([
         {
           id: randomUUID(),
           sessionId: sessionOneId,
           messageId: null,
-          agentProfileId: profileOneId,
+          providerTargetId: providerTargetOneId,
           modelId: 'gpt-4o',
           promptTokens: 10,
           completionTokens: 5,
@@ -70,7 +76,7 @@ describe('usage capability', () => {
           id: randomUUID(),
           sessionId: sessionOneId,
           messageId: null,
-          agentProfileId: profileOneId,
+          providerTargetId: providerTargetOneId,
           modelId: 'gpt-4o',
           promptTokens: 20,
           completionTokens: 10,
@@ -81,8 +87,8 @@ describe('usage capability', () => {
           id: randomUUID(),
           sessionId: sessionTwoId,
           messageId: null,
-          agentProfileId: profileTwoId,
-          modelId: 'codex-mini',
+          providerTargetId: providerTargetTwoId,
+          modelId: 'gpt-4o-mini',
           promptTokens: 8,
           completionTokens: 7,
           totalTokens: 15,
@@ -106,12 +112,37 @@ describe('usage capability', () => {
         totalTokens: 60,
         totalTurns: 3,
         byAgent: [
-          { agentProfileId: profileOneId, agentProfileName: 'Profile One', totalTokens: 45, count: 2 },
-          { agentProfileId: profileTwoId, agentProfileName: 'Profile Two', totalTokens: 15, count: 1 },
+          { agentId: agentOneId, agentName: 'Agent One', totalTokens: 45, count: 2 },
+          { agentId: agentTwoId, agentName: 'Agent Two', totalTokens: 15, count: 1 },
+        ],
+        byProviderTarget: [
+          { providerTargetId: providerTargetOneId, providerTargetName: 'Provider One', totalTokens: 45, count: 2 },
+          { providerTargetId: providerTargetTwoId, providerTargetName: 'Provider Two', totalTokens: 15, count: 1 },
         ],
         byModel: [
           { modelId: 'gpt-4o', totalTokens: 45, count: 2 },
-          { modelId: 'codex-mini', totalTokens: 15, count: 1 },
+          { modelId: 'gpt-4o-mini', totalTokens: 15, count: 1 },
+        ],
+      })
+
+      const costSummaryRes = await app.handle(new Request('http://localhost/usage/cost/summary'))
+      expect(costSummaryRes.status).toBe(200)
+      expect(await costSummaryRes.json()).toEqual({
+        totalCostUsd: 0.0002304,
+        totalPromptTokens: 38,
+        totalCompletionTokens: 22,
+        totalTokens: 60,
+        byModel: [
+          { modelId: 'gpt-4o', costUsd: 0.000225, promptTokens: 30, completionTokens: 15, totalTokens: 45, count: 2 },
+          { modelId: 'gpt-4o-mini', costUsd: 0.0000054, promptTokens: 8, completionTokens: 7, totalTokens: 15, count: 1 },
+        ],
+        byAgent: [
+          { agentId: agentOneId, agentName: 'Agent One', costUsd: 0.000225, promptTokens: 30, completionTokens: 15, totalTokens: 45, count: 2 },
+          { agentId: agentTwoId, agentName: 'Agent Two', costUsd: 0.0000054, promptTokens: 8, completionTokens: 7, totalTokens: 15, count: 1 },
+        ],
+        byProviderTarget: [
+          { providerTargetId: providerTargetOneId, providerTargetName: 'Provider One', costUsd: 0.000225, promptTokens: 30, completionTokens: 15, totalTokens: 45, count: 2 },
+          { providerTargetId: providerTargetTwoId, providerTargetName: 'Provider Two', costUsd: 0.0000054, promptTokens: 8, completionTokens: 7, totalTokens: 15, count: 1 },
         ],
       })
 
