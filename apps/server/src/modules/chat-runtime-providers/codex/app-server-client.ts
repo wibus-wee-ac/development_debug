@@ -99,18 +99,9 @@ export class CodexAppServerClient {
     this.child.stderr.on('data', (chunk: Buffer) => {
       this.stderrText += chunk.toString('utf8')
     })
-    this.child.once('error', (error) => {
-      this.failAll(error)
-    })
-    this.child.once('exit', (code, signal) => {
-      this.closed = true
-      if (code === 0 && !signal) {
-        this.failAll(new Error('Codex app-server exited'))
-        return
-      }
-      const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`
-      this.failAll(new Error(`Codex app-server exited with ${detail}: ${this.stderrText}`))
-    })
+    this.child.once('error', error => this.terminate(error))
+    this.child.once('exit', (code, signal) => this.terminate(this.createExitError(code, signal)))
+    this.child.once('close', (code, signal) => this.terminate(this.createExitError(code, signal)))
 
     const lines = createInterface({ input: this.child.stdout, crlfDelay: Infinity })
     lines.on('line', line => this.handleLine(line))
@@ -191,9 +182,24 @@ export class CodexAppServerClient {
     if (this.closed) {
       return
     }
-    this.closed = true
     this.child.kill('SIGTERM')
-    this.failAll(new Error('Codex app-server closed'))
+    this.terminate(new Error('Codex app-server closed'))
+  }
+
+  private createExitError(code: number | null, signal: NodeJS.Signals | null): Error {
+    if (code === 0 && !signal) {
+      return new Error('Codex app-server exited')
+    }
+    const detail = signal ? `signal ${signal}` : `code ${code ?? 1}`
+    return new Error(`Codex app-server exited with ${detail}: ${this.stderrText}`)
+  }
+
+  private terminate(error: Error): void {
+    if (this.closed) {
+      return
+    }
+    this.closed = true
+    this.failAll(error)
   }
 
   private handleLine(line: string): void {

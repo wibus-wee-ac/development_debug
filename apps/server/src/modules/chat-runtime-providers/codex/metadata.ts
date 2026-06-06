@@ -27,7 +27,7 @@ export const CODEX_RUNTIME_METADATA = {
 export const CODEX_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: true,
   supportsShellExecution: true,
-  supportsPermissionMode: false,
+  supportsRuntimeSettings: true,
   supportsUiSlotStates: true,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'in-session',

@@ -187,7 +187,7 @@ export function writeCodexGoalSnapshot(runtimeSession: RuntimeSession, goal: Cod
   })
 }
 
-function clearCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
+export function clearCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
   const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
   if (snapshot.codex?.goal?.status === 'complete') {
     return

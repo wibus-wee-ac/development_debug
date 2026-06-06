@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto'
 
 import type { BackendRun, BackendSessionBinding, Message, Session } from '@cradle/db'
 import {
+  backendRunSnapshots,
   agents,
   backendRuns,
-  backendSessionBindings,
   chatSessionQueueItems,
   messages,
   sessions,
@@ -21,11 +21,6 @@ import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
-import type { CodexAppServerCapabilityManifest, CodexAppServerInvokeResponse } from '../chat-runtime-providers/codex/app-server-bridge'
-import {
-  CodexAppServerBridge,
-  getCodexAppServerCapabilities,
-} from '../chat-runtime-providers/codex/app-server-bridge'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import { buildAgentMemoryContext } from '../chronicle/agent-context'
 import * as ModelRegistry from '../model-registry/service'
@@ -33,16 +28,31 @@ import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
-import { resolveProviderTarget } from '../provider-targets/service'
-import * as Secrets from '../secrets/service'
+import {
+  readSideConversation,
+  releaseSideConversation,
+  registerSideConversation,
+  reserveSideConversationHost,
+} from '../provider-runtime/side-conversation-registry'
+import {
+  listChatSessionIdsByDurableProviderSession,
+  persistProviderRuntimeResolution,
+  readDurableProviderRuntimeBinding,
+  readReusableDurableProviderRuntimeBinding,
+  resolveExistingProviderRuntimeSession,
+  resolveProviderRuntimeSession,
+} from '../provider-runtime/service'
+import { getProviderTarget, resolveProviderTarget } from '../provider-targets/service'
 import * as SessionService from '../session/service'
+import { listSkillInventory } from '../skills/skills.store'
 import { estimateCost } from '../usage/pricing'
-import { getRuntimeRegistry, listRuntimeCatalog, listRuntimeHealth, resolveRuntimeSkillPaths } from './chat-runtime-provider-registry'
+import { getRuntimeRegistry, listRuntimeCatalog, listRuntimeHealth } from './chat-runtime-provider-registry'
 import {
   executeLocalBangCommand,
   persistBangCommandMessages,
   type BangCommandExecutionResult,
 } from './bang-command'
+import { readChatSkillContextPart } from './context-parts'
 import type { ChatContextPart } from './context-parts'
 import { ProviderRuntimeError } from './runtime-provider-types'
 import {
@@ -57,14 +67,20 @@ import {
   readGoalMessageObjective,
 } from './message-snapshots'
 import type {
-  ChatPermissionMode,
   ChatRuntime,
+  ChatThinkingEffort,
+  ChatRuntimeAccessMode,
+  ChatRuntimeInteractionMode,
+  ChatRuntimeSettings,
+  ChatRuntimeSettingsPatch,
   ProviderThreadEvent,
   ProviderThreadListInput,
   ProviderThreadListResult,
   ProviderThreadReadResult,
   ProviderThreadSourceKind,
   ProviderThreadTurnsResult,
+  ProviderNativeAppServerCapabilityManifest,
+  ProviderNativeAppServerInvokeResponse,
   RuntimePresentationCapabilities,
   RuntimeProviderTargetProfile,
   RuntimeSession,
@@ -99,8 +115,14 @@ const DEFAULT_SIDE_CONTEXT_MAX_MESSAGES = 20
 const DEFAULT_SIDE_CONTEXT_MAX_CHARS = 48_000
 const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
 const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
+const ORPHANED_STREAMING_RUN_STOP_REASON = 'response.interrupted'
+const ORPHANED_STREAMING_RUN_ERROR_TEXT = 'Response interrupted because the Cradle server process exited while the run was streaming.'
+const CODEX_BASELINE_SKILL_NAMES = ['cradle-cli'] as const
 
 const pendingCodexGoalContinuationTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+SessionService.onSessionArchived(releaseSideConversation)
+SessionService.onSessionCleanup(releaseSideConversation)
 
 function parseTrustedJsonObject(json: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(json)
@@ -115,17 +137,145 @@ function readUnknownRecord(value: unknown): Record<string, unknown> {
     : {}
 }
 
-function normalizeChatPermissionMode(value: unknown): ChatPermissionMode | null {
-  if (value === 'bypassPermissions' || value === 'plan') {
-    return value
+function readCodexBaselineSkillParts(existingSkillNames: Set<string>): ChatContextPart[] {
+  if (CODEX_BASELINE_SKILL_NAMES.every(name => existingSkillNames.has(name))) {
+    return []
   }
-  return null
+
+  const builtinSkills = listSkillInventory({})
+  return CODEX_BASELINE_SKILL_NAMES.flatMap((name) => {
+    if (existingSkillNames.has(name)) {
+      return []
+    }
+    const skill = builtinSkills.find(entry => entry.scope === 'builtin' && entry.name === name)
+    return skill
+      ? [{
+          type: 'data-cradle-skill' as const,
+          name: skill.name,
+          path: skill.skillDir,
+          scope: skill.scope,
+          description: skill.description,
+        }]
+      : []
+  })
+}
+
+function withCodexBaselineSkillContextParts(contextParts: ChatContextPart[]): ChatContextPart[] {
+  const existingSkillNames = new Set(contextParts.map(part => part.name))
+  const baselineParts = readCodexBaselineSkillParts(existingSkillNames)
+  return baselineParts.length > 0 ? [...contextParts, ...baselineParts] : contextParts
+}
+
+function withCodexBaselineSkillUserMessage(message: UIMessage): UIMessage {
+  if (message.role !== 'user') {
+    return message
+  }
+
+  const existingSkillNames = new Set(
+    message.parts
+      .map(part => readChatSkillContextPart(part)?.name)
+      .filter((name): name is string => typeof name === 'string'),
+  )
+  const baselineParts = readCodexBaselineSkillParts(existingSkillNames)
+  if (baselineParts.length === 0) {
+    return message
+  }
+
+  return {
+    ...message,
+    parts: [
+      ...message.parts,
+      ...baselineParts.map(part => ({
+        type: part.type,
+        data: part,
+      }) as UIMessage['parts'][number]),
+    ],
+  }
+}
+
+function replaceLastRequestMessage(messagesInput: UIMessage[] | undefined, message: UIMessage | undefined): UIMessage[] | undefined {
+  if (!messagesInput || !message) {
+    return messagesInput
+  }
+  return [
+    ...messagesInput.slice(0, -1),
+    message,
+  ]
+}
+
+const DEFAULT_RUNTIME_SETTINGS: ChatRuntimeSettings = {
+  accessMode: 'full-access',
+  interactionMode: 'default',
+}
+
+function normalizeRuntimeAccessMode(value: unknown): ChatRuntimeAccessMode | null {
+  return value === 'approval-required' || value === 'full-access' ? value : null
+}
+
+function normalizeRuntimeInteractionMode(value: unknown): ChatRuntimeInteractionMode | null {
+  return value === 'default' || value === 'plan' ? value : null
+}
+
+function readRuntimeSettingsRecord(value: unknown): ChatRuntimeSettingsPatch {
+  const record = readUnknownRecord(value)
+  return {
+    ...(normalizeRuntimeAccessMode(record.accessMode) ? { accessMode: normalizeRuntimeAccessMode(record.accessMode)! } : {}),
+    ...(normalizeRuntimeInteractionMode(record.interactionMode) ? { interactionMode: normalizeRuntimeInteractionMode(record.interactionMode)! } : {}),
+  }
+}
+
+function normalizeRuntimeSettingsPatch(value: unknown): ChatRuntimeSettingsPatch {
+  return readRuntimeSettingsRecord(value)
+}
+
+function mergeRuntimeSettings(
+  base: ChatRuntimeSettings,
+  patch?: ChatRuntimeSettingsPatch | null,
+): ChatRuntimeSettings {
+  return {
+    accessMode: patch?.accessMode ?? base.accessMode,
+    interactionMode: patch?.interactionMode ?? base.interactionMode,
+  }
+}
+
+function areRuntimeSettingsEqual(left: ChatRuntimeSettings, right: ChatRuntimeSettings): boolean {
+  return left.accessMode === right.accessMode && left.interactionMode === right.interactionMode
+}
+
+function readSessionRuntimeSettings(configJson: string | null | undefined): ChatRuntimeSettings {
+  const config = parseTrustedJsonObject(configJson ?? '{}')
+  return mergeRuntimeSettings(DEFAULT_RUNTIME_SETTINGS, readRuntimeSettingsRecord(config.runtimeSettings))
+}
+
+function writeSessionRuntimeSettingsConfigJson(
+  configJson: string | null | undefined,
+  settings: ChatRuntimeSettings,
+): string {
+  const config = parseTrustedJsonObject(configJson ?? '{}')
+  return JSON.stringify({
+    ...config,
+    runtimeSettings: settings,
+  })
+}
+
+function readRuntimeSettingsApplied(sessionId: string, runtimeSettings: ChatRuntimeSettings): boolean {
+  if (pendingRunSessions.has(sessionId)) {
+    return false
+  }
+  const activeRunId = activeRunIdsBySession.get(sessionId)
+  const activeRun = activeRunId ? activeRuns.get(activeRunId) : null
+  return !activeRun || areRuntimeSettingsEqual(activeRun.runtimeSettings, runtimeSettings)
 }
 
 // ── types ──
 
 export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 type TerminalChatMessageStatus = Exclude<ChatMessageStatus, 'streaming'>
+type TerminalRunProjectionStatus = TerminalChatMessageStatus
+interface TerminalRunProjectionRepairOptions {
+  persistBackendRun?: boolean
+}
+type PersistedThinkingEffort = Extract<ChatThinkingEffort, 'low' | 'medium' | 'high' | 'xhigh'>
 
 export interface ChatMessageSnapshotRow {
   messageId: string
@@ -167,7 +317,7 @@ interface ActiveRun {
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
-  permissionMode?: ChatPermissionMode
+  runtimeSettings: ChatRuntimeSettings
   internalContinuation?: 'codexGoal'
   runSnapshotId?: string | null
   runSnapshotSeq: number
@@ -265,6 +415,19 @@ export interface ChatSessionRunSnapshotsDto {
   snapshots: ChatRunSnapshotDto[]
 }
 
+export interface CompletedChatRunDto {
+  runId: string
+  sessionId: string
+  sessionTitle: string
+  messageId: string | null
+  startedAt: number
+  finishedAt: number
+}
+
+export interface CompletedChatRunsDto {
+  runs: CompletedChatRunDto[]
+}
+
 export type RuntimeSessionStatusKind = 'idle' | 'pending' | 'streaming' | 'cancelling'
 
 export interface RuntimeSessionRunDto {
@@ -276,7 +439,7 @@ export interface RuntimeSessionRunDto {
   modelId: string | null
   providerSessionId: string | null
   queueItemId: string | null
-  permissionMode: ChatPermissionMode | null
+  runtimeSettings: ChatRuntimeSettings
 }
 
 export interface ChatRuntimeSessionStatusDto {
@@ -286,7 +449,7 @@ export interface ChatRuntimeSessionStatusDto {
   providerTargetId: string | null
   providerSessionId: string | null
   modelId: string | null
-  permissionMode: ChatPermissionMode | null
+  runtimeSettings: ChatRuntimeSettings
   pendingQueueItemId: string | null
   hasActiveGoal: boolean
   activeRun: RuntimeSessionRunDto | null
@@ -295,6 +458,12 @@ export interface ChatRuntimeSessionStatusDto {
     pending: number
     running: number
   }
+}
+
+export interface ChatRuntimeSettingsDto {
+  sessionId: string
+  runtimeSettings: ChatRuntimeSettings
+  applied: boolean
 }
 
 type RunSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
@@ -337,8 +506,8 @@ export interface ChatSessionQueueItemDto {
   contextParts: ChatContextPart[]
   providerTargetId: string | null
   modelId: string | null
-  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | null
-  permissionMode: ChatPermissionMode | null
+  thinkingEffort: PersistedThinkingEffort | null
+  runtimeSettings: ChatRuntimeSettings
   position: number
   sourceRunId: string | null
   startedRunId: string | null
@@ -355,8 +524,8 @@ export interface EnqueueSessionQueueItemInput {
   contextParts?: ChatContextPart[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-  permissionMode?: ChatPermissionMode
+  thinkingEffort?: PersistedThinkingEffort
+  runtimeSettings?: ChatRuntimeSettingsPatch
 }
 
 export interface CodexAppServerInvokeInput {
@@ -386,6 +555,14 @@ export interface SideChatSessionDto {
   providerTargetId: string | null
   providerSessionId: string | null
   sideContextSource: SideContextSource
+}
+
+export interface PromoteSideChatDto {
+  sessionId: string
+  sourceSessionId: string
+  runtimeKind: RuntimeKind
+  providerTargetId: string | null
+  title: string
 }
 
 // ── in-memory run state ──
@@ -465,20 +642,40 @@ function getSessionRunContext(
 }
 
 function getBinding(sessionId: string): BackendSessionBinding | undefined {
-  return db()
-    .select()
-    .from(backendSessionBindings)
-    .where(eq(backendSessionBindings.chatSessionId, sessionId))
+  return readDurableProviderRuntimeBinding(sessionId)
+}
+
+function isProviderTargetAvailable(providerTargetId: string | null | undefined): boolean {
+  if (!providerTargetId) {
+    return false
+  }
+  return getProviderTarget(providerTargetId)?.enabled === true
+}
+
+function canPersistRuntimeSessionForProviderTarget(input: {
+  sessionId: string
+  providerTargetId: string
+}): boolean {
+  const session = db()
+    .select({ providerTargetId: sessions.providerTargetId })
+    .from(sessions)
+    .where(eq(sessions.id, input.sessionId))
     .get()
+  return session?.providerTargetId === input.providerTargetId
+    && isProviderTargetAvailable(input.providerTargetId)
+}
+
+function isEphemeralSideSession(sessionId: string): boolean {
+  const session = db()
+    .select({ parentSessionId: sessions.parentSessionId })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .get()
+  return Boolean(session?.parentSessionId)
 }
 
 export function listChatSessionIdsByBackendSessionId(backendSessionId: string): string[] {
-  return db()
-    .select({ chatSessionId: backendSessionBindings.chatSessionId })
-    .from(backendSessionBindings)
-    .where(eq(backendSessionBindings.backendSessionId, backendSessionId))
-    .all()
-    .map(row => row.chatSessionId)
+  return listChatSessionIdsByDurableProviderSession(backendSessionId)
 }
 
 function attachBinding(input: {
@@ -487,45 +684,177 @@ function attachBinding(input: {
   runtimeKind: RuntimeKind
   runtimeSession: RuntimeSession
   requestedModelId: string | null
-}): BackendSessionBinding {
-  const now = currentUnixSeconds()
-  const existing = getBinding(input.sessionId)
+}): BackendSessionBinding | undefined {
+  return persistProviderRuntimeResolution({
+    chatSessionId: input.sessionId,
+    providerTargetId: input.providerTargetId,
+    runtimeKind: input.runtimeKind,
+    runtimeSession: input.runtimeSession,
+    requestedModelId: input.requestedModelId,
+    durable: !isEphemeralSideSession(input.sessionId),
+  })
+}
 
-  if (existing) {
-    db()
-      .update(backendSessionBindings)
-      .set({
-        providerTargetId: input.providerTargetId,
-        runtimeKind: input.runtimeKind,
-        backendSessionId: input.runtimeSession.providerSessionId,
-        backendStateSnapshot: input.runtimeSession.providerStateSnapshot,
-        requestedModelId: input.requestedModelId,
-        updatedAt: now,
-      })
-      .where(eq(backendSessionBindings.id, existing.id))
-      .run()
-    return db()
-      .select()
-      .from(backendSessionBindings)
-      .where(eq(backendSessionBindings.id, existing.id))
-      .get()!
+function linkRunToRuntimeBinding(input: {
+  runId: string
+  binding: BackendSessionBinding | undefined
+}): void {
+  if (!input.binding) {
+    return
   }
+  db()
+    .update(backendRuns)
+    .set({ bindingId: input.binding.id })
+    .where(eq(backendRuns.id, input.runId))
+    .run()
+}
 
-  return db()
-    .insert(backendSessionBindings)
-    .values({
-      id: randomUUID(),
-      chatSessionId: input.sessionId,
-      providerTargetId: input.providerTargetId,
+async function resolveExistingRuntimeSessionForContext(input: {
+  sessionId: string
+  context: SessionRunContext
+  runtimeKind: RuntimeKind
+  runtime: ChatRuntime
+  modelId?: string
+}): Promise<{
+  runtimeSession: RuntimeSession
+  requestedModelId: string | null
+} | null> {
+  assertSideConversationLive({
+    session: input.context.session,
+    providerTargetId: input.context.providerTarget.id,
+    runtimeKind: input.runtimeKind,
+  })
+
+  const resolution = await resolveExistingProviderRuntimeSession({
+    chatSessionId: input.sessionId,
+    providerTargetId: input.context.providerTarget.id,
+    runtimeKind: input.runtimeKind,
+    runtime: input.runtime,
+    profile: input.context.profile,
+    workspacePath: input.context.workspacePath,
+    agentId: input.context.session.agentId,
+    modelId: input.modelId,
+  })
+  return resolution
+    ? {
+        runtimeSession: resolution.runtimeSession,
+        requestedModelId: resolution.requestedModelId,
+      }
+    : null
+}
+
+async function resolveRuntimeSessionForContext(input: {
+  sessionId: string
+  context: SessionRunContext
+  runtimeKind: RuntimeKind
+  runtime: ChatRuntime
+  modelId?: string
+  requestedProviderTargetId?: string
+}): Promise<{
+  runtimeSession: RuntimeSession
+  requestedModelId: string | null
+}> {
+  assertSideConversationLive({
+    session: input.context.session,
+    providerTargetId: input.context.providerTarget.id,
+    runtimeKind: input.runtimeKind,
+  })
+
+  const resolution = await resolveProviderRuntimeSession({
+    chatSessionId: input.sessionId,
+    providerTargetId: input.context.providerTarget.id,
+    runtimeKind: input.runtimeKind,
+    runtime: input.runtime,
+    profile: input.context.profile,
+    workspacePath: input.context.workspacePath,
+    agentId: input.context.session.agentId,
+    modelId: input.modelId,
+  })
+  try {
+    validateResolvedRuntimeSessionContext({
+      sessionId: input.sessionId,
+      originalContext: input.context,
+      requestedProviderTargetId: input.requestedProviderTargetId,
       runtimeKind: input.runtimeKind,
-      backendSessionId: input.runtimeSession.providerSessionId,
-      backendStateSnapshot: input.runtimeSession.providerStateSnapshot,
-      requestedModelId: input.requestedModelId,
-      createdAt: now,
-      updatedAt: now,
     })
-    .returning()
-    .get()
+  }
+  catch (error) {
+    try {
+      await input.runtime.cancelTurn({
+        runtimeSession: resolution.runtimeSession,
+        profile: input.context.profile,
+      })
+    }
+    catch (cancelError) {
+      chatLogger.warn('runtime session cancellation failed after context invalidation', {
+        error: cancelError,
+        sessionId: input.sessionId,
+        providerTargetId: input.context.providerTarget.id,
+      })
+    }
+    throw error
+  }
+  return {
+    runtimeSession: resolution.runtimeSession,
+    requestedModelId: resolution.requestedModelId,
+  }
+}
+
+function validateResolvedRuntimeSessionContext(input: {
+  sessionId: string
+  originalContext: SessionRunContext
+  requestedProviderTargetId?: string
+  runtimeKind: RuntimeKind
+}): void {
+  const latestSession = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
+  if (!latestSession) {
+    throw new AppError({
+      code: 'chat_session_not_found',
+      status: 404,
+      message: 'Chat session not found',
+      details: { sessionId: input.sessionId },
+    })
+  }
+  const latestContext = getSessionRunContext(input.sessionId, {
+    providerTargetId: input.requestedProviderTargetId,
+  })
+  if (!latestContext) {
+    throw new AppError({
+      code: 'chat_provider_target_not_available',
+      status: 409,
+      message: 'Provider target is no longer available',
+      details: {
+        sessionId: input.sessionId,
+        providerTargetId: input.requestedProviderTargetId ?? input.originalContext.providerTarget.id,
+      },
+    })
+  }
+  assertRuntimeCompatibleTarget(latestContext, input.requestedProviderTargetId)
+  if (!latestContext.profile.enabled) {
+    throw new AppError({
+      code: 'chat_provider_target_not_available',
+      status: 409,
+      message: 'Provider target is disabled',
+      details: {
+        providerTargetId: latestContext.providerTarget.id,
+      },
+    })
+  }
+  if (
+    input.requestedProviderTargetId === undefined
+    && latestContext.session.providerTargetId !== input.originalContext.providerTarget.id
+  ) {
+    throw new AppError({
+      code: 'chat_provider_target_changed',
+      status: 409,
+      message: 'Chat session provider target changed before the run started',
+      details: {
+        sessionId: input.sessionId,
+        previousProviderTargetId: input.originalContext.providerTarget.id,
+        providerTargetId: latestContext.session.providerTargetId,
+      },
+    })
+  }
 }
 
 function reportRuntimeSessionTitle(input: {
@@ -910,14 +1239,11 @@ function startRun(input: {
   origin: 'user' | 'issue-agent' | 'system'
 }): BackendRun {
   const binding = getBinding(input.sessionId)
-  if (!binding) {
-    throw new Error(`Backend binding not found for chat session: ${input.sessionId}`)
-  }
   return db()
     .insert(backendRuns)
     .values({
       id: randomUUID(),
-      bindingId: binding.id,
+      bindingId: binding?.id ?? null,
       chatSessionId: input.sessionId,
       messageId: input.messageId,
       origin: input.origin,
@@ -991,6 +1317,43 @@ export function getSessionRunSnapshots(sessionId: string): ChatSessionRunSnapsho
   }
 }
 
+export function listCompletedRuns(input: { since?: number | null, limit?: number | null }): CompletedChatRunsDto {
+  const since = Math.max(0, Math.floor(input.since ?? 0))
+  const limit = Math.min(Math.max(Math.floor(input.limit ?? 50), 1), 200)
+  const rows = db()
+    .select({
+      runId: backendRuns.id,
+      sessionId: backendRuns.chatSessionId,
+      sessionTitle: sessions.title,
+      messageId: backendRuns.messageId,
+      startedAt: backendRuns.startedAt,
+      finishedAt: backendRuns.finishedAt,
+    })
+    .from(backendRuns)
+    .innerJoin(sessions, eq(sessions.id, backendRuns.chatSessionId))
+    .where(and(
+      eq(backendRuns.status, 'complete'),
+      sql`${backendRuns.finishedAt} IS NOT NULL`,
+      sql`${backendRuns.finishedAt} > ${since}`,
+    ))
+    .orderBy(desc(backendRuns.finishedAt), desc(backendRuns.startedAt))
+    .limit(limit)
+    .all()
+
+  return {
+    runs: rows
+      .filter(row => row.finishedAt !== null)
+      .map(row => ({
+        runId: row.runId,
+        sessionId: row.sessionId,
+        sessionTitle: row.sessionTitle,
+        messageId: row.messageId,
+        startedAt: row.startedAt,
+        finishedAt: row.finishedAt ?? row.startedAt,
+      })),
+  }
+}
+
 export function listRunSnapshotsForObservability(filter: {
   chatSessionId?: string
   runId?: string
@@ -1056,7 +1419,17 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     })
   }
 
-  const binding = getBinding(sessionId)
+  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
+    repairTerminalRunProjectionsForSession(sessionId)
+  }
+
+  const binding = session.providerTargetId
+    ? readReusableDurableProviderRuntimeBinding({
+        chatSessionId: sessionId,
+        providerTargetId: session.providerTargetId,
+        runtimeKind: session.runtimeKind as RuntimeKind,
+      })
+    : undefined
   const activeRunId = activeRunIdsBySession.get(sessionId)
   const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
   const pendingState = pendingRunSessions.get(sessionId)
@@ -1089,9 +1462,11 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
   const providerTargetId = activeRun?.providerTargetId ?? binding?.providerTargetId ?? session.providerTargetId
   const providerSessionId = activeRun?.runtimeSession.providerSessionId ?? binding?.backendSessionId ?? null
   const modelId = activeRun?.modelId ?? binding?.requestedModelId ?? null
-  const permissionMode = activeRun?.permissionMode ?? null
+  const runtimeSettings = activeRun?.runtimeSettings ?? readSessionRuntimeSettings(session.configJson)
+  const providerTargetAvailable = activeRun ? true : isProviderTargetAvailable(providerTargetId)
   const hasActiveGoal = binding?.runtimeKind === 'codex'
     && hasActiveCodexGoal(binding.backendStateSnapshot)
+    && providerTargetAvailable
   const status: RuntimeSessionStatusKind = activeRun
     ? activeRun.cancelRequested ? 'cancelling' : 'streaming'
     : pendingState ? 'pending' : 'idle'
@@ -1116,14 +1491,15 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     providerTargetId,
     providerSessionId,
     modelId,
-    permissionMode,
+    runtimeSettings,
     pendingQueueItemId: pendingState?.queueItemId ?? null,
     hasActiveGoal,
-    activeRun: activeRun ? toRuntimeSessionRunDto(activeRun, getRun(activeRun.runId)) : null,
+    activeRun: activeRun ? toRuntimeSessionRunDto(activeRun, getRun(activeRun.runId), { runtimeSettings }) : null,
     latestRun: latestRun
       ? toRuntimeSessionRunDto(null, latestRun, {
           modelId: binding?.requestedModelId ?? null,
           providerSessionId: binding?.backendSessionId ?? null,
+          runtimeSettings,
         })
       : null,
     queue,
@@ -1133,7 +1509,7 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
 function toRuntimeSessionRunDto(
   activeRun: ActiveRun | null,
   run: BackendRun | undefined,
-  fallback: { modelId?: string | null, providerSessionId?: string | null } = {},
+  fallback: { modelId?: string | null, providerSessionId?: string | null, runtimeSettings?: ChatRuntimeSettings } = {},
 ): RuntimeSessionRunDto {
   return {
     runId: activeRun?.runId ?? run?.id ?? '',
@@ -1144,7 +1520,7 @@ function toRuntimeSessionRunDto(
     modelId: activeRun?.modelId ?? fallback.modelId ?? null,
     providerSessionId: activeRun?.runtimeSession.providerSessionId ?? fallback.providerSessionId ?? null,
     queueItemId: activeRun?.queueItemId ?? null,
-    permissionMode: activeRun?.permissionMode ?? null,
+    runtimeSettings: activeRun?.runtimeSettings ?? fallback.runtimeSettings ?? DEFAULT_RUNTIME_SETTINGS,
   }
 }
 
@@ -1361,7 +1737,55 @@ function serializeQueueContextParts(contextParts: ChatContextPart[]): string {
   return JSON.stringify(contextParts)
 }
 
-function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSessionQueueItemDto {
+function readQueueItemRuntimeSettings(
+  row: Pick<typeof chatSessionQueueItems.$inferSelect, 'permissionMode' | 'runtimeAccessMode' | 'runtimeInteractionMode'>,
+  sessionRuntimeSettings: ChatRuntimeSettings,
+): ChatRuntimeSettings {
+  const accessMode = normalizeRuntimeAccessMode(row.runtimeAccessMode)
+    ?? (row.permissionMode === 'plan' ? 'approval-required' : DEFAULT_RUNTIME_SETTINGS.accessMode)
+  const interactionMode = normalizeRuntimeInteractionMode(row.runtimeInteractionMode)
+    ?? (row.permissionMode === 'plan' ? 'plan' : DEFAULT_RUNTIME_SETTINGS.interactionMode)
+  return mergeRuntimeSettings(sessionRuntimeSettings, {
+    accessMode,
+    interactionMode,
+  })
+}
+
+function readPersistedThinkingEffort(effort: unknown): PersistedThinkingEffort | null {
+  return effort === 'low'
+    || effort === 'medium'
+    || effort === 'high'
+    || effort === 'xhigh'
+    ? effort
+    : null
+}
+
+function canApplyLiveSteerWithSnapshot(input: {
+  activeRun: ActiveRun
+  row: Pick<
+    typeof chatSessionQueueItems.$inferSelect,
+    'providerTargetId' | 'modelId' | 'thinkingEffort' | 'permissionMode' | 'runtimeAccessMode' | 'runtimeInteractionMode'
+  >
+}): boolean {
+  if (input.row.providerTargetId && input.row.providerTargetId !== input.activeRun.providerTargetId) {
+    return false
+  }
+  if (input.row.modelId && input.row.modelId !== input.activeRun.modelId) {
+    return false
+  }
+  if (readPersistedThinkingEffort(input.row.thinkingEffort)) {
+    return false
+  }
+  const rowRuntimeSettings = readQueueItemRuntimeSettings(input.row, DEFAULT_RUNTIME_SETTINGS)
+  return rowRuntimeSettings.accessMode === input.activeRun.runtimeSettings.accessMode
+    && rowRuntimeSettings.interactionMode === input.activeRun.runtimeSettings.interactionMode
+}
+
+function toQueueItemDto(
+  row: typeof chatSessionQueueItems.$inferSelect,
+  sessionRuntimeSettings: ChatRuntimeSettings = DEFAULT_RUNTIME_SETTINGS,
+): ChatSessionQueueItemDto {
+  const runtimeSettings = readQueueItemRuntimeSettings(row, sessionRuntimeSettings)
   return {
     id: row.id,
     sessionId: row.sessionId,
@@ -1372,8 +1796,8 @@ function toQueueItemDto(row: typeof chatSessionQueueItems.$inferSelect): ChatSes
     contextParts: parseQueueContextParts(row.contextPartsJson),
     providerTargetId: row.providerTargetId,
     modelId: row.modelId,
-    thinkingEffort: row.thinkingEffort as ChatSessionQueueItemDto['thinkingEffort'],
-    permissionMode: normalizeChatPermissionMode(row.permissionMode),
+    thinkingEffort: readPersistedThinkingEffort(row.thinkingEffort),
+    runtimeSettings,
     position: row.position,
     sourceRunId: row.sourceRunId,
     startedRunId: row.startedRunId,
@@ -1480,41 +1904,7 @@ async function resolveRuntimeSessionForBangCommand(input: {
   runtimeSession: RuntimeSession
   requestedModelId: string | null
 }> {
-  const binding = getBinding(input.sessionId)
-  const reusableBinding
-    = binding?.providerTargetId === input.context.providerTarget.id
-      && binding.runtimeKind === input.runtimeKind
-      ? binding
-      : undefined
-
-  const runtimeSession = reusableBinding
-    ? await input.runtime.resumeChatSession({
-        runtimeSession: {
-          id: input.sessionId,
-          chatSessionId: input.sessionId,
-          providerTargetId: input.context.providerTarget.id,
-          runtimeKind: input.runtimeKind,
-          providerSessionId: reusableBinding.backendSessionId,
-          providerStateSnapshot: reusableBinding.backendStateSnapshot,
-        },
-        profile: input.context.profile,
-        workspacePath: input.context.workspacePath,
-        agentId: input.context.session.agentId,
-        modelId: reusableBinding.requestedModelId ?? undefined,
-      })
-    : await input.runtime.startChatSession({
-        chatSessionId: input.sessionId,
-        profile: input.context.profile,
-        workspacePath: input.context.workspacePath,
-        agentId: input.context.session.agentId,
-        previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
-      })
-
-  const requestedModelId = reusableBinding?.requestedModelId
-    ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId
-    ?? null
-
-  return { runtimeSession, requestedModelId }
+  return await resolveRuntimeSessionForContext(input)
 }
 
 async function resolveParentRuntimeSessionForSide(input: {
@@ -1528,12 +1918,11 @@ async function resolveParentRuntimeSessionForSide(input: {
   requestedModelId: string | null
   reusableBinding: BackendSessionBinding | undefined
 }> {
-  const binding = getBinding(input.parentSessionId)
-  const reusableBinding
-    = binding?.providerTargetId === input.context.providerTarget.id
-      && binding.runtimeKind === input.runtimeKind
-      ? binding
-      : undefined
+  const reusableBinding = readReusableDurableProviderRuntimeBinding({
+    chatSessionId: input.parentSessionId,
+    providerTargetId: input.context.providerTarget.id,
+    runtimeKind: input.runtimeKind,
+  })
 
   if (!reusableBinding) {
     return {
@@ -1603,6 +1992,41 @@ function toSideChatSessionDto(input: {
   return input
 }
 
+function createPromotedSideSessionTitle(sideTitle: string): string {
+  const title = normalizeRuntimeSessionTitle(sideTitle) ?? 'Untitled'
+  return `Promoted ${title}`
+}
+
+function cloneStoredMessageForSession(input: {
+  row: typeof messages.$inferSelect
+  sessionId: string
+  messageId: string
+  parentMessageId: string | null
+}): typeof messages.$inferInsert {
+  const role = input.row.role as 'user' | 'assistant'
+  const message = parseStoredMessageSnapshot(input.row, role)
+  const clonedMessage = {
+    ...message,
+    id: input.messageId,
+  } satisfies UIMessage
+
+  return {
+    id: input.messageId,
+    sessionId: input.sessionId,
+    parentMessageId: input.parentMessageId,
+    parentToolCallId: input.row.parentToolCallId,
+    taskId: input.row.taskId,
+    depth: input.row.depth,
+    role,
+    status: input.row.status,
+    content: extractMessageText(clonedMessage),
+    messageJson: JSON.stringify(clonedMessage),
+    errorText: input.row.errorText,
+    createdAt: input.row.createdAt,
+    updatedAt: input.row.updatedAt,
+  }
+}
+
 export async function createSideChat(input: CreateSideChatInput): Promise<SideChatSessionDto> {
   const parentSession = assertStoredSession(input.parentSessionId)
   const context = assertRuntimeCompatibleTarget(assertRunnableSession(input.parentSessionId), input.providerTargetId)
@@ -1640,8 +2064,15 @@ export async function createSideChat(input: CreateSideChatInput): Promise<SideCh
     : null
   let sideContextSource: SideContextSource = 'cradle-context'
   let childRuntimeSession: RuntimeSession | null = null
+  let pendingSideHostLease: ReturnType<typeof reserveSideConversationHost> | null = null
 
   if (runtime.forkRuntimeSession && parentRuntime.runtimeSession?.providerSessionId) {
+    pendingSideHostLease = reserveSideConversationHost({
+      sessionId: childSessionId,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind,
+      pinned: true,
+    })
     try {
       childRuntimeSession = await runtime.forkRuntimeSession({
         sourceRuntimeSession: parentRuntime.runtimeSession,
@@ -1661,6 +2092,8 @@ export async function createSideChat(input: CreateSideChatInput): Promise<SideCh
         parentSessionId: input.parentSessionId,
         runtimeKind,
       })
+      pendingSideHostLease.release()
+      pendingSideHostLease = null
     }
   }
 
@@ -1675,28 +2108,41 @@ export async function createSideChat(input: CreateSideChatInput): Promise<SideCh
     })
   }
 
-  SessionService.create({
-    id: childSessionId,
-    parentSessionId: input.parentSessionId,
-    sideContextSource,
-    workspaceId: context.session.workspaceId ?? null,
-    title: createSideSessionTitle(parentSession.title),
-    providerTargetId: context.providerTarget.id,
-    runtimeKind,
-    agentId: childAgentId,
-    linkedIssueId: context.session.linkedIssueId,
-    configJson: context.session.configJson,
-  })
+  let sideConversationRegistered = false
+  try {
+    SessionService.create({
+      id: childSessionId,
+      parentSessionId: input.parentSessionId,
+      sideContextSource,
+      workspaceId: context.session.workspaceId ?? null,
+      title: createSideSessionTitle(parentSession.title),
+      providerTargetId: context.providerTarget.id,
+      runtimeKind,
+      agentId: childAgentId,
+      linkedIssueId: context.session.linkedIssueId,
+      configJson: context.session.configJson,
+    })
 
-  attachBinding({
-    sessionId: childSessionId,
-    providerTargetId: context.providerTarget.id,
-    runtimeKind: childRuntimeSession.runtimeKind,
-    runtimeSession: childRuntimeSession,
-    requestedModelId:
-      parentRuntime.requestedModelId
-      ?? readProviderStateSnapshot(childRuntimeSession.providerStateSnapshot).models.currentModelId,
-  })
+    registerSideConversation({
+      sessionId: childSessionId,
+      parentSessionId: input.parentSessionId,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind: childRuntimeSession.runtimeKind,
+      runtimeSession: childRuntimeSession,
+      requestedModelId:
+        parentRuntime.requestedModelId
+        ?? readProviderStateSnapshot(childRuntimeSession.providerStateSnapshot).models.currentModelId,
+      pinned: true,
+    })
+    sideConversationRegistered = true
+  }
+  finally {
+    if (!sideConversationRegistered) {
+      pendingSideHostLease?.release()
+    }
+  }
+  pendingSideHostLease?.release()
+  pendingSideHostLease = null
 
   return toSideChatSessionDto({
     sessionId: childSessionId,
@@ -1706,6 +2152,97 @@ export async function createSideChat(input: CreateSideChatInput): Promise<SideCh
     providerSessionId: childRuntimeSession.providerSessionId,
     sideContextSource,
   })
+}
+
+export function promoteSideChat(input: { sourceSessionId: string }): PromoteSideChatDto {
+  const sourceSession = assertStoredSession(input.sourceSessionId)
+  if (!sourceSession.parentSessionId) {
+    throw new AppError({
+      code: 'chat_side_session_required',
+      status: 400,
+      message: 'Only side chat sessions can be promoted',
+      details: { sessionId: input.sourceSessionId },
+    })
+  }
+  if (activeRunIdsBySession.has(sourceSession.id) || pendingRunSessions.has(sourceSession.id)) {
+    throw new AppError({
+      code: 'chat_run_in_progress',
+      status: 409,
+      message: 'Side chat session cannot be promoted while a run is active',
+      details: { sessionId: sourceSession.id },
+    })
+  }
+
+  const promotedSessionId = randomUUID()
+  const promotedTitle = createPromotedSideSessionTitle(sourceSession.title)
+  const sourceMessages = db()
+    .select()
+    .from(messages)
+    .where(eq(messages.sessionId, sourceSession.id))
+    .orderBy(messages.createdAt, messageInsertOrder)
+    .all()
+  if (sourceMessages.some(row => row.status === 'streaming')) {
+    throw new AppError({
+      code: 'chat_run_in_progress',
+      status: 409,
+      message: 'Side chat session cannot be promoted while transcript messages are streaming',
+      details: { sessionId: sourceSession.id },
+    })
+  }
+  const messageIdBySourceId = new Map<string, string>()
+  const copiedMessages = sourceMessages.map((row) => {
+    const messageId = randomUUID()
+    messageIdBySourceId.set(row.id, messageId)
+    return { row, messageId }
+  })
+  const now = currentUnixSeconds()
+
+  db().transaction((tx) => {
+    tx.insert(sessions)
+      .values({
+        id: promotedSessionId,
+        parentSessionId: null,
+        sideContextSource: null,
+        workspaceId: sourceSession.workspaceId,
+        title: promotedTitle,
+        titleSource: 'initial',
+        providerTargetId: sourceSession.providerTargetId,
+        runtimeKind: sourceSession.runtimeKind,
+        agentId: sourceSession.agentId,
+        configJson: sourceSession.configJson,
+        linkedIssueId: sourceSession.linkedIssueId,
+        pinned: sourceSession.pinned,
+        archivedAt: null,
+        lastReadAt: null,
+        ptyStartedAt: null,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run()
+
+    for (const copied of copiedMessages) {
+      tx.insert(messages)
+        .values(cloneStoredMessageForSession({
+          row: copied.row,
+          sessionId: promotedSessionId,
+          messageId: copied.messageId,
+          parentMessageId: copied.row.parentMessageId
+            ? messageIdBySourceId.get(copied.row.parentMessageId) ?? null
+            : null,
+        }))
+        .run()
+    }
+  })
+
+  releaseSideConversation(sourceSession.id)
+
+  return {
+    sessionId: promotedSessionId,
+    sourceSessionId: sourceSession.id,
+    runtimeKind: sourceSession.runtimeKind as RuntimeKind,
+    providerTargetId: sourceSession.providerTargetId,
+    title: promotedTitle,
+  }
 }
 
 export async function executeBangCommand(input: {
@@ -1954,6 +2491,38 @@ function resolveCradleSideTurnContext(session: Session | null | undefined): stri
   ].join('\n')
 }
 
+function assertSideConversationLive(input: {
+  session: Session
+  providerTargetId: string
+  runtimeKind: RuntimeKind
+}): void {
+  if (!input.session.parentSessionId) {
+    return
+  }
+
+  const liveSide = readSideConversation(input.session.id)
+  if (
+    liveSide
+    && liveSide.providerTargetId === input.providerTargetId
+    && liveSide.runtimeKind === input.runtimeKind
+  ) {
+    return
+  }
+
+  throw new AppError({
+    code: 'side_chat_expired',
+    status: 409,
+    message: 'Side chat is no longer attached to its live provider conversation',
+    details: {
+      sessionId: input.session.id,
+      parentSessionId: input.session.parentSessionId,
+      sideContextSource: input.session.sideContextSource,
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
+    },
+  })
+}
+
 function formatSideContextMessage(message: UIMessage): string | null {
   const text = extractMessageText(message).replace(/\s+/g, ' ').trim()
   if (!text) {
@@ -1985,7 +2554,7 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
   assertStoredSession(sessionId)
 
   if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    abortPersistedStreamingSession(sessionId)
+    failOrphanedPersistedStreamingSession(sessionId)
   }
 
   const rows = db()
@@ -2088,39 +2657,26 @@ export async function getCapabilities(sessionId: string): Promise<RuntimePresent
     return emptyRuntimePresentation(runtimeKind)
   }
 
-  const binding = getBinding(sessionId)
-  const runtimeSession = binding
-    ? await runtime.resumeChatSession({
-        runtimeSession: {
-          id: sessionId,
-          chatSessionId: sessionId,
-          providerTargetId: context.providerTarget.id,
-          runtimeKind,
-          providerSessionId: binding.backendSessionId,
-          providerStateSnapshot: binding.backendStateSnapshot,
-        },
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        agentId: context.session.agentId,
-        modelId:
-          readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined,
-      })
-    : await runtime.startChatSession({
-        chatSessionId: sessionId,
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        agentId: context.session.agentId,
-        previousProviderStateSnapshot: null,
-      })
+  const resolved = await resolveExistingRuntimeSessionForContext({
+    sessionId,
+    context,
+    runtimeKind,
+    runtime,
+  })
+  if (!resolved) {
+    return emptyRuntimePresentation(runtimeKind)
+  }
 
   return runtime.getPresentation({
-    runtimeSession,
+    runtimeSession: resolved.runtimeSession,
     profile: context.profile,
     workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
     agentId: context.session.agentId,
     modelId:
-      readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
+      resolved.requestedModelId
+      ?? readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models.currentModelId
+      ?? undefined,
     systemPrompt: resolveSessionSystemPrompt(context.session),
   })
 }
@@ -2194,37 +2750,28 @@ export async function getUiSlotStates(sessionId: string): Promise<{ runtimeKind:
     }
   }
 
-  const binding = getBinding(sessionId)
-  if (!binding) {
+  const resolved = await resolveExistingRuntimeSessionForContext({
+    sessionId,
+    context,
+    runtimeKind,
+    runtime,
+  })
+  if (!resolved) {
     return { runtimeKind, states: [] }
   }
-
-  const runtimeSession = await runtime.resumeChatSession({
-    runtimeSession: {
-      id: sessionId,
-      chatSessionId: sessionId,
-      providerTargetId: context.providerTarget.id,
-      runtimeKind,
-      providerSessionId: binding.backendSessionId,
-      providerStateSnapshot: binding.backendStateSnapshot,
-    },
-    profile: context.profile,
-    workspacePath: context.workspacePath,
-    agentId: context.session.agentId,
-    modelId:
-      readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined,
-  })
 
   return {
     runtimeKind,
     states: await runtime.getUiSlotStates({
-      runtimeSession,
+      runtimeSession: resolved.runtimeSession,
       profile: context.profile,
       workspaceId: context.session.workspaceId,
       workspacePath: context.workspacePath,
       agentId: context.session.agentId,
       modelId:
-        readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId ?? undefined,
+        resolved.requestedModelId
+        ?? readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models.currentModelId
+        ?? undefined,
       systemPrompt: resolveSessionSystemPrompt(context.session),
     }),
   }
@@ -2335,8 +2882,13 @@ async function resolveRuntimeSessionContext(sessionId: string): Promise<Resolved
     }
   }
 
-  const binding = getBinding(sessionId)
-  if (!binding) {
+  const resolved = await resolveExistingRuntimeSessionForContext({
+    sessionId,
+    context,
+    runtimeKind,
+    runtime,
+  })
+  if (!resolved) {
     throw new AppError({
       code: 'chat_runtime_session_not_started',
       status: 404,
@@ -2345,27 +2897,15 @@ async function resolveRuntimeSessionContext(sessionId: string): Promise<Resolved
     })
   }
 
-  const modelId = readProviderStateSnapshot(binding.backendStateSnapshot).models.currentModelId ?? undefined
-  const runtimeSession = await runtime.resumeChatSession({
-    runtimeSession: {
-      id: sessionId,
-      chatSessionId: sessionId,
-      providerTargetId: context.providerTarget.id,
-      runtimeKind,
-      providerSessionId: binding.backendSessionId,
-      providerStateSnapshot: binding.backendStateSnapshot,
-    },
-    profile: context.profile,
-    workspacePath: context.workspacePath,
-    agentId: context.session.agentId,
-    modelId,
-  })
+  const modelId = resolved.requestedModelId
+    ?? readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models.currentModelId
+    ?? undefined
 
   return {
     context,
     runtimeKind,
     runtime,
-    runtimeSession,
+    runtimeSession: resolved.runtimeSession,
     modelId,
   }
 }
@@ -2382,21 +2922,34 @@ function buildRuntimeProviderInput(resolved: ResolvedRuntimeSessionContext) {
   }
 }
 
-export function getCodexAppServerCapabilityManifest(): CodexAppServerCapabilityManifest {
-  return getCodexAppServerCapabilities()
+export function getCodexAppServerCapabilityManifest(): ProviderNativeAppServerCapabilityManifest {
+  const runtime = getRuntimeRegistry().get('codex')
+  if (!runtime?.getProviderNativeAppServerCapabilities) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: 'Codex app-server capabilities are not available',
+    })
+  }
+  return runtime.getProviderNativeAppServerCapabilities()
 }
 
-export async function invokeCodexAppServer(input: CodexAppServerInvokeInput): Promise<CodexAppServerInvokeResponse> {
-  const context = await resolveCodexAppServerBridgeContext(input)
-  const response = await createCodexAppServerBridge().invoke({
+export async function invokeCodexAppServer(input: CodexAppServerInvokeInput): Promise<ProviderNativeAppServerInvokeResponse> {
+  const context = await resolveCodexProviderNativeAppServerContext(input)
+  if (!context.runtime.invokeProviderNativeAppServer) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: 'Codex app-server invoke is not available',
+    })
+  }
+  const response = await context.runtime.invokeProviderNativeAppServer({
     ...context,
     method: input.method,
     params: input.params,
   })
-  syncCodexGoalInvokeSnapshot({
+  persistProviderNativeAppServerRuntimeSession({
     sessionId: input.sessionId,
-    method: input.method,
-    result: response.result,
     runtimeSession: context.runtimeSession,
     providerTargetId: context.runtimeSession.providerTargetId,
     requestedModelId:
@@ -2406,41 +2959,19 @@ export async function invokeCodexAppServer(input: CodexAppServerInvokeInput): Pr
   return response
 }
 
-function syncCodexGoalInvokeSnapshot(input: {
+function persistProviderNativeAppServerRuntimeSession(input: {
   sessionId: string
-  method: string
-  result: unknown
   runtimeSession: RuntimeSession
   providerTargetId: string
   requestedModelId: string | null
 }): void {
-  if (input.method === 'thread/goal/clear') {
-    writeCodexGoalSnapshotToRuntimeSession(input.runtimeSession, null)
-  }
-  else if (input.method === 'thread/goal/set') {
-    const result = readUnknownRecord(input.result)
-    const goal = readUnknownRecord(result.goal)
-    const objective = typeof goal.objective === 'string' ? goal.objective.trim() : ''
-    const status = readRuntimeGoalStatus(goal.status)
-    const threadId = typeof goal.threadId === 'string' ? goal.threadId : ''
-    if (!threadId || !objective || !status) {
-      return
-    }
-    writeCodexGoalSnapshotToRuntimeSession(input.runtimeSession, {
-      threadId,
-      objective,
-      status,
-      tokenBudget: typeof goal.tokenBudget === 'number' ? goal.tokenBudget : null,
-      tokensUsed: typeof goal.tokensUsed === 'number' ? goal.tokensUsed : 0,
-      timeUsedSeconds: typeof goal.timeUsedSeconds === 'number' ? goal.timeUsedSeconds : 0,
-      createdAt: typeof goal.createdAt === 'number' ? goal.createdAt : 0,
-      updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : currentUnixSeconds(),
+  if (!canPersistRuntimeSessionForProviderTarget(input)) {
+    chatLogger.warn('skipped app-server runtime session persistence after provider target changed', {
+      sessionId: input.sessionId,
+      providerTargetId: input.providerTargetId,
     })
-  }
-  else {
     return
   }
-
   attachBinding({
     sessionId: input.sessionId,
     providerTargetId: input.providerTargetId,
@@ -2450,43 +2981,95 @@ function syncCodexGoalInvokeSnapshot(input: {
   })
 }
 
-function writeCodexGoalSnapshotToRuntimeSession(
-  runtimeSession: RuntimeSession,
-  goal: Record<string, unknown> | null,
-): void {
-  const snapshot = readProviderStateSnapshot(runtimeSession.providerStateSnapshot)
-  const codex = readUnknownRecord(snapshot.codex)
-  runtimeSession.providerStateSnapshot = JSON.stringify({
-    ...snapshot,
-    codex: {
-      ...codex,
-      goal,
-    },
-  })
-}
-
-function readRuntimeGoalStatus(value: unknown) {
-  return value === 'active'
-    || value === 'paused'
-    || value === 'blocked'
-    || value === 'usageLimited'
-    || value === 'budgetLimited'
-    || value === 'complete'
-    ? value
-    : null
-}
-
 export async function openCodexAppServerStream(input: CodexAppServerStreamInput): Promise<ReadableStream<Uint8Array>> {
-  const context = await resolveCodexAppServerBridgeContext(input)
-  return createCodexAppServerBridge().openEventStream({
+  const context = await resolveCodexProviderNativeAppServerContext(input)
+  if (!context.runtime.openProviderNativeAppServerStream) {
+    throw new AppError({
+      code: 'chat_runtime_not_available',
+      status: 501,
+      message: 'Codex app-server streaming is not available',
+    })
+  }
+  const stream = context.runtime.openProviderNativeAppServerStream({
     ...context,
     method: input.method,
     params: input.params,
     closeOnMethods: input.closeOnMethods,
   })
+  return persistCodexAppServerRuntimeSessionAfterStream({
+    stream,
+    sessionId: input.sessionId,
+    runtimeSession: context.runtimeSession,
+    providerTargetId: context.runtimeSession.providerTargetId,
+    modelId: input.modelId,
+  })
 }
 
-async function resolveCodexAppServerBridgeContext(input: {
+function persistCodexAppServerRuntimeSessionAfterStream(input: {
+  stream: ReadableStream<Uint8Array>
+  sessionId: string
+  runtimeSession: RuntimeSession
+  providerTargetId: string
+  modelId?: string
+}): ReadableStream<Uint8Array> {
+  const reader = input.stream.getReader()
+  let persisted = false
+  let released = false
+
+  const releaseReader = () => {
+    if (released) {
+      return
+    }
+    released = true
+    reader.releaseLock()
+  }
+
+  const persist = () => {
+    if (persisted) {
+      return
+    }
+    persisted = true
+    persistProviderNativeAppServerRuntimeSession({
+      sessionId: input.sessionId,
+      runtimeSession: input.runtimeSession,
+      providerTargetId: input.providerTargetId,
+      requestedModelId:
+        input.modelId
+        ?? readProviderStateSnapshot(input.runtimeSession.providerStateSnapshot).models.currentModelId,
+    })
+  }
+
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      try {
+        const chunk = await reader.read()
+        if (chunk.done) {
+          persist()
+          releaseReader()
+          controller.close()
+          return
+        }
+        controller.enqueue(chunk.value)
+      }
+      catch (error) {
+        persist()
+        releaseReader()
+        controller.error(error)
+      }
+    },
+    async cancel(reason) {
+      try {
+        await reader.cancel(reason)
+      }
+      finally {
+        persist()
+        releaseReader()
+      }
+    },
+  })
+}
+
+async function resolveCodexProviderNativeAppServerContext(input: {
   sessionId: string
   providerTargetId?: string
   modelId?: string
@@ -2519,35 +3102,17 @@ async function resolveCodexAppServerBridgeContext(input: {
     })
   }
 
-  const binding = getBinding(input.sessionId)
-  const reusableBinding
-    = binding?.providerTargetId === context.providerTarget.id
-      && binding.runtimeKind === 'codex'
-      ? binding
-      : undefined
-  const runtimeSession = reusableBinding
-    ? await runtime.resumeChatSession({
-        runtimeSession: {
-          id: input.sessionId,
-          chatSessionId: input.sessionId,
-          providerTargetId: context.providerTarget.id,
-          runtimeKind: 'codex',
-          providerSessionId: reusableBinding.backendSessionId,
-          providerStateSnapshot: reusableBinding.backendStateSnapshot,
-        },
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        agentId: context.session.agentId,
-        modelId: input.modelId,
-      })
-    : await runtime.startChatSession({
-        chatSessionId: input.sessionId,
-        profile: context.profile,
-        workspacePath: context.workspacePath,
-        agentId: context.session.agentId,
-        modelId: input.modelId,
-        previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
-      })
+  const requestedModelId = input.modelId
+    ?? SessionService.readSessionModelPreference(context.session.configJson)
+    ?? undefined
+  const { runtimeSession, requestedModelId: resolvedModelId } = await resolveRuntimeSessionForContext({
+    sessionId: input.sessionId,
+    context,
+    runtimeKind: 'codex',
+    runtime,
+    modelId: requestedModelId,
+    requestedProviderTargetId: input.providerTargetId,
+  })
 
   attachBinding({
     sessionId: input.sessionId,
@@ -2555,26 +3120,20 @@ async function resolveCodexAppServerBridgeContext(input: {
     runtimeKind: runtimeSession.runtimeKind,
     runtimeSession,
     requestedModelId:
-      input.modelId
+      requestedModelId
+      ?? resolvedModelId
       ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
   })
 
   return {
+    runtime,
     runtimeSession,
     profile: context.profile,
     workspaceId: context.session.workspaceId,
     workspacePath: context.workspacePath,
     agentId: context.session.agentId,
-    modelId: input.modelId,
+    modelId: requestedModelId ?? resolvedModelId ?? undefined,
   }
-}
-
-function createCodexAppServerBridge(): CodexAppServerBridge {
-  return new CodexAppServerBridge({
-    readSecret: secretRef => Secrets.readSecret(secretRef),
-    updateSecretValue: (secretRef, secret) => Secrets.updateSecretValue(secretRef, secret),
-    resolveSkillPaths: resolveRuntimeSkillPaths,
-  })
 }
 
 export async function createRun(input: {
@@ -2585,8 +3144,8 @@ export async function createRun(input: {
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-  permissionMode?: ChatPermissionMode
+  thinkingEffort?: ChatThinkingEffort
+  runtimeSettings?: ChatRuntimeSettingsPatch
   continuationMode?: ChatSessionQueueMode
   queueItemId?: string
   internalContinuation?: 'codexGoal'
@@ -2671,36 +3230,36 @@ export async function createRun(input: {
         message: `Runtime is not available: ${runtimeKind}`,
       })
     }
+    assertSideConversationLive({
+      session: context.session,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind,
+    })
+    const runtimeContextParts = runtimeKind === 'codex'
+      ? withCodexBaselineSkillContextParts(contextParts)
+      : contextParts
+    const runtimeLastRequestMessage = runtimeKind === 'codex' && lastRequestMessage?.role === 'user'
+      ? withCodexBaselineSkillUserMessage(lastRequestMessage)
+      : lastRequestMessage
+    const runtimeRequestMessages = replaceLastRequestMessage(requestMessages, runtimeLastRequestMessage)
 
-    const binding = getBinding(input.sessionId)
-    const reusableBinding
-      = binding?.providerTargetId === context.providerTarget.id
-        && binding.runtimeKind === runtimeKind
-        ? binding
-        : undefined
-    const runtimeSession = reusableBinding
-      ? await runtime.resumeChatSession({
-          runtimeSession: {
-            id: input.sessionId,
-            chatSessionId: input.sessionId,
-            providerTargetId: context.providerTarget.id,
-            runtimeKind,
-            providerSessionId: reusableBinding.backendSessionId,
-            providerStateSnapshot: reusableBinding.backendStateSnapshot,
-          },
-          profile: context.profile,
-          workspacePath: context.workspacePath,
-          agentId: context.session.agentId,
-          modelId: input.modelId,
-        })
-      : await runtime.startChatSession({
-          chatSessionId: input.sessionId,
-          profile: context.profile,
-          workspacePath: context.workspacePath,
-          agentId: context.session.agentId,
-          modelId: input.modelId,
-          previousProviderStateSnapshot: binding?.backendStateSnapshot ?? null,
-        })
+    const sessionRuntimeSettings = readSessionRuntimeSettings(context.session.configJson)
+    const runtimeSettings = mergeRuntimeSettings(
+      sessionRuntimeSettings,
+      normalizeRuntimeSettingsPatch(input.runtimeSettings),
+    )
+    const requestedModelId = input.modelId
+      ?? SessionService.readSessionModelPreference(context.session.configJson)
+      ?? undefined
+    const runtimeResolution = await resolveRuntimeSessionForContext({
+      sessionId: input.sessionId,
+      context,
+      runtimeKind,
+      runtime,
+      modelId: requestedModelId,
+      requestedProviderTargetId: requestedProviderTargetId,
+    })
+    const runtimeSession = runtimeResolution.runtimeSession
 
     if (pendingState.cancelled) {
       if (input.queueItemId) {
@@ -2742,23 +3301,21 @@ export async function createRun(input: {
       providerTargetId: context.providerTarget.id,
       runtimeKind: runtimeSession.runtimeKind,
       runtimeSession,
-      requestedModelId:
-        input.modelId
-        ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
+      requestedModelId: runtimeResolution.requestedModelId,
     })
 
     const draft = input.internalContinuation === 'codexGoal'
       ? createCodexGoalContinuationDraft({ sessionId: input.sessionId })
-      : lastRequestMessage?.role === 'assistant'
+      : runtimeLastRequestMessage?.role === 'assistant'
       ? {
           userMessageId: '',
-          assistantMessageId: lastRequestMessage.id,
-          userMessage: lastRequestMessage,
+          assistantMessageId: runtimeLastRequestMessage.id,
+          userMessage: runtimeLastRequestMessage,
         }
-      : lastRequestMessage?.role === 'user'
+      : runtimeLastRequestMessage?.role === 'user'
         ? createDraftTurnFromUserMessage({
             sessionId: input.sessionId,
-            userMessage: lastRequestMessage,
+            userMessage: runtimeLastRequestMessage,
             continuation: input.continuationMode
               ? { mode: input.continuationMode, queueItemId: input.queueItemId }
               : undefined,
@@ -2768,7 +3325,7 @@ export async function createRun(input: {
             runtimeKind,
             userText,
             files,
-            contextParts,
+            contextParts: runtimeContextParts,
             continuation: input.continuationMode
               ? { mode: input.continuationMode, queueItemId: input.queueItemId }
               : undefined,
@@ -2794,9 +3351,7 @@ export async function createRun(input: {
       providerTargetId: context.providerTarget.id,
       runtime,
       runtimeSession,
-      modelId:
-        input.modelId
-        ?? readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId,
+      modelId: runtimeResolution.requestedModelId,
       chunkBuffer: [],
       chunkBufferIndexByKey: new Map(),
       pendingDeltaChunk: null,
@@ -2806,18 +3361,18 @@ export async function createRun(input: {
         ? lastRequestMessage
         : createAssistantMessage(draft.assistantMessageId),
       finalProjection: createFinalMessageProjectionState(),
-	      queueItemId: input.queueItemId,
-	      permissionMode: input.permissionMode,
-	      internalContinuation: input.internalContinuation,
-	      runSnapshotId: null,
-	      runSnapshotSeq: 0,
-	    }
-	    activeRuns.set(run.id, activeRun)
-	    startActiveRunSnapshot(activeRun, {
-	      workspaceId: context.session.workspaceId,
-	      agentId: context.session.agentId,
-	    })
-	    startSnapshotTimer(activeRun)
+      queueItemId: input.queueItemId,
+      runtimeSettings,
+      internalContinuation: input.internalContinuation,
+      runSnapshotId: null,
+      runSnapshotSeq: 0,
+    }
+    activeRuns.set(run.id, activeRun)
+    startActiveRunSnapshot(activeRun, {
+      workspaceId: context.session.workspaceId,
+      agentId: context.session.agentId,
+    })
+    startSnapshotTimer(activeRun)
     activeRunIdsBySession.set(input.sessionId, run.id)
     if (isChatStreamTraceEnabled()) {
       recordChatStreamTrace({
@@ -2831,6 +3386,7 @@ export async function createRun(input: {
           providerTargetId: activeRun.providerTargetId,
           modelId: activeRun.modelId,
           queueItemId: activeRun.queueItemId ?? null,
+          runtimeSettings: activeRun.runtimeSettings,
         },
       })
     }
@@ -2867,13 +3423,13 @@ export async function createRun(input: {
     void executeRun(activeRun, {
       message: draft.userMessage,
       profile: context.profile,
-      modelId: input.modelId,
+      modelId: requestedModelId ?? runtimeResolution.requestedModelId ?? undefined,
       thinkingEffort: input.thinkingEffort,
-      permissionMode: input.permissionMode,
+      runtimeSettings,
       systemPrompt: turnContext.systemPrompt,
       transcript: turnContext.transcript,
       history: turnContext.history?.length ? turnContext.history : undefined,
-      originalMessages: requestMessages,
+      originalMessages: runtimeRequestMessages,
       workspaceId: context.session.workspaceId,
       workspacePath: context.workspacePath,
       agentId: context.session.agentId,
@@ -2913,8 +3469,8 @@ export async function streamResponse(input: {
   messages?: UIMessage[]
   providerTargetId?: string
   modelId?: string
-  thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-  permissionMode?: ChatPermissionMode
+  thinkingEffort?: ChatThinkingEffort
+  runtimeSettings?: ChatRuntimeSettingsPatch
 }): Promise<{
   runId: string
   assistantMessageId: string
@@ -3399,14 +3955,15 @@ export function getMessages(sessionId: string): Message[] {
 }
 
 export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDto[] {
-  assertStoredSession(sessionId)
+  const session = assertStoredSession(sessionId)
+  const runtimeSettings = readSessionRuntimeSettings(session.configJson)
   return db()
     .select()
     .from(chatSessionQueueItems)
     .where(eq(chatSessionQueueItems.sessionId, sessionId))
     .all()
     .sort(compareQueueRows)
-    .map(toQueueItemDto)
+    .map(row => toQueueItemDto(row, runtimeSettings))
 }
 
 export async function enqueueSessionQueueItem(
@@ -3439,6 +3996,11 @@ export async function enqueueSessionQueueItem(
   const position
     = pendingRows.reduce((maxPosition, row) => Math.max(maxPosition, row.position), 0) + 1
   const now = currentUnixSeconds()
+  const baseRuntimeSettings = readSessionRuntimeSettings(context.session.configJson)
+  const runtimeSettings = mergeRuntimeSettings(
+    baseRuntimeSettings,
+    normalizeRuntimeSettingsPatch(input.runtimeSettings),
+  )
   const row = db()
     .insert(chatSessionQueueItems)
     .values({
@@ -3451,8 +4013,10 @@ export async function enqueueSessionQueueItem(
       contextPartsJson: serializeQueueContextParts(contextParts),
       providerTargetId: input.providerTargetId?.trim() || null,
       modelId: input.modelId?.trim() || null,
-      thinkingEffort: input.thinkingEffort ?? null,
-      permissionMode: input.permissionMode ?? null,
+      thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
+      permissionMode: null,
+      runtimeAccessMode: runtimeSettings.accessMode,
+      runtimeInteractionMode: runtimeSettings.interactionMode,
       position,
       sourceRunId: getSourceRunId(input.sessionId),
       startedRunId: null,
@@ -3477,7 +4041,7 @@ export async function enqueueSessionQueueItem(
   }
 
   scheduleSessionQueueDrain(input.sessionId)
-  return toQueueItemDto(row)
+  return toQueueItemDto(row, runtimeSettings)
 }
 
 async function tryApplyLiveSteer(input: {
@@ -3531,6 +4095,26 @@ async function tryApplyLiveSteer(input: {
       )
       .get()
     return current ? toQueueItemDto(current) : null
+  }
+  if (!canApplyLiveSteerWithSnapshot({ activeRun, row: claimed })) {
+    db()
+      .update(chatSessionQueueItems)
+      .set({
+        status: 'pending',
+        startedRunId: null,
+        errorText: null,
+        updatedAt: currentUnixSeconds(),
+      })
+      .where(
+        and(
+          eq(chatSessionQueueItems.id, input.queueItemId),
+          eq(chatSessionQueueItems.sessionId, input.sessionId),
+          eq(chatSessionQueueItems.status, 'running'),
+          eq(chatSessionQueueItems.startedRunId, runId),
+        ),
+      )
+      .run()
+    return null
   }
 
   const sourceMessageId = activeRun.messageId
@@ -3624,42 +4208,77 @@ async function tryApplyLiveSteer(input: {
   return toQueueItemDto(updated)
 }
 
-export async function setSessionPermissionMode(input: {
+export function getSessionRuntimeSettings(sessionId: string): ChatRuntimeSettingsDto {
+  const session = assertStoredSession(sessionId)
+  const runtimeSettings = readSessionRuntimeSettings(session.configJson)
+  return {
+    sessionId,
+    runtimeSettings,
+    applied: readRuntimeSettingsApplied(sessionId, runtimeSettings),
+  }
+}
+
+export async function updateSessionRuntimeSettings(input: {
   sessionId: string
-  mode: ChatPermissionMode
-}): Promise<boolean> {
+  patch: ChatRuntimeSettingsPatch
+}): Promise<ChatRuntimeSettingsDto> {
+  const session = assertStoredSession(input.sessionId)
+  const runtimeSettings = mergeRuntimeSettings(
+    readSessionRuntimeSettings(session.configJson),
+    normalizeRuntimeSettingsPatch(input.patch),
+  )
+  db()
+    .update(sessions)
+    .set({
+      configJson: writeSessionRuntimeSettingsConfigJson(session.configJson, runtimeSettings),
+      updatedAt: currentUnixSeconds(),
+    })
+    .where(eq(sessions.id, input.sessionId))
+    .run()
+
   const runId = activeRunIdsBySession.get(input.sessionId)
+  let applied = true
   if (!runId) {
-    return false
-  }
-
-  const activeRun = activeRuns.get(runId)
-  if (!activeRun?.runtime.capabilities.supportsPermissionMode || !activeRun.runtime.setPermissionMode || activeRun.terminalStatus) {
-    return false
-  }
-
-  const context = getSessionRunContext(input.sessionId)
-  if (!context) {
-    return false
-  }
-
-  try {
-    await activeRun.runtime.setPermissionMode({
-      runtimeSession: activeRun.runtimeSession,
-      profile: context.profile,
-      mode: input.mode,
-    })
-    activeRun.permissionMode = input.mode
-    return true
-  }
-  catch (error) {
-    chatLogger.warn('set permission mode failed', {
-      error,
+    return {
       sessionId: input.sessionId,
-      runId,
-      mode: input.mode,
-    })
-    return false
+      runtimeSettings,
+      applied: readRuntimeSettingsApplied(input.sessionId, runtimeSettings),
+    }
+  }
+  const activeRun = activeRuns.get(runId)
+  applied = readRuntimeSettingsApplied(input.sessionId, runtimeSettings)
+  if (
+    !applied
+    && activeRun?.runtime.capabilities.supportsRuntimeSettings
+    && activeRun.runtime.updateRuntimeSettings
+    && !activeRun.terminalStatus
+  ) {
+    const context = getSessionRunContext(input.sessionId)
+    if (context) {
+      try {
+        await activeRun.runtime.updateRuntimeSettings({
+          runtimeSession: activeRun.runtimeSession,
+          profile: context.profile,
+          settings: runtimeSettings,
+        })
+        activeRun.runtimeSettings = runtimeSettings
+        applied = true
+      }
+      catch (error) {
+        chatLogger.warn('update runtime settings failed', {
+          error,
+          sessionId: input.sessionId,
+          runId,
+          runtimeSettings,
+        })
+      }
+    }
+  }
+
+  return {
+    sessionId: input.sessionId,
+    runtimeSettings,
+    applied,
   }
 }
 
@@ -3765,7 +4384,9 @@ export function reorderSessionQueueItems(
     })
   })
 
-  return listPendingQueueRows(sessionId).map(toQueueItemDto)
+  const session = assertStoredSession(sessionId)
+  const runtimeSettings = readSessionRuntimeSettings(session.configJson)
+  return listPendingQueueRows(sessionId).map(row => toQueueItemDto(row, runtimeSettings))
 }
 
 function startActiveRunSnapshot(
@@ -3785,7 +4406,7 @@ function startActiveRunSnapshot(
     summary: {
       providerTargetKind: activeRun.providerTargetKind,
       queueItemId: activeRun.queueItemId ?? null,
-      permissionMode: activeRun.permissionMode ?? null,
+      runtimeSettings: activeRun.runtimeSettings,
       internalContinuation: activeRun.internalContinuation ?? null,
     },
   })
@@ -3809,8 +4430,8 @@ async function executeRun(
     message: UIMessage
     profile: RuntimeProviderTargetProfile
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-    permissionMode?: ChatPermissionMode
+    thinkingEffort?: ChatThinkingEffort
+    runtimeSettings?: ChatRuntimeSettings
     systemPrompt?: string
     transcript?: CradleTurnTranscript
     history?: UIMessage[]
@@ -3848,10 +4469,10 @@ async function executeRun(
       workspaceId: input.workspaceId,
       workspacePath: input.workspacePath,
       agentId: input.agentId,
-      providerOptions: input.thinkingEffort || input.permissionMode
+      providerOptions: input.thinkingEffort || input.runtimeSettings
         ? {
             ...(input.thinkingEffort ? { thinkingEffort: input.thinkingEffort } : {}),
-            ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
+            ...(input.runtimeSettings ? { runtimeSettings: input.runtimeSettings } : {}),
           }
         : undefined,
       systemPrompt: input.systemPrompt,
@@ -4036,16 +4657,17 @@ async function executeRun(
       error,
     })
   }
- finally {
+  finally {
     // Persist updated providerSessionId/state obtained during the run
     try {
-      attachBinding({
+      const binding = attachBinding({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: actualModelId,
       })
+      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
     }
  catch {
       // session may have been deleted during the run
@@ -4126,7 +4748,7 @@ export function flushAllActiveRunSnapshots(): void {
   }
 }
 
-export function recoverPersistedStreamingRuns(): number {
+export function recoverPersistedRunProjections(): number {
   const streamingRuns = db()
     .select()
     .from(backendRuns)
@@ -4138,12 +4760,13 @@ export function recoverPersistedStreamingRuns(): number {
     if (activeRuns.has(run.id) || activeRunIdsBySession.has(run.chatSessionId) || pendingRunSessions.has(run.chatSessionId)) {
       continue
     }
-    abortPersistedRun(run)
+    failOrphanedPersistedRun(run)
     recovered += 1
   }
+  recovered += repairTerminalRunProjections()
 
   if (recovered > 0) {
-    chatLogger.warn('recovered persisted streaming runs', { recovered })
+    chatLogger.warn('recovered persisted run projections', { recovered })
   }
 
   return recovered
@@ -5175,13 +5798,14 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
   }
   finally {
     try {
-      attachBinding({
+      const binding = attachBinding({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: activeRun.modelId,
       })
+      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
     }
     catch (error) {
       chatLogger.warn('failed to persist runtime session after cancellation', {
@@ -5195,57 +5819,41 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
 
 function abortPersistedRun(run: BackendRun): void {
   if (run.status !== 'streaming') {
+    repairTerminalRunProjection(run)
     return
   }
 
   const now = currentUnixSeconds()
-  const messagePredicate = run.messageId
-    ? and(
-        eq(messages.sessionId, run.chatSessionId),
-        eq(messages.status, 'streaming'),
-        or(eq(messages.id, run.messageId), eq(messages.parentMessageId, run.messageId)),
-      )
-    : and(eq(messages.sessionId, run.chatSessionId), eq(messages.status, 'streaming'))
+  const abortedRun: BackendRun = {
+    ...run,
+    status: 'aborted',
+    stopReason: 'response.cancelled',
+    errorText: null,
+    finishedAt: now,
+  }
+  repairTerminalRunProjection(abortedRun, { persistBackendRun: true })
+}
 
-  db().transaction((tx) => {
-    tx.update(backendRuns)
-      .set({
-        status: 'aborted',
-        stopReason: 'response.cancelled',
-        errorText: null,
-        finishedAt: now,
-      })
-      .where(eq(backendRuns.id, run.id))
-      .run()
+function failOrphanedPersistedRun(run: BackendRun): void {
+  if (run.status !== 'streaming') {
+    repairTerminalRunProjection(run)
+    return
+  }
 
-    tx.update(messages)
-      .set({
-        status: 'aborted',
-        errorText: null,
-        updatedAt: now,
-      })
-      .where(messagePredicate)
-      .run()
-
-    tx.update(chatSessionQueueItems)
-      .set({
-        status: 'cancelled',
-        errorText: null,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(chatSessionQueueItems.startedRunId, run.id),
-          eq(chatSessionQueueItems.status, 'running'),
-        ),
-      )
-      .run()
-
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, run.chatSessionId)).run()
-  })
+  const now = currentUnixSeconds()
+  const failedRun: BackendRun = {
+    ...run,
+    status: 'failed',
+    stopReason: ORPHANED_STREAMING_RUN_STOP_REASON,
+    errorText: ORPHANED_STREAMING_RUN_ERROR_TEXT,
+    finishedAt: now,
+  }
+  repairTerminalRunProjection(failedRun, { persistBackendRun: true })
 }
 
 function abortPersistedStreamingSession(sessionId: string): void {
+  repairTerminalRunProjectionsForSession(sessionId)
+
   const streamingRuns = db()
     .select()
     .from(backendRuns)
@@ -5256,20 +5864,162 @@ function abortPersistedStreamingSession(sessionId: string): void {
     for (const run of streamingRuns) {
       abortPersistedRun(run)
     }
-    abortPersistedStreamingMessages(sessionId)
+    markPersistedStreamingMessages(sessionId, 'aborted', null)
     return
   }
 
-  abortPersistedStreamingMessages(sessionId)
+  markPersistedStreamingMessages(sessionId, 'aborted', null)
 }
 
-function abortPersistedStreamingMessages(sessionId: string): void {
+function failOrphanedPersistedStreamingSession(sessionId: string): void {
+  repairTerminalRunProjectionsForSession(sessionId)
+
+  const streamingRuns = db()
+    .select()
+    .from(backendRuns)
+    .where(and(eq(backendRuns.chatSessionId, sessionId), eq(backendRuns.status, 'streaming')))
+    .all()
+
+  if (streamingRuns.length > 0) {
+    for (const run of streamingRuns) {
+      failOrphanedPersistedRun(run)
+    }
+    markPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+    return
+  }
+
+  markPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+}
+
+function repairTerminalRunProjectionsForSession(sessionId: string): number {
+  return repairTerminalRunProjections({ sessionId })
+}
+
+function repairTerminalRunProjections(input: { sessionId?: string } = {}): number {
+  const terminalStatusPredicate = or(
+    eq(backendRuns.status, 'complete'),
+    eq(backendRuns.status, 'aborted'),
+    eq(backendRuns.status, 'failed'),
+  )
+  const terminalRuns = db()
+    .select()
+    .from(backendRuns)
+    .where(input.sessionId
+      ? and(eq(backendRuns.chatSessionId, input.sessionId), terminalStatusPredicate)
+      : terminalStatusPredicate)
+    .all()
+
+  return terminalRuns.reduce((count, run) => repairTerminalRunProjection(run) ? count + 1 : count, 0)
+}
+
+function repairTerminalRunProjection(
+  run: BackendRun,
+  options: TerminalRunProjectionRepairOptions = {},
+): boolean {
+  const status = readTerminalRunProjectionStatus(run.status)
+  if (!status) {
+    return false
+  }
+
+  const now = currentUnixSeconds()
+  const finishedAt = run.finishedAt ?? now
+  let changed = false
+  const messagePredicate = run.messageId
+    ? and(
+        eq(messages.sessionId, run.chatSessionId),
+        eq(messages.status, 'streaming'),
+        or(eq(messages.id, run.messageId), eq(messages.parentMessageId, run.messageId)),
+      )
+    : and(eq(messages.sessionId, run.chatSessionId), eq(messages.status, 'streaming'))
+
+  db().transaction((tx) => {
+    if (options.persistBackendRun) {
+      const runResult = tx.update(backendRuns)
+        .set({
+          status,
+          stopReason: readTerminalRunCompletionReason(run, status),
+          errorText: run.errorText,
+          finishedAt,
+        })
+        .where(eq(backendRuns.id, run.id))
+        .run()
+      changed = changed || runResult.changes > 0
+    }
+
+    const messageResult = tx.update(messages)
+      .set({
+        status,
+        errorText: run.errorText,
+        updatedAt: now,
+      })
+      .where(messagePredicate)
+      .run()
+    changed = changed || messageResult.changes > 0
+
+    const queueResult = tx.update(chatSessionQueueItems)
+      .set({
+        status: toQueueTerminalStatus(status),
+        errorText: run.errorText,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(chatSessionQueueItems.startedRunId, run.id),
+          eq(chatSessionQueueItems.status, 'running'),
+        ),
+      )
+      .run()
+    changed = changed || queueResult.changes > 0
+
+    const snapshotResult = tx.update(backendRunSnapshots)
+      .set({
+        status,
+        completedAt: finishedAt * 1000,
+        completionReason: readTerminalRunCompletionReason(run, status),
+        errorText: run.errorText,
+      })
+      .where(and(eq(backendRunSnapshots.runId, run.id), eq(backendRunSnapshots.status, 'running')))
+      .run()
+    changed = changed || snapshotResult.changes > 0
+
+    if (changed) {
+      tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, run.chatSessionId)).run()
+    }
+  })
+
+  return changed
+}
+
+function readTerminalRunProjectionStatus(status: BackendRun['status']): TerminalRunProjectionStatus | null {
+  return status === 'complete' || status === 'aborted' || status === 'failed' ? status : null
+}
+
+function toQueueTerminalStatus(status: TerminalRunProjectionStatus): ChatSessionQueueStatus {
+  return status === 'complete' ? 'completed' : status === 'aborted' ? 'cancelled' : 'failed'
+}
+
+function readTerminalRunCompletionReason(run: BackendRun, status: TerminalRunProjectionStatus): string {
+  if (run.stopReason) {
+    return run.stopReason
+  }
+  return status === 'complete'
+    ? 'response.completed'
+    : status === 'aborted'
+      ? 'response.cancelled'
+      : 'response.failed'
+}
+
+function markPersistedStreamingMessages(
+  sessionId: string,
+  status: TerminalChatMessageStatus,
+  errorText: string | null,
+): void {
   const now = currentUnixSeconds()
   db().transaction((tx) => {
     tx.update(messages)
       .set({
-        status: 'aborted',
-        errorText: null,
+        status,
+        errorText,
         updatedAt: now,
       })
       .where(and(eq(messages.sessionId, sessionId), eq(messages.status, 'streaming')))
@@ -5344,6 +6094,9 @@ function shouldScheduleCodexGoalContinuation(activeRun: ActiveRun, finalChunk: U
   if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
     return false
   }
+  if (!isProviderTargetAvailable(binding.providerTargetId)) {
+    return false
+  }
   if (listPendingQueueRows(activeRun.sessionId).length > 0) {
     return false
   }
@@ -5388,6 +6141,9 @@ async function startScheduledCodexGoalContinuation(input: {
   if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
     return
   }
+  if (!isProviderTargetAvailable(input.providerTargetId ?? binding.providerTargetId)) {
+    return
+  }
 
   try {
     await createRun({
@@ -5412,6 +6168,7 @@ async function startScheduledCodexGoalContinuation(input: {
       && !pendingRunSessions.has(input.sessionId)
       && latestBinding?.runtimeKind === 'codex'
       && hasActiveCodexGoal(latestBinding.backendStateSnapshot)
+      && isProviderTargetAvailable(input.providerTargetId ?? latestBinding.providerTargetId)
       && listPendingQueueRows(input.sessionId).length === 0
     ) {
       scheduleCodexGoalContinuation(input)
@@ -5473,6 +6230,8 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
       }
 
       try {
+        const session = assertStoredSession(sessionId)
+        const runtimeSettings = readQueueItemRuntimeSettings(claimed, readSessionRuntimeSettings(session.configJson))
         const run = await createRun({
           sessionId,
           text: claimed.text,
@@ -5480,8 +6239,8 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
           contextParts: parseQueueContextParts(claimed.contextPartsJson),
           providerTargetId: claimed.providerTargetId ?? undefined,
           modelId: claimed.modelId ?? undefined,
-          thinkingEffort: claimed.thinkingEffort as 'low' | 'medium' | 'high' | 'xhigh' | undefined,
-          permissionMode: normalizeChatPermissionMode(claimed.permissionMode) ?? undefined,
+          thinkingEffort: readPersistedThinkingEffort(claimed.thinkingEffort) ?? undefined,
+          runtimeSettings,
           continuationMode: claimed.mode,
           queueItemId: claimed.id,
         })

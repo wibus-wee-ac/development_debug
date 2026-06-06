@@ -35,7 +35,7 @@ const MOCK_CLAUDE_AGENT_RUNTIME_METADATA = {
 const MOCK_CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: false,
   supportsShellExecution: false,
-  supportsPermissionMode: false,
+  supportsRuntimeSettings: false,
   supportsUiSlotStates: false,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'restart-session',

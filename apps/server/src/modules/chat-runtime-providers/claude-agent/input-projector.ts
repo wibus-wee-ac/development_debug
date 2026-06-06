@@ -11,6 +11,7 @@ import { getRegisteredMcpServers } from '../../../plugins'
 import { isChatSkillContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
+  ChatRuntimeSettings,
   GetCapabilitiesInput,
   ProviderContext,
   RuntimeProviderTargetProfile,
@@ -132,8 +133,9 @@ export function buildClaudeQueryOptions(input: {
   const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
   const effectiveModel = readClaudeAgentModelId(input.input, config)
-  const permissionMode = ('providerOptions' in input.input
-    ? input.input.providerOptions?.permissionMode
+  const providerOptions = 'providerOptions' in input.input ? input.input.providerOptions : undefined
+  const permissionMode = (providerOptions
+    ? projectRuntimeSettingsToClaudePermissionMode(providerOptions.runtimeSettings)
     : undefined) ?? config.permissionMode
 
   if (!apiKey) {
@@ -160,6 +162,7 @@ export function buildClaudeQueryOptions(input: {
     includePartialMessages: true,
     forwardSubagentText: true,
     agentProgressSummaries: true,
+    effort: readClaudeAgentEffort(providerOptions?.thinkingEffort, config.effort),
     persistSession: CLAUDE_AGENT_SDK_PERSIST_SESSION,
     systemPrompt: input.input.systemPrompt
       ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.input.systemPrompt }
@@ -222,6 +225,32 @@ export function buildClaudeQueryOptions(input: {
   queryOptions.env = env
 
   return queryOptions
+}
+
+function readClaudeAgentEffort(
+  override: NonNullable<StreamTurnInput['providerOptions']>['thinkingEffort'],
+  configured: NonNullable<ReturnType<typeof readTrustedClaudeAgentConfig>['effort']>,
+): 'low' | 'medium' | 'high' | 'xhigh' | 'max' {
+  switch (override) {
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'xhigh':
+      return override
+    default:
+      return configured
+  }
+}
+
+export function projectRuntimeSettingsToClaudePermissionMode(
+  settings: ChatRuntimeSettings | null | undefined,
+): 'bypassPermissions' | 'plan' | null {
+  if (!settings) {
+    return null
+  }
+  return settings.interactionMode === 'plan' || settings.accessMode === 'approval-required'
+    ? 'plan'
+    : 'bypassPermissions'
 }
 
 export function readClaudeAgentModelId(

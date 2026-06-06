@@ -33,6 +33,22 @@ function createCodexVersionProcess(output: string) {
   return child
 }
 
+function createAppServerProcess() {
+  const stdout = new PassThrough()
+  const stderr = new PassThrough()
+  const child = new EventEmitter() as EventEmitter & {
+    stdin: Writable
+    stdout: PassThrough
+    stderr: PassThrough
+    kill: ReturnType<typeof vi.fn>
+  }
+  child.stdin = new Writable({ write: (_chunk, _encoding, callback) => callback() })
+  child.stdout = stdout
+  child.stderr = stderr
+  child.kill = vi.fn()
+  return child
+}
+
 describe('resolveCodexAppServerHome', () => {
   it('uses the Cradle data directory before database path fallback', () => {
     expect(resolveCodexAppServerHome({
@@ -204,5 +220,44 @@ describe('CodexAppServerClient', () => {
       },
     })
     client.close()
+  })
+
+  it('rejects pending requests when the app-server process closes without an exit event', async () => {
+    const child = createAppServerProcess()
+    spawnMock.mockReturnValueOnce(child)
+    const client = new CodexAppServerClient({ codexPath: 'codex-test' })
+
+    const request = client.request('config/read')
+    child.emit('close', 0, null)
+
+    await expect(request).rejects.toThrow('Codex app-server exited')
+    await expect(client.request('config/read')).rejects.toThrow('Codex app-server is closed')
+  })
+
+  it('marks the client closed after process spawn errors', async () => {
+    const child = createAppServerProcess()
+    spawnMock.mockReturnValueOnce(child)
+    const client = new CodexAppServerClient({ codexPath: 'codex-test' })
+
+    const request = client.request('config/read')
+    child.emit('error', new Error('spawn failed'))
+
+    await expect(request).rejects.toThrow('spawn failed')
+    await expect(client.request('config/read')).rejects.toThrow('Codex app-server is closed')
+  })
+
+  it('wakes notification waiters when the app-server process terminates', async () => {
+    const child = createAppServerProcess()
+    spawnMock.mockReturnValueOnce(child)
+    const client = new CodexAppServerClient({ codexPath: 'codex-test' })
+
+    const notification = client.nextNotification()
+    child.stderr.write('fatal startup error')
+    child.emit('close', 1, null)
+
+    await expect(notification).resolves.toEqual({
+      method: 'error',
+      params: { message: 'Codex app-server exited with code 1: fatal startup error' },
+    })
   })
 })

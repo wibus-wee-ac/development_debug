@@ -16,10 +16,10 @@ import type {
   ResumeChatSessionInput,
   RuntimePresentationCapabilities,
   RuntimeSession,
-  SetPermissionModeInput,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
+  UpdateRuntimeSettingsInput,
 } from '../../chat-runtime/runtime-provider-types'
 import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../chat-runtime/stream-trace'
 import { createBoundedTextCollector } from '../bounded-text-collector'
@@ -32,6 +32,7 @@ import {
   CLAUDE_AGENT_SDK_PERSIST_SESSION,
   describeClaudeAgentUserContent,
   projectClaudeAgentInput,
+  projectRuntimeSettingsToClaudePermissionMode,
   readClaudeAgentModelId,
 } from './input-projector'
 import {
@@ -141,7 +142,10 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const abortController = new AbortController()
-    const shouldResumeProviderSession = CLAUDE_AGENT_SDK_PERSIST_SESSION && Boolean(input.runtimeSession.providerSessionId)
+    const resumedProviderSessionId = CLAUDE_AGENT_SDK_PERSIST_SESSION
+      ? input.runtimeSession.providerSessionId
+      : null
+    const shouldResumeProviderSession = Boolean(resumedProviderSessionId)
     const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
     const userContent = buildClaudeAgentTurnContent({
       userContent: projectedUserContent,
@@ -191,8 +195,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
         await activeQuery.setModel(pendingModelSwitchId)
         clearClaudeAgentPendingModelSwitch(input.runtimeSession)
       }
-      if (shouldResumeProviderSession) {
-        await this.reportClaudeSessionTitle(input.runtimeSession.providerSessionId, input.reportSessionTitle)
+      if (resumedProviderSessionId) {
+        await this.reportClaudeSessionTitle(resumedProviderSessionId, input.reportSessionTitle)
       }
       inputStream.push(userContent)
 
@@ -314,13 +318,23 @@ export class ClaudeAgentProvider implements ChatRuntime {
     this.releaseQuery(sessionId, entry)
   }
 
-  async setPermissionMode(input: SetPermissionModeInput): Promise<void> {
+  private async updateActiveQueryPermissionMode(
+    input: Pick<UpdateRuntimeSettingsInput, 'runtimeSession'> & { mode: 'bypassPermissions' | 'plan' },
+  ): Promise<void> {
     const sessionId = input.runtimeSession.chatSessionId
     const entry = this.activeQueries.get(sessionId)
     if (!entry) {
       return
     }
     entry.query.setPermissionMode(input.mode)
+  }
+
+  async updateRuntimeSettings(input: UpdateRuntimeSettingsInput): Promise<void> {
+    const mode = projectRuntimeSettingsToClaudePermissionMode(input.settings) ?? 'bypassPermissions'
+    await this.updateActiveQueryPermissionMode({
+      runtimeSession: input.runtimeSession,
+      mode,
+    })
   }
 
   private async reportClaudeSessionTitle(sessionId: string, reportSessionTitle?: (title: string) => void): Promise<void> {

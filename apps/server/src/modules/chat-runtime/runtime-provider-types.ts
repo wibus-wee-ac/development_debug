@@ -18,6 +18,8 @@ export interface RuntimeProviderTargetProfile {
   providerTargetId: string
 }
 
+export type ChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
 export interface RuntimeSlashCommand {
   name: string
   description: string
@@ -436,7 +438,7 @@ export interface RuntimePresentationCapabilities {
 export interface ChatRuntimeCapabilities {
   readonly supportsSteerTurn: boolean
   readonly supportsShellExecution: boolean
-  readonly supportsPermissionMode: boolean
+  readonly supportsRuntimeSettings: boolean
   readonly supportsUiSlotStates: boolean
   readonly supportsDynamicCapabilities: boolean
   readonly sessionModelSwitch: 'in-session' | 'restart-session' | 'unsupported'
@@ -568,7 +570,18 @@ export interface ChatRuntimeCatalogItem extends ChatRuntimeMetadata {
   pluginOwner: string | null
 }
 
-export type ChatPermissionMode = 'bypassPermissions' | 'plan'
+export type ChatRuntimeAccessMode = 'approval-required' | 'full-access'
+export type ChatRuntimeInteractionMode = 'default' | 'plan'
+
+export interface ChatRuntimeSettings {
+  accessMode: ChatRuntimeAccessMode
+  interactionMode: ChatRuntimeInteractionMode
+}
+
+export interface ChatRuntimeSettingsPatch {
+  accessMode?: ChatRuntimeAccessMode
+  interactionMode?: ChatRuntimeInteractionMode
+}
 
 export interface RuntimeSession {
   id: string
@@ -620,8 +633,8 @@ export interface StreamTurnInput {
   workspacePath?: string
   agentId?: string | null
   providerOptions?: {
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-    permissionMode?: ChatPermissionMode
+    thinkingEffort?: ChatThinkingEffort
+    runtimeSettings?: ChatRuntimeSettings
   }
   systemPrompt?: string
   history?: UIMessage[]
@@ -767,10 +780,48 @@ export interface GetCapabilitiesInput {
 
 export interface GetUiSlotStatesInput extends GetCapabilitiesInput {}
 
-export interface SetPermissionModeInput {
+export interface ProviderNativeAppServerMethodCapability {
+  method: string
+  paramsType: string | null
+  category: string
+  operation: string
+  interaction: 'request' | 'stream'
+}
+
+export interface ProviderNativeAppServerMessageCapability {
+  method: string
+  paramsType: string
+  category: string
+}
+
+export interface ProviderNativeAppServerCapabilityManifest {
+  protocol: string
+  generatorVersion: string
+  generatedDate: string
+  clientMethods: ProviderNativeAppServerMethodCapability[]
+  serverRequests: ProviderNativeAppServerMessageCapability[]
+  serverNotifications: ProviderNativeAppServerMessageCapability[]
+}
+
+export interface ProviderNativeAppServerInvokeInput extends GetCapabilitiesInput {
+  method: string
+  params?: unknown
+}
+
+export interface ProviderNativeAppServerInvokeResponse {
+  method: string
+  capability: ProviderNativeAppServerMethodCapability
+  result: unknown
+}
+
+export interface ProviderNativeAppServerStreamInput extends ProviderNativeAppServerInvokeInput {
+  closeOnMethods?: string[]
+}
+
+export interface UpdateRuntimeSettingsInput {
   runtimeSession: RuntimeSession
   profile: RuntimeProviderTargetProfile
-  mode: ChatPermissionMode
+  settings: ChatRuntimeSettings
 }
 
 export interface TokenUsage {
@@ -792,6 +843,9 @@ export interface ChatRuntime {
   getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
   getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
+  getProviderNativeAppServerCapabilities?: () => ProviderNativeAppServerCapabilityManifest
+  invokeProviderNativeAppServer?: (input: ProviderNativeAppServerInvokeInput) => Promise<ProviderNativeAppServerInvokeResponse>
+  openProviderNativeAppServerStream?: (input: ProviderNativeAppServerStreamInput) => ReadableStream<Uint8Array>
   listProviderThreads?: (input: ProviderThreadListInput) => Promise<ProviderThreadListResult>
   readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
   listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
@@ -803,7 +857,7 @@ export interface ChatRuntime {
   steerTurn?: (input: SteerTurnInput) => Promise<void>
   executeShellCommand?: (input: ExecuteShellCommandInput) => Promise<ExecuteShellCommandResult>
   cancelTurn: (input: CancelTurnInput) => Promise<void>
-  setPermissionMode?: (input: SetPermissionModeInput) => Promise<void>
+  updateRuntimeSettings?: (input: UpdateRuntimeSettingsInput) => Promise<void>
   healthCheck?: () => Promise<ProviderHealthStatus>
   dispose?: () => Promise<void>
 }

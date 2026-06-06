@@ -6,6 +6,7 @@
 
 import type {
   ProviderContext,
+  RuntimeProviderTargetProfile,
   RuntimeAlertSeverity,
   RuntimeApprovalStatus,
   RuntimeCompactUiSlotState,
@@ -15,12 +16,23 @@ import type {
   RuntimePlanStepStatus,
   RuntimeToolActivityStatus,
 } from '../../chat-runtime/runtime-provider-types'
-import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
+import type { CodexConfig } from '../../provider-contracts/provider-base'
+import type { ProviderRuntimeLease } from '../../provider-runtime/host-manager'
+import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
+import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
 import type { CodexNativeHistorySnapshot } from './state-projector'
 
 export interface CodexProviderConfig {
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
   readCodexPreferences?: () => { useCradleUserAgent: boolean }
+  readChatPreferences?: () => {
+    titleGeneration: {
+      providerTargetId: string | null
+      modelId: string | null
+      thinkingEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    }
+  }
+  resolveProviderTargetProfile?: (providerTargetId: string) => RuntimeProviderTargetProfile | null
 }
 
 export type CodexProviderDeps = ProviderContext & CodexProviderConfig
@@ -32,11 +44,31 @@ export interface CodexAppServerClientLike {
   close: () => void
 }
 
+export type CodexAppServerResourceRequestHandler = (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
+
+export interface CodexAppServerNotificationSubscriber {
+  onMessage: (message: CodexAppServerMessage) => boolean
+  onClose: () => void
+}
+
+export interface CodexAppServerHostResource {
+  client: CodexAppServerClientLike
+  serverRequestHandlers: Set<CodexAppServerResourceRequestHandler>
+  notificationSubscribers: Set<CodexAppServerNotificationSubscriber>
+  notificationAbortController?: AbortController
+  notificationPump?: Promise<void>
+  initialized?: Promise<void>
+  chatgptAuthenticated?: Promise<void>
+}
+
 export interface ActiveCodexTurn {
   client: CodexAppServerClientLike
+  hostLease: ProviderRuntimeLease<CodexAppServerHostResource>
   abortController: AbortController
   threadId: string
   turnId: string | null
+  modelId: string | null
+  reasoningEffort: ReasoningEffort | null
 }
 
 export interface CodexThreadStatus {

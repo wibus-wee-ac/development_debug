@@ -1,8 +1,10 @@
 import { Elysia } from 'elysia'
 
-import type { ProviderThreadSourceKind } from './runtime-provider-types'
+import type { ChatThinkingEffort, ProviderThreadSourceKind } from './runtime-provider-types'
 import { ChatRuntimeModel } from './model'
 import * as ChatRuntime from './service'
+
+type QueueThinkingEffort = Extract<ChatThinkingEffort, 'low' | 'medium' | 'high' | 'xhigh'>
 
 const PROVIDER_THREAD_SOURCE_KINDS = new Set<ProviderThreadSourceKind>([
   'cli',
@@ -25,6 +27,12 @@ function parseProviderThreadSourceKinds(value: string | undefined): ProviderThre
   return kinds && kinds.length > 0 ? kinds : undefined
 }
 
+function readChatThinkingEffort(value: unknown): QueueThinkingEffort | undefined {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh'
+    ? value
+    : undefined
+}
+
 export const chatRuntime = new Elysia({
   prefix: '/chat',
   detail: { tags: ['chat-runtime'] },
@@ -39,8 +47,8 @@ export const chatRuntime = new Elysia({
       messages: body.messages as Parameters<typeof ChatRuntime.streamResponse>[0]['messages'],
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
-      thinkingEffort: body.thinkingEffort,
-      permissionMode: body.permissionMode,
+      thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
+      runtimeSettings: body.runtimeSettings,
     })
     return new Response(response.stream, {
       headers: {
@@ -101,6 +109,18 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.sideChatBody,
     response: { 200: ChatRuntimeModel.sideChatResponse },
+  })
+  // POST /chat/sessions/:sessionId/promote-side -> promote a side session into a fresh durable top-level session
+  .post('/sessions/:sessionId/promote-side', ({ params }) => {
+    return ChatRuntime.promoteSideChat({
+      sourceSessionId: params.sessionId,
+    })
+  }, {
+    detail: {
+      summary: 'Promote a side chat session into a fresh durable session',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.promoteSideChatResponse },
   })
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
   .get('/sessions/:sessionId/stream', ({ params }) => {
@@ -174,8 +194,8 @@ export const chatRuntime = new Elysia({
       contextParts: body.contextParts,
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
-      thinkingEffort: body.thinkingEffort,
-      permissionMode: body.permissionMode,
+      thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
+      runtimeSettings: body.runtimeSettings,
     })
   }, {
     detail: {
@@ -403,6 +423,19 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.chatMessages },
   })
   // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
+  .get('/runs/completed', ({ query }) => {
+    return ChatRuntime.listCompletedRuns({
+      since: query.since ?? null,
+      limit: query.limit ?? null,
+    })
+  }, {
+    detail: {
+      summary: 'List recently completed chat runs',
+    },
+    query: ChatRuntimeModel.completedRunsQuery,
+    response: { 200: ChatRuntimeModel.completedRuns },
+  })
+  // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
 	  .get('/runs/:runId/trace', ({ params }) => {
 	    return ChatRuntime.getRunTrace(params.runId)
 	  }, {
@@ -468,18 +501,33 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     response: { 200: ChatRuntimeModel.cancelResponse },
   })
-  // POST /chat/sessions/:sessionId/permission-mode → switch runtime permission mode (bypass/plan)
-  .post('/sessions/:sessionId/permission-mode', async ({ params, body }) => {
-    const ok = await ChatRuntime.setSessionPermissionMode({
-      sessionId: params.sessionId,
-      mode: body.mode,
-    })
-    return { ok }
+  // GET /chat/sessions/:sessionId/runtime-settings → read Cradle-owned runtime controls
+  .get('/sessions/:sessionId/runtime-settings', ({ params }) => {
+    return ChatRuntime.getSessionRuntimeSettings(params.sessionId)
   }, {
     detail: {
-      'summary': 'Switch runtime permission mode (bypassPermissions ↔ plan)',
+      'summary': 'Get runtime settings for a chat session',
+      'x-cradle-cli': {
+        command: ['chat', 'runtime-settings', 'get'],
+      },
     },
     params: ChatRuntimeModel.sessionIdParams,
-    body: ChatRuntimeModel.permissionModeBody,
-    response: { 200: ChatRuntimeModel.permissionModeResponse },
+    response: { 200: ChatRuntimeModel.runtimeSettingsResponse },
+  })
+  // PATCH /chat/sessions/:sessionId/runtime-settings → update Cradle-owned runtime controls
+  .patch('/sessions/:sessionId/runtime-settings', async ({ params, body }) => {
+    return await ChatRuntime.updateSessionRuntimeSettings({
+      sessionId: params.sessionId,
+      patch: body,
+    })
+  }, {
+    detail: {
+      'summary': 'Update runtime settings for a chat session',
+      'x-cradle-cli': {
+        command: ['chat', 'runtime-settings', 'set'],
+      },
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.runtimeSettingsBody,
+    response: { 200: ChatRuntimeModel.runtimeSettingsResponse },
   })

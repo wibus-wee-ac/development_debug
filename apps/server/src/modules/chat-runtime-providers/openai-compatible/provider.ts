@@ -39,7 +39,7 @@ const STANDARD_RUNTIME_METADATA = {
 const STANDARD_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: false,
   supportsShellExecution: false,
-  supportsPermissionMode: false,
+  supportsRuntimeSettings: false,
   supportsUiSlotStates: false,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'in-session',

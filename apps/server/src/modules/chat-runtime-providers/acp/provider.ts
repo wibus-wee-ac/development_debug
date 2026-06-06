@@ -35,7 +35,7 @@ const ACP_RUNTIME_METADATA = {
 const ACP_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: false,
   supportsShellExecution: false,
-  supportsPermissionMode: false,
+  supportsRuntimeSettings: false,
   supportsUiSlotStates: false,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'in-session',

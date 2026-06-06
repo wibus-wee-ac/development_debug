@@ -15,7 +15,7 @@ Stored turns pass the resolved model through SDK query options and model alias e
 
 ## Files
 
-- `provider.ts`: Claude Agent `ChatRuntime` implementation; starts SDK sessions from Cradle-owned history, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering/cancellation/permission mode changes.
+- `provider.ts`: Claude Agent `ChatRuntime` implementation; starts SDK sessions from Cradle-owned history, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering, cancellation, and Cradle runtime settings updates through SDK permission mode projection.
 - `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, model switching, and tool chunk mapping.
 - `metadata.ts`: Claude Agent runtime kind, catalog metadata, static capabilities, and slash-command presentation projection.
 - `types.ts`: Claude Agent provider-private content and session-info types shared by package modules.

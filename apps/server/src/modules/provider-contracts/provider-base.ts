@@ -27,8 +27,7 @@ export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
 export const CodexConfigSchema = BaseProviderConfig.extend({
   approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default(CODEX_DEFAULT_APPROVAL_POLICY),
   sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default(CODEX_DEFAULT_SANDBOX_MODE),
-  reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
-  titleModel: z.string().trim().nullable().default(null),
+  reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
 })
 
 const ClaudeAgentModelEnvValueSchema = z.string().trim()
@@ -43,6 +42,7 @@ export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
     subagentModel: ClaudeAgentModelEnvValueSchema.optional(),
   }).optional(),
   permissionMode: z.enum(['bypassPermissions', 'plan']).default('bypassPermissions'),
+  effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
   allowDangerouslySkipPermissions: z.boolean().optional(),
   skills: z.union([z.literal('all'), z.array(z.string())]).optional(),
   tools: z.array(z.string()).optional(),
@@ -153,7 +153,6 @@ export function readTrustedCodexConfig(raw: string): CodexConfig {
     approvalPolicy: config.approvalPolicy ?? CODEX_DEFAULT_APPROVAL_POLICY,
     sandboxMode: config.sandboxMode ?? CODEX_DEFAULT_SANDBOX_MODE,
     reasoningEffort: config.reasoningEffort ?? 'high',
-    titleModel: readOptionalString(config.titleModel),
   }
 }
 
@@ -168,6 +167,7 @@ export function readTrustedClaudeAgentConfig(raw: string): ClaudeAgentConfig {
     additionalDirectories: config.additionalDirectories ?? [],
     claudeAgent: config.claudeAgent,
     permissionMode: config.permissionMode === 'plan' ? 'plan' : 'bypassPermissions',
+    effort: config.effort ?? 'high',
     allowDangerouslySkipPermissions: config.allowDangerouslySkipPermissions,
     skills: config.skills ?? [],
     tools: config.tools,

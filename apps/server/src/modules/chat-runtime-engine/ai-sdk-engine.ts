@@ -9,6 +9,7 @@ import type { BudgetConfig } from '../usage/budget'
 import { checkDailyBudget, checkTurnBudget } from '../usage/budget'
 import { estimateCost } from '../usage/pricing'
 import { compactByWindow, compactWithSummary, isContextOverflow, resolveCompactionConfig } from './compaction'
+import type { ChatThinkingEffort } from '../chat-runtime/runtime-provider-types'
 
 export interface TokenUsage {
   promptTokens: number
@@ -27,7 +28,7 @@ export interface AiSdkEngineInput {
   abortSignal?: AbortSignal
   abortController?: AbortController
   providerOptions?: {
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
+    thinkingEffort?: ChatThinkingEffort
   }
   /** Callback to receive usage data when available */
   onUsage?: (usage: TokenUsage) => void
@@ -74,6 +75,14 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
   } = input
 
   const effectiveAbortSignal = abortController?.signal ?? abortSignal
+  const reasoningEffort = readOpenAiReasoningEffort(input.providerOptions?.thinkingEffort)
+  const providerOptions = reasoningEffort
+    ? {
+        openai: {
+          reasoningEffort,
+        },
+      }
+    : undefined
   let accumulatedTurnCost = 0
 
   const compactionConfig = resolveCompactionConfig({
@@ -85,6 +94,7 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
     messages,
     system,
     tools,
+    providerOptions,
     stopWhen: maxSteps > 1 ? stepCountIs(maxSteps) : undefined,
     abortSignal: effectiveAbortSignal,
     experimental_telemetry: langfuseEnabled
@@ -174,6 +184,10 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
   })
 
   return { result, effectiveAbortSignal }
+}
+
+function readOpenAiReasoningEffort(effort: ChatThinkingEffort | undefined): ChatThinkingEffort | null {
+  return effort ?? null
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

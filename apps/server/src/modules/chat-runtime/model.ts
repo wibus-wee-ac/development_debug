@@ -545,10 +545,22 @@ const contextPartSchema = t.Union([
 ])
 
 const queueModeSchema = t.Union([t.Literal('queue'), t.Literal('steer')])
-const permissionModeSchema = t.Union([
-  t.Literal('bypassPermissions'),
+const runtimeAccessModeSchema = t.Union([
+  t.Literal('approval-required'),
+  t.Literal('full-access'),
+])
+const runtimeInteractionModeSchema = t.Union([
+  t.Literal('default'),
   t.Literal('plan'),
 ])
+const runtimeSettingsSchema = t.Object({
+  accessMode: runtimeAccessModeSchema,
+  interactionMode: runtimeInteractionModeSchema,
+})
+const runtimeSettingsPatchSchema = t.Object({
+  accessMode: t.Optional(runtimeAccessModeSchema),
+  interactionMode: t.Optional(runtimeInteractionModeSchema),
+})
 const queueStatusSchema = t.Union([
   t.Literal('pending'),
   t.Literal('running'),
@@ -579,6 +591,13 @@ const tracePhaseSchema = t.Union([
   t.Literal('run_aborted'),
 ])
 
+const thinkingEffortSchema = t.Union([
+  t.Literal('low'),
+  t.Literal('medium'),
+  t.Literal('high'),
+  t.Literal('xhigh'),
+])
+
 const queueItemSchema = t.Object({
   id: t.String(),
   sessionId: t.String(),
@@ -589,12 +608,8 @@ const queueItemSchema = t.Object({
   contextParts: t.Array(contextPartSchema),
   providerTargetId: t.Union([t.String(), t.Null()]),
   modelId: t.Union([t.String(), t.Null()]),
-  thinkingEffort: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('xhigh'), t.Null()]),
-  permissionMode: t.Union([
-    t.Literal('bypassPermissions'),
-    t.Literal('plan'),
-    t.Null(),
-  ]),
+  thinkingEffort: t.Union([thinkingEffortSchema, t.Null()]),
+  runtimeSettings: runtimeSettingsSchema,
   position: t.Number(),
   sourceRunId: t.Union([t.String(), t.Null()]),
   startedRunId: t.Union([t.String(), t.Null()]),
@@ -671,6 +686,15 @@ const runSnapshotSchema = t.Object({
   events: t.Array(runSnapshotEventSchema),
 })
 
+const completedRunSchema = t.Object({
+  runId: t.String(),
+  sessionId: t.String(),
+  sessionTitle: t.String(),
+  messageId: t.Union([t.String(), t.Null()]),
+  startedAt: t.Number(),
+  finishedAt: t.Number(),
+})
+
 const runtimeStatusSchema = t.Union([
   t.Literal('idle'),
   t.Literal('pending'),
@@ -733,11 +757,7 @@ const runtimeSessionRunSchema = t.Object({
   modelId: t.Union([t.String(), t.Null()]),
   providerSessionId: t.Union([t.String(), t.Null()]),
   queueItemId: t.Union([t.String(), t.Null()]),
-  permissionMode: t.Union([
-    t.Literal('bypassPermissions'),
-    t.Literal('plan'),
-    t.Null(),
-  ]),
+  runtimeSettings: runtimeSettingsSchema,
 })
 
 const codexAppServerCapabilitySchema = t.Object({
@@ -761,6 +781,11 @@ export const ChatRuntimeModel = {
 
   runIdParams: t.Object({
     runId: t.String({ minLength: 1 }),
+  }),
+
+  completedRunsQuery: t.Object({
+    since: t.Optional(t.Number({ minimum: 0 })),
+    limit: t.Optional(t.Number({ minimum: 1, maximum: 200 })),
   }),
 
   providerThreadParams: t.Object({
@@ -800,8 +825,8 @@ export const ChatRuntimeModel = {
     messages: t.Optional(t.Array(uiMessageSchema)),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
-    thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('xhigh')])),
-    permissionMode: t.Optional(permissionModeSchema),
+    thinkingEffort: t.Optional(thinkingEffortSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
   }),
 
   bangCommandBody: t.Object({
@@ -822,6 +847,14 @@ export const ChatRuntimeModel = {
     sideContextSource: sideContextSourceSchema,
   }),
 
+  promoteSideChatResponse: t.Object({
+    sessionId: t.String(),
+    sourceSessionId: t.String(),
+    runtimeKind: t.String(),
+    providerTargetId: t.Union([t.String(), t.Null()]),
+    title: t.String(),
+  }),
+
   bangCommandResponse: t.Object({
     command: t.String(),
     stdout: t.String(),
@@ -840,12 +873,12 @@ export const ChatRuntimeModel = {
     ok: t.Literal(true),
   }),
 
-  permissionModeBody: t.Object({
-    mode: permissionModeSchema,
-  }),
+  runtimeSettingsBody: runtimeSettingsPatchSchema,
 
-  permissionModeResponse: t.Object({
-    ok: t.Boolean(),
+  runtimeSettingsResponse: t.Object({
+    sessionId: t.String(),
+    runtimeSettings: runtimeSettingsSchema,
+    applied: t.Boolean(),
   }),
 
   codexAppServerCapabilities: t.Object({
@@ -905,11 +938,7 @@ export const ChatRuntimeModel = {
     providerTargetId: t.Union([t.String(), t.Null()]),
     providerSessionId: t.Union([t.String(), t.Null()]),
     modelId: t.Union([t.String(), t.Null()]),
-    permissionMode: t.Union([
-      t.Literal('bypassPermissions'),
-      t.Literal('plan'),
-      t.Null(),
-    ]),
+    runtimeSettings: runtimeSettingsSchema,
     pendingQueueItemId: t.Union([t.String(), t.Null()]),
     hasActiveGoal: t.Boolean(),
     activeRun: t.Union([runtimeSessionRunSchema, t.Null()]),
@@ -968,6 +997,10 @@ export const ChatRuntimeModel = {
     snapshots: t.Array(runSnapshotSchema),
   }),
 
+  completedRuns: t.Object({
+    runs: t.Array(completedRunSchema),
+  }),
+
   queueEnqueueBody: t.Object({
     mode: queueModeSchema,
     text: t.Optional(t.String({ minLength: 1 })),
@@ -975,8 +1008,8 @@ export const ChatRuntimeModel = {
     contextParts: t.Optional(t.Array(contextPartSchema)),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
-    thinkingEffort: t.Optional(t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('xhigh')])),
-    permissionMode: t.Optional(permissionModeSchema),
+    thinkingEffort: t.Optional(thinkingEffortSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
   }),
 
   queueReorderBody: t.Object({

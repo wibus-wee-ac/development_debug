@@ -28,7 +28,7 @@ export const CLAUDE_AGENT_RUNTIME_METADATA = {
 export const CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: true,
   supportsShellExecution: false,
-  supportsPermissionMode: true,
+  supportsRuntimeSettings: true,
   supportsUiSlotStates: false,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'restart-session',

@@ -14,6 +14,8 @@ import { createMockClaudeAgentProvider } from '../chat-runtime-providers/mock-cl
 import { createStandardProvider } from '../chat-runtime-providers/openai-compatible/provider'
 import { createSystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
 import { createChildLogger } from '../../logging/logger'
+import * as ModelRegistry from '../model-registry/service'
+import { resolveProviderTarget } from '../provider-targets/service'
 import type {
   ChatRuntime,
   ChatRuntimeCatalogItem,
@@ -166,7 +168,7 @@ function assertRuntimeCapabilities(runtime: Partial<ChatRuntime>): void {
   const booleanKeys = [
     'supportsSteerTurn',
     'supportsShellExecution',
-    'supportsPermissionMode',
+    'supportsRuntimeSettings',
     'supportsUiSlotStates',
     'supportsDynamicCapabilities',
   ] as const
@@ -181,7 +183,7 @@ function assertRuntimeCapabilities(runtime: Partial<ChatRuntime>): void {
 
   assertCapabilityHook(runtime, capabilities.supportsSteerTurn, 'steerTurn')
   assertCapabilityHook(runtime, capabilities.supportsShellExecution, 'executeShellCommand')
-  assertCapabilityHook(runtime, capabilities.supportsPermissionMode, 'setPermissionMode')
+  assertCapabilityHook(runtime, capabilities.supportsRuntimeSettings, 'updateRuntimeSettings')
   assertCapabilityHook(runtime, capabilities.supportsUiSlotStates, 'getUiSlotStates')
   assertCapabilityHook(runtime, capabilities.supportsDynamicCapabilities, 'getDynamicCapabilities')
 }
@@ -272,6 +274,29 @@ export function getRuntimeRegistry(): RuntimeRegistry {
     }
     registry.register(createCodexProvider(ctx, {
       readCodexPreferences: () => Preferences.getCodexPreferencesSync(),
+      readChatPreferences: () => Preferences.getChatPreferencesSync(),
+      resolveProviderTargetProfile: (providerTargetId) => {
+        const target = resolveProviderTarget(providerTargetId)
+        if (!target.enabled) {
+          return null
+        }
+        const config = JSON.parse(target.configJson) as Record<string, unknown>
+        return {
+          id: target.id,
+          name: target.label,
+          providerKind: target.providerKind,
+          enabled: target.enabled,
+          configJson: JSON.stringify({
+            ...config,
+            modelRegistryMappings: ModelRegistry.listMappingEntries(),
+          }),
+          credentialRef: target.credentialRef,
+          customModels: target.customModelsJson,
+          iconSlug: target.iconSlug,
+          providerTargetKind: target.kind,
+          providerTargetId: target.id,
+        }
+      },
     }))
     registry.register(createSystemAgentProvider(ctx))
   }

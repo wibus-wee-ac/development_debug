@@ -6,11 +6,14 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
+import { reserveSideConversationHost } from '../../provider-runtime/side-conversation-registry'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
 import { CodexProvider } from './provider'
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  providerRuntimeHostManager.clear()
 })
 
 class FakeCodexAppServerClient {
@@ -705,7 +708,55 @@ describe('codexProvider app-server integration', () => {
     expect(client.requests).toEqual([])
   })
 
-  it('forks side sessions as durable Codex threads and injects the Cradle boundary', async () => {
+  it('projects provider-native app-server goal invokes into provider state snapshots', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+
+    await expect(provider.invokeProviderNativeAppServer?.({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      method: 'thread/goal/set',
+      params: {
+        threadId: 'codex-thread-1',
+        objective: 'Keep Codex protocol in the adapter',
+      },
+    })).resolves.toMatchObject({
+      method: 'thread/goal/set',
+      result: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Keep Codex protocol in the adapter',
+          status: 'active',
+        },
+      },
+    })
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Keep Codex protocol in the adapter',
+          status: 'active',
+        },
+      },
+    })
+
+    await provider.invokeProviderNativeAppServer?.({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      method: 'thread/goal/clear',
+      params: { threadId: 'codex-thread-1' },
+    })
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: { goal: null },
+    })
+  })
+
+  it('forks side sessions as ephemeral Codex threads and injects the Cradle boundary', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
 
@@ -728,7 +779,7 @@ describe('codexProvider app-server integration', () => {
         threadId: 'codex-parent-thread-1',
         path: null,
         model: 'gpt-5-codex',
-        ephemeral: false,
+        ephemeral: true,
         threadSource: 'user',
         excludeTurns: true,
         persistExtendedHistory: false,
@@ -773,6 +824,168 @@ describe('codexProvider app-server integration', () => {
         },
       },
     })
+  })
+
+  it('keeps side Codex app-server clients host-managed across fork and side turns', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const sideHostLease = reserveSideConversationHost({
+      sessionId: 'child-chat-session-1',
+      providerTargetId: 'profile-codex',
+      runtimeKind: 'codex',
+      pinned: true,
+    })
+
+    const runtimeSession = await provider.forkRuntimeSession({
+      sourceRuntimeSession: createRuntimeSession('codex-parent-thread-1'),
+      childChatSessionId: 'child-chat-session-1',
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      agentId: 'agent-1',
+      modelId: 'gpt-5-codex',
+    })
+
+    expect(client.close).not.toHaveBeenCalled()
+    expect(client.initialize).toHaveBeenCalledOnce()
+    expect(providerRuntimeHostManager.listHosts()).toEqual([
+      expect.objectContaining({
+        runtimeKind: 'codex',
+        providerTargetId: 'profile-codex',
+        scopeId: 'child-chat-session-1',
+        refCount: 1,
+        pinnedCount: 1,
+        hasResource: true,
+      }),
+    ])
+
+    const stream = provider.streamTurn({
+      runId: 'run-codex-side-host-reuse',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue side investigation'),
+      workspaceId: 'workspace-1',
+    })
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toContain('turn/start')
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-fork-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-fork-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainPromise
+
+    expect(client.initialize).toHaveBeenCalledOnce()
+    expect(client.requests.map(request => request.method)).toEqual([
+      'thread/fork',
+      'thread/inject_items',
+      'thread/resume',
+      'thread/turns/list',
+      'turn/start',
+      'thread/read',
+      'thread/turns/list',
+    ])
+    expect(client.close).not.toHaveBeenCalled()
+
+    sideHostLease.release()
+
+    expect(client.close).toHaveBeenCalledOnce()
+    expect(providerRuntimeHostManager.listHosts()).toEqual([])
+  })
+
+  it('reuses the session host across provider turns and provider-native app-server invokes', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+
+    const stream = provider.streamTurn({
+      runId: 'run-codex-shared-host',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue on the same host'),
+      modelId: 'gpt-5-codex',
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toContain('turn/start')
+    })
+
+    await expect(provider.invokeProviderNativeAppServer?.({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      modelId: 'gpt-5-codex',
+      method: 'thread/goal/clear',
+      params: { threadId: 'codex-thread-1' },
+    })).resolves.toMatchObject({
+      method: 'thread/goal/clear',
+    })
+
+    expect(clients).toHaveLength(1)
+    expect(providerRuntimeHostManager.listHosts()).toEqual([
+      expect.objectContaining({
+        runtimeKind: 'codex',
+        providerTargetId: 'profile-codex',
+        scopeId: 'chat-session-1',
+        refCount: 1,
+        hasResource: true,
+      }),
+    ])
+    expect(clients[0]!.requests.map(request => request.method)).toEqual([
+      'thread/resume',
+      'thread/turns/list',
+      'turn/start',
+      'thread/goal/clear',
+    ])
+
+    clients[0]!.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainPromise
+
+    expect(clients).toHaveLength(1)
+    expect(clients[0]!.close).toHaveBeenCalledOnce()
+    expect(providerRuntimeHostManager.listHosts()).toEqual([])
   })
 
   it('executes shell commands through Codex thread/shellCommand and returns the native commandExecution result', async () => {
@@ -1051,6 +1264,132 @@ describe('codexProvider app-server integration', () => {
         status: 'complete',
       }),
     ]))
+  })
+
+  it('generates missing Codex thread titles from first-turn goal slash commands', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      readChatPreferences: () => ({
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: 'gpt-4o-mini',
+          thinkingEffort: 'low',
+        },
+      }),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        if (clients.length === 0) {
+          client.threadStartName = null
+          client.threadStartTitle = null
+          client.threadStartPreview = null
+        }
+        else {
+          client.autoCompleteGeneratedTitle = false
+          client.generatedThreadTitle = 'Goal Session Title.'
+        }
+        clients.push(client)
+        return client
+      },
+    })
+    const reportSessionTitle = vi.fn()
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-goal-title',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('/goal Ship provider-owned slots'),
+      workspaceId: 'workspace-1',
+      reportSessionTitle,
+    })
+
+    const drainPromise = drainStream(stream)
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests).toContainEqual({
+        method: 'thread/goal/set',
+        params: { threadId: 'codex-thread-1', objective: 'Ship provider-owned slots' },
+      })
+    })
+    expect(clients[0]?.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({ threadId: 'codex-thread-1' }),
+    })
+
+    await vi.waitFor(() => {
+      expect(clients[1]?.requests).toContainEqual({
+        method: 'turn/start',
+        params: expect.objectContaining({
+          threadId: 'codex-title-thread-1',
+          model: 'gpt-5-codex',
+          effort: 'low',
+          input: [
+            {
+              type: 'text',
+              text: expect.stringContaining('Ship provider-owned slots'),
+              text_elements: [],
+            },
+          ],
+        }),
+      })
+    })
+    expect(clients[1]?.requests).not.toContainEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        input: [
+          {
+            type: 'text',
+            text: expect.stringContaining('/goal'),
+            text_elements: [],
+          },
+        ],
+      }),
+    })
+
+    clients[1]?.completeGeneratedTitle()
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests).toContainEqual({
+        method: 'thread/name/set',
+        params: { threadId: 'codex-thread-1', name: 'Goal Session Title' },
+      })
+    })
+    expect(reportSessionTitle).toHaveBeenCalledWith('Goal Session Title')
+
+    clients[0]?.pushNotification({
+      method: 'turn/started',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'inProgress' },
+      },
+    })
+    clients[0]?.pushNotification({
+      method: 'thread/goal/updated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Ship provider-owned slots',
+          status: 'complete',
+          tokenBudget: null,
+          tokensUsed: 0,
+          timeUsedSeconds: 1,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      },
+    })
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await drainPromise
   })
 
   it('sets metadata-projected goal messages through Codex thread goals', async () => {
@@ -2144,6 +2483,13 @@ describe('codexProvider app-server integration', () => {
       readSecret: () => 'sk-secret',
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
+      readChatPreferences: () => ({
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: 'gpt-4o-mini',
+          thinkingEffort: 'low',
+        },
+      }),
       createAppServerClient: (options) => {
         const client = new FakeCodexAppServerClient(options)
         if (clients.length === 0) {
@@ -2162,7 +2508,7 @@ describe('codexProvider app-server integration', () => {
     const stream = provider.streamTurn({
       runId: 'run-codex-generate-title',
       runtimeSession,
-      profile: createProfile({ titleModel: 'gpt-4o-mini' }),
+      profile: createProfile(),
       message: createUserMessage('Build title generation for missing Codex thread names'),
       workspaceId: 'workspace-1',
       reportSessionTitle,
@@ -2189,21 +2535,28 @@ describe('codexProvider app-server integration', () => {
     expect(titleClient.requests[0]).toEqual({
       method: 'thread/start',
       params: expect.objectContaining({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-codex',
+        cwd: '/tmp/cradle-workspace',
+        runtimeWorkspaceRoots: ['/tmp/cradle-workspace'],
         approvalPolicy: 'never',
         sandbox: 'read-only',
         ephemeral: true,
         threadSource: 'user',
         persistExtendedHistory: false,
-        config: expect.objectContaining({ model: 'gpt-4o-mini' }),
+        config: expect.objectContaining({
+          approval_policy: 'never',
+          disable_response_storage: true,
+          model: 'gpt-5-codex',
+          sandbox_mode: 'danger-full-access',
+        }),
       }),
     })
     expect(titleClient.requests[1]).toEqual({
       method: 'turn/start',
       params: expect.objectContaining({
         threadId: 'codex-title-thread-1',
-        model: 'gpt-4o-mini',
-        effort: 'minimal',
+        model: 'gpt-5-codex',
+        effort: 'low',
       }),
     })
     expect(clients[0]?.requests.map(request => request.method)).not.toContain('thread/name/set')
@@ -2833,6 +3186,120 @@ describe('codexProvider app-server integration', () => {
     })
     await firstChunkPromise
     createdClient.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    for await (const _chunk of stream) {
+      // Drain stream.
+    }
+  })
+
+  it('projects Cradle runtime settings into Codex app-server turn and live setting controls', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-runtime-settings',
+      runtimeSession,
+      profile: createProfile({ model: 'gpt-test', reasoningEffort: 'low' }),
+      message: createUserMessage('Use runtime settings'),
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        thinkingEffort: 'medium',
+        runtimeSettings: {
+          accessMode: 'approval-required',
+          interactionMode: 'plan',
+        },
+      },
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    const client = clients[0]
+    if (!client) {
+      throw new Error('Expected Codex app-server client to be created')
+    }
+
+    expect(client.options.config).toEqual(expect.objectContaining({
+      approval_policy: 'untrusted',
+      sandbox_mode: 'read-only',
+    }))
+    expect(client.requests[0]).toEqual({
+      method: 'thread/start',
+      params: expect.objectContaining({
+        approvalPolicy: 'untrusted',
+        sandbox: 'read-only',
+      }),
+    })
+    expect(client.requests[1]).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        approvalPolicy: 'untrusted',
+        sandboxPolicy: expect.objectContaining({ type: 'readOnly' }),
+        collaborationMode: {
+          mode: 'plan',
+          settings: {
+            model: 'gpt-test',
+            reasoning_effort: 'medium',
+            developer_instructions: null,
+          },
+        },
+      }),
+    })
+
+    await provider.updateRuntimeSettings({
+      runtimeSession,
+      profile: createProfile({ model: 'gpt-test', reasoningEffort: 'low' }),
+      settings: {
+        accessMode: 'full-access',
+        interactionMode: 'default',
+      },
+    })
+
+    expect(client.requests[2]).toEqual({
+      method: 'thread/settings/update',
+      params: {
+        threadId: 'codex-thread-1',
+        approvalPolicy: 'never',
+        sandboxPolicy: { type: 'dangerFullAccess' },
+        collaborationMode: {
+          mode: 'default',
+          settings: {
+            model: 'gpt-test',
+            reasoning_effort: 'medium',
+            developer_instructions: null,
+          },
+        },
+      },
+    })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
       method: 'turn/completed',
       params: {
         threadId: 'codex-thread-1',

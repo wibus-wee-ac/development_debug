@@ -1,8 +1,13 @@
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerBridge } from './app-server-bridge'
 
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+afterEach(() => {
+  providerRuntimeHostManager.clear()
+})
 
 class FakeBridgeAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
@@ -10,7 +15,7 @@ class FakeBridgeAppServerClient {
   initialize = vi.fn(async () => undefined)
 
   private readonly notifications: CodexAppServerMessage[] = []
-  private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
+  private readonly notificationWaiters: Array<(message: CodexAppServerMessage | null) => void> = []
 
   constructor(private readonly responseByMethod: Record<string, unknown> = {}) {}
 
@@ -27,17 +32,16 @@ class FakeBridgeAppServerClient {
     return new Promise((resolve, reject) => {
       const onAbort = () => reject(new Error('aborted'))
       signal?.addEventListener('abort', onAbort, { once: true })
-      this.notificationWaiter = (message) => {
+      this.notificationWaiters.push((message) => {
         signal?.removeEventListener('abort', onAbort)
         resolve(message)
-      }
+      })
     })
   }
 
   pushNotification(message: CodexAppServerMessage): void {
-    if (this.notificationWaiter) {
-      const waiter = this.notificationWaiter
-      this.notificationWaiter = null
+    const waiter = this.notificationWaiters.shift()
+    if (waiter) {
       waiter(message)
       return
     }
@@ -162,6 +166,68 @@ describe('CodexAppServerBridge stream lifecycle', () => {
     const events = await eventsPromise
     expect(events.map(event => event.event)).toEqual(['request_started', 'result', 'notification', 'done'])
     expect(client.close).toHaveBeenCalledOnce()
+  })
+
+  it('reuses one scoped host while bridge streams overlap for the same session', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeBridgeAppServerClient[] = []
+    const bridge = new CodexAppServerBridge({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeBridgeAppServerClient({
+          'turn/start': { turn: { id: 'turn-1', status: 'inProgress' } },
+        })
+        clients.push(client)
+        return client
+      },
+    })
+
+    const firstStream = bridge.openEventStream({
+      ...createBridgeContext(),
+      method: 'turn/start',
+      params: { threadId: 'codex-thread-1', input: [{ type: 'text', text: 'First' }] },
+    })
+    const secondStream = bridge.openEventStream({
+      ...createBridgeContext(),
+      method: 'turn/start',
+      params: { threadId: 'codex-thread-1', input: [{ type: 'text', text: 'Second' }] },
+    })
+    const firstEventsPromise = readSseEvents(firstStream)
+    const secondEventsPromise = readSseEvents(secondStream)
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['turn/start', 'turn/start'])
+    })
+
+    expect(appServerOptions).toHaveLength(1)
+    expect(clients).toHaveLength(1)
+    expect(clients[0]!.initialize).toHaveBeenCalledOnce()
+    expect(clients[0]!.close).not.toHaveBeenCalled()
+    expect(providerRuntimeHostManager.listHosts()).toEqual([
+      expect.objectContaining({
+        runtimeKind: 'codex',
+        providerTargetId: 'profile-codex',
+        scopeId: 'chat-session-1',
+        refCount: 2,
+        hasResource: true,
+      }),
+    ])
+
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: { threadId: 'codex-thread-1', turn: { id: 'turn-1', status: 'completed' } },
+    })
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: { threadId: 'codex-thread-1', turn: { id: 'turn-2', status: 'completed' } },
+    })
+
+    const [firstEvents, secondEvents] = await Promise.all([firstEventsPromise, secondEventsPromise])
+    expect(firstEvents.map(event => event.event)).toEqual(['request_started', 'result', 'notification', 'done'])
+    expect(secondEvents.map(event => event.event)).toEqual(['request_started', 'result', 'notification', 'done'])
+    expect(clients[0]!.close).toHaveBeenCalledOnce()
   })
 
   it('passes Cradle session context into bridge app-server clients', async () => {

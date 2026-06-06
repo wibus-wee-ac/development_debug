@@ -1,9 +1,15 @@
 import type { CodexConfig } from '../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import { getRegisteredMcpServers } from '../../../plugins'
-import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
+import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './app-server-client'
 import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
+import {
+  addCodexAppServerHostRequestHandler,
+  createCodexAppServerHostResource,
+  subscribeCodexAppServerHostNotifications,
+} from './app-server-host-resource'
 import {
   CODEX_APP_SERVER_CAPABILITIES,
   CODEX_APP_SERVER_CLIENT_METHOD_SET,
@@ -19,7 +25,9 @@ import {
   resolveCodexAppServerAuth,
   type CodexChatgptAuthCredential,
 } from './chatgpt-auth'
+import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
+import type { CodexAppServerClientLike, CodexAppServerHostResource } from './types'
 
 export type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
 
@@ -31,13 +39,13 @@ interface CodexAppServerBridgeDeps {
   updateSecretValue?: (credentialRef: string, secret: string) => void
   resolveSkillPaths: (workspacePath: string) => string[]
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
+  readCodexPreferences?: () => { useCradleUserAgent: boolean }
 }
 
-interface CodexAppServerClientLike {
-  initialize: () => Promise<void>
-  request: (method: string, params?: unknown) => Promise<unknown>
-  nextNotification: (signal?: AbortSignal) => Promise<CodexAppServerMessage | null>
-  close: () => void
+interface CodexAppServerBridgeHostLease {
+  hostId: string
+  resource: CodexAppServerHostResource
+  release: () => void
 }
 
 export interface CodexAppServerBridgeContext {
@@ -78,19 +86,19 @@ export class CodexAppServerBridge {
 
   async invoke(input: CodexAppServerInvokeInput): Promise<CodexAppServerInvokeResponse> {
     const capability = requireCodexAppServerMethod(input.method)
-    const { client, chatgptAuth } = this.createClient(input, {
+    const hostLease = await this.acquireHostLease(input, input.method, {
       serverRequestHandler: (request, auth) => buildDefaultCodexAppServerRequestResult(request, {
         chatgptAuth: auth,
         updateSecretValue: this.deps.updateSecretValue,
       }),
     })
+    const client = hostLease.resource.client
     try {
-      await this.initializeClient(client, chatgptAuth, input.method)
       const result = await client.request(input.method, normalizeParams(capability, input.params))
       return { method: input.method, capability, result }
     }
     finally {
-      client.close()
+      hostLease.release()
     }
   }
 
@@ -105,51 +113,74 @@ export class CodexAppServerBridge {
       closeOnMethods,
       input.closeOnMethods !== undefined,
     )
-    let client: CodexAppServerClientLike | null = null
+    let hostLease: CodexAppServerBridgeHostLease | null = null
+    let unsubscribeNotifications: (() => void) | null = null
 
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
-        const created = this.createClient(input, {
-          serverRequestHandler: async (request, auth) => {
-            const result = await buildDefaultCodexAppServerRequestResult(request, {
-              chatgptAuth: auth,
-              updateSecretValue: this.deps.updateSecretValue,
-            })
-            writeSse(controller, encoder, 'server_request', {
-              method: request.method,
-              id: request.id,
-              params: request.params,
-              input: buildCodexServerRequestToolInput(request),
-              output: buildCodexServerRequestToolOutput(request, result),
-            })
-            return result
-          },
-        })
-        client = created.client
-
         void (async () => {
           try {
-            await this.initializeClient(client!, created.chatgptAuth, input.method)
-            const resultPromise = client!.request(input.method, normalizeParams(capability, input.params))
-            writeSse(controller, encoder, 'request_started', { method: input.method, capability })
-
-            const notificationPump = pumpNotifications({
-              client: client!,
-              signal: abortController.signal,
-              write: message => {
-                writeSse(controller, encoder, 'notification', message)
-                return Boolean(message.method && closeOnMethods.has(message.method))
+            hostLease = await this.acquireHostLease(input, input.method, {
+              serverRequestHandler: async (request, auth) => {
+                const result = await buildDefaultCodexAppServerRequestResult(request, {
+                  chatgptAuth: auth,
+                  updateSecretValue: this.deps.updateSecretValue,
+                })
+                writeSse(controller, encoder, 'server_request', {
+                  method: request.method,
+                  id: request.id,
+                  params: request.params,
+                  input: buildCodexServerRequestToolInput(request),
+                  output: buildCodexServerRequestToolOutput(request, result),
+                })
+                return result
               },
             })
+            if (abortController.signal.aborted) {
+              return
+            }
+            const waitForNotifications = new Promise<void>((resolve) => {
+              unsubscribeNotifications = subscribeCodexAppServerHostNotifications(
+                hostLease!.resource,
+                {
+                  onMessage: (message) => {
+                    if (abortController.signal.aborted) {
+                      resolve()
+                      return true
+                    }
+                    writeSse(controller, encoder, 'notification', message)
+                    if (message.method && closeOnMethods.has(message.method)) {
+                      resolve()
+                      return true
+                    }
+                    return false
+                  },
+                  onClose: resolve,
+                },
+              )
+            })
+            const resultPromise = hostLease.resource.client.request(input.method, normalizeParams(capability, input.params))
+            writeSse(controller, encoder, 'request_started', { method: input.method, capability })
+
+            const abortPromise = new Promise<void>((resolve) => {
+              if (abortController.signal.aborted) {
+                resolve()
+                return
+              }
+              abortController.signal.addEventListener('abort', () => resolve(), { once: true })
+            })
+            const notificationWait = shouldWaitForNotifications || closeOnMethods.size > 0
+              ? waitForNotifications
+              : abortPromise
 
             const result = await resultPromise
             writeSse(controller, encoder, 'result', { method: input.method, result })
             if (shouldWaitForNotifications) {
-              await notificationPump.catch(() => undefined)
+              await notificationWait.catch(() => undefined)
             }
             else {
               abortController.abort()
-              await notificationPump.catch(() => undefined)
+              await abortPromise.catch(() => undefined)
             }
             writeDone(controller, encoder)
           }
@@ -160,28 +191,31 @@ export class CodexAppServerBridge {
             writeDone(controller, encoder)
           }
           finally {
-            client?.close()
+            unsubscribeNotifications?.()
+            hostLease?.release()
           }
         })()
       },
       cancel: () => {
         abortController.abort()
-        client?.close()
+        unsubscribeNotifications?.()
+        hostLease?.release()
       },
     })
   }
 
-  private createClient(
+  private async acquireHostLease(
     context: CodexAppServerBridgeContext,
+    requestedMethod: string,
     options: { serverRequestHandler?: CodexAppServerBridgeRequestHandler } = {},
-  ): { client: CodexAppServerClientLike, chatgptAuth: CodexChatgptAuthCredential | null } {
+  ): Promise<CodexAppServerBridgeHostLease> {
     const config = readTrustedCodexConfig(context.profile.configJson)
     const auth = resolveCodexAppServerAuth(context.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
     if (config.baseUrl && !auth.apiKey) {
       throw new Error('Codex app-server bridge requires an API key for external model providers')
     }
     const runtimeContext = resolveCodexRuntimeContext(context.workspacePath, context.agentId)
-    const client = this.deps.createAppServerClient?.({
+    const clientOptions: CodexAppServerClientOptions = this.configureAppServerClientOptions({
       apiKey: auth.apiKey ?? undefined,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
       env: buildCradleCodexAppServerEnv({
@@ -191,39 +225,69 @@ export class CodexAppServerBridge {
         agentId: context.agentId,
         agentHome: runtimeContext.agentHome,
       }),
-      serverRequestHandler: options.serverRequestHandler
-        ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
-        : undefined,
-    }) ?? new CodexAppServerClient({
-      apiKey: auth.apiKey ?? undefined,
-      config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
-      env: buildCradleCodexAppServerEnv({
-        chatSessionId: context.runtimeSession.chatSessionId,
-        workspaceId: context.workspaceId,
-        workspacePath: context.workspacePath,
-        agentId: context.agentId,
-        agentHome: runtimeContext.agentHome,
-      }),
-      serverRequestHandler: options.serverRequestHandler
-        ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
-        : undefined,
     })
-    return { client, chatgptAuth: auth.chatgptAuth }
+    const hostLease = await providerRuntimeHostManager.acquireResource({
+      runtimeKind: context.runtimeSession.runtimeKind,
+      providerTargetId: context.profile.providerTargetId,
+      scopeId: context.runtimeSession.chatSessionId,
+      resourceFingerprint: createCodexAppServerHostFingerprint({
+        options: clientOptions,
+        chatgptAuth: auth.chatgptAuth,
+      }),
+      createResource: (): CodexAppServerHostResource => createCodexAppServerHostResource({
+        clientOptions,
+        createClient: clientOptions => this.deps.createAppServerClient?.(clientOptions) ?? new CodexAppServerClient(clientOptions),
+      }),
+      disposeResource: resource => resource.client.close(),
+    })
+    const requestHandler
+      = options.serverRequestHandler
+      ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
+      : undefined
+    const releaseRequestHandler = requestHandler
+      ? addCodexAppServerHostRequestHandler(hostLease.resource, requestHandler)
+      : () => undefined
+    const bridgeLease: CodexAppServerBridgeHostLease = {
+      hostId: hostLease.hostId,
+      resource: hostLease.resource,
+      release: () => {
+        releaseRequestHandler()
+        hostLease.release()
+      },
+    }
+    try {
+      await this.initializeClient(bridgeLease.resource, auth.chatgptAuth, requestedMethod)
+      return bridgeLease
+    }
+    catch (error) {
+      providerRuntimeHostManager.invalidateResource(hostLease.hostId)
+      bridgeLease.release()
+      throw error
+    }
+  }
+
+  private configureAppServerClientOptions(options: CodexAppServerClientOptions): CodexAppServerClientOptions {
+    const userAgentMode = this.deps.readCodexPreferences?.().useCradleUserAgent === false ? 'native' : 'cradle'
+    return { ...options, userAgentMode } satisfies CodexAppServerClientOptions
   }
 
   private async initializeClient(
-    client: CodexAppServerClientLike,
+    resource: CodexAppServerHostResource,
     chatgptAuth: CodexChatgptAuthCredential | null,
     requestedMethod: string,
   ): Promise<void> {
-    await client.initialize()
+    resource.initialized ??= resource.client.initialize()
+    await resource.initialized
     if (!chatgptAuth || isAccountAuthMutationMethod(requestedMethod)) {
       return
     }
-    const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
-      updateSecretValue: this.deps.updateSecretValue,
-    })
-    await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+    resource.chatgptAuthenticated ??= (async () => {
+      const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
+        updateSecretValue: this.deps.updateSecretValue,
+      })
+      await resource.client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+    })()
+    await resource.chatgptAuthenticated
   }
 }
 
@@ -293,31 +357,6 @@ function buildCodexMcpServersConfig(): Record<string, { command: string, args: s
       return [name, server]
     }),
   )
-}
-
-async function pumpNotifications(input: {
-  client: CodexAppServerClientLike
-  signal: AbortSignal
-  write: (message: CodexAppServerMessage) => boolean
-}): Promise<void> {
-  while (!input.signal.aborted) {
-    let message: CodexAppServerMessage | null
-    try {
-      message = await input.client.nextNotification(input.signal)
-    }
-    catch (error) {
-      if (input.signal.aborted) {
-        return
-      }
-      throw error
-    }
-    if (!message) {
-      return
-    }
-    if (input.write(message)) {
-      return
-    }
-  }
 }
 
 function defaultCloseMethodsFor(method: string): string[] {
