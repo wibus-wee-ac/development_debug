@@ -320,7 +320,7 @@ function readCodexRequestId(params: ErrorNotificationParams | undefined): string
     typeof params?.details === 'string' ? params.details : null,
   ]
   for (const value of values) {
-    const match = value?.match(/request id:\s*([a-zA-Z0-9-]+)/i)
+    const match = value?.match(/request id:\s*([a-z0-9-]+)/i)
     if (match) {
       return match[1]
     }

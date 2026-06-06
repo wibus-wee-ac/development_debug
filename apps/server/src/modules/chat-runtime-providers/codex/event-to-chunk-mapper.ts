@@ -26,6 +26,7 @@ export interface CodexAppServerMapperState {
   commandById: Map<string, string>
   toolArgsById: Map<string, unknown>
   startedAgentMessageIds: Set<string>
+  pendingServerRequestIds: Set<number>
 }
 
 export interface CodexAppServerNotification {
@@ -49,6 +50,12 @@ interface ServerRequestHandledParams {
   result?: unknown
 }
 
+interface ServerRequestPendingParams {
+  id?: number
+  method?: string
+  params?: unknown
+}
+
 export function createCodexAppServerMapperState(textItemId: string): CodexAppServerMapperState {
   void textItemId
   return {
@@ -59,6 +66,7 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
     commandById: new Map(),
     toolArgsById: new Map(),
     startedAgentMessageIds: new Set(),
+    pendingServerRequestIds: new Set(),
   }
 }
 
@@ -85,8 +93,10 @@ export function mapCodexAppServerNotificationToChunks(
       return mapToolProgressDelta(notification.params)
     case 'item/fileChange/patchUpdated':
       return mapFileChangePatchUpdated(notification.params)
+    case 'serverRequest/pending':
+      return mapPendingServerRequest(notification.params, state)
     case 'serverRequest/handled':
-      return mapHandledServerRequest(notification.params)
+      return mapHandledServerRequest(notification.params, state)
     default:
       return []
   }
@@ -231,7 +241,7 @@ function mapCommandOutputDelta(rawParams: unknown, state: CodexAppServerMapperSt
   const collector = state.commandOutputById.get(params.itemId) ?? createBoundedTextCollector()
   collector.append(params.delta)
   state.commandOutputById.set(params.itemId, collector)
-  return [{ type: 'tool-input-delta', toolCallId: params.itemId, inputTextDelta: params.delta }]
+  return []
 }
 
 function mapToolProgressDelta(rawParams: unknown): UIMessageChunk[] {
@@ -260,7 +270,27 @@ function mapFileChangePatchUpdated(rawParams: unknown): UIMessageChunk[] {
   }]
 }
 
-function mapHandledServerRequest(rawParams: unknown): UIMessageChunk[] {
+function mapPendingServerRequest(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
+  const params = rawParams as ServerRequestPendingParams
+  if (typeof params.id !== 'number' || !params.method) {
+    return []
+  }
+  state.pendingServerRequestIds.add(params.id)
+  const request = { id: params.id, method: params.method, params: params.params }
+  const toolCallId = `server-request-${params.id}`
+  const toolName = toSafeToolName(`server_request_${params.method}`)
+  return [
+    { type: 'tool-input-start', toolCallId, toolName },
+    {
+      type: 'tool-input-available',
+      toolCallId,
+      toolName,
+      input: buildCodexServerRequestToolInput(request),
+    },
+  ]
+}
+
+function mapHandledServerRequest(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
   const params = rawParams as ServerRequestHandledParams
   if (typeof params.id !== 'number' || !params.method) {
     return []
@@ -268,6 +298,13 @@ function mapHandledServerRequest(rawParams: unknown): UIMessageChunk[] {
   const request = { id: params.id, method: params.method, params: params.params }
   const toolCallId = `server-request-${params.id}`
   const toolName = toSafeToolName(`server_request_${params.method}`)
+  if (state.pendingServerRequestIds.delete(params.id)) {
+    return [{
+      type: 'tool-output-available',
+      toolCallId,
+      output: buildCodexServerRequestToolOutput(request, params.result),
+    }]
+  }
   return [
     { type: 'tool-input-start', toolCallId, toolName },
     {

@@ -1,10 +1,18 @@
 import { Elysia } from 'elysia'
 
-import type { ChatThinkingEffort, ProviderThreadSourceKind } from './runtime-provider-types'
 import { ChatRuntimeModel } from './model'
-import * as ChatRuntime from './service'
+import type { ChatThinkingEffort, ProviderThreadSourceKind } from './runtime-provider-types'
 
 type QueueThinkingEffort = Extract<ChatThinkingEffort, 'low' | 'medium' | 'high' | 'xhigh'>
+
+type ChatRuntimeService = typeof import('./service')
+type StreamResponseInput = Parameters<ChatRuntimeService['streamResponse']>[0]
+
+let chatRuntimeService: Promise<ChatRuntimeService> | null = null
+async function loadChatRuntime(): Promise<ChatRuntimeService> {
+  chatRuntimeService ??= import('./service')
+  return await chatRuntimeService
+}
 
 const PROVIDER_THREAD_SOURCE_KINDS = new Set<ProviderThreadSourceKind>([
   'cli',
@@ -39,12 +47,13 @@ export const chatRuntime = new Elysia({
 })
   // POST /chat/sessions/:sessionId/response → SSE stream (send message + get streaming response)
   .post('/sessions/:sessionId/response', async ({ params, body }) => {
-    const response = await ChatRuntime.streamResponse({
+    const runtime = await loadChatRuntime()
+    const response = await runtime.streamResponse({
       sessionId: params.sessionId,
       text: body.text ?? '',
       files: body.files,
       contextParts: body.contextParts,
-      messages: body.messages as Parameters<typeof ChatRuntime.streamResponse>[0]['messages'],
+      messages: body.messages as StreamResponseInput['messages'],
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
       thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
@@ -82,7 +91,7 @@ export const chatRuntime = new Elysia({
   })
   // POST /chat/sessions/:sessionId/bang-command -> execute a user-entered shell command through the session runtime and persist transcript context
   .post('/sessions/:sessionId/bang-command', async ({ params, body, request }) => {
-    return await ChatRuntime.executeBangCommand({
+    return await (await loadChatRuntime()).executeBangCommand({
       sessionId: params.sessionId,
       command: body.command,
       signal: request.signal,
@@ -95,37 +104,119 @@ export const chatRuntime = new Elysia({
     body: ChatRuntimeModel.bangCommandBody,
     response: { 200: ChatRuntimeModel.bangCommandResponse },
   })
-  // POST /chat/sessions/:sessionId/side-chat -> create a Cradle-owned side session from the current chat session
+  // POST /chat/sessions/:sessionId/title/regenerate -> regenerate the persisted session title through the active runtime
+  .post('/sessions/:sessionId/title/regenerate', async ({ params }) => {
+    return await (await loadChatRuntime()).regenerateSessionTitle(params.sessionId)
+  }, {
+    detail: {
+      summary: 'Regenerate chat session title',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    response: { 200: ChatRuntimeModel.regeneratedTitleResponse },
+  })
+  // POST /chat/sessions/:sessionId/side-chat -> fork a live-only provider side conversation from the current chat session
   .post('/sessions/:sessionId/side-chat', async ({ params, body }) => {
-    return await ChatRuntime.createSideChat({
+    return await (await loadChatRuntime()).createSideChat({
       parentSessionId: params.sessionId,
       providerTargetId: body.providerTargetId?.trim() || undefined,
       modelId: body.modelId?.trim() || undefined,
     })
   }, {
     detail: {
-      summary: 'Create a side chat session from the current session',
+      summary: 'Create a live-only side conversation from the current session',
     },
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.sideChatBody,
     response: { 200: ChatRuntimeModel.sideChatResponse },
   })
-  // POST /chat/sessions/:sessionId/promote-side -> promote a side session into a fresh durable top-level session
-  .post('/sessions/:sessionId/promote-side', ({ params }) => {
-    return ChatRuntime.promoteSideChat({
-      sourceSessionId: params.sessionId,
+  // POST /chat/sessions/:sessionId/quick-question -> stream a stateless quick question (no tools, not persisted)
+  .post('/sessions/:sessionId/quick-question', async ({ params, body }) => {
+    const stream = await (await loadChatRuntime()).streamQuickQuestion({
+      sessionId: params.sessionId,
+      question: body.question,
+    })
+    return new Response(stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+      },
     })
   }, {
     detail: {
-      summary: 'Promote a side chat session into a fresh durable session',
+      summary: 'Stream a quick question without persisting to history (no tools)',
+      responses: {
+        200: {
+          description: 'Server-sent event stream with AI SDK UIMessageChunk JSON frames',
+          content: {
+            'text/event-stream': {
+              schema: { type: 'string' },
+            },
+          },
+        },
+      },
     },
     params: ChatRuntimeModel.sessionIdParams,
-    response: { 200: ChatRuntimeModel.promoteSideChatResponse },
+    body: ChatRuntimeModel.quickQuestionBody,
+  })
+  // POST /chat/sessions/:sessionId/user-input/:requestId -> resolve a provider pending user input request
+  .post('/sessions/:sessionId/user-input/:requestId', async ({ params, body }) => {
+    return (await loadChatRuntime()).submitRuntimeUserInput({
+      sessionId: params.sessionId,
+      requestId: params.requestId,
+      answers: body.answers,
+    })
+  }, {
+    detail: {
+      summary: 'Submit answers for a pending runtime user input request',
+    },
+    params: ChatRuntimeModel.userInputParams,
+    body: ChatRuntimeModel.userInputBody,
+    response: { 200: ChatRuntimeModel.userInputResponse },
+  })
+  // POST /chat/side-conversations/:sideConversationId/response -> stream a live-only side conversation turn
+  .post('/side-conversations/:sideConversationId/response', async ({ params, body }) => {
+    const response = await (await loadChatRuntime()).streamSideConversationResponse({
+      sideConversationId: params.sideConversationId,
+      text: body.text ?? '',
+      files: body.files,
+      contextParts: body.contextParts,
+      modelId: body.modelId?.trim() || undefined,
+      thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
+      runtimeSettings: body.runtimeSettings,
+    })
+    return new Response(response.stream, {
+      headers: {
+        'content-type': 'text/event-stream',
+        'cache-control': 'no-cache',
+        'connection': 'keep-alive',
+        'x-cradle-run-id': response.runId,
+        'x-cradle-assistant-message-id': response.assistantMessageId,
+        'x-cradle-user-message-id': response.userMessageId,
+      },
+    })
+  }, {
+    detail: {
+      summary: 'Send message and stream response for a live-only side conversation',
+    },
+    params: ChatRuntimeModel.sideConversationParams,
+    body: ChatRuntimeModel.responseBody,
+  })
+  // DELETE /chat/side-conversations/:sideConversationId -> release a live side conversation
+  .delete('/side-conversations/:sideConversationId', async ({ params }) => {
+    (await loadChatRuntime()).releaseSideConversationById(params.sideConversationId)
+    return { ok: true as const }
+  }, {
+    detail: {
+      summary: 'Release a live-only side conversation',
+    },
+    params: ChatRuntimeModel.sideConversationParams,
+    response: { 200: ChatRuntimeModel.cancelResponse },
   })
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
-  .get('/sessions/:sessionId/stream', ({ params }) => {
-    const stream = ChatRuntime.openSessionRunStream(params.sessionId)
-    const activeRun = ChatRuntime.getActiveSessionRun(params.sessionId)
+  .get('/sessions/:sessionId/stream', async ({ params }) => {
+    const stream = (await loadChatRuntime()).openSessionRunStream(params.sessionId)
+    const activeRun = (await loadChatRuntime()).getActiveSessionRun(params.sessionId)
     return new Response(stream, {
       headers: {
         'content-type': 'text/event-stream',
@@ -154,8 +245,8 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
   })
   // GET /chat/runtimes -> registered runtime provider catalog for Chat and Jarvis selectors.
-  .get('/runtimes', () => {
-    return ChatRuntime.listRuntimes()
+  .get('/runtimes', async () => {
+    return (await loadChatRuntime()).listRuntimes()
   }, {
     detail: {
       summary: 'List registered chat runtimes',
@@ -164,7 +255,7 @@ export const chatRuntime = new Elysia({
   })
   // GET /chat/runtimes/health -> optional runtime provider health checks.
   .get('/runtimes/health', async () => {
-    return await ChatRuntime.listRuntimeHealthStatuses()
+    return await (await loadChatRuntime()).listRuntimeHealthStatuses()
   }, {
     detail: {
       summary: 'List chat runtime health statuses',
@@ -172,8 +263,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.runtimeHealth },
   })
   // GET /chat/sessions/:sessionId/queue → durable continuation queue
-  .get('/sessions/:sessionId/queue', ({ params }) => {
-    return { items: ChatRuntime.listSessionQueueItems(params.sessionId) }
+  .get('/sessions/:sessionId/queue', async ({ params }) => {
+    return { items: (await loadChatRuntime()).listSessionQueueItems(params.sessionId) }
   }, {
     detail: {
       'summary': 'List pending and historical chat continuation queue items',
@@ -186,9 +277,8 @@ export const chatRuntime = new Elysia({
   })
   // POST /chat/sessions/:sessionId/queue → enqueue busy-session follow-up
   .post('/sessions/:sessionId/queue', async ({ params, body }) => {
-    return await ChatRuntime.enqueueSessionQueueItem({
+    return await (await loadChatRuntime()).enqueueSessionQueueItem({
       sessionId: params.sessionId,
-      mode: body.mode,
       text: body.text,
       files: body.files,
       contextParts: body.contextParts,
@@ -208,9 +298,29 @@ export const chatRuntime = new Elysia({
     body: ChatRuntimeModel.queueEnqueueBody,
     response: { 200: ChatRuntimeModel.queueItem },
   })
+  // POST /chat/sessions/:sessionId/steer -> apply same-turn guidance to the active runtime turn
+  .post('/sessions/:sessionId/steer', async ({ params, body }) => {
+    return await (await loadChatRuntime()).submitSessionSteerTurn({
+      sessionId: params.sessionId,
+      text: body.text,
+      files: body.files,
+      contextParts: body.contextParts,
+      providerTargetId: body.providerTargetId?.trim() || undefined,
+      modelId: body.modelId?.trim() || undefined,
+      thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
+      runtimeSettings: body.runtimeSettings,
+    })
+  }, {
+    detail: {
+      summary: 'Steer the currently active chat runtime turn',
+    },
+    params: ChatRuntimeModel.sessionIdParams,
+    body: ChatRuntimeModel.steerBody,
+    response: { 200: ChatRuntimeModel.steerResponse },
+  })
   // POST /chat/sessions/:sessionId/queue/reorder → reorder pending queue items
-  .post('/sessions/:sessionId/queue/reorder', ({ params, body }) => {
-    return { items: ChatRuntime.reorderSessionQueueItems(params.sessionId, body.queueItemIds) }
+  .post('/sessions/:sessionId/queue/reorder', async ({ params, body }) => {
+    return { items: (await loadChatRuntime()).reorderSessionQueueItems(params.sessionId, body.queueItemIds) }
   }, {
     detail: {
       'summary': 'Reorder pending chat continuation queue items',
@@ -223,8 +333,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.queueListResponse },
   })
   // DELETE /chat/sessions/:sessionId/queue/:queueItemId → cancel pending queue item
-  .delete('/sessions/:sessionId/queue/:queueItemId', ({ params }) => {
-    return ChatRuntime.cancelSessionQueueItem(params.sessionId, params.queueItemId)
+  .delete('/sessions/:sessionId/queue/:queueItemId', async ({ params }) => {
+    return (await loadChatRuntime()).cancelSessionQueueItem(params.sessionId, params.queueItemId)
   }, {
     detail: {
       'summary': 'Cancel a pending chat continuation queue item',
@@ -236,8 +346,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.queueItem },
   })
   // GET /chat/draft-runtime-capabilities?runtimeKind=... -> provider-owned pre-session composer capabilities
-  .get('/draft-runtime-capabilities', ({ query }) => {
-    return ChatRuntime.getDraftRuntimeCapabilities(query.runtimeKind)
+  .get('/draft-runtime-capabilities', async ({ query }) => {
+    return (await loadChatRuntime()).getDraftRuntimeCapabilities(query.runtimeKind)
   }, {
     detail: {
       summary: 'Get draft chat runtime capabilities',
@@ -246,8 +356,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.capabilities },
   })
   // GET /chat/sessions/:sessionId/capabilities → runtime-native command/skill discovery
-  .get('/sessions/:sessionId/capabilities', ({ params }) => {
-    return ChatRuntime.getCapabilities(params.sessionId)
+  .get('/sessions/:sessionId/capabilities', async ({ params }) => {
+    return (await loadChatRuntime()).getCapabilities(params.sessionId)
   }, {
     detail: {
       summary: 'Get chat runtime capabilities',
@@ -256,8 +366,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.capabilities },
   })
   // GET /chat/sessions/:sessionId/ui-slot-states -> provider-owned composer-adjacent state
-  .get('/sessions/:sessionId/ui-slot-states', ({ params }) => {
-    return ChatRuntime.getUiSlotStates(params.sessionId)
+  .get('/sessions/:sessionId/ui-slot-states', async ({ params }) => {
+    return (await loadChatRuntime()).getUiSlotStates(params.sessionId)
   }, {
     detail: {
       summary: 'Get provider-owned chat UI slot states',
@@ -266,8 +376,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.uiSlotStates },
   })
   // GET /chat/sessions/:sessionId/provider-threads -> provider-native subagent/thread list
-  .get('/sessions/:sessionId/provider-threads', ({ params, query }) => {
-    return ChatRuntime.listProviderThreads(params.sessionId, {
+  .get('/sessions/:sessionId/provider-threads', async ({ params, query }) => {
+    return (await loadChatRuntime()).listProviderThreads(params.sessionId, {
       cursor: query.cursor ?? null,
       limit: query.limit ?? null,
       sortKey: query.sortKey ?? null,
@@ -285,8 +395,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.providerThreads },
   })
   // GET /chat/sessions/:sessionId/provider-threads/:threadId -> provider-native thread metadata
-  .get('/sessions/:sessionId/provider-threads/:threadId', ({ params }) => {
-    return ChatRuntime.readProviderThread(params.sessionId, params.threadId)
+  .get('/sessions/:sessionId/provider-threads/:threadId', async ({ params }) => {
+    return (await loadChatRuntime()).readProviderThread(params.sessionId, params.threadId)
   }, {
     detail: {
       summary: 'Read provider-native thread metadata for a chat session',
@@ -295,8 +405,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.providerThread },
   })
   // GET /chat/sessions/:sessionId/provider-threads/:threadId/turns -> provider-native thread turns and projected UI messages
-  .get('/sessions/:sessionId/provider-threads/:threadId/turns', ({ params, query }) => {
-    return ChatRuntime.listProviderThreadTurns(params.sessionId, params.threadId, {
+  .get('/sessions/:sessionId/provider-threads/:threadId/turns', async ({ params, query }) => {
+    return (await loadChatRuntime()).listProviderThreadTurns(params.sessionId, params.threadId, {
       cursor: query.cursor ?? null,
       limit: query.limit ?? null,
       sortDirection: query.sortDirection ?? null,
@@ -310,8 +420,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.providerThreadTurns },
   })
   // GET /chat/sessions/:sessionId/provider-threads/:threadId/stream -> live provider-native thread AI SDK chunk stream
-  .get('/sessions/:sessionId/provider-threads/:threadId/stream', ({ params }) => {
-    const stream = ChatRuntime.openProviderThreadStream(params.sessionId, params.threadId)
+  .get('/sessions/:sessionId/provider-threads/:threadId/stream', async ({ params }) => {
+    const stream = (await loadChatRuntime()).openProviderThreadStream(params.sessionId, params.threadId)
     return new Response(stream, {
       headers: {
         'content-type': 'text/event-stream',
@@ -338,8 +448,8 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.providerThreadParams,
   })
   // GET /chat/sessions/:sessionId/runtime-status → server-owned runtime session/run status
-  .get('/sessions/:sessionId/runtime-status', ({ params }) => {
-    return ChatRuntime.getRuntimeSessionStatus(params.sessionId)
+  .get('/sessions/:sessionId/runtime-status', async ({ params }) => {
+    return (await loadChatRuntime()).getRuntimeSessionStatus(params.sessionId)
   }, {
     detail: {
       summary: 'Get chat runtime session status',
@@ -348,9 +458,9 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.runtimeStatus },
   })
   // GET /chat/sessions/:sessionId/codex/app-server/capabilities -> generated Codex app-server surface
-  .get('/sessions/:sessionId/codex/app-server/capabilities', ({ params }) => {
-    ChatRuntime.getRuntimeSessionStatus(params.sessionId)
-    return ChatRuntime.getCodexAppServerCapabilityManifest()
+  .get('/sessions/:sessionId/codex/app-server/capabilities', async ({ params }) => {
+    (await loadChatRuntime()).getRuntimeSessionStatus(params.sessionId)
+    return (await loadChatRuntime()).getCodexAppServerCapabilityManifest()
   }, {
     detail: {
       summary: 'Get Codex app-server protocol capabilities exposed by Cradle',
@@ -360,7 +470,7 @@ export const chatRuntime = new Elysia({
   })
   // POST /chat/sessions/:sessionId/codex/app-server/invoke -> invoke any generated app-server method
   .post('/sessions/:sessionId/codex/app-server/invoke', async ({ params, body }) => {
-    return await ChatRuntime.invokeCodexAppServer({
+    return await (await loadChatRuntime()).invokeCodexAppServer({
       sessionId: params.sessionId,
       method: body.method,
       params: body.params,
@@ -377,7 +487,7 @@ export const chatRuntime = new Elysia({
   })
   // POST /chat/sessions/:sessionId/codex/app-server/stream -> invoke app-server method and stream notifications
   .post('/sessions/:sessionId/codex/app-server/stream', async ({ params, body }) => {
-    const stream = await ChatRuntime.openCodexAppServerStream({
+    const stream = await (await loadChatRuntime()).openCodexAppServerStream({
       sessionId: params.sessionId,
       method: body.method,
       params: body.params,
@@ -410,8 +520,8 @@ export const chatRuntime = new Elysia({
     body: ChatRuntimeModel.codexAppServerStreamBody,
   })
   // GET /chat/sessions/:sessionId/messages → historical message snapshot rows
-  .get('/sessions/:sessionId/messages', ({ params }) => {
-    return ChatRuntime.getMessageGroups(params.sessionId)
+  .get('/sessions/:sessionId/messages', async ({ params }) => {
+    return (await loadChatRuntime()).getMessageGroups(params.sessionId)
   }, {
     detail: {
       'summary': 'Get chat message snapshot rows',
@@ -423,8 +533,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.chatMessages },
   })
   // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
-  .get('/runs/completed', ({ query }) => {
-    return ChatRuntime.listCompletedRuns({
+  .get('/runs/completed', async ({ query }) => {
+    return (await loadChatRuntime()).listCompletedRuns({
       since: query.since ?? null,
       limit: query.limit ?? null,
     })
@@ -436,8 +546,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.completedRuns },
   })
   // GET /chat/runs/:runId/trace → dev-mode stream trace JSONL decoded as records
-	  .get('/runs/:runId/trace', ({ params }) => {
-	    return ChatRuntime.getRunTrace(params.runId)
+	  .get('/runs/:runId/trace', async ({ params }) => {
+	    return (await loadChatRuntime()).getRunTrace(params.runId)
 	  }, {
     detail: {
       'summary': 'Get chat stream trace records for a run',
@@ -449,8 +559,8 @@ export const chatRuntime = new Elysia({
 	    response: { 200: ChatRuntimeModel.runTrace },
 	  })
 	  // GET /chat/runs/:runId/snapshot → durable backend-run snapshot summary
-	  .get('/runs/:runId/snapshot', ({ params }) => {
-	    return ChatRuntime.getRunSnapshotDto(params.runId)
+	  .get('/runs/:runId/snapshot', async ({ params }) => {
+	    return (await loadChatRuntime()).getRunSnapshotDto(params.runId)
 	  }, {
 	    detail: {
 	      'summary': 'Get durable chat run snapshot',
@@ -462,8 +572,8 @@ export const chatRuntime = new Elysia({
 	    response: { 200: ChatRuntimeModel.runSnapshot },
 	  })
 	  // GET /chat/sessions/:sessionId/traces → all dev-mode stream traces for a session
-	  .get('/sessions/:sessionId/traces', ({ params }) => {
-	    return ChatRuntime.getSessionTraces(params.sessionId)
+	  .get('/sessions/:sessionId/traces', async ({ params }) => {
+	    return (await loadChatRuntime()).getSessionTraces(params.sessionId)
   }, {
     detail: {
       'summary': 'Get chat stream traces for a session',
@@ -475,8 +585,8 @@ export const chatRuntime = new Elysia({
 	    response: { 200: ChatRuntimeModel.sessionTraces },
 	  })
 	  // GET /chat/sessions/:sessionId/run-snapshots → durable backend-run snapshots for a session
-	  .get('/sessions/:sessionId/run-snapshots', ({ params }) => {
-	    return ChatRuntime.getSessionRunSnapshots(params.sessionId)
+	  .get('/sessions/:sessionId/run-snapshots', async ({ params }) => {
+	    return (await loadChatRuntime()).getSessionRunSnapshots(params.sessionId)
 	  }, {
 	    detail: {
 	      'summary': 'Get durable chat run snapshots for a session',
@@ -489,7 +599,7 @@ export const chatRuntime = new Elysia({
 	  })
   // POST /chat/sessions/:sessionId/cancel → abort active run
   .post('/sessions/:sessionId/cancel', async ({ params }) => {
-    await ChatRuntime.cancelSession(params.sessionId)
+    await (await loadChatRuntime()).cancelSession(params.sessionId)
     return { ok: true as const }
   }, {
     detail: {
@@ -502,8 +612,8 @@ export const chatRuntime = new Elysia({
     response: { 200: ChatRuntimeModel.cancelResponse },
   })
   // GET /chat/sessions/:sessionId/runtime-settings → read Cradle-owned runtime controls
-  .get('/sessions/:sessionId/runtime-settings', ({ params }) => {
-    return ChatRuntime.getSessionRuntimeSettings(params.sessionId)
+  .get('/sessions/:sessionId/runtime-settings', async ({ params }) => {
+    return (await loadChatRuntime()).getSessionRuntimeSettings(params.sessionId)
   }, {
     detail: {
       'summary': 'Get runtime settings for a chat session',
@@ -516,7 +626,7 @@ export const chatRuntime = new Elysia({
   })
   // PATCH /chat/sessions/:sessionId/runtime-settings → update Cradle-owned runtime controls
   .patch('/sessions/:sessionId/runtime-settings', async ({ params, body }) => {
-    return await ChatRuntime.updateSessionRuntimeSettings({
+    return await (await loadChatRuntime()).updateSessionRuntimeSettings({
       sessionId: params.sessionId,
       patch: body,
     })

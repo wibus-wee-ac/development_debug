@@ -2,8 +2,8 @@ import type { AgentProfile, ProviderTarget } from '@cradle/db'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import * as ProviderTargets from '../provider-targets/service'
 import type { ModelCapabilities, ProviderKind } from '../provider-contracts/types'
+import * as ProviderTargets from '../provider-targets/service'
 
 // ── types ──
 
@@ -40,6 +40,7 @@ const ModelCapabilitiesSchema = z.object({
   inputModalities: z.array(z.string()).optional(),
   outputModalities: z.array(z.string()).optional(),
   reasoning: z.boolean().optional(),
+  reasoningEfforts: z.array(z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])).optional(),
   toolCall: z.boolean().optional(),
   temperature: z.boolean().optional(),
   structuredOutput: z.boolean().optional(),

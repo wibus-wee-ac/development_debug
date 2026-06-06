@@ -124,7 +124,28 @@ export function saveSecret(input: SaveSecretInput): SecretMetadata {
 export function upsertSecretInDb(database: ReturnType<typeof db>, input: UpsertSecretInput): SecretMetadata {
   ensureConfigured()
   const now = Math.floor(Date.now() / 1000)
-  const encryptedSecret = encrypt(input.secret)
+
+  // Check if secret already exists and decrypt it
+  const existing = database.select().from(agentCredentials).where(eq(agentCredentials.id, input.id)).get()
+  let encryptedSecret: string
+  let existingDecrypted: string | null = null
+
+  if (existing) {
+    try {
+      existingDecrypted = decrypt(existing.encryptedSecret)
+    }
+    catch {
+      // Failed to decrypt - will re-encrypt with current key
+    }
+  }
+
+  // Only re-encrypt if the secret value has changed or decryption failed
+  if (existing && existingDecrypted === input.secret) {
+    encryptedSecret = existing.encryptedSecret
+  }
+  else {
+    encryptedSecret = encrypt(input.secret)
+  }
 
   database.insert(agentCredentials).values({
       id: input.id,
@@ -160,13 +181,10 @@ export function upsertSecret(input: UpsertSecretInput): SecretMetadata {
 export function updateSecretValue(id: string, secret: string): void {
   ensureConfigured()
   const encryptedSecret = encrypt(secret)
-  const result = db().update(agentCredentials)
-    .set({
+  const result = db().update(agentCredentials).set({
       encryptedSecret,
       updatedAt: Math.floor(Date.now() / 1000),
-    })
-    .where(eq(agentCredentials.id, id))
-    .run()
+    }).where(eq(agentCredentials.id, id)).run()
   if (result.changes === 0) {
     throw new AppError({
       code: 'secret_not_found',

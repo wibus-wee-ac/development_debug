@@ -5,9 +5,8 @@ import { join } from 'node:path'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import type { RuntimeProviderTargetProfile, RuntimeSession, RuntimeUserInputRequest, RuntimeUserInputResolution } from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
-import { reserveSideConversationHost } from '../../provider-runtime/side-conversation-registry'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
 import { CodexProvider } from './provider'
 
@@ -431,6 +430,16 @@ class FakeCodexAppServerClient {
     if (!this.options.serverRequestHandler) {
       throw new Error('Expected a Codex app-server server request handler')
     }
+    if (isPendingInteractiveServerRequest(request.method)) {
+      this.pushNotification({
+        method: 'serverRequest/pending',
+        params: {
+          id: request.id,
+          method: request.method,
+          params: request.params,
+        },
+      })
+    }
     const result = await this.options.serverRequestHandler(request)
     this.pushNotification({
       method: 'serverRequest/handled',
@@ -443,6 +452,10 @@ class FakeCodexAppServerClient {
     })
     return result
   }
+}
+
+function isPendingInteractiveServerRequest(method: string): boolean {
+  return method === 'item/tool/requestUserInput' || method === 'mcpServer/elicitation/request'
 }
 
 function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
@@ -500,7 +513,7 @@ function createFakeChatgptJwt(input: {
   return [
     encode({ alg: 'none', typ: 'JWT' }),
     encode({
-      email: input.email ?? 'user@example.com',
+      'email': input.email ?? 'user@example.com',
       'https://api.openai.com/auth': {
         chatgpt_account_id: input.accountId,
         chatgpt_plan_type: input.planType ?? 'plus',
@@ -829,8 +842,8 @@ describe('codexProvider app-server integration', () => {
   it('keeps side Codex app-server clients host-managed across fork and side turns', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
-    const sideHostLease = reserveSideConversationHost({
-      sessionId: 'child-chat-session-1',
+    const sideHostLease = providerRuntimeHostManager.acquireLease({
+      scopeId: 'child-chat-session-1',
       providerTargetId: 'profile-codex',
       runtimeKind: 'codex',
       pinned: true,
@@ -986,6 +999,75 @@ describe('codexProvider app-server integration', () => {
     expect(clients).toHaveLength(1)
     expect(clients[0]!.close).toHaveBeenCalledOnce()
     expect(providerRuntimeHostManager.listHosts()).toEqual([])
+  })
+
+  it('shares the same session host between turn execution and UI slot reads', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+    const stream = provider.streamTurn({
+      runId: 'run-codex-shared-host',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect runtime state'),
+      systemPrompt: 'Use this transient system prompt file.',
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        runtimeSettings: {
+          accessMode: 'approval-required',
+          interactionMode: 'default',
+        },
+      },
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toContain('turn/start')
+    })
+
+    // UI slot reads during active turn should use the same app-server host
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'model',
+        slotId: 'codex:model',
+      }),
+    ]))
+    // Only one app-server client should be created
+    expect(clients).toHaveLength(1)
+    expect(clients[0]?.requests.map(request => request.method)).toContain('config/read')
+
+    clients[0]!.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
   })
 
   it('executes shell commands through Codex thread/shellCommand and returns the native commandExecution result', async () => {
@@ -4496,11 +4578,20 @@ describe('codexProvider app-server integration', () => {
       },
     })
     client.pushNotification({
+      method: 'item/commandExecution/outputDelta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'tool-1',
+        delta: '/tmp',
+      },
+    })
+    client.pushNotification({
       method: 'item/completed',
       params: {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
-        item: { id: 'tool-1', type: 'commandExecution', aggregatedOutput: '/tmp', exitCode: 0 },
+        item: { id: 'tool-1', type: 'commandExecution', exitCode: 0 },
       },
     })
     client.pushNotification({
@@ -4726,6 +4817,290 @@ describe('codexProvider app-server integration', () => {
         type: 'tool-output-available',
         toolCallId: 'server-request-42',
         output: codexOutput('approval.command_execution', params, { decision: 'decline' }),
+      },
+    ])
+  })
+
+  it('waits for runtime user input before answering Codex requestUserInput server requests', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const userInputResolver: {
+      resolve: ((resolution: RuntimeUserInputResolution) => void) | null
+    } = { resolve: null }
+    const requestUserInput = vi.fn((request: RuntimeUserInputRequest) => {
+      return new Promise<RuntimeUserInputResolution>((resolve) => {
+        userInputResolver.resolve = resolve
+      })
+    })
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      requestUserInput,
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-user-input',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Ask a clarifying question'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    const params = {
+      questions: [
+        {
+          id: 'scope',
+          header: 'Scope',
+          question: 'Which scope should I use?',
+          options: [
+            { label: 'Small', description: 'Limit the change' },
+            { label: 'Broad', description: 'Include related cleanup' },
+          ],
+        },
+      ],
+    }
+    const serverRequestPromise = client.pushServerRequest({
+      id: 99,
+      method: 'item/tool/requestUserInput',
+      params,
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-start',
+        toolCallId: 'server-request-99',
+        toolName: 'server_request_item_tool_requestUserInput',
+      },
+    })
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-available',
+        toolCallId: 'server-request-99',
+        toolName: 'server_request_item_tool_requestUserInput',
+        input: codexInput('tool.request_user_input', params),
+      },
+    })
+
+    expect(requestUserInput).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'chat-session-1',
+      runId: 'run-codex-user-input',
+      providerRequestId: '99',
+      providerMethod: 'item/tool/requestUserInput',
+      toolCallId: 'server-request-99',
+      questions: [
+        {
+          id: 'scope',
+          header: 'Scope',
+          question: 'Which scope should I use?',
+          isOther: false,
+          isSecret: false,
+          options: [
+            { label: 'Small', description: 'Limit the change' },
+            { label: 'Broad', description: 'Include related cleanup' },
+          ],
+        },
+      ],
+    }))
+
+    expect(userInputResolver.resolve).not.toBeNull()
+    userInputResolver.resolve?.({
+      requestId: '99',
+      answers: { scope: ['Small'] },
+    })
+
+    await expect(serverRequestPromise).resolves.toEqual({
+      answers: {
+        scope: { answers: ['Small'] },
+      },
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'server-request-99',
+        output: codexOutput('tool.request_user_input', params, {
+          answers: {
+            scope: { answers: ['Small'] },
+          },
+        }),
+      },
+    ])
+  })
+
+  it('maps Codex MCP elicitation requests through runtime user input', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const userInputResolver: {
+      resolve: ((resolution: RuntimeUserInputResolution) => void) | null
+    } = { resolve: null }
+    const requestUserInput = vi.fn((request: RuntimeUserInputRequest) => {
+      return new Promise<RuntimeUserInputResolution>((resolve) => {
+        userInputResolver.resolve = resolve
+      })
+    })
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      requestUserInput,
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-mcp-elicitation',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Handle MCP elicitation'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    const params = {
+      threadId: 'codex-thread-1',
+      turnId: 'codex-turn-1',
+      serverName: 'github',
+      mode: 'form',
+      message: 'Choose repository access',
+      _meta: null,
+      requestedSchema: {
+        type: 'object',
+        properties: {
+          repository: {
+            type: 'string',
+            title: 'Repository',
+            description: 'Repository name',
+          },
+          permission: {
+            type: 'string',
+            title: 'Permission',
+            description: 'Access level',
+            enum: ['read', 'write'],
+          },
+        },
+      },
+    }
+    const serverRequestPromise = client.pushServerRequest({
+      id: 100,
+      method: 'mcpServer/elicitation/request',
+      params,
+    })
+
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-start',
+        toolCallId: 'server-request-100',
+        toolName: 'server_request_mcpServer_elicitation_request',
+      },
+    })
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-available',
+        toolCallId: 'server-request-100',
+        toolName: 'server_request_mcpServer_elicitation_request',
+        input: codexInput('mcp.elicitation', params),
+      },
+    })
+
+    expect(requestUserInput).toHaveBeenCalledWith(expect.objectContaining({
+      providerMethod: 'mcpServer/elicitation/request',
+      toolCallId: 'server-request-100',
+      questions: [
+        {
+          id: 'repository',
+          header: 'Repository',
+          question: 'Repository name',
+          isOther: false,
+          isSecret: false,
+          options: null,
+        },
+        {
+          id: 'permission',
+          header: 'Permission',
+          question: 'Access level',
+          isOther: false,
+          isSecret: false,
+          options: [
+            { label: 'read', description: '' },
+            { label: 'write', description: '' },
+          ],
+        },
+      ],
+    }))
+
+    userInputResolver.resolve?.({
+      requestId: '100',
+      answers: {
+        repository: ['wibus/Cradle'],
+        permission: ['read'],
+      },
+    })
+
+    await expect(serverRequestPromise).resolves.toEqual({
+      action: 'accept',
+      content: {
+        repository: 'wibus/Cradle',
+        permission: 'read',
+      },
+      _meta: null,
+    })
+
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'server-request-100',
+        output: codexOutput('mcp.elicitation', params, {
+          action: 'accept',
+          content: {
+            repository: 'wibus/Cradle',
+            permission: 'read',
+          },
+          _meta: null,
+        }),
       },
     ])
   })

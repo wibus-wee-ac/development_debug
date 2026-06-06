@@ -137,7 +137,6 @@ describe('session-await trigger', () => {
     }))
     expect(mockedEnqueueSessionQueueItem).toHaveBeenLastCalledWith({
       sessionId,
-      mode: 'queue',
       text: 'CI passed',
     })
   })
@@ -179,7 +178,6 @@ describe('session-await trigger', () => {
     expect(result!.resumeText).toBe('CI passed')
     expect(mockedEnqueueSessionQueueItem).toHaveBeenCalledWith({
       sessionId,
-      mode: 'queue',
       text: 'CI passed',
     })
   })

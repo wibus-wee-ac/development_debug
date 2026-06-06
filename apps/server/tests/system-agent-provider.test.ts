@@ -8,8 +8,8 @@ import type { UIMessage } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
-import { SystemAgentProvider } from '../src/modules/chat-runtime-providers/system-agent/provider'
 import type { RuntimeProviderTargetProfile } from '../src/modules/chat-runtime/runtime-provider-types'
+import { SystemAgentProvider } from '../src/modules/chat-runtime-providers/system-agent/provider'
 
 const jarCoreMocks = vi.hoisted(() => ({
   defaultRuntimeConfig: vi.fn(async (options: unknown) => ({ options })),

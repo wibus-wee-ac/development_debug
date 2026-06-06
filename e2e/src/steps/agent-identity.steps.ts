@@ -54,7 +54,8 @@ async function selectProviderModelViaMenu(
   const modelVisible = await modelItem.isVisible({ timeout: 15_000 }).catch(() => false)
   if (modelVisible) {
     await modelItem.click()
-  } else {
+  }
+ else {
     // Fallback: try getByRole
     const fallbackItem = world.page.getByRole('menuitem', { name: modelId }).first()
     if (await fallbackItem.isVisible({ timeout: 5_000 }).catch(() => false)) {
@@ -228,11 +229,11 @@ async function createAgentViaUi(
   console.warn(`[step] profiles: ${JSON.stringify(allData.profiles.map(p => ({ id: p.id, name: p.name })))}`)
   console.warn(`[step] targets: ${JSON.stringify(allData.targets.map(t => ({ id: t.id, name: t.name, kind: t.kind, profileId: t.profileId })))}`)
 
-  const profile = allData.profiles.find((p) => p.name === providerName)
+  const profile = allData.profiles.find(p => p.name === providerName)
   // Target ID matches profile ID for manual providers
   const target = profile
-    ? allData.targets.find((t) => t.id === profile.id)
-    : allData.targets.find((t) => t.name === providerName)
+    ? allData.targets.find(t => t.id === profile.id)
+    : allData.targets.find(t => t.name === providerName)
 
   const createBody: Record<string, unknown> = {
     name: agentName,
@@ -417,7 +418,8 @@ When('我选择 Agent Model 为{string}', async function (this: CradleWorld, mod
   const modelItem = this.page.locator(`[role="menuitem"]:has-text("${modelId}")`).first()
   if (await modelItem.isVisible({ timeout: 10_000 }).catch(() => false)) {
     await modelItem.click()
-  } else {
+  }
+ else {
     const fallbackItem = this.page.getByRole('menuitem', { name: modelId }).first()
     if (await fallbackItem.isVisible({ timeout: 5_000 }).catch(() => false)) {
       await fallbackItem.click()

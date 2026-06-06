@@ -1,5 +1,5 @@
-import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'
 import { issues } from './issue'
@@ -103,7 +103,7 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   sessionId: text('session_id')
     .notNull()
     .references(() => sessions.id, { onDelete: 'cascade' }),
-  mode: text('mode', { enum: ['queue', 'steer'] }).notNull(),
+  mode: text('mode', { enum: ['queue'] }).notNull(),
   status: text('status', {
     enum: ['pending', 'running', 'cancelled', 'completed', 'failed'],
   }).notNull().default('pending'),

@@ -1,19 +1,20 @@
 import type { Query } from '@anthropic-ai/claude-agent-sdk'
-import { getSessionInfo, query } from '@anthropic-ai/claude-agent-sdk'
+import { getSessionInfo, query, renameSession } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
 import { langfuseEnabled } from '../../../langfuse'
-import { readTrustedClaudeAgentConfig } from '../../provider-contracts/provider-base'
-import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
-import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
+  GenerateSessionTitleInput,
   GetCapabilitiesInput,
+  GetContextUsageInput,
   ProviderContext,
+  QuickQuestionInput,
   ResumeChatSessionInput,
+  RuntimeContextUsage,
   RuntimePresentationCapabilities,
   RuntimeSession,
   StartChatSessionInput,
@@ -21,10 +22,14 @@ import type {
   StreamTurnInput,
   UpdateRuntimeSettingsInput,
 } from '../../chat-runtime/runtime-provider-types'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import { isChatStreamTraceEnabled, recordChatStreamTrace } from '../../chat-runtime/stream-trace'
+import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import { readTrustedClaudeAgentConfig } from '../../provider-contracts/provider-base'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { ClaudeAgentInputStream, emptyClaudeAgentInput } from './async-input-stream'
+import { projectClaudeAgentContextUsage } from './context-usage-projector'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 import {
   buildClaudeAgentTurnContent,
@@ -41,14 +46,15 @@ import {
   CLAUDE_AGENT_RUNTIME_METADATA,
   projectClaudeAgentPresentation,
 } from './metadata'
-import { resolveClaudeAgentRuntimeContext } from './runtime-context'
+import { generateClaudeSessionTitle, shouldGenerateClaudeSessionTitle } from './provider-title-generation'
+import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } from './runtime-context'
 import {
   clearClaudeAgentPendingModelSwitch,
   readClaudeAgentPendingModelSwitchId,
   resolveClaudeAgentPendingModelSwitchId,
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
-import type { ClaudeAgentSessionInfo } from './types'
+import type { ClaudeAgentProviderDeps, ClaudeAgentSessionInfo, ClaudeTitleGenerationThinkingEffort } from './types'
 
 type ActiveClaudeQuery = {
   query: Query
@@ -67,12 +73,17 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   private readonly activeQueries = new Map<string, ActiveClaudeQuery>()
   private _lastUsage: TokenUsage | null = null
+  private _totalUsage: TokenUsage | null = null
 
   get lastUsage(): TokenUsage | null {
     return this._lastUsage
   }
 
-  constructor(private readonly deps: ProviderContext) {}
+  get totalUsage(): TokenUsage | null {
+    return this._totalUsage
+  }
+
+  constructor(private readonly deps: ClaudeAgentProviderDeps) {}
 
   private releaseQuery(sessionId: string, entry: ActiveClaudeQuery): void {
     if (this.activeQueries.get(sessionId) === entry) {
@@ -127,6 +138,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       input,
       abortController,
       attachPermissionHandler: false,
+      persistSession: false,
     })
     const activeQuery = query({ prompt: emptyClaudeAgentInput(), options: queryOptions })
 
@@ -136,6 +148,66 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return projectClaudeAgentPresentation(slashCommands)
     }
     finally {
+      activeQuery.close()
+    }
+  }
+
+  async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
+    const abortController = new AbortController()
+    const config = readTrustedClaudeAgentConfig(input.profile.configJson)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const effectiveModel = snapshot.models.currentModelId ?? config.model
+
+    // Build query options with tools disabled
+    const queryOptions = buildClaudeQueryOptions({
+      deps: this.deps,
+      input: {
+        runtimeSession: input.runtimeSession,
+        profile: input.profile,
+        workspacePath: input.workspacePath,
+        workspaceId: input.workspaceId,
+        modelId: effectiveModel,
+      } as GetCapabilitiesInput,
+      abortController,
+      attachPermissionHandler: false,
+      persistSession: false,
+    })
+
+    // Disable tools for quick questions
+    queryOptions.tools = []
+
+    const inputStream = new ClaudeAgentInputStream()
+    const activeQuery = query({ prompt: inputStream, options: queryOptions })
+    const mapperState = createClaudeAgentChunkMapperState()
+
+    try {
+      // Build user content with full transcript for prompt cache reuse
+      const userContent = buildClaudeAgentTurnContent({
+        userContent: projectClaudeAgentInput(input.question, 'QuickQuestion'),
+        history: input.transcript,
+      })
+
+      inputStream.push(userContent)
+
+      // Stream response chunks
+      for await (const message of activeQuery) {
+        if (abortController.signal.aborted) {
+          break
+        }
+
+        const result = await mapClaudeAgentMessageToChunks(message, mapperState)
+        for (const chunk of result.chunks) {
+          yield chunk
+        }
+
+        // Check if finished
+        if (message.type === 'result') {
+          break
+        }
+      }
+    }
+    finally {
+      abortController.abort()
       activeQuery.close()
     }
   }
@@ -150,6 +222,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const userContent = buildClaudeAgentTurnContent({
       userContent: projectedUserContent,
       history: input.history,
+      historyScope: shouldResumeProviderSession ? 'recentCradleLocal' : 'full',
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
@@ -170,6 +243,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
     this.activeQueries.set(sessionId, activeEntry)
     this._lastUsage = null
+    this._totalUsage = null
     const traceMessageId = input.responseMessageId ?? input.message.id
 
     const mapperState = createClaudeAgentChunkMapperState()
@@ -190,13 +264,22 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
     const outputTextCollector = createBoundedTextCollector()
 
+    const shouldGenerateTitle = shouldGenerateClaudeSessionTitle({
+      providerSessionId: resumedProviderSessionId,
+      promptText: userPromptText,
+    })
+
     try {
       if (shouldResumeProviderSession && pendingModelSwitchId) {
         await activeQuery.setModel(pendingModelSwitchId)
         clearClaudeAgentPendingModelSwitch(input.runtimeSession)
       }
       if (resumedProviderSessionId) {
-        await this.reportClaudeSessionTitle(resumedProviderSessionId, input.reportSessionTitle)
+        await this.reportClaudeSessionTitle({
+          sessionId: resumedProviderSessionId,
+          runtimeSession: input.runtimeSession,
+          reportSessionTitle: input.reportSessionTitle,
+        })
       }
       inputStream.push(userContent)
 
@@ -247,11 +330,45 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
         if (result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId) {
           input.runtimeSession.providerSessionId = result.sessionId
-          await this.reportClaudeSessionTitle(result.sessionId, input.reportSessionTitle)
+          await this.reportClaudeSessionTitle({
+            sessionId: result.sessionId,
+            runtimeSession: input.runtimeSession,
+            reportSessionTitle: input.reportSessionTitle,
+          })
+
+          if (shouldGenerateTitle) {
+            const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+            const titleGeneration = this.resolveClaudeSessionTitleGenerationConfig({
+              currentProfile: input.profile,
+              fallbackModel: effectiveModel ?? null,
+            })
+            this.generateClaudeSessionTitleInBackground({
+              profile: titleGeneration.profile,
+              mainSessionId: result.sessionId,
+              promptText: userPromptText,
+              modelId: titleGeneration.modelId,
+              fallbackModel: titleGeneration.fallbackModel,
+              thinkingEffort: titleGeneration.thinkingEffort,
+              workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
+              agentId: input.agentId ?? snapshot.agentId ?? null,
+              reportSessionTitle: input.reportSessionTitle,
+            })
+          }
         }
 
         if (result.usage) {
           this._lastUsage = result.usage
+          // Accumulate usage across all streaming messages
+          if (this._totalUsage) {
+            this._totalUsage = {
+              promptTokens: this._totalUsage.promptTokens + result.usage.promptTokens,
+              completionTokens: this._totalUsage.completionTokens + result.usage.completionTokens,
+              totalTokens: this._totalUsage.totalTokens + result.usage.totalTokens,
+            }
+          }
+ else {
+            this._totalUsage = { ...result.usage }
+          }
         }
 
         if (message.type === 'result') {
@@ -306,6 +423,21 @@ export class ClaudeAgentProvider implements ChatRuntime {
     entry.inputStream.push(userContent)
   }
 
+  async getContextUsage(input: GetContextUsageInput): Promise<RuntimeContextUsage | null> {
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeQueries.get(sessionId)
+    if (!entry) {
+      return null
+    }
+
+    const response = await entry.query.getContextUsage()
+    return projectClaudeAgentContextUsage({
+      providerSessionId: input.runtimeSession.providerSessionId,
+      response,
+      updatedAt: Math.floor(Date.now() / 1000),
+    })
+  }
+
   async cancelTurn(input: CancelTurnInput): Promise<void> {
     const sessionId = input.runtimeSession.chatSessionId
     const entry = this.activeQueries.get(sessionId)
@@ -337,19 +469,161 @@ export class ClaudeAgentProvider implements ChatRuntime {
     })
   }
 
-  private async reportClaudeSessionTitle(sessionId: string, reportSessionTitle?: (title: string) => void): Promise<void> {
-    if (!reportSessionTitle) {
+  async generateSessionTitle(input: GenerateSessionTitleInput): Promise<string | null> {
+    const config = readTrustedClaudeAgentConfig(input.profile.configJson)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const titleGeneration = this.resolveClaudeSessionTitleGenerationConfig({
+      currentProfile: input.profile,
+      fallbackModel: input.modelId ?? snapshot.models.currentModelId ?? config.model ?? null,
+    })
+    const abortController = new AbortController()
+    try {
+      const title = await generateClaudeSessionTitle({
+        profile: titleGeneration.profile,
+        promptText: input.promptText,
+        modelId: titleGeneration.modelId ?? titleGeneration.fallbackModel,
+        thinkingEffort: titleGeneration.thinkingEffort,
+        workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
+        agentId: input.agentId ?? snapshot.agentId ?? null,
+        deps: this.deps,
+        signal: abortController.signal,
+      })
+      if (title && input.runtimeSession.providerSessionId) {
+        await renameSession(input.runtimeSession.providerSessionId, title, {
+          dir: this.resolveClaudeSessionProjectDir({
+            workspacePath: input.workspacePath ?? snapshot.workspacePath ?? undefined,
+            agentId: input.agentId ?? snapshot.agentId ?? null,
+          }),
+        }).catch(() => undefined)
+      }
+      return title
+    }
+    finally {
+      abortController.abort()
+    }
+  }
+
+  private async reportClaudeSessionTitle(input: {
+    sessionId: string
+    runtimeSession: RuntimeSession
+    reportSessionTitle?: (title: string) => void
+  }): Promise<void> {
+    if (!input.reportSessionTitle) {
       return
     }
 
-    const info = await getSessionInfo(sessionId).catch(() => undefined)
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const info = await getSessionInfo(input.sessionId, {
+      dir: this.resolveClaudeSessionProjectDir({
+        workspacePath: snapshot.workspacePath ?? undefined,
+        agentId: snapshot.agentId ?? null,
+      }),
+    }).catch(() => undefined)
     const title = normalizeClaudeSessionTitle(
       (info as ClaudeAgentSessionInfo | undefined)?.customTitle
       ?? (info as ClaudeAgentSessionInfo | undefined)?.summary,
     )
     if (title) {
-      reportSessionTitle(title)
+      input.reportSessionTitle(title)
     }
+  }
+
+  private resolveClaudeSessionProjectDir(input: {
+    workspacePath?: string | null
+    agentId?: string | null
+  }): string {
+    activateClaudeAgentSdkConfigDir()
+    return resolveClaudeAgentRuntimeContext(input.workspacePath ?? undefined, input.agentId ?? null).cwd
+  }
+
+  private resolveClaudeSessionTitleGenerationConfig(input: {
+    currentProfile: StreamTurnInput['profile']
+    fallbackModel: string | null
+  }): {
+    profile: StreamTurnInput['profile']
+    modelId: string | null
+    fallbackModel: string | null
+    thinkingEffort: ClaudeTitleGenerationThinkingEffort
+  } {
+    const preferences = this.deps.readChatPreferences?.()
+    const titlePreferences = preferences?.titleGeneration
+    const thinkingEffort = titlePreferences?.thinkingEffort ?? 'minimal'
+    const explicitProviderTargetId = titlePreferences?.providerTargetId ?? null
+    const explicitModelId = titlePreferences?.modelId ?? null
+
+    if (!explicitProviderTargetId) {
+      return {
+        profile: input.currentProfile,
+        modelId: explicitModelId,
+        fallbackModel: input.fallbackModel,
+        thinkingEffort,
+      }
+    }
+
+    const profile = this.deps.resolveProviderTargetProfile?.(explicitProviderTargetId)
+    if (!profile) {
+      return {
+        profile: input.currentProfile,
+        modelId: explicitModelId,
+        fallbackModel: input.fallbackModel,
+        thinkingEffort,
+      }
+    }
+
+    const config = readTrustedClaudeAgentConfig(profile.configJson)
+    const modelId = explicitModelId ?? config.model ?? null
+    return {
+      profile,
+      modelId,
+      fallbackModel: input.fallbackModel,
+      thinkingEffort,
+    }
+  }
+
+  private generateClaudeSessionTitleInBackground(input: {
+    profile: StreamTurnInput['profile']
+    mainSessionId: string
+    promptText: string
+    modelId: string | null
+    fallbackModel: string | null
+    thinkingEffort: ClaudeTitleGenerationThinkingEffort
+    workspacePath: string
+    agentId: string | null
+    reportSessionTitle?: (title: string) => void
+  }): void {
+    setTimeout(() => {
+      void (async () => {
+        const abortController = new AbortController()
+        try {
+          const model = input.modelId ?? input.fallbackModel
+          const generatedTitle = await generateClaudeSessionTitle({
+            profile: input.profile,
+            promptText: input.promptText,
+            modelId: model,
+            thinkingEffort: input.thinkingEffort,
+            workspacePath: input.workspacePath,
+            agentId: input.agentId,
+            deps: this.deps,
+            signal: abortController.signal,
+          })
+          if (generatedTitle) {
+            await renameSession(input.mainSessionId, generatedTitle, {
+              dir: this.resolveClaudeSessionProjectDir({
+                workspacePath: input.workspacePath,
+                agentId: input.agentId,
+              }),
+            })
+            input.reportSessionTitle?.(generatedTitle)
+          }
+        }
+        catch {
+          // Title generation is opportunistic and must not affect the active turn.
+        }
+        finally {
+          abortController.abort()
+        }
+      })()
+    }, 0)
   }
 }
 

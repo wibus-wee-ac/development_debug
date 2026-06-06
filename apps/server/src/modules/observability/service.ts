@@ -571,7 +571,7 @@ function normalizeErrorMessage(message: string): string {
 function normalizePatternToken(value: string): string {
   const normalized = value
     .trim()
-    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/[^a-z0-9]+/gi, '_')
     .replace(/^_+|_+$/g, '')
     .toUpperCase()
   return normalized || 'FAILED'

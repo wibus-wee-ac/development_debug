@@ -53,6 +53,9 @@ const WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES = 3_000
 const WORKSPACE_FILE_SEARCH_MAX_DIRECTORIES = 600
 const WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT = 30
 const WORKSPACE_FILE_SEARCH_MAX_LIMIT = 100
+const WORKSPACE_SEARCH_TIER_DISTANCE = 1_000_000
+const WORKSPACE_SEARCH_TYPE_DIRECTORY_OFFSET = 25_000
+const WORKSPACE_SEARCH_SEGMENT_SPLIT_RE = /[\s/\\_.:()[\]{}-]+/
 const workspaceFileListCache = new Map<string, WorkspaceFileListCacheEntry>()
 const ignoredWorkspaceFileNames = new Set([
   '.git',
@@ -123,6 +126,12 @@ export async function searchWorkspaceFiles(input: {
     const leafQuery = query.slice(slashIndex + 1).toLowerCase()
     return (await listFileChildren(input.workspacePath, parentPath))
       .filter(entry => !leafQuery || entry.name.toLowerCase().includes(leafQuery))
+      .map(entry => ({
+        entry,
+        score: leafQuery ? scoreWorkspaceFileEntrySearch({ ...entry, path: entry.name }, leafQuery) ?? Number.MAX_SAFE_INTEGER : 0,
+      }))
+      .sort((left, right) => left.score - right.score || left.entry.name.localeCompare(right.entry.name))
+      .map(result => result.entry)
       .slice(0, limit)
   }
 
@@ -179,7 +188,7 @@ export async function searchWorkspaceFiles(input: {
         name: dirEntry.name,
         path: entryPath,
       }
-      const score = scoreWorkspaceFileSearch(entry.path, query)
+      const score = scoreWorkspaceFileEntrySearch(entry, query)
       if (score !== null) {
         matches.push({ entry, score })
       }
@@ -326,12 +335,41 @@ function clampSearchLimit(limit: number | undefined): number {
 function scoreWorkspaceFileSearch(path: string, query: string): number | null {
   const normalizedPath = path.toLowerCase()
   const normalizedQuery = query.toLowerCase()
+  const basename = readPathBasename(normalizedPath)
 
-  if (normalizedPath.includes(normalizedQuery)) {
-    return normalizedPath.indexOf(normalizedQuery)
+  if (!normalizedQuery) {
+    return 0
   }
 
-  let score = normalizedPath.length
+  if (normalizedPath === normalizedQuery) {
+    return 0
+  }
+
+  if (basename === normalizedQuery) {
+    return WORKSPACE_SEARCH_TIER_DISTANCE
+  }
+
+  if (normalizedPath.startsWith(normalizedQuery)) {
+    return 2 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.length
+  }
+
+  if (basename.startsWith(normalizedQuery)) {
+    return 3 * WORKSPACE_SEARCH_TIER_DISTANCE + basename.length
+  }
+
+  const segmentIndex = normalizedPath
+    .split(WORKSPACE_SEARCH_SEGMENT_SPLIT_RE)
+    .filter(Boolean)
+    .findIndex(segment => segment.startsWith(normalizedQuery))
+  if (segmentIndex >= 0) {
+    return 4 * WORKSPACE_SEARCH_TIER_DISTANCE + segmentIndex
+  }
+
+  if (normalizedPath.includes(normalizedQuery)) {
+    return 5 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.indexOf(normalizedQuery)
+  }
+
+  let score = 8 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.length
   let pathIndex = 0
   for (const char of normalizedQuery) {
     const nextIndex = normalizedPath.indexOf(char, pathIndex)
@@ -343,6 +381,19 @@ function scoreWorkspaceFileSearch(path: string, query: string): number | null {
   }
 
   return score
+}
+
+function scoreWorkspaceFileEntrySearch(entry: WorkspaceFileEntry, query: string): number | null {
+  const score = scoreWorkspaceFileSearch(entry.path, query)
+  if (score === null) {
+    return null
+  }
+  return score + (entry.type === 'directory' ? WORKSPACE_SEARCH_TYPE_DIRECTORY_OFFSET : 0)
+}
+
+function readPathBasename(path: string): string {
+  const slashIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return slashIndex >= 0 ? path.slice(slashIndex + 1) : path
 }
 
 export async function readTextFile(workspacePath: string, relativePath: string): Promise<string | null> {

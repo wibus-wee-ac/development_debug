@@ -10,48 +10,51 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { langfuseEnabled } from '../../../langfuse'
 import { getRegisteredMcpServers } from '../../../plugins'
 import { isCodexGoalContinuationMessage } from '../../chat-runtime/message-snapshots'
-import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
-  ChatThinkingEffort,
+  ChatRuntime,
   ChatRuntimeAccessMode,
   ChatRuntimeSettings,
-  ChatRuntime,
+  ChatThinkingEffort,
+  ExecuteShellCommandInput,
+  ExecuteShellCommandResult,
+  ForkRuntimeSessionInput,
+  GenerateSessionTitleInput,
   GetCapabilitiesInput,
   GetUiSlotStatesInput,
   ProviderContext,
+  ProviderNativeAppServerCapabilityManifest,
+  ProviderNativeAppServerInvokeInput,
+  ProviderNativeAppServerInvokeResponse,
+  ProviderNativeAppServerStreamInput,
   ProviderThread,
   ProviderThreadListInput,
   ProviderThreadListResult,
   ProviderThreadReadInput,
   ProviderThreadReadResult,
   ProviderThreadSourceKind,
+  ProviderThreadTurn,
   ProviderThreadTurnsInput,
   ProviderThreadTurnsResult,
-  ProviderThreadTurn,
-  ProviderNativeAppServerCapabilityManifest,
-  ProviderNativeAppServerInvokeInput,
-  ProviderNativeAppServerInvokeResponse,
-  ProviderNativeAppServerStreamInput,
+  QuickQuestionInput,
   ResumeChatSessionInput,
-  RuntimeProviderTargetProfile,
   RuntimePresentationCapabilities,
-  ExecuteShellCommandInput,
-  ExecuteShellCommandResult,
-  ForkRuntimeSessionInput,
   RuntimeSession,
   RuntimeUiSlotState,
+  RuntimeUserInputQuestion,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
   UpdateRuntimeSettingsInput,
 } from '../../chat-runtime/runtime-provider-types'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import { extractUiMessageText } from '../../chat-runtime/ui-message-input'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
 import type { CodexConfig } from '../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
-import { providerRuntimeHostManager, type ProviderRuntimeLease } from '../../provider-runtime/host-manager'
+import type { ProviderRuntimeLease } from '../../provider-runtime/host-manager'
+import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import {
@@ -61,28 +64,94 @@ import {
 } from './app-server-bridge'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
-import {
-  buildCodexChatgptAuthLoginParams,
-  ensureCodexChatgptAuthAccessToken,
-  resolveCodexAppServerAuth,
-  type CodexAppServerAuthResolution,
-  type CodexChatgptAuthCredential,
-} from './chatgpt-auth'
 import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
 import {
   addCodexAppServerHostRequestHandler,
   createCodexAppServerHostResource,
 } from './app-server-host-resource'
+import type { CollaborationMode } from './app-server-protocol/CollaborationMode'
+import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
+import type { SandboxPolicy } from './app-server-protocol/v2/SandboxPolicy'
+import type { Thread } from './app-server-protocol/v2/Thread'
+import type { ThreadForkParams } from './app-server-protocol/v2/ThreadForkParams'
+import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
+import type { ThreadListParams } from './app-server-protocol/v2/ThreadListParams'
+import type { ThreadListResponse } from './app-server-protocol/v2/ThreadListResponse'
+import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResponse'
+import type { ThreadSourceKind } from './app-server-protocol/v2/ThreadSourceKind'
+import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
+import type { Turn } from './app-server-protocol/v2/Turn'
+import type { UserInput } from './app-server-protocol/v2/UserInput'
+import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
+import {
+  buildCodexChatgptAuthLoginParams,
+  ensureCodexChatgptAuthAccessToken,
+  resolveCodexAppServerAuth,
+} from './chatgpt-auth'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
   createCodexAppServerMapperState,
   mapCodexAppServerNotificationToChunks,
 } from './event-to-chunk-mapper'
+import {
+  describeCodexUserInput,
+  isCodexCompactCommand,
+  projectCodexUserInput,
+  readCodexGoalCommandObjective,
+} from './input-projector'
+import {
+  CODEX_RUNTIME_CAPABILITIES,
+  CODEX_RUNTIME_KIND as RUNTIME_KIND,
+  CODEX_RUNTIME_METADATA,
+  createCodexRuntimePresentation,
+} from './metadata'
+import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
+import { resolveCodexRuntimeContext } from './runtime-context'
+import type { CodexNativeHistorySnapshot } from './state-projector'
+import {
+  clearCodexGoalSnapshot,
+  hasActiveGoal,
+  pauseCodexGoalSnapshot,
+  projectCodexGoalSnapshotFromGoal,
+  projectCodexProviderStateSnapshot,
+  readCodexLastTokenUsage,
+  readCodexProviderSnapshot,
+  readRestorableCodexNativeHistory,
+  writeCodexGoalSnapshot,
+  writeCodexNativeHistorySnapshot,
+  writeCodexThreadSnapshot,
+} from './state-projector'
+import {
+  CodexProviderError,
+  collectCodexStreamDiagnostics,
+  createCodexAppServerError,
+  createCodexEmptyStreamError,
+  createCodexStreamDiagnostics,
+  createCodexTurnFailureError,
+  getNotificationTurnId,
+  getThreadId,
+  getTurnId,
+  isRetryableCodexAppServerError,
+  normalizeProviderTitle,
+  readCodexThreadDisplayTitle,
+  readLatestThreadTitle,
+  readThreadNameUpdate,
+  validateCodexStreamOutput,
+} from './stream-diagnostics'
+import {
+  continueActiveGoal,
+  isCompletedGoalUpdate,
+  publishProviderThreadEvent,
+  readTurnNotifications,
+} from './stream-handler'
+import type { CodexAppServerItem } from './tools/mapper'
+import { buildCodexToolInput, buildCodexToolOutput, readCodexToolError, readCodexToolName } from './tools/mapper'
+import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import type {
   ActiveCodexTurn,
-  CodexAppServerHostResource,
   CodexAppServerClientLike,
+  CodexAppServerHostResource,
   CodexAppsListResponse,
   CodexCollaborationModeListResponse,
   CodexConfigReadResponse,
@@ -106,74 +175,6 @@ import type {
   TurnNotificationParams,
   TurnResponse,
 } from './types'
-import type { CollaborationMode } from './app-server-protocol/CollaborationMode'
-import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
-import type { AskForApproval } from './app-server-protocol/v2/AskForApproval'
-import type { SandboxPolicy } from './app-server-protocol/v2/SandboxPolicy'
-import type { Thread } from './app-server-protocol/v2/Thread'
-import type { ThreadForkParams } from './app-server-protocol/v2/ThreadForkParams'
-import type { ThreadInjectItemsParams } from './app-server-protocol/v2/ThreadInjectItemsParams'
-import type { ThreadListParams } from './app-server-protocol/v2/ThreadListParams'
-import type { ThreadListResponse } from './app-server-protocol/v2/ThreadListResponse'
-import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResponse'
-import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
-import type { ThreadSourceKind } from './app-server-protocol/v2/ThreadSourceKind'
-import type { Turn } from './app-server-protocol/v2/Turn'
-import type { UserInput } from './app-server-protocol/v2/UserInput'
-import {
-  describeCodexUserInput,
-  isCodexCompactCommand,
-  projectCodexUserInput,
-  readCodexGoalCommandObjective,
-} from './input-projector'
-import {
-  CODEX_RUNTIME_CAPABILITIES,
-  CODEX_RUNTIME_KIND as RUNTIME_KIND,
-  CODEX_RUNTIME_METADATA,
-  createCodexRuntimePresentation,
-} from './metadata'
-import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
-import { resolveCodexRuntimeContext } from './runtime-context'
-import {
-  clearCodexGoalSnapshot,
-  hasActiveGoal,
-  pauseCodexGoalSnapshot,
-  projectCodexGoalSnapshotFromGoal,
-  projectCodexProviderStateSnapshot,
-  readCodexLastTokenUsage,
-  readCodexProviderSnapshot,
-  readRestorableCodexNativeHistory,
-  writeCodexGoalSnapshot,
-  writeCodexNativeHistorySnapshot,
-  writeCodexThreadSnapshot,
-  type CodexNativeHistorySnapshot,
-} from './state-projector'
-import {
-  continueActiveGoal,
-  isCompletedGoalUpdate,
-  publishProviderThreadEvent,
-  readTurnNotifications,
-} from './stream-handler'
-import {
-  CodexProviderError,
-  collectCodexStreamDiagnostics,
-  createCodexAppServerError,
-  createCodexEmptyStreamError,
-  createCodexStreamDiagnostics,
-  createCodexTurnFailureError,
-  formatCodexDiagnostics,
-  getNotificationTurnId,
-  getThreadId,
-  getTurnId,
-  isRetryableCodexAppServerError,
-  normalizeProviderTitle,
-  readCodexThreadDisplayTitle,
-  readLatestThreadTitle,
-  readThreadNameUpdate,
-  validateCodexStreamOutput,
-} from './stream-diagnostics'
-import { buildCodexToolInput, buildCodexToolOutput, readCodexToolError, readCodexToolName, type CodexAppServerItem } from './tools/mapper'
-import { projectCradleTranscriptToCodexItems } from './transcript-projector'
 import { projectCodexUiSlotStates } from './ui-slot-projector'
 
 const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
@@ -377,6 +378,130 @@ export class CodexProvider implements ChatRuntime {
       return runtimeSession
     }
     finally {
+      hostLease.release()
+    }
+  }
+
+  async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
+    const config = readTrustedCodexConfig(input.profile.configJson)
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+
+    if (config.baseUrl && !auth.apiKey) {
+      throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
+    }
+
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const workspacePath = snapshot.workspacePath ?? input.workspacePath
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, snapshot.agentId ?? null)
+    const effectiveModel = snapshot.models.currentModelId ?? config.model
+
+    // Build minimal codex config for quick question (no tools, minimal context)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    // Disable tools for quick questions
+    codexConfig.mcp = false
+    codexConfig.computer_use = false
+    codexConfig.use_bash = false
+
+    const codexEnv = buildCradleCodexAppServerEnv({
+      chatSessionId: input.runtimeSession.chatSessionId,
+      workspaceId: input.workspaceId,
+      workspacePath,
+      agentId: snapshot.agentId ?? null,
+      agentHome: runtimeContext.agentHome,
+    })
+
+    const hostLease = await this.acquireCodexAppServerHost({
+      providerTargetId: input.profile.providerTargetId,
+      scopeId: `${input.runtimeSession.chatSessionId}:btw:${randomUUID()}`,
+      chatgptAuth: auth.chatgptAuth,
+      pinned: false,
+      options: {
+        apiKey: auth.apiKey ?? undefined,
+        config: codexConfig,
+        env: codexEnv,
+        serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+          chatgptAuth: auth.chatgptAuth,
+          updateSecretValue: this.deps.updateSecret,
+        }),
+      },
+    })
+    const client = hostLease.resource.client
+    const abortController = new AbortController()
+
+    try {
+      // Create ephemeral thread for this quick question
+      const threadResponse = await client.request('thread/start', {
+        path: null,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+        approvalPolicy: config.approvalPolicy,
+        sandbox: config.sandboxMode,
+        config: codexConfig,
+        model: effectiveModel ?? null,
+        ephemeral: true,
+        threadSource: 'user',
+        persistExtendedHistory: false,
+      }) as ThreadResponse
+
+      const threadId = threadResponse.thread?.id
+      if (!threadId) {
+        throw codexRequestError('quickQuestion', 'Failed to create ephemeral thread')
+      }
+
+      // Inject transcript history to reuse prompt cache
+      await injectCradleTranscriptHistory(client, threadId, input.transcript)
+
+      // Submit the quick question
+      const userInput = projectCodexUserInput(input.question, 'QuickQuestion')
+      const turnResponse = await client.request('turn/start', {
+        threadId,
+        input: userInput,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+        approvalPolicy: config.approvalPolicy,
+        sandboxPolicy: toSandboxPolicy(config.sandboxMode, runtimeContext.runtimeWorkspaceRoots, config.additionalDirectories),
+        model: effectiveModel,
+        effort: null,
+      }) as TurnResponse
+
+      const turnId = turnResponse.turn?.id ?? turnResponse.turnId ?? null
+      const textItemId = randomUUID()
+      const mapperState = createCodexAppServerMapperState(textItemId)
+
+      // Stream response chunks
+      for await (const notification of readTurnNotifications(
+        client,
+        threadId,
+        turnId,
+        abortController.signal,
+        () => null,
+        () => {},
+      )) {
+        if (abortController.signal.aborted) {
+          break
+        }
+
+        const chunks = mapCodexAppServerNotificationToChunks(notification, mapperState)
+        for (const chunk of chunks) {
+          yield chunk
+        }
+
+        if (notification.method === 'turn/completed') {
+          break
+        }
+      }
+
+      // Emit final chunks
+      const finalChunks = [
+        ...closeOpenCodexAppServerText(mapperState),
+        ...closeOpenCodexAppServerReasoning(mapperState),
+      ]
+      for (const chunk of finalChunks) {
+        yield chunk
+      }
+    }
+    finally {
+      abortController.abort()
       hostLease.release()
     }
   }
@@ -778,7 +903,7 @@ export class CodexProvider implements ChatRuntime {
       agentId: input.agentId ?? snapshot.agentId ?? null,
       agentHome: runtimeContext.agentHome,
     })
-    const serverRequestHandler: CodexAppServerClientOptions['serverRequestHandler'] = request => buildDefaultCodexAppServerRequestResult(request, {
+    const serverRequestHandler: CodexAppServerClientOptions['serverRequestHandler'] = request => this.handleCodexServerRequest(input, request, {
       chatgptAuth: auth.chatgptAuth,
       updateSecretValue: this.deps.updateSecret,
     })
@@ -1098,6 +1223,49 @@ export class CodexProvider implements ChatRuntime {
     }
   }
 
+  private async handleCodexServerRequest(
+    input: StreamTurnInput,
+    request: Parameters<NonNullable<CodexAppServerClientOptions['serverRequestHandler']>>[0],
+    options: {
+      chatgptAuth?: CodexChatgptAuthCredential | null
+      updateSecretValue?: (credentialRef: string, secret: string) => void
+    },
+  ): Promise<unknown> {
+    if (request.method !== 'item/tool/requestUserInput' && request.method !== 'mcpServer/elicitation/request') {
+      return await buildDefaultCodexAppServerRequestResult(request, options)
+    }
+    if (!this.deps.requestUserInput) {
+      throw codexRequestError(request.method, 'Chat Runtime does not expose pending user input handling')
+    }
+
+    const requestId = String(request.id)
+    const resolution = await this.deps.requestUserInput({
+      sessionId: input.runtimeSession.chatSessionId,
+      runId: input.runId,
+      providerRequestId: requestId,
+      providerKind: input.profile.providerKind,
+      runtimeKind: RUNTIME_KIND,
+      providerMethod: request.method,
+      toolCallId: `server-request-${request.id}`,
+      questions: request.method === 'mcpServer/elicitation/request'
+        ? readCodexMcpElicitationQuestions(request.params)
+        : readCodexUserInputQuestions(request.params),
+      metadata: {
+        params: request.params,
+      },
+    })
+
+    if (request.method === 'mcpServer/elicitation/request') {
+      return buildCodexMcpElicitationResponse(request.params, resolution.answers)
+    }
+
+    return {
+      answers: Object.fromEntries(
+        Object.entries(resolution.answers).map(([questionId, answers]) => [questionId, { answers }]),
+      ),
+    }
+  }
+
   async steerTurn(input: SteerTurnInput): Promise<void> {
     const entry = this.activeTurns.get(input.runtimeSession.chatSessionId)
     if (!entry?.turnId) {
@@ -1344,6 +1512,99 @@ export class CodexProvider implements ChatRuntime {
     }, 0)
   }
 
+  async generateSessionTitle(input: GenerateSessionTitleInput): Promise<string | null> {
+    const config = readTrustedCodexConfig(input.profile.configJson)
+    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    if (config.baseUrl && !auth.apiKey) {
+      throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
+    }
+
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    const workspacePath = snapshot.workspacePath ?? input.workspacePath
+    const agentId = input.agentId ?? snapshot.agentId ?? null
+    const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
+    const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model ?? null
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    const codexEnv = buildCradleCodexAppServerEnv({
+      chatSessionId: input.runtimeSession.chatSessionId,
+      workspaceId: input.workspaceId,
+      workspacePath,
+      agentId,
+      agentHome: runtimeContext.agentHome,
+    })
+    const mainHostLease = await this.acquireCodexAppServerHost({
+      providerTargetId: input.profile.providerTargetId,
+      scopeId: input.runtimeSession.chatSessionId,
+      chatgptAuth: auth.chatgptAuth,
+      options: {
+        apiKey: auth.apiKey ?? undefined,
+        config: codexConfig,
+        env: codexEnv,
+        serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+          chatgptAuth: auth.chatgptAuth,
+          updateSecretValue: this.deps.updateSecret,
+        }),
+      },
+    })
+    const abortController = new AbortController()
+    let titleHostLease: ProviderRuntimeLease<CodexAppServerHostResource> | null = null
+
+    try {
+      const mainClient = mainHostLease.resource.client
+      const threadStart = await startOrResumeThread(mainClient, input.runtimeSession, {
+        model: effectiveModel,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+        approvalPolicy: config.approvalPolicy,
+        sandbox: config.sandboxMode,
+        config: codexConfig,
+      })
+      input.runtimeSession.providerSessionId = threadStart.threadId
+      this._lastModelId = threadStart.modelId ?? effectiveModel
+      writeCodexThreadSnapshot(input.runtimeSession, threadStart)
+
+      const titleGeneration = this.resolveCodexThreadTitleGenerationConfig({
+        currentAuth: auth,
+        currentCodexConfig: codexConfig,
+        workspacePath,
+        fallbackModel: threadStart.modelId ?? effectiveModel,
+      })
+      const titleModel = titleGeneration.model ?? titleGeneration.fallbackModel
+      const titleCodexConfig = buildCodexTitleConfig(titleGeneration.codexConfig, titleModel)
+      titleHostLease = await this.acquireCodexAppServerHost({
+        providerTargetId: input.profile.providerTargetId,
+        scopeId: `title:${threadStart.threadId}:${randomUUID()}`,
+        chatgptAuth: titleGeneration.auth.chatgptAuth,
+        options: {
+          apiKey: titleGeneration.auth.apiKey ?? undefined,
+          config: titleCodexConfig,
+          env: codexEnv,
+          serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
+            chatgptAuth: titleGeneration.auth.chatgptAuth,
+            updateSecretValue: this.deps.updateSecret,
+          }),
+        },
+      })
+
+      return await generateAndSetCodexThreadTitle(titleHostLease.resource.client, mainClient, {
+        mainThreadId: threadStart.threadId,
+        promptText: input.promptText,
+        cwd: runtimeContext.cwd,
+        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+        modelId: titleGeneration.model,
+        fallbackModel: titleGeneration.fallbackModel,
+        thinkingEffort: titleGeneration.thinkingEffort,
+        config: titleCodexConfig,
+        signal: abortController.signal,
+      })
+    }
+    finally {
+      abortController.abort()
+      titleHostLease?.release()
+      mainHostLease.release()
+    }
+  }
+
   private captureLastTokenUsage(notification: CodexAppServerMessage): void {
     if (notification.method !== 'thread/tokenUsage/updated') {
       return
@@ -1378,6 +1639,188 @@ function isCodexReasoningEffort(value: unknown): value is ReasoningEffort {
     || value === 'medium'
     || value === 'high'
     || value === 'xhigh'
+}
+
+function readCodexUserInputQuestions(params: unknown): RuntimeUserInputQuestion[] {
+  const record = readRecord(params)
+  const questions = Array.isArray(record.questions) ? record.questions : []
+  return questions.map((item, index) => {
+    const question = readRecord(item)
+    const options = Array.isArray(question.options)
+      ? question.options.map((option) => {
+          const optionRecord = readRecord(option)
+          return {
+            label: readString(optionRecord.label, ''),
+            description: readString(optionRecord.description, ''),
+          }
+        })
+      : null
+    const fallbackId = `question-${index + 1}`
+    return {
+      id: readString(question.id, fallbackId),
+      header: readString(question.header, ''),
+      question: readString(question.question, ''),
+      isOther: question.isOther === true,
+      isSecret: question.isSecret === true,
+      options,
+    }
+  })
+}
+
+function readCodexMcpElicitationQuestions(params: unknown): RuntimeUserInputQuestion[] {
+  const record = readRecord(params)
+  const mode = readString(record.mode, 'form')
+  const message = readString(record.message, '')
+  if (mode === 'url') {
+    return [{
+      id: 'action',
+      header: readString(record.serverName, 'MCP elicitation'),
+      question: message || readString(record.url, 'Open the requested URL?'),
+      isOther: false,
+      isSecret: false,
+      options: [
+        { label: 'accept', description: readString(record.url, '') },
+        { label: 'decline', description: 'Decline this MCP elicitation' },
+      ],
+    }]
+  }
+
+  const schema = readRecord(record.requestedSchema)
+  const properties = readRecord(schema.properties)
+  const entries = Object.entries(properties)
+  if (entries.length === 0) {
+    return [{
+      id: 'content',
+      header: readString(record.serverName, 'MCP elicitation'),
+      question: message || 'MCP server requested user input.',
+      isOther: false,
+      isSecret: false,
+      options: null,
+    }]
+  }
+
+  return entries.map(([id, value]) => {
+    const property = readRecord(value)
+    return {
+      id,
+      header: readString(property.title, id),
+      question: readString(property.description, message || id),
+      isOther: false,
+      isSecret: readString(property.format, '') === 'password',
+      options: readMcpElicitationOptions(property),
+    }
+  })
+}
+
+function readMcpElicitationOptions(property: Record<string, unknown>): Array<{ label: string, description: string }> | null {
+  if (Array.isArray(property.enum)) {
+    const names = Array.isArray(property.enumNames) ? property.enumNames : []
+    return property.enum.flatMap((value, index) => {
+      if (typeof value !== 'string') {
+        return []
+      }
+      return [{
+        label: value,
+        description: typeof names[index] === 'string' ? names[index] : '',
+      }]
+    })
+  }
+
+  if (Array.isArray(property.oneOf)) {
+    return property.oneOf.flatMap((option) => {
+      const optionRecord = readRecord(option)
+      const value = readString(optionRecord.const, '')
+      if (!value) {
+        return []
+      }
+      return [{
+        label: value,
+        description: readString(optionRecord.title, ''),
+      }]
+    })
+  }
+
+  const items = readRecord(property.items)
+  if (Array.isArray(items.enum)) {
+    return items.enum.flatMap(value => typeof value === 'string'
+      ? [{ label: value, description: '' }]
+      : [])
+  }
+
+  if (Array.isArray(items.anyOf)) {
+    return items.anyOf.flatMap((option) => {
+      const optionRecord = readRecord(option)
+      const value = readString(optionRecord.const, '')
+      if (!value) {
+        return []
+      }
+      return [{
+        label: value,
+        description: readString(optionRecord.title, ''),
+      }]
+    })
+  }
+
+  if (property.type === 'boolean') {
+    return [
+      { label: 'true', description: 'Yes' },
+      { label: 'false', description: 'No' },
+    ]
+  }
+
+  return null
+}
+
+function buildCodexMcpElicitationResponse(params: unknown, answers: Record<string, string[]>): unknown {
+  const record = readRecord(params)
+  if (record.mode === 'url') {
+    const action = answers.action?.[0] === 'decline' ? 'decline' : 'accept'
+    return { action, content: null, _meta: null }
+  }
+
+  return {
+    action: 'accept',
+    content: buildCodexMcpElicitationContent(record, answers),
+    _meta: null,
+  }
+}
+
+function buildCodexMcpElicitationContent(params: Record<string, unknown>, answers: Record<string, string[]>): Record<string, unknown> {
+  const schema = readRecord(params.requestedSchema)
+  const properties = readRecord(schema.properties)
+  return Object.fromEntries(
+    Object.entries(answers).flatMap(([key, value]) => {
+      if (value.length === 0) {
+        return []
+      }
+      return [[key, readMcpElicitationAnswerValue(readRecord(properties[key]), value)]]
+    }),
+  )
+}
+
+function readMcpElicitationAnswerValue(property: Record<string, unknown>, value: string[]): unknown {
+  switch (property.type) {
+    case 'boolean':
+      return value[0] === 'true'
+    case 'integer':
+      return Math.trunc(Number(value[0]))
+    case 'number':
+      return Number(value[0])
+    case 'array':
+      return value
+    default:
+      return value.length === 1 ? value[0] : value
+  }
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readString(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback
 }
 
 async function waitForCodexShellCommandCompletion(
@@ -1552,7 +1995,6 @@ async function setCodexThreadTitleName(
 ): Promise<void> {
   try {
     await primaryClient.request('thread/name/set', params)
-    return
   }
   catch {
     await fallbackClient.request('thread/name/set', params)

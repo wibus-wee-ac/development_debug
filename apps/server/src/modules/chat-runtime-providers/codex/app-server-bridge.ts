@@ -1,31 +1,26 @@
+import { getRegisteredMcpServers } from '../../../plugins'
+import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import type { CodexConfig } from '../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../provider-contracts/provider-base'
-import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
-import { getRegisteredMcpServers } from '../../../plugins'
+import type { CodexAppServerCapabilityManifest, CodexAppServerMethodCapability } from './app-server-capabilities'
+import { CODEX_APP_SERVER_CAPABILITIES, CODEX_APP_SERVER_CLIENT_METHOD_SET, readCodexAppServerMethodCapability } from './app-server-capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './app-server-client'
 import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
+import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
 import {
   addCodexAppServerHostRequestHandler,
   createCodexAppServerHostResource,
   subscribeCodexAppServerHostNotifications,
 } from './app-server-host-resource'
-import {
-  CODEX_APP_SERVER_CAPABILITIES,
-  CODEX_APP_SERVER_CLIENT_METHOD_SET,
-  readCodexAppServerMethodCapability,
-  type CodexAppServerMethodCapability,
-} from './app-server-capabilities'
-import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
-import { resolveCodexRuntimeContext } from './runtime-context'
+import type { CodexChatgptAuthCredential } from './chatgpt-auth'
 import {
   buildCodexChatgptAuthLoginParams,
   ensureCodexChatgptAuthAccessToken,
   refreshCodexChatgptAuthCredential,
   resolveCodexAppServerAuth,
-  type CodexChatgptAuthCredential,
 } from './chatgpt-auth'
-import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
+import { resolveCodexRuntimeContext } from './runtime-context'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
 import type { CodexAppServerClientLike, CodexAppServerHostResource } from './types'
 
@@ -321,7 +316,7 @@ function buildBridgeCodexConfig(
   return {
     approval_policy: config.approvalPolicy,
     sandbox_mode: config.sandboxMode,
-    network_access: "enabled",
+    network_access: 'enabled',
     show_raw_agent_reasoning: true,
     disable_response_storage: true,
     ...(skillPaths.length > 0 ? { instructions_paths: skillPaths } : {}),

@@ -17,11 +17,11 @@ import {
   refreshDirectExternalProviderSource,
   refreshExternalProviderSource,
 } from '../external-provider-sources/service'
+import type { RuntimeKind } from '../provider-contracts/types'
 import {
   assertProviderTargetCompatibleWithRuntime,
   getProviderTarget,
 } from '../provider-targets/service'
-import type { RuntimeKind } from '../provider-contracts/types'
 import { buildAgentAvatarUrl } from './avatar'
 
 export interface AgentListFilters {

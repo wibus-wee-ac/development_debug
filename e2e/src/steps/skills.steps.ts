@@ -175,10 +175,10 @@ async function createAgentViaUi(world: CradleWorld, agentName: string): Promise<
     }
   }, serverUrl) as { profiles: Array<Record<string, unknown>>, targets: Array<Record<string, unknown>> }
 
-  const profile = allData.profiles.find((p) => p.name === providerName)
+  const profile = allData.profiles.find(p => p.name === providerName)
   const target = profile
-    ? allData.targets.find((t) => t.id === profile.id)
-    : allData.targets.find((t) => t.name === providerName)
+    ? allData.targets.find(t => t.id === profile.id)
+    : allData.targets.find(t => t.name === providerName)
 
   const createBody: Record<string, unknown> = {
     name: agentName,

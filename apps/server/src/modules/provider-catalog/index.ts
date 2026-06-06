@@ -1,5 +1,6 @@
 import { Elysia, t } from 'elysia'
 
+import { lookupModel, searchModels } from '../model-registry/model-info-registry'
 import { resolveProviderTarget } from '../provider-targets/service'
 import { ProvidersModel } from './model'
 import {
@@ -9,7 +10,6 @@ import {
   setCachedModels,
   setCachedModelsForTarget,
 } from './model-cache'
-import { lookupModel, searchModels } from '../model-registry/model-info-registry'
 import * as Providers from './service'
 
 export const providers = new Elysia({

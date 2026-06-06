@@ -494,13 +494,13 @@ export function listActivities(agentSessionId: string): AgentActivity[] {
 
 export async function enqueueContinuation(input: {
   agentSessionId: string
-  mode: ChatRuntime.ChatSessionQueueMode
+  mode: ChatRuntime.ChatSessionContinuationMode
   text: string
 }): Promise<{
   ok: true
   chatSessionId: string
-  queueItemId: string
-  mode: ChatRuntime.ChatSessionQueueMode
+  continuationId: string
+  mode: ChatRuntime.ChatSessionContinuationMode
 }> {
   const session = requireAgentSession(input.agentSessionId)
   const text = input.text.trim()
@@ -521,9 +521,34 @@ export async function enqueueContinuation(input: {
     })
   }
 
+  if (input.mode === 'steer') {
+    const steer = await ChatRuntime.submitSessionSteerTurn({
+      sessionId: session.chatSessionId,
+      text,
+    })
+
+    createActivity({
+      agentSessionId: session.id,
+      type: 'prompt',
+      body: text,
+      signal: 'continuation.steer',
+      signalMetadata: {
+        chatSessionId: session.chatSessionId,
+        continuationId: steer.message.id,
+        mode: input.mode,
+      },
+    })
+
+    return {
+      ok: true,
+      chatSessionId: session.chatSessionId,
+      continuationId: steer.message.id,
+      mode: input.mode,
+    }
+  }
+
   const queueItem = await ChatRuntime.enqueueSessionQueueItem({
     sessionId: session.chatSessionId,
-    mode: input.mode,
     text,
   })
 
@@ -531,26 +556,24 @@ export async function enqueueContinuation(input: {
     agentSessionId: session.id,
     type: 'prompt',
     body: text,
-    signal: input.mode === 'steer' ? 'continuation.steer' : 'continuation.queued',
+    signal: 'continuation.queued',
     signalMetadata: {
       chatSessionId: session.chatSessionId,
-      queueItemId: queueItem.id,
+      continuationId: queueItem.id,
       mode: input.mode,
     },
   })
 
-  if (queueItem.status !== 'completed') {
-    startContinuationWatcher({
-      agentSessionId: session.id,
-      chatSessionId: session.chatSessionId,
-      since: queueItem.createdAt,
-    })
-  }
+  startContinuationWatcher({
+    agentSessionId: session.id,
+    chatSessionId: session.chatSessionId,
+    since: queueItem.createdAt,
+  })
 
   return {
     ok: true,
     chatSessionId: session.chatSessionId,
-    queueItemId: queueItem.id,
+    continuationId: queueItem.id,
     mode: input.mode,
   }
 }

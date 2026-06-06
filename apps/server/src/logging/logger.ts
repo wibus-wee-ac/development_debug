@@ -110,18 +110,31 @@ function createStreams() {
   return streams
 }
 
-const rootLogger = pino({
-  level: (process.env.CRADLE_LOG_LEVEL as LogLevel) || 'info',
-  serializers: {
-    err: pino.stdSerializers.err,
-  },
-  formatters: {
-    level(label) {
-      return { level: label }
+let rootLogger: pino.Logger | undefined
+
+function createRootLogger(): pino.Logger {
+  return pino({
+    level: (process.env.CRADLE_LOG_LEVEL as LogLevel) || 'info',
+    serializers: {
+      err: pino.stdSerializers.err,
     },
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-}, pino.multistream(createStreams()))
+    formatters: {
+      level(label) {
+        return { level: label }
+      },
+    },
+    timestamp: pino.stdTimeFunctions.isoTime,
+  }, pino.multistream(createStreams()))
+}
+
+function getRootLogger(): pino.Logger {
+  rootLogger ??= createRootLogger()
+  return rootLogger
+}
+
+export function initializeLogger(): void {
+  getRootLogger()
+}
 
 /**
  * Logger wraps pino with a stable interface compatible with the existing codebase.
@@ -132,55 +145,62 @@ const rootLogger = pino({
  * - file:   raw JSON (machine-parseable)
  */
 export class Logger {
-  private readonly instance: pino.Logger
+  private readonly instance?: pino.Logger
+  private readonly bindings?: LoggerFields
 
-  constructor(instance?: pino.Logger) {
-    this.instance = instance ?? rootLogger
+  constructor(instance?: pino.Logger, bindings?: LoggerFields) {
+    this.instance = instance
+    this.bindings = bindings
+  }
+
+  private get active(): pino.Logger {
+    const logger = this.instance ?? getRootLogger()
+    return this.bindings ? logger.child(this.bindings) : logger
   }
 
   debug(message: string, fields?: LoggerFields): void {
-    if (fields) { this.instance.debug(fields, message) }
-    else { this.instance.debug(message) }
+    if (fields) { this.active.debug(fields, message) }
+    else { this.active.debug(message) }
   }
 
   info(message: string, fields?: LoggerFields): void {
-    if (fields) { this.instance.info(fields, message) }
-    else { this.instance.info(message) }
+    if (fields) { this.active.info(fields, message) }
+    else { this.active.info(message) }
   }
 
   warn(message: string, fields?: LoggerFields): void {
-    if (fields) { this.instance.warn(fields, message) }
-    else { this.instance.warn(message) }
+    if (fields) { this.active.warn(fields, message) }
+    else { this.active.warn(message) }
   }
 
   error(message: string, fields?: LoggerFields): void {
-    if (fields) { this.instance.error(fields, message) }
-    else { this.instance.error(message) }
+    if (fields) { this.active.error(fields, message) }
+    else { this.active.error(message) }
   }
 
   child(bindings: LoggerFields): Logger {
-    return new Logger(this.instance.child(bindings))
+    return new Logger(this.instance, { ...this.bindings, ...bindings })
   }
 
   /** Access the underlying pino instance for advanced usage. */
   get pino(): pino.Logger {
-    return this.instance
+    return this.active
   }
 }
 
 /** Return the root pino-based Logger instance. */
 export function getLogger(): Logger {
-  return new Logger(rootLogger)
+  return new Logger(getRootLogger())
 }
 
 /** Create a child logger with bound context (e.g. requestId, module). */
 export function createChildLogger(bindings: LoggerFields): Logger {
-  return new Logger(rootLogger.child(bindings))
+  return rootLogger ? new Logger(rootLogger.child(bindings)) : new Logger(undefined, bindings)
 }
 
 /** Flush buffered log destinations before intentional process exits. */
 export function flushLogger(): void {
-  rootLogger.flush()
+  rootLogger?.flush()
   for (const dest of fileDestinations) {
     dest.flush?.()
     dest.flushSync?.()

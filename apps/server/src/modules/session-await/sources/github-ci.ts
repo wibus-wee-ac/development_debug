@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
-import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 import { getMatchingBypassPatterns, matchesAnyBypassPattern } from '../service'
+import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
 import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from './github-api'
 import {
   fetchBranchProtection,

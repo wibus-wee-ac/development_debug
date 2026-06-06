@@ -65,10 +65,10 @@ function readDesktopElectronVersion() {
   const versionRange = packageJson.devDependencies?.electron ?? packageJson.dependencies?.electron
 
   if (typeof versionRange !== 'string') {
-    throw new Error(`Cannot find desktop Electron version in ${desktopPackageJsonPath}`)
+    throw new TypeError(`Cannot find desktop Electron version in ${desktopPackageJsonPath}`)
   }
 
-  const version = versionRange.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/)?.[0]
+  const version = versionRange.match(/\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?/i)?.[0]
   if (!version) {
     throw new Error(`Cannot parse desktop Electron version "${versionRange}" from ${desktopPackageJsonPath}`)
   }

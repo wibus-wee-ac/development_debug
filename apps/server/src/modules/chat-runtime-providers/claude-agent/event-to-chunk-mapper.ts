@@ -10,13 +10,13 @@ import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKRe
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import type { ClaudeAgentSubagentProjection } from './subagent-projector'
 import {
   compactClaudeAgentSubagentProjection,
   createClaudeAgentSubagentOutput,
   createClaudeAgentSubagentProjection,
   projectClaudeAgentSubagentMessage,
   projectClaudeAgentSubagentOutputChunk,
-  type ClaudeAgentSubagentProjection,
 } from './subagent-projector'
 import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload } from './tools/mapper'
 import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './tools/todo-plugin-state'
@@ -55,7 +55,7 @@ export interface ClaudeAgentChunkMapperState {
   /** Tracks emitted text per text segment so full assistant snapshots do not replay streamed text. */
   emittedTextByTextItemId: Map<string, TextAccumulator>
   /** Tracks emitted tool lifecycle fragments so full assistant snapshots do not replay streamed tool blocks. */
-  emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean }>
+  emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean, outputAvailable?: boolean }>
   /** Maps content block index → tool_use block ID for streaming tool input deltas */
   activeToolBlockIds: Map<number, string>
   /** Tracks tool names by call ID so result messages can read adapter-owned semantics. */
@@ -264,7 +264,15 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
   }
   flushTextSegment(pendingText)
 
-  return { chunks, sessionId: msg.session_id, usage: null }
+  const usage = msg.message.usage
+    ? {
+        promptTokens: msg.message.usage.input_tokens ?? 0,
+        completionTokens: msg.message.usage.output_tokens ?? 0,
+        totalTokens: (msg.message.usage.input_tokens ?? 0) + (msg.message.usage.output_tokens ?? 0),
+      }
+    : null
+
+  return { chunks, sessionId: msg.session_id, usage }
 }
 
 async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -349,8 +357,20 @@ function mapContentBlock(
 
 function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
+  let usage: TokenUsage | null = null
 
   switch (msg.event.type) {
+    case 'message_delta': {
+      const messageDeltaEvent = msg.event as { type: 'message_delta', usage?: { input_tokens?: number, output_tokens?: number } }
+      if (messageDeltaEvent.usage) {
+        usage = {
+          promptTokens: messageDeltaEvent.usage.input_tokens ?? 0,
+          completionTokens: messageDeltaEvent.usage.output_tokens ?? 0,
+          totalTokens: (messageDeltaEvent.usage.input_tokens ?? 0) + (messageDeltaEvent.usage.output_tokens ?? 0),
+        }
+      }
+      break
+    }
     case 'content_block_delta': {
       const deltaEvent = msg.event as BetaRawContentBlockDeltaEvent
       if (deltaEvent.delta.type === 'text_delta') {
@@ -417,7 +437,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
   }
 
-  return { chunks, sessionId: msg.session_id, usage: null }
+  return { chunks, sessionId: msg.session_id, usage }
 }
 
 function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
@@ -504,8 +524,33 @@ function emitToolUseChunks(
     current.inputAvailable = true
   }
 
+  const exitPlan = readExitPlanModePlan(toolName, input)
+  if (exitPlan && !current.outputAvailable) {
+    chunks.push({
+      type: 'tool-output-available',
+      toolCallId,
+      output: createClaudeCodeToolResultPayload({
+        apiName: toolName,
+        args: input,
+        result: { plan: exitPlan },
+      }),
+    })
+    current.outputAvailable = true
+  }
+
   state.emittedToolStateByToolCallId.set(toolCallId, current)
   return { chunks }
+}
+
+function readExitPlanModePlan(toolName: string, input: unknown): string | null {
+  if (toolName !== 'ExitPlanMode' && toolName !== 'exit_plan_mode' && toolName !== 'exitplanmode') {
+    return null
+  }
+  if (!isRecord(input) || typeof input.plan !== 'string') {
+    return null
+  }
+  const plan = input.plan.trim()
+  return plan.length > 0 ? plan : null
 }
 
 function appendToolInputText(

@@ -92,6 +92,7 @@ describe('chat runtime completed runs projection', () => {
             sessionId,
             sessionTitle: 'Notification Session',
             messageId: null,
+            messagePreview: null,
             startedAt: 100,
             finishedAt: 105,
           },

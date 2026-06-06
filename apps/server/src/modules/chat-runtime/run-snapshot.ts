@@ -207,10 +207,7 @@ export function finalizeRunSnapshot(input: FinalizeRunSnapshotInput): void {
   }
 
   try {
-    db().update(backendRunSnapshots)
-      .set(values)
-      .where(eq(backendRunSnapshots.id, input.snapshotId))
-      .run()
+    db().update(backendRunSnapshots).set(values).where(eq(backendRunSnapshots.id, input.snapshotId)).run()
   }
   catch (error) {
     logger.error('failed to finalize run snapshot', { input, error })

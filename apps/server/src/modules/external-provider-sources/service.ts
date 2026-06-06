@@ -216,6 +216,10 @@ function iconSlugFromMetadata(metadata: Record<string, unknown>): string | null 
   return iconUrl ? `url:${encodeURIComponent(iconUrl)}` : null
 }
 
+function sourceIconSlugFromMetadata(metadata: Record<string, unknown>, existingIconSlug?: string | null): string | null {
+  return iconSlugFromMetadata(metadata) ?? existingIconSlug ?? null
+}
+
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {
   return warnings.some(warning => warning.severity === 'error')
     ? 'error'
@@ -436,6 +440,7 @@ function syncRuntimeTarget(
       }).id
     : (existing?.credentialRef ?? null)
   const now = nowUnix()
+  const sourceIconSlug = sourceIconSlugFromMetadata(record.metadata, existing?.iconSlug)
 
   database
     .insert(providerTargets)
@@ -451,7 +456,7 @@ function syncRuntimeTarget(
       credentialRef,
       enabledModelsJson: existing?.enabledModelsJson ?? '[]',
       customModelsJson: existing?.customModelsJson ?? '[]',
-      iconSlug: existing?.iconSlug ?? iconSlugFromMetadata(record.metadata),
+      iconSlug: sourceIconSlug,
       sourceFingerprint: recordFingerprint(record),
       createdAt: now,
       updatedAt: now,
@@ -463,7 +468,7 @@ function syncRuntimeTarget(
         displayName: record.name,
         connectionConfigJson: JSON.stringify(record.config),
         credentialRef,
-        iconSlug: existing?.iconSlug ?? iconSlugFromMetadata(record.metadata),
+        iconSlug: sourceIconSlug,
         sourceFingerprint: recordFingerprint(record),
         updatedAt: now,
       },

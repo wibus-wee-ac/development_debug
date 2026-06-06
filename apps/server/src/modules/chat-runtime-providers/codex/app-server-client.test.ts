@@ -1,5 +1,5 @@
-import { join } from 'node:path'
 import { EventEmitter } from 'node:events'
+import { join } from 'node:path'
 import { PassThrough, Readable, Writable } from 'node:stream'
 
 import { describe, expect, it, vi } from 'vitest'
@@ -100,7 +100,7 @@ describe('readCradleCodexClientVersion', () => {
   })
 })
 
-describe('CodexAppServerClient', () => {
+describe('codexAppServerClient', () => {
   it('passes Cradle context environment into the app-server process', () => {
     spawnMock.mockReturnValueOnce({
       stdin: new Writable({ write: (_chunk, _encoding, callback) => callback() }),

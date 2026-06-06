@@ -1,9 +1,9 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
-import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 import { CodexAppServerBridge } from './app-server-bridge'
-
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
 
 afterEach(() => {
   providerRuntimeHostManager.clear()
@@ -121,7 +121,7 @@ async function readSseEvents(stream: ReadableStream<Uint8Array>): Promise<Array<
     })
 }
 
-describe('CodexAppServerBridge stream lifecycle', () => {
+describe('codexAppServerBridge stream lifecycle', () => {
   it('closes command exec streams after the method result', async () => {
     const client = new FakeBridgeAppServerClient({
       'command/exec': { exitCode: 0 },

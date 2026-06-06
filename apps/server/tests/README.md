@@ -21,7 +21,7 @@ Profile/provider integration suites now exercise typed `config` objects at HTTP 
 - **src/modules/chat-runtime-providers/codex/provider.test.ts**: Codex app-server provider streaming, thread resume, and live `turn/steer` behavior.
 - **kanban.test.ts**: Kanban board shell plus Issue-owned status, status-name movement, default status assignment, issue, ID generation, issue search, and comment core loops.
 - **system-agent-provider.test.ts**: Jarvis `jar-core` provider integration, including Cradle chat/workspace environment injection for shell commands.
-- **issue-agent.test.ts**: issue delegation, activity timeline, rerun, undelegation, and Chat Runtime continuation bridge coverage for queued and steered follow-up activity records.
+- **issue-agent.test.ts**: issue delegation, activity timeline, rerun, undelegation, and Chat Runtime continuation bridge coverage for queued follow-ups and unsupported live steer rejection.
 - **git.test.ts**: workspace-owned git status, branches, commit graph, checkout, and create-branch flows against real local repositories.
 - **observability.test.ts**: observability event persistence, incident rules, empty-output failure semantics, and bundle export.
 - **preferences.test.ts**: server-owned chat preference defaults、approval mode、JSON persistence 和 invalid payload handling。

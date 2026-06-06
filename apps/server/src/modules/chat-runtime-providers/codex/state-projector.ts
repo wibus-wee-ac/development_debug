@@ -18,9 +18,9 @@ import type {
   RuntimeToolActivityStatus,
 } from '../../chat-runtime/runtime-provider-types'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import type { WorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import {
   readWorkspaceProviderStateSnapshot,
-  type WorkspaceProviderStateSnapshot,
 } from '../provider-state-snapshot'
 import type { CodexAppServerMessage } from './app-server-client'
 import type { Turn } from './app-server-protocol/v2/Turn'
@@ -31,21 +31,17 @@ import type {
   CodexApprovalsSnapshot,
   CodexCompactSnapshot,
   CodexDiffSnapshot,
-  CodexFilesystemSnapshot,
   CodexGoalSnapshot,
   CodexGoalUpdatedNotificationParams,
   CodexMcpServerSnapshot,
   CodexMcpSnapshot,
   CodexPlanSnapshot,
   CodexProviderSnapshot,
-  CodexSearchSnapshot,
-  CodexTerminalSnapshot,
   CodexThreadItem,
   CodexThreadSettings,
   CodexThreadStatus,
   CodexThreadTokenUsage,
   CodexTokenUsageBreakdown,
-  CodexUsageSnapshot,
   CommandExecutionOutputDeltaNotificationParams,
   ContextCompactedNotificationParams,
   ErrorNotificationParams,

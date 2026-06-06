@@ -1,21 +1,22 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { record as recordObservability } from '../observability/service'
-import * as Preferences from '../preferences/service'
-import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-compatibility'
-import type { RuntimeKind } from '../provider-contracts/types'
-import * as Secrets from '../secrets/service'
-import { resolveScopeRoot } from '../skills/skills-paths'
+import { createChildLogger } from '../../logging/logger'
 import { createAcpProvider } from '../chat-runtime-providers/acp/provider'
 import { createClaudeAgentProvider } from '../chat-runtime-providers/claude-agent/provider'
 import { createCodexProvider } from '../chat-runtime-providers/codex/provider'
 import { createMockClaudeAgentProvider } from '../chat-runtime-providers/mock-claude-agent/provider'
 import { createStandardProvider } from '../chat-runtime-providers/openai-compatible/provider'
 import { createSystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
-import { createChildLogger } from '../../logging/logger'
 import * as ModelRegistry from '../model-registry/service'
+import { record as recordObservability } from '../observability/service'
+import * as Preferences from '../preferences/service'
+import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-compatibility'
+import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
+import * as Secrets from '../secrets/service'
+import { resolveScopeRoot } from '../skills/skills-paths'
+import { requestRuntimeUserInput } from './pending-user-input'
 import type {
   ChatRuntime,
   ChatRuntimeCatalogItem,
@@ -74,8 +75,7 @@ export class RuntimeRegistry {
   }
 
   list(): ChatRuntimeCatalogItem[] {
-    return [...this.runtimes.entries()]
-      .map(([runtimeKind, entry]) => ({
+    return Array.from(this.runtimes.entries(), ([runtimeKind, entry]) => ({
         runtimeKind,
         ...entry.metadata,
         source: entry.pluginOwner ? 'plugin' as const : 'builtin' as const,
@@ -84,8 +84,7 @@ export class RuntimeRegistry {
       .sort((left, right) =>
         (left.sortOrder ?? 1000) - (right.sortOrder ?? 1000)
         || left.label.localeCompare(right.label)
-        || left.runtimeKind.localeCompare(right.runtimeKind),
-      )
+        || left.runtimeKind.localeCompare(right.runtimeKind))
   }
 
   async listHealth(): Promise<ChatRuntimeHealthItem[]> {
@@ -125,8 +124,7 @@ export class RuntimeRegistry {
 
     return items.sort((left, right) =>
       left.source.localeCompare(right.source)
-      || left.runtimeKind.localeCompare(right.runtimeKind),
-    )
+      || left.runtimeKind.localeCompare(right.runtimeKind))
   }
 }
 
@@ -155,7 +153,7 @@ export function assertChatRuntime(runtime: unknown): asserts runtime is ChatRunt
 
 function assertRuntimeFunction(runtime: Partial<ChatRuntime>, key: keyof ChatRuntime): void {
   if (typeof runtime[key] !== 'function') {
-    throw new Error(`Runtime ${runtime.runtimeKind ?? '<unknown>'} must implement ${key}.`)
+    throw new TypeError(`Runtime ${runtime.runtimeKind ?? '<unknown>'} must implement ${key}.`)
   }
 }
 
@@ -174,7 +172,7 @@ function assertRuntimeCapabilities(runtime: Partial<ChatRuntime>): void {
   ] as const
   for (const key of booleanKeys) {
     if (typeof capabilities[key] !== 'boolean') {
-      throw new Error(`Runtime ${runtime.runtimeKind} capability ${key} must be boolean.`)
+      throw new TypeError(`Runtime ${runtime.runtimeKind} capability ${key} must be boolean.`)
     }
   }
   if (!['in-session', 'restart-session', 'unsupported'].includes(capabilities.sessionModelSwitch)) {
@@ -255,6 +253,7 @@ function createProviderContext(): ProviderContext {
     readSecret: ref => Secrets.readSecret(ref),
     updateSecret: (ref, val) => Secrets.updateSecretValue(ref, val),
     resolveSkillPaths: resolveRuntimeSkillPaths,
+    requestUserInput: requestRuntimeUserInput,
     recordObservability,
     logger: createChildLogger({ module: 'chat-runtime-provider' }),
   }

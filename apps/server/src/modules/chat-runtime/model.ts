@@ -1,5 +1,7 @@
 import { t } from 'elysia'
 
+import { SessionModel } from '../session/model'
+
 const runtimeKindSchema = t.String({ minLength: 1 })
 
 const uiMessageSchema = t.Object({
@@ -544,7 +546,7 @@ const contextPartSchema = t.Union([
   }, { additionalProperties: false }),
 ])
 
-const queueModeSchema = t.Union([t.Literal('queue'), t.Literal('steer')])
+const queueModeSchema = t.Literal('queue')
 const runtimeAccessModeSchema = t.Union([
   t.Literal('approval-required'),
   t.Literal('full-access'),
@@ -691,6 +693,7 @@ const completedRunSchema = t.Object({
   sessionId: t.String(),
   sessionTitle: t.String(),
   messageId: t.Union([t.String(), t.Null()]),
+  messagePreview: t.Union([t.String(), t.Null()]),
   startedAt: t.Number(),
   finishedAt: t.Number(),
 })
@@ -701,11 +704,6 @@ const runtimeStatusSchema = t.Union([
   t.Literal('streaming'),
   t.Literal('cancelling'),
 ])
-const sideContextSourceSchema = t.Union([
-  t.Literal('provider-native'),
-  t.Literal('cradle-context'),
-])
-
 const providerThreadSourceKindSchema = t.Union([
   t.Literal('cli'),
   t.Literal('vscode'),
@@ -783,6 +781,10 @@ export const ChatRuntimeModel = {
     runId: t.String({ minLength: 1 }),
   }),
 
+  sideConversationParams: t.Object({
+    sideConversationId: t.String({ minLength: 1 }),
+  }),
+
   completedRunsQuery: t.Object({
     since: t.Optional(t.Number({ minimum: 0 })),
     limit: t.Optional(t.Number({ minimum: 1, maximum: 200 })),
@@ -818,6 +820,11 @@ export const ChatRuntimeModel = {
     queueItemId: t.String({ minLength: 1 }),
   }),
 
+  userInputParams: t.Object({
+    sessionId: t.String({ minLength: 1 }),
+    requestId: t.String({ minLength: 1 }),
+  }),
+
   responseBody: t.Object({
     text: t.Optional(t.String()),
     files: t.Optional(t.Array(filePartSchema)),
@@ -838,21 +845,22 @@ export const ChatRuntimeModel = {
     modelId: t.Optional(t.String()),
   }),
 
+  quickQuestionBody: t.Object({
+    question: t.String({ minLength: 1 }),
+  }),
+
+  userInputBody: t.Object({
+    answers: t.Record(t.String(), t.Array(t.String())),
+  }),
+
   sideChatResponse: t.Object({
-    sessionId: t.String(),
+    sideConversationId: t.String(),
     parentSessionId: t.String(),
     runtimeKind: t.String(),
     providerTargetId: t.Union([t.String(), t.Null()]),
     providerSessionId: t.Union([t.String(), t.Null()]),
-    sideContextSource: sideContextSourceSchema,
-  }),
-
-  promoteSideChatResponse: t.Object({
-    sessionId: t.String(),
-    sourceSessionId: t.String(),
-    runtimeKind: t.String(),
-    providerTargetId: t.Union([t.String(), t.Null()]),
     title: t.String(),
+    expiresAt: t.Number(),
   }),
 
   bangCommandResponse: t.Object({
@@ -871,6 +879,13 @@ export const ChatRuntimeModel = {
 
   cancelResponse: t.Object({
     ok: t.Literal(true),
+  }),
+
+  regeneratedTitleResponse: SessionModel.session,
+
+  userInputResponse: t.Object({
+    requestId: t.String(),
+    answers: t.Record(t.String(), t.Array(t.String())),
   }),
 
   runtimeSettingsBody: runtimeSettingsPatchSchema,
@@ -1002,7 +1017,6 @@ export const ChatRuntimeModel = {
   }),
 
   queueEnqueueBody: t.Object({
-    mode: queueModeSchema,
     text: t.Optional(t.String({ minLength: 1 })),
     files: t.Optional(t.Array(filePartSchema)),
     contextParts: t.Optional(t.Array(contextPartSchema)),
@@ -1010,6 +1024,24 @@ export const ChatRuntimeModel = {
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(thinkingEffortSchema),
     runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
+  }),
+
+  steerBody: t.Object({
+    text: t.Optional(t.String({ minLength: 1 })),
+    files: t.Optional(t.Array(filePartSchema)),
+    contextParts: t.Optional(t.Array(contextPartSchema)),
+    providerTargetId: t.Optional(t.String()),
+    modelId: t.Optional(t.String()),
+    thinkingEffort: t.Optional(thinkingEffortSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
+  }),
+
+  steerResponse: t.Object({
+    ok: t.Literal(true),
+    sessionId: t.String(),
+    runId: t.String(),
+    sourceMessageId: t.String(),
+    message: uiMessageSchema,
   }),
 
   queueReorderBody: t.Object({

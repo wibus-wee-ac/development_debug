@@ -5,6 +5,126 @@ import { describe, expect, it } from 'vitest'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 
 describe('mapClaudeAgentMessageToChunks', () => {
+  it('extracts usage from assistant message', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const message = {
+      type: 'assistant',
+      session_id: 'claude-session-1',
+      message: {
+        content: [
+          {
+            type: 'text',
+            text: 'Hello world',
+          },
+        ],
+        usage: {
+          input_tokens: 100,
+          output_tokens: 50,
+        },
+      },
+    } as unknown as SDKMessage
+
+    const result = await mapClaudeAgentMessageToChunks(message, state)
+
+    expect(result.usage).toEqual({
+      promptTokens: 100,
+      completionTokens: 50,
+      totalTokens: 150,
+    })
+  })
+
+  it('extracts usage from message_delta stream event', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const message = {
+      type: 'stream_event',
+      session_id: 'claude-session-1',
+      event: {
+        type: 'message_delta',
+        delta: {},
+        usage: {
+          input_tokens: 200,
+          output_tokens: 75,
+        },
+      },
+    } as unknown as SDKMessage
+
+    const result = await mapClaudeAgentMessageToChunks(message, state)
+
+    expect(result.usage).toEqual({
+      promptTokens: 200,
+      completionTokens: 75,
+      totalTokens: 275,
+    })
+  })
+
+  it('extracts usage from result message', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const message = {
+      type: 'result',
+      session_id: 'claude-session-1',
+      usage: {
+        input_tokens: 300,
+        output_tokens: 100,
+      },
+    } as unknown as SDKMessage
+
+    const result = await mapClaudeAgentMessageToChunks(message, state)
+
+    expect(result.usage).toEqual({
+      promptTokens: 300,
+      completionTokens: 100,
+      totalTokens: 400,
+    })
+  })
+
+  it('captures Claude ExitPlanMode as a completed plan tool output once', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const message = {
+      type: 'assistant',
+      session_id: 'claude-session-plan',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_plan_1',
+            name: 'ExitPlanMode',
+            input: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+          },
+        ],
+      },
+    } as unknown as SDKMessage
+
+    const first = await mapClaudeAgentMessageToChunks(message, state)
+    const second = await mapClaudeAgentMessageToChunks(message, state)
+
+    expect(first.chunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'toolu_plan_1', toolName: 'ExitPlanMode' },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'toolu_plan_1',
+        toolName: 'ExitPlanMode',
+        input: {
+          type: 'cradle.builtin-tool-call.input.v1',
+          identifier: 'claude-code',
+          apiName: 'ExitPlanMode',
+          args: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+        },
+      },
+      {
+        type: 'tool-output-available',
+        toolCallId: 'toolu_plan_1',
+        output: {
+          type: 'cradle.builtin-tool-call.result.v1',
+          identifier: 'claude-code',
+          apiName: 'ExitPlanMode',
+          args: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+          result: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+        },
+      },
+    ])
+    expect(second.chunks).toEqual([])
+  })
+
   it('synthesizes TodoWrite plugin state when the matching tool result arrives', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
 
@@ -188,7 +308,7 @@ describe('mapClaudeAgentMessageToChunks', () => {
       mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Hello' } } } as unknown as SDKMessage, state),
       mapClaudeAgentMessageToChunks({ type: 'stream_event', session_id: 's1', event: { type: 'content_block_stop', index: 1 } } as unknown as SDKMessage, state),
     ])
-    for (const r of streamResults) allChunks.push(...r.chunks)
+    for (const r of streamResults) { allChunks.push(...r.chunks) }
 
     // Full assistant snapshot arrives (this previously caused a duplicate reasoning part)
     const snapshotResult = await mapClaudeAgentMessageToChunks({

@@ -95,6 +95,40 @@ export interface RuntimeTokenUsageBreakdown {
   reasoningOutputTokens: number
 }
 
+export interface RuntimeContextUsageItem {
+  kind: string
+  label: string
+  tokenCount: number
+  metadata?: Record<string, unknown>
+  raw?: unknown
+}
+
+export interface RuntimeContextUsageSection {
+  kind: string
+  label: string
+  tokenCount: number
+  color: string | null
+  isDeferred: boolean
+  items: RuntimeContextUsageItem[]
+  raw?: unknown
+}
+
+export interface RuntimeContextUsage {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  source: string
+  model: string | null
+  totalTokens: number
+  maxTokens: number | null
+  rawMaxTokens: number | null
+  percentage: number | null
+  sections: RuntimeContextUsageSection[]
+  messageBreakdown: Record<string, unknown> | null
+  apiUsage: Record<string, unknown> | null
+  raw: unknown
+  updatedAt: number
+}
+
 export interface RuntimeGoalUiSlotState {
   kind: 'goal'
   slotId: string
@@ -462,19 +496,51 @@ export interface ProviderContext {
   readSecret: (credentialRef: string) => string
   updateSecret?: (credentialRef: string, value: string) => void
   resolveSkillPaths?: (workspacePath: string) => string[]
+  requestUserInput?: (input: RuntimeUserInputRequest) => Promise<RuntimeUserInputResolution>
   recordObservability?: (input: CreateEventInput) => void
   logger?: Logger
 }
 
-export type ProviderError =
-  | { _tag: 'provider_unsupported', provider: string }
-  | { _tag: 'session_not_found', provider: string, sessionId: string }
-  | { _tag: 'session_closed', provider: string, sessionId: string }
-  | { _tag: 'request_failed', provider: string, method: string, detail: string }
-  | { _tag: 'process_error', provider: string, detail: string }
-  | { _tag: 'auth_failed', provider: string }
-  | { _tag: 'rate_limited', provider: string, retryAfter?: number }
-  | { _tag: 'model_not_found', provider: string, model: string }
+export interface RuntimeUserInputOption {
+  label: string
+  description: string
+}
+
+export interface RuntimeUserInputQuestion {
+  id: string
+  header: string
+  question: string
+  isOther: boolean
+  isSecret: boolean
+  options: RuntimeUserInputOption[] | null
+}
+
+export interface RuntimeUserInputRequest {
+  sessionId: string
+  runId: string
+  providerRequestId: string
+  providerKind: ProviderKind
+  runtimeKind: RuntimeKind
+  providerMethod: string
+  toolCallId: string
+  questions: RuntimeUserInputQuestion[]
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeUserInputResolution {
+  requestId: string
+  answers: Record<string, string[]>
+}
+
+export type ProviderError
+  = | { _tag: 'provider_unsupported', provider: string }
+    | { _tag: 'session_not_found', provider: string, sessionId: string }
+    | { _tag: 'session_closed', provider: string, sessionId: string }
+    | { _tag: 'request_failed', provider: string, method: string, detail: string }
+    | { _tag: 'process_error', provider: string, detail: string }
+    | { _tag: 'auth_failed', provider: string }
+    | { _tag: 'rate_limited', provider: string, retryAfter?: number }
+    | { _tag: 'model_not_found', provider: string, model: string }
 
 export class ProviderRuntimeError extends Error {
   constructor(
@@ -620,6 +686,15 @@ export interface ForkRuntimeSessionInput {
   systemPrompt?: string
 }
 
+export interface QuickQuestionInput {
+  runtimeSession: RuntimeSession
+  profile: RuntimeProviderTargetProfile
+  question: string
+  transcript: UIMessage[]
+  workspaceId?: string | null
+  workspacePath: string
+}
+
 export interface StreamTurnInput {
   runId: string
   runtimeSession: RuntimeSession
@@ -642,17 +717,17 @@ export interface StreamTurnInput {
   onProviderThreadEvent?: (event: ProviderThreadEvent) => void
 }
 
-export type ProviderThreadSourceKind =
-  | 'cli'
-  | 'vscode'
-  | 'exec'
-  | 'appServer'
-  | 'subAgent'
-  | 'subAgentReview'
-  | 'subAgentCompact'
-  | 'subAgentThreadSpawn'
-  | 'subAgentOther'
-  | 'unknown'
+export type ProviderThreadSourceKind
+  = | 'cli'
+    | 'vscode'
+    | 'exec'
+    | 'appServer'
+    | 'subAgent'
+    | 'subAgentReview'
+    | 'subAgentCompact'
+    | 'subAgentThreadSpawn'
+    | 'subAgentOther'
+    | 'unknown'
 
 export interface ProviderThreadListInput extends GetCapabilitiesInput {
   cursor?: string | null
@@ -779,6 +854,11 @@ export interface GetCapabilitiesInput {
 }
 
 export interface GetUiSlotStatesInput extends GetCapabilitiesInput {}
+export interface GetContextUsageInput extends GetCapabilitiesInput {}
+
+export interface GenerateSessionTitleInput extends GetCapabilitiesInput {
+  promptText: string
+}
 
 export interface ProviderNativeAppServerMethodCapability {
   method: string
@@ -835,24 +915,28 @@ export interface ChatRuntime {
   readonly metadata: ChatRuntimeMetadata
   readonly capabilities: ChatRuntimeCapabilities
   readonly lastUsage?: TokenUsage | null
+  readonly totalUsage?: TokenUsage | null
   readonly lastModelId?: string | null
   startChatSession: (input: StartChatSessionInput) => Promise<RuntimeSession>
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   forkRuntimeSession?: (input: ForkRuntimeSessionInput) => Promise<RuntimeSession>
+  quickQuestion?: (input: QuickQuestionInput) => AsyncGenerator<UIMessageChunk, void, void>
   getDraftPresentation?: () => Promise<RuntimePresentationCapabilities> | RuntimePresentationCapabilities
   getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
   getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
+  getContextUsage?: (input: GetContextUsageInput) => Promise<RuntimeContextUsage | null>
   getProviderNativeAppServerCapabilities?: () => ProviderNativeAppServerCapabilityManifest
   invokeProviderNativeAppServer?: (input: ProviderNativeAppServerInvokeInput) => Promise<ProviderNativeAppServerInvokeResponse>
   openProviderNativeAppServerStream?: (input: ProviderNativeAppServerStreamInput) => ReadableStream<Uint8Array>
   listProviderThreads?: (input: ProviderThreadListInput) => Promise<ProviderThreadListResult>
   readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
   listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
+  generateSessionTitle?: (input: GenerateSessionTitleInput) => Promise<string | null>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.
    * No custom intermediate abstraction — pure AI SDK protocol.
-  */
+   */
   streamTurn: (input: StreamTurnInput) => AsyncGenerator<UIMessageChunk, void, void>
   steerTurn?: (input: SteerTurnInput) => Promise<void>
   executeShellCommand?: (input: ExecuteShellCommandInput) => Promise<ExecuteShellCommandResult>

@@ -77,7 +77,7 @@ function createTestRuntime() {
       providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? null } }),
     })),
     resumeChatSession: vi.fn(async (input: ResumeChatSessionInput): Promise<RuntimeSession> => input.runtimeSession),
-    async *streamTurn() {},
+    async* streamTurn() {},
     cancelTurn: vi.fn(async () => undefined),
   } satisfies ChatRuntime
   return runtime
@@ -105,7 +105,7 @@ async function withDataDir<T>(run: () => Promise<T>): Promise<T> {
 describe('provider runtime side conversations', () => {
   it('holds a pinned host lease for live-only side conversations', () => {
     registerSideConversation({
-      sessionId: 'side-session',
+      sideConversationId: 'side-session',
       parentSessionId: 'parent-session',
       providerTargetId: 'provider-target',
       runtimeKind: 'codex',
@@ -131,7 +131,7 @@ describe('provider runtime side conversations', () => {
     vi.setSystemTime(1_000)
 
     registerSideConversation({
-      sessionId: 'side-session',
+      sideConversationId: 'side-session',
       parentSessionId: 'parent-session',
       providerTargetId: 'provider-target',
       runtimeKind: 'codex',
@@ -160,7 +160,7 @@ describe('provider runtime side conversations', () => {
       disposeResource,
     })
     registerSideConversation({
-      sessionId: 'side-session',
+      sideConversationId: 'side-session',
       parentSessionId: 'parent-session',
       providerTargetId: 'provider-target',
       runtimeKind: 'codex',
@@ -180,7 +180,7 @@ describe('provider runtime side conversations', () => {
 
   it('releases side conversations for a removed provider target', () => {
     registerSideConversation({
-      sessionId: 'side-session',
+      sideConversationId: 'side-session',
       parentSessionId: 'parent-session',
       providerTargetId: 'provider-target',
       runtimeKind: 'codex',
@@ -190,7 +190,7 @@ describe('provider runtime side conversations', () => {
       pinned: true,
     })
     registerSideConversation({
-      sessionId: 'side-session-other-target',
+      sideConversationId: 'side-session-other-target',
       parentSessionId: 'parent-session',
       providerTargetId: 'provider-target-other',
       runtimeKind: 'codex',
@@ -223,7 +223,7 @@ describe('provider runtime session resolution', () => {
     await withDataDir(async () => {
       const runtime = createTestRuntime()
       registerSideConversation({
-        sessionId: 'side-session',
+        sideConversationId: 'side-session',
         parentSessionId: 'parent-session',
         providerTargetId: 'provider-target',
         runtimeKind: 'codex',

@@ -45,7 +45,7 @@ export interface ObservabilityBundleErrorPattern {
 
 const MAX_LOG_BYTES = 128 * 1024
 const SECRET_PATTERNS: Array<{ pattern: RegExp, replacement: string }> = [
-  { pattern: /sk-[A-Za-z0-9_-]{12,}/g, replacement: '[REDACTED]' },
+  { pattern: /sk-[\w-]{12,}/g, replacement: '[REDACTED]' },
   { pattern: /(api[_-]?key["'\s:=]+)[^"',\s]+/gi, replacement: '$1[REDACTED]' },
   { pattern: /(token["'\s:=]+)[^"',\s]+/gi, replacement: '$1[REDACTED]' },
   { pattern: /(authorization["'\s:=]+bearer\s+)[^"',\s]+/gi, replacement: '$1[REDACTED]' },

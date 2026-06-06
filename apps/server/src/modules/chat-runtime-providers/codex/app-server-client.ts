@@ -251,6 +251,16 @@ export class CodexAppServerClient {
     }
 
     try {
+      if (this.exposeServerRequestsAsNotifications && isPendingInteractiveServerRequest(message.method)) {
+        this.pushNotification({
+          method: 'serverRequest/pending',
+          params: {
+            id: message.id,
+            method: message.method,
+            params: message.params,
+          },
+        })
+      }
       const result = await this.serverRequestHandler(message)
       if (this.exposeServerRequestsAsNotifications) {
         this.pushNotification({
@@ -294,6 +304,10 @@ export class CodexAppServerClient {
       this.notificationWaiters.shift()?.({ method: 'error', params: { message: error.message } })
     }
   }
+}
+
+function isPendingInteractiveServerRequest(method: string): boolean {
+  return method === 'item/tool/requestUserInput' || method === 'mcpServer/elicitation/request'
 }
 
 export function readCradleCodexClientVersion(env: Record<string, string | undefined> = process.env): string {
@@ -344,7 +358,7 @@ export function readCodexNativeClientVersion(codexPath = 'codex'): Promise<strin
 }
 
 function readCodexVersionFromCliOutput(output: string): string {
-  return output.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?\b/)?.[0]
+  return output.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?\b/i)?.[0]
     ?? CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION
 }
 

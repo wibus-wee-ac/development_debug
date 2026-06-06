@@ -1,5 +1,5 @@
-import * as Session from '../../session/service'
 import * as ChatRuntime from '../../chat-runtime/service'
+import * as Session from '../../session/service'
 import type { AcpConnectionManager } from './connection-manager'
 
 export function wireAcpIntegration(runtime: AcpConnectionManager): void {

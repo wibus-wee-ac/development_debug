@@ -3,10 +3,10 @@ import { eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
+import type { ModelDescriptor } from '../provider-contracts/types'
 import type { ProviderTarget } from '../provider-targets/service'
 import { providerTargetCacheId } from '../provider-targets/service'
 import { projectProviderModelListCapabilities } from './model-capabilities'
-import type { ModelDescriptor } from '../provider-contracts/types'
 
 const STALE_THRESHOLD_S = 60 * 60 * 24 // 24 hours
 
@@ -22,6 +22,7 @@ const ModelCapabilitiesSchema = z.object({
   inputModalities: z.array(z.string()).optional(),
   outputModalities: z.array(z.string()).optional(),
   reasoning: z.boolean().optional(),
+  reasoningEfforts: z.array(z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])).optional(),
   toolCall: z.boolean().optional(),
   temperature: z.boolean().optional(),
   structuredOutput: z.boolean().optional(),

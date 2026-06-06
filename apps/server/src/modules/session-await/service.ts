@@ -54,7 +54,6 @@ const LastCheckedInputSchema = z.object({
 async function enqueueResume(row: SessionAwait, resumeText: string): Promise<void> {
   await enqueueSessionQueueItem({
     sessionId: row.chatSessionId,
-    mode: 'queue',
     text: resumeText,
   })
 }
@@ -614,7 +613,7 @@ export async function fetchAvailableChecks(owner: string, repo: string): Promise
   }
 
   const checks = [...seen.values()].sort((a, b) => {
-    if (a.required !== b.required) return a.required ? -1 : 1
+    if (a.required !== b.required) { return a.required ? -1 : 1 }
     return a.name.localeCompare(b.name)
   })
 

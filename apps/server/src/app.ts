@@ -2,28 +2,15 @@ import { cors } from '@elysiajs/cors'
 import { node } from '@elysiajs/node'
 import { Elysia } from 'elysia'
 
-import { createErrorHandler } from './http/error-mapping'
 import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
-import { createRequestLoggerPlugin } from './http/request-logger'
-import { shutdownInfra } from './infra'
-import { flushAllActiveRunSnapshots, recoverPersistedRunProjections } from './modules/chat-runtime/service'
-import { shutdownTraceStreams } from './modules/chat-runtime/stream-trace'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { automation } from './modules/automation'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle, chronicleApi, chronicleMemoryApi } from './modules/chronicle'
-import { cleanup as chronicleCleanup } from './modules/chronicle/daemon-manager'
-import {
-  initDaemon as chronicleInitDaemon,
-  startSlackBackgroundSync as chronicleStartSlackBackgroundSync,
-  stopActivityPipelineScheduler as chronicleStopActivityPipelineScheduler,
-  stopSlackBackgroundSync as chronicleStopSlackBackgroundSync,
-} from './modules/chronicle/service'
 import { desktop } from './modules/desktop'
 import { externalProviderSources } from './modules/external-provider-sources'
-import { refreshAllExternalProviderSources } from './modules/external-provider-sources/service'
 import { externalWorkImport } from './modules/external-work-import'
 import { filesystem } from './modules/filesystem'
 import { git } from './modules/git'
@@ -35,10 +22,8 @@ import { modelRegistry } from './modules/model-registry'
 import { observability } from './modules/observability'
 import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
-import { providerTargets } from './modules/provider-targets'
 import { providers } from './modules/provider-catalog'
-import { providerRuntimeHostManager } from './modules/provider-runtime/host-manager'
-import { clearSideConversations } from './modules/provider-runtime/side-conversation-registry'
+import { providerTargets } from './modules/provider-targets'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
 import { secrets } from './modules/secrets'
@@ -49,10 +34,13 @@ import { testReset } from './modules/test-reset'
 import { usage } from './modules/usage'
 import { workflowRules } from './modules/workflow-rules'
 import { workspace } from './modules/workspace'
-import { activateServerPlugins } from './plugins'
 
 interface CreateServerAppOptions {
   startBackgroundTasks?: boolean
+}
+
+interface CreateServerContractAppOptions {
+  includeRuntimeHttpPlugins?: boolean
 }
 
 function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
@@ -73,14 +61,13 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   }
 }
 
-export async function createServerApp(options: CreateServerAppOptions = {}) {
-  const { startBackgroundTasks = process.env.NODE_ENV !== 'test' } = options
+export async function createServerContractApp(options: CreateServerContractAppOptions = {}) {
+  const { includeRuntimeHttpPlugins = false } = options
   const app = new Elysia({
     name: 'cradle.server.elysia',
     adapter: node(),
     normalize: 'typebox',
   })
-  recoverPersistedRunProjections()
 
   app.use(
     cors({
@@ -93,8 +80,14 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     }),
   )
   app.use(createRequestIdPlugin())
-  app.use(createRequestLoggerPlugin())
-  app.onError(createErrorHandler())
+  if (includeRuntimeHttpPlugins) {
+    const [{ createRequestLoggerPlugin }, { createErrorHandler }] = await Promise.all([
+      import('./http/request-logger'),
+      import('./http/error-mapping'),
+    ])
+    app.use(createRequestLoggerPlugin())
+    app.onError(createErrorHandler())
+  }
   app.use(createOpenApiPlugin())
   app.use(health)
   app.use(preferences)
@@ -130,6 +123,39 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   if (process.env.NODE_ENV === 'test') {
     app.use(testReset)
   }
+
+  registerOpenApiAlias(app)
+
+  return app
+}
+
+export async function createServerApp(options: CreateServerAppOptions = {}) {
+  const { startBackgroundTasks = process.env.NODE_ENV !== 'test' } = options
+  const [
+    { shutdownInfra },
+    { flushAllActiveRunSnapshots, recoverPersistedRunProjections },
+    { shutdownTraceStreams },
+    { cleanup: chronicleCleanup },
+    chronicleService,
+    { refreshAllExternalProviderSources },
+    { providerRuntimeHostManager },
+    { clearSideConversations },
+    { activateServerPlugins },
+  ] = await Promise.all([
+    import('./infra'),
+    import('./modules/chat-runtime/service'),
+    import('./modules/chat-runtime/stream-trace'),
+    import('./modules/chronicle/daemon-manager'),
+    import('./modules/chronicle/service'),
+    import('./modules/external-provider-sources/service'),
+    import('./modules/provider-runtime/host-manager'),
+    import('./modules/provider-runtime/side-conversation-registry'),
+    import('./plugins'),
+  ])
+  recoverPersistedRunProjections()
+
+  const app = await createServerContractApp({ includeRuntimeHttpPlugins: true })
+
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
 
@@ -137,8 +163,8 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     () => flushAllActiveRunSnapshots(),
     () => clearSideConversations(),
     () => providerRuntimeHostManager.shutdown(),
-    () => chronicleStopActivityPipelineScheduler(),
-    () => chronicleStopSlackBackgroundSync(),
+    () => chronicleService.stopActivityPipelineScheduler(),
+    () => chronicleService.stopSlackBackgroundSync(),
     () => chronicleCleanup(),
     () => shutdownTraceStreams(),
     () => shutdownInfra(),
@@ -160,14 +186,12 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
       .catch((error) => {
         console.error('[external-provider-sources] Refresh failed:', error)
       })
-    void chronicleInitDaemon().catch((error) => {
+    void chronicleService.initDaemon().catch((error) => {
       console.error('[chronicle] Daemon initialization failed:', error)
     })
-    chronicleStartSlackBackgroundSync()
+    chronicleService.startSlackBackgroundSync()
     providerRuntimeHostManager.startReaper()
   }
-
-  registerOpenApiAlias(app)
 
   return app
 }

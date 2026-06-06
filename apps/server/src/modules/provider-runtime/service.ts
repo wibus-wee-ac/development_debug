@@ -1,12 +1,13 @@
 import type { BackendSessionBinding } from '@cradle/db'
 
-import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import type {
   ChatRuntime,
   RuntimeProviderTargetProfile,
   RuntimeSession,
 } from '../chat-runtime/runtime-provider-types'
+import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import type { RuntimeKind } from '../provider-contracts/types'
+import type { ProviderRuntimeBindingDirectoryWriter } from './directory'
 import {
   clearProviderTargetFromProviderRuntimeBindings,
   deleteProviderRuntimeBinding,
@@ -16,13 +17,12 @@ import {
   readReusableProviderRuntimeBinding,
   writeProviderRuntimeBinding,
 } from './directory'
-import type { ProviderRuntimeBindingDirectoryWriter } from './directory'
+import type { SideConversationRecord } from './side-conversation-registry'
 import {
   readSideConversation,
   refreshSideConversation,
   releaseSideConversationsByProviderTargetId,
 } from './side-conversation-registry'
-import type { SideConversationRecord } from './side-conversation-registry'
 
 export type ProviderRuntimeSessionSource = 'live-side' | 'durable-binding' | 'new-session'
 

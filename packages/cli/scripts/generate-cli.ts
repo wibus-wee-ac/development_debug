@@ -2,8 +2,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { createServerApp } from '../../../apps/server/src/app'
-import { shutdownInfra } from '../../../apps/server/src/infra'
+import { createServerContractApp } from '../../../apps/server/src/app'
 import type { CliArgumentSpec, CliFlagSpec, CliOperationSpec, CliValueType } from '../src/runtime/types'
 
 type HttpMethod = 'delete' | 'get' | 'patch' | 'post' | 'put'
@@ -226,17 +225,12 @@ function createImportName(command: string[]): string {
 }
 
 async function loadOpenApiDocument(): Promise<OpenApiDocument> {
-  const app = await createServerApp({ startBackgroundTasks: false })
-  try {
-    const response = await app.handle(new Request('http://localhost/openapi.json'))
-    if (!response.ok) {
-      throw new Error(`Failed to load OpenAPI document: ${response.status}`)
-    }
-    return await response.json() as OpenApiDocument
+  const app = await createServerContractApp()
+  const response = await app.handle(new Request('http://localhost/openapi.json'))
+  if (!response.ok) {
+    throw new Error(`Failed to load OpenAPI document: ${response.status}`)
   }
-  finally {
-    shutdownInfra()
-  }
+  return await response.json() as OpenApiDocument
 }
 
 function collectOperations(document: OpenApiDocument): CliOperationSpec[] {

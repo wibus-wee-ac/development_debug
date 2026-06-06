@@ -19,16 +19,6 @@ const spec = {
   "description": "Enqueue a chat continuation for the session",
   "flags": [
     {
-      "name": "mode",
-      "required": true,
-      "target": "body.mode",
-      "type": "string",
-      "values": [
-        "queue",
-        "steer"
-      ]
-    },
-    {
       "name": "text",
       "required": false,
       "target": "body.text",

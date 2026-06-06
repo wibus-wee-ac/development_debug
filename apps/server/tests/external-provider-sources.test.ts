@@ -123,6 +123,7 @@ describe('external provider sources capability', () => {
           baseUrl: 'https://openai.example.test',
           model: 'gpt-test',
           apiFormat: 'openai_responses',
+          iconSlug: 'codex',
           iconUrl: 'https://icons.example.test/codex.png',
         },
       },
@@ -327,7 +328,7 @@ describe('external provider sources capability', () => {
           externalRecordId: 'codex:test-openai',
           providerKind: 'openai-compatible',
           displayName: 'Fixture OpenAI',
-          iconSlug: `url:${encodeURIComponent('https://icons.example.test/codex.png')}`,
+          iconSlug: 'codex',
         }),
       )
 

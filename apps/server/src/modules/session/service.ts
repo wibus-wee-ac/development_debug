@@ -13,8 +13,8 @@ import {
 import { db } from '../../infra'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import type { RuntimeKind } from '../provider-contracts/types'
-import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import { invalidateDurableProviderRuntimeBindingForChatSession } from '../provider-runtime/service'
+import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
 import * as Workspace from '../workspace/service'
 
 export type SessionStatus = 'idle' | 'streaming' | 'error'

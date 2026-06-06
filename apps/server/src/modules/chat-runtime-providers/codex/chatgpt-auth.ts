@@ -1,6 +1,7 @@
 /**
  * Owns Cradle-side ChatGPT OAuth material for Codex app-server external auth.
  */
+import { getLogger } from '../../../logging/logger'
 import type { LoginAccountParams } from './app-server-protocol/v2/LoginAccountParams'
 
 const CODEX_CHATGPT_AUTH_KIND = 'chatgpt-auth'
@@ -40,9 +41,9 @@ interface OAuthTokenResponse {
 }
 
 interface ParsedJwtClaims {
-  email?: string
-  chatgpt_account_id?: string
-  chatgpt_plan_type?: string
+  'email'?: string
+  'chatgpt_account_id'?: string
+  'chatgpt_plan_type'?: string
   'https://api.openai.com/auth'?: {
     chatgpt_account_id?: string
     chatgpt_plan_type?: string
@@ -112,12 +113,29 @@ export function resolveCodexAppServerAuth(
 ): CodexAppServerAuthResolution {
   const credentialRef = rawInput.secretRef ?? rawInput.credentialRef ?? null
   if (credentialRef) {
-    const secret = deps.readSecret(credentialRef)
-    const chatgptAuth = readCodexChatgptAuthCredential(credentialRef, secret)
-    if (chatgptAuth) {
-      return { apiKey: null, chatgptAuth }
+    try {
+      const secret = deps.readSecret(credentialRef)
+      const chatgptAuth = readCodexChatgptAuthCredential(credentialRef, secret)
+      if (chatgptAuth) {
+        return { apiKey: null, chatgptAuth }
+      }
+      return { apiKey: secret, chatgptAuth: null }
     }
-    return { apiKey: secret, chatgptAuth: null }
+    catch (err) {
+      // If credential decryption fails, log the error and fall through to other auth methods
+      // This prevents server crashes when CRADLE_CREDENTIAL_SECRET changes or data is corrupted
+      const logger = getLogger()
+      if (err instanceof Error && err.message.includes('authenticate data')) {
+        logger.warn('Failed to decrypt credential - CRADLE_CREDENTIAL_SECRET may have changed', {
+          credentialRef,
+          error: err.message,
+        })
+      }
+      else {
+        logger.error('Failed to read credential', { credentialRef, err })
+      }
+      // Fall through to try other auth methods
+    }
   }
   if (configApiKey) {
     return { apiKey: configApiKey, chatgptAuth: null }

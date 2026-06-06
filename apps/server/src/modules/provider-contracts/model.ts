@@ -4,12 +4,23 @@ export const providerKindSchema = t.Union([t.Literal('openai-compatible'), t.Lit
 
 export const providerTargetKindSchema = t.Union([t.Literal('manual'), t.Literal('external')])
 
+const reasoningEffortSchema = t.Union([
+  t.Literal('none'),
+  t.Literal('minimal'),
+  t.Literal('low'),
+  t.Literal('medium'),
+  t.Literal('high'),
+  t.Literal('xhigh'),
+  t.Literal('max'),
+])
+
 export const modelCapabilitiesSchema = t.Object({
   contextWindow: t.Optional(t.Number()),
   maxOutput: t.Optional(t.Number()),
   inputModalities: t.Optional(t.Array(t.String())),
   outputModalities: t.Optional(t.Array(t.String())),
   reasoning: t.Optional(t.Boolean()),
+  reasoningEfforts: t.Optional(t.Array(reasoningEffortSchema)),
   toolCall: t.Optional(t.Boolean()),
   temperature: t.Optional(t.Boolean()),
   structuredOutput: t.Optional(t.Boolean()),

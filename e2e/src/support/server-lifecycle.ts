@@ -160,7 +160,6 @@ BeforeAll({ timeout: 120_000 }, async () => {
     const serverUrl = `http://127.0.0.1:${serverPort}`
     await waitForReady(`${serverUrl}/health`, 'Managed E2E Server')
 
-    // eslint-disable-next-line no-console
     console.log(`[e2e] Managed server started at ${serverUrl} (data: ${dataDir})`)
 
     // Start a web dev server pointing to the managed API server
@@ -191,7 +190,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
 
       webUrl = `http://localhost:${webPort}`
       await waitForReady(webUrl, 'Managed E2E Web', 30_000)
-      // eslint-disable-next-line no-console
+
       console.log(`[e2e] Managed web dev server started at ${webUrl}`)
     }
 

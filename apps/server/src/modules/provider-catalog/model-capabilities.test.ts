@@ -5,13 +5,13 @@ import { projectProviderModelCapabilities } from './model-capabilities'
 describe('projectProviderModelCapabilities', () => {
   it('adds Anthropic default image input capabilities when upstream metadata is empty', () => {
     expect(projectProviderModelCapabilities({
-      id: 'claude-sonnet-4-20250514',
-      label: 'Claude Sonnet 4',
+      id: 'claude-3-haiku-20240307',
+      label: 'Claude 3 Haiku',
       providerKind: 'anthropic',
       capabilities: {},
     })).toEqual({
-      id: 'claude-sonnet-4-20250514',
-      label: 'Claude Sonnet 4',
+      id: 'claude-3-haiku-20240307',
+      label: 'Claude 3 Haiku',
       providerKind: 'anthropic',
       capabilities: {
         inputModalities: ['text', 'image'],
@@ -42,5 +42,31 @@ describe('projectProviderModelCapabilities', () => {
       providerKind: 'openai-compatible',
       capabilities: {},
     }).capabilities).toEqual({})
+  })
+
+  it('projects Codex app-server reasoning efforts for OpenAI reasoning models', () => {
+    expect(projectProviderModelCapabilities({
+      id: 'gpt-5-codex',
+      label: 'GPT-5 Codex',
+      providerKind: 'openai-compatible',
+      capabilities: {},
+    }).capabilities).toEqual({
+      reasoning: true,
+      reasoningEfforts: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+    })
+  })
+
+  it('projects Claude Agent SDK reasoning efforts for supported Claude models', () => {
+    expect(projectProviderModelCapabilities({
+      id: 'claude-sonnet-4-20250514',
+      label: 'Claude Sonnet 4',
+      providerKind: 'anthropic',
+      capabilities: {},
+    }).capabilities).toEqual({
+      inputModalities: ['text', 'image'],
+      outputModalities: ['text'],
+      reasoning: true,
+      reasoningEfforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+    })
   })
 })

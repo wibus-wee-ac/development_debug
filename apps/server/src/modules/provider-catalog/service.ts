@@ -3,13 +3,13 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { enrichModelsFromRegistryMappings } from '../model-registry/model-info-registry'
 import * as ModelRegistry from '../model-registry/service'
+import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
-import { projectProviderModelListCapabilities } from './model-capabilities'
-import { enrichModelsFromRegistryMappings } from '../model-registry/model-info-registry'
 import { getProviderCatalog } from './catalog'
-import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
+import { projectProviderModelListCapabilities } from './model-capabilities'
 
 // ── provider body parsing ──
 

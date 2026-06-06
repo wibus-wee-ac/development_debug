@@ -1,8 +1,7 @@
+import type { BuiltinToolCallInputPayload, BuiltinToolCallResultPayload } from '../../tools/tool-call-payload'
 import {
   createBuiltinToolCallInputPayload,
   createBuiltinToolCallResultPayload,
-  type BuiltinToolCallInputPayload,
-  type BuiltinToolCallResultPayload,
 } from '../../tools/tool-call-payload'
 import { ClaudeCodeToolIdentifier } from './identity'
 

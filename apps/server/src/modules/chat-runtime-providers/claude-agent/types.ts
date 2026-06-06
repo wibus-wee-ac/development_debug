@@ -7,6 +7,21 @@
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 
+import type { ProviderContext, RuntimeProviderTargetProfile } from '../../chat-runtime/runtime-provider-types'
+
+export interface ClaudeAgentProviderConfig {
+  readChatPreferences?: () => {
+    titleGeneration: {
+      providerTargetId: string | null
+      modelId: string | null
+      thinkingEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    }
+  }
+  resolveProviderTargetProfile?: (providerTargetId: string) => RuntimeProviderTargetProfile | null
+}
+
+export type ClaudeAgentProviderDeps = ProviderContext & ClaudeAgentProviderConfig
+
 export interface ClaudeAgentSessionInfo {
   summary?: string
   customTitle?: string
@@ -24,3 +39,5 @@ export type ClaudeAgentContentBlock
         | { type: 'base64', media_type: AnthropicImageMediaType, data: string }
         | { type: 'url', url: string }
     }
+
+export type ClaudeTitleGenerationThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'

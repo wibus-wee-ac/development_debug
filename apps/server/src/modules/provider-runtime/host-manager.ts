@@ -187,7 +187,7 @@ export class ProviderRuntimeHostManager {
 
   listHosts(): ProviderRuntimeHostSnapshot[] {
     this.reapIdleHosts()
-    return [...this.hosts.values()].map(entry => ({
+    return Array.from(this.hosts.values(), entry => ({
       hostId: entry.hostId,
       runtimeKind: entry.runtimeKind,
       providerTargetId: entry.providerTargetId,

@@ -1,10 +1,23 @@
 import type { CodexAppServerClientOptions } from './app-server-client'
 import type { CodexChatgptAuthCredential } from './chatgpt-auth'
 
+/**
+ * Creates a fingerprint for Codex app-server host resource that includes only
+ * process-level configuration. Thread-level config (approval_policy, sandbox_mode,
+ * model, etc.) and per-thread env vars (CRADLE_CHAT_SESSION_ID, etc.) are omitted
+ * because they can be passed via thread/start or thread/resume params.
+ */
 export function createCodexAppServerHostFingerprint(input: {
   options: CodexAppServerClientOptions
   chatgptAuth: CodexChatgptAuthCredential | null
 }): string {
+  // Extract only process-level config that affects app-server lifetime:
+  // - baseUrl and model_provider affect which API the process connects to
+  // - Other config keys (approval_policy, sandbox_mode, model, etc.) are thread-level
+  const processLevelConfig = input.options.config
+    ? extractProcessLevelConfig(input.options.config)
+    : null
+
   return JSON.stringify({
     apiKey: input.options.apiKey ?? null,
     chatgptAuth: input.chatgptAuth
@@ -15,10 +28,20 @@ export function createCodexAppServerHostFingerprint(input: {
         }
       : null,
     codexPath: input.options.codexPath ?? null,
-    config: stableJson(input.options.config ?? null),
-    env: input.options.env ?? null,
+    processLevelConfig: stableJson(processLevelConfig),
     userAgentMode: input.options.userAgentMode ?? null,
   })
+}
+
+function extractProcessLevelConfig(config: Record<string, unknown>): Record<string, unknown> | null {
+  const processKeys = ['model_provider', 'model_providers']
+  const processConfig: Record<string, unknown> = {}
+  for (const key of processKeys) {
+    if (key in config) {
+      processConfig[key] = config[key]
+    }
+  }
+  return Object.keys(processConfig).length > 0 ? processConfig : null
 }
 
 function stableJson(value: unknown): string {

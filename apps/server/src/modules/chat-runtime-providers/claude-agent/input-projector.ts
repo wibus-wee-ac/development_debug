@@ -9,7 +9,6 @@ import type { UIMessage } from 'ai'
 
 import { getRegisteredMcpServers } from '../../../plugins'
 import { isChatSkillContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
-import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   ChatRuntimeSettings,
   GetCapabilitiesInput,
@@ -17,6 +16,7 @@ import type {
   RuntimeProviderTargetProfile,
   StreamTurnInput,
 } from '../../chat-runtime/runtime-provider-types'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import {
   readTrustedClaudeAgentConfig,
   readTrustedUniversalConfig,
@@ -24,7 +24,7 @@ import {
 } from '../../provider-contracts/provider-base'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { CLAUDE_AGENT_RUNTIME_KIND } from './metadata'
-import { resolveClaudeAgentRuntimeContext } from './runtime-context'
+import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } from './runtime-context'
 import type {
   AnthropicImageMediaType,
   ClaudeAgentContentBlock,
@@ -33,7 +33,7 @@ import type {
   RuntimeMessageInput,
 } from './types'
 
-export const CLAUDE_AGENT_SDK_PERSIST_SESSION = false
+export const CLAUDE_AGENT_SDK_PERSIST_SESSION = true
 
 export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLabel: string): ClaudeAgentUserContent {
   if (typeof message === 'string') {
@@ -84,8 +84,9 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
 export function buildClaudeAgentTurnContent(input: {
   userContent: ClaudeAgentUserContent
   history?: UIMessage[]
+  historyScope?: 'full' | 'recentCradleLocal'
 }): ClaudeAgentUserContent {
-  const historyText = formatClaudeAgentHistory(input.history)
+  const historyText = formatClaudeAgentHistory(input.history, input.historyScope ?? 'full')
   if (!historyText) {
     return input.userContent
   }
@@ -129,6 +130,7 @@ export function buildClaudeQueryOptions(input: {
   input: StreamTurnInput | GetCapabilitiesInput
   abortController: AbortController
   attachPermissionHandler: boolean
+  persistSession?: boolean
 }): Options {
   const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
   const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
@@ -147,6 +149,7 @@ export function buildClaudeQueryOptions(input: {
     snapshot.workspacePath ?? input.input.workspacePath,
     input.input.agentId ?? snapshot.agentId ?? null,
   )
+  const shouldPersistSession = input.persistSession ?? CLAUDE_AGENT_SDK_PERSIST_SESSION
   const queryOptions: Options = {
     abortController: input.abortController,
     cwd: runtimeContext.cwd,
@@ -163,7 +166,7 @@ export function buildClaudeQueryOptions(input: {
     forwardSubagentText: true,
     agentProgressSummaries: true,
     effort: readClaudeAgentEffort(providerOptions?.thinkingEffort, config.effort),
-    persistSession: CLAUDE_AGENT_SDK_PERSIST_SESSION,
+    persistSession: shouldPersistSession,
     systemPrompt: input.input.systemPrompt
       ? { type: 'preset' as const, preset: 'claude_code' as const, append: input.input.systemPrompt }
       : undefined,
@@ -181,9 +184,24 @@ export function buildClaudeQueryOptions(input: {
   if (config.tools) {
     queryOptions.tools = config.tools
   }
-  const disallowedTools = [...(config.disallowedTools ?? []), 'AskUserQuestion', 'ExitPlanMode', 'EnterPlanMode']
+  const disallowedTools = [...(config.disallowedTools ?? []), 'AskUserQuestion', 'EnterPlanMode']
   queryOptions.disallowedTools = [...new Set(disallowedTools)]
-  if (CLAUDE_AGENT_SDK_PERSIST_SESSION && input.input.runtimeSession.providerSessionId) {
+  if (input.attachPermissionHandler && permissionMode === 'plan') {
+    queryOptions.canUseTool = async (toolName) => {
+      if (toolName === 'ExitPlanMode') {
+        return {
+          behavior: 'deny',
+          message: 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.',
+        }
+      }
+
+      return {
+        behavior: 'deny',
+        message: 'Cradle plan mode is active. Do not execute tools in this turn; provide the plan through ExitPlanMode.',
+      }
+    }
+  }
+  if (shouldPersistSession && input.input.runtimeSession.providerSessionId) {
     queryOptions.resume = input.input.runtimeSession.providerSessionId
   }
   // Always set the model because the SDK subprocess otherwise falls back to model env vars.
@@ -198,6 +216,7 @@ export function buildClaudeQueryOptions(input: {
 
   queryOptions.settingSources = []
 
+  const claudeConfigDir = activateClaudeAgentSdkConfigDir()
   const env: Record<string, string | undefined> = { ...process.env }
   for (const key of [
     'ANTHROPIC_MODEL',
@@ -218,6 +237,7 @@ export function buildClaudeQueryOptions(input: {
   env.CRADLE_WORKSPACE_PATH = runtimeContext.workspacePath
   env.CRADLE_AGENT_ID = input.input.agentId ?? snapshot.agentId ?? undefined
   env.CRADLE_AGENT_HOME = runtimeContext.agentHome ?? undefined
+  env.CLAUDE_CONFIG_DIR = claudeConfigDir
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
 
@@ -261,15 +281,18 @@ export function readClaudeAgentModelId(
   return input.modelId ?? snapshot.models.currentModelId ?? config.model
 }
 
-function formatClaudeAgentHistory(history: UIMessage[] | undefined): string | null {
-  const entries = history
-    ?.map(formatClaudeAgentHistoryMessage)
+function formatClaudeAgentHistory(history: UIMessage[] | undefined, scope: 'full' | 'recentCradleLocal'): string | null {
+  const scopedHistory = scope === 'recentCradleLocal'
+    ? readRecentCradleLocalHistory(history)
+    : history
+  const entries = scopedHistory
+    ?.map(message => formatClaudeAgentHistoryMessage(message, scope))
     .filter((entry): entry is string => Boolean(entry))
     ?? []
   return entries.length > 0 ? entries.join('\n\n') : null
 }
 
-function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
+function formatClaudeAgentHistoryMessage(message: UIMessage, scope: 'full' | 'recentCradleLocal'): string | null {
   const bangCommand = readBangCommandMetadata(message)
   if (bangCommand) {
     return `User ran local shell command: $ ${bangCommand.command}`
@@ -283,6 +306,10 @@ function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
       `Local shell command result for \`$ ${bangResult.command}\` (${status}, ${bangResult.durationMs}ms):`,
       output.trimEnd(),
     ].join('\n')
+  }
+
+  if (scope === 'recentCradleLocal') {
+    return null
   }
 
   const textParts = message.parts
@@ -299,6 +326,17 @@ function formatClaudeAgentHistoryMessage(message: UIMessage): string | null {
 
   const role = message.role === 'assistant' ? 'Assistant' : message.role === 'user' ? 'User' : 'System'
   return `${role}: ${textParts.join('\n')}`
+}
+
+function readRecentCradleLocalHistory(history: UIMessage[] | undefined): UIMessage[] | undefined {
+  let latestAssistantIndex = -1
+  for (let index = (history?.length ?? 0) - 1; index >= 0; index -= 1) {
+    if (history?.[index]?.role === 'assistant') {
+      latestAssistantIndex = index
+      break
+    }
+  }
+  return history?.slice(latestAssistantIndex + 1)
 }
 
 function readBangCommandMetadata(message: UIMessage): { command: string } | null {
@@ -476,7 +514,7 @@ function buildClaudeAgentModelEnv(config: {
 
 function readNonEmptyEnvValue(value: string | undefined): string | undefined {
   const trimmed = value?.trim()
-  return trimmed ? trimmed : undefined
+  return trimmed || undefined
 }
 
 function claudeAgentRequestError(method: string, detail: string): ProviderRuntimeError {

@@ -2,11 +2,6 @@ import type { DefaultRuntimeConfigOptions, MessageIngressCommand, MessageIngress
 import { defaultRuntimeConfig, executeIngressCommand } from '@hijarvis/core'
 import type { UIMessageChunk } from 'ai'
 
-import * as Preferences from '../../preferences/service'
-import {
-  readTrustedSystemAgentConfig,
-} from '../../provider-contracts/provider-base'
-import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import type {
   CancelTurnInput,
   ChatRuntime,
@@ -17,6 +12,11 @@ import type {
   StreamTurnInput,
   TokenUsage,
 } from '../../chat-runtime/runtime-provider-types'
+import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
+import * as Preferences from '../../preferences/service'
+import {
+  readTrustedSystemAgentConfig,
+} from '../../provider-contracts/provider-base'
 import {
   closeSystemAgentBridgeState,
   createSystemAgentBridgeState,
@@ -24,17 +24,17 @@ import {
 } from './event-to-chunk-mapper'
 import { projectSystemAgentUserPrompt } from './input-projector'
 import {
+  SYSTEM_AGENT_RUNTIME_CAPABILITIES,
+  SYSTEM_AGENT_RUNTIME_KIND,
+  SYSTEM_AGENT_RUNTIME_METADATA,
+} from './metadata'
+import {
   applySystemAgentModelRegistryConfig,
   inferSystemAgentApiFromKind,
   inferSystemAgentProviderFromKind,
   resolveSystemAgentRuntimeRegistryModel,
   selectSystemAgentThinkingLevel,
 } from './model-registry-bridge'
-import {
-  SYSTEM_AGENT_RUNTIME_CAPABILITIES,
-  SYSTEM_AGENT_RUNTIME_KIND,
-  SYSTEM_AGENT_RUNTIME_METADATA,
-} from './metadata'
 import { resolveSystemAgentRuntimeContext } from './runtime-context'
 import { projectSystemAgentModelSnapshot } from './state-projector'
 import type { JarvisThinkingLevel } from './types'

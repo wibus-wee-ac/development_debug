@@ -227,7 +227,7 @@ describe('server plugin context lifecycle', () => {
       async resumeChatSession(input) {
         return input.runtimeSession
       },
-      async * streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {},
+      async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {},
       async cancelTurn() {},
     } satisfies ChatRuntime
 

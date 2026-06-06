@@ -3,11 +3,11 @@ import type { ResponseItem as CodexResponseItem } from './app-server-protocol/Re
 import type { ThreadItem } from './app-server-protocol/v2/ThreadItem'
 import type { Turn } from './app-server-protocol/v2/Turn'
 import type { UserInput } from './app-server-protocol/v2/UserInput'
+import type { CodexAppServerItem } from './tools/mapper'
 import {
   buildCodexToolArgs,
   buildCodexToolResult,
   readCodexToolName,
-  type CodexAppServerItem,
 } from './tools/mapper'
 
 const TOOL_LIKE_ITEM_TYPES = new Set([

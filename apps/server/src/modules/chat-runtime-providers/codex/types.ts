@@ -6,7 +6,6 @@
 
 import type {
   ProviderContext,
-  RuntimeProviderTargetProfile,
   RuntimeAlertSeverity,
   RuntimeApprovalStatus,
   RuntimeCompactUiSlotState,
@@ -14,12 +13,12 @@ import type {
   RuntimeMcpAuthStatus,
   RuntimeMcpServerStatus,
   RuntimePlanStepStatus,
+  RuntimeProviderTargetProfile,
   RuntimeToolActivityStatus,
 } from '../../chat-runtime/runtime-provider-types'
-import type { CodexConfig } from '../../provider-contracts/provider-base'
 import type { ProviderRuntimeLease } from '../../provider-runtime/host-manager'
-import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
+import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
 import type { CodexNativeHistorySnapshot } from './state-projector'
 
 export interface CodexProviderConfig {

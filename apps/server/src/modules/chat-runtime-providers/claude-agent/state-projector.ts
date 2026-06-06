@@ -5,7 +5,8 @@
  */
 
 import type { RuntimeSession } from '../../chat-runtime/runtime-provider-types'
-import { readWorkspaceProviderStateSnapshot, type WorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
+import type { WorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
+import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 
 export function resolveClaudeAgentPendingModelSwitchId(snapshot: WorkspaceProviderStateSnapshot, requestedModelId: string | null): string | null {
   const existingPendingModelSwitchId = readClaudeAgentPendingModelSwitchId(snapshot)

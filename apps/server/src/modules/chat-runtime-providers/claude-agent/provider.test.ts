@@ -2,6 +2,7 @@ import { existsSync, mkdtempSync, readlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { CanUseTool, SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -12,11 +13,13 @@ import { ClaudeAgentProvider } from './provider'
 const sdkMocks = vi.hoisted(() => ({
   query: vi.fn(),
   getSessionInfo: vi.fn(),
+  renameSession: vi.fn(),
 }))
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: sdkMocks.query,
   getSessionInfo: sdkMocks.getSessionInfo,
+  renameSession: sdkMocks.renameSession,
 }))
 
 function createAsyncQuery(
@@ -46,10 +49,11 @@ function createAsyncQuery(
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue(commands),
+    getContextUsage: vi.fn().mockResolvedValue(createContextUsageResponse()),
   }
 }
 
-function createPendingQuery() {
+function createPendingQuery(contextUsage: SDKControlGetContextUsageResponse = createContextUsageResponse()) {
   let resolveNext: (() => void) | null = null
   let closed = false
   return {
@@ -78,6 +82,53 @@ function createPendingQuery() {
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue([]),
+    getContextUsage: vi.fn().mockResolvedValue(contextUsage),
+  }
+}
+
+function createContextUsageResponse(
+  overrides: Partial<SDKControlGetContextUsageResponse> = {},
+): SDKControlGetContextUsageResponse {
+  return {
+    categories: [
+      { name: 'System prompt', tokens: 100, color: '#2563eb' },
+      { name: 'Messages', tokens: 250, color: '#16a34a' },
+      { name: 'Unclassified provider payload', tokens: 17, color: '#71717a' },
+    ],
+    totalTokens: 367,
+    maxTokens: 200_000,
+    rawMaxTokens: 200_000,
+    percentage: 0.1835,
+    gridRows: [],
+    model: 'claude-sonnet-4-20250514',
+    memoryFiles: [
+      { path: '/tmp/CLAUDE.md', type: 'project', tokens: 42 },
+    ],
+    mcpTools: [
+      { name: 'search', serverName: 'browser', tokens: 11, isLoaded: true },
+    ],
+    agents: [],
+    isAutoCompactEnabled: true,
+    messageBreakdown: {
+      toolCallTokens: 7,
+      toolResultTokens: 13,
+      attachmentTokens: 0,
+      assistantMessageTokens: 150,
+      userMessageTokens: 100,
+      redirectedContextTokens: 0,
+      unattributedTokens: 5,
+      toolCallsByType: [
+        { name: 'Read', callTokens: 3, resultTokens: 4 },
+      ],
+      attachmentsByType: [],
+    },
+    apiUsage: {
+      input_tokens: 367,
+      output_tokens: 21,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    },
+    ...overrides,
   }
 }
 
@@ -200,6 +251,7 @@ describe('claudeAgentProvider MCP integration', () => {
     removeHostMcpServer('browser-use')
     sdkMocks.query.mockReset()
     sdkMocks.getSessionInfo.mockReset()
+    sdkMocks.renameSession.mockReset()
   })
 
   it('passes plugin-registered browser-use MCP server config to the Claude Agent SDK', async () => {
@@ -258,7 +310,7 @@ describe('claudeAgentProvider MCP integration', () => {
     await expect(readPromptText(0)).resolves.toBe('Open the browser')
   })
 
-  it('defaults Claude Agent runs to bypass permissions', async () => {
+  it('defaults Claude Agent runs to bypass permissions and persists under Cradle runtime data', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {
         type: 'result',
@@ -283,8 +335,52 @@ describe('claudeAgentProvider MCP integration', () => {
     expect(readQueryOptions(0)).toEqual(expect.objectContaining({
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
-      persistSession: false,
+      persistSession: true,
+      env: expect.objectContaining({
+        CLAUDE_CONFIG_DIR: join(process.env.CRADLE_DATA_DIR!, 'runtimes', 'claude-agent'),
+      }),
     }))
+  })
+
+  it('keeps ExitPlanMode available and captures it through the permission hook', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-plan-permission',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-plan-permission',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Plan the work'),
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      },
+    })) {
+      // Drain stream.
+    }
+
+    const options = readQueryOptions(0)
+    expect(options.disallowedTools).toEqual(expect.arrayContaining(['AskUserQuestion', 'EnterPlanMode']))
+    expect(options.disallowedTools).not.toContain('ExitPlanMode')
+    await expect((options.canUseTool as CanUseTool)(
+      'ExitPlanMode',
+      { plan: '1. Inspect\n2. Patch' },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'toolu_plan_1',
+      },
+    )).resolves.toEqual({
+      behavior: 'deny',
+      message: 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.',
+    })
   })
 
   it('runs agent-scoped Claude Agent sessions from the agent home while keeping workspace context explicit', async () => {
@@ -500,7 +596,7 @@ describe('claudeAgentProvider MCP integration', () => {
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
   })
 
-  it('starts a fresh Claude Agent SDK session for stored Cradle chats and applies the requested model in query options', async () => {
+  it('resumes a stored Claude Agent SDK session and applies a pending model switch', async () => {
     const activeQuery = createAsyncQuery([
       {
         type: 'assistant',
@@ -539,7 +635,7 @@ describe('claudeAgentProvider MCP integration', () => {
     await vi.waitFor(() => {
       expect(sdkMocks.query).toHaveBeenCalledOnce()
     })
-    expect(activeQuery.setModel).not.toHaveBeenCalled()
+    expect(activeQuery.setModel).toHaveBeenCalledWith('claude-opus-4-20250514')
 
     const call = sdkMocks.query.mock.calls[0]?.[0] as {
       options?: { model?: string, resume?: string }
@@ -547,9 +643,9 @@ describe('claudeAgentProvider MCP integration', () => {
     } | undefined
     expect(call?.options).toEqual(expect.objectContaining({
       model: 'claude-opus-4-20250514',
-      persistSession: false,
+      persistSession: true,
+      resume: 'claude-session-1',
     }))
-    expect(call?.options).not.toHaveProperty('resume')
 
     await expect(call!.prompt![Symbol.asyncIterator]().next()).resolves.toEqual(expect.objectContaining({
       done: false,
@@ -608,6 +704,10 @@ describe('claudeAgentProvider MCP integration', () => {
     }
 
     expect(activeQuery.setModel).not.toHaveBeenCalled()
+    expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+      persistSession: true,
+      resume: 'claude-session-1',
+    }))
     expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent?.pendingModelSwitchId).toBeUndefined()
   })
 
@@ -649,7 +749,9 @@ describe('claudeAgentProvider MCP integration', () => {
     }
 
     expect(reportSessionTitle).toHaveBeenCalledWith('Claude custom title')
-    expect(sdkMocks.getSessionInfo).toHaveBeenCalledWith('claude-session-title')
+    expect(sdkMocks.getSessionInfo).toHaveBeenCalledWith('claude-session-title', {
+      dir: '/tmp/cradle-workspace',
+    })
   })
 
   it('uses the runtime session model snapshot when a resumed Claude Agent turn has no explicit model override', async () => {
@@ -747,7 +849,7 @@ describe('claudeAgentProvider MCP integration', () => {
     ].join('\n'))
   })
 
-  it('replays Cradle-owned history when a stored Cradle chat starts a fresh Claude Agent SDK session', async () => {
+  it('replays recent Cradle local history when resuming a stored Claude Agent SDK session', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {
         type: 'assistant',
@@ -773,6 +875,11 @@ describe('claudeAgentProvider MCP integration', () => {
       message: createUserMessage('Can you see the local command output?'),
       history: [
         createUserMessage('Normal previous chat already lives in the SDK session'),
+        {
+          id: 'assistant-earlier',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'The SDK transcript has this message.' }],
+        },
         createBangCommandMessage('scc'),
         createBangResultMessage({
           command: 'scc',
@@ -788,8 +895,6 @@ describe('claudeAgentProvider MCP integration', () => {
 
     await expect(readPromptText(0)).resolves.toBe([
       'Previous messages in this Cradle chat session:',
-      'User: Normal previous chat already lives in the SDK session',
-      '',
       'User ran local shell command: $ scc',
       '',
       'Local shell command result for `$ scc` (exit code 0, 171ms):',
@@ -1136,5 +1241,164 @@ describe('claudeAgentProvider MCP integration', () => {
     }).rejects.toThrow('Claude Agent provider only supports text, image, and skill input; unsupported parts: file (brief.pdf) (application/pdf)')
 
     expect(sdkMocks.query).not.toHaveBeenCalled()
+  })
+
+  it('reads active Claude Agent SDK context usage with open category fallback', async () => {
+    const activeQuery = createPendingQuery(createContextUsageResponse())
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createResumedRuntimeSession({
+      providerSessionId: 'claude-session-context',
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-claude-agent-context-usage',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Inspect context usage'),
+      workspaceId: 'workspace-1',
+    })
+    const pendingNext = stream.next()
+
+    await vi.waitFor(() => {
+      expect(sdkMocks.query).toHaveBeenCalledOnce()
+    })
+
+    const usage = await provider.getContextUsage({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(activeQuery.getContextUsage).toHaveBeenCalledOnce()
+    expect(usage).toEqual(expect.objectContaining({
+      runtimeKind: 'claude-agent',
+      providerSessionId: 'claude-session-context',
+      source: 'claude-agent-sdk.getContextUsage',
+      model: 'claude-sonnet-4-20250514',
+      totalTokens: 367,
+      maxTokens: 200_000,
+      rawMaxTokens: 200_000,
+      percentage: 0.1835,
+    }))
+
+    const sections = new Map(usage!.sections.map(section => [section.kind, section]))
+    expect(sections.get('system-prompt')).toEqual(expect.objectContaining({
+      label: 'System prompt',
+      tokenCount: 100,
+      color: '#2563eb',
+    }))
+    expect(sections.get('messages')).toEqual(expect.objectContaining({
+      label: 'Messages',
+      tokenCount: 250,
+    }))
+    expect(sections.get('messages')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'assistant-message-tokens', tokenCount: 150 }),
+      expect.objectContaining({ kind: 'user-message-tokens', tokenCount: 100 }),
+    ]))
+    expect(sections.get('others')).toEqual(expect.objectContaining({
+      label: 'Unclassified provider payload',
+      tokenCount: 17,
+    }))
+    expect(sections.get('memory-files')).toEqual(expect.objectContaining({
+      tokenCount: 42,
+    }))
+    expect(sections.get('memory-files')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'memory-file', label: '/tmp/CLAUDE.md', tokenCount: 42 }),
+    ]))
+    expect(sections.get('tools')).toEqual(expect.objectContaining({
+      tokenCount: 7,
+    }))
+    expect(sections.get('tools')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'tool-call-tokens', tokenCount: 7 }),
+      expect.objectContaining({ kind: 'tool-call-type', label: 'Read', tokenCount: 7 }),
+    ]))
+
+    activeQuery.close()
+    await pendingNext
+  })
+
+  it('returns null context usage when no Claude Agent query is active', async () => {
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    await expect(provider.getContextUsage({
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toBeNull()
+  })
+
+  it('accumulates usage across multiple streaming messages', async () => {
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    const activeQuery = createAsyncQuery([
+      {
+        type: 'stream_event',
+        event: {
+          type: 'message_delta',
+          usage: { input_tokens: 100, output_tokens: 50 },
+        },
+        session_id: 'claude-session-1',
+      },
+      {
+        type: 'stream_event',
+        event: {
+          type: 'content_block_delta',
+          index: 0,
+          delta: { type: 'text_delta', text: 'Hello' },
+        },
+        session_id: 'claude-session-1',
+      },
+      {
+        type: 'stream_event',
+        event: {
+          type: 'message_delta',
+          usage: { input_tokens: 0, output_tokens: 25 },
+        },
+        session_id: 'claude-session-1',
+      },
+      {
+        type: 'result',
+        usage: { input_tokens: 0, output_tokens: 10 },
+        session_id: 'claude-session-1',
+      },
+    ])
+
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: {
+        id: 'user-1',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Test' }],
+      },
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    // lastUsage should be the most recent usage
+    expect(provider.lastUsage).toEqual({
+      promptTokens: 0,
+      completionTokens: 10,
+      totalTokens: 10,
+    })
+
+    // totalUsage should be the sum of all usage
+    expect(provider.totalUsage).toEqual({
+      promptTokens: 100,
+      completionTokens: 85, // 50 + 25 + 10
+      totalTokens: 185,
+    })
   })
 })

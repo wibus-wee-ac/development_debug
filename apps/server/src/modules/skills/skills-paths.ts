@@ -80,6 +80,11 @@ function assertSafeId(id: string): void {
 }
 
 function resolveBuiltinSkillsRoot(): string {
+  const configuredRoot = process.env.CRADLE_BUILTIN_SKILLS_DIR?.trim()
+  if (configuredRoot) {
+    return configuredRoot
+  }
+
   const candidates = [
     path.resolve(process.cwd(), '../../../resources/skills'),
     path.resolve(process.cwd(), '../../resources/skills'),

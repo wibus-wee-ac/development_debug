@@ -500,7 +500,7 @@ describe('issue-agent capability', () => {
       expect(continuationRes.status).toBe(200)
       const continuation = await continuationRes.json() as {
         chatSessionId: string
-        queueItemId: string
+        continuationId: string
         mode: string
       }
       expect(continuation).toEqual(expect.objectContaining({
@@ -526,7 +526,7 @@ describe('issue-agent capability', () => {
       const queueData = await queueRes.json() as { items: Array<{ id: string, status: string, startedRunId: string | null }> }
       expect(queueData.items).toEqual(expect.arrayContaining([
         expect.objectContaining({
-          id: continuation.queueItemId,
+          id: continuation.continuationId,
           status: 'completed',
           startedRunId: expect.any(String),
         }),
@@ -546,28 +546,13 @@ describe('issue-agent capability', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ mode: 'steer', text: 'Steer the next follow-up' }),
       }))
-      expect(steerRes.status).toBe(200)
-      const steerContinuation = await steerRes.json() as {
-        chatSessionId: string
-        queueItemId: string
-        mode: string
-      }
-      expect(steerContinuation).toEqual(expect.objectContaining({
-        chatSessionId,
-        mode: 'steer',
+      expect(steerRes.status).toBe(409)
+      expect(await steerRes.json()).toEqual(expect.objectContaining({
+        code: 'chat_steer_no_active_run',
       }))
 
-      const activitiesAfterSteer = await waitForActivityBody(app, delegatedSession.id, 'Steer the next follow-up')
-      const steerActivity = activitiesAfterSteer.find(activity => activity.signal === 'continuation.steer')
-      expect(steerActivity).toEqual(expect.objectContaining({
-        type: 'prompt',
-        signal: 'continuation.steer',
-      }))
-      expect(JSON.parse(String(steerActivity?.signalMetadata))).toEqual(expect.objectContaining({
-        chatSessionId,
-        queueItemId: steerContinuation.queueItemId,
-        mode: 'steer',
-      }))
+      const activitiesAfterRejectedSteer = await waitForActivitySignal(app, delegatedSession.id, 'continuation.completed')
+      expect(activitiesAfterRejectedSteer.map(activity => JSON.parse(activity.content).body)).not.toContain('Steer the next follow-up')
     }
     finally {
       fetchSpy.mockRestore()

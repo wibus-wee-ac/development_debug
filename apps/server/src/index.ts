@@ -1,6 +1,7 @@
-import { flushLogger, getLogger } from './logging/logger'
-import { OBSERVABILITY_CODES } from './modules/observability/contract'
+import { initializeLangfuse } from './langfuse'
+import { flushLogger, getLogger, initializeLogger } from './logging/logger'
 import type { CreateEventInput } from './modules/observability/contract'
+import { OBSERVABILITY_CODES } from './modules/observability/contract'
 import { flushEvents, record } from './modules/observability/service'
 
 interface RuntimeServer {
@@ -70,8 +71,9 @@ function installProcessFatalHandlers(): void {
 }
 
 async function bootstrap() {
+  initializeLogger()
   installProcessFatalHandlers()
-  await import('./langfuse')
+  initializeLangfuse()
   const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }] = await Promise.all([
     import('./app'),
     import('./config/server-config'),

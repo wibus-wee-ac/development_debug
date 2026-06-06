@@ -10,14 +10,13 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
 import { getActiveRunReplayBufferSummary } from '../src/modules/chat-runtime/service'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, ResumeChatSessionInput, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
-import * as SessionService from '../src/modules/session/service'
+import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 import {
   clearSideConversations,
   readSideConversation,
 } from '../src/modules/provider-runtime/side-conversation-registry'
-import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 
 interface ChatMessageRow {
   messageId: string
@@ -33,7 +32,7 @@ interface ChatMessageRow {
 interface ChatQueueItemView {
   id: string
   sessionId: string
-  mode: 'queue' | 'steer'
+  mode: 'queue'
   status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed'
   text: string
   providerTargetId: string | null
@@ -387,6 +386,7 @@ class TestCodexShellCommandRuntime implements ChatRuntime {
     ...TEST_CODEX_RUNTIME_CAPABILITIES,
     supportsShellExecution: true,
   } satisfies ChatRuntimeCapabilities
+
   readonly shellInputs: ExecuteShellCommandInput[] = []
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
@@ -462,6 +462,10 @@ class TestCodexSideRuntime implements ChatRuntime {
   readonly forkInputs: ForkRuntimeSessionInput[] = []
   readonly streamInputs: StreamTurnInput[] = []
   readonly providerThreadListInputs: ProviderThreadListInput[] = []
+  blockStreams = false
+  startWithNullProviderSessionId = false
+  assignProviderSessionOnStream = false
+  private releaseBlockedStream: (() => void) | null = null
 
   async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
     this.startInputs.push(input)
@@ -470,13 +474,45 @@ class TestCodexSideRuntime implements ChatRuntime {
       chatSessionId: input.chatSessionId,
       providerTargetId: input.profile.providerTargetId,
       runtimeKind: 'codex',
-      providerSessionId: `codex-thread-started-${input.chatSessionId}`,
+      providerSessionId: this.startWithNullProviderSessionId ? null : `codex-thread-started-${input.chatSessionId}`,
       providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? 'codex-side-model' } }),
     }
   }
 
   async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
     return input.runtimeSession
+  }
+
+  async getPresentation(): Promise<RuntimePresentationCapabilities> {
+    return {
+      runtimeKind: 'codex',
+      slashCommands: [],
+      uiSlots: [
+        {
+          id: 'codex:compact',
+          name: 'compact',
+          label: 'Compact',
+          description: 'Compact this conversation context.',
+          argumentHint: '[instructions]',
+          aliases: ['summarize'],
+          iconKey: 'compact',
+          commandText: '/compact ',
+          surfaces: ['slashCommand', 'runtimePanel'],
+        },
+        {
+          id: 'codex:goal',
+          name: 'goal',
+          label: 'Goal',
+          description: 'Set the active objective.',
+          argumentHint: '<objective>',
+          aliases: ['objective'],
+          iconKey: 'goal',
+          commandText: '/goal ',
+          surfaces: ['slashCommand', 'composerState', 'runtimePanel'],
+        },
+      ],
+      skills: [],
+    }
   }
 
   async forkRuntimeSession(input: ForkRuntimeSessionInput): Promise<RuntimeSession> {
@@ -493,10 +529,23 @@ class TestCodexSideRuntime implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     this.streamInputs.push(input)
+    if (this.assignProviderSessionOnStream && !input.runtimeSession.providerSessionId) {
+      input.runtimeSession.providerSessionId = `codex-thread-stream-${input.runtimeSession.chatSessionId}`
+    }
     yield { type: 'text-start', id: 'codex-side-text' }
     yield { type: 'text-delta', id: 'codex-side-text', delta: 'Side response' }
+    if (this.blockStreams) {
+      await new Promise<void>((resolve) => {
+        this.releaseBlockedStream = resolve
+      })
+    }
     yield { type: 'text-end', id: 'codex-side-text' }
     yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  releaseBlockedStreams(): void {
+    this.releaseBlockedStream?.()
+    this.releaseBlockedStream = null
   }
 
   async listProviderThreads(input: ProviderThreadListInput): Promise<ProviderThreadListResult> {
@@ -532,6 +581,47 @@ class TestCodexSideRuntime implements ChatRuntime {
   async cancelTurn(): Promise<void> {}
 }
 
+class TestFallbackSideRuntime implements ChatRuntime {
+  readonly runtimeKind = 'claude-agent' as const
+  readonly metadata = {
+    label: 'Test Fallback Side',
+    providerKinds: ['anthropic'],
+  } satisfies ChatRuntimeMetadata
+
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+  readonly startInputs: StartChatSessionInput[] = []
+  readonly streamInputs: StreamTurnInput[] = []
+  readonly historySnapshots: UIMessage[][] = []
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    this.startInputs.push(input)
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'claude-agent',
+      providerSessionId: null,
+      providerStateSnapshot: JSON.stringify({ models: { currentModelId: input.modelId ?? 'claude-fallback-side-model' } }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    this.historySnapshots.push([...(input.history ?? [])])
+    const textId = `fallback-side-text-${this.streamInputs.length}`
+    yield { type: 'text-start', id: textId }
+    yield { type: 'text-delta', id: textId, delta: `Fallback response ${this.streamInputs.length}` }
+    yield { type: 'text-end', id: textId }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
+
+  async cancelTurn(): Promise<void> {}
+}
+
 class TestRuntimeSettingsRuntime implements ChatRuntime {
   readonly runtimeKind = 'codex' as const
   readonly metadata = TEST_CODEX_RUNTIME_METADATA
@@ -539,6 +629,7 @@ class TestRuntimeSettingsRuntime implements ChatRuntime {
     ...TEST_CODEX_RUNTIME_CAPABILITIES,
     supportsRuntimeSettings: true,
   } satisfies ChatRuntimeCapabilities
+
   readonly updateInputs: UpdateRuntimeSettingsInput[] = []
   private releaseStream: (() => void) | null = null
   readonly streamStarted: Promise<void>
@@ -599,6 +690,7 @@ class TestLiveSteerSnapshotRuntime implements ChatRuntime {
     ...TEST_CODEX_RUNTIME_CAPABILITIES,
     supportsSteerTurn: true,
   } satisfies ChatRuntimeCapabilities
+
   readonly streamInputs: StreamTurnInput[] = []
   readonly steerInputs: SteerTurnInput[] = []
   private releaseFirstStream: (() => void) | null = null
@@ -665,6 +757,7 @@ class TestPendingRuntimeSettingsRuntime implements ChatRuntime {
     ...TEST_CODEX_RUNTIME_CAPABILITIES,
     supportsRuntimeSettings: true,
   } satisfies ChatRuntimeCapabilities
+
   readonly streamInputs: StreamTurnInput[] = []
   readonly updateInputs: UpdateRuntimeSettingsInput[] = []
   cancelCount = 0
@@ -760,6 +853,83 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
+    }
+  })
+
+  it('serves active runtime capabilities before a streaming run persists a durable binding', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    runtime.blockStreams = true
+    runtime.startWithNullProviderSessionId = true
+    runtime.assignProviderSessionOnStream = true
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runResponsePromise: Promise<Response> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-active-capabilities',
+        name: 'Workspace Codex Active Capabilities',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-active-capabilities', {
+        providerTargetId: 'provider-target-codex-active-capabilities',
+        sessionId: 'session-codex-active-capabilities',
+        runtimeKind: 'codex',
+      })
+
+      runResponsePromise = app.handle(new Request('http://localhost/chat/sessions/session-codex-active-capabilities/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start a long running turn.' }),
+      }))
+
+      await vi.waitFor(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      })
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-codex-active-capabilities'))
+        .get()).toBeUndefined()
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-active-capabilities/capabilities'))
+      expect(response.status).toBe(200)
+      const body = await response.json() as {
+        runtimeKind: string
+        uiSlots: Array<{ id: string, name: string, surfaces: string[] }>
+      }
+      expect(body.runtimeKind).toBe('codex')
+      expect(body.uiSlots).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: 'codex:compact', name: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:goal', name: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+      ]))
+    }
+    finally {
+      runtime.releaseBlockedStreams()
+      if (runResponsePromise) {
+        const runResponse = await runResponsePromise.catch(() => null)
+        if (runResponse) {
+          await collectSseChunks(runResponse).catch(() => undefined)
+        }
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
     }
   })
 
@@ -1077,66 +1247,61 @@ describe('chat runtime capability', () => {
       }))
       expect(sideResponse.status).toBe(200)
       const side = await sideResponse.json() as {
-        sessionId: string
+        sideConversationId: string
         parentSessionId: string
         runtimeKind: string
         providerTargetId: string | null
         providerSessionId: string | null
-        sideContextSource: string
+        title: string
+        expiresAt: number
       }
 
       expect(side).toEqual(expect.objectContaining({
         parentSessionId: 'session-codex-side-parent',
         runtimeKind: 'codex',
         providerTargetId: 'provider-target-codex-side',
-        sideContextSource: 'provider-native',
+        title: 'Side from Chat Runtime Session',
       }))
       expect(runtime.forkInputs).toHaveLength(1)
       expect(runtime.forkInputs[0]?.sourceRuntimeSession.providerSessionId).toBe('codex-thread-side-parent')
-      expect(readSideConversation(side.sessionId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+      expect(readSideConversation(side.sideConversationId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
+      expect(db()
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, side.sideConversationId))
+        .get()).toBeUndefined()
       expect(db()
         .select()
         .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .where(eq(backendSessionBindings.chatSessionId, side.sideConversationId))
         .get()).toBeUndefined()
 
-      const providerThreadsResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/provider-threads`))
-      expect(providerThreadsResponse.status).toBe(200)
-      expect(await providerThreadsResponse.json()).toEqual(expect.objectContaining({
-        providerSessionId: side.providerSessionId,
-        threads: [
-          expect.objectContaining({
-            id: 'codex-side-thread',
-            ephemeral: true,
-          }),
-        ],
-      }))
-      expect(runtime.providerThreadListInputs).toHaveLength(1)
-      expect(runtime.providerThreadListInputs[0]?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
-
-      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+      const runResponse = await app.handle(new Request(`http://localhost/chat/side-conversations/${side.sideConversationId}/response`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Continue in side.' }),
       }))
       expect(runResponse.status).toBe(200)
       await collectSseChunks(runResponse)
-      const run = await waitForBackendRunStatus(side.sessionId, 'complete')
 
       expect(runtime.streamInputs).toHaveLength(1)
       expect(runtime.streamInputs[0]?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
-      expect(run.bindingId).toBeNull()
+      expect(db()
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, side.sideConversationId))
+        .all()).toEqual([])
       expect(db()
         .select()
         .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
+        .where(eq(backendSessionBindings.chatSessionId, side.sideConversationId))
         .get()).toBeUndefined()
 
       const deleteTargetResponse = await app.handle(new Request('http://localhost/provider-targets/provider-target-codex-side', {
         method: 'DELETE',
       }))
       expect(deleteTargetResponse.status).toBe(200)
-      expect(readSideConversation(side.sessionId)).toBeUndefined()
+      expect(readSideConversation(side.sideConversationId)).toBeUndefined()
       expect(providerRuntimeHostManager.listHosts()).toEqual([])
     }
     finally {
@@ -1144,6 +1309,252 @@ describe('chat runtime capability', () => {
         registerRuntime(originalCodexRuntime)
       }
       clearSideConversations()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('starts Cradle-owned fallback side chats for runtimes without provider-native fork support', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestFallbackSideRuntime()
+    const originalRuntime = getRuntimeRegistry().get('claude-agent')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-fallback-side',
+        name: 'Workspace Fallback Side',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-fallback-side', {
+        providerTargetId: 'provider-target-fallback-side',
+        sessionId: 'session-fallback-side-parent',
+        providerKind: 'anthropic',
+        runtimeKind: 'claude-agent',
+      })
+
+      const parentUserMessage: UIMessage = {
+        id: 'parent-user-message',
+        role: 'user',
+        parts: [{ type: 'text', text: 'Parent context question' }],
+      }
+      const parentAssistantMessage: UIMessage = {
+        id: 'parent-assistant-message',
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'Parent context answer', state: 'done' }],
+      }
+      db().insert(messages).values([
+        {
+          id: parentUserMessage.id,
+          sessionId: 'session-fallback-side-parent',
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: 'Parent context question',
+          messageJson: JSON.stringify(parentUserMessage),
+          createdAt: 1_700_000_000,
+          updatedAt: 1_700_000_000,
+        },
+        {
+          id: parentAssistantMessage.id,
+          sessionId: 'session-fallback-side-parent',
+          parentMessageId: parentUserMessage.id,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'assistant',
+          status: 'complete',
+          content: 'Parent context answer',
+          messageJson: JSON.stringify(parentAssistantMessage),
+          createdAt: 1_700_000_001,
+          updatedAt: 1_700_000_001,
+        },
+      ]).run()
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-fallback-side-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as {
+        sideConversationId: string
+        parentSessionId: string
+        runtimeKind: string
+        providerTargetId: string | null
+        providerSessionId: string | null
+      }
+
+      expect(side).toEqual(expect.objectContaining({
+        parentSessionId: 'session-fallback-side-parent',
+        runtimeKind: 'claude-agent',
+        providerTargetId: 'provider-target-fallback-side',
+        providerSessionId: null,
+      }))
+      expect(runtime.startInputs).toHaveLength(1)
+      expect(runtime.startInputs[0]?.chatSessionId).toBe(side.sideConversationId)
+      expect(readSideConversation(side.sideConversationId)?.history.map(message => message.id)).toEqual([
+        parentUserMessage.id,
+        parentAssistantMessage.id,
+      ])
+
+      const firstRunResponse = await app.handle(new Request(`http://localhost/chat/side-conversations/${side.sideConversationId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'First side turn' }),
+      }))
+      expect(firstRunResponse.status).toBe(200)
+      await collectSseChunks(firstRunResponse)
+
+      const secondRunResponse = await app.handle(new Request(`http://localhost/chat/side-conversations/${side.sideConversationId}/response`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Second side turn' }),
+      }))
+      expect(secondRunResponse.status).toBe(200)
+      await collectSseChunks(secondRunResponse)
+
+      expect(runtime.streamInputs).toHaveLength(2)
+      expect(runtime.historySnapshots[0]?.map(message => message.id)).toEqual([
+        parentUserMessage.id,
+        parentAssistantMessage.id,
+      ])
+      expect(runtime.historySnapshots[1]?.map(message => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ])
+      expect(readSideConversation(side.sideConversationId)?.history.map(message => message.role)).toEqual([
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+        'user',
+        'assistant',
+      ])
+      expect(db()
+        .select()
+        .from(sessions)
+        .where(eq(sessions.id, side.sideConversationId))
+        .get()).toBeUndefined()
+      expect(db()
+        .select()
+        .from(messages)
+        .where(eq(messages.sessionId, side.sideConversationId))
+        .all()).toEqual([])
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, side.sideConversationId))
+        .get()).toBeUndefined()
+    }
+    finally {
+      if (originalRuntime) {
+        registerRuntime(originalRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.shutdown()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('forks provider-native side chats from a live parent runtime session before durable binding finalization', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    runtime.blockStreams = true
+    runtime.startWithNullProviderSessionId = true
+    runtime.assignProviderSessionOnStream = true
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runResponsePromise: Promise<Response> | null = null
+    let runChunksPromise: Promise<UIMessageChunk[]> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-live-side',
+        name: 'Workspace Codex Live Side',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-live-side', {
+        providerTargetId: 'provider-target-codex-live-side',
+        sessionId: 'session-codex-live-side-parent',
+        runtimeKind: 'codex',
+      })
+
+      runResponsePromise = app.handle(new Request('http://localhost/chat/sessions/session-codex-live-side-parent/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start parent task' }),
+      }))
+
+      await vi.waitFor(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      })
+      expect(db()
+        .select()
+        .from(backendSessionBindings)
+        .where(eq(backendSessionBindings.chatSessionId, 'session-codex-live-side-parent'))
+        .get()).toBeUndefined()
+
+      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-live-side-parent/side-chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({}),
+      }))
+      expect(sideResponse.status).toBe(200)
+      const side = await sideResponse.json() as {
+        sideConversationId: string
+      }
+
+      expect(runtime.forkInputs).toHaveLength(1)
+      expect(runtime.forkInputs[0]?.sourceRuntimeSession.providerSessionId).toBe('codex-thread-stream-session-codex-live-side-parent')
+      expect(readSideConversation(side.sideConversationId)?.runtimeSession.providerSessionId).toBe(`codex-thread-side-${side.sideConversationId}`)
+    }
+    finally {
+      runtime.releaseBlockedStreams()
+      if (runResponsePromise) {
+        const runResponse = await runResponsePromise.catch(() => null)
+        if (runResponse) {
+          runChunksPromise = collectSseChunks(runResponse)
+        }
+      }
+      if (runChunksPromise) {
+        await runChunksPromise.catch(() => undefined)
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      clearSideConversations()
+      providerRuntimeHostManager.clear()
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
@@ -1197,18 +1608,18 @@ describe('chat runtime capability', () => {
         body: JSON.stringify({}),
       }))
       expect(sideResponse.status).toBe(200)
-      const side = await sideResponse.json() as { sessionId: string }
-      expect(readSideConversation(side.sessionId)).toBeDefined()
+      const side = await sideResponse.json() as { sideConversationId: string }
+      expect(readSideConversation(side.sideConversationId)).toBeDefined()
 
       clearSideConversations()
       providerRuntimeHostManager.shutdown()
 
-      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
+      const runResponse = await app.handle(new Request(`http://localhost/chat/side-conversations/${side.sideConversationId}/response`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ text: 'Continue after side host expired.' }),
       }))
-      expect(runResponse.status).toBe(409)
+      expect(runResponse.status).toBe(410)
       expect(await runResponse.json()).toEqual(expect.objectContaining({
         code: 'side_chat_expired',
       }))
@@ -1229,230 +1640,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('rejects expired Cradle-context side conversations instead of starting a replacement provider session', async () => {
-    const dataDir = makeTempDir('cradle-data-')
-    const workspaceRoot = makeTempDir('cradle-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
-    process.env.CRADLE_DATA_DIR = dataDir
-    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
-
-    const runtime = new TestCodexSideRuntime()
-    const originalCodexRuntime = getRuntimeRegistry().get('codex')
-    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
-
-    try {
-      app = await createServerApp()
-      registerRuntime(runtime)
-      db().insert(workspaces).values({
-        id: 'workspace-codex-side-cradle-context-expired',
-        name: 'Workspace Codex Side Cradle Context Expired',
-        path: workspaceRoot,
-      }).run()
-
-      await createProfileAndSession(app, 'workspace-codex-side-cradle-context-expired', {
-        providerTargetId: 'provider-target-codex-side-cradle-context-expired',
-        sessionId: 'session-codex-side-cradle-context-expired-parent',
-        runtimeKind: 'codex',
-      })
-
-      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-cradle-context-expired-parent/side-chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      }))
-      expect(sideResponse.status).toBe(200)
-      const side = await sideResponse.json() as {
-        sessionId: string
-        sideContextSource: string
-      }
-      expect(side.sideContextSource).toBe('cradle-context')
-      expect(readSideConversation(side.sessionId)).toBeDefined()
-      expect(runtime.startInputs).toHaveLength(1)
-
-      clearSideConversations()
-      providerRuntimeHostManager.shutdown()
-
-      const runResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: 'Continue after Cradle side handle expired.' }),
-      }))
-      expect(runResponse.status).toBe(409)
-      expect(await runResponse.json()).toEqual(expect.objectContaining({
-        code: 'side_chat_expired',
-      }))
-      expect(runtime.startInputs).toHaveLength(1)
-      expect(runtime.streamInputs).toHaveLength(0)
-      expect(db()
-        .select()
-        .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
-        .get()).toBeUndefined()
-    }
-    finally {
-      if (originalCodexRuntime) {
-        registerRuntime(originalCodexRuntime)
-      }
-      clearSideConversations()
-      providerRuntimeHostManager.shutdown()
-      shutdownInfra()
-      rmSync(dataDir, { recursive: true, force: true })
-      rmSync(workspaceRoot, { recursive: true, force: true })
-      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
-      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
-    }
-  })
-
-  it('promotes provider-native side conversations into fresh durable sessions', async () => {
-    const dataDir = makeTempDir('cradle-data-')
-    const workspaceRoot = makeTempDir('cradle-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
-    process.env.CRADLE_DATA_DIR = dataDir
-    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
-
-    const runtime = new TestCodexSideRuntime()
-    const originalCodexRuntime = getRuntimeRegistry().get('codex')
-    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
-
-    try {
-      app = await createServerApp()
-      registerRuntime(runtime)
-      db().insert(workspaces).values({
-        id: 'workspace-codex-side-promote',
-        name: 'Workspace Codex Side Promote',
-        path: workspaceRoot,
-      }).run()
-
-      await createProfileAndSession(app, 'workspace-codex-side-promote', {
-        providerTargetId: 'provider-target-codex-side-promote',
-        sessionId: 'session-codex-side-promote-parent',
-        runtimeKind: 'codex',
-      })
-
-      db().insert(backendSessionBindings).values({
-        id: 'binding-codex-side-promote-parent',
-        chatSessionId: 'session-codex-side-promote-parent',
-        providerTargetId: 'provider-target-codex-side-promote',
-        runtimeKind: 'codex',
-        backendSessionId: 'codex-thread-side-promote-parent',
-        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
-        requestedModelId: 'codex-side-model',
-        createdAt: 1_700_000_000,
-        updatedAt: 1_700_000_000,
-      }).run()
-
-      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-promote-parent/side-chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      }))
-      expect(sideResponse.status).toBe(200)
-      const side = await sideResponse.json() as {
-        sessionId: string
-        providerSessionId: string | null
-      }
-      expect(readSideConversation(side.sessionId)?.runtimeSession.providerSessionId).toBe(side.providerSessionId)
-
-      const sideRunResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/response`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: 'Continue in side before promote.' }),
-      }))
-      expect(sideRunResponse.status).toBe(200)
-      await collectSseChunks(sideRunResponse)
-      const sideRun = await waitForBackendRunStatus(side.sessionId, 'complete')
-      expect(sideRun.bindingId).toBeNull()
-
-      const sideMessages = await getChatMessages(app, side.sessionId)
-      expect(sideMessages.map(row => row.content)).toEqual(['Continue in side before promote.', 'Side response'])
-      expect(runtime.startInputs).toHaveLength(0)
-
-      const promoteResponse = await app.handle(new Request(`http://localhost/chat/sessions/${side.sessionId}/promote-side`, {
-        method: 'POST',
-      }))
-      expect(promoteResponse.status).toBe(200)
-      const promoted = await promoteResponse.json() as {
-        sessionId: string
-        sourceSessionId: string
-        runtimeKind: string
-        providerTargetId: string | null
-        title: string
-      }
-
-      expect(promoted).toEqual(expect.objectContaining({
-        sourceSessionId: side.sessionId,
-        runtimeKind: 'codex',
-        providerTargetId: 'provider-target-codex-side-promote',
-      }))
-      expect(promoted.sessionId).not.toBe(side.sessionId)
-      expect(readSideConversation(side.sessionId)).toBeUndefined()
-
-      const promotedSession = db()
-        .select()
-        .from(sessions)
-        .where(eq(sessions.id, promoted.sessionId))
-        .get()
-      expect(promotedSession).toEqual(expect.objectContaining({
-        parentSessionId: null,
-        sideContextSource: null,
-        workspaceId: 'workspace-codex-side-promote',
-        providerTargetId: 'provider-target-codex-side-promote',
-        runtimeKind: 'codex',
-      }))
-      expect(db()
-        .select()
-        .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, promoted.sessionId))
-        .get()).toBeUndefined()
-
-      const promotedMessages = await getChatMessages(app, promoted.sessionId)
-      expect(promotedMessages.map(row => row.content)).toEqual(sideMessages.map(row => row.content))
-      expect(promotedMessages.map(row => row.messageId)).not.toEqual(sideMessages.map(row => row.messageId))
-
-      const promotedRunResponse = await app.handle(new Request(`http://localhost/chat/sessions/${promoted.sessionId}/response`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: 'Continue after promote.' }),
-      }))
-      expect(promotedRunResponse.status).toBe(200)
-      await collectSseChunks(promotedRunResponse)
-      const promotedRun = await waitForBackendRunStatus(promoted.sessionId, 'complete')
-
-      expect(runtime.startInputs).toHaveLength(1)
-      expect(runtime.startInputs[0]?.chatSessionId).toBe(promoted.sessionId)
-      expect(runtime.streamInputs[1]?.runtimeSession.providerSessionId).toBe(`codex-thread-started-${promoted.sessionId}`)
-      expect(promotedRun.bindingId).not.toBeNull()
-      expect(db()
-        .select()
-        .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, promoted.sessionId))
-        .get()).toEqual(expect.objectContaining({
-          backendSessionId: `codex-thread-started-${promoted.sessionId}`,
-          runtimeKind: 'codex',
-        }))
-      expect(db()
-        .select()
-        .from(backendSessionBindings)
-        .where(eq(backendSessionBindings.chatSessionId, side.sessionId))
-        .get()).toBeUndefined()
-    }
-    finally {
-      if (originalCodexRuntime) {
-        registerRuntime(originalCodexRuntime)
-      }
-      clearSideConversations()
-      providerRuntimeHostManager.shutdown()
-      shutdownInfra()
-      rmSync(dataDir, { recursive: true, force: true })
-      rmSync(workspaceRoot, { recursive: true, force: true })
-      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
-      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
-    }
-  })
-
-  it('releases provider-native side conversations when side sessions are archived or deleted', async () => {
+  it('releases provider-native side conversations when parents are archived or side tabs are closed', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -1497,17 +1685,23 @@ describe('chat runtime capability', () => {
         body: JSON.stringify({}),
       }))
       expect(archivedSideResponse.status).toBe(200)
-      const archivedSide = await archivedSideResponse.json() as { sessionId: string }
-      expect(readSideConversation(archivedSide.sessionId)).toBeDefined()
+      const archivedSide = await archivedSideResponse.json() as { sideConversationId: string }
+      expect(readSideConversation(archivedSide.sideConversationId)).toBeDefined()
 
-      const archiveResponse = await app.handle(new Request(`http://localhost/sessions/${archivedSide.sessionId}/archive`, {
+      const archiveResponse = await app.handle(new Request('http://localhost/sessions/session-codex-side-close-parent/archive', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ archived: true }),
       }))
       expect(archiveResponse.status).toBe(200)
-      expect(readSideConversation(archivedSide.sessionId)).toBeUndefined()
-      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === archivedSide.sessionId)).toBe(false)
+      expect(readSideConversation(archivedSide.sideConversationId)).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === archivedSide.sideConversationId)).toBe(false)
+
+      await app.handle(new Request('http://localhost/sessions/session-codex-side-close-parent/archive', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ archived: false }),
+      }))
 
       const deletedSideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-close-parent/side-chat', {
         method: 'POST',
@@ -1515,15 +1709,15 @@ describe('chat runtime capability', () => {
         body: JSON.stringify({}),
       }))
       expect(deletedSideResponse.status).toBe(200)
-      const deletedSide = await deletedSideResponse.json() as { sessionId: string }
-      expect(readSideConversation(deletedSide.sessionId)).toBeDefined()
+      const deletedSide = await deletedSideResponse.json() as { sideConversationId: string }
+      expect(readSideConversation(deletedSide.sideConversationId)).toBeDefined()
 
-      const deleteResponse = await app.handle(new Request(`http://localhost/sessions/${deletedSide.sessionId}`, {
+      const deleteResponse = await app.handle(new Request(`http://localhost/chat/side-conversations/${deletedSide.sideConversationId}`, {
         method: 'DELETE',
       }))
       expect(deleteResponse.status).toBe(200)
-      expect(readSideConversation(deletedSide.sessionId)).toBeUndefined()
-      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === deletedSide.sessionId)).toBe(false)
+      expect(readSideConversation(deletedSide.sideConversationId)).toBeUndefined()
+      expect(providerRuntimeHostManager.listHosts().some(host => host.scopeId === deletedSide.sideConversationId)).toBe(false)
     }
     finally {
       if (originalCodexRuntime) {
@@ -1536,80 +1730,6 @@ describe('chat runtime capability', () => {
       rmSync(workspaceRoot, { recursive: true, force: true })
       restoreEnv('CRADLE_DATA_DIR', previousDataDir)
       restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
-    }
-  })
-
-  it('releases reserved provider-native side host when side session persistence fails', async () => {
-    const dataDir = makeTempDir('cradle-data-')
-    const workspaceRoot = makeTempDir('cradle-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
-    process.env.CRADLE_DATA_DIR = dataDir
-    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
-
-    const runtime = new TestCodexSideRuntime()
-    const originalCodexRuntime = getRuntimeRegistry().get('codex')
-    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
-    let createSessionSpy: ReturnType<typeof vi.spyOn> | undefined
-
-    try {
-      app = await createServerApp()
-      registerRuntime(runtime)
-      db().insert(workspaces).values({
-        id: 'workspace-codex-side-failure',
-        name: 'Workspace Codex Side Failure',
-        path: workspaceRoot,
-      }).run()
-
-      await createProfileAndSession(app, 'workspace-codex-side-failure', {
-        providerTargetId: 'provider-target-codex-side-failure',
-        sessionId: 'session-codex-side-failure-parent',
-        runtimeKind: 'codex',
-      })
-
-      db().insert(backendSessionBindings).values({
-        id: 'binding-codex-side-failure-parent',
-        chatSessionId: 'session-codex-side-failure-parent',
-        providerTargetId: 'provider-target-codex-side-failure',
-        runtimeKind: 'codex',
-        backendSessionId: 'codex-thread-side-failure-parent',
-        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
-        requestedModelId: 'codex-side-model',
-        createdAt: 1_700_000_000,
-        updatedAt: 1_700_000_000,
-      }).run()
-
-      const createSession = SessionService.create
-      createSessionSpy = vi.spyOn(SessionService, 'create').mockImplementation((createInput) => {
-        if (createInput.parentSessionId === 'session-codex-side-failure-parent') {
-          throw new Error('Side session persistence failed')
-        }
-        return createSession(createInput)
-      })
-
-      const sideResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-side-failure-parent/side-chat', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({}),
-      }))
-
-      expect(sideResponse.status).not.toBe(200)
-      expect(runtime.forkInputs).toHaveLength(1)
-      expect(readSideConversation('session-codex-side-failure-parent')).toBeUndefined()
-      expect(providerRuntimeHostManager.listHosts()).toEqual([])
-    }
-    finally {
-      if (originalCodexRuntime) {
-        registerRuntime(originalCodexRuntime)
-      }
-      clearSideConversations()
-      providerRuntimeHostManager.shutdown()
-      shutdownInfra()
-      rmSync(dataDir, { recursive: true, force: true })
-      rmSync(workspaceRoot, { recursive: true, force: true })
-      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
-      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
-      createSessionSpy?.mockRestore()
     }
   })
 
@@ -1864,7 +1984,8 @@ describe('chat runtime capability', () => {
           .select({ configJson: sessions.configJson })
           .from(sessions)
           .where(eq(sessions.id, 'session-runtime-settings-failure'))
-          .get()!.configJson ?? '{}',
+          .get()!
+.configJson ?? '{}',
       ) as { runtimeSettings?: unknown }
       expect(persistedSettings.runtimeSettings).toEqual({
         accessMode: 'approval-required',
@@ -2070,7 +2191,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('keeps steer items queued when their snapshot differs from the active run', async () => {
+  it('rejects live steer when its snapshot differs from the active run', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -2111,53 +2232,31 @@ describe('chat runtime capability', () => {
       runChunksPromise = collectSseChunks(runRes)
       await runtime.firstStreamStarted
 
-      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-snapshot/queue', {
+      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-live-steer-snapshot/steer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          mode: 'steer',
           text: 'Use a different snapshot.',
           modelId: 'codex-queued-model',
           thinkingEffort: 'high',
           runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
         }),
       }))
-      expect(steerRes.status).toBe(200)
-      const steer = await steerRes.json() as ChatQueueItemView
-      expect(steer).toEqual(expect.objectContaining({
-        mode: 'steer',
-        status: 'pending',
-        modelId: 'codex-queued-model',
-        thinkingEffort: 'high',
-        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      expect(steerRes.status).toBe(409)
+      expect(await steerRes.json()).toEqual(expect.objectContaining({
+        code: 'chat_steer_context_mismatch',
       }))
       expect(runtime.steerInputs).toHaveLength(0)
+      expect(await listChatQueue(app, 'session-live-steer-snapshot')).toEqual([])
 
       runtime.release()
       await runChunksPromise
 
       await waitForCondition(() => {
-        expect(runtime.streamInputs).toHaveLength(2)
-        expect(runtime.streamInputs[1].message.parts).toEqual(expect.arrayContaining([
-          expect.objectContaining({ type: 'text', text: 'Use a different snapshot.' }),
-        ]))
-      }, 'snapshot-mismatched steer item to drain normally')
-
-      expect(runtime.streamInputs[1]).toEqual(expect.objectContaining({
-        modelId: 'codex-queued-model',
-        providerOptions: {
-          thinkingEffort: 'high',
-          runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
-        },
-      }))
+        expect(runtime.streamInputs).toHaveLength(1)
+      }, 'snapshot-mismatched steer item to stay out of queue drain')
       expect(runtime.steerInputs).toHaveLength(0)
-
-      await waitForCondition(async () => {
-        const items = await listChatQueue(app!, 'session-live-steer-snapshot')
-        expect(items.find(item => item.id === steer.id)).toEqual(expect.objectContaining({
-          status: 'completed',
-        }))
-      }, 'snapshot-mismatched steer item to complete after drain')
+      expect(await listChatQueue(app, 'session-live-steer-snapshot')).toEqual([])
     }
     finally {
       runtime.release()
@@ -2266,7 +2365,7 @@ describe('chat runtime capability', () => {
       const triggerRes = await app.handle(new Request('http://localhost/chat/sessions/session-historical-queue-runtime-settings/queue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: 'queue', text: 'Trigger drain.' }),
+        body: JSON.stringify({ text: 'Trigger drain.' }),
       }))
       expect(triggerRes.status).toBe(200)
 
@@ -2804,7 +2903,6 @@ describe('chat runtime capability', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          mode: 'queue',
           text: 'Queued on secondary profile',
           providerTargetId: 'provider-target-chat-secondary',
           modelId: 'gpt-4.1-mini',
@@ -3562,7 +3660,7 @@ describe('chat runtime capability', () => {
       const queueARes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: 'queue', text: 'Queued follow-up A', modelId: 'gpt-4o-mini' }),
+        body: JSON.stringify({ text: 'Queued follow-up A', modelId: 'gpt-4o-mini' }),
       }))
       expect(queueARes.status).toBe(200)
       const queueA = await queueARes.json() as ChatQueueItemView
@@ -3571,30 +3669,32 @@ describe('chat runtime capability', () => {
       const queueBRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: 'queue', text: 'Queued follow-up B', modelId: 'gpt-4o-mini' }),
+        body: JSON.stringify({ text: 'Queued follow-up B', modelId: 'gpt-4o-mini' }),
       }))
       expect(queueBRes.status).toBe(200)
       const queueB = await queueBRes.json() as ChatQueueItemView
 
-      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue', {
+      const steerRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/steer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ mode: 'steer', text: 'Steer next run', modelId: 'gpt-4o-mini' }),
+        body: JSON.stringify({ text: 'Steer next run', modelId: 'gpt-4o-mini' }),
       }))
-      expect(steerRes.status).toBe(200)
-      const steer = await steerRes.json() as ChatQueueItemView
+      expect(steerRes.status).toBe(409)
+      expect(await steerRes.json()).toEqual(expect.objectContaining({
+        code: 'chat_steer_not_supported',
+      }))
 
       let visibleQueue = await listChatQueue(app, 'session-chat-queue')
-      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueA.id, queueB.id, steer.id])
+      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueA.id, queueB.id])
 
       const reorderRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-queue/queue/reorder', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ queueItemIds: [queueB.id, steer.id, queueA.id] }),
+        body: JSON.stringify({ queueItemIds: [queueB.id, queueA.id] }),
       }))
       expect(reorderRes.status).toBe(200)
       visibleQueue = await listChatQueue(app, 'session-chat-queue')
-      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueB.id, steer.id, queueA.id])
+      expect(visibleQueue.filter(item => item.status === 'pending').map(item => item.id)).toEqual([queueB.id, queueA.id])
 
       const cancelRes = await app.handle(new Request(`http://localhost/chat/sessions/session-chat-queue/queue/${encodeURIComponent(queueA.id)}`, {
         method: 'DELETE',
@@ -3606,19 +3706,13 @@ describe('chat runtime capability', () => {
       streamControllers[0].enqueue(encoder.encode('data: [DONE]\n\n'))
       streamControllers[0].close()
 
-      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task', 'Steer next run']), 'steer item to drain before queue items')
+      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task', 'Queued follow-up B']), 'queued item to drain without rejected steer')
       streamControllers[1].enqueue(encoder.encode('data: {"id":"queue-1-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}\n\n'))
       streamControllers[1].enqueue(encoder.encode('data: [DONE]\n\n'))
       streamControllers[1].close()
 
-      await waitForCondition(() => expect(completionBodies).toEqual(['Start long task', 'Steer next run', 'Queued follow-up B']), 'queued item to drain after steer')
-      streamControllers[2].enqueue(encoder.encode('data: {"id":"queue-2-2","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}\n\n'))
-      streamControllers[2].enqueue(encoder.encode('data: [DONE]\n\n'))
-      streamControllers[2].close()
-
       await waitForCondition(async () => {
         const items = await listChatQueue(app!, 'session-chat-queue')
-        expect(items.find(item => item.id === steer.id)).toEqual(expect.objectContaining({ status: 'completed' }))
         expect(items.find(item => item.id === queueB.id)).toEqual(expect.objectContaining({ status: 'completed' }))
         expect(items.find(item => item.id === queueA.id)).toEqual(expect.objectContaining({ status: 'cancelled' }))
       }, 'queue items to reach terminal states')
@@ -3626,9 +3720,9 @@ describe('chat runtime capability', () => {
       const rows = await getChatMessages(app, 'session-chat-queue')
       expect(rows.filter(row => row.role === 'user').map(row => row.content)).toEqual(expect.arrayContaining([
         'Start long task',
-        'Steer next run',
         'Queued follow-up B',
       ]))
+      expect(rows.filter(row => row.role === 'user').map(row => row.content)).not.toContain('Steer next run')
     }
     finally {
       shutdownInfra()
@@ -3823,13 +3917,12 @@ describe('chat runtime capability', () => {
       const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         const chunks = Array.from({ length: 80 }, (_, index) =>
-          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`,
-        )
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`)
         return buildSseResponse([
           ...chunks,
           'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
           'data: [DONE]\n\n',
-        ], [0, ...Array.from({ length: 80 }, () => 1), 0])
+        ], [0, ...Array.from({ length: 80 }).fill(1), 0])
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
@@ -3918,13 +4011,12 @@ describe('chat runtime capability', () => {
       const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         const chunks = Array.from({ length: 80 }, (_, index) =>
-          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"abcd"},"finish_reason":null}]}\n\n`,
-        )
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"abcd"},"finish_reason":null}]}\n\n`)
         return buildSseResponse([
           ...chunks,
           'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
           'data: [DONE]\n\n',
-        ], [0, ...Array.from({ length: 80 }, () => 5), 0])
+        ], [0, ...Array.from({ length: 80 }).fill(5), 0])
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
@@ -4006,13 +4098,12 @@ describe('chat runtime capability', () => {
       const url = new Request(input).url
       if (url.endsWith('/chat/completions')) {
         const chunks = Array.from({ length: 120 }, (_, index) =>
-          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`,
-        )
+          `data: {"id":"chunk-${index}","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"${index} "},"finish_reason":null}]}\n\n`)
         return buildSseResponse([
           ...chunks,
           'data: {"id":"chunk-final","object":"chat.completion.chunk","created":1700000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
           'data: [DONE]\n\n',
-        ], [0, ...Array.from({ length: 120 }, () => 1), 0])
+        ], [0, ...Array.from({ length: 120 }).fill(1), 0])
       }
       return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
     })
@@ -4040,8 +4131,7 @@ describe('chat runtime capability', () => {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ text: 'Concurrent replay pressure', modelId: 'gpt-4o-mini' }),
-        })),
-      ))
+        }))))
       for (const response of responses) {
         expect(response.status).toBe(200)
       }

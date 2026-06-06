@@ -33,8 +33,42 @@ interface GitGraphCommit {
   shortSha: string
 }
 
+interface TestInfraEnv {
+  dataDir?: string
+  dbPath?: string
+}
+
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
+}
+
+function useIsolatedTestInfra(dataDir: string): TestInfraEnv {
+  const previous = {
+    dataDir: process.env.CRADLE_DATA_DIR,
+    dbPath: process.env.CRADLE_DB_PATH,
+  }
+
+  shutdownInfra()
+  process.env.CRADLE_DATA_DIR = dataDir
+  delete process.env.CRADLE_DB_PATH
+  return previous
+}
+
+function restoreTestInfra(previous: TestInfraEnv): void {
+  shutdownInfra()
+  if (previous.dataDir === undefined) {
+    delete process.env.CRADLE_DATA_DIR
+  }
+  else {
+    process.env.CRADLE_DATA_DIR = previous.dataDir
+  }
+
+  if (previous.dbPath === undefined) {
+    delete process.env.CRADLE_DB_PATH
+  }
+  else {
+    process.env.CRADLE_DB_PATH = previous.dbPath
+  }
 }
 
 function runGit(dir: string, args: string[]): string {
@@ -52,6 +86,7 @@ function initGitRepository(dir: string): void {
 
   runGit(dir, ['config', 'user.name', 'Cradle Server Tests'])
   runGit(dir, ['config', 'user.email', 'server-tests@example.com'])
+  runGit(dir, ['config', 'commit.gpgsign', 'false'])
 }
 
 function commitFile(dir: string, fileName: string, content: string, message: string): void {
@@ -74,8 +109,7 @@ describe('git capability', () => {
   it('returns workspace-owned status, branches, and commit graph for a real git repository', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-git-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    process.env.CRADLE_DATA_DIR = dataDir
+    const previousEnv = useIsolatedTestInfra(dataDir)
 
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
@@ -162,23 +196,16 @@ describe('git capability', () => {
       expect(graph[0]?.shortSha.length).toBe(7)
     }
  finally {
-      shutdownInfra()
+      restoreTestInfra(previousEnv)
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) {
-        delete process.env.CRADLE_DATA_DIR
-      }
- else {
-        process.env.CRADLE_DATA_DIR = previousDataDir
-      }
     }
   })
 
   it('creates-and-switches a new branch and supports checkout of an existing branch', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-git-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    process.env.CRADLE_DATA_DIR = dataDir
+    const previousEnv = useIsolatedTestInfra(dataDir)
 
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
@@ -229,22 +256,15 @@ describe('git capability', () => {
       expect(runGit(workspaceRoot, ['rev-parse', '--abbrev-ref', 'HEAD'])).toBe('seed-branch')
     }
  finally {
-      shutdownInfra()
+      restoreTestInfra(previousEnv)
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) {
-        delete process.env.CRADLE_DATA_DIR
-      }
- else {
-        process.env.CRADLE_DATA_DIR = previousDataDir
-      }
     }
   })
   it('returns structured errors for missing workspaces and non-git directories', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const plainWorkspaceRoot = makeTempDir('cradle-plain-workspace-')
-    const previousDataDir = process.env.CRADLE_DATA_DIR
-    process.env.CRADLE_DATA_DIR = dataDir
+    const previousEnv = useIsolatedTestInfra(dataDir)
 
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
@@ -272,15 +292,9 @@ describe('git capability', () => {
       expect((await nonGitWorkspace.json()).code).toBe('git_repository_unavailable')
     }
  finally {
-      shutdownInfra()
+      restoreTestInfra(previousEnv)
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(plainWorkspaceRoot, { recursive: true, force: true })
-      if (previousDataDir === undefined) {
-        delete process.env.CRADLE_DATA_DIR
-      }
- else {
-        process.env.CRADLE_DATA_DIR = previousDataDir
-      }
     }
   })
 })

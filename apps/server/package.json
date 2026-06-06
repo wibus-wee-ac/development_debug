@@ -7,16 +7,18 @@
     ".": "./src/index.ts",
     "./app": "./src/app.ts"
   },
+  "main": "src/index.ts",
   "files": [
-    "dist/**",
+    "!dist/desktop-plugins/**",
+    "!dist/desktop-runtime/**",
     "!dist/node_modules/**",
     "!dist/package.json",
-    "!dist/desktop-runtime/**"
+    "dist/**"
   ],
-  "main": "src/index.ts",
   "scripts": {
     "dev": "nodemon",
     "build": "vite build",
+    "build:desktop-plugins": "pnpm --filter '../../plugins/*' build && node scripts/prepare-desktop-plugins.mjs",
     "build:desktop-runtime": "pnpm run build && node scripts/prepare-desktop-runtime.mjs && node scripts/rebuild-electron-runtime.mjs",
     "start": "node dist/main.js",
     "generate:codex-app-server-capabilities": "node scripts/generate-codex-app-server-capabilities.mjs",

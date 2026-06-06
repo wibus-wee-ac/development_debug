@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { readProviderDefaultModelCapabilities } from './model-capabilities'
 import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema, UniversalProviderConfigJsonSchema } from '../provider-contracts/provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
+import { readProviderDefaultModelCapabilities } from './model-capabilities'
 
 export interface ProviderMetadataProvider {
   readonly providerKind: ProviderKind

@@ -1,6 +1,6 @@
 import type { DataTable } from '@cucumber/cucumber'
-import type { Locator } from '@playwright/test'
 import { Given, Then, When } from '@cucumber/cucumber'
+import type { Locator } from '@playwright/test'
 import { expect } from '@playwright/test'
 
 import type { MockToolCall } from '../support/mock-llm-server'

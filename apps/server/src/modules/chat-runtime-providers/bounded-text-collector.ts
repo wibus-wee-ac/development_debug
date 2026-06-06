@@ -1,8 +1,8 @@
 const DEFAULT_MAX_TEXT_LENGTH = 64 * 1024
 
 export interface BoundedTextCollector {
-  append(text: string): void
-  read(): string | undefined
+  append: (text: string) => void
+  read: () => string | undefined
 }
 
 export function createBoundedTextCollector(maxLength: number = DEFAULT_MAX_TEXT_LENGTH): BoundedTextCollector {
