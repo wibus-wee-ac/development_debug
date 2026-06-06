@@ -44,7 +44,7 @@ import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-model
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import type { AgentProfile } from '~/lib/types'
+import type { AgentProfile } from '~/features/agent-runtime/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'

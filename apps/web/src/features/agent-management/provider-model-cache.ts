@@ -1,5 +1,5 @@
 import { postProvidersModels } from '~/api-gen/sdk.gen'
-import type { ApiProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/features/agent-runtime/types'
 
 export interface ManualProviderModelCacheInput {
   id: string

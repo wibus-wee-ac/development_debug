@@ -27,7 +27,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
-import type { ApiProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/features/agent-runtime/types'
 
 import type { ParsedProvider } from './import-provider-parser'
 import { parseProviderConfig } from './import-provider-parser'

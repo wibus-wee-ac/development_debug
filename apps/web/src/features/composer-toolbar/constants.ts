@@ -1,4 +1,4 @@
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import type { ThinkingOption } from './provider-model-menu'
 import type { ThinkingEffort } from './types'

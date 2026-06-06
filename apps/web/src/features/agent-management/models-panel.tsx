@@ -10,7 +10,7 @@ import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
 import { modelIsVisible, ModelVisibilitySchema } from '~/features/agent-runtime/model-visibility'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import { ModelRegistryMappingDialog } from '../model-registry/mapping-dialog'
 import type { SearchResult } from '../model-registry/schemas'

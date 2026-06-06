@@ -1,4 +1,4 @@
-import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } from '~/features/agent-runtime/types'
 
 export type ComposerContext = 'new-chat' | 'chat'
 

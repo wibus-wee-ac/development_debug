@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
 import type { ThinkingOption } from './provider-model-menu'

@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 import { getProviderTargetsOptions } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetProviderTargetsResponse } from '~/api-gen/types.gen'
-import type { ProviderKind, ProviderTargetKind } from '~/lib/types'
+import type { ProviderKind, ProviderTargetKind } from '~/features/agent-runtime/types'
 
 export type ProviderTargetRecord = GetProviderTargetsResponse[number]
 

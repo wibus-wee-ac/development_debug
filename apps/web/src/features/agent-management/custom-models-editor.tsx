@@ -8,7 +8,7 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Spinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
-import type { ModelCapabilities } from '~/lib/types'
+import type { ModelCapabilities } from '~/features/agent-runtime/types'
 
 interface CustomModelEntry {
   id: string

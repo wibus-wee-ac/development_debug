@@ -18,7 +18,7 @@ import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
-import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/lib/types'
+import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/features/agent-runtime/types'
 
 import { SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
@@ -420,7 +420,10 @@ export function ExternalProviderRecordDetailPanel({
           import.meta.env.DEV && (
             <>
               <SettingsRow label="ID" description="">
-                <div className="text-[12px] font-mono hover:bg-muted p-1 px-3 rounded-xl transition-colors duration-200 cursor-copy" onClick={() => {
+                <button
+                  type="button"
+                  className="rounded-xl p-1 px-3 text-left font-mono text-[12px] transition-colors duration-200 hover:bg-muted"
+                  onClick={() => {
                     navigator.clipboard.writeText(source?.id || '')
                     toastManager.add({
                       type: 'success',
@@ -429,9 +432,10 @@ export function ExternalProviderRecordDetailPanel({
                       timeout: 3000,
                     })
                   }}
+                  aria-label="Copy source ID"
                 >
                   {source?.id}
-                </div>
+                </button>
               </SettingsRow>
 
               <Separator className="bg-foreground/6" />

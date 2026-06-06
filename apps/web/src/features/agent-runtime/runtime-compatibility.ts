@@ -1,4 +1,4 @@
-import type { BuiltinRuntimeKind, ProviderKind, RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, ProviderKind, RuntimeKind } from '~/features/agent-runtime/types'
 
 import type { RuntimeCatalogItem } from './use-runtime-catalog'
 

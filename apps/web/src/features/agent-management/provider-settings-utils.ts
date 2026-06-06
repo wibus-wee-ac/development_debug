@@ -1,5 +1,5 @@
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
-import type { AgentProfile, ApiProviderKind, ProviderKind } from '~/lib/types'
+import type { AgentProfile, ApiProviderKind, ProviderKind } from '~/features/agent-runtime/types'
 
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'

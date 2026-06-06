@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 export const ALL_MODELS_DISABLED_SENTINEL = '__all_disabled__'
 

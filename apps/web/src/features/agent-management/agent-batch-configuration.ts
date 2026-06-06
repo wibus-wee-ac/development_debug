@@ -1,5 +1,5 @@
 import type { Agent, UpdateAgentInput } from '~/features/agent-runtime/use-agents'
-import type { ProviderTarget } from '~/lib/types'
+import type { ProviderTarget } from '~/features/agent-runtime/types'
 
 export type AgentBatchThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
 

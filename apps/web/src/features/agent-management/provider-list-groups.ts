@@ -1,4 +1,4 @@
-import type { AgentProfile } from '~/lib/types'
+import type { AgentProfile } from '~/features/agent-runtime/types'
 
 import type {
   ExternalProviderRecordView,

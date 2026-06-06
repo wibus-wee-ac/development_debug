@@ -1,6 +1,6 @@
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
 import type { RuntimeCatalogItem } from '~/features/agent-runtime/use-runtime-catalog'
-import type { RuntimeKind } from '~/lib/types'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 
 import type { ProviderModelOption } from './types'
 

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 import type { ProviderModelOption } from './types'
@@ -122,6 +122,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
       {models.length > 0 && (
         <div className="px-1 pt-1 pb-1.5">
           <input
+            aria-label="Search models"
             value={modelSearch}
             onChange={(event) => {
               setModelSearch(event.target.value)

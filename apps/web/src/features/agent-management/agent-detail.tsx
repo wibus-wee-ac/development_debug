@@ -36,7 +36,7 @@ import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-m
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 

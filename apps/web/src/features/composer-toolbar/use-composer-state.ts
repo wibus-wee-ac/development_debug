@@ -5,7 +5,7 @@ import type { Agent } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
-import type { ModelDescriptor, RuntimeKind } from '~/lib/types'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { useNewChatStore } from '~/store/new-chat'
 
 import { listSelectableComposerProfiles, pickComposerProfileId } from './composer-profile-selection'

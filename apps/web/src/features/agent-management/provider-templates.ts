@@ -1,4 +1,4 @@
-import type { ApiProviderKind } from '~/lib/types'
+import type { ApiProviderKind } from '~/features/agent-runtime/types'
 
 export interface ProviderPreset {
   id: string

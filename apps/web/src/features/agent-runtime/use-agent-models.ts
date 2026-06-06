@@ -8,7 +8,7 @@ import {
   getProvidersTargetsByProviderTargetIdModelsCache,
   getProviderTargetsByProviderTargetIdModelSettings,
 } from '~/api-gen/sdk.gen'
-import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 
 import { filterVisibleModels, ModelVisibilitySchema } from './model-visibility'
 import { ProfileConfigJsonSchema } from './profile-config-schema'

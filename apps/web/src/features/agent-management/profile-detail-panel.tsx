@@ -56,7 +56,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
-import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'

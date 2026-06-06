@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { AgentProfile } from '~/lib/types'
+import type { AgentProfile } from '~/features/agent-runtime/types'
 
 import { collectProviderListGroups, sortProviderProfilesByStatus } from './provider-list-groups'
 

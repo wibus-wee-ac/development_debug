@@ -5,7 +5,7 @@ import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { cn } from '~/lib/cn'
-import type { BuiltinRuntimeKind, RuntimeKind } from '~/lib/types'
+import type { BuiltinRuntimeKind, RuntimeKind } from '~/features/agent-runtime/types'
 
 import type { RuntimeKindOption } from './constants'
 import { RUNTIME_KIND_OPTIONS } from './constants'

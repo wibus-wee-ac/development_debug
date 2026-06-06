@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
-import type { ModelDescriptor } from '~/lib/types'
+import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 import type { ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'

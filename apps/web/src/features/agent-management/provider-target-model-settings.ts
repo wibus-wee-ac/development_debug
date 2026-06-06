@@ -6,7 +6,7 @@ import {
   patchProviderTargetsByProviderTargetIdModelVisibility,
 } from '~/api-gen/sdk.gen'
 import { ProfileConfigSchema } from '~/features/agent-runtime/profile-config-schema'
-import type { ModelCapabilities, ProviderTarget } from '~/lib/types'
+import type { ModelCapabilities, ProviderTarget } from '~/features/agent-runtime/types'
 
 export interface EditableCustomModel {
   id: string

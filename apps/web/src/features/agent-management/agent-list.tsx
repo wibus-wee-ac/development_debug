@@ -52,7 +52,7 @@ import {
 import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor, ProviderTarget } from '~/lib/types'
+import type { ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 
 import type { AgentBatchThinkingEffort, AgentProviderBatchSelection } from './agent-batch-configuration'

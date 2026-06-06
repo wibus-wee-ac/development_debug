@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { client } from '~/lib/client.config'
-import type { ProviderKind, RuntimeKind } from '~/lib/types'
+import type { ProviderKind, RuntimeKind } from '~/features/agent-runtime/types'
 
 export type RuntimeCatalogSurface = 'chat' | 'jarvis'
 
